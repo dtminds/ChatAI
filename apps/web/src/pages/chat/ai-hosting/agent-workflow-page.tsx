@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Connection } from "@xyflow/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
@@ -23,13 +23,11 @@ import { useWorkflowShortcuts } from "./workflow/shortcuts";
 import type {
   InsertableMarketingNodeKind,
   InspectorTab,
-  MarketingEdgeHighlightState,
   MarketingNodeData,
   MarketingNodeKind,
-  MarketingWorkflowRenderEdge,
-  MarketingWorkflowRenderNode,
 } from "./workflow/types";
 import { useWorkflowController } from "./workflow/use-workflow-controller";
+import { useWorkflowRenderElements } from "./workflow/use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./workflow/use-workflow-selection-state";
 import { useWorkflowTransientState } from "./workflow/use-workflow-transient-state";
 import {
@@ -234,49 +232,26 @@ function WorkflowWorkspaceContent({
     totalChecks,
   } = useWorkflowPublishChecks(nodes, edges);
 
-  const decoratedEdges = useMemo<MarketingWorkflowRenderEdge[]>(
-    () =>
-      edges.map((edge) => ({
-        ...edge,
-        selected: edge.id === selectedEdgeId,
-        data: {
-          ...edge.data,
-          highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
-          insertMenuOpen: edge.id === activeEdgeInsertMenuId,
-          onDelete: handleDeleteEdge,
-          onInsertBetween: handleInsertNodeBetween,
-          onToggleInsertMenu: toggleEdgeInsertMenu,
-        },
-      })),
-    [activeEdgeInsertMenuId, edges, hoveredEdgeIds, selectedEdgeId, toggleEdgeInsertMenu],
-  );
-
-  const decoratedNodes = useMemo<MarketingWorkflowRenderNode[]>(
-    () =>
-      nodes.map((node) => {
-        const isSelected = node.id === selectedNodeId;
-
-        return {
-          ...node,
-          selected: isSelected,
-          zIndex: isSelected ? 20 : undefined,
-          data: {
-            ...node.data,
-            insertMenuOpen: node.id === quickInsertTarget?.nodeId,
-            insertMenuSourceHandle: node.id === quickInsertTarget?.nodeId
-              ? quickInsertTarget.sourceHandle
-              : undefined,
-            onDelete: handleDeleteNode,
-            onDuplicate: handleDuplicateNode,
-            onInsertAfter: handleInsertNodeAfter,
-            onSelect: selectWorkflowNode,
-            onToggleInsertMenu: toggleNodeInsertMenu,
-            selected: isSelected,
-          },
-        };
-      }),
-    [nodes, quickInsertTarget, selectedNodeId, toggleNodeInsertMenu],
-  );
+  const {
+    edges: renderedEdges,
+    nodes: renderedNodes,
+  } = useWorkflowRenderElements({
+    activeEdgeInsertMenuId,
+    edges,
+    hoveredEdgeIds,
+    nodes,
+    onDeleteEdge: handleDeleteEdge,
+    onDeleteNode: handleDeleteNode,
+    onDuplicateNode: handleDuplicateNode,
+    onInsertNodeAfter: handleInsertNodeAfter,
+    onInsertNodeBetween: handleInsertNodeBetween,
+    onSelectNode: selectWorkflowNode,
+    onToggleEdgeInsertMenu: toggleEdgeInsertMenu,
+    onToggleNodeInsertMenu: toggleNodeInsertMenu,
+    quickInsertTarget,
+    selectedEdgeId,
+    selectedNodeId,
+  });
 
   useWorkflowShortcuts({
     canRedo,
@@ -443,8 +418,8 @@ function WorkflowWorkspaceContent({
           <WorkflowCanvas
             canRedo={canRedo}
             canUndo={canUndo}
-            edges={decoratedEdges}
-            nodes={decoratedNodes}
+            edges={renderedEdges}
+            nodes={renderedNodes}
             onAddNode={addNode}
             onArrange={arrangeNodes}
             onConnect={connectNodes}
@@ -498,15 +473,4 @@ function WorkflowWorkspaceContent({
       </div>
     </>
   );
-}
-
-function getEdgeHighlightState(
-  edgeId: string,
-  highlightedEdgeIds: Set<string> | null,
-): MarketingEdgeHighlightState | undefined {
-  if (!highlightedEdgeIds) {
-    return undefined;
-  }
-
-  return highlightedEdgeIds.has(edgeId) ? "connected" : "dimmed";
 }

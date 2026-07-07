@@ -53,11 +53,9 @@ export type MarketingEdgeRenderData = MarketingEdgeData & MarketingEdgeRuntimeDa
 export type MarketingWorkflowEdge = Edge<MarketingEdgeData, "marketing">;
 export type MarketingWorkflowRenderEdge = Edge<MarketingEdgeRenderData, "marketing">;
 
-export type WorkflowSnapshot = {
+export type WorkflowDraft = {
   edges: MarketingWorkflowEdge[];
-  label: string;
   nodes: MarketingWorkflowNode[];
-  selectedNodeId: string;
 };
 
 export type QuickInsertTarget = {

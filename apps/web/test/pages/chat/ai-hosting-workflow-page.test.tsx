@@ -527,6 +527,49 @@ describe("Agent workflow demo page", () => {
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
   });
 
+  it("keeps canvas selection out of workflow undo history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+    const insertedNode = within(canvas).getByRole("button", { name: /^AI 接待 / });
+    const insertedNodeWrapper = insertedNode.closest("[data-testid^='workflow-node-']");
+
+    expect(insertedNodeWrapper).toHaveAttribute("data-selected", "true");
+
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+    expect(insertedNodeWrapper).not.toHaveAttribute("data-selected", "true");
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
+    expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
+  });
+
+  it("clears redo history after a new workflow edit", async () => {
+    const user = setupCanvasUser();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    expect(within(canvas).getByRole("button", { name: "重做" })).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
+
+    expect(within(canvas).getByRole("button", { name: "重做" })).toBeDisabled();
+    expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
+  });
+
   it("keeps the canvas operator controls interactive", async () => {
     const user = userEvent.setup();
 

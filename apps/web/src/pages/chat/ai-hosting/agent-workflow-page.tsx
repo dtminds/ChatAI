@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Connection,
   EdgeChange,
@@ -68,6 +68,7 @@ import {
   getNodeIdSet,
   shiftNodesRight,
 } from "./workflow/graph";
+import { useWorkflowHistory } from "./workflow/history";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "./workflow/layout";
 import { MarketingNodeCard } from "./workflow/nodes";
 import { NodeConfigPanel } from "./workflow/panels";
@@ -83,7 +84,6 @@ import type {
   MarketingWorkflowRenderNode,
   NodeRunRecord,
   QuickInsertTarget,
-  WorkflowSnapshot,
 } from "./workflow/types";
 import "@xyflow/react/dist/style.css";
 import "./agent-workflow-page.css";
@@ -268,17 +268,34 @@ function WorkflowWorkspaceContent({
   const [quickInsertTarget, setQuickInsertTarget] = useState<QuickInsertTarget | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
-  const [nodes, setNodes] = useState<MarketingWorkflowNode[]>(() => createInitialNodes());
-  const [edges, setEdges] = useState<MarketingWorkflowEdge[]>(() => createInitialEdges());
-  const [history, setHistory] = useState<WorkflowSnapshot[]>([]);
-  const [future, setFuture] = useState<WorkflowSnapshot[]>([]);
+  const {
+    canRedo,
+    canUndo,
+    commitDraft,
+    currentDraft,
+    redo,
+    replaceDraft,
+    undo,
+  } = useWorkflowHistory(() => ({
+    edges: createInitialEdges(),
+    nodes: createInitialNodes(),
+  }));
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [runRecords, setRunRecords] = useState<Record<string, NodeRunRecord>>({});
   const [publishAttempted, setPublishAttempted] = useState(false);
+  const { edges, nodes } = currentDraft;
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
   const checks = useMemo(() => buildPublishChecks(nodes, edges), [nodes, edges]);
   const readyChecks = checks.filter((check) => check.status === "ready").length;
   const publishReady = readyChecks === checks.length;
+
+  useEffect(() => {
+    if (!nodes.length || nodes.some((node) => node.id === selectedNodeId)) {
+      return;
+    }
+
+    setSelectedNodeId(nodes[0].id);
+  }, [nodes, selectedNodeId]);
   const hoveredEdgeIds = useMemo(() => {
     if (!hoveredNodeId) {
       return null;
@@ -344,96 +361,56 @@ function WorkflowWorkspaceContent({
 
   const onNodesChange: OnNodesChange<MarketingWorkflowRenderNode> = useCallback(
     (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
-      setNodes((currentNodes) =>
-        applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], currentNodes),
-      );
+      replaceDraft((draft) => ({
+        ...draft,
+        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], draft.nodes),
+      }));
     },
-    [],
+    [replaceDraft],
   );
 
   const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
     (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
-      setEdges((currentEdges) =>
-        applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], currentEdges),
-      );
+      replaceDraft((draft) => ({
+        ...draft,
+        edges: applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], draft.edges),
+      }));
     },
-    [],
+    [replaceDraft],
   );
 
   function updateSelectedNode(patch: Partial<MarketingNodeData>) {
-    recordHistory("修改节点配置");
-    setNodes((currentNodes) =>
-      currentNodes.map((node) =>
-        node.id === selectedNodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...patch,
-              },
-            }
-          : node,
-      ),
+    commitDraft(
+      "node:config-change",
+      (draft) => ({
+        ...draft,
+        nodes: draft.nodes.map((node) =>
+          node.id === selectedNodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...patch,
+                },
+              }
+            : node,
+        ),
+      }),
+      {
+        nodeId: selectedNodeId,
+        nodeTitle: selectedNode?.data.title,
+      },
     );
   }
 
-  function recordHistory(label: string) {
-    setHistory((currentHistory) => [
-      ...currentHistory.slice(-11),
-      {
-        edges,
-        label,
-        nodes,
-        selectedNodeId,
-      },
-    ]);
-    setFuture([]);
-  }
-
   function undoWorkflowChange() {
-    const previousSnapshot = history.at(-1);
-
-    if (!previousSnapshot) {
-      return;
-    }
-
-    setFuture((currentFuture) => [
-      {
-        edges,
-        label: "当前状态",
-        nodes,
-        selectedNodeId,
-      },
-      ...currentFuture.slice(0, 11),
-    ]);
-    setNodes(previousSnapshot.nodes);
-    setEdges(previousSnapshot.edges);
-    setSelectedNodeId(previousSnapshot.selectedNodeId);
+    undo();
     setQuickInsertTarget(null);
-    setHistory((currentHistory) => currentHistory.slice(0, -1));
   }
 
   function redoWorkflowChange() {
-    const nextSnapshot = future[0];
-
-    if (!nextSnapshot) {
-      return;
-    }
-
-    setHistory((currentHistory) => [
-      ...currentHistory.slice(-11),
-      {
-        edges,
-        label: "撤销前状态",
-        nodes,
-        selectedNodeId,
-      },
-    ]);
-    setNodes(nextSnapshot.nodes);
-    setEdges(nextSnapshot.edges);
-    setSelectedNodeId(nextSnapshot.selectedNodeId);
+    redo();
     setQuickInsertTarget(null);
-    setFuture((currentFuture) => currentFuture.slice(1));
   }
 
   function addNode(kind: MarketingNodeKind) {
@@ -450,7 +427,6 @@ function WorkflowWorkspaceContent({
     kind: InsertableMarketingNodeKind,
     sourceHandle?: string,
   ) {
-    recordHistory("添加节点");
     const nodeId = `${kind}-${Date.now()}`;
     const previousNode = nodes.find((node) => node.id === previousNodeId);
     const replacedEdge = edges.find((edge) =>
@@ -475,18 +451,27 @@ function WorkflowWorkspaceContent({
       },
     };
 
-    setNodes((currentNodes) => [...shiftNodesRight(currentNodes, shiftedNodeIds), node]);
-    setEdges((currentEdges) => [
-      ...currentEdges.filter(
-        (edge) => edge.id !== replacedEdge?.id,
-      ),
-      createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
-        sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
+    commitDraft(
+      replacedEdge ? "node:insert" : "node:add",
+      (draft) => ({
+        edges: [
+          ...draft.edges.filter(
+            (edge) => edge.id !== replacedEdge?.id,
+          ),
+          createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
+            sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
+          }),
+          createEdge(nodeId, nextNodeId, undefined, {
+            targetHandle: replacedEdge?.targetHandle,
+          }),
+        ],
+        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
       }),
-      createEdge(nodeId, nextNodeId, undefined, {
-        targetHandle: replacedEdge?.targetHandle,
-      }),
-    ]);
+      {
+        nodeId,
+        nodeTitle: node.data.title,
+      },
+    );
     setSelectedNodeId(nodeId);
     setIsInspectorOpen(true);
     setQuickInsertTarget(null);
@@ -500,7 +485,6 @@ function WorkflowWorkspaceContent({
     targetNodeId: string,
     kind: InsertableMarketingNodeKind,
   ) {
-    recordHistory("插入节点");
     const nodeId = `${kind}-${Date.now()}`;
     const sourceNode = nodes.find((node) => node.id === sourceNodeId);
     const targetNode = nodes.find((node) => node.id === targetNodeId);
@@ -515,15 +499,25 @@ function WorkflowWorkspaceContent({
       },
     };
 
-    setNodes((currentNodes) => [...shiftNodesRight(currentNodes, shiftedNodeIds), node]);
-    setEdges((currentEdges) => [
-      ...currentEdges.filter((edge) => edge.id !== edgeId),
-      createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
-        sourceHandle: replacedEdge?.sourceHandle,
-        targetHandle: replacedEdge?.targetHandle,
+    commitDraft(
+      "node:insert",
+      (draft) => ({
+        edges: [
+          ...draft.edges.filter((edge) => edge.id !== edgeId),
+          createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
+            sourceHandle: replacedEdge?.sourceHandle,
+            targetHandle: replacedEdge?.targetHandle,
+          }),
+          createEdge(nodeId, targetNodeId),
+        ],
+        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
       }),
-      createEdge(nodeId, targetNodeId),
-    ]);
+      {
+        edgeId,
+        nodeId,
+        nodeTitle: node.data.title,
+      },
+    );
     setSelectedNodeId(nodeId);
     setIsInspectorOpen(true);
     setQuickInsertTarget(null);
@@ -549,18 +543,28 @@ function WorkflowWorkspaceContent({
       return;
     }
 
-    recordHistory("连接节点");
-    setEdges((currentEdges) => [
-      ...currentEdges,
-      createEdge(source, target, undefined, { sourceHandle, targetHandle }),
-    ]);
+    commitDraft(
+      "edge:connect",
+      (draft) => ({
+        ...draft,
+        edges: [
+          ...draft.edges,
+          createEdge(source, target, undefined, { sourceHandle, targetHandle }),
+        ],
+      }),
+      {
+        nodeId: source,
+      },
+    );
     setQuickInsertTarget(null);
     setIsChecksOpen(false);
   }
 
   function arrangeNodes() {
-    recordHistory("自动整理");
-    setNodes((currentNodes) => arrangeWorkflowNodes(currentNodes, edges));
+    commitDraft("layout:organize", (draft) => ({
+      ...draft,
+      nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
+    }));
   }
 
   function runSelectedNode() {
@@ -597,8 +601,8 @@ function WorkflowWorkspaceContent({
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           <WorkflowCanvas
-            canRedo={future.length > 0}
-            canUndo={history.length > 0}
+            canRedo={canRedo}
+            canUndo={canUndo}
             edges={decoratedEdges}
             nodes={decoratedNodes}
             onAddNode={addNode}

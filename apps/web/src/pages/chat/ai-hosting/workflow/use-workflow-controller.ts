@@ -364,10 +364,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
     history.undo();
     return {
-      draft: sanitizeDraft({
-        edges: previousState.edges,
-        nodes: previousState.nodes,
-      }),
+      draft: sanitizeDraft(previousState.draft),
     };
   }, [flushConfigHistory, history, pastStates]);
 
@@ -380,10 +377,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
     history.redo();
     return {
-      draft: sanitizeDraft({
-        edges: nextState.edges,
-        nodes: nextState.nodes,
-      }),
+      draft: sanitizeDraft(nextState.draft),
     };
   }, [flushConfigHistory, futureStates, history]);
 

@@ -64,6 +64,8 @@ export function WorkflowCanvas({
   canUndo,
   edges,
   nodes,
+  nextRedoLabel,
+  nextUndoLabel,
   onAddNode,
   onArrange,
   onConnect,
@@ -88,6 +90,8 @@ export function WorkflowCanvas({
   canUndo: boolean;
   edges: MarketingWorkflowRenderEdge[];
   nodes: MarketingWorkflowRenderNode[];
+  nextRedoLabel?: string;
+  nextUndoLabel?: string;
   onAddNode: (kind: MarketingNodeKind) => void;
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
@@ -176,7 +180,7 @@ export function WorkflowCanvas({
         >
           <div className="workflow-operator-group">
             <button
-              aria-label="撤销"
+              aria-label={nextUndoLabel ? `撤销：${nextUndoLabel}` : "撤销"}
               className="workflow-operator-button"
               disabled={!canUndo}
               onClick={(event) => {
@@ -188,7 +192,7 @@ export function WorkflowCanvas({
               <HugeiconsIcon icon={Undo03Icon} size={15} strokeWidth={1.8} />
             </button>
             <button
-              aria-label="重做"
+              aria-label={nextRedoLabel ? `重做：${nextRedoLabel}` : "重做"}
               className="workflow-operator-button"
               disabled={!canRedo}
               onClick={(event) => {

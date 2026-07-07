@@ -86,12 +86,14 @@ describe("useWorkflowController", () => {
     rerender({ draft: initialDraft });
 
     expect(result.current.canUndo).toBe(true);
+    expect(result.current.nextUndoLabel).toBe("移动节点");
 
     act(() => {
       result.current.undo();
     });
 
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalPosition);
+    expect(result.current.nextRedoLabel).toBe("移动节点");
   });
 
   it("undoes a multi-node move as one history step", () => {

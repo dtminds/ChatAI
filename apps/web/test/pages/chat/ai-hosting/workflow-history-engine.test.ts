@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   WORKFLOW_HISTORY_LIMIT,
   createWorkflowHistoryInitialState,
+  getWorkflowHistoryEventLabel,
   workflowHistoryReducer,
 } from "@/pages/chat/ai-hosting/workflow/history-engine";
 import type {
@@ -90,6 +91,8 @@ describe("workflowHistoryReducer", () => {
     const undoneState = workflowHistoryReducer(movedState, { type: "undo" });
 
     expect(undoneState.currentDraft.nodes[0].position.x).toBe(0);
+    expect(undoneState.futureStates[0].draft.nodes[0].position.x).toBe(10);
+    expect(undoneState.futureStates[0].event).toBe("node:move");
     expect(undoneState.futureStates).toHaveLength(1);
 
     const redoneState = workflowHistoryReducer(undoneState, { type: "redo" });
@@ -118,6 +121,12 @@ describe("workflowHistoryReducer", () => {
     }
 
     expect(state.pastStates).toHaveLength(WORKFLOW_HISTORY_LIMIT);
-    expect(state.pastStates[0].nodes[0].position.x).toBe(8);
+    expect(state.pastStates[0].draft.nodes[0].position.x).toBe(8);
+  });
+
+  it("maps history events to stable user-facing labels", () => {
+    expect(getWorkflowHistoryEventLabel("node:move")).toBe("移动节点");
+    expect(getWorkflowHistoryEventLabel("node:config-change")).toBe("修改节点配置");
+    expect(getWorkflowHistoryEventLabel("edge:connect")).toBe("连接节点");
   });
 });

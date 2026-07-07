@@ -330,6 +330,14 @@ function setupCanvasUser() {
   });
 }
 
+function getUndoButton(canvas: HTMLElement) {
+  return within(canvas).getByRole("button", { name: /^撤销/ });
+}
+
+function getRedoButton(canvas: HTMLElement) {
+  return within(canvas).getByRole("button", { name: /^重做/ });
+}
+
 describe("Agent workflow page", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -492,11 +500,11 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+    expect(getUndoButton(canvas)).toBeDisabled();
 
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+    expect(getUndoButton(canvas)).toBeDisabled();
   });
 
   it("keeps the selected workflow node above neighboring nodes after pane clicks", async () => {
@@ -705,10 +713,10 @@ describe("Agent workflow page", () => {
     await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
     expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "重做" }));
+    await user.click(getRedoButton(canvas));
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
   });
 
@@ -773,7 +781,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
     expect(insertedNodeWrapper).not.toHaveAttribute("data-selected", "true");
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
 
     expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
     expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
@@ -795,14 +803,14 @@ describe("Agent workflow page", () => {
       fireEvent.change(titleInput, { target: { value: "第二次改名" } });
 
       expect(within(canvas).getByRole("button", { name: /^第二次改名 / })).toBeInTheDocument();
-      expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+      expect(getUndoButton(canvas)).toBeDisabled();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
-      fireEvent.click(within(canvas).getByRole("button", { name: "撤销" }));
+      expect(getUndoButton(canvas)).toBeEnabled();
+      fireEvent.click(getUndoButton(canvas));
 
       expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toBeInTheDocument();
       expect(within(canvas).queryByRole("button", { name: /^第一次改名 / })).not.toBeInTheDocument();
@@ -823,13 +831,13 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
-    expect(within(canvas).getByRole("button", { name: "重做" })).toBeEnabled();
+    await user.click(getUndoButton(canvas));
+    expect(getRedoButton(canvas)).toBeEnabled();
 
     await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
 
-    expect(within(canvas).getByRole("button", { name: "重做" })).toBeDisabled();
+    expect(getRedoButton(canvas)).toBeDisabled();
     expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
   });
 
@@ -846,9 +854,9 @@ describe("Agent workflow page", () => {
 
     expect(workflowNodeX("wait-2d")).toBe(420);
     expect(Number(screen.getByTestId("workflow-node-wait-2d").dataset.positionY)).toBe(120);
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+    expect(within(canvas).getByRole("button", { name: "撤销：移动节点" })).toBeEnabled();
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
 
     expect(workflowNodeX("wait-2d")).toBe(originalX);
     expect(Number(screen.getByTestId("workflow-node-wait-2d").dataset.positionY)).toBe(originalY);
@@ -867,7 +875,7 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+    expect(getUndoButton(canvas)).toBeEnabled();
 
     await user.click(within(canvas).getByRole("button", { name: "缩小" }));
     await user.click(within(canvas).getByRole("button", { name: "放大" }));
@@ -1002,9 +1010,9 @@ describe("Agent workflow page", () => {
     expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 / })).not.toBeInTheDocument();
     expect(screen.queryByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workflow-edge-edge-action-message-goal")).not.toBeInTheDocument();
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+    expect(getUndoButton(canvas)).toBeEnabled();
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
 
     expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toBeInTheDocument();
     expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
@@ -1030,11 +1038,11 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent("发送欢迎消息 (1)");
     expect(screen.queryByTestId("workflow-edge-edge-action-message-action")).not.toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
 
     expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 \(1\) / })).not.toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "重做" }));
+    await user.click(getRedoButton(canvas));
 
     expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / })).toBeInTheDocument();
   });
@@ -1086,7 +1094,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByTestId("workflow-edge-edge-trigger-wait-2d")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workflow-edge-edge-wait-2d-branch-intent")).not.toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    await user.click(getUndoButton(canvas));
 
     expect(within(canvas).getByRole("button", { name: /^观察期 / })).toBeInTheDocument();
     expect(screen.getByTestId("workflow-edge-edge-trigger-wait-2d")).toBeInTheDocument();
@@ -1103,7 +1111,7 @@ describe("Agent workflow page", () => {
     fireEvent.keyDown(window, { key: "Delete" });
 
     expect(within(canvas).getByRole("button", { name: /^新人入会触发 / })).toBeInTheDocument();
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+    expect(getUndoButton(canvas)).toBeDisabled();
 
     await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
@@ -1140,7 +1148,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "连接观察期到首单转化" }));
 
     expect(screen.getByTestId("workflow-edge-edge-wait-2d-goal")).toBeInTheDocument();
-    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+    expect(getUndoButton(canvas)).toBeEnabled();
   });
 
   it("deletes only the selected edge with keyboard shortcuts and records the change in history", async () => {
@@ -1170,7 +1178,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).not.toBeInTheDocument();
     expect(within(canvas).getByRole("button", { name: /^观察期 / })).toBeInTheDocument();
 
-    fireEvent.click(within(canvas).getByRole("button", { name: "撤销" }));
+    fireEvent.click(getUndoButton(canvas));
 
     expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
   });

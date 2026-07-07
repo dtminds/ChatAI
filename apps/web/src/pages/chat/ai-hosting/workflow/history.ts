@@ -1,6 +1,7 @@
 import { useCallback, useReducer } from "react";
 import {
   createWorkflowHistoryInitialState,
+  getWorkflowHistoryEventLabel,
   workflowHistoryReducer,
 } from "./history-engine";
 import type {
@@ -12,9 +13,9 @@ import type { WorkflowDraft } from "./types";
 export type {
   WorkflowHistoryEvent,
   WorkflowHistoryEventMeta,
+  WorkflowHistoryEntry,
   WorkflowHistoryReducerAction,
   WorkflowHistoryReducerState,
-  WorkflowHistoryState,
 } from "./history-engine";
 
 export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
@@ -70,6 +71,8 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     commitDraft,
     currentDraft,
     futureStates,
+    nextRedoLabel: futureStates[0] ? getWorkflowHistoryEventLabel(futureStates[0].event) : undefined,
+    nextUndoLabel: pastStates.at(-1) ? getWorkflowHistoryEventLabel(pastStates.at(-1)!.event) : undefined,
     pastStates,
     redo,
     replaceDraft,

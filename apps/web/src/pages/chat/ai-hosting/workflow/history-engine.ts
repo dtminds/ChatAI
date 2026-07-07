@@ -24,15 +24,18 @@ export type WorkflowHistoryEventMeta = {
   nodeTitle?: string;
 };
 
-export type WorkflowHistoryState = WorkflowDraft & {
+export type WorkflowHistoryEntry = {
+  draft: WorkflowDraft;
   event: WorkflowHistoryEvent;
   meta?: WorkflowHistoryEventMeta;
 };
 
+export type WorkflowHistoryState = WorkflowHistoryEntry;
+
 export type WorkflowHistoryReducerState = {
   currentDraft: WorkflowDraft;
-  futureStates: WorkflowHistoryState[];
-  pastStates: WorkflowHistoryState[];
+  futureStates: WorkflowHistoryEntry[];
+  pastStates: WorkflowHistoryEntry[];
 };
 
 export type WorkflowHistoryReducerAction =
@@ -136,8 +139,8 @@ export function workflowHistoryReducer(
 
     return {
       currentDraft: {
-        edges: previousState.edges,
-        nodes: previousState.nodes,
+        edges: previousState.draft.edges,
+        nodes: previousState.draft.nodes,
       },
       futureStates: [
         createHistoryState(state.currentDraft, previousState.event, previousState.meta),
@@ -156,8 +159,8 @@ export function workflowHistoryReducer(
 
     return {
       currentDraft: {
-        edges: nextState.edges,
-        nodes: nextState.nodes,
+        edges: nextState.draft.edges,
+        nodes: nextState.draft.nodes,
       },
       futureStates: state.futureStates.slice(1),
       pastStates: [
@@ -174,13 +177,39 @@ export function createHistoryState(
   draft: WorkflowDraft,
   event: WorkflowHistoryEvent,
   meta?: WorkflowHistoryEventMeta,
-): WorkflowHistoryState {
+): WorkflowHistoryEntry {
   return {
-    edges: draft.edges.map(sanitizeEdgeForHistory),
+    draft: sanitizeDraft(draft),
     event,
     meta,
-    nodes: draft.nodes.map(sanitizeNodeForHistory),
   };
+}
+
+export function getWorkflowHistoryEventLabel(event: WorkflowHistoryEvent) {
+  switch (event) {
+    case "node:add":
+      return "添加节点";
+    case "node:config-change":
+      return "修改节点配置";
+    case "edge:connect":
+      return "连接节点";
+    case "edge:delete":
+      return "删除连线";
+    case "node:duplicate":
+      return "复制节点";
+    case "node:insert":
+      return "插入节点";
+    case "node:delete":
+      return "删除节点";
+    case "node:move":
+      return "移动节点";
+    case "layout:organize":
+      return "整理画布";
+    case "node:paste":
+      return "粘贴节点";
+    default:
+      return "编辑画布";
+  }
 }
 
 export function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {

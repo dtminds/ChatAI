@@ -392,6 +392,8 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       canUndo: controller.canUndo,
       edges: renderedEdges,
       nodes: renderedNodes,
+      nextRedoLabel: controller.nextRedoLabel,
+      nextUndoLabel: controller.nextUndoLabel,
       onAddNode: addNode,
       onArrange: arrangeNodes,
       onConnect: connectNodes,

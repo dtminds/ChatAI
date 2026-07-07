@@ -184,6 +184,8 @@ function WorkflowWorkspaceContent({
             canUndo={canvas.canUndo}
             edges={canvas.edges}
             nodes={canvas.nodes}
+            nextRedoLabel={canvas.nextRedoLabel}
+            nextUndoLabel={canvas.nextUndoLabel}
             onAddNode={canvas.onAddNode}
             onArrange={canvas.onArrange}
             onConnect={canvas.onConnect}

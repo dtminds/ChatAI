@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Connection, IsValidConnection, NodeChange } from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowRun } from "./run/use-workflow-run";
@@ -18,6 +18,11 @@ import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
 import { getNodeVariables } from "./workflow-variables";
 import { useWorkflowDocument } from "./workflow-draft-service";
+import {
+  canReadWorkflowClipboard,
+  readWorkflowClipboard,
+  writeWorkflowClipboard,
+} from "./workflow-clipboard";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
 
 export function useWorkflowWorkspace(workflowId: string | undefined) {
@@ -31,6 +36,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const [isChecksOpen, setIsChecksOpen] = useState(false);
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [clipboardData, setClipboardData] = useState<WorkflowClipboardData | null>(null);
+  const pasteClipboardDataRef = useRef<(nextClipboardData: WorkflowClipboardData | null) => boolean>(() => false);
   const controller = useWorkflowController(document.draft);
   const transient = useWorkflowTransientState();
   const runner = useWorkflowRun(document.id);
@@ -235,16 +241,30 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     setClipboardData(nextClipboardData);
+    void writeWorkflowClipboard(nextClipboardData);
     closeCanvasMenus();
     return true;
   }
 
   function pasteClipboard() {
-    if (!clipboardData) {
+    if (canReadWorkflowClipboard()) {
+      void pasteReadableClipboard(clipboardData);
+      return true;
+    }
+
+    return pasteClipboardData(clipboardData);
+  }
+
+  async function pasteReadableClipboard(fallbackClipboardData: WorkflowClipboardData | null) {
+    pasteClipboardDataRef.current(await readWorkflowClipboard() ?? fallbackClipboardData);
+  }
+
+  function pasteClipboardData(nextClipboardData: WorkflowClipboardData | null) {
+    if (!nextClipboardData) {
       return false;
     }
 
-    const result = controller.pasteClipboardData(clipboardData);
+    const result = controller.pasteClipboardData(nextClipboardData);
 
     if (!result) {
       return false;
@@ -253,6 +273,8 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     handleWorkflowEditResult(result);
     return true;
   }
+
+  pasteClipboardDataRef.current = pasteClipboardData;
 
   function handleWorkflowEditResult(result?: { draft: WorkflowDraft; nodeId?: string }) {
     if (!result) {

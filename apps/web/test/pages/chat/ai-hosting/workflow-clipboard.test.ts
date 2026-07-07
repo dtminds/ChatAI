@@ -4,7 +4,9 @@ import {
   isClipboardNodeStructurallyValid,
   parseWorkflowClipboardText,
   pasteWorkflowClipboardData,
+  readWorkflowClipboard,
   stringifyWorkflowClipboardData,
+  writeWorkflowClipboard,
 } from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import {
   createEdge,
@@ -17,6 +19,22 @@ function createDraft(): WorkflowDraft {
   return {
     edges: createInitialEdges(),
     nodes: createInitialNodes(),
+  };
+}
+
+function setNavigatorClipboard(clipboard: Partial<Clipboard> | undefined) {
+  const previousClipboard = navigator.clipboard;
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
+  });
+
+  return () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: previousClipboard,
+    });
   };
 }
 
@@ -81,6 +99,32 @@ describe("workflow clipboard", () => {
       position: { x: Number.NaN, y: 0 },
       type: "marketing",
     })).toBe(false);
+  });
+
+  it("reads and writes workflow data through the system clipboard without leaking permission errors", async () => {
+    const clipboardData = createWorkflowClipboardData(createDraft(), ["action-message"])!;
+    const clipboardText = stringifyWorkflowClipboardData(clipboardData);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const readText = vi.fn().mockResolvedValue(clipboardText);
+    const restoreClipboard = setNavigatorClipboard({
+      readText,
+      writeText,
+    });
+
+    try {
+      await expect(writeWorkflowClipboard(clipboardData)).resolves.toBe(true);
+      expect(writeText).toHaveBeenCalledWith(clipboardText);
+      await expect(readWorkflowClipboard()).resolves.toEqual(clipboardData);
+
+      writeText.mockRejectedValueOnce(new Error("denied"));
+      readText.mockRejectedValueOnce(new Error("denied"));
+
+      await expect(writeWorkflowClipboard(clipboardData)).resolves.toBe(false);
+      await expect(readWorkflowClipboard()).resolves.toBeUndefined();
+    }
+    finally {
+      restoreClipboard();
+    }
   });
 
   it("pastes copyable nodes with remapped ids, offset positions, unique titles, and internal edges", () => {

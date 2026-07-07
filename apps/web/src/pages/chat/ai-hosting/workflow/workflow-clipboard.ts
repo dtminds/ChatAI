@@ -22,6 +22,13 @@ type WorkflowClipboardPayload = WorkflowClipboardData & {
   version: typeof WORKFLOW_CLIPBOARD_VERSION;
 };
 
+type NavigatorClipboardCapability = Navigator & {
+  clipboard?: {
+    readText?: () => Promise<string>;
+    writeText?: (text: string) => Promise<void>;
+  };
+};
+
 export type WorkflowPasteOptions = {
   nodeIdFactory: (kind: MarketingNodeKind, index: number) => string;
   offset?: {
@@ -115,6 +122,45 @@ export function parseWorkflowClipboardText(text: string): WorkflowClipboardData 
   catch {
     return undefined;
   }
+}
+
+export async function writeWorkflowClipboard(data: WorkflowClipboardData) {
+  const clipboard = getNavigatorClipboard();
+
+  if (!clipboard?.writeText) {
+    return false;
+  }
+
+  try {
+    await clipboard.writeText(stringifyWorkflowClipboardData(data));
+    return true;
+  }
+  catch {
+    return false;
+  }
+}
+
+export async function readWorkflowClipboard() {
+  const clipboard = getNavigatorClipboard();
+
+  if (!clipboard?.readText) {
+    return undefined;
+  }
+
+  try {
+    return parseWorkflowClipboardText(await clipboard.readText());
+  }
+  catch {
+    return undefined;
+  }
+}
+
+export function canReadWorkflowClipboard() {
+  return typeof getNavigatorClipboard()?.readText === "function";
+}
+
+function getNavigatorClipboard() {
+  return (navigator as NavigatorClipboardCapability).clipboard;
 }
 
 export function createWorkflowClipboardData(

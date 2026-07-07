@@ -1,6 +1,10 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/ai-hosting/workflow/use-workflow-workspace";
+import {
+  createWorkflowClipboardData,
+  stringifyWorkflowClipboardData,
+} from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import {
   getWorkflowDocument,
   resetWorkflowDocumentsForTest,
@@ -37,6 +41,22 @@ vi.mock("@xyflow/react", async () => {
       }),
   };
 });
+
+function setNavigatorClipboard(clipboard: Partial<Clipboard> | undefined) {
+  const previousClipboard = navigator.clipboard;
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
+  });
+
+  return () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: previousClipboard,
+    });
+  };
+}
 
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
@@ -125,6 +145,34 @@ describe("useWorkflowWorkspace", () => {
     }
     finally {
       dateNowSpy.mockRestore();
+    }
+  });
+
+  it("pastes workflow data from the system clipboard before using local clipboard fallback", async () => {
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(67890);
+    const systemClipboardData = createWorkflowClipboardData(
+      getWorkflowDocument("newcomer-conversion").draft,
+      ["wait-2d"],
+    )!;
+    const restoreClipboard = setNavigatorClipboard({
+      readText: vi.fn().mockResolvedValue(stringifyWorkflowClipboardData(systemClipboardData)),
+      writeText: vi.fn().mockResolvedValue(undefined),
+    });
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    try {
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
+      });
+
+      await waitFor(() => {
+        expect(result.current.canvas.nodes.some((node) => node.id === "wait-67890")).toBe(true);
+      });
+      expect(result.current.inspector.node?.id).toBe("wait-67890");
+    }
+    finally {
+      dateNowSpy.mockRestore();
+      restoreClipboard();
     }
   });
 

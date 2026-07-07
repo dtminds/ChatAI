@@ -17,7 +17,7 @@ import {
   nodeVisuals,
 } from "../node-definitions";
 import type { NodeVisual } from "../node-definitions";
-import type { MarketingNodeRenderData } from "../types";
+import type { WorkflowNodeRenderData } from "../types";
 import { WorkflowTargetHandle } from "./node-handles";
 
 export function WorkflowBaseNode({
@@ -27,7 +27,7 @@ export function WorkflowBaseNode({
   sourceHandles,
 }: {
   body: ReactNode;
-  data: MarketingNodeRenderData;
+  data: WorkflowNodeRenderData;
   id: string;
   sourceHandles?: ReactNode;
 }) {
@@ -74,7 +74,7 @@ function NodeHeader({
   data,
   visual,
 }: {
-  data: MarketingNodeRenderData;
+  data: WorkflowNodeRenderData;
   visual: NodeVisual;
 }) {
   return (
@@ -103,7 +103,7 @@ function NodeActionMenu({
   setActionMenuOpen,
 }: {
   actionMenuOpen: boolean;
-  data: MarketingNodeRenderData;
+  data: WorkflowNodeRenderData;
   id: string;
   setActionMenuOpen: (open: boolean) => void;
 }) {

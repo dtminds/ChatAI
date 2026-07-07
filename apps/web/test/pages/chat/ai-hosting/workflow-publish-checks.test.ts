@@ -9,6 +9,8 @@ import {
   createInitialEdges,
   createInitialNodes,
 } from "@/pages/chat/ai-hosting/workflow/graph";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
+import type { WorkflowNode } from "@/pages/chat/ai-hosting/workflow/types";
 import { validateWorkflowDraft } from "@/pages/chat/ai-hosting/workflow/validation/workflow-validation";
 
 describe("buildPublishChecks", () => {
@@ -113,23 +115,24 @@ describe("buildPublishChecks", () => {
   });
 
   it("marks AI strategy ready only when an AI node is configured", () => {
+    const aiNode: WorkflowNode = {
+      data: {
+        actionType: "ai",
+        agentName: "护肤小助理",
+        kind: "ai",
+        label: "AI 接待",
+        metric: "知识库：护肤知识库",
+        status: "ready",
+        summary: "护肤小助理",
+        title: "AI 接待",
+      },
+      id: "ai-node",
+      position: { x: 1200, y: 120 },
+      type: WORKFLOW_NODE_TYPE,
+    };
     const nodes = [
       ...createInitialNodes(),
-      {
-        data: {
-          actionType: "ai" as const,
-          agentName: "护肤小助理",
-          kind: "ai" as const,
-          label: "AI 接待",
-          metric: "知识库：护肤知识库",
-          status: "ready" as const,
-          summary: "护肤小助理",
-          title: "AI 接待",
-        },
-        id: "ai-node",
-        position: { x: 1200, y: 120 },
-        type: "marketing" as const,
-      },
+      aiNode,
     ];
     const edges = [
       ...createInitialEdges(),

@@ -19,11 +19,11 @@ import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-con
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
-import type { MarketingNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
+import type { WorkflowNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 
 describe("workflow node catalog", () => {
   it("keeps pure node metadata, UI bindings and config schema in sync", () => {
-    const nodeKinds = Object.keys(workflowNodeCatalog) as MarketingNodeKind[];
+    const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
     expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
 

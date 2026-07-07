@@ -5,7 +5,7 @@ import type {
   NodeConfigField,
   NodeConfigSection,
 } from "../node-config-schema";
-import type { MarketingNodeData } from "../types";
+import type { WorkflowNodeData } from "../types";
 import { FieldGroup } from "./field-group";
 
 export function NodeConfigSchemaSections({
@@ -13,8 +13,8 @@ export function NodeConfigSchemaSections({
   onNodeChange,
   sections,
 }: {
-  data: MarketingNodeData;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
+  data: WorkflowNodeData;
+  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
   sections: NodeConfigSection[];
 }) {
   return (
@@ -42,9 +42,9 @@ function NodeConfigFieldControl({
   field,
   onNodeChange,
 }: {
-  data: MarketingNodeData;
+  data: WorkflowNodeData;
   field: NodeConfigField;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
+  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
 }) {
   if (field.kind === "textarea") {
     return (

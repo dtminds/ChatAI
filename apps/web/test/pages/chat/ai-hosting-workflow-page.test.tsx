@@ -19,7 +19,7 @@ import {
 } from "@/pages/chat/ai-hosting/workflow/node-definitions";
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
-import type { MarketingNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
+import type { WorkflowNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 import { resetWorkflowDocumentsForTest } from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -364,7 +364,7 @@ describe("Agent workflow page", () => {
   });
 
   it("keeps node metadata, default data, renderers, settings panels and palette in sync", () => {
-    const nodeKinds = Object.keys(nodeDefinitions) as MarketingNodeKind[];
+    const nodeKinds = Object.keys(nodeDefinitions) as WorkflowNodeKind[];
     const paletteNodeIds = paletteItems.map((item) => item.id);
 
     expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);

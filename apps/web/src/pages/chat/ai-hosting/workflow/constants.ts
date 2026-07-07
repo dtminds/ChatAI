@@ -1,3 +1,5 @@
+export const WORKFLOW_NODE_TYPE = "workflow";
+export const WORKFLOW_EDGE_TYPE = "workflow";
 export const WORKFLOW_MIN_ZOOM = 0.25;
 export const WORKFLOW_MAX_ZOOM = 2;
 export const WORKFLOW_NODE_WIDTH = 240;
@@ -23,4 +25,3 @@ export const branchHandleOptions = [
   { id: "branch-normal", label: "普通客户", operator: "ELIF", title: "CASE 2" },
   { id: "branch-default", label: "默认路径", operator: "ELSE", title: "CASE 3" },
 ] as const;
-

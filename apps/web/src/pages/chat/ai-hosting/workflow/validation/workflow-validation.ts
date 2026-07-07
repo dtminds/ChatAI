@@ -1,27 +1,27 @@
 import { getWorkflowNodeCatalogEntry } from "../node-catalog";
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowNodeValidationIssue,
 } from "../types";
 
 export type WorkflowValidationNodeIssue = {
   issues: WorkflowNodeValidationIssue[];
-  node: MarketingWorkflowNode;
+  node: WorkflowNode;
 };
 
 export type WorkflowValidationResult = {
-  configuredAiNodes: MarketingWorkflowNode[];
-  disconnectedNodes: MarketingWorkflowNode[];
-  goalNode?: MarketingWorkflowNode;
+  configuredAiNodes: WorkflowNode[];
+  disconnectedNodes: WorkflowNode[];
+  goalNode?: WorkflowNode;
   nodeIssues: WorkflowValidationNodeIssue[];
   reachableNodeIds: Set<string>;
-  triggerNode?: MarketingWorkflowNode;
+  triggerNode?: WorkflowNode;
 };
 
 export function validateWorkflowDraft(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ): WorkflowValidationResult {
   const triggerNode = nodes.find((node) => node.data.kind === "trigger");
   const goalNode = nodes.find((node) => node.data.kind === "goal");
@@ -53,9 +53,9 @@ export function validateWorkflowDraft(
 }
 
 function validateWorkflowNode(
-  node: MarketingWorkflowNode,
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  node: WorkflowNode,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {
   const entry = getWorkflowNodeCatalogEntry(node.data.kind);
   const issues = entry.validate?.(node, { edges, nodes }) ?? [];
@@ -75,8 +75,8 @@ function validateWorkflowNode(
 }
 
 function validateWorkflowNodeConnectivity(
-  node: MarketingWorkflowNode,
-  disconnectedNodes: MarketingWorkflowNode[],
+  node: WorkflowNode,
+  disconnectedNodes: WorkflowNode[],
   triggerNodeId: string | undefined,
 ): WorkflowNodeValidationIssue[] {
   if (node.id === triggerNodeId || !disconnectedNodes.some((item) => item.id === node.id)) {
@@ -95,7 +95,7 @@ function validateWorkflowNodeConnectivity(
 
 function getReachableNodeIds(
   startNodeId: string | undefined,
-  edges: MarketingWorkflowEdge[],
+  edges: WorkflowEdge[],
 ) {
   const reachableNodeIds = new Set<string>();
   if (!startNodeId) {

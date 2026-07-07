@@ -1,6 +1,6 @@
-import type { MarketingNodeData, MarketingWorkflowNode } from "../types";
+import type { WorkflowNodeData, WorkflowNode } from "../types";
 
 export type NodeSettingsProps = {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
+  node: WorkflowNode;
+  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
 };

@@ -1,14 +1,14 @@
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowVariable,
   WorkflowVariables,
 } from "./types";
 
 export function getNodeVariables(
-  node: MarketingWorkflowNode,
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  node: WorkflowNode,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ): WorkflowVariables {
   const upstreamNodes = getBeforeNodesInSameBranch(node.id, nodes, edges);
 
@@ -32,11 +32,11 @@ export function getNodeVariables(
 
 export function getBeforeNodesInSameBranch(
   nodeId: string,
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const upstreamNodes: MarketingWorkflowNode[] = [];
+  const upstreamNodes: WorkflowNode[] = [];
   const visitedNodeIds = new Set<string>();
 
   function visit(currentNodeId: string) {
@@ -58,7 +58,7 @@ export function getBeforeNodesInSameBranch(
   return upstreamNodes;
 }
 
-export function getNodeOutputVariables(node: MarketingWorkflowNode): WorkflowVariable[] {
+export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariable[] {
   return [
     {
       name: `${node.data.kind}.result`,
@@ -73,7 +73,7 @@ export function getNodeOutputVariables(node: MarketingWorkflowNode): WorkflowVar
   ];
 }
 
-function createUpstreamVariable(node: MarketingWorkflowNode): WorkflowVariable {
+function createUpstreamVariable(node: WorkflowNode): WorkflowVariable {
   return {
     name: `${node.data.kind}.${node.id}.result`,
     type: "object",

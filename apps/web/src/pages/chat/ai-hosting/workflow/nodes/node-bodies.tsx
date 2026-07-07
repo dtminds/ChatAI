@@ -2,14 +2,14 @@ import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { branchHandleOptions } from "../constants";
 import type { NodeVisual } from "../node-catalog";
-import type { MarketingNodeKind, MarketingNodeRenderData } from "../types";
+import type { WorkflowNodeKind, WorkflowNodeRenderData } from "../types";
 
 export type NodeBodyProps = {
-  data: MarketingNodeRenderData;
+  data: WorkflowNodeRenderData;
   visual: NodeVisual;
 };
 
-export const nodeBodyComponentMap: Record<MarketingNodeKind, ComponentType<NodeBodyProps>> = {
+export const nodeBodyComponentMap: Record<WorkflowNodeKind, ComponentType<NodeBodyProps>> = {
   action: StandardNodeBody,
   ai: StandardNodeBody,
   branch: BranchNodeBody,
@@ -63,7 +63,7 @@ export function BranchNodeBody({ data, visual }: NodeBodyProps) {
   );
 }
 
-function NodeStatusRow({ data }: { data: MarketingNodeRenderData }) {
+function NodeStatusRow({ data }: { data: WorkflowNodeRenderData }) {
   const isWarning = data.status === "warning";
   const isRunning = data.status === "running";
 

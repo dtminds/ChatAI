@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { nodeVisuals } from "../node-definitions";
 import type {
   InspectorTab,
-  MarketingWorkflowNode,
+  WorkflowNode,
 } from "../types";
 
 export function BasePanel({
@@ -25,7 +25,7 @@ export function BasePanel({
 }: {
   activeTab: InspectorTab;
   children: ReactNode;
-  node: MarketingWorkflowNode;
+  node: WorkflowNode;
   onClose: () => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
@@ -56,7 +56,7 @@ function PanelHeader({
   onTabChange,
 }: {
   activeTab: InspectorTab;
-  node: MarketingWorkflowNode;
+  node: WorkflowNode;
   onClose: () => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;

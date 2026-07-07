@@ -2,12 +2,12 @@ import type { NodeProps } from "@xyflow/react";
 import { branchHandleOptions } from "../constants";
 import { getBranchHandleTop } from "../layout";
 import { nodeVisuals } from "../node-definitions";
-import type { MarketingWorkflowRenderNode } from "../types";
+import type { WorkflowRenderNode } from "../types";
 import { WorkflowBaseNode } from "./base-node";
 import { WorkflowSourceHandle } from "./node-handles";
 import { NodeComponentMap } from "./registry";
 
-export function MarketingNodeCard({ data, id }: NodeProps<MarketingWorkflowRenderNode>) {
+export function WorkflowNodeCard({ data, id }: NodeProps<WorkflowRenderNode>) {
   const NodeComponent = NodeComponentMap[data.kind];
 
   return (
@@ -15,15 +15,15 @@ export function MarketingNodeCard({ data, id }: NodeProps<MarketingWorkflowRende
       body={<NodeComponent data={data} visual={nodeVisuals[data.kind]} />}
       data={data}
       id={id}
-      sourceHandles={<MarketingNodeSourceHandles data={data} id={id} />}
+      sourceHandles={<WorkflowNodeSourceHandles data={data} id={id} />}
     />
   );
 }
 
-function MarketingNodeSourceHandles({
+function WorkflowNodeSourceHandles({
   data,
   id,
-}: Pick<NodeProps<MarketingWorkflowRenderNode>, "data" | "id">) {
+}: Pick<NodeProps<WorkflowRenderNode>, "data" | "id">) {
   if (data.kind === "goal") {
     return null;
   }

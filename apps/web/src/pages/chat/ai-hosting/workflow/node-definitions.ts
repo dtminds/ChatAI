@@ -5,8 +5,8 @@ import {
   workflowNodeCatalog,
 } from "./node-catalog";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingNodeKind,
+  InsertableWorkflowNodeKind,
+  WorkflowNodeKind,
 } from "./types";
 import type { NodeBodyProps } from "./nodes/node-bodies";
 import { workflowNodeUiBindings } from "./node-ui-bindings";
@@ -22,7 +22,7 @@ export {
 } from "./node-catalog";
 export type { NodeVisual, WorkflowNodeCatalogEntry } from "./node-catalog";
 
-type NodeDefinition = (typeof workflowNodeCatalog)[MarketingNodeKind] & {
+type NodeDefinition = (typeof workflowNodeCatalog)[WorkflowNodeKind] & {
   body: ComponentType<NodeBodyProps>;
   settings: ComponentType<NodeSettingsProps>;
 };
@@ -32,35 +32,35 @@ export const nodeDefinitions = Object.fromEntries(
     kind,
     {
       ...catalogEntry,
-      ...workflowNodeUiBindings[kind as MarketingNodeKind],
+      ...workflowNodeUiBindings[kind as WorkflowNodeKind],
     },
   ]),
-) as Record<MarketingNodeKind, NodeDefinition>;
+) as Record<WorkflowNodeKind, NodeDefinition>;
 
 export const orderedNodeDefinitions = orderedWorkflowNodeCatalog.map(
   (definition) => nodeDefinitions[definition.kind],
 );
 
-export function getNodeDefinition(kind: MarketingNodeKind) {
+export function getNodeDefinition(kind: WorkflowNodeKind) {
   return nodeDefinitions[kind];
 }
 
-export function canDeleteNodeKind(kind: MarketingNodeKind) {
+export function canDeleteNodeKind(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).canDelete;
 }
 
-export function canDuplicateNodeKind(kind: MarketingNodeKind) {
+export function canDuplicateNodeKind(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).canDuplicate;
 }
 
-export function canInsertAfterNodeKind(kind: MarketingNodeKind) {
+export function canInsertAfterNodeKind(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).canInsertAfter;
 }
 
-export function canInsertNodeKind(kind: MarketingNodeKind): kind is InsertableMarketingNodeKind {
+export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWorkflowNodeKind {
   return getWorkflowNodeCatalogEntry(kind).insertable;
 }
 
-export function createDefaultNodeData(kind: MarketingNodeKind) {
+export function createDefaultNodeData(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).createDefaultData();
 }

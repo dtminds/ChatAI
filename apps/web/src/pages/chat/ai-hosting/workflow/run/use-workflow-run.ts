@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
-  MarketingWorkflowNode,
+  WorkflowNode,
   NodeRunRecord,
 } from "../types";
 
@@ -13,7 +13,7 @@ export function useWorkflowRun(scopeKey?: string) {
     setRunRecords({});
   }, [scopeKey]);
 
-  const runNode = useCallback((node: MarketingWorkflowNode) => {
+  const runNode = useCallback((node: WorkflowNode) => {
     setRunRecords((currentRecords) => ({
       ...currentRecords,
       [node.id]: createNodeRunRecord(node),
@@ -47,7 +47,7 @@ export function useWorkflowRun(scopeKey?: string) {
   };
 }
 
-function createNodeRunRecord(node: MarketingWorkflowNode): NodeRunRecord {
+function createNodeRunRecord(node: WorkflowNode): NodeRunRecord {
   const input = JSON.stringify(
     {
       audience: node.data.audience ?? "当前节点继承上游客户",

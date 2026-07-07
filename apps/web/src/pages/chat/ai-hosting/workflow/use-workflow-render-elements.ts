@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingEdgeHighlightState,
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
-  MarketingWorkflowRenderEdge,
-  MarketingWorkflowRenderNode,
+  InsertableWorkflowNodeKind,
+  WorkflowEdgeHighlightState,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowRenderEdge,
+  WorkflowRenderNode,
   QuickInsertTarget,
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
@@ -15,14 +15,14 @@ type WorkflowRenderElementHandlers = {
   onDuplicateNode: (nodeId: string) => void;
   onInsertNodeAfter: (
     nodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
   ) => void;
   onInsertNodeBetween: (
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
   ) => void;
   onSelectNode: (nodeId: string) => void;
   onToggleEdgeInsertMenu: (edgeId: string) => void;
@@ -40,8 +40,8 @@ type WorkflowRenderElementState = {
 export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   & WorkflowRenderElementState
   & {
-    edges: MarketingWorkflowEdge[];
-    nodes: MarketingWorkflowNode[];
+    edges: WorkflowEdge[];
+    nodes: WorkflowNode[];
   };
 
 export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsOptions) {
@@ -79,8 +79,8 @@ export function createWorkflowRenderElements({
   selectedEdgeId,
   selectedNodeIdSet,
 }: CreateWorkflowRenderElementsOptions): {
-  edges: MarketingWorkflowRenderEdge[];
-  nodes: MarketingWorkflowRenderNode[];
+  edges: WorkflowRenderEdge[];
+  nodes: WorkflowRenderNode[];
 } {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
@@ -133,7 +133,7 @@ export function createWorkflowRenderElements({
 function getEdgeHighlightState(
   edgeId: string,
   highlightedEdgeIds: Set<string> | null,
-): MarketingEdgeHighlightState | undefined {
+): WorkflowEdgeHighlightState | undefined {
   if (!highlightedEdgeIds) {
     return undefined;
   }

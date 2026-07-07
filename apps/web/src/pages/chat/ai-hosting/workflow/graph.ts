@@ -1,12 +1,18 @@
-import { branchHandleOptions, WORKFLOW_LAYOUT_X_GAP, WORKFLOW_LAYOUT_Y_GAP } from "./constants";
+import {
+  branchHandleOptions,
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_LAYOUT_X_GAP,
+  WORKFLOW_LAYOUT_Y_GAP,
+  WORKFLOW_NODE_TYPE,
+} from "./constants";
 import { createDefaultNodeData } from "./node-definitions";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  InsertableWorkflowNodeKind,
+  WorkflowEdge,
+  WorkflowNode,
 } from "./types";
 
-export function createInitialNodes(): MarketingWorkflowNode[] {
+export function createInitialNodes(): WorkflowNode[] {
   return [
     {
       data: {
@@ -19,7 +25,7 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
       },
       id: "trigger",
       position: { x: 0, y: 0 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     },
     {
       data: {
@@ -32,7 +38,7 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
       },
       id: "wait-2d",
       position: { x: 310, y: 0 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     },
     {
       data: {
@@ -45,7 +51,7 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
       },
       id: "branch-intent",
       position: { x: 620, y: 0 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     },
     {
       data: {
@@ -59,7 +65,7 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
       },
       id: "action-message",
       position: { x: 930, y: -94 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     },
     {
       data: {
@@ -72,12 +78,12 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
       },
       id: "goal",
       position: { x: 1240, y: 0 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     },
   ];
 }
 
-export function createInitialEdges(): MarketingWorkflowEdge[] {
+export function createInitialEdges(): WorkflowEdge[] {
   return [
     createEdge("trigger", "wait-2d"),
     createEdge("wait-2d", "branch-intent"),
@@ -89,10 +95,10 @@ export function createInitialEdges(): MarketingWorkflowEdge[] {
 }
 
 export function createNodeFromKind(
-  kind: InsertableMarketingNodeKind,
+  kind: InsertableWorkflowNodeKind,
   id: string,
   index: number,
-): MarketingWorkflowNode {
+): WorkflowNode {
   const commonPosition = {
     x: 300 + index * 310,
     y: index % 2 === 0 ? -94 : 94,
@@ -102,15 +108,15 @@ export function createNodeFromKind(
     data: createDefaultNodeData(kind),
     id,
     position: commonPosition,
-    type: "marketing",
+    type: WORKFLOW_NODE_TYPE,
   };
 }
 
 export function duplicateWorkflowNode(
-  node: MarketingWorkflowNode,
+  node: WorkflowNode,
   nodeId: string,
   reservedTitles: Set<string>,
-): MarketingWorkflowNode {
+): WorkflowNode {
   return {
     ...node,
     data: {
@@ -156,7 +162,7 @@ export function createEdge(
     sourceHandle?: string | null;
     targetHandle?: string | null;
   } = {},
-): MarketingWorkflowEdge {
+): WorkflowEdge {
   const sourceHandle = handles.sourceHandle ?? undefined;
   const targetHandle = handles.targetHandle ?? undefined;
   const edgeIdParts = ["edge", source, sourceHandle, target, targetHandle].filter(Boolean);
@@ -168,11 +174,11 @@ export function createEdge(
     sourceHandle,
     target,
     targetHandle,
-    type: "marketing",
+    type: WORKFLOW_EDGE_TYPE,
   };
 }
 
-export function findLastActionNodeId(nodes: MarketingWorkflowNode[], edges: MarketingWorkflowEdge[]) {
+export function findLastActionNodeId(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
   const edgeToGoal = edges.find((edge) => edge.target === "goal");
 
   if (edgeToGoal) {
@@ -198,12 +204,12 @@ export function getBranchInsertY(nodeY: number, sourceHandle?: string) {
 }
 
 export function getAfterNodesInSameBranch(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
   nodeId: string,
 ) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const result: MarketingWorkflowNode[] = [];
+  const result: WorkflowNode[] = [];
   const visitedNodeIds = new Set<string>();
   const queue = [nodeId];
 
@@ -231,12 +237,12 @@ export function getAfterNodesInSameBranch(
   return result;
 }
 
-export function getNodeIdSet(nodes: MarketingWorkflowNode[]) {
+export function getNodeIdSet(nodes: WorkflowNode[]) {
   return new Set(nodes.map((node) => node.id));
 }
 
 export function shiftNodesRight(
-  nodes: MarketingWorkflowNode[],
+  nodes: WorkflowNode[],
   shiftedNodeIds: Set<string>,
 ) {
   if (shiftedNodeIds.size === 0) {
@@ -257,13 +263,13 @@ export function shiftNodesRight(
 }
 
 export function arrangeWorkflowNodes(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const originalIndexById = new Map(nodes.map((node, index) => [node.id, index]));
   const incomingCountById = new Map(nodes.map((node) => [node.id, 0]));
-  const outgoingById = new Map(nodes.map((node) => [node.id, [] as MarketingWorkflowEdge[]]));
+  const outgoingById = new Map(nodes.map((node) => [node.id, [] as WorkflowEdge[]]));
   const layoutOrderById = new Map(nodes.map((node) => [node.id, 0]));
 
   edges.forEach((edge) => {
@@ -322,7 +328,7 @@ export function arrangeWorkflowNodes(
     }
   });
 
-  const nodesByDepth = new Map<number, MarketingWorkflowNode[]>();
+  const nodesByDepth = new Map<number, WorkflowNode[]>();
 
   nodes.forEach((node) => {
     const depth = depthById.get(node.id) ?? 0;
@@ -368,7 +374,7 @@ function compareNodesForLayout(
   originalIndexById: Map<string, number>,
   layoutOrderById: Map<string, number> = new Map(),
 ) {
-  return (first: MarketingWorkflowNode, second: MarketingWorkflowNode) => {
+  return (first: WorkflowNode, second: WorkflowNode) => {
     if (first.id === "trigger") {
       return -1;
     }

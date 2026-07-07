@@ -1,14 +1,14 @@
 import { useMemo } from "react";
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowPublishCheck,
 } from "../types";
 import { validateWorkflowDraft } from "../validation/workflow-validation";
 
 export function useWorkflowPublishChecks(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ) {
   const checks = useMemo(() => buildPublishChecks(nodes, edges), [edges, nodes]);
   const readyChecks = useMemo(
@@ -26,8 +26,8 @@ export function useWorkflowPublishChecks(
 }
 
 export function buildPublishChecks(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
 ): WorkflowPublishCheck[] {
   const validation = validateWorkflowDraft(nodes, edges);
   const triggerIssue = validation.nodeIssues.find(

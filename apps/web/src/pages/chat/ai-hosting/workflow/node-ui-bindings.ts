@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { MarketingNodeKind } from "./types";
+import type { WorkflowNodeKind } from "./types";
 import type { NodeBodyProps } from "./nodes/node-bodies";
 import {
   BranchNodeBody,
@@ -45,4 +45,4 @@ export const workflowNodeUiBindings = {
     body: StandardNodeBody,
     settings: WaitConfig,
   },
-} satisfies Record<MarketingNodeKind, WorkflowNodeUiBinding>;
+} satisfies Record<WorkflowNodeKind, WorkflowNodeUiBinding>;

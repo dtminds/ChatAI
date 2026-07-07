@@ -29,13 +29,13 @@ import type {
 } from "./graph-operations";
 import { useWorkflowHistory } from "./history";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingNodeData,
-  MarketingNodeKind,
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
-  MarketingWorkflowRenderEdge,
-  MarketingWorkflowRenderNode,
+  InsertableWorkflowNodeKind,
+  WorkflowNodeData,
+  WorkflowNodeKind,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowRenderEdge,
+  WorkflowRenderNode,
   WorkflowDraft,
 } from "./types";
 import {
@@ -53,12 +53,12 @@ type PendingConfigHistory = {
     nodeTitle?: string;
   };
   nextDraft: {
-    edges: MarketingWorkflowEdge[];
-    nodes: MarketingWorkflowNode[];
+    edges: WorkflowEdge[];
+    nodes: WorkflowNode[];
   };
   previousDraft: {
-    edges: MarketingWorkflowEdge[];
-    nodes: MarketingWorkflowNode[];
+    edges: WorkflowEdge[];
+    nodes: WorkflowNode[];
   };
 };
 
@@ -66,7 +66,7 @@ type WorkflowControllerActionResult = WorkflowActionResult & {
   draft: WorkflowDraft;
 };
 
-type WorkflowNodePositionChange = NodeChange<MarketingWorkflowRenderNode> & {
+type WorkflowNodePositionChange = NodeChange<WorkflowRenderNode> & {
   dragging?: boolean;
   id: string;
   position?: {
@@ -77,7 +77,7 @@ type WorkflowNodePositionChange = NodeChange<MarketingWorkflowRenderNode> & {
 };
 
 function isFinalNodePositionChange(
-  change: NodeChange<MarketingWorkflowRenderNode>,
+  change: NodeChange<WorkflowRenderNode>,
 ): change is WorkflowNodePositionChange {
   return change.type === "position"
     && "position" in change
@@ -87,7 +87,7 @@ function isFinalNodePositionChange(
 }
 
 function isNodePositionChange(
-  change: NodeChange<MarketingWorkflowRenderNode>,
+  change: NodeChange<WorkflowRenderNode>,
 ): change is WorkflowNodePositionChange {
   return change.type === "position"
     && "position" in change
@@ -108,8 +108,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moveStartDraftRef = useRef<{
-    edges: MarketingWorkflowEdge[];
-    nodes: MarketingWorkflowNode[];
+    edges: WorkflowEdge[];
+    nodes: WorkflowNode[];
   } | null>(null);
 
   const clearConfigHistoryTimer = useCallback(() => {
@@ -158,7 +158,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [clearConfigHistoryTimer, initialDraft, resetDraft]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
+    (changes: NodeChange<WorkflowRenderNode>[]) => {
       flushConfigHistory();
       const hasPositionChange = changes.some(isNodePositionChange);
 
@@ -175,7 +175,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
         const nextDraft = sanitizeDraft({
           ...currentDraft,
-          nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], currentDraft.nodes),
+          nodes: applyNodeChanges(changes as NodeChange<WorkflowNode>[], currentDraft.nodes),
         });
 
         replaceDraft(() => nextDraft);
@@ -185,7 +185,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       const previousDraft = moveStartDraftRef.current ?? currentDraft;
       const nextDraft = sanitizeDraft({
         ...currentDraft,
-        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], currentDraft.nodes),
+        nodes: applyNodeChanges(changes as NodeChange<WorkflowNode>[], currentDraft.nodes),
       });
       const movedNodeId = changes.find(isFinalNodePositionChange)?.id;
       moveStartDraftRef.current = null;
@@ -208,12 +208,12 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     flushConfigHistory();
   }, [flushConfigHistory]);
 
-  const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
-    (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
+  const onEdgesChange: OnEdgesChange<WorkflowRenderEdge> = useCallback(
+    (changes: EdgeChange<WorkflowRenderEdge>[]) => {
       flushConfigHistory();
       replaceDraft((draft) => ({
         ...draft,
-        edges: applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], draft.edges),
+        edges: applyEdgeChanges(changes as EdgeChange<WorkflowEdge>[], draft.edges),
       }));
     },
     [flushConfigHistory, replaceDraft],
@@ -221,7 +221,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   const updateNodeData = useCallback((
     nodeId: string,
-    patch: Partial<MarketingNodeData>,
+    patch: Partial<WorkflowNodeData>,
   ): WorkflowControllerActionResult | undefined => {
     const operation = updateNodeDataOperation(currentDraft, nodeId, patch);
 
@@ -263,7 +263,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   const insertNodeAfter = useCallback((
     previousNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
   ): WorkflowControllerActionResult => {
     flushConfigHistory();
@@ -277,7 +277,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
   ): WorkflowControllerActionResult => {
     flushConfigHistory();
     const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
@@ -292,7 +292,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     )) ?? { draft: currentDraft, edgeId, nodeId };
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
-  const addNode = useCallback((kind: MarketingNodeKind): WorkflowControllerActionResult | undefined => {
+  const addNode = useCallback((kind: WorkflowNodeKind): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
     return commitGraphOperation(addNodeOperation(currentDraft, kind, createNodeId(kind)));

@@ -13,6 +13,7 @@ import {
   createInitialEdges,
   createInitialNodes,
 } from "@/pages/chat/ai-hosting/workflow/graph";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
 
 function createDraft(): WorkflowDraft {
@@ -83,7 +84,7 @@ describe("workflow clipboard", () => {
           id: "edge-missing",
           source: "missing",
           target: "action-message",
-          type: "marketing",
+          type: WORKFLOW_NODE_TYPE,
         },
       ],
       nodes: clipboardData.nodes,
@@ -97,7 +98,7 @@ describe("workflow clipboard", () => {
       data: { kind: "action" },
       id: "action",
       position: { x: Number.NaN, y: 0 },
-      type: "marketing",
+      type: WORKFLOW_NODE_TYPE,
     })).toBe(false);
   });
 

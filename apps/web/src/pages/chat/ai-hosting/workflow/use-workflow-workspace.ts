@@ -4,12 +4,12 @@ import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowRun } from "./run/use-workflow-run";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
-  InsertableMarketingNodeKind,
+  InsertableWorkflowNodeKind,
   InspectorTab,
-  MarketingNodeData,
-  MarketingNodeKind,
-  MarketingWorkflowRenderEdge,
-  MarketingWorkflowRenderNode,
+  WorkflowNodeData,
+  WorkflowNodeKind,
+  WorkflowRenderEdge,
+  WorkflowRenderNode,
   WorkflowDraft,
 } from "./types";
 import { useWorkflowController } from "./use-workflow-controller";
@@ -121,7 +121,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     closeCanvasMenus();
   }
 
-  function updateSelectedNode(patch: Partial<MarketingNodeData>) {
+  function updateSelectedNode(patch: Partial<WorkflowNodeData>) {
     if (!selectedNodeId) {
       return;
     }
@@ -148,14 +148,14 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     closeCanvasMenus();
   }
 
-  function addNode(kind: MarketingNodeKind) {
+  function addNode(kind: WorkflowNodeKind) {
     const result = controller.addNode(kind);
     handleWorkflowEditResult(result);
   }
 
   function handleInsertNodeAfter(
     previousNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
   ) {
     const result = controller.insertNodeAfter(previousNodeId, kind, sourceHandle);
@@ -166,7 +166,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
   ) {
     const result = controller.insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
     handleWorkflowEditResult(result);
@@ -319,8 +319,8 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   }
 
   function handleSelectionChange(selectionChange: {
-    edges: MarketingWorkflowRenderEdge[];
-    nodes: MarketingWorkflowRenderNode[];
+    edges: WorkflowRenderEdge[];
+    nodes: WorkflowRenderNode[];
   }) {
     if (!selectionChange.nodes.length) {
       return;
@@ -364,7 +364,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     closeCanvasMenus();
   }
 
-  function handleNodesChange(changes: NodeChange<MarketingWorkflowRenderNode>[]) {
+  function handleNodesChange(changes: NodeChange<WorkflowRenderNode>[]) {
     const result = controller.onNodesChange(changes);
     controller.markDraftDirty();
     if (result) {
@@ -379,7 +379,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
   }
 
-  const isValidCanvasConnection: IsValidConnection<MarketingWorkflowRenderEdge> = (connection) =>
+  const isValidCanvasConnection: IsValidConnection<WorkflowRenderEdge> = (connection) =>
     controller.isValidConnection({
       source: connection.source,
       sourceHandle: connection.sourceHandle ?? null,

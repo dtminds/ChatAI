@@ -1,32 +1,36 @@
 import type { Edge, Node } from "@xyflow/react";
+import type {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "./constants";
 
 export type InspectorTab = "settings" | "run" | "variables";
-export type MarketingNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
-export type MarketingNodeStatus = "ready" | "running" | "warning";
-export type InsertableMarketingNodeKind = Exclude<MarketingNodeKind, "trigger" | "goal">;
+export type WorkflowNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
+export type WorkflowNodeStatus = "ready" | "running" | "warning";
+export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "trigger" | "goal">;
 
-export type MarketingNodeData = Record<string, unknown> & {
+export type WorkflowNodeData = Record<string, unknown> & {
   actionType?: "message" | "coupon" | "tag" | "handoff" | "ai";
   agentName?: string;
   audience?: string;
   branchRule?: string;
   conversion?: number;
   delayDays?: number;
-  kind: MarketingNodeKind;
+  kind: WorkflowNodeKind;
   label: string;
   metric: string;
-  status: MarketingNodeStatus;
+  status: WorkflowNodeStatus;
   summary: string;
   title: string;
 };
 
-export type MarketingNodeRuntimeData = {
+export type WorkflowNodeRuntimeData = {
   insertMenuOpen?: boolean;
   insertMenuSourceHandle?: string;
   onDuplicate?: (nodeId: string) => void;
   onInsertAfter?: (
     nodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
   ) => void;
   onDelete?: (nodeId: string) => void;
@@ -35,32 +39,32 @@ export type MarketingNodeRuntimeData = {
   selected?: boolean;
 };
 
-export type MarketingNodeRenderData = MarketingNodeData & MarketingNodeRuntimeData;
-export type MarketingWorkflowNode = Node<MarketingNodeData, "marketing">;
-export type MarketingWorkflowRenderNode = Node<MarketingNodeRenderData, "marketing">;
-export type MarketingEdgeHighlightState = "connected" | "dimmed";
-export type MarketingEdgeData = Record<string, unknown> & {
+export type WorkflowNodeRenderData = WorkflowNodeData & WorkflowNodeRuntimeData;
+export type WorkflowNode = Node<WorkflowNodeData, typeof WORKFLOW_NODE_TYPE>;
+export type WorkflowRenderNode = Node<WorkflowNodeRenderData, typeof WORKFLOW_NODE_TYPE>;
+export type WorkflowEdgeHighlightState = "connected" | "dimmed";
+export type WorkflowEdgeData = Record<string, unknown> & {
   label?: string;
 };
-export type MarketingEdgeRuntimeData = {
-  highlightState?: MarketingEdgeHighlightState;
+export type WorkflowEdgeRuntimeData = {
+  highlightState?: WorkflowEdgeHighlightState;
   insertMenuOpen?: boolean;
-  insertableNodeKinds?: InsertableMarketingNodeKind[];
+  insertableNodeKinds?: InsertableWorkflowNodeKind[];
   onInsertBetween?: (
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
+    kind: InsertableWorkflowNodeKind,
   ) => void;
   onToggleInsertMenu?: (edgeId: string) => void;
 };
-export type MarketingEdgeRenderData = MarketingEdgeData & MarketingEdgeRuntimeData;
-export type MarketingWorkflowEdge = Edge<MarketingEdgeData, "marketing">;
-export type MarketingWorkflowRenderEdge = Edge<MarketingEdgeRenderData, "marketing">;
+export type WorkflowEdgeRenderData = WorkflowEdgeData & WorkflowEdgeRuntimeData;
+export type WorkflowEdge = Edge<WorkflowEdgeData, typeof WORKFLOW_EDGE_TYPE>;
+export type WorkflowRenderEdge = Edge<WorkflowEdgeRenderData, typeof WORKFLOW_EDGE_TYPE>;
 
 export type WorkflowDraft = {
-  edges: MarketingWorkflowEdge[];
-  nodes: MarketingWorkflowNode[];
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
 };
 
 export type QuickInsertTarget = {
@@ -105,6 +109,6 @@ export type WorkflowNodeValidationIssue = {
 };
 
 export type WorkflowNodeValidationContext = {
-  edges: MarketingWorkflowEdge[];
-  nodes: MarketingWorkflowNode[];
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
 };

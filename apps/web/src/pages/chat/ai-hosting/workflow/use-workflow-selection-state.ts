@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
 } from "./types";
 
 export function useWorkflowSelectionState({
@@ -10,8 +10,8 @@ export function useWorkflowSelectionState({
   nodes,
 }: {
   defaultNodeId: string;
-  edges: MarketingWorkflowEdge[];
-  nodes: MarketingWorkflowNode[];
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);

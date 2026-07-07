@@ -6,7 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
-  MarketingWorkflowNode,
+  WorkflowNode,
   NodeRunRecord,
   WorkflowVariables,
 } from "../types";
@@ -18,7 +18,7 @@ export function LastRunPanel({
   onRunNode,
 }: {
   lastRun?: NodeRunRecord;
-  node: MarketingWorkflowNode;
+  node: WorkflowNode;
   onRunNode: () => void;
 }) {
   if (!lastRun) {

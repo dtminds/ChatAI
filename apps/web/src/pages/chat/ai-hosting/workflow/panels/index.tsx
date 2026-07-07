@@ -3,8 +3,8 @@ import {
 } from "../node-config-schema";
 import type {
   InspectorTab,
-  MarketingNodeData,
-  MarketingWorkflowNode,
+  WorkflowNodeData,
+  WorkflowNode,
   NodeRunRecord,
   WorkflowVariables,
 } from "../types";
@@ -29,9 +29,9 @@ export function NodeConfigPanel({
 }: {
   activeTab: InspectorTab;
   lastRun?: NodeRunRecord;
-  node?: MarketingWorkflowNode;
+  node?: WorkflowNode;
   onClose: () => void;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
+  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
   variables?: WorkflowVariables;

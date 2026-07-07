@@ -1,10 +1,14 @@
 import { sanitizeDraft } from "./history-engine";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "./constants";
 import { getUniqueDuplicatedNodeTitle } from "./graph";
 import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
 import type {
-  MarketingNodeKind,
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowNodeKind,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowDraft,
 } from "./types";
 
@@ -13,8 +17,8 @@ export const WORKFLOW_CLIPBOARD_VERSION = 1;
 const PASTE_OFFSET = 48;
 
 export type WorkflowClipboardData = {
-  edges: MarketingWorkflowEdge[];
-  nodes: MarketingWorkflowNode[];
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
 };
 
 type WorkflowClipboardPayload = WorkflowClipboardData & {
@@ -30,7 +34,7 @@ type NavigatorClipboardCapability = Navigator & {
 };
 
 export type WorkflowPasteOptions = {
-  nodeIdFactory: (kind: MarketingNodeKind, index: number) => string;
+  nodeIdFactory: (kind: WorkflowNodeKind, index: number) => string;
   offset?: {
     x: number;
     y: number;
@@ -41,7 +45,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isMarketingNodeKind(value: unknown): value is MarketingNodeKind {
+function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
   return value === "trigger"
     || value === "wait"
     || value === "branch"
@@ -56,23 +60,23 @@ function isFinitePosition(value: unknown): value is { x: number; y: number } {
     && Number.isFinite(value.y);
 }
 
-export function isClipboardNodeStructurallyValid(value: unknown): value is MarketingWorkflowNode {
+export function isClipboardNodeStructurallyValid(value: unknown): value is WorkflowNode {
   if (!isPlainObject(value)) {
     return false;
   }
 
-  if (typeof value.id !== "string" || value.type !== "marketing") {
+  if (typeof value.id !== "string" || value.type !== WORKFLOW_NODE_TYPE) {
     return false;
   }
 
-  if (!isPlainObject(value.data) || !isMarketingNodeKind(value.data.kind)) {
+  if (!isPlainObject(value.data) || !isWorkflowNodeKind(value.data.kind)) {
     return false;
   }
 
   return isFinitePosition(value.position);
 }
 
-export function isClipboardEdgeStructurallyValid(value: unknown): value is MarketingWorkflowEdge {
+export function isClipboardEdgeStructurallyValid(value: unknown): value is WorkflowEdge {
   if (!isPlainObject(value)) {
     return false;
   }
@@ -80,7 +84,7 @@ export function isClipboardEdgeStructurallyValid(value: unknown): value is Marke
   return typeof value.id === "string"
     && typeof value.source === "string"
     && typeof value.target === "string"
-    && value.type === "marketing";
+    && value.type === WORKFLOW_EDGE_TYPE;
 }
 
 export function stringifyWorkflowClipboardData(data: WorkflowClipboardData) {

@@ -10,9 +10,9 @@ import { Add01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import { getPaletteItemsByKinds, paletteItems } from "../node-definitions";
-import type { MarketingWorkflowRenderEdge } from "../types";
+import type { WorkflowRenderEdge } from "../types";
 
-export function MarketingBezierEdge({
+export function WorkflowBezierEdge({
   data,
   id,
   selected,
@@ -22,7 +22,7 @@ export function MarketingBezierEdge({
   target,
   targetX,
   targetY,
-}: EdgeProps<MarketingWorkflowRenderEdge>) {
+}: EdgeProps<WorkflowRenderEdge>) {
   const [isHovered, setIsHovered] = useState(false);
   const menuOpen = Boolean(data?.insertMenuOpen);
   const [edgePath, labelX, labelY] = getBezierPath({

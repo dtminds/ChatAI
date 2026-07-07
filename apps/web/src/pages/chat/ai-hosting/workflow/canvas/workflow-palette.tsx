@@ -3,7 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { paletteItems } from "../node-definitions";
-import type { MarketingNodeKind } from "../types";
+import type { WorkflowNodeKind } from "../types";
 
 export function WorkflowPalette({
   onClose,
@@ -12,7 +12,7 @@ export function WorkflowPalette({
   searchValue,
 }: {
   onClose?: () => void;
-  onAddNode: (kind: MarketingNodeKind) => void;
+  onAddNode: (kind: WorkflowNodeKind) => void;
   onSearchChange: (value: string) => void;
   searchValue: string;
 }) {

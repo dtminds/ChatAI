@@ -1,13 +1,13 @@
 import type {
-  MarketingNodeKind,
+  WorkflowNodeKind,
   WorkflowDraft,
 } from "./types";
 
-export type WorkflowNodeIdGenerator = (kind: MarketingNodeKind) => string;
+export type WorkflowNodeIdGenerator = (kind: WorkflowNodeKind) => string;
 
 let workflowNodeIdSequence = 0;
 
-export function createWorkflowNodeId(kind: MarketingNodeKind) {
+export function createWorkflowNodeId(kind: WorkflowNodeKind) {
   workflowNodeIdSequence += 1;
   return `${kind}-${workflowNodeIdSequence.toString(36)}`;
 }
@@ -18,7 +18,7 @@ export function createUniqueWorkflowNodeIdFactory(
 ) {
   const reservedNodeIds = new Set(draft.nodes.map((node) => node.id));
 
-  return (kind: MarketingNodeKind) => {
+  return (kind: WorkflowNodeKind) => {
     let candidate = generator(kind);
     let suffix = 1;
 

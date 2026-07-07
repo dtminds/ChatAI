@@ -5,14 +5,15 @@ import {
   getWorkflowHistoryEventLabel,
   workflowHistoryReducer,
 } from "@/pages/chat/ai-hosting/workflow/history-engine";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowDraft,
 } from "@/pages/chat/ai-hosting/workflow/types";
 
 function createDraft(index = 0): WorkflowDraft {
-  const node: MarketingWorkflowNode = {
+  const node: WorkflowNode = {
     data: {
       insertMenuOpen: true,
       kind: "action",
@@ -31,10 +32,10 @@ function createDraft(index = 0): WorkflowDraft {
     id: "action-message",
     position: { x: index, y: 0 },
     selected: true,
-    type: "marketing",
+    type: WORKFLOW_NODE_TYPE,
     zIndex: 20,
   };
-  const edge: MarketingWorkflowEdge = {
+  const edge: WorkflowEdge = {
     data: {
       highlightState: "connected",
       insertMenuOpen: true,
@@ -46,7 +47,7 @@ function createDraft(index = 0): WorkflowDraft {
     selected: true,
     source: "action-message",
     target: "goal",
-    type: "marketing",
+    type: WORKFLOW_NODE_TYPE,
   };
 
   return {

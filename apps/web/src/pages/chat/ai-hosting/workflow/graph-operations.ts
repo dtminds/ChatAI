@@ -19,9 +19,9 @@ import type {
 } from "./history";
 import { canDeleteNodeKind, canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingNodeData,
-  MarketingNodeKind,
+  InsertableWorkflowNodeKind,
+  WorkflowNodeData,
+  WorkflowNodeKind,
   WorkflowDraft,
 } from "./types";
 
@@ -40,7 +40,7 @@ export type WorkflowGraphOperation = {
 
 export function addNodeOperation(
   draft: WorkflowDraft,
-  kind: MarketingNodeKind,
+  kind: WorkflowNodeKind,
   nodeId: string,
 ): WorkflowGraphOperation | undefined {
   if (!canInsertNodeKind(kind)) {
@@ -58,7 +58,7 @@ export function addNodeOperation(
 export function insertNodeAfterOperation(
   draft: WorkflowDraft,
   previousNodeId: string,
-  kind: InsertableMarketingNodeKind,
+  kind: InsertableWorkflowNodeKind,
   nodeId: string,
   sourceHandle?: string,
 ): WorkflowGraphOperation {
@@ -116,7 +116,7 @@ export function insertNodeBetweenOperation(
   edgeId: string,
   sourceNodeId: string,
   targetNodeId: string,
-  kind: InsertableMarketingNodeKind,
+  kind: InsertableWorkflowNodeKind,
   nodeId: string,
 ): WorkflowGraphOperation {
   const { edges, nodes } = draft;
@@ -312,7 +312,7 @@ export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperat
 export function updateNodeDataOperation(
   draft: WorkflowDraft,
   nodeId: string,
-  patch: Partial<MarketingNodeData>,
+  patch: Partial<WorkflowNodeData>,
 ) {
   const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
 

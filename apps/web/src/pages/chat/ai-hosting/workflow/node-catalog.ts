@@ -7,11 +7,11 @@ import {
   Target01Icon,
 } from "@hugeicons/core-free-icons";
 import type {
-  InsertableMarketingNodeKind,
-  MarketingNodeData,
-  MarketingNodeKind,
-  MarketingNodeStatus,
-  MarketingWorkflowNode,
+  InsertableWorkflowNodeKind,
+  WorkflowNodeData,
+  WorkflowNodeKind,
+  WorkflowNodeStatus,
+  WorkflowNode,
   WorkflowNodeValidationContext,
   WorkflowNodeValidationIssue,
 } from "./types";
@@ -28,7 +28,7 @@ export type NodeVisual = {
 };
 
 type NodeDataInput = {
-  actionType?: MarketingNodeData["actionType"];
+  actionType?: WorkflowNodeData["actionType"];
   agentName?: string;
   audience?: string;
   branchRule?: string;
@@ -36,35 +36,35 @@ type NodeDataInput = {
   delayDays?: number;
   label: string;
   metric: string;
-  status?: MarketingNodeStatus;
+  status?: WorkflowNodeStatus;
   summary: string;
   title: string;
 };
 
 export type WorkflowNodeCatalogEntry = {
-  availableNextKinds: MarketingNodeKind[];
-  availablePrevKinds: MarketingNodeKind[];
+  availableNextKinds: WorkflowNodeKind[];
+  availablePrevKinds: WorkflowNodeKind[];
   canDelete: boolean;
   canDuplicate: boolean;
   canInsertAfter: boolean;
   configSections: NodeConfigSection[];
-  createDefaultData: () => MarketingNodeData;
+  createDefaultData: () => WorkflowNodeData;
   description?: string;
   insertable: boolean;
-  kind: MarketingNodeKind;
+  kind: WorkflowNodeKind;
   paletteLabel?: string;
   sort: number;
   validate?: (
-    node: MarketingWorkflowNode,
+    node: WorkflowNode,
     context: WorkflowNodeValidationContext,
   ) => WorkflowNodeValidationIssue[];
   visual: NodeVisual;
 };
 
-const sourceNodeKinds: MarketingNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
-const targetNodeKinds: MarketingNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
+const sourceNodeKinds: WorkflowNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
+const targetNodeKinds: WorkflowNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
 
-export const nodeVisuals: Record<MarketingNodeKind, NodeVisual> = {
+export const nodeVisuals: Record<WorkflowNodeKind, NodeVisual> = {
   action: {
     accentClassName: "bg-sky-500/12 text-sky-700 ring-sky-500/20",
     icon: Message01Icon,
@@ -97,7 +97,7 @@ export const nodeVisuals: Record<MarketingNodeKind, NodeVisual> = {
   },
 };
 
-export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogEntry> = {
+export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEntry> = {
   action: {
     availableNextKinds: targetNodeKinds,
     availablePrevKinds: sourceNodeKinds,
@@ -342,7 +342,7 @@ export const orderedWorkflowNodeCatalog = Object.values(workflowNodeCatalog).sor
 );
 
 type InsertableWorkflowNodeCatalogEntry = WorkflowNodeCatalogEntry & {
-  kind: InsertableMarketingNodeKind;
+  kind: InsertableWorkflowNodeKind;
   paletteLabel: string;
 };
 
@@ -361,50 +361,50 @@ export const paletteItems = insertableNodeKinds
   })) satisfies Array<{
   description: string;
   icon: typeof Rocket01Icon;
-  id: InsertableMarketingNodeKind;
+  id: InsertableWorkflowNodeKind;
   label: string;
 }>;
 
-export function getAvailableNextNodeKinds(kind: MarketingNodeKind) {
+export function getAvailableNextNodeKinds(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).availableNextKinds;
 }
 
-export function getAvailablePrevNodeKinds(kind: MarketingNodeKind) {
+export function getAvailablePrevNodeKinds(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).availablePrevKinds;
 }
 
 export function getInsertableNodeKindsForSource(
-  sourceKind: MarketingNodeKind,
-): InsertableMarketingNodeKind[] {
+  sourceKind: WorkflowNodeKind,
+): InsertableWorkflowNodeKind[] {
   const availableNextKinds = new Set(getAvailableNextNodeKinds(sourceKind));
 
   return insertableNodeKinds.filter((kind) => availableNextKinds.has(kind));
 }
 
 export function getInsertableNodeKindsBetween(
-  sourceKind: MarketingNodeKind,
-  targetKind: MarketingNodeKind,
-): InsertableMarketingNodeKind[] {
+  sourceKind: WorkflowNodeKind,
+  targetKind: WorkflowNodeKind,
+): InsertableWorkflowNodeKind[] {
   return getInsertableNodeKindsForSource(sourceKind).filter((kind) =>
     getAvailableNextNodeKinds(kind).includes(targetKind)
     && getAvailablePrevNodeKinds(targetKind).includes(kind),
   );
 }
 
-export function getPaletteItemsByKinds(kinds: InsertableMarketingNodeKind[]) {
+export function getPaletteItemsByKinds(kinds: InsertableWorkflowNodeKind[]) {
   const kindSet = new Set(kinds);
 
   return paletteItems.filter((item) => kindSet.has(item.id));
 }
 
-export function getWorkflowNodeCatalogEntry(kind: MarketingNodeKind) {
+export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
   return workflowNodeCatalog[kind];
 }
 
 function createNodeData(
-  kind: MarketingNodeKind,
+  kind: WorkflowNodeKind,
   data: NodeDataInput,
-): MarketingNodeData {
+): WorkflowNodeData {
   return {
     ...data,
     kind,

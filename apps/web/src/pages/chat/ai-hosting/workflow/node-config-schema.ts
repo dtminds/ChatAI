@@ -1,7 +1,7 @@
 import {
   getWorkflowNodeCatalogEntry,
 } from "./node-catalog";
-import type { MarketingNodeKind } from "./types";
+import type { WorkflowNodeKind } from "./types";
 import type {
   NodeConfigField,
   NodeConfigSection,
@@ -39,7 +39,7 @@ export const baseNodeConfigSections = [
   },
 ] satisfies NodeConfigSection[];
 
-export function getNodeConfigSections(kind: MarketingNodeKind) {
+export function getNodeConfigSections(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).configSections;
 }
 

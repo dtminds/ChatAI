@@ -32,8 +32,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  WORKFLOW_EDGE_TYPE,
   WORKFLOW_MAX_ZOOM,
   WORKFLOW_MIN_ZOOM,
+  WORKFLOW_NODE_TYPE,
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
@@ -41,22 +43,22 @@ import {
   getInsertableNodeKindsForSource,
   getPaletteItemsByKinds,
 } from "../node-definitions";
-import { MarketingNodeCard } from "../nodes";
+import { WorkflowNodeCard } from "../nodes";
 import type {
-  MarketingNodeData,
-  MarketingNodeKind,
-  MarketingWorkflowRenderEdge,
-  MarketingWorkflowRenderNode,
+  WorkflowNodeData,
+  WorkflowNodeKind,
+  WorkflowRenderEdge,
+  WorkflowRenderNode,
 } from "../types";
-import { MarketingBezierEdge } from "./marketing-edge";
+import { WorkflowBezierEdge } from "./workflow-edge";
 import { WorkflowPalette } from "./workflow-palette";
 
 const nodeTypes = {
-  marketing: MarketingNodeCard,
+  [WORKFLOW_NODE_TYPE]: WorkflowNodeCard,
 };
 
 const edgeTypes = {
-  marketing: MarketingBezierEdge,
+  [WORKFLOW_EDGE_TYPE]: WorkflowBezierEdge,
 };
 
 export function WorkflowCanvas({
@@ -88,16 +90,16 @@ export function WorkflowCanvas({
 }: {
   canRedo: boolean;
   canUndo: boolean;
-  edges: MarketingWorkflowRenderEdge[];
-  nodes: MarketingWorkflowRenderNode[];
+  edges: WorkflowRenderEdge[];
+  nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
-  onAddNode: (kind: MarketingNodeKind) => void;
+  onAddNode: (kind: WorkflowNodeKind) => void;
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
-  onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge>;
-  onIsValidConnection: IsValidConnection<MarketingWorkflowRenderEdge>;
-  onNodesChange: OnNodesChange<MarketingWorkflowRenderNode>;
+  onEdgesChange: OnEdgesChange<WorkflowRenderEdge>;
+  onIsValidConnection: IsValidConnection<WorkflowRenderEdge>;
+  onNodesChange: OnNodesChange<WorkflowRenderNode>;
   onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
   onPaneClick: () => void;
@@ -107,8 +109,8 @@ export function WorkflowCanvas({
   onSelectEdge: (edgeId: string) => void;
   onSelectNode: (nodeId: string) => void;
   onSelectionChange: (selection: {
-    edges: MarketingWorkflowRenderEdge[];
-    nodes: MarketingWorkflowRenderNode[];
+    edges: WorkflowRenderEdge[];
+    nodes: WorkflowRenderNode[];
   }) => void;
   onSearchChange: (value: string) => void;
   onUndo: () => void;
@@ -117,8 +119,8 @@ export function WorkflowCanvas({
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
   const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
-    MarketingWorkflowRenderNode,
-    MarketingWorkflowRenderEdge
+    WorkflowRenderNode,
+    WorkflowRenderEdge
   >();
   const { zoom } = useViewport();
   const [showMiniMap, setShowMiniMap] = useState(true);
@@ -220,7 +222,7 @@ export function WorkflowCanvas({
                 className="workflow-minimap"
                 maskColor="var(--workflow-minimap-mask)"
                 nodeColor={(node) => {
-                  const data = node.data as MarketingNodeData;
+                  const data = node.data as WorkflowNodeData;
                   if (data.kind === "trigger") {
                     return "var(--workflow-minimap-trigger)";
                   }
@@ -258,7 +260,7 @@ export function WorkflowCanvas({
   );
 }
 
-function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowRenderNode }) {
+function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
   const sourceHandle = node.data.insertMenuSourceHandle;
   const { x, y, zoom } = useViewport();
   const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;

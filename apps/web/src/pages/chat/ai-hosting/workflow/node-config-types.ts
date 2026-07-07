@@ -1,4 +1,4 @@
-import type { MarketingNodeData } from "./types";
+import type { WorkflowNodeData } from "./types";
 
 type NodeConfigFieldBase = {
   id: string;
@@ -7,23 +7,23 @@ type NodeConfigFieldBase = {
 
 export type NodeConfigTextField = NodeConfigFieldBase & {
   kind: "text";
-  getValue: (data: MarketingNodeData) => string;
-  toPatch: (value: string, data: MarketingNodeData) => Partial<MarketingNodeData>;
+  getValue: (data: WorkflowNodeData) => string;
+  toPatch: (value: string, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
 };
 
 export type NodeConfigTextareaField = NodeConfigFieldBase & {
   kind: "textarea";
-  getValue: (data: MarketingNodeData) => string;
+  getValue: (data: WorkflowNodeData) => string;
   minRows?: number;
-  toPatch: (value: string, data: MarketingNodeData) => Partial<MarketingNodeData>;
+  toPatch: (value: string, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
 };
 
 export type NodeConfigNumberField = NodeConfigFieldBase & {
   kind: "number";
-  getValue: (data: MarketingNodeData) => number;
+  getValue: (data: WorkflowNodeData) => number;
   min?: number;
   suffix?: string;
-  toPatch: (value: number, data: MarketingNodeData) => Partial<MarketingNodeData>;
+  toPatch: (value: number, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
 };
 
 export type NodeConfigField =

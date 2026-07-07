@@ -1,9 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import { useWorkflowRun } from "@/pages/chat/ai-hosting/workflow/run/use-workflow-run";
-import type { MarketingWorkflowNode } from "@/pages/chat/ai-hosting/workflow/types";
+import type { WorkflowNode } from "@/pages/chat/ai-hosting/workflow/types";
 
-function createWorkflowNode(overrides: Partial<MarketingWorkflowNode> = {}): MarketingWorkflowNode {
+function createWorkflowNode(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
   return {
     data: {
       actionType: "ai",
@@ -17,7 +18,7 @@ function createWorkflowNode(overrides: Partial<MarketingWorkflowNode> = {}): Mar
     },
     id: "ai-node",
     position: { x: 0, y: 0 },
-    type: "marketing",
+    type: WORKFLOW_NODE_TYPE,
     ...overrides,
   };
 }

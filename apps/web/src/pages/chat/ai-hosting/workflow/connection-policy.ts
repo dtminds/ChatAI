@@ -4,8 +4,8 @@ import {
   getAvailablePrevNodeKinds,
 } from "./node-catalog";
 import type {
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowDraft,
 } from "./types";
 
@@ -47,15 +47,15 @@ export function isWorkflowConnectionAllowed(
 }
 
 function isNodeKindConnectionAllowed(
-  sourceNode: MarketingWorkflowNode,
-  targetNode: MarketingWorkflowNode,
+  sourceNode: WorkflowNode,
+  targetNode: WorkflowNode,
 ) {
   return getAvailableNextNodeKinds(sourceNode.data.kind).includes(targetNode.data.kind)
     && getAvailablePrevNodeKinds(targetNode.data.kind).includes(sourceNode.data.kind);
 }
 
 function hasDuplicateConnection(
-  edges: MarketingWorkflowEdge[],
+  edges: WorkflowEdge[],
   connection: Required<Pick<Connection, "source" | "target">> & Pick<Connection, "sourceHandle" | "targetHandle">,
 ) {
   return edges.some((edge) =>
@@ -67,7 +67,7 @@ function hasDuplicateConnection(
 }
 
 function hasSourceHandleConnection(
-  edges: MarketingWorkflowEdge[],
+  edges: WorkflowEdge[],
   source: string,
   sourceHandle: string,
 ) {
@@ -78,7 +78,7 @@ function hasSourceHandleConnection(
 }
 
 function hasPathToNode(
-  edges: MarketingWorkflowEdge[],
+  edges: WorkflowEdge[],
   startNodeId: string,
   targetNodeId: string,
 ) {

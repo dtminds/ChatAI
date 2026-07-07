@@ -1,8 +1,8 @@
 import type {
-  MarketingEdgeData,
-  MarketingNodeData,
-  MarketingWorkflowEdge,
-  MarketingWorkflowNode,
+  WorkflowEdgeData,
+  WorkflowNodeData,
+  WorkflowEdge,
+  WorkflowNode,
   WorkflowDraft,
 } from "./types";
 
@@ -227,7 +227,7 @@ export function isWorkflowDraftEqual(firstDraft: WorkflowDraft, secondDraft: Wor
   return JSON.stringify(firstDraft) === JSON.stringify(secondDraft);
 }
 
-function sanitizeNodeData(data: MarketingNodeData): MarketingNodeData {
+function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
   const {
     insertMenuOpen: _insertMenuOpen,
     insertMenuSourceHandle: _insertMenuSourceHandle,
@@ -243,7 +243,7 @@ function sanitizeNodeData(data: MarketingNodeData): MarketingNodeData {
   return persistableData;
 }
 
-function sanitizeNodeForHistory(node: MarketingWorkflowNode): MarketingWorkflowNode {
+function sanitizeNodeForHistory(node: WorkflowNode): WorkflowNode {
   return {
     ...node,
     selected: false,
@@ -252,7 +252,7 @@ function sanitizeNodeForHistory(node: MarketingWorkflowNode): MarketingWorkflowN
   };
 }
 
-function sanitizeEdgeData(data: MarketingEdgeData | undefined): MarketingEdgeData | undefined {
+function sanitizeEdgeData(data: WorkflowEdgeData | undefined): WorkflowEdgeData | undefined {
   if (!data) {
     return data;
   }
@@ -268,7 +268,7 @@ function sanitizeEdgeData(data: MarketingEdgeData | undefined): MarketingEdgeDat
   return persistableData;
 }
 
-function sanitizeEdgeForHistory(edge: MarketingWorkflowEdge): MarketingWorkflowEdge {
+function sanitizeEdgeForHistory(edge: WorkflowEdge): WorkflowEdge {
   return {
     ...edge,
     selected: false,

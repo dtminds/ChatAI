@@ -139,6 +139,27 @@ describe("useWorkflowController", () => {
       .not.toEqual({ x: 420, y: 120 });
   });
 
+  it("updates viewport as a transient canvas state", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const currentViewport = { x: 180, y: 260, zoom: 0.72 };
+
+    let viewportResult: ReturnType<typeof result.current.updateViewport>;
+
+    act(() => {
+      viewportResult = result.current.updateViewport(currentViewport);
+    });
+    rerender({ draft: initialDraft });
+
+    expect(viewportResult?.transient).toBe(true);
+    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+    expect(result.current.canUndo).toBe(false);
+    expect(result.current.canRedo).toBe(false);
+  });
+
   it("undoes a pending config edit with one action before the debounce commits", () => {
     const initialDraft = createDraft();
     const { rerender, result } = renderHook(

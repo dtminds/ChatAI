@@ -555,11 +555,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       return;
     }
 
-    const result = controller.updateViewport(viewport);
-
-    if (result) {
-      markDirty(result.draft);
-    }
+    controller.updateViewport(viewport);
   });
 
   const handleEdgesChange = useWorkflowStableCallback((changes: EdgeChange<WorkflowRenderEdge>[]) => {

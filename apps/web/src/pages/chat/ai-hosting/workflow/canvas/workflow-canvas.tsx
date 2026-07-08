@@ -58,7 +58,7 @@ const edgeTypes = {
 };
 
 const workflowNodeOrigin: [number, number] = [0, 0.5];
-const workflowPanOnDrag = [1];
+const workflowPanOnDrag = true;
 
 export function WorkflowCanvas({
   canRedo,
@@ -230,9 +230,10 @@ export function WorkflowCanvas({
         onPaneClick={onPaneClick}
         onMoveEnd={(_, nextViewport) => onViewportChangeEnd(nextViewport)}
         panOnDrag={workflowPanOnDrag}
-        panOnScroll
+        panOnScroll={false}
         isValidConnection={onIsValidConnection}
         selectionOnDrag={false}
+        zoomOnScroll
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
         <WorkflowControlDock

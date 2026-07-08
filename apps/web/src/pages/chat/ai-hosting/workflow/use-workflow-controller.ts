@@ -209,7 +209,6 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [flushConfigHistory]);
 
   const updateViewport = useCallback((viewport: Viewport) => {
-    flushConfigHistory();
     const nextDraft = sanitizeDraft({
       ...currentDraft,
       viewport,
@@ -219,9 +218,12 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       return undefined;
     }
 
-    replaceDraft(() => nextDraft);
-    return { draft: nextDraft };
-  }, [currentDraft, flushConfigHistory, replaceDraft]);
+    replaceDraftTransient(() => nextDraft);
+    return {
+      draft: nextDraft,
+      transient: true,
+    };
+  }, [currentDraft, replaceDraftTransient]);
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<WorkflowRenderEdge>[]) => {

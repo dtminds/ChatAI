@@ -467,6 +467,20 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.saveState).toBe("saving");
   });
 
+  it("keeps viewport changes out of the draft save boundary", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 180, y: 260, zoom: 0.72 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 180, y: 260, zoom: 0.72 });
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+  });
+
   it("opens checks instead of publishing when warnings remain", async () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

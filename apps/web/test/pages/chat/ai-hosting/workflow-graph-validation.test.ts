@@ -130,6 +130,21 @@ describe("workflow graph validation", () => {
     ]));
   });
 
+  it("flags default source handles without downstream nodes", () => {
+    const edges = createInitialEdges().filter((edge) => edge.source !== "wait-2d");
+    const validation = validateWorkflowGraph(createInitialNodes(), edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "source-handle-unconnected",
+        message: "节点存在未连接的出口",
+        nodeId: "wait-2d",
+        severity: "warning",
+        source: "graph",
+      }),
+    ]));
+  });
+
   it("does not treat branch edges to missing nodes as connected outlets", () => {
     const edges = [
       ...createInitialEdges(),

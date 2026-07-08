@@ -464,15 +464,28 @@ describe("buildPublishChecks", () => {
   });
 
   it("marks connectivity ready when every branch path is connected", () => {
+    const goalNode = createInitialNodes().find((node) => node.id === "goal")!;
     const nodes = [
       ...createInitialNodes(),
       createNodeFromKind("action", "action-normal", 10),
       createNodeFromKind("action", "action-default", 11),
+      {
+        ...goalNode,
+        id: "goal-normal",
+        position: { x: 1540, y: 120 },
+      },
+      {
+        ...goalNode,
+        id: "goal-default",
+        position: { x: 1540, y: 240 },
+      },
     ];
     const edges = [
       ...createInitialEdges(),
       createEdge("branch-intent", "action-normal", "普通客户", { sourceHandle: "branch-normal" }),
       createEdge("branch-intent", "action-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("action-normal", "goal-normal"),
+      createEdge("action-default", "goal-default"),
     ];
     const checklist = buildPublishChecklist(nodes, edges);
 

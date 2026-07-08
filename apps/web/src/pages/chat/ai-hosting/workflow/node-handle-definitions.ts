@@ -52,14 +52,13 @@ export function getNodeUnconnectedSourceHandles(
     edges
       .filter((edge) =>
         edge.source === node.id
-        && typeof edge.sourceHandle === "string"
         && (!nodeIds || nodeIds.has(edge.target)),
       )
-      .map((edge) => edge.sourceHandle),
+      .map((edge) => getSourceHandleKey(edge.sourceHandle)),
   );
 
   return getNodeSourceHandleDefinitions(node.data)
-    .filter((handle) => handle.id && !connectedSourceHandles.has(handle.id));
+    .filter((handle) => !connectedSourceHandles.has(getSourceHandleKey(handle.id)));
 }
 
 export function getNodeSourceOutletDefinition(
@@ -79,4 +78,8 @@ export function getNodeSourceOutletDefinition(
     kind: handle.outletKind,
     label: handle.label,
   };
+}
+
+function getSourceHandleKey(sourceHandle: string | null | undefined) {
+  return sourceHandle ?? "__default__";
 }

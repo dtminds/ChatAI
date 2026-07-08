@@ -5,15 +5,13 @@ import type {
   NodeChange,
   Viewport,
 } from "@xyflow/react";
-import {
-  applyEdgeChanges,
-} from "@xyflow/react";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
 import {
   isWorkflowDraftEqual,
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import {
+  deleteEdgesOperation,
   moveNodesInDraft,
   moveNodesOperation,
   updateNodeDataOperation,
@@ -223,10 +221,6 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<WorkflowRenderEdge>[]) => {
       flushConfigHistory();
-      const nextDraft = sanitizeDraft({
-        ...currentDraft,
-        edges: applyEdgeChanges(changes as EdgeChange<WorkflowEdge>[], currentDraft.edges),
-      });
       const currentEdgeIds = new Set(currentDraft.edges.map((edge) => edge.id));
       const removedEdgeIds = changes
         .filter((change): change is EdgeChange<WorkflowRenderEdge> & { id: string; type: "remove" } =>
@@ -236,23 +230,28 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
         .filter((edgeId) => currentEdgeIds.has(edgeId));
 
       if (removedEdgeIds.length > 0) {
+        const operation = deleteEdgesOperation(currentDraft, removedEdgeIds);
+
+        if (!operation) {
+          return undefined;
+        }
+
         commitFromDrafts(
-          "edge:delete",
+          operation.event,
           currentDraft,
-          nextDraft,
-          removedEdgeIds.length === 1 ? { edgeId: removedEdgeIds[0] } : undefined,
+          operation.draft,
+          operation.meta,
         );
 
         return {
-          draft: nextDraft,
-          edgeId: removedEdgeIds[0],
+          ...operation.result,
+          draft: operation.draft,
         };
       }
 
-      replaceDraft(() => nextDraft);
       return undefined;
     },
-    [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraft],
+    [commitFromDrafts, currentDraft, flushConfigHistory],
   );
 
   const updateNodeData = useCallback((

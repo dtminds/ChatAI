@@ -11,7 +11,6 @@ vi.mock("@xyflow/react", async () => {
 
   return {
     ...actual,
-    applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
     applyNodeChanges: (
       changes: Array<{
         id: string;
@@ -106,6 +105,30 @@ describe("useWorkflowController", () => {
 
     expect(result.current.canUndo).toBe(false);
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalWaitPosition);
+  });
+
+  it("keeps React Flow edge selection out of the workflow draft", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const originalEdges = result.current.edges;
+
+    act(() => {
+      result.current.onEdgesChange([
+        {
+          id: "edge-action-message-goal",
+          selected: true,
+          type: "select",
+        },
+      ]);
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.edges).toBe(originalEdges);
+    expect(result.current.edges.find((edge) => edge.id === "edge-action-message-goal")?.selected).toBe(false);
+    expect(result.current.canUndo).toBe(false);
   });
 
   it("keeps the current viewport when undoing graph edits", () => {

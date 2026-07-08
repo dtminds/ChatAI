@@ -17,21 +17,6 @@ vi.mock("@xyflow/react", async () => {
 
   return {
     ...actual,
-    applyEdgeChanges: (
-      changes: Array<{
-        id: string;
-        type: string;
-      }>,
-      edges: Array<{
-        id: string;
-      }>,
-    ) => {
-      const removedEdgeIds = new Set(changes
-        .filter((change) => change.type === "remove")
-        .map((change) => change.id));
-
-      return edges.filter((edge) => !removedEdgeIds.has(edge.id));
-    },
     applyNodeChanges: (
       changes: Array<{
         id: string;

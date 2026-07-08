@@ -3,6 +3,7 @@ import {
   addNodeOperation,
   arrangeNodesOperation,
   connectNodesOperation,
+  deleteEdgesOperation,
   deleteNodeOperation,
   deleteNodesOperation,
   duplicateNodeOperation,
@@ -183,6 +184,30 @@ describe("workflow graph operations", () => {
       target: "goal",
       targetHandle: "target-custom",
     })).toBeUndefined();
+  });
+
+  it("deletes one or more edges as a graph operation", () => {
+    const draft = createDraft();
+    const operation = deleteEdgesOperation(draft, [
+      "edge-wait-2d-branch-intent",
+      "edge-action-message-goal",
+      "missing-edge",
+    ]);
+
+    expect(operation?.event).toBe("edge:delete");
+    expect(operation?.meta).toEqual({
+      edgeId: undefined,
+      nodeId: "wait-2d",
+    });
+    expect(operation?.result).toEqual({
+      edgeId: "edge-wait-2d-branch-intent",
+      nodeId: "wait-2d",
+    });
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-wait-2d-branch-intent")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+      .toBe(true);
+    expect(deleteEdgesOperation(draft, ["missing-edge"])).toBeUndefined();
   });
 
   it("rejects insert commands that would create invalid graph edges", () => {

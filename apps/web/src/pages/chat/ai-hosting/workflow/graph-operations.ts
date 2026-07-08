@@ -475,6 +475,36 @@ export function deleteEdgeOperation(
   });
 }
 
+export function deleteEdgesOperation(
+  draft: WorkflowDraft,
+  edgeIds: string[],
+): WorkflowGraphOperation | undefined {
+  const deletedEdgeIdSet = new Set(edgeIds);
+  const deletedEdges = draft.edges.filter((edge) => deletedEdgeIdSet.has(edge.id));
+
+  if (!deletedEdges.length) {
+    return undefined;
+  }
+
+  const firstDeletedEdge = deletedEdges[0];
+
+  return createWorkflowGraphOperation({
+    draft: {
+      ...draft,
+      edges: draft.edges.filter((edge) => !deletedEdgeIdSet.has(edge.id)),
+    },
+    event: "edge:delete",
+    meta: {
+      edgeId: deletedEdges.length === 1 ? firstDeletedEdge.id : undefined,
+      nodeId: firstDeletedEdge.source,
+    },
+    result: {
+      edgeId: firstDeletedEdge.id,
+      nodeId: firstDeletedEdge.source,
+    },
+  });
+}
+
 export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperation {
   return createWorkflowGraphOperation({
     draft: {

@@ -83,7 +83,7 @@ export function addNodeOperation(
   kind: WorkflowNodeKind,
   nodeId: string,
 ): WorkflowGraphOperation | undefined {
-  if (!canInsertNodeKind(kind)) {
+  if (!canInsertNodeKind(kind) || hasNodeId(draft, nodeId)) {
     return undefined;
   }
 
@@ -139,6 +139,10 @@ export function insertNodeAfterOperation(
   nodeId: string,
   sourceHandle?: string,
 ): WorkflowGraphOperation | undefined {
+  if (hasNodeId(draft, nodeId)) {
+    return undefined;
+  }
+
   const { edges, nodes } = draft;
   const previousNode = nodes.find((node) => node.id === previousNodeId);
   if (!previousNode || !canInsertAfterNodeKind(previousNode.data.kind)) {
@@ -232,6 +236,10 @@ export function insertNodeBetweenOperation(
   kind: InsertableWorkflowNodeKind,
   nodeId: string,
 ): WorkflowGraphOperation | undefined {
+  if (hasNodeId(draft, nodeId)) {
+    return undefined;
+  }
+
   const { edges, nodes } = draft;
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
   const targetNode = nodes.find((node) => node.id === targetNodeId);
@@ -427,7 +435,7 @@ export function duplicateNodeOperation(
 ): WorkflowGraphOperation | undefined {
   const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
 
-  if (!node || !canDuplicateNodeKind(node.data.kind)) {
+  if (!node || !canDuplicateNodeKind(node.data.kind) || hasNodeId(draft, duplicatedNodeId)) {
     return undefined;
   }
 
@@ -713,4 +721,8 @@ function syncBranchEdgeLabel(
     ...edge,
     data,
   };
+}
+
+function hasNodeId(draft: WorkflowDraft, nodeId: string) {
+  return draft.nodes.some((node) => node.id === nodeId);
 }

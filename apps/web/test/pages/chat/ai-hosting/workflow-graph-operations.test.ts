@@ -31,6 +31,14 @@ function createDraft(): WorkflowDraft {
 
 describe("workflow graph operations", () => {
   it("inserts a node after a branch handle by replacing the existing branch edge", () => {
+    expect(insertNodeAfterOperation(
+      createDraft(),
+      "branch-intent",
+      "wait",
+      "wait-2d",
+      "branch-high",
+    )).toBeUndefined();
+
     const operation = insertNodeAfterOperation(
       createDraft(),
       "branch-intent",
@@ -92,6 +100,15 @@ describe("workflow graph operations", () => {
   });
 
   it("inserts a node between an edge while preserving handle metadata", () => {
+    expect(insertNodeBetweenOperation(
+      createDraft(),
+      "edge-branch-intent-branch-high-action-message",
+      "branch-intent",
+      "action-message",
+      "ai",
+      "wait-2d",
+    )).toBeUndefined();
+
     const operation = insertNodeBetweenOperation(
       createDraft(),
       "edge-branch-intent-branch-high-action-message",
@@ -124,6 +141,7 @@ describe("workflow graph operations", () => {
 
   it("adds only insertable node kinds as unconnected floating nodes", () => {
     expect(addNodeOperation(createDraft(), "trigger", "trigger-copy")).toBeUndefined();
+    expect(addNodeOperation(createDraft(), "ai", "wait-2d")).toBeUndefined();
 
     const draft = createDraft();
     const operation = addNodeOperation(draft, "ai", "ai-tail");
@@ -395,6 +413,8 @@ describe("workflow graph operations", () => {
 
   it("duplicates nodes with a unique title and without carrying selection runtime state", () => {
     const draft = createDraft();
+    expect(duplicateNodeOperation(draft, "action-message", "wait-2d")).toBeUndefined();
+
     const operation = duplicateNodeOperation({
       ...draft,
       nodes: draft.nodes.map((node) =>

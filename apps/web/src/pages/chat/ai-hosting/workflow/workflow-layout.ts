@@ -1,5 +1,4 @@
 import {
-  WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_LAYOUT_X_GAP,
   WORKFLOW_LAYOUT_Y_GAP,
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
@@ -8,6 +7,7 @@ import {
   getNodeSourceHandleIndex,
   getNodeSourceHandleLaneOffset,
 } from "./node-handle-definitions";
+import { getWorkflowNodeEstimatedHeight } from "./layout";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -143,9 +143,9 @@ function resolveLayerYPositions(
     }
 
     const minY = previousY
-      + getEstimatedNodeHeight(previousNode) / 2
+      + getWorkflowNodeEstimatedHeight(previousNode) / 2
       + NODE_VERTICAL_PADDING
-      + getEstimatedNodeHeight(node) / 2;
+      + getWorkflowNodeEstimatedHeight(node) / 2;
     const y = Math.max(desiredY, minY);
 
     yById.set(node.id, y);
@@ -291,12 +291,6 @@ function getSourceHandleLaneOffset(sourceNode: WorkflowNode, edge: WorkflowEdge)
 
 function getLaneGap() {
   return Math.max(WORKFLOW_LAYOUT_Y_GAP, WORKFLOW_NODE_ESTIMATED_HEIGHT + NODE_VERTICAL_PADDING);
-}
-
-function getEstimatedNodeHeight(node: WorkflowNode) {
-  return node.data.kind === "branch"
-    ? WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT
-    : WORKFLOW_NODE_ESTIMATED_HEIGHT;
 }
 
 function compareEdgesForLayout(

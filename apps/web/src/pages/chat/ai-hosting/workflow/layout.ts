@@ -1,20 +1,13 @@
-import {
-  WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
-  WORKFLOW_BRANCH_NODE_WIDTH,
-  WORKFLOW_NODE_ESTIMATED_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "./constants";
+import { getNodeDefinitionCore } from "./node-definition-core";
 import { getNodeSourceHandleTop } from "./node-handle-definitions";
 import type { WorkflowNode } from "./types";
 
 export function getWorkflowNodeWidth(node: WorkflowNode) {
-  return node.data.kind === "branch" ? WORKFLOW_BRANCH_NODE_WIDTH : WORKFLOW_NODE_WIDTH;
+  return getNodeDefinitionCore(node.data.kind).layout.width;
 }
 
 export function getWorkflowNodeEstimatedHeight(node: WorkflowNode) {
-  return node.data.kind === "branch"
-    ? WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT
-    : WORKFLOW_NODE_ESTIMATED_HEIGHT;
+  return getNodeDefinitionCore(node.data.kind).layout.estimatedHeight;
 }
 
 export function getInsertMenuHandleTop(node: WorkflowNode, sourceHandle?: string) {

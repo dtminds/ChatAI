@@ -6,6 +6,12 @@ import {
   Rocket01Icon,
   Target01Icon,
 } from "@hugeicons/core-free-icons";
+import {
+  WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
+  WORKFLOW_BRANCH_NODE_WIDTH,
+  WORKFLOW_NODE_ESTIMATED_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "./constants";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowNodeData,
@@ -76,6 +82,7 @@ export type WorkflowNodeCatalogEntry = {
   description?: string;
   insertable: boolean;
   kind: WorkflowNodeKind;
+  layout: WorkflowNodeLayoutMetrics;
   paletteLabel?: string;
   paletteGroup?: WorkflowNodePaletteGroupId;
   getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
@@ -89,8 +96,21 @@ export type WorkflowNodeCatalogEntry = {
   visual: NodeVisual;
 };
 
+export type WorkflowNodeLayoutMetrics = {
+  estimatedHeight: number;
+  width: number;
+};
+
 const sourceNodeKinds: WorkflowNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
 const targetNodeKinds: WorkflowNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
+const standardNodeLayout: WorkflowNodeLayoutMetrics = {
+  estimatedHeight: WORKFLOW_NODE_ESTIMATED_HEIGHT,
+  width: WORKFLOW_NODE_WIDTH,
+};
+const branchNodeLayout: WorkflowNodeLayoutMetrics = {
+  estimatedHeight: WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
+  width: WORKFLOW_BRANCH_NODE_WIDTH,
+};
 
 export const workflowNodePaletteGroups = [
   {
@@ -201,6 +221,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "发送私域消息、优惠券或打标签",
     insertable: true,
     kind: "action",
+    layout: standardNodeLayout,
     paletteGroup: "engagement",
     paletteLabel: "营销动作",
     getOutputVariables: createDefaultOutputVariables,
@@ -281,6 +302,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "启用指定 Agent，接管后续会话",
     insertable: true,
     kind: "ai",
+    layout: standardNodeLayout,
     paletteGroup: "engagement",
     paletteLabel: "AI 接待",
     getOutputVariables: createDefaultOutputVariables,
@@ -339,6 +361,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "按标签、行为、会话意图分支",
     insertable: true,
     kind: "branch",
+    layout: branchNodeLayout,
     paletteGroup: "logic",
     paletteLabel: "条件分支",
     getOutputVariables: createDefaultOutputVariables,
@@ -393,6 +416,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     }),
     insertable: false,
     kind: "goal",
+    layout: standardNodeLayout,
     getOutputVariables: createDefaultOutputVariables,
     getSourceHandles: createNoSourceHandles,
     getTargetHandles: createDefaultTargetHandles,
@@ -454,6 +478,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     }),
     insertable: false,
     kind: "trigger",
+    layout: standardNodeLayout,
     getOutputVariables: createDefaultOutputVariables,
     getSourceHandles: createDefaultSourceHandles,
     getTargetHandles: createNoTargetHandles,
@@ -507,6 +532,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "按天、小时或固定窗口延迟触达",
     insertable: true,
     kind: "wait",
+    layout: standardNodeLayout,
     paletteGroup: "flow",
     paletteLabel: "等待",
     getOutputVariables: createDefaultOutputVariables,

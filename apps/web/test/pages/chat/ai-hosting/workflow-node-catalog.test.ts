@@ -42,6 +42,10 @@ import {
   StandardNodeBody,
 } from "@/pages/chat/ai-hosting/workflow/nodes/node-bodies";
 import { createInitialEdges } from "@/pages/chat/ai-hosting/workflow/graph";
+import {
+  getWorkflowNodeEstimatedHeight,
+  getWorkflowNodeWidth,
+} from "@/pages/chat/ai-hosting/workflow/layout";
 import { hydrateWorkflowDraft } from "@/pages/chat/ai-hosting/workflow/workflow-draft-normalizer";
 import {
   hydrateWorkflowClipboardData,
@@ -69,6 +73,7 @@ describe("workflow node catalog", () => {
       expect(getNodeDefinition(kind)).toBe(definition);
       expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
       expect(definition.visual).toBe(catalogEntry.visual);
+      expect(definition.layout).toBe(catalogEntry.layout);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
       expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
@@ -85,6 +90,20 @@ describe("workflow node catalog", () => {
       expect(defaultData.title).toBeTruthy();
       expect(defaultData.summary).toBeTruthy();
       expect(defaultData.metric).toBeTruthy();
+      expect(catalogEntry.layout.width).toBeGreaterThan(0);
+      expect(catalogEntry.layout.estimatedHeight).toBeGreaterThan(0);
+      expect(getWorkflowNodeWidth({
+        data: defaultData,
+        id: `node-${kind}`,
+        position: { x: 0, y: 0 },
+        type: WORKFLOW_NODE_TYPE,
+      })).toBe(catalogEntry.layout.width);
+      expect(getWorkflowNodeEstimatedHeight({
+        data: defaultData,
+        id: `node-${kind}`,
+        position: { x: 0, y: 0 },
+        type: WORKFLOW_NODE_TYPE,
+      })).toBe(catalogEntry.layout.estimatedHeight);
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
     }

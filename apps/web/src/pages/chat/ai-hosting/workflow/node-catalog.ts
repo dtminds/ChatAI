@@ -827,7 +827,7 @@ function createDefaultOutputVariables(node: WorkflowNode): WorkflowVariable[] {
     {
       name: "journey.next",
       type: "string",
-      value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
+      value: isWorkflowTerminalNode(node) ? "退出旅程" : "进入下一节点",
     },
   ];
 }

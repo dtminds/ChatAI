@@ -5,6 +5,7 @@ import type {
   WorkflowVariables,
 } from "./types";
 import { getNodeDefinitionCore } from "./node-definition-core";
+import { isWorkflowTerminalNode } from "./node-catalog";
 
 export type WorkflowVariableContext = {
   currentNode: WorkflowNode;
@@ -185,7 +186,7 @@ function createFallbackOutputVariables(node: WorkflowNode): WorkflowVariable[] {
     {
       name: "journey.next",
       type: "string",
-      value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
+      value: isWorkflowTerminalNode(node) ? "退出旅程" : "进入下一节点",
     },
   ];
 }

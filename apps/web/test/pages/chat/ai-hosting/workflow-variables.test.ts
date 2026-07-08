@@ -50,9 +50,18 @@ describe("workflow variables", () => {
   });
 
   it("uses the selected node definition as the output variable boundary", () => {
-    const node = createInitialNodes().find((currentNode) => currentNode.id === "goal")!;
+    const nodes = createInitialNodes();
+    const actionNode = nodes.find((currentNode) => currentNode.id === "action-message")!;
+    const goalNode = nodes.find((currentNode) => currentNode.id === "goal")!;
 
-    expect(getNodeDefinition("goal").getOutputVariables?.(node)).toEqual([
+    expect(getNodeDefinition("action").getOutputVariables?.(actionNode)).toEqual(expect.arrayContaining([
+      {
+        name: "journey.next",
+        type: "string",
+        value: "进入下一节点",
+      },
+    ]));
+    expect(getNodeDefinition("goal").getOutputVariables?.(goalNode)).toEqual([
       {
         name: "result",
         type: "object",
@@ -64,7 +73,7 @@ describe("workflow variables", () => {
         value: "退出旅程",
       },
     ]);
-    expect(getNodeOutputVariables(node)).toEqual([
+    expect(getNodeOutputVariables(goalNode)).toEqual([
       {
         name: "goal.goal.result",
         scope: "node",

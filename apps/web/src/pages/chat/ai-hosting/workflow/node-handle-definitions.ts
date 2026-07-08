@@ -4,7 +4,9 @@ import {
   getWorkflowBranchPaths,
 } from "./branch-paths";
 import type {
+  WorkflowEdge,
   WorkflowNodeKind,
+  WorkflowNode,
   WorkflowNodeRenderData,
 } from "./types";
 
@@ -41,4 +43,28 @@ export function getDefaultSourceHandleId(
   }
 
   return undefined;
+}
+
+export function getNodeUnconnectedSourceHandles(
+  node: WorkflowNode,
+  edges: WorkflowEdge[],
+  options: {
+    nodes?: WorkflowNode[];
+  } = {},
+): WorkflowSourceHandleDefinition[] {
+  const nodeIds = options.nodes
+    ? new Set(options.nodes.map((item) => item.id))
+    : undefined;
+  const connectedSourceHandles = new Set(
+    edges
+      .filter((edge) =>
+        edge.source === node.id
+        && typeof edge.sourceHandle === "string"
+        && (!nodeIds || nodeIds.has(edge.target)),
+      )
+      .map((edge) => edge.sourceHandle),
+  );
+
+  return getNodeSourceHandleDefinitions(node.data)
+    .filter((handle) => handle.id && !connectedSourceHandles.has(handle.id));
 }

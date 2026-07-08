@@ -105,6 +105,27 @@ describe("workflow graph validation", () => {
     ]));
   });
 
+  it("does not treat branch edges to missing nodes as connected outlets", () => {
+    const edges = [
+      ...createInitialEdges(),
+      {
+        ...createEdge("branch-intent", "missing-node", "普通客户", { sourceHandle: "branch-normal" }),
+        id: "edge-branch-intent-branch-normal-missing-node",
+      },
+      {
+        ...createEdge("branch-intent", "goal", "默认路径", { sourceHandle: "branch-default" }),
+      },
+    ];
+    const validation = validateWorkflowGraph(createInitialNodes(), edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "branch-path-unconnected",
+        nodeId: "branch-intent",
+      }),
+    ]));
+  });
+
   it("accepts branch nodes only when every branch path has a downstream node", () => {
     const nodes = [
       ...createInitialNodes(),

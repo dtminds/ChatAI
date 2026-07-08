@@ -22,12 +22,16 @@ import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-con
 import {
   getDefaultSourceHandleId,
   getNodeSourceHandleDefinitions,
+  getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
 import { NodeSettingsPanelMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
 import { createInitialEdges } from "@/pages/chat/ai-hosting/workflow/graph";
-import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "@/pages/chat/ai-hosting/workflow/constants";
 import type { WorkflowNode, WorkflowNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 
 describe("workflow node catalog", () => {
@@ -183,6 +187,44 @@ describe("workflow node catalog", () => {
       ],
     })).toBe("branch-vip");
     expect(getDefaultSourceHandleId("wait")).toBeUndefined();
+  });
+
+  it("derives unconnected named source handles from the same handle boundary", () => {
+    const branchNode: WorkflowNode = {
+      data: createDefaultNodeData("branch"),
+      id: "branch-node",
+      position: { x: 0, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    };
+    const targetNode: WorkflowNode = {
+      data: createDefaultNodeData("action"),
+      id: "action-node",
+      position: { x: 300, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    };
+    const unconnectedHandles = getNodeUnconnectedSourceHandles(branchNode, [
+      {
+        id: "edge-branch-node-branch-high-action-node",
+        source: "branch-node",
+        sourceHandle: "branch-high",
+        target: "action-node",
+        type: WORKFLOW_EDGE_TYPE,
+      },
+      {
+        id: "edge-branch-node-branch-normal-missing",
+        source: "branch-node",
+        sourceHandle: "branch-normal",
+        target: "missing-node",
+        type: WORKFLOW_EDGE_TYPE,
+      },
+    ], {
+      nodes: [branchNode, targetNode],
+    });
+
+    expect(unconnectedHandles.map((handle) => handle.id)).toEqual([
+      "branch-normal",
+      "branch-default",
+    ]);
   });
 
   it("creates independent default branch path data for each branch node", () => {

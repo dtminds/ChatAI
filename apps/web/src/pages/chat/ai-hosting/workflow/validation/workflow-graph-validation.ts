@@ -3,8 +3,8 @@ import type {
   WorkflowNode,
 } from "../types";
 import {
-  getWorkflowBranchPaths,
-} from "../branch-paths";
+  getNodeUnconnectedSourceHandles,
+} from "../node-handle-definitions";
 
 export const WORKFLOW_MAX_TREE_DEPTH = 20;
 
@@ -18,6 +18,7 @@ export type WorkflowGraphValidationIssue = {
     | "node-disconnected"
     | "node-multiple-incoming"
     | "node-multiple-outgoing"
+    | "source-handle-unconnected"
     | "tree-depth-exceeded";
   edgeIds?: string[];
   message: string;
@@ -115,7 +116,7 @@ export function validateWorkflowGraph(
   }
 
   getCardinalityIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
-  getBranchOutletIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
+  getSourceHandleOutletIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
 
   return {
     disconnectedNodeIds,
@@ -175,44 +176,23 @@ export function getValidWorkflowTreeNodes(
   };
 }
 
-function getBranchOutletIssues(
+function getSourceHandleOutletIssues(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowGraphValidationIssue[] {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const connectedBranchHandlesByNodeId = new Map<string, Set<string>>();
-
-  edges.forEach((edge) => {
-    const sourceNode = nodeById.get(edge.source);
-
-    if (
-      !sourceNode
-      || sourceNode.data.kind !== "branch"
-      || !edge.sourceHandle
-      || !nodeById.has(edge.target)
-    ) {
-      return;
-    }
-
-    const connectedHandles = connectedBranchHandlesByNodeId.get(edge.source) ?? new Set<string>();
-    connectedHandles.add(edge.sourceHandle);
-    connectedBranchHandlesByNodeId.set(edge.source, connectedHandles);
-  });
-
   return nodes
-    .filter((node) => node.data.kind === "branch")
     .flatMap((node) => {
-      const connectedHandles = connectedBranchHandlesByNodeId.get(node.id) ?? new Set<string>();
-      const hasUnconnectedPath = getWorkflowBranchPaths(node.data)
-        .some((path) => !connectedHandles.has(path.id));
+      const unconnectedHandles = getNodeUnconnectedSourceHandles(node, edges, { nodes });
 
-      if (!hasUnconnectedPath) {
+      if (!unconnectedHandles.length) {
         return [];
       }
 
+      const isBranchNode = node.data.kind === "branch";
+
       return [{
-        code: "branch-path-unconnected" as const,
-        message: "条件分支存在未连接的出口",
+        code: isBranchNode ? "branch-path-unconnected" as const : "source-handle-unconnected" as const,
+        message: isBranchNode ? "条件分支存在未连接的出口" : "节点存在未连接的出口",
         nodeId: node.id,
         severity: "warning" as const,
         source: "graph" as const,

@@ -27,7 +27,6 @@ import {
   getWorkflowBranchPaths,
 } from "./branch-paths";
 import type { NodeConfigSection } from "./node-config-types";
-import { validateNodeConfigSections } from "./node-config-validation";
 
 export type NodeVisual = {
   accentClassName: string;
@@ -383,7 +382,6 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     kind: "goal",
     getOutputVariables: createDefaultOutputVariables,
     sort: 100,
-    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.goal,
   },
   trigger: {
@@ -443,7 +441,6 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     kind: "trigger",
     getOutputVariables: createDefaultOutputVariables,
     sort: 0,
-    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.trigger,
   },
   wait: {
@@ -497,7 +494,6 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteLabel: "等待",
     getOutputVariables: createDefaultOutputVariables,
     sort: 10,
-    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.wait,
   },
 };
@@ -676,14 +672,8 @@ function hasText(value: unknown) {
 }
 
 function validateActionNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
-  const issues = validateNodeConfigFromCatalog(node);
-
-  if (issues.length > 0) {
-    return issues;
-  }
-
   if (!hasText(node.data.actionType)) {
-    return [createCatalogIssue("action-type-required", "营销动作需要选择动作类型")];
+    return [];
   }
 
   if (!actionOptions.some((option) => option.type === node.data.actionType)) {
@@ -694,14 +684,8 @@ function validateActionNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
 }
 
 function validateAiNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
-  const issues = validateNodeConfigFromCatalog(node);
-
-  if (issues.length > 0) {
-    return issues;
-  }
-
   if (!hasText(node.data.agentName)) {
-    return [createCatalogIssue("ai-agent-required", "AI 接待需要绑定 Agent")];
+    return [];
   }
 
   if (!agentOptions.some((agent) => agent.name === node.data.agentName)) {
@@ -712,7 +696,7 @@ function validateAiNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
 }
 
 function validateBranchNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
-  const issues: WorkflowNodeValidationIssue[] = validateNodeConfigFromCatalog(node);
+  const issues: WorkflowNodeValidationIssue[] = [];
   const branchPaths = getWorkflowBranchPaths(node.data);
 
   if (branchPaths.some((path) => !hasText(path.label))) {
@@ -720,10 +704,6 @@ function validateBranchNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
   }
 
   return issues;
-}
-
-function validateNodeConfigFromCatalog(node: WorkflowNode): WorkflowNodeValidationIssue[] {
-  return validateNodeConfigSections(node, workflowNodeCatalog[node.data.kind].configSections);
 }
 
 function createCatalogIssue(

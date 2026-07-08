@@ -25,7 +25,6 @@ import {
   getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
-import { NodeSettingsPanelMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
 import { createInitialEdges } from "@/pages/chat/ai-hosting/workflow/graph";
 import {
   WORKFLOW_EDGE_TYPE,
@@ -49,7 +48,7 @@ describe("workflow node catalog", () => {
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
-      expect(definition.settings).toBe(NodeSettingsPanelMap[kind]);
+      expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
       expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
       expect(definition.getSourceHandles).toBe(getNodeSourceHandleDefinitions);

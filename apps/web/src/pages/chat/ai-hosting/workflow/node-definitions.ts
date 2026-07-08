@@ -12,7 +12,6 @@ import type { WorkflowSourceHandleDefinition } from "./node-handle-definitions";
 import { getNodeSourceHandleDefinitions } from "./node-handle-definitions";
 import type { NodeBodyProps } from "./nodes/types";
 import { workflowNodeUiBindings } from "./node-ui-bindings";
-import { NodeSettingsPanelMap } from "./panels/registry";
 import type { NodeSettingsProps } from "./panels/types";
 
 export {
@@ -47,7 +46,6 @@ export const nodeDefinitions = Object.fromEntries(
       ...catalogEntry,
       ...workflowNodeUiBindings[kind as WorkflowNodeKind],
       getSourceHandles: getNodeSourceHandleDefinitions,
-      settings: NodeSettingsPanelMap[kind as WorkflowNodeKind],
     },
   ]),
 ) as Record<WorkflowNodeKind, NodeDefinition>;

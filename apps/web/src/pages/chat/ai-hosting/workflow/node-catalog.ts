@@ -14,11 +14,18 @@ import type {
   WorkflowNode,
   WorkflowNodeValidationContext,
   WorkflowNodeValidationIssue,
+  WorkflowVariable,
 } from "./types";
 import {
+  actionOptions,
   defaultActionOption,
   defaultAgentOption,
+  agentOptions,
 } from "./node-options";
+import {
+  createDefaultBranchPaths,
+  getWorkflowBranchPaths,
+} from "./branch-paths";
 import type { NodeConfigSection } from "./node-config-types";
 
 export type NodeVisual = {
@@ -27,15 +34,26 @@ export type NodeVisual = {
   label: string;
 };
 
+export type WorkflowNodePaletteGroupId = "engagement" | "flow" | "logic";
+
+export type WorkflowNodePaletteGroup = {
+  id: WorkflowNodePaletteGroupId;
+  label: string;
+  sort: number;
+};
+
 type NodeDataInput = {
   actionType?: WorkflowNodeData["actionType"];
   agentName?: string;
   audience?: string;
+  branchPaths?: WorkflowNodeData["branchPaths"];
   branchRule?: string;
   conversion?: number;
   delayDays?: number;
+  handoffRule?: string;
   label: string;
   metric: string;
+  repeatEntryEnabled?: boolean;
   status?: WorkflowNodeStatus;
   summary: string;
   title: string;
@@ -53,6 +71,8 @@ export type WorkflowNodeCatalogEntry = {
   insertable: boolean;
   kind: WorkflowNodeKind;
   paletteLabel?: string;
+  paletteGroup?: WorkflowNodePaletteGroupId;
+  getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
   sort: number;
   validate?: (
     node: WorkflowNode,
@@ -63,6 +83,24 @@ export type WorkflowNodeCatalogEntry = {
 
 const sourceNodeKinds: WorkflowNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
 const targetNodeKinds: WorkflowNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
+
+export const workflowNodePaletteGroups = [
+  {
+    id: "flow",
+    label: "流程控制",
+    sort: 10,
+  },
+  {
+    id: "logic",
+    label: "条件逻辑",
+    sort: 20,
+  },
+  {
+    id: "engagement",
+    label: "触达动作",
+    sort: 30,
+  },
+] as const satisfies readonly WorkflowNodePaletteGroup[];
 
 export const nodeVisuals: Record<WorkflowNodeKind, NodeVisual> = {
   action: {
@@ -104,7 +142,36 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
-    configSections: [],
+    configSections: [
+      {
+        fields: [
+          {
+            columns: 2,
+            getOptions: () =>
+              actionOptions.map((option) => ({
+                description: option.summary,
+                icon: option.icon,
+                label: option.label,
+                value: option.type,
+              })),
+            getValue: (data) => data.actionType ?? defaultActionOption.type,
+            id: "workflow-action-type",
+            kind: "option-cards",
+            label: "动作类型",
+            toPatch: (value, _data, option) => ({
+              actionType: value as WorkflowNodeData["actionType"],
+              label: option.label,
+              metric: option.description ?? "",
+              status: "ready",
+              summary: option.description ?? "",
+              title: option.label,
+            }),
+          },
+        ],
+        id: "action-type",
+        title: "动作类型",
+      },
+    ],
     createDefaultData: () =>
       createNodeData("action", {
         actionType: defaultActionOption.type,
@@ -116,13 +183,11 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "发送私域消息、优惠券或打标签",
     insertable: true,
     kind: "action",
+    paletteGroup: "engagement",
     paletteLabel: "营销动作",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 30,
-    validate: (node) => (
-      hasText(node.data.actionType)
-        ? []
-        : [createCatalogIssue("action-type-required", "营销动作需要选择动作类型")]
-    ),
+    validate: validateActionNode,
     visual: nodeVisuals.action,
   },
   ai: {
@@ -131,11 +196,52 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
-    configSections: [],
+    configSections: [
+      {
+        fields: [
+          {
+            columns: 1,
+            getOptions: () =>
+              agentOptions.map((agent) => ({
+                description: agent.description,
+                label: agent.name,
+                value: agent.name,
+              })),
+            getValue: (data) => data.agentName ?? defaultAgentOption.name,
+            id: "workflow-agent",
+            kind: "option-cards",
+            label: "接待 Agent",
+            toPatch: (value) => {
+              const agent = agentOptions.find((option) => option.name === value) ?? defaultAgentOption;
+
+              return {
+                actionType: "ai",
+                agentName: agent.name,
+                label: "AI 接待",
+                metric: agent.knowledge,
+                status: "ready",
+                summary: agent.name,
+              };
+            },
+          },
+          {
+            getValue: (data) => data.handoffRule ?? "",
+            id: "workflow-handoff-rule",
+            kind: "textarea",
+            label: "转人工条件",
+            minRows: 4,
+            toPatch: (value) => ({ handoffRule: value }),
+          },
+        ],
+        id: "ai-reception",
+        title: "AI 接待策略",
+      },
+    ],
     createDefaultData: () =>
       createNodeData("ai", {
         actionType: "ai",
         agentName: defaultAgentOption.name,
+        handoffRule: "客户要求人工、投诉升级、识别到价格异议",
         label: "AI 接待",
         metric: defaultAgentOption.knowledge,
         summary: defaultAgentOption.name,
@@ -144,13 +250,11 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "启用指定 Agent，接管后续会话",
     insertable: true,
     kind: "ai",
+    paletteGroup: "engagement",
     paletteLabel: "AI 接待",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 40,
-    validate: (node) => (
-      hasText(node.data.agentName)
-        ? []
-        : [createCatalogIssue("ai-agent-required", "AI 接待需要绑定 Agent")]
-    ),
+    validate: validateAiNode,
     visual: nodeVisuals.ai,
   },
   branch: {
@@ -181,6 +285,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     ],
     createDefaultData: () =>
       createNodeData("branch", {
+        branchPaths: createDefaultBranchPaths(),
         branchRule: "",
         label: "条件",
         metric: "未配置分支",
@@ -191,13 +296,11 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "按标签、行为、会话意图分支",
     insertable: true,
     kind: "branch",
+    paletteGroup: "logic",
     paletteLabel: "条件分支",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 20,
-    validate: (node) => (
-      hasText(node.data.branchRule)
-        ? []
-        : [createCatalogIssue("branch-rule-required", "条件分支需要配置条件表达式")]
-    ),
+    validate: validateBranchNode,
     visual: nodeVisuals.branch,
   },
   goal: {
@@ -236,11 +339,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
       }),
     insertable: false,
     kind: "goal",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 100,
     validate: (node) => (
-      typeof node.data.conversion === "number"
+      isFiniteNonNegativeNumber(node.data.conversion)
         ? []
-        : [createCatalogIssue("goal-conversion-required", "目标节点需要配置转化指标")]
+        : [createCatalogIssue("goal-conversion-required", "目标节点需要配置有效转化指标")]
     ),
     visual: nodeVisuals.goal,
   },
@@ -264,6 +368,14 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               status: value ? "running" : "warning",
             }),
           },
+          {
+            description: "同一客户 7 天内最多进入一次",
+            getValue: (data) => data.repeatEntryEnabled ?? true,
+            id: "workflow-repeat-entry",
+            kind: "switch",
+            label: "允许重复进入",
+            toPatch: (value) => ({ repeatEntryEnabled: value }),
+          },
         ],
         id: "trigger",
         title: "进入规则",
@@ -274,12 +386,14 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         audience: "近 30 天新入会且未首购客户",
         label: "触发",
         metric: "预计进入 124.8万人",
+        repeatEntryEnabled: true,
         status: "running",
         summary: "客户入会后立即进入新人转化旅程",
         title: "新人入会触发",
       }),
     insertable: false,
     kind: "trigger",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 0,
     validate: (node) => (
       hasText(node.data.audience)
@@ -326,10 +440,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     description: "按天、小时或固定窗口延迟触达",
     insertable: true,
     kind: "wait",
+    paletteGroup: "flow",
     paletteLabel: "等待",
+    getOutputVariables: createDefaultOutputVariables,
     sort: 10,
     validate: (node) => (
-      typeof node.data.delayDays === "number" && node.data.delayDays >= 0
+      isFiniteNonNegativeNumber(node.data.delayDays)
         ? []
         : [createCatalogIssue("wait-delay-required", "等待节点需要配置等待天数")]
     ),
@@ -343,7 +459,22 @@ export const orderedWorkflowNodeCatalog = Object.values(workflowNodeCatalog).sor
 
 type InsertableWorkflowNodeCatalogEntry = WorkflowNodeCatalogEntry & {
   kind: InsertableWorkflowNodeKind;
+  paletteGroup: WorkflowNodePaletteGroupId;
   paletteLabel: string;
+};
+
+export type WorkflowPaletteItem = {
+  description: string;
+  groupId: WorkflowNodePaletteGroupId;
+  icon: typeof Rocket01Icon;
+  id: InsertableWorkflowNodeKind;
+  label: string;
+  searchText: string;
+  sort: number;
+};
+
+export type WorkflowPaletteItemGroup = WorkflowNodePaletteGroup & {
+  items: WorkflowPaletteItem[];
 };
 
 export const insertableNodeKinds = orderedWorkflowNodeCatalog
@@ -353,17 +484,7 @@ export const insertableNodeKinds = orderedWorkflowNodeCatalog
 export const paletteItems = insertableNodeKinds
   .map((kind) => workflowNodeCatalog[kind])
   .filter(isInsertableWorkflowNodeCatalogEntry)
-  .map((definition) => ({
-    description: definition.description ?? "",
-    icon: definition.visual.icon,
-    id: definition.kind,
-    label: definition.paletteLabel,
-  })) satisfies Array<{
-  description: string;
-  icon: typeof Rocket01Icon;
-  id: InsertableWorkflowNodeKind;
-  label: string;
-}>;
+  .map(createPaletteItem) satisfies WorkflowPaletteItem[];
 
 export function getAvailableNextNodeKinds(kind: WorkflowNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).availableNextKinds;
@@ -392,9 +513,52 @@ export function getInsertableNodeKindsBetween(
 }
 
 export function getPaletteItemsByKinds(kinds: InsertableWorkflowNodeKind[]) {
-  const kindSet = new Set(kinds);
+  return filterWorkflowPaletteItems({ kinds });
+}
 
-  return paletteItems.filter((item) => kindSet.has(item.id));
+export function filterWorkflowPaletteItems({
+  kinds,
+  query = "",
+}: {
+  kinds?: InsertableWorkflowNodeKind[];
+  query?: string;
+} = {}) {
+  const kindSet = kinds ? new Set(kinds) : null;
+  const normalizedQuery = normalizePaletteSearchText(query);
+
+  return paletteItems.filter((item) => {
+    if (kindSet && !kindSet.has(item.id)) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return item.searchText.includes(normalizedQuery);
+  });
+}
+
+export function getWorkflowPaletteItemGroups({
+  kinds,
+  query = "",
+}: {
+  kinds?: InsertableWorkflowNodeKind[];
+  query?: string;
+} = {}): WorkflowPaletteItemGroup[] {
+  const items = filterWorkflowPaletteItems({ kinds, query });
+  const itemsByGroupId = new Map<WorkflowNodePaletteGroupId, WorkflowPaletteItem[]>();
+
+  items.forEach((item) => {
+    itemsByGroupId.set(item.groupId, [...itemsByGroupId.get(item.groupId) ?? [], item]);
+  });
+
+  return workflowNodePaletteGroups
+    .map((group) => ({
+      ...group,
+      items: [...itemsByGroupId.get(group.id) ?? []].sort((first, second) => first.sort - second.sort),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
@@ -416,13 +580,83 @@ function isInsertableWorkflowNodeCatalogEntry(
   definition: WorkflowNodeCatalogEntry,
 ): definition is InsertableWorkflowNodeCatalogEntry {
   return definition.insertable
+    && definition.paletteGroup !== undefined
     && definition.paletteLabel !== undefined
     && definition.kind !== "goal"
     && definition.kind !== "trigger";
 }
 
+function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): WorkflowPaletteItem {
+  const description = definition.description ?? "";
+  const group = workflowNodePaletteGroups.find((item) => item.id === definition.paletteGroup);
+  const label = definition.paletteLabel;
+
+  return {
+    description,
+    groupId: definition.paletteGroup,
+    icon: definition.visual.icon,
+    id: definition.kind,
+    label,
+    searchText: normalizePaletteSearchText([
+      definition.kind,
+      definition.visual.label,
+      label,
+      description,
+      group?.label ?? "",
+    ].join(" ")),
+    sort: definition.sort,
+  };
+}
+
+function normalizePaletteSearchText(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function hasText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isFiniteNonNegativeNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function validateActionNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  if (!hasText(node.data.actionType)) {
+    return [createCatalogIssue("action-type-required", "营销动作需要选择动作类型")];
+  }
+
+  if (!actionOptions.some((option) => option.type === node.data.actionType)) {
+    return [createCatalogIssue("action-type-unsupported", "营销动作类型不受支持")];
+  }
+
+  return [];
+}
+
+function validateAiNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  if (!hasText(node.data.agentName)) {
+    return [createCatalogIssue("ai-agent-required", "AI 接待需要绑定 Agent")];
+  }
+
+  if (!agentOptions.some((agent) => agent.name === node.data.agentName)) {
+    return [createCatalogIssue("ai-agent-unsupported", "AI 接待绑定的 Agent 不可用")];
+  }
+
+  return [];
+}
+
+function validateBranchNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  const issues: WorkflowNodeValidationIssue[] = [];
+  const branchPaths = getWorkflowBranchPaths(node.data);
+
+  if (!hasText(node.data.branchRule)) {
+    issues.push(createCatalogIssue("branch-rule-required", "条件分支需要配置条件表达式"));
+  }
+
+  if (branchPaths.some((path) => !hasText(path.label))) {
+    issues.push(createCatalogIssue("branch-path-label-required", "条件分支路径需要填写分支名称"));
+  }
+
+  return issues;
 }
 
 function createCatalogIssue(
@@ -435,4 +669,19 @@ function createCatalogIssue(
     severity: "warning",
     source: "catalog",
   };
+}
+
+function createDefaultOutputVariables(node: WorkflowNode): WorkflowVariable[] {
+  return [
+    {
+      name: "result",
+      type: "object",
+      value: node.data.metric,
+    },
+    {
+      name: "journey.next",
+      type: "string",
+      value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
+    },
+  ];
 }

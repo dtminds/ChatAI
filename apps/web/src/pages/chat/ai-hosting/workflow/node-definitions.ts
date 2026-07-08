@@ -1,29 +1,42 @@
 import type { ComponentType } from "react";
 import {
-  getWorkflowNodeCatalogEntry,
   orderedWorkflowNodeCatalog,
   workflowNodeCatalog,
 } from "./node-catalog";
 import type {
+  WorkflowNodeRenderData,
   InsertableWorkflowNodeKind,
   WorkflowNodeKind,
 } from "./types";
-import type { NodeBodyProps } from "./nodes/node-bodies";
+import type { WorkflowSourceHandleDefinition } from "./node-handle-definitions";
+import { getNodeSourceHandleDefinitions } from "./node-handle-definitions";
+import type { NodeBodyProps } from "./nodes/types";
 import { workflowNodeUiBindings } from "./node-ui-bindings";
+import { NodeSettingsPanelMap } from "./panels/registry";
 import type { NodeSettingsProps } from "./panels/types";
 
 export {
   getInsertableNodeKindsBetween,
   getInsertableNodeKindsForSource,
   getPaletteItemsByKinds,
+  getWorkflowPaletteItemGroups,
   insertableNodeKinds,
   nodeVisuals,
   paletteItems,
+  workflowNodePaletteGroups,
 } from "./node-catalog";
-export type { NodeVisual, WorkflowNodeCatalogEntry } from "./node-catalog";
+export type {
+  NodeVisual,
+  WorkflowNodeCatalogEntry,
+  WorkflowNodePaletteGroup,
+  WorkflowNodePaletteGroupId,
+  WorkflowPaletteItem,
+  WorkflowPaletteItemGroup,
+} from "./node-catalog";
 
 type NodeDefinition = (typeof workflowNodeCatalog)[WorkflowNodeKind] & {
   body: ComponentType<NodeBodyProps>;
+  getSourceHandles: (data: WorkflowNodeRenderData) => WorkflowSourceHandleDefinition[];
   settings: ComponentType<NodeSettingsProps>;
 };
 
@@ -33,6 +46,8 @@ export const nodeDefinitions = Object.fromEntries(
     {
       ...catalogEntry,
       ...workflowNodeUiBindings[kind as WorkflowNodeKind],
+      getSourceHandles: getNodeSourceHandleDefinitions,
+      settings: NodeSettingsPanelMap[kind as WorkflowNodeKind],
     },
   ]),
 ) as Record<WorkflowNodeKind, NodeDefinition>;
@@ -46,21 +61,21 @@ export function getNodeDefinition(kind: WorkflowNodeKind) {
 }
 
 export function canDeleteNodeKind(kind: WorkflowNodeKind) {
-  return getWorkflowNodeCatalogEntry(kind).canDelete;
+  return getNodeDefinition(kind).canDelete;
 }
 
 export function canDuplicateNodeKind(kind: WorkflowNodeKind) {
-  return getWorkflowNodeCatalogEntry(kind).canDuplicate;
+  return getNodeDefinition(kind).canDuplicate;
 }
 
 export function canInsertAfterNodeKind(kind: WorkflowNodeKind) {
-  return getWorkflowNodeCatalogEntry(kind).canInsertAfter;
+  return getNodeDefinition(kind).canInsertAfter;
 }
 
 export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWorkflowNodeKind {
-  return getWorkflowNodeCatalogEntry(kind).insertable;
+  return getNodeDefinition(kind).insertable;
 }
 
 export function createDefaultNodeData(kind: WorkflowNodeKind) {
-  return getWorkflowNodeCatalogEntry(kind).createDefaultData();
+  return getNodeDefinition(kind).createDefaultData();
 }

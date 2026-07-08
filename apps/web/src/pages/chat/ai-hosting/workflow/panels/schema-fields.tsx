@@ -1,6 +1,9 @@
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type {
   NodeConfigField,
   NodeConfigSection,
@@ -46,6 +49,66 @@ function NodeConfigFieldControl({
   field: NodeConfigField;
   onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
 }) {
+  if (field.kind === "option-cards") {
+    const activeValue = field.getValue(data);
+
+    return (
+      <div className="space-y-2">
+        <Label>{field.label}</Label>
+        <div className={cn("grid gap-2", field.columns === 2 ? "grid-cols-2" : "grid-cols-1")}>
+          {field.getOptions(data).map((option) => {
+            const isActive = activeValue === option.value;
+
+            return (
+              <button
+                aria-label={`选择${option.label}`}
+                aria-pressed={isActive}
+                className={cn(
+                  "flex min-h-[72px] flex-col items-start rounded-[10px] border bg-card p-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
+                  isActive && "border-primary bg-primary/5",
+                )}
+                key={option.value}
+                onClick={() => onNodeChange(field.toPatch(option.value, data, option))}
+                type="button"
+              >
+                {option.icon ? (
+                  <HugeiconsIcon icon={option.icon} size={17} strokeWidth={1.8} />
+                ) : null}
+                <span className={cn("text-sm font-medium", option.icon && "mt-2")}>
+                  {option.label}
+                </span>
+                {option.description ? (
+                  <span className="mt-1 text-xs leading-4 text-muted-foreground">
+                    {option.description}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (field.kind === "switch") {
+    return (
+      <div className="flex items-center justify-between rounded-[10px] border bg-card p-3">
+        <div>
+          <Label htmlFor={field.id}>{field.label}</Label>
+          {field.description ? (
+            <p className="mt-1 text-xs text-muted-foreground">{field.description}</p>
+          ) : null}
+        </div>
+        <Switch
+          aria-label={field.label}
+          checked={field.getValue(data)}
+          id={field.id}
+          onCheckedChange={(checked) => onNodeChange(field.toPatch(checked, data))}
+        />
+      </div>
+    );
+  }
+
   if (field.kind === "textarea") {
     return (
       <div className="space-y-2">

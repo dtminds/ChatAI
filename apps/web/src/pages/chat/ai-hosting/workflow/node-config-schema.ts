@@ -1,6 +1,4 @@
-import {
-  getWorkflowNodeCatalogEntry,
-} from "./node-catalog";
+import { getWorkflowNodeCatalogEntry } from "./node-catalog";
 import type { WorkflowNodeKind } from "./types";
 import type {
   NodeConfigField,
@@ -10,7 +8,10 @@ import type {
 export type {
   NodeConfigField,
   NodeConfigNumberField,
+  NodeConfigOptionCard,
+  NodeConfigOptionCardsField,
   NodeConfigSection,
+  NodeConfigSwitchField,
   NodeConfigTextField,
   NodeConfigTextareaField,
 } from "./node-config-types";

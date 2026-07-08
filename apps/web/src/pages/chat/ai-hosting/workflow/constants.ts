@@ -19,9 +19,3 @@ export const workflowZoomOptions = [
   { label: "50%", value: 0.5 },
   { label: "25%", value: 0.25 },
 ] as const;
-
-export const branchHandleOptions = [
-  { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-  { id: "branch-normal", label: "普通客户", operator: "ELIF", title: "CASE 2" },
-  { id: "branch-default", label: "默认路径", operator: "ELSE", title: "CASE 3" },
-] as const;

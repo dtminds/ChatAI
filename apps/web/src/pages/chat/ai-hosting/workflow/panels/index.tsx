@@ -3,6 +3,7 @@ import {
 } from "../node-config-schema";
 import type {
   InspectorTab,
+  WorkflowEdge,
   WorkflowNodeData,
   WorkflowNode,
   NodeRunRecord,
@@ -13,27 +14,31 @@ import {
   LastRunPanel,
   NodeVariablesPanel,
 } from "./inspector-tabs";
-import { PanelComponentMap } from "./registry";
 import { NodeConfigSchemaSections } from "./schema-fields";
+import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 
 export function NodeConfigPanel({
   activeTab,
+  edges,
   lastRun,
   node,
   onClose,
   onNodeChange,
   onRunNode,
   onTabChange,
+  readOnlyRunMode = false,
   variables,
 }: {
   activeTab: InspectorTab;
+  edges: WorkflowEdge[];
   lastRun?: NodeRunRecord;
   node?: WorkflowNode;
   onClose: () => void;
   onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
+  readOnlyRunMode?: boolean;
   variables?: WorkflowVariables;
 }) {
   if (!node) {
@@ -50,21 +55,21 @@ export function NodeConfigPanel({
       node={node}
       onClose={onClose}
       onRunNode={onRunNode}
-      onTabChange={onTabChange}
+      onTabChange={readOnlyRunMode ? () => undefined : onTabChange}
     >
-      {activeTab === "settings" ? (
-        <NodeSettingsForm node={node} onNodeChange={onNodeChange} />
+      {activeTab === "settings" && !readOnlyRunMode ? (
+        <NodeSettingsForm edges={edges} node={node} onNodeChange={onNodeChange} />
       ) : null}
-      {activeTab === "run" ? (
+      {activeTab === "run" || readOnlyRunMode ? (
         <LastRunPanel lastRun={lastRun} node={node} onRunNode={onRunNode} />
       ) : null}
-      {activeTab === "variables" && variables ? <NodeVariablesPanel variables={variables} /> : null}
+      {activeTab === "variables" && variables && !readOnlyRunMode ? <NodeVariablesPanel variables={variables} /> : null}
     </BasePanel>
   );
 }
 
-function NodeSettingsForm({ node, onNodeChange }: NodeSettingsProps) {
-  const SettingsPanel = PanelComponentMap[node.data.kind];
+function NodeSettingsForm({ edges, node, onNodeChange }: NodeSettingsProps) {
+  const SettingsPanel = getNodeDefinition(node.data.kind).settings;
 
   return (
     <>
@@ -74,7 +79,7 @@ function NodeSettingsForm({ node, onNodeChange }: NodeSettingsProps) {
         sections={baseNodeConfigSections}
       />
 
-      <SettingsPanel node={node} onNodeChange={onNodeChange} />
+      <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />
     </>
   );
 }

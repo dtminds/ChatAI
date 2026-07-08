@@ -1,22 +1,7 @@
-import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
-import { branchHandleOptions } from "../constants";
-import type { NodeVisual } from "../node-catalog";
-import type { WorkflowNodeKind, WorkflowNodeRenderData } from "../types";
-
-export type NodeBodyProps = {
-  data: WorkflowNodeRenderData;
-  visual: NodeVisual;
-};
-
-export const nodeBodyComponentMap: Record<WorkflowNodeKind, ComponentType<NodeBodyProps>> = {
-  action: StandardNodeBody,
-  ai: StandardNodeBody,
-  branch: BranchNodeBody,
-  goal: StandardNodeBody,
-  trigger: StandardNodeBody,
-  wait: StandardNodeBody,
-};
+import { getWorkflowBranchPaths } from "../branch-paths";
+import type { WorkflowNodeRenderData } from "../types";
+import type { NodeBodyProps } from "./types";
 
 export function StandardNodeBody({ data, visual }: NodeBodyProps) {
   return (
@@ -43,7 +28,7 @@ export function BranchNodeBody({ data, visual }: NodeBodyProps) {
         <NodeStatusRow data={data} />
       </span>
       <span className="workflow-branch-paths" aria-label="条件分支出口">
-        {branchHandleOptions.map((branch) => (
+        {getWorkflowBranchPaths(data).map((branch) => (
           <span
             className="workflow-branch-path"
             data-testid={`workflow-branch-path-${branch.id}`}

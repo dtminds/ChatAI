@@ -1,10 +1,12 @@
 import {
+  AlertCircleIcon,
   CheckmarkCircle02Icon,
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type {
   WorkflowNode,
   NodeRunRecord,
@@ -43,6 +45,58 @@ export function LastRunPanel({
     );
   }
 
+  if (lastRun.status === "running" || lastRun.status === "waiting") {
+    return (
+      <>
+        <section className="workflow-field-group rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-section)] p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--workflow-soft)] text-muted-foreground">
+              <Spinner size={16} variant="classic" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold">正在运行</h3>
+              <p className="text-xs text-muted-foreground">等待节点返回执行结果</p>
+            </div>
+          </div>
+        </section>
+
+        <FieldGroup title="输入">
+          <RuntimeBlock>{lastRun.input}</RuntimeBlock>
+        </FieldGroup>
+
+        <FieldGroup title="日志">
+          <RuntimeLogList logs={lastRun.logs} />
+        </FieldGroup>
+      </>
+    );
+  }
+
+  if (lastRun.status === "failed") {
+    return (
+      <>
+        <section className="workflow-field-group rounded-xl border border-destructive/30 bg-destructive/10 p-3">
+          <div className="flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-background text-destructive">
+              <HugeiconsIcon icon={AlertCircleIcon} size={17} strokeWidth={1.8} />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-destructive">运行失败</h3>
+              <p className="text-xs text-muted-foreground">{lastRun.errorMessage ?? lastRun.finishedAt}</p>
+            </div>
+          </div>
+        </section>
+
+        <FieldGroup title="输入">
+          <RuntimeBlock>{lastRun.input}</RuntimeBlock>
+        </FieldGroup>
+
+        <FieldGroup title="日志">
+          <RuntimeLogList logs={lastRun.logs} />
+        </FieldGroup>
+      </>
+    );
+  }
+
   return (
     <>
       <section className="workflow-field-group rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
@@ -71,14 +125,7 @@ export function LastRunPanel({
       </FieldGroup>
 
       <FieldGroup title="日志">
-        <div className="space-y-2">
-          {lastRun.logs.map((log) => (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground" key={log}>
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              <span>{log}</span>
-            </div>
-          ))}
-        </div>
+        <RuntimeLogList logs={lastRun.logs} />
       </FieldGroup>
     </>
   );
@@ -106,6 +153,19 @@ function RuntimeBlock({ children }: { children: string }) {
     <pre className="max-h-36 overflow-auto rounded-lg bg-background p-3 text-xs leading-5 text-foreground shadow-xs">
       {children}
     </pre>
+  );
+}
+
+function RuntimeLogList({ logs }: { logs: string[] }) {
+  return (
+    <div className="space-y-2">
+      {logs.map((log) => (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground" key={log}>
+          <span className="size-1.5 rounded-full bg-emerald-500" />
+          <span>{log}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -1,26 +1,21 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ReactNode } from "react";
 import { Copy01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { branchHandleOptions } from "../constants";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
   nodeVisuals,
 } from "../node-definitions";
+import { getDefaultSourceHandleId } from "../node-handle-definitions";
 import type { NodeVisual } from "../node-definitions";
 import type { WorkflowNodeRenderData } from "../types";
+import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowTargetHandle } from "./node-handles";
 
-export function WorkflowBaseNode({
+function WorkflowBaseNodeComponent({
   body,
   data,
   id,
@@ -55,20 +50,36 @@ export function WorkflowBaseNode({
           id={id}
           setActionMenuOpen={setActionMenuOpen}
         />
-        <button
+        <div
           aria-label={`${data.title} ${data.summary}`}
           className="workflow-node-select"
-          onClick={() => data.onSelect?.(id)}
-          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onSelect?.(id, {
+              additive: event.metaKey || event.ctrlKey || event.shiftKey,
+            });
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+              return;
+            }
+
+            event.preventDefault();
+            data.onSelect?.(id);
+          }}
+          role="button"
+          tabIndex={0}
         >
           <NodeHeader data={data} visual={visual} />
           {body}
-        </button>
+        </div>
         {sourceHandles}
       </div>
     </div>
   );
 }
+
+export const WorkflowBaseNode = memo(WorkflowBaseNodeComponent);
 
 function NodeHeader({
   data,
@@ -107,72 +118,100 @@ function NodeActionMenu({
   id: string;
   setActionMenuOpen: (open: boolean) => void;
 }) {
+  const menuRef = useWorkflowDismissableLayer<HTMLDivElement>({
+    enabled: actionMenuOpen,
+    onDismiss: () => setActionMenuOpen(false),
+  });
+
   return (
     <div
       className={cn(
         "workflow-node-actionbar nodrag nopan",
         (data.selected || actionMenuOpen) && "workflow-node-actionbar-visible",
       )}
+      ref={menuRef}
     >
-      <DropdownMenu modal={false} open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
-        <DropdownMenuTrigger
-          aria-label={`更多操作：${data.title}`}
-          className="workflow-node-actionbar-button"
+      <button
+        aria-expanded={actionMenuOpen}
+        aria-haspopup="menu"
+        aria-label={`更多操作：${data.title}`}
+        className="workflow-node-actionbar-button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setActionMenuOpen(!actionMenuOpen);
+        }}
+        type="button"
+      >
+        <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
+      </button>
+      {actionMenuOpen ? (
+        <div
+          aria-label={`节点操作：${data.title}`}
+          className="workflow-node-menu"
           onClick={(event) => event.stopPropagation()}
-          type="button"
+          role="menu"
         >
-          <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[132px]" side="bottom">
-          <DropdownMenuItem
+          <button
+            className="workflow-node-menu-item"
             onClick={(event) => {
               event.stopPropagation();
               data.onSelect?.(id);
               setActionMenuOpen(false);
             }}
+            role="menuitem"
+            type="button"
           >
             打开配置
-          </DropdownMenuItem>
+          </button>
           {canInsertAfterNodeKind(data.kind) ? (
-            <DropdownMenuItem
+            <button
+              className="workflow-node-menu-item"
               onClick={(event) => {
                 event.stopPropagation();
                 data.onToggleInsertMenu?.(
                   id,
-                  data.kind === "branch" ? branchHandleOptions[0].id : undefined,
+                  getDefaultSourceHandleId(data.kind, data),
                 );
                 setActionMenuOpen(false);
               }}
+              role="menuitem"
+              type="button"
             >
               添加后续节点
-            </DropdownMenuItem>
+            </button>
           ) : null}
           {canDuplicateNodeKind(data.kind) ? (
-            <DropdownMenuItem
+            <button
+              className="workflow-node-menu-item"
               onClick={(event) => {
                 event.stopPropagation();
                 data.onDuplicate?.(id);
                 setActionMenuOpen(false);
               }}
+              role="menuitem"
+              type="button"
             >
               <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={1.8} />
               复制节点
-            </DropdownMenuItem>
+            </button>
           ) : null}
           {canDeleteNodeKind(data.kind) ? (
-            <DropdownMenuItem
+            <button
+              className="workflow-node-menu-item"
               onClick={(event) => {
                 event.stopPropagation();
                 data.onDelete?.(id);
                 setActionMenuOpen(false);
               }}
+              role="menuitem"
+              type="button"
             >
               <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
               删除节点
-            </DropdownMenuItem>
+            </button>
           ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </div>
+      ) : null}
     </div>
   );
 }

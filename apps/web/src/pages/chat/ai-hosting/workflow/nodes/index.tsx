@@ -1,13 +1,15 @@
+import { memo } from "react";
 import type { NodeProps } from "@xyflow/react";
-import { branchHandleOptions } from "../constants";
-import { getBranchHandleTop } from "../layout";
-import { nodeVisuals } from "../node-definitions";
+import {
+  getDefaultSourceHandleId,
+} from "../node-handle-definitions";
+import { getNodeDefinition, nodeVisuals } from "../node-definitions";
 import type { WorkflowRenderNode } from "../types";
 import { WorkflowBaseNode } from "./base-node";
 import { WorkflowSourceHandle } from "./node-handles";
 import { NodeComponentMap } from "./registry";
 
-export function WorkflowNodeCard({ data, id }: NodeProps<WorkflowRenderNode>) {
+function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) {
   const NodeComponent = NodeComponentMap[data.kind];
 
   return (
@@ -20,6 +22,10 @@ export function WorkflowNodeCard({ data, id }: NodeProps<WorkflowRenderNode>) {
   );
 }
 
+export const WorkflowNodeCard = memo(WorkflowNodeCardComponent, (previousProps, nextProps) =>
+  previousProps.id === nextProps.id
+  && previousProps.data === nextProps.data);
+
 function WorkflowNodeSourceHandles({
   data,
   id,
@@ -28,38 +34,27 @@ function WorkflowNodeSourceHandles({
     return null;
   }
 
-  if (data.kind === "branch") {
-    return (
-      <>
-        {branchHandleOptions.map((branch) => (
-          <WorkflowSourceHandle
-            className="workflow-branch-path-handle"
-            handleId={branch.id}
-            insertMenuOpen={
-              data.insertMenuOpen
-              && (data.insertMenuSourceHandle ?? branchHandleOptions[0].id) === branch.id
-            }
-            key={branch.id}
-            label={branch.label}
-            nodeId={id}
-            onToggleInsertMenu={data.onToggleInsertMenu}
-            showInsertAction
-            title={data.title}
-            top={getBranchHandleTop(branch.id)}
-          />
-        ))}
-      </>
-    );
-  }
+  const handles = getNodeDefinition(data.kind).getSourceHandles(data);
 
   return (
-    <WorkflowSourceHandle
-      insertMenuOpen={data.insertMenuOpen}
-      nodeId={id}
-      onToggleInsertMenu={data.onToggleInsertMenu}
-      showInsertAction
-      title={data.title}
-      top={16}
-    />
+    <>
+      {handles.map((handle) => (
+        <WorkflowSourceHandle
+          className={handle.id ? "workflow-branch-path-handle" : undefined}
+          handleId={handle.id}
+          insertMenuOpen={
+            Boolean(data.insertMenuOpen)
+            && (data.insertMenuSourceHandle ?? getDefaultSourceHandleId(data.kind, data)) === handle.id
+          }
+          key={handle.id ?? "default"}
+          label={handle.label}
+          nodeId={id}
+          onToggleInsertMenu={data.onToggleInsertMenu}
+          showInsertAction
+          title={data.title}
+          top={handle.top}
+        />
+      ))}
+    </>
   );
 }

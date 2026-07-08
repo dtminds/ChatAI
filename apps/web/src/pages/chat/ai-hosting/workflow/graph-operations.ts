@@ -505,12 +505,18 @@ export function deleteEdgesOperation(
   });
 }
 
-export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperation {
+export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperation | undefined {
+  const nextDraft = {
+    ...draft,
+    nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
+  };
+
+  if (isWorkflowGraphEqual(draft, nextDraft)) {
+    return undefined;
+  }
+
   return createWorkflowGraphOperation({
-    draft: {
-      ...draft,
-      nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
-    },
+    draft: nextDraft,
     event: "layout:organize",
   });
 }

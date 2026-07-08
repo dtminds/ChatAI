@@ -470,13 +470,21 @@ describe("workflow graph operations", () => {
       nodes: [...draft.nodes, insertedNode],
     });
 
-    const positionById = new Map(operation.draft.nodes.map((node) => [node.id, node.position]));
+    const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
-    expect(operation.event).toBe("layout:organize");
+    expect(operation?.event).toBe("layout:organize");
     expect(positionById.get("trigger")?.x).toBeLessThan(positionById.get("wait-2d")?.x ?? 0);
     expect(positionById.get("wait-2d")?.x).toBeLessThan(positionById.get("ai-mid")?.x ?? 0);
     expect(positionById.get("ai-mid")?.x).toBeLessThan(positionById.get("branch-intent")?.x ?? 0);
     expect(positionById.get("branch-intent")?.x).toBeLessThan(positionById.get("action-message")?.x ?? 0);
+  });
+
+  it("skips auto arrange operations when the layout is already current", () => {
+    const draft = createDraft();
+    const arrangedOperation = arrangeNodesOperation(draft);
+
+    expect(arrangedOperation).toBeDefined();
+    expect(arrangeNodesOperation(arrangedOperation!.draft)).toBeUndefined();
   });
 
   it("arranges branch targets by their source handle order", () => {
@@ -501,7 +509,8 @@ describe("workflow graph operations", () => {
       nodes: [...draft.nodes, defaultNode, normalNode],
     });
 
-    const positionById = new Map(operation.draft.nodes.map((node) => [node.id, node.position]));
+    expect(operation).toBeDefined();
+    const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
     expect(positionById.get("action-message")?.x).toBe(positionById.get("action-normal")?.x);
     expect(positionById.get("action-normal")?.x).toBe(positionById.get("action-default")?.x);
@@ -552,7 +561,8 @@ describe("workflow graph operations", () => {
       ],
     });
 
-    const positionById = new Map(operation.draft.nodes.map((node) => [node.id, node.position]));
+    expect(operation).toBeDefined();
+    const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
     expect(positionById.get("action-first")?.y).toBeLessThan(positionById.get("action-second")?.y ?? 0);
     expect(positionById.get("action-second")?.y).toBeLessThan(positionById.get("action-fallback")?.y ?? 0);

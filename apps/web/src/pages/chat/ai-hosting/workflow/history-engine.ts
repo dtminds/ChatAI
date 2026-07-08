@@ -26,7 +26,10 @@ export type WorkflowHistoryEntry = {
   afterDraft: WorkflowDraft;
   beforeDraft: WorkflowDraft;
   event: WorkflowHistoryEvent;
+  id: string;
+  label: string;
   meta?: WorkflowHistoryEventMeta;
+  sequence: number;
 };
 
 export type WorkflowHistoryState = WorkflowHistoryEntry;
@@ -34,6 +37,7 @@ export type WorkflowHistoryState = WorkflowHistoryEntry;
 export type WorkflowHistoryReducerState = {
   currentDraft: WorkflowDraft;
   futureStates: WorkflowHistoryEntry[];
+  nextSequence: number;
   pastStates: WorkflowHistoryEntry[];
 };
 
@@ -79,6 +83,7 @@ export function createWorkflowHistoryInitialState(
   return {
     currentDraft: sanitizeDraft(initialDraft),
     futureStates: [],
+    nextSequence: 1,
     pastStates: [],
   };
 }
@@ -98,9 +103,10 @@ export function workflowHistoryReducer(
     return {
       currentDraft: nextDraft,
       futureStates: [],
+      nextSequence: state.nextSequence + 1,
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        createHistoryEntry(previousDraft, nextDraft, action.event, action.meta),
+        createHistoryEntry(previousDraft, nextDraft, action.event, state.nextSequence, action.meta),
       ],
     };
   }
@@ -116,9 +122,10 @@ export function workflowHistoryReducer(
     return {
       currentDraft: nextDraft,
       futureStates: [],
+      nextSequence: state.nextSequence + 1,
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        createHistoryEntry(previousDraft, nextDraft, action.event, action.meta),
+        createHistoryEntry(previousDraft, nextDraft, action.event, state.nextSequence, action.meta),
       ],
     };
   }
@@ -155,6 +162,7 @@ export function workflowHistoryReducer(
         previousEntry,
         ...state.futureStates.slice(0, WORKFLOW_HISTORY_LIMIT - 1),
       ],
+      nextSequence: state.nextSequence,
       pastStates: state.pastStates.slice(0, -1),
     };
   }
@@ -169,6 +177,7 @@ export function workflowHistoryReducer(
     return {
       currentDraft: preserveCurrentViewport(nextEntry.afterDraft, state.currentDraft),
       futureStates: state.futureStates.slice(1),
+      nextSequence: state.nextSequence,
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
         nextEntry,
@@ -193,13 +202,17 @@ export function createHistoryEntry(
   beforeDraft: WorkflowDraft,
   afterDraft: WorkflowDraft,
   event: WorkflowHistoryEvent,
+  sequence: number,
   meta?: WorkflowHistoryEventMeta,
 ): WorkflowHistoryEntry {
   return {
     afterDraft: sanitizeDraft(afterDraft),
     beforeDraft: sanitizeDraft(beforeDraft),
     event,
+    id: `history-${sequence.toString(36)}`,
+    label: getWorkflowHistoryEventLabel(event),
     meta,
+    sequence,
   };
 }
 

@@ -71,6 +71,7 @@ describe("workflowHistoryReducer", () => {
     expect(state.currentDraft.nodes[0].data.title).toBe("发送消息 0");
     expect(state.currentDraft.nodes[0].data.onDelete).toBeUndefined();
     expect(state.currentDraft.edges[0].data?.onInsertBetween).toBeUndefined();
+    expect(state.nextSequence).toBe(1);
   });
 
   it("skips unchanged commits", () => {
@@ -109,6 +110,9 @@ describe("workflowHistoryReducer", () => {
     const undoneState = workflowHistoryReducer(movedState, { type: "undo" });
 
     expect(undoneState.currentDraft.nodes[0].position.x).toBe(0);
+    expect(undoneState.futureStates[0].id).toBe("history-1");
+    expect(undoneState.futureStates[0].label).toBe("移动节点");
+    expect(undoneState.futureStates[0].sequence).toBe(1);
     expect(undoneState.futureStates[0].beforeDraft.nodes[0].position.x).toBe(0);
     expect(undoneState.futureStates[0].afterDraft.nodes[0].position.x).toBe(10);
     expect(undoneState.futureStates[0].event).toBe("node:move");
@@ -116,6 +120,7 @@ describe("workflowHistoryReducer", () => {
 
     const redoneState = workflowHistoryReducer(undoneState, { type: "redo" });
     expect(redoneState.currentDraft.nodes[0].position.x).toBe(10);
+    expect(redoneState.pastStates[0].id).toBe("history-1");
 
     const branchedState = workflowHistoryReducer(undoneState, {
       event: "node:move",
@@ -125,6 +130,8 @@ describe("workflowHistoryReducer", () => {
     });
     expect(branchedState.currentDraft.nodes[0].position.x).toBe(20);
     expect(branchedState.futureStates).toHaveLength(0);
+    expect(branchedState.pastStates[0].id).toBe("history-2");
+    expect(branchedState.nextSequence).toBe(3);
   });
 
   it("preserves the current viewport when applying undo and redo snapshots", () => {

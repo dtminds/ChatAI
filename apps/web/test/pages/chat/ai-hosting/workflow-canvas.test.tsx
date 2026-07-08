@@ -1,6 +1,9 @@
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createInitialNodes,
+} from "@/pages/chat/ai-hosting/workflow/graph";
 import { WorkflowCanvas } from "@/pages/chat/ai-hosting/workflow/canvas/workflow-canvas";
 
 const reactFlowProps = vi.hoisted(() => ({
@@ -71,5 +74,50 @@ describe("WorkflowCanvas", () => {
     expect(reactFlowProps.latest?.panOnScroll).toBe(false);
     expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
     expect(reactFlowProps.latest?.selectionOnDrag).toBe(false);
+  });
+
+  it("keeps React Flow node position and selection changes local to the canvas", () => {
+    const onNodesChange = vi.fn();
+    renderWorkflowCanvas({
+      nodes: createInitialNodes(),
+      onNodesChange,
+    });
+
+    const handleNodesChange = reactFlowProps.latest?.onNodesChange as NonNullable<
+      ComponentProps<typeof WorkflowCanvas>["onNodesChange"]
+    >;
+
+    act(() => {
+      handleNodesChange([
+        {
+          dragging: true,
+          id: "wait-2d",
+          position: { x: 420, y: 120 },
+          type: "position",
+        },
+        {
+          id: "action-message",
+          selected: true,
+          type: "select",
+        },
+      ]);
+    });
+
+    expect(onNodesChange).not.toHaveBeenCalled();
+
+    act(() => {
+      handleNodesChange([
+        {
+          id: "wait-2d",
+          type: "remove",
+        },
+      ]);
+    });
+
+    expect(onNodesChange).toHaveBeenCalledTimes(1);
+    expect(onNodesChange).toHaveBeenCalledWith([{
+      id: "wait-2d",
+      type: "remove",
+    }]);
   });
 });

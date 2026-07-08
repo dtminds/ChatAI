@@ -60,8 +60,8 @@ export function buildWorkflowValidationSummaryFromResult(
     .filter((item) => item.issues.length > 0);
   const triggerConfigIssues = triggerIssue?.issues.filter(
     (issue) => issue.source !== "graph",
-  );
-  const hasDisconnectedNode = validation.disconnectedNodes.length > 0;
+  ) ?? [];
+  const hasDisconnectedNode = validation.disconnectedNodes.length > 0 || disconnectedIssues.length > 0;
   const hasGraphStructureIssue = validation.graphIssues.some((issue) =>
     issue.code !== "node-disconnected" && issue.code !== "goal-unreachable",
   ) || disconnectedIssues.some(({ issues }) =>
@@ -70,11 +70,11 @@ export function buildWorkflowValidationSummaryFromResult(
   const summary: WorkflowPublishCheckSummaryItem[] = [
     {
       ...getBlockingScope(),
-      description: validation.triggerNode && !triggerIssue
+      description: validation.triggerNode && !triggerConfigIssues.length
         ? `当前人群：${validation.triggerNode.data.audience}`
-        : triggerConfigIssues?.[0]?.message ?? "缺少触发节点",
+        : triggerConfigIssues[0]?.message ?? "缺少触发节点",
       id: "trigger",
-      status: validation.triggerNode && !triggerIssue ? "ready" : "warning",
+      status: validation.triggerNode && !triggerConfigIssues.length ? "ready" : "warning",
       title: "触发人群",
     },
     {

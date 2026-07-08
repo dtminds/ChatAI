@@ -313,6 +313,43 @@ describe("buildPublishChecks", () => {
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
+  it("keeps trigger summary scoped to trigger configuration issues", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const triggerNode = nodes.find((node) => node.id === "trigger")!;
+    const validation = validateWorkflowDraft(nodes, edges);
+    const summary = buildWorkflowValidationSummaryFromResult(nodes, {
+      ...validation,
+      graphIssues: [],
+      nodeIssues: [
+        {
+          issues: [
+            {
+              code: "node-disconnected",
+              message: "触发节点存在图结构问题",
+              severity: "warning",
+              source: "graph",
+            },
+          ],
+          node: triggerNode,
+        },
+      ],
+    });
+
+    expect(summary.summary.find((check) => check.id === "trigger")).toEqual(expect.objectContaining({
+      description: `当前人群：${triggerNode.data.audience}`,
+      status: "ready",
+    }));
+    expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
+    expect(summary.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: "connectivity",
+        id: "node-connectivity-trigger",
+        nodeId: "trigger",
+      }),
+    ]));
+  });
+
   it("keeps AI nodes out of the publish summary when no AI node is present", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 

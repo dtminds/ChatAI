@@ -54,9 +54,10 @@ describe("workflow node catalog", () => {
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
       expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
       expect(definition.getSourceHandles).toBe(getNodeSourceHandleDefinitions);
+      expect(definition.getTargetHandles).toBe(getNodeTargetHandleDefinitions);
       expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));
       expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
-      expect(getNodeTargetHandleDefinitions(defaultData)).toEqual(expect.any(Array));
+      expect(definition.getTargetHandles(defaultData)).toEqual(getNodeTargetHandleDefinitions(defaultData));
       expect(defaultData.kind).toBe(kind);
       expect(defaultData.title).toBeTruthy();
       expect(defaultData.summary).toBeTruthy();

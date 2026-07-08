@@ -6,7 +6,10 @@ import {
 import { getNodeDefinition, nodeVisuals } from "../node-definitions";
 import type { WorkflowRenderNode } from "../types";
 import { WorkflowBaseNode } from "./base-node";
-import { WorkflowSourceHandle } from "./node-handles";
+import {
+  WorkflowSourceHandle,
+  WorkflowTargetHandle,
+} from "./node-handles";
 
 function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) {
   const definition = getNodeDefinition(data.kind);
@@ -18,6 +21,7 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
       data={data}
       id={id}
       sourceHandles={<WorkflowNodeSourceHandles data={data} id={id} />}
+      targetHandles={<WorkflowNodeTargetHandles data={data} />}
     />
   );
 }
@@ -54,6 +58,24 @@ function WorkflowNodeSourceHandles({
           title={data.title}
           top={handle.top}
         />
+      ))}
+    </>
+  );
+}
+
+function WorkflowNodeTargetHandles({
+  data,
+}: Pick<NodeProps<WorkflowRenderNode>, "data">) {
+  const handles = getNodeDefinition(data.kind).getTargetHandles(data);
+
+  if (!handles.length) {
+    return null;
+  }
+
+  return (
+    <>
+      {handles.map((handle) => (
+        <WorkflowTargetHandle key={handle.id ?? "default"} />
       ))}
     </>
   );

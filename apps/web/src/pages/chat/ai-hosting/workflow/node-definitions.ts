@@ -8,8 +8,14 @@ import type {
   InsertableWorkflowNodeKind,
   WorkflowNodeKind,
 } from "./types";
-import type { WorkflowSourceHandleDefinition } from "./node-handle-definitions";
-import { getNodeSourceHandleDefinitions } from "./node-handle-definitions";
+import type {
+  WorkflowSourceHandleDefinition,
+  WorkflowTargetHandleDefinition,
+} from "./node-handle-definitions";
+import {
+  getNodeSourceHandleDefinitions,
+  getNodeTargetHandleDefinitions,
+} from "./node-handle-definitions";
 import type { NodeBodyProps } from "./nodes/types";
 import { workflowNodeUiBindings } from "./node-ui-bindings";
 import type { NodeSettingsProps } from "./panels/types";
@@ -36,6 +42,7 @@ export type {
 type NodeDefinition = (typeof workflowNodeCatalog)[WorkflowNodeKind] & {
   body: ComponentType<NodeBodyProps>;
   getSourceHandles: (data: WorkflowNodeRenderData) => WorkflowSourceHandleDefinition[];
+  getTargetHandles: (data: WorkflowNodeRenderData) => WorkflowTargetHandleDefinition[];
   settings: ComponentType<NodeSettingsProps>;
 };
 
@@ -46,6 +53,7 @@ export const nodeDefinitions = Object.fromEntries(
       ...catalogEntry,
       ...workflowNodeUiBindings[kind as WorkflowNodeKind],
       getSourceHandles: getNodeSourceHandleDefinitions,
+      getTargetHandles: getNodeTargetHandleDefinitions,
     },
   ]),
 ) as Record<WorkflowNodeKind, NodeDefinition>;

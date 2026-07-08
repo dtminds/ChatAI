@@ -18,18 +18,19 @@ import {
 import { getDefaultSourceHandleId } from "../node-handle-definitions";
 import type { NodeVisual } from "../node-definitions";
 import type { WorkflowNodeRenderData } from "../types";
-import { WorkflowTargetHandle } from "./node-handles";
 
 function WorkflowBaseNodeComponent({
   body,
   data,
   id,
   sourceHandles,
+  targetHandles,
 }: {
   body: ReactNode;
   data: WorkflowNodeRenderData;
   id: string;
   sourceHandles?: ReactNode;
+  targetHandles?: ReactNode;
 }) {
   const visual = nodeVisuals[data.kind];
   const isSelected = Boolean(data.selected);
@@ -48,7 +49,7 @@ function WorkflowBaseNodeComponent({
           data.kind === "branch" && "workflow-node-card-branch",
         )}
       >
-        {data.kind !== "trigger" ? <WorkflowTargetHandle /> : null}
+        {targetHandles}
         <NodeActionMenu
           actionMenuOpen={actionMenuOpen}
           data={data}

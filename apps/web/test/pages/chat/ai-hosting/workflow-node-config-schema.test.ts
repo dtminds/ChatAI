@@ -109,7 +109,7 @@ describe("workflow node config schema", () => {
         code: "action-type-required",
         message: "营销动作需要选择动作类型",
         severity: "warning",
-        source: "catalog",
+        source: "config",
       },
     ]);
   });
@@ -130,7 +130,7 @@ describe("workflow node config schema", () => {
         code: "wait-delay-required",
         message: "等待节点需要配置等待天数",
         severity: "warning",
-        source: "catalog",
+        source: "config",
       },
     ]);
   });

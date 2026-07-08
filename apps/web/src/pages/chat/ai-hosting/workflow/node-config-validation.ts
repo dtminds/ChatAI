@@ -25,7 +25,7 @@ function validateNodeConfigField(
   const issues: WorkflowNodeValidationIssue[] = [];
 
   if (field.validation?.required && !hasRequiredConfigValue(validationValue)) {
-    issues.push(createCatalogIssue(field.validation.required));
+    issues.push(createConfigIssue(field.validation.required));
   }
 
   if (field.kind === "number" && field.validation?.number) {
@@ -34,7 +34,7 @@ function validateNodeConfigField(
       && (field.min === undefined || validationValue >= field.min);
 
     if (!isValidNumber) {
-      issues.push(createCatalogIssue(field.validation.number));
+      issues.push(createConfigIssue(field.validation.number));
     }
   }
 
@@ -58,7 +58,7 @@ function hasRequiredConfigValue(value: unknown) {
   return value !== null && value !== undefined;
 }
 
-function createCatalogIssue(issue: {
+function createConfigIssue(issue: {
   code: string;
   message: string;
 }): WorkflowNodeValidationIssue {
@@ -66,6 +66,6 @@ function createCatalogIssue(issue: {
     code: issue.code,
     message: issue.message,
     severity: "warning",
-    source: "catalog",
+    source: "config",
   };
 }

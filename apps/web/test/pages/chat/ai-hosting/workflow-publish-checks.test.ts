@@ -94,7 +94,7 @@ describe("buildPublishChecks", () => {
         code: "branch-rule-required",
         message: "条件分支需要配置条件表达式",
         severity: "warning",
-        source: "catalog",
+        source: "config",
       },
     ]);
     expect(validation.nodeIssues.find((item) => item.node.id === "action-message")?.issues).toEqual([
@@ -174,7 +174,7 @@ describe("buildPublishChecks", () => {
         code: "goal-conversion-required",
         message: "目标节点需要配置有效转化指标",
         severity: "warning",
-        source: "catalog",
+        source: "config",
       },
     ]);
   });
@@ -221,7 +221,7 @@ describe("buildPublishChecks", () => {
         code: "branch-rule-required",
         message: "条件分支需要配置条件表达式",
         severity: "warning",
-        source: "catalog",
+        source: "config",
       },
     ]);
     expect(validateWorkflowNodeConfig(disconnectedNode, nodes, [])).toEqual([]);

@@ -1,8 +1,10 @@
 import { DEFAULT_WORKFLOW_VIEWPORT } from "./graph";
-import { normalizeWorkflowBranchPaths } from "./branch-paths";
 import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
-import { createDefaultNodeData } from "./node-definition-core";
+import {
+  createDefaultNodeData,
+  getNodeDefinitionCore,
+} from "./node-definition-core";
 import { isWorkflowNodeKind } from "./node-catalog";
 import type {
   WorkflowEdge,
@@ -182,15 +184,12 @@ function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
     ...rawPersistableData
   } = data;
   const persistableData = sanitizePersistableDataRecord(rawPersistableData);
+  const definition = getNodeDefinitionCore(persistableData.kind);
 
-  if (persistableData.kind === "branch") {
-    return {
-      ...persistableData,
-      branchPaths: normalizeWorkflowBranchPaths(branchPaths),
-    };
-  }
-
-  return persistableData;
+  return definition.sanitizeData?.({
+    ...persistableData,
+    branchPaths,
+  }) ?? persistableData;
 }
 
 function sanitizeNodeForDraft(node: WorkflowNode): WorkflowNode {

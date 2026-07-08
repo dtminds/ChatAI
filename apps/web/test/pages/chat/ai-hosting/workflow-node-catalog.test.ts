@@ -87,6 +87,7 @@ describe("workflow node catalog", () => {
       expect(definition.role).toBe(catalogEntry.role);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
+      expect(definition.sanitizeData).toBe(catalogEntry.sanitizeData);
       expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
       expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);

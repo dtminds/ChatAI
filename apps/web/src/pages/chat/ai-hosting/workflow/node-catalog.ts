@@ -32,6 +32,7 @@ import {
   getBranchPathTop,
   createDefaultBranchPaths,
   getWorkflowBranchPaths,
+  normalizeWorkflowBranchPaths,
 } from "./branch-paths";
 import type { NodeConfigSection } from "./node-config-types";
 import type {
@@ -88,6 +89,7 @@ export type WorkflowNodeCatalogEntry = {
   paletteLabel?: string;
   paletteGroup?: WorkflowNodePaletteGroupId;
   role?: WorkflowNodeRole;
+  sanitizeData?: (data: WorkflowNodeData) => WorkflowNodeData;
   getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
   getSourceHandles: (data: WorkflowNodeData) => WorkflowSourceHandleDefinition[];
   getTargetHandles: (data: WorkflowNodeData) => WorkflowTargetHandleDefinition[];
@@ -368,6 +370,10 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteGroup: "logic",
     paletteLabel: "条件分支",
     getOutputVariables: createDefaultOutputVariables,
+    sanitizeData: (data) => ({
+      ...data,
+      branchPaths: normalizeWorkflowBranchPaths(data.branchPaths),
+    }),
     getSourceHandles: createBranchSourceHandles,
     getTargetHandles: createDefaultTargetHandles,
     sort: 20,

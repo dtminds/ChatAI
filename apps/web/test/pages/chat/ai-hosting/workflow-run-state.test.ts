@@ -107,6 +107,7 @@ describe("workflowRunReducer", () => {
 
   it("archives resolved workflow runs and can enter history preview", () => {
     const draft = createWorkflowDraft();
+    draft.nodes[0]!.data._runtimeStatus = "selected";
     const pendingRun = createPendingWorkflowRun({
       draft,
       runId: "pending-run",
@@ -152,6 +153,7 @@ describe("workflowRunReducer", () => {
     draft.nodes[0]!.data.title = "后续编辑的节点标题";
 
     expect(pendingRun.draft.nodes[0]?.data.title).toBe("AI 接待");
+    expect(pendingRun.draft.nodes[0]?.data._runtimeStatus).toBeUndefined();
 
     const adapterRun = createWorkflowRunRecord(draft, {
       id: "",
@@ -183,6 +185,7 @@ describe("workflowRunReducer", () => {
     adapterRun.trace[0]!.logs.push("adapter trace 后续日志");
 
     expect(state.activeRun?.draft.nodes[0]?.data.title).toBe("后续编辑的节点标题");
+    expect(state.activeRun?.draft.nodes[0]?.data._runtimeStatus).toBeUndefined();
     expect(state.activeRun?.nodeRuns["ai-node"]?.logs).toEqual(["completed"]);
     expect(state.activeRun?.trace[0]?.logs).toEqual(["completed"]);
     expect(state.runHistory[0]?.draft.nodes[0]?.data.title).toBe("后续编辑的节点标题");

@@ -35,6 +35,8 @@ describe("workflow DSL", () => {
                 ...node,
                 data: {
                   ...node.data,
+                  _connectedSourceHandleIds: ["source"],
+                  _runtimeStatus: "selected",
                   onDelete: vi.fn(),
                   selected: true,
                 },
@@ -70,6 +72,10 @@ describe("workflow DSL", () => {
     expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").zIndex)
       .toBeUndefined();
     expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data.onDelete)
+      .toBeUndefined();
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data._connectedSourceHandleIds)
+      .toBeUndefined();
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data._runtimeStatus)
       .toBeUndefined();
   });
 

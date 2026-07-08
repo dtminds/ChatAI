@@ -188,8 +188,9 @@ function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
     onSelect: _onSelect,
     onToggleInsertMenu: _onToggleInsertMenu,
     selected: _selected,
-    ...persistableData
+    ...rawPersistableData
   } = data;
+  const persistableData = sanitizePersistableDataRecord(rawPersistableData);
 
   if (persistableData.kind === "branch") {
     return {
@@ -220,10 +221,21 @@ function sanitizeEdgeData(data: WorkflowEdgeData | undefined): WorkflowEdgeData 
     insertMenuOpen: _insertMenuOpen,
     onInsertBetween: _onInsertBetween,
     onToggleInsertMenu: _onToggleInsertMenu,
-    ...persistableData
+    ...rawPersistableData
   } = data;
+  const persistableData = sanitizePersistableDataRecord(rawPersistableData);
 
   return persistableData;
+}
+
+function sanitizePersistableDataRecord<TData extends Record<string, unknown>>(
+  data: TData,
+): TData {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key, value]) =>
+      !key.startsWith("_") && typeof value !== "function",
+    ),
+  ) as TData;
 }
 
 function sanitizeEdgeForDraft(edge: WorkflowEdge): WorkflowEdge {

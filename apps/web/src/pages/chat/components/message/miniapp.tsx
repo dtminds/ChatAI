@@ -80,7 +80,9 @@ export function MiniAppMessageCard({
 
       <div className="mt-2.5 flex min-w-0 items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
         {normalizedFooterNote ? (
-          <span className="min-w-0 truncate">{normalizedFooterNote}</span>
+          <span className="min-w-0 truncate" title={normalizedFooterNote}>
+            {normalizedFooterNote}
+          </span>
         ) : (
           <>
             <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />

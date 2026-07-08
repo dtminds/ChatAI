@@ -545,7 +545,10 @@ describe("material collection components", () => {
       />,
     );
 
-    expect(screen.getByText("备注：周一答题备注")).toBeInTheDocument();
+    expect(screen.getByText("备注：周一答题备注")).toHaveAttribute(
+      "title",
+      "备注：周一答题备注",
+    );
     expect(screen.queryByTestId("mini-program-mark")).not.toBeInTheDocument();
 
     rerender(

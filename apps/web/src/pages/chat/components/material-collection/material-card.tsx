@@ -353,8 +353,8 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
 }
 
 function getMiniProgramMaterialFooterNote(item: MaterialCollectionItem) {
-  const note = item.title.trim();
-  const appDescription = readString(item.content.description);
+  const note = readString(item.title);
+  const appDescription = readString(item.content?.description);
 
   return note && note !== appDescription ? `备注：${note}` : undefined;
 }

@@ -33,8 +33,15 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     dispatch({ event, meta, type: "commit", updateDraft });
   }, []);
 
-  const replaceDraft = useCallback((updateDraft: (draft: WorkflowDraft) => WorkflowDraft) => {
-    dispatch({ type: "replace", updateDraft });
+  const replaceDraft = useCallback((
+    updateDraft: (draft: WorkflowDraft) => WorkflowDraft,
+    options: { clearFuture?: boolean } = {},
+  ) => {
+    dispatch({ clearFuture: options.clearFuture, type: "replace", updateDraft });
+  }, []);
+
+  const replaceDraftTransient = useCallback((updateDraft: (draft: WorkflowDraft) => WorkflowDraft) => {
+    dispatch({ type: "replace-transient", updateDraft });
   }, []);
 
   const resetDraft = useCallback((draft: WorkflowDraft) => {
@@ -76,6 +83,7 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     pastStates,
     redo,
     replaceDraft,
+    replaceDraftTransient,
     resetDraft,
     undo,
   };

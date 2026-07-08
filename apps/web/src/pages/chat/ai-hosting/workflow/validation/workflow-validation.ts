@@ -1,9 +1,19 @@
-import { getWorkflowNodeCatalogEntry } from "../node-catalog";
+import { getNodeDefinition } from "../node-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeValidationIssue,
 } from "../types";
+import {
+  validateWorkflowGraph,
+} from "./workflow-graph-validation";
+import type {
+  WorkflowGraphValidationIssue,
+} from "./workflow-graph-validation";
+export type {
+  WorkflowGraphValidationIssue,
+  WorkflowGraphValidationResult,
+} from "./workflow-graph-validation";
 
 export type WorkflowValidationNodeIssue = {
   issues: WorkflowNodeValidationIssue[];
@@ -14,9 +24,12 @@ export type WorkflowValidationResult = {
   configuredAiNodes: WorkflowNode[];
   disconnectedNodes: WorkflowNode[];
   goalNode?: WorkflowNode;
+  graphIssues: WorkflowGraphValidationIssue[];
+  maxDepth: number;
   nodeIssues: WorkflowValidationNodeIssue[];
   reachableNodeIds: Set<string>;
   triggerNode?: WorkflowNode;
+  validNodes: WorkflowNode[];
 };
 
 export function validateWorkflowDraft(
@@ -25,15 +38,14 @@ export function validateWorkflowDraft(
 ): WorkflowValidationResult {
   const triggerNode = nodes.find((node) => node.data.kind === "trigger");
   const goalNode = nodes.find((node) => node.data.kind === "goal");
-  const reachableNodeIds = getReachableNodeIds(triggerNode?.id, edges);
-  const disconnectedNodes = triggerNode
-    ? nodes.filter((node) => !reachableNodeIds.has(node.id))
-    : nodes.filter((node) => node.data.kind !== "trigger");
+  const graphValidation = validateWorkflowGraph(nodes, edges);
+  const { reachableNodeIds } = graphValidation;
+  const disconnectedNodes = nodes.filter((node) => graphValidation.disconnectedNodeIds.has(node.id));
   const nodeIssues = nodes
     .map((node) => ({
       issues: [
-        ...validateWorkflowNode(node, nodes, edges),
-        ...validateWorkflowNodeConnectivity(node, disconnectedNodes, triggerNode?.id),
+        ...validateWorkflowNodeConfig(node, nodes, edges),
+        ...validateWorkflowNodeGraphState(node, disconnectedNodes, triggerNode?.id),
       ],
       node,
     }))
@@ -46,35 +58,25 @@ export function validateWorkflowDraft(
     configuredAiNodes,
     disconnectedNodes,
     goalNode,
+    graphIssues: graphValidation.graphIssues,
+    maxDepth: graphValidation.maxDepth,
     nodeIssues,
     reachableNodeIds,
     triggerNode,
+    validNodes: graphValidation.validNodes,
   };
 }
 
-function validateWorkflowNode(
+export function validateWorkflowNodeConfig(
   node: WorkflowNode,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {
-  const entry = getWorkflowNodeCatalogEntry(node.data.kind);
-  const issues = entry.validate?.(node, { edges, nodes }) ?? [];
-
-  if (issues.length === 0 && node.data.status === "warning") {
-    return [
-      {
-        code: "node-runtime-warning",
-        message: "节点仍需补全配置",
-        severity: "warning",
-        source: "runtime",
-      },
-    ];
-  }
-
-  return issues;
+  const definition = getNodeDefinition(node.data.kind);
+  return definition.validate?.(node, { edges, nodes }) ?? [];
 }
 
-function validateWorkflowNodeConnectivity(
+export function validateWorkflowNodeGraphState(
   node: WorkflowNode,
   disconnectedNodes: WorkflowNode[],
   triggerNodeId: string | undefined,
@@ -91,36 +93,6 @@ function validateWorkflowNodeConnectivity(
       source: "runtime",
     },
   ];
-}
-
-function getReachableNodeIds(
-  startNodeId: string | undefined,
-  edges: WorkflowEdge[],
-) {
-  const reachableNodeIds = new Set<string>();
-  if (!startNodeId) {
-    return reachableNodeIds;
-  }
-
-  const outgoingEdges = new Map<string, string[]>();
-  for (const edge of edges) {
-    const targets = outgoingEdges.get(edge.source) ?? [];
-    targets.push(edge.target);
-    outgoingEdges.set(edge.source, targets);
-  }
-
-  const pending = [startNodeId];
-  while (pending.length > 0) {
-    const nodeId = pending.shift();
-    if (!nodeId || reachableNodeIds.has(nodeId)) {
-      continue;
-    }
-
-    reachableNodeIds.add(nodeId);
-    pending.push(...(outgoingEdges.get(nodeId) ?? []));
-  }
-
-  return reachableNodeIds;
 }
 
 function hasText(value: string | undefined) {

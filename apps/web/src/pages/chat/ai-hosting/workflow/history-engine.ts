@@ -1,5 +1,5 @@
 import {
-  isWorkflowDraftEqual,
+  isWorkflowGraphEqual,
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import type { WorkflowDraft } from "./types";
@@ -23,7 +23,8 @@ export type WorkflowHistoryEventMeta = {
 };
 
 export type WorkflowHistoryEntry = {
-  draft: WorkflowDraft;
+  afterDraft: WorkflowDraft;
+  beforeDraft: WorkflowDraft;
   event: WorkflowHistoryEvent;
   meta?: WorkflowHistoryEventMeta;
 };
@@ -51,7 +52,12 @@ export type WorkflowHistoryReducerAction =
     type: "commit-from-drafts";
   }
   | {
+    clearFuture?: boolean;
     type: "replace";
+    updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
+  }
+  | {
+    type: "replace-transient";
     updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
   }
   | {
@@ -82,10 +88,10 @@ export function workflowHistoryReducer(
   action: WorkflowHistoryReducerAction,
 ): WorkflowHistoryReducerState {
   if (action.type === "commit") {
-    const previousHistoryState = createHistoryState(state.currentDraft, action.event, action.meta);
+    const previousDraft = state.currentDraft;
     const nextDraft = sanitizeDraft(action.updateDraft(state.currentDraft));
 
-    if (isWorkflowDraftEqual(state.currentDraft, nextDraft)) {
+    if (isWorkflowGraphEqual(state.currentDraft, nextDraft)) {
       return state;
     }
 
@@ -94,7 +100,7 @@ export function workflowHistoryReducer(
       futureStates: [],
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        previousHistoryState,
+        createHistoryEntry(previousDraft, nextDraft, action.event, action.meta),
       ],
     };
   }
@@ -103,7 +109,7 @@ export function workflowHistoryReducer(
     const previousDraft = sanitizeDraft(action.previousDraft);
     const nextDraft = sanitizeDraft(action.nextDraft);
 
-    if (isWorkflowDraftEqual(previousDraft, nextDraft)) {
+    if (isWorkflowGraphEqual(previousDraft, nextDraft)) {
       return state;
     }
 
@@ -112,7 +118,7 @@ export function workflowHistoryReducer(
       futureStates: [],
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        createHistoryState(previousDraft, action.event, action.meta),
+        createHistoryEntry(previousDraft, nextDraft, action.event, action.meta),
       ],
     };
   }
@@ -121,6 +127,14 @@ export function workflowHistoryReducer(
     return {
       ...state,
       currentDraft: sanitizeDraft(action.updateDraft(state.currentDraft)),
+      futureStates: action.clearFuture ? [] : state.futureStates,
+    };
+  }
+
+  if (action.type === "replace-transient") {
+    return {
+      ...state,
+      currentDraft: action.updateDraft(state.currentDraft),
     };
   }
 
@@ -129,19 +143,16 @@ export function workflowHistoryReducer(
   }
 
   if (action.type === "undo") {
-    const previousState = state.pastStates.at(-1);
+    const previousEntry = state.pastStates.at(-1);
 
-    if (!previousState) {
+    if (!previousEntry) {
       return state;
     }
 
     return {
-      currentDraft: {
-        edges: previousState.draft.edges,
-        nodes: previousState.draft.nodes,
-      },
+      currentDraft: preserveCurrentViewport(previousEntry.beforeDraft, state.currentDraft),
       futureStates: [
-        createHistoryState(state.currentDraft, previousState.event, previousState.meta),
+        previousEntry,
         ...state.futureStates.slice(0, WORKFLOW_HISTORY_LIMIT - 1),
       ],
       pastStates: state.pastStates.slice(0, -1),
@@ -149,21 +160,18 @@ export function workflowHistoryReducer(
   }
 
   if (action.type === "redo") {
-    const nextState = state.futureStates[0];
+    const nextEntry = state.futureStates[0];
 
-    if (!nextState) {
+    if (!nextEntry) {
       return state;
     }
 
     return {
-      currentDraft: {
-        edges: nextState.draft.edges,
-        nodes: nextState.draft.nodes,
-      },
+      currentDraft: preserveCurrentViewport(nextEntry.afterDraft, state.currentDraft),
       futureStates: state.futureStates.slice(1),
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        createHistoryState(state.currentDraft, nextState.event, nextState.meta),
+        nextEntry,
       ],
     };
   }
@@ -171,13 +179,25 @@ export function workflowHistoryReducer(
   return state;
 }
 
-export function createHistoryState(
-  draft: WorkflowDraft,
+function preserveCurrentViewport(
+  historyDraft: WorkflowDraft,
+  currentDraft: WorkflowDraft,
+): WorkflowDraft {
+  return {
+    ...historyDraft,
+    viewport: currentDraft.viewport,
+  };
+}
+
+export function createHistoryEntry(
+  beforeDraft: WorkflowDraft,
+  afterDraft: WorkflowDraft,
   event: WorkflowHistoryEvent,
   meta?: WorkflowHistoryEventMeta,
 ): WorkflowHistoryEntry {
   return {
-    draft: sanitizeDraft(draft),
+    afterDraft: sanitizeDraft(afterDraft),
+    beforeDraft: sanitizeDraft(beforeDraft),
     event,
     meta,
   };

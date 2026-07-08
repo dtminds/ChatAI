@@ -3,29 +3,20 @@ import type {
   Connection,
   EdgeChange,
   NodeChange,
+  Viewport,
 } from "@xyflow/react";
 import {
   applyEdgeChanges,
-  applyNodeChanges,
 } from "@xyflow/react";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
-import { sanitizeDraft } from "./workflow-draft-normalizer";
 import {
-  addNodeOperation,
-  arrangeNodesOperation,
-  connectNodesOperation,
-  deleteEdgeOperation,
-  deleteNodeOperation,
-  deleteNodesOperation,
-  duplicateNodeOperation,
-  insertNodeAfterOperation,
-  insertNodeBetweenOperation,
+  isWorkflowDraftEqual,
+  sanitizeDraft,
+} from "./workflow-draft-normalizer";
+import {
   updateNodeDataOperation,
 } from "./graph-operations";
-import type {
-  WorkflowActionResult,
-  WorkflowGraphOperation,
-} from "./graph-operations";
+import type { WorkflowActionResult } from "./graph-operations";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableWorkflowNodeKind,
@@ -39,10 +30,12 @@ import type {
 } from "./types";
 import {
   createWorkflowClipboardData,
-  pasteWorkflowClipboardData,
 } from "./workflow-clipboard";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
-import { createUniqueWorkflowNodeIdFactory } from "./workflow-id";
+import {
+  runWorkflowGraphCommand,
+} from "./workflow-commands";
+import type { WorkflowGraphCommand } from "./workflow-commands";
 
 const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
 
@@ -51,46 +44,52 @@ type PendingConfigHistory = {
     nodeId: string;
     nodeTitle?: string;
   };
-  nextDraft: {
-    edges: WorkflowEdge[];
-    nodes: WorkflowNode[];
-  };
-  previousDraft: {
-    edges: WorkflowEdge[];
-    nodes: WorkflowNode[];
-  };
+  nextDraft: WorkflowDraft;
+  previousDraft: WorkflowDraft;
 };
 
 type WorkflowControllerActionResult = WorkflowActionResult & {
   draft: WorkflowDraft;
+  transient?: boolean;
 };
 
-type WorkflowNodePositionChange = NodeChange<WorkflowRenderNode> & {
-  dragging?: boolean;
-  id: string;
-  position?: {
-    x: number;
-    y: number;
+function preserveCurrentViewport(
+  draft: WorkflowDraft,
+  currentDraft: WorkflowDraft,
+): WorkflowDraft {
+  return {
+    ...draft,
+    viewport: currentDraft.viewport,
   };
-  type: "position";
-};
-
-function isFinalNodePositionChange(
-  change: NodeChange<WorkflowRenderNode>,
-): change is WorkflowNodePositionChange {
-  return change.type === "position"
-    && "position" in change
-    && Boolean(change.position)
-    && "dragging" in change
-    && change.dragging === false;
 }
 
-function isNodePositionChange(
-  change: NodeChange<WorkflowRenderNode>,
-): change is WorkflowNodePositionChange {
-  return change.type === "position"
-    && "position" in change
-    && Boolean(change.position);
+function updateNodePositionInDraft(
+  draft: WorkflowDraft,
+  nodeId: string,
+  position: WorkflowNode["position"],
+) {
+  let changed = false;
+  const nodes = draft.nodes.map((node) => {
+    if (
+      node.id !== nodeId
+      || (node.position.x === position.x && node.position.y === position.y)
+    ) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      position: { ...position },
+    };
+  });
+
+  return changed
+    ? {
+        ...draft,
+        nodes,
+      }
+    : draft;
 }
 
 export function useWorkflowController(initialDraft: WorkflowDraft) {
@@ -101,6 +100,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     futureStates,
     pastStates,
     replaceDraft,
+    replaceDraftTransient,
     resetDraft,
   } = history;
   const { edges, nodes } = currentDraft;
@@ -109,6 +109,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const moveStartDraftRef = useRef<{
     edges: WorkflowEdge[];
     nodes: WorkflowNode[];
+    viewport: WorkflowDraft["viewport"];
   } | null>(null);
 
   const clearConfigHistoryTimer = useCallback(() => {
@@ -120,13 +121,13 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     configHistoryTimerRef.current = null;
   }, []);
 
-  const flushConfigHistory = useCallback(() => {
+  const flushConfigHistory = useCallback((): PendingConfigHistory | null => {
     const pendingHistory = pendingConfigHistoryRef.current;
 
     clearConfigHistoryTimer();
 
     if (!pendingHistory) {
-      return;
+      return null;
     }
 
     pendingConfigHistoryRef.current = null;
@@ -136,6 +137,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       pendingHistory.nextDraft,
       pendingHistory.meta,
     );
+    return pendingHistory;
   }, [clearConfigHistoryTimer, commitFromDrafts]);
 
   const scheduleConfigHistoryCommit = useCallback(() => {
@@ -157,55 +159,69 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [clearConfigHistoryTimer, initialDraft, resetDraft]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<WorkflowRenderNode>[]) => {
+    (_changes: NodeChange<WorkflowRenderNode>[]) => {
       flushConfigHistory();
-      const hasPositionChange = changes.some(isNodePositionChange);
-
-      if (!hasPositionChange) {
-        return undefined;
-      }
-
-      const hasFinalPositionChange = changes.some(isFinalNodePositionChange);
-
-      if (!hasFinalPositionChange) {
-        if (!moveStartDraftRef.current) {
-          moveStartDraftRef.current = currentDraft;
-        }
-
-        const nextDraft = sanitizeDraft({
-          ...currentDraft,
-          nodes: applyNodeChanges(changes as NodeChange<WorkflowNode>[], currentDraft.nodes),
-        });
-
-        replaceDraft(() => nextDraft);
-        return { draft: nextDraft };
-      }
-
-      const previousDraft = moveStartDraftRef.current ?? currentDraft;
-      const nextDraft = sanitizeDraft({
-        ...currentDraft,
-        nodes: applyNodeChanges(changes as NodeChange<WorkflowNode>[], currentDraft.nodes),
-      });
-      const movedNodeId = changes.find(isFinalNodePositionChange)?.id;
-      moveStartDraftRef.current = null;
-
-      commitFromDrafts(
-        "node:move",
-        previousDraft,
-        nextDraft,
-        movedNodeId ? { nodeId: movedNodeId } : undefined,
-      );
-      return {
-        draft: nextDraft,
-        nodeId: movedNodeId,
-      };
+      return undefined;
     },
-    [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraft],
+    [flushConfigHistory],
   );
+
+  const beginNodeDrag = useCallback(() => {
+    flushConfigHistory();
+    moveStartDraftRef.current = currentDraft;
+  }, [currentDraft, flushConfigHistory]);
+
+  const updateNodeDrag = useCallback((nodeId: string, position: WorkflowNode["position"]) => {
+    const nextDraft = updateNodePositionInDraft(currentDraft, nodeId, position);
+
+    if (nextDraft === currentDraft) {
+      return undefined;
+    }
+
+    replaceDraftTransient(() => nextDraft);
+    return {
+      draft: nextDraft,
+      nodeId,
+      transient: true,
+    };
+  }, [currentDraft, replaceDraftTransient]);
+
+  const finishNodeDrag = useCallback((nodeId: string, position: WorkflowNode["position"]) => {
+    flushConfigHistory();
+    const previousDraft = moveStartDraftRef.current ?? currentDraft;
+    const nextDraft = sanitizeDraft(updateNodePositionInDraft(currentDraft, nodeId, position));
+    moveStartDraftRef.current = null;
+
+    if (isWorkflowDraftEqual(previousDraft, nextDraft)) {
+      replaceDraftTransient(() => nextDraft);
+      return undefined;
+    }
+
+    commitFromDrafts("node:move", previousDraft, nextDraft, { nodeId });
+    return {
+      draft: preserveCurrentViewport(nextDraft, currentDraft),
+      nodeId,
+    };
+  }, [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraftTransient]);
 
   const markDraftDirty = useCallback(() => {
     flushConfigHistory();
   }, [flushConfigHistory]);
+
+  const updateViewport = useCallback((viewport: Viewport) => {
+    flushConfigHistory();
+    const nextDraft = sanitizeDraft({
+      ...currentDraft,
+      viewport,
+    });
+
+    if (isWorkflowDraftEqual(currentDraft, nextDraft)) {
+      return undefined;
+    }
+
+    replaceDraft(() => nextDraft);
+    return { draft: nextDraft };
+  }, [currentDraft, flushConfigHistory, replaceDraft]);
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<WorkflowRenderEdge>[]) => {
@@ -257,7 +273,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       nextDraft: operation.draft,
       previousDraft: pendingConfigHistoryRef.current?.previousDraft ?? currentDraft,
     };
-    replaceDraft(() => operation.draft);
+    replaceDraft(() => operation.draft, { clearFuture: true });
     scheduleConfigHistoryCommit();
 
     return {
@@ -266,7 +282,9 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     };
   }, [currentDraft, replaceDraft, scheduleConfigHistoryCommit]);
 
-  const commitGraphOperation = useCallback((operation: WorkflowGraphOperation | undefined) => {
+  const commitGraphCommand = useCallback((command: WorkflowGraphCommand) => {
+    const operation = runWorkflowGraphCommand(currentDraft, command);
+
     if (!operation) {
       return undefined;
     }
@@ -288,43 +306,41 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     previousNodeId: string,
     kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
-  ): WorkflowControllerActionResult => {
+  ): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
-    const nodeId = createNodeId(kind);
-    return commitGraphOperation(insertNodeAfterOperation(currentDraft, previousNodeId, kind, nodeId, sourceHandle))
-      ?? { draft: currentDraft, nodeId };
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({
+      kind,
+      previousNodeId,
+      sourceHandle,
+      type: "insert-node-after",
+    });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const insertNodeBetween = useCallback((
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
     kind: InsertableWorkflowNodeKind,
-  ): WorkflowControllerActionResult => {
+  ): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
-    const nodeId = createNodeId(kind);
-    return commitGraphOperation(insertNodeBetweenOperation(
-      currentDraft,
+    return commitGraphCommand({
       edgeId,
+      kind,
       sourceNodeId,
       targetNodeId,
-      kind,
-      nodeId,
-    )) ?? { draft: currentDraft, edgeId, nodeId };
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+      type: "insert-node-between",
+    });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const addNode = useCallback((kind: WorkflowNodeKind): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
-    return commitGraphOperation(addNodeOperation(currentDraft, kind, createNodeId(kind)));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ kind, type: "add-node" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const connectNodes = useCallback((connection: Connection): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(connectNodesOperation(currentDraft, connection));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ connection, type: "connect-nodes" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const isValidConnection = useCallback((connection: Connection) => (
     isWorkflowConnectionAllowed(currentDraft, connection)
@@ -332,21 +348,18 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   const deleteNode = useCallback((nodeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(deleteNodeOperation(currentDraft, nodeId));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ nodeId, type: "delete-node" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const deleteNodes = useCallback((nodeIds: string[]): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(deleteNodesOperation(currentDraft, nodeIds));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ nodeIds, type: "delete-nodes" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const duplicateNode = useCallback((nodeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    const node = nodes.find((currentNode) => currentNode.id === nodeId);
-    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
-    const duplicatedNodeId = createNodeId(node?.data.kind ?? "action");
-    return commitGraphOperation(duplicateNodeOperation(currentDraft, nodeId, duplicatedNodeId));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory, nodes]);
+    return commitGraphCommand({ nodeId, type: "duplicate-node" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const copyNode = useCallback((nodeId: string): WorkflowClipboardData | undefined => {
     flushConfigHistory();
@@ -362,24 +375,28 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     clipboardData: WorkflowClipboardData,
   ): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
-    return commitGraphOperation(pasteWorkflowClipboardData(currentDraft, clipboardData, {
-      nodeIdFactory: (kind) => createNodeId(kind),
-    }));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ clipboardData, type: "paste-clipboard" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const deleteEdge = useCallback((edgeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(deleteEdgeOperation(currentDraft, edgeId));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ edgeId, type: "delete-edge" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const arrangeNodes = useCallback((): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(arrangeNodesOperation(currentDraft));
-  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+    return commitGraphCommand({ type: "arrange-nodes" });
+  }, [commitGraphCommand, flushConfigHistory]);
 
   const undo = useCallback((): WorkflowControllerActionResult | undefined => {
-    flushConfigHistory();
+    const pendingConfigHistory = flushConfigHistory();
+    if (pendingConfigHistory) {
+      history.undo();
+      return {
+        draft: sanitizeDraft(preserveCurrentViewport(pendingConfigHistory.previousDraft, currentDraft)),
+      };
+    }
+
     const previousState = pastStates.at(-1);
     if (!previousState) {
       return undefined;
@@ -387,12 +404,18 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
     history.undo();
     return {
-      draft: sanitizeDraft(previousState.draft),
+      draft: sanitizeDraft(preserveCurrentViewport(previousState.beforeDraft, currentDraft)),
     };
-  }, [flushConfigHistory, history, pastStates]);
+  }, [currentDraft, flushConfigHistory, history, pastStates]);
 
   const redo = useCallback((): WorkflowControllerActionResult | undefined => {
-    flushConfigHistory();
+    const pendingConfigHistory = flushConfigHistory();
+    if (pendingConfigHistory) {
+      return {
+        draft: sanitizeDraft(preserveCurrentViewport(pendingConfigHistory.nextDraft, currentDraft)),
+      };
+    }
+
     const nextState = futureStates[0];
     if (!nextState) {
       return undefined;
@@ -400,14 +423,15 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
     history.redo();
     return {
-      draft: sanitizeDraft(nextState.draft),
+      draft: sanitizeDraft(preserveCurrentViewport(nextState.afterDraft, currentDraft)),
     };
-  }, [flushConfigHistory, futureStates, history]);
+  }, [currentDraft, flushConfigHistory, futureStates, history]);
 
   return {
     ...history,
     addNode,
     arrangeNodes,
+    beginNodeDrag,
     connectNodes,
     copyNode,
     copyNodes,
@@ -416,6 +440,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     deleteNodes,
     duplicateNode,
     edges,
+    finishNodeDrag,
     insertNodeAfter,
     insertNodeBetween,
     isValidConnection,
@@ -426,6 +451,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     pasteClipboardData,
     redo,
     undo,
+    updateViewport,
     updateNodeData,
+    updateNodeDrag,
   };
 }

@@ -1,0 +1,321 @@
+import type {
+  WorkflowEdge,
+  WorkflowNode,
+} from "../types";
+import {
+  getWorkflowBranchPaths,
+} from "../branch-paths";
+
+export const WORKFLOW_MAX_TREE_DEPTH = 20;
+
+export type WorkflowGraphValidationIssue = {
+  code:
+    | "edge-cycle"
+    | "branch-path-unconnected"
+    | "goal-unreachable"
+    | "missing-goal"
+    | "missing-trigger"
+    | "node-disconnected"
+    | "node-multiple-incoming"
+    | "node-multiple-outgoing"
+    | "tree-depth-exceeded";
+  edgeIds?: string[];
+  message: string;
+  nodeId?: string;
+  severity: "warning";
+  source: "graph";
+};
+
+export type WorkflowGraphValidationResult = {
+  disconnectedNodeIds: Set<string>;
+  graphIssues: WorkflowGraphValidationIssue[];
+  hasCycle: boolean;
+  maxDepth: number;
+  reachableNodeIds: Set<string>;
+  validNodes: WorkflowNode[];
+};
+
+export function validateWorkflowGraph(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  options: {
+    maxDepth?: number;
+  } = {},
+): WorkflowGraphValidationResult {
+  const maxDepthLimit = options.maxDepth ?? WORKFLOW_MAX_TREE_DEPTH;
+  const triggerNode = nodes.find((node) => node.data.kind === "trigger");
+  const goalNode = nodes.find((node) => node.data.kind === "goal");
+  const { maxDepth, reachableNodeIds, validNodes } = getValidWorkflowTreeNodes(nodes, edges, triggerNode?.id);
+  const disconnectedNodeIds = new Set(nodes
+    .filter((node) => !reachableNodeIds.has(node.id))
+    .map((node) => node.id));
+  const graphIssues: WorkflowGraphValidationIssue[] = [];
+
+  if (!triggerNode) {
+    graphIssues.push({
+      code: "missing-trigger",
+      message: "Workflow 需要一个触发节点",
+      severity: "warning",
+      source: "graph",
+    });
+  }
+
+  if (!goalNode) {
+    graphIssues.push({
+      code: "missing-goal",
+      message: "Workflow 需要一个目标节点",
+      severity: "warning",
+      source: "graph",
+    });
+  }
+  else if (!reachableNodeIds.has(goalNode.id)) {
+    graphIssues.push({
+      code: "goal-unreachable",
+      message: "目标节点未接入从触发节点开始的主链路",
+      nodeId: goalNode.id,
+      severity: "warning",
+      source: "graph",
+    });
+  }
+
+  disconnectedNodeIds.forEach((nodeId) => {
+    const node = nodes.find((item) => item.id === nodeId);
+
+    if (!node || node.data.kind === "trigger") {
+      return;
+    }
+
+    graphIssues.push({
+      code: "node-disconnected",
+      message: "节点未接入从触发节点开始的主链路",
+      nodeId,
+      severity: "warning",
+      source: "graph",
+    });
+  });
+
+  if (maxDepth > maxDepthLimit) {
+    graphIssues.push({
+      code: "tree-depth-exceeded",
+      message: `Workflow 链路深度不能超过 ${maxDepthLimit} 层`,
+      severity: "warning",
+      source: "graph",
+    });
+  }
+
+  const cycleEdgeIds = getCycleEdgeIds(nodes, edges);
+  if (cycleEdgeIds.length > 0) {
+    graphIssues.push({
+      code: "edge-cycle",
+      edgeIds: cycleEdgeIds,
+      message: "Workflow 不能包含循环连线",
+      severity: "warning",
+      source: "graph",
+    });
+  }
+
+  getCardinalityIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
+  getBranchOutletIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
+
+  return {
+    disconnectedNodeIds,
+    graphIssues,
+    hasCycle: cycleEdgeIds.length > 0,
+    maxDepth,
+    reachableNodeIds,
+    validNodes,
+  };
+}
+
+export function getValidWorkflowTreeNodes(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  startNodeId: string | undefined,
+): {
+  maxDepth: number;
+  reachableNodeIds: Set<string>;
+  validNodes: WorkflowNode[];
+} {
+  if (!startNodeId) {
+    return {
+      maxDepth: 0,
+      reachableNodeIds: new Set(),
+      validNodes: [],
+    };
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const outgoingEdges = createOutgoingEdgesMap(edges);
+  const reachableNodeIds = new Set<string>();
+  const validNodes: WorkflowNode[] = [];
+  let maxDepth = 0;
+
+  const traverse = (nodeId: string, depth: number) => {
+    const node = nodeById.get(nodeId);
+
+    if (!node || reachableNodeIds.has(nodeId)) {
+      return;
+    }
+
+    reachableNodeIds.add(nodeId);
+    validNodes.push(node);
+    maxDepth = Math.max(maxDepth, depth);
+
+    (outgoingEdges.get(nodeId) ?? []).forEach((edge) => {
+      traverse(edge.target, depth + 1);
+    });
+  };
+
+  traverse(startNodeId, 1);
+
+  return {
+    maxDepth,
+    reachableNodeIds,
+    validNodes,
+  };
+}
+
+function getBranchOutletIssues(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowGraphValidationIssue[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const connectedBranchHandlesByNodeId = new Map<string, Set<string>>();
+
+  edges.forEach((edge) => {
+    const sourceNode = nodeById.get(edge.source);
+
+    if (
+      !sourceNode
+      || sourceNode.data.kind !== "branch"
+      || !edge.sourceHandle
+      || !nodeById.has(edge.target)
+    ) {
+      return;
+    }
+
+    const connectedHandles = connectedBranchHandlesByNodeId.get(edge.source) ?? new Set<string>();
+    connectedHandles.add(edge.sourceHandle);
+    connectedBranchHandlesByNodeId.set(edge.source, connectedHandles);
+  });
+
+  return nodes
+    .filter((node) => node.data.kind === "branch")
+    .flatMap((node) => {
+      const connectedHandles = connectedBranchHandlesByNodeId.get(node.id) ?? new Set<string>();
+      const hasUnconnectedPath = getWorkflowBranchPaths(node.data)
+        .some((path) => !connectedHandles.has(path.id));
+
+      if (!hasUnconnectedPath) {
+        return [];
+      }
+
+      return [{
+        code: "branch-path-unconnected" as const,
+        message: "条件分支存在未连接的出口",
+        nodeId: node.id,
+        severity: "warning" as const,
+        source: "graph" as const,
+      }];
+    });
+}
+
+function getCycleEdgeIds(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const outgoingEdges = createOutgoingEdgesMap(edges.filter((edge) =>
+    nodeIds.has(edge.source) && nodeIds.has(edge.target),
+  ));
+  const visitedNodeIds = new Set<string>();
+  const visitingNodeIds = new Set<string>();
+  const cycleEdgeIds = new Set<string>();
+
+  const visit = (nodeId: string) => {
+    if (visitingNodeIds.has(nodeId)) {
+      return true;
+    }
+
+    if (visitedNodeIds.has(nodeId)) {
+      return false;
+    }
+
+    visitingNodeIds.add(nodeId);
+
+    for (const edge of outgoingEdges.get(nodeId) ?? []) {
+      if (visit(edge.target)) {
+        cycleEdgeIds.add(edge.id);
+        return true;
+      }
+    }
+
+    visitingNodeIds.delete(nodeId);
+    visitedNodeIds.add(nodeId);
+    return false;
+  };
+
+  nodes.forEach((node) => {
+    visit(node.id);
+  });
+
+  return [...cycleEdgeIds];
+}
+
+function getCardinalityIssues(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowGraphValidationIssue[] {
+  const issues: WorkflowGraphValidationIssue[] = [];
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const incomingByTarget = new Map<string, WorkflowEdge[]>();
+  const outgoingBySource = new Map<string, WorkflowEdge[]>();
+
+  edges.forEach((edge) => {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
+      return;
+    }
+
+    incomingByTarget.set(edge.target, [...incomingByTarget.get(edge.target) ?? [], edge]);
+    outgoingBySource.set(edge.source, [...outgoingBySource.get(edge.source) ?? [], edge]);
+  });
+
+  nodes.forEach((node) => {
+    const incomingEdges = incomingByTarget.get(node.id) ?? [];
+    const outgoingEdges = outgoingBySource.get(node.id) ?? [];
+
+    if (node.data.kind !== "trigger" && incomingEdges.length > 1) {
+      issues.push({
+        code: "node-multiple-incoming",
+        edgeIds: incomingEdges.map((edge) => edge.id),
+        message: "节点不能有多个入口连线",
+        nodeId: node.id,
+        severity: "warning",
+        source: "graph",
+      });
+    }
+
+    if (node.data.kind !== "branch" && node.data.kind !== "goal" && outgoingEdges.length > 1) {
+      issues.push({
+        code: "node-multiple-outgoing",
+        edgeIds: outgoingEdges.map((edge) => edge.id),
+        message: "非条件节点不能有多个出口连线",
+        nodeId: node.id,
+        severity: "warning",
+        source: "graph",
+      });
+    }
+  });
+
+  return issues;
+}
+
+function createOutgoingEdgesMap(edges: WorkflowEdge[]) {
+  const outgoingEdges = new Map<string, WorkflowEdge[]>();
+
+  edges.forEach((edge) => {
+    outgoingEdges.set(edge.source, [...outgoingEdges.get(edge.source) ?? [], edge]);
+  });
+
+  return outgoingEdges;
+}

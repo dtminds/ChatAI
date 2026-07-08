@@ -1,9 +1,11 @@
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import type {
   Connection,
   EdgeChange,
   IsValidConnection,
   NodeChange,
+  OnNodeDrag,
+  Viewport,
 } from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowRun } from "./run/use-workflow-run";
@@ -22,12 +24,21 @@ import { useWorkflowRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
 import { getNodeVariables } from "./workflow-variables";
-import { useWorkflowDocument } from "./workflow-draft-service";
+import {
+  cloneWorkflowDraftSnapshot,
+  useWorkflowDocument,
+} from "./workflow-draft-service";
+import { useWorkflowStableCallback } from "./workflow-hooks";
 import {
   canReadWorkflowClipboard,
   readWorkflowClipboard,
   writeWorkflowClipboard,
 } from "./workflow-clipboard";
+import { deriveWorkflowMode } from "./workflow-mode";
+import {
+  createDefaultWorkflowViewState,
+  reduceWorkflowViewState,
+} from "./workflow-view-state";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
 
 export function useWorkflowWorkspace(workflowId: string | undefined) {
@@ -35,17 +46,43 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     document,
     lastSavedAt,
     markDirty,
+    publishDraft,
+    publishState,
+    restoreState,
+    restoreVersion,
     saveState,
   } = useWorkflowDocument(workflowId);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
-  const [isChecksOpen, setIsChecksOpen] = useState(false);
+  const [viewState, dispatchViewState] = useReducer(
+    reduceWorkflowViewState,
+    undefined,
+    createDefaultWorkflowViewState,
+  );
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [clipboardData, setClipboardData] = useState<WorkflowClipboardData | null>(null);
   const pasteClipboardDataRef = useRef<(nextClipboardData: WorkflowClipboardData | null) => boolean>(() => false);
-  const controller = useWorkflowController(document.draft);
-  const transient = useWorkflowTransientState();
+  const previewVersion = document.versionHistory.find((version) => version.id === viewState.previewVersionId);
   const runner = useWorkflowRun(document.id);
+  const historyRun = runner.historyRun;
+  const previewDraft = useMemo(
+    () => historyRun
+      ? cloneWorkflowDraftSnapshot(historyRun.draft)
+      : previewVersion
+        ? cloneWorkflowDraftSnapshot(previewVersion.draft)
+        : document.draft,
+    [document.draft, historyRun, previewVersion],
+  );
+  const isPreviewingVersion = Boolean(previewVersion);
+  const isViewingRunHistory = Boolean(historyRun);
+  const workflowMode = deriveWorkflowMode({
+    isPreviewingVersion,
+    isViewingRunHistory,
+    restoreState,
+    workflowRunStatus: runner.activeRun?.status,
+  });
+  const { permissions } = workflowMode;
+  const controller = useWorkflowController(previewDraft);
+  const transient = useWorkflowTransientState();
   const selection = useWorkflowSelectionState({
     defaultNodeId: "action-message",
     edges: controller.edges,
@@ -56,6 +93,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
     activeEdgeInsertMenuId,
     closeCanvasMenus,
+    closeCanvasOverlays,
     paletteOpen,
     paletteQuery,
     quickInsertTarget,
@@ -72,15 +110,288 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     hoveredEdgeIds,
     selectEdge,
     selectedEdgeId,
+    selectionDeleteTarget,
     selectedNode,
     selectedNodeId,
     selectedNodeIds,
     selectedNodeIdSet,
     selectNode,
-    selectNodes,
-    setSelectedEdgeId,
     setSelectedNodeId,
+    toggleNodeSelection,
   } = selection;
+
+  const selectWorkflowNode = useWorkflowStableCallback((nodeId: string, options?: { additive?: boolean }) => {
+    if (options?.additive) {
+      toggleNodeSelection(nodeId);
+      dispatchViewState({ type: "close-checks" });
+      closeCanvasOverlays();
+      return;
+    }
+
+    selectNode(nodeId);
+    dispatchViewState({
+      inspectorOpen: !isPreviewingVersion,
+      type: "select-node",
+    });
+    if (isViewingRunHistory) {
+      setInspectorTab("run");
+    }
+    closeCanvasOverlays();
+  });
+
+  const selectWorkflowEdge = useWorkflowStableCallback((edgeId: string) => {
+    selectEdge(edgeId);
+    dispatchViewState({ type: "close-checks" });
+    closeCanvasOverlays();
+  });
+
+  const updateSelectedNode = useCallback((patch: Partial<WorkflowNodeData>) => {
+    if (!permissions.canEditNodeSettings) {
+      return;
+    }
+
+    if (!selectedNodeId) {
+      return;
+    }
+
+    const result = controller.updateNodeData(selectedNodeId, patch);
+    if (result) {
+      markDirty(result.draft);
+    }
+  }, [controller, markDirty, permissions.canEditNodeSettings, selectedNodeId]);
+
+  const undoWorkflowChange = useWorkflowStableCallback(() => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.undo();
+    if (result) {
+      markDirty(result.draft);
+    }
+    closeCanvasOverlays();
+  });
+
+  const redoWorkflowChange = useWorkflowStableCallback(() => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.redo();
+    if (result) {
+      markDirty(result.draft);
+    }
+    closeCanvasOverlays();
+  });
+
+  const handleWorkflowEditResult = useWorkflowStableCallback((result?: { draft: WorkflowDraft; nodeId?: string }) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    if (!result) {
+      return;
+    }
+
+    markDirty(result.draft);
+
+    if (result?.nodeId) {
+      setSelectedNodeId(result.nodeId);
+    }
+
+    dispatchViewState({
+      openInspector: Boolean(result?.nodeId),
+      type: "workflow-edited",
+    });
+    closeCanvasOverlays();
+  });
+
+  const addNode = useWorkflowStableCallback((kind: WorkflowNodeKind) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.addNode(kind);
+    handleWorkflowEditResult(result);
+  });
+
+  const handleInsertNodeAfter = useWorkflowStableCallback((
+    previousNodeId: string,
+    kind: InsertableWorkflowNodeKind,
+    sourceHandle?: string,
+  ) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.insertNodeAfter(previousNodeId, kind, sourceHandle);
+    handleWorkflowEditResult(result);
+  });
+
+  const handleInsertNodeBetween = useWorkflowStableCallback((
+    edgeId: string,
+    sourceNodeId: string,
+    targetNodeId: string,
+    kind: InsertableWorkflowNodeKind,
+  ) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
+    handleWorkflowEditResult(result);
+  });
+
+  const connectNodes = useWorkflowStableCallback((connection: Connection) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.connectNodes(connection);
+
+    if (result) {
+      markDirty(result.draft);
+      closeCanvasOverlays();
+      dispatchViewState({ type: "close-checks" });
+    }
+  });
+
+  const handleDeleteNode = useWorkflowStableCallback((nodeId: string) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.deleteNode(nodeId);
+
+    if (!result) {
+      return;
+    }
+
+    closeCanvasOverlays();
+    runner.deleteNodeRun(nodeId);
+    markDirty(result.draft);
+    dispatchViewState({ type: "close-checks" });
+  });
+
+  const handleDeleteNodes = useWorkflowStableCallback((nodeIds: string[]) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.deleteNodes(nodeIds);
+
+    if (!result) {
+      return;
+    }
+
+    closeCanvasOverlays();
+    result.nodeIds?.forEach((nodeId) => runner.deleteNodeRun(nodeId));
+    clearNodeSelection();
+    markDirty(result.draft);
+    dispatchViewState({ type: "close-checks" });
+  });
+
+  const handleDuplicateNode = useWorkflowStableCallback((nodeId: string) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.duplicateNode(nodeId);
+    handleWorkflowEditResult(result);
+  });
+
+  const handleDeleteEdge = useWorkflowStableCallback((edgeId: string) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.deleteEdge(edgeId);
+
+    if (!result) {
+      return;
+    }
+
+    clearEdgeSelection();
+    markDirty(result.draft);
+    closeCanvasOverlays();
+    dispatchViewState({ type: "close-checks" });
+  });
+
+  const deleteSelectedNode = useWorkflowStableCallback(() => {
+    if (selectionDeleteTarget.type === "edge") {
+      handleDeleteEdge(selectionDeleteTarget.edgeId);
+      return;
+    }
+
+    if (selectionDeleteTarget.type !== "nodes") {
+      return;
+    }
+
+    handleDeleteNodes(selectionDeleteTarget.nodeIds);
+  });
+
+  const duplicateSelectedNode = useWorkflowStableCallback(() => {
+    if (selectedEdgeId || selectedNodeIds.length !== 1 || !selectedNodeId) {
+      return;
+    }
+
+    handleDuplicateNode(selectedNodeId);
+  });
+
+  const copySelectedNode = useWorkflowStableCallback(() => {
+    if (!permissions.canUseClipboard) {
+      return false;
+    }
+
+    if (selectedEdgeId || !selectedNodeIds.length) {
+      return false;
+    }
+
+    const nextClipboardData = controller.copyNodes(selectedNodeIds);
+
+    if (!nextClipboardData) {
+      return false;
+    }
+
+    setClipboardData(nextClipboardData);
+    void writeWorkflowClipboard(nextClipboardData);
+    closeCanvasOverlays();
+    return true;
+  });
+
+  const pasteClipboardData = useWorkflowStableCallback((nextClipboardData: WorkflowClipboardData | null) => {
+    if (!permissions.canUseClipboard) {
+      return false;
+    }
+
+    if (!nextClipboardData) {
+      return false;
+    }
+
+    const result = controller.pasteClipboardData(nextClipboardData);
+
+    if (!result) {
+      return false;
+    }
+
+    handleWorkflowEditResult(result);
+    return true;
+  });
+
+  pasteClipboardDataRef.current = pasteClipboardData;
+
+  const pasteReadableClipboard = useWorkflowStableCallback(async (fallbackClipboardData: WorkflowClipboardData | null) => {
+    pasteClipboardDataRef.current(await readWorkflowClipboard() ?? fallbackClipboardData);
+  });
+
+  const pasteClipboard = useWorkflowStableCallback(() => {
+    if (canReadWorkflowClipboard()) {
+      void pasteReadableClipboard(clipboardData);
+      return true;
+    }
+
+    return pasteClipboardData(clipboardData);
+  });
 
   const {
     edges: renderedEdges,
@@ -95,289 +406,167 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     onInsertNodeAfter: handleInsertNodeAfter,
     onInsertNodeBetween: handleInsertNodeBetween,
     onSelectNode: selectWorkflowNode,
+    onToggleNodeSelection: toggleNodeSelection,
     onToggleEdgeInsertMenu: toggleEdgeInsertMenu,
     onToggleNodeInsertMenu: toggleNodeInsertMenu,
     quickInsertTarget,
+    readOnly: permissions.nodesReadOnly,
     selectedEdgeId,
     selectedNodeIdSet,
   });
 
   useWorkflowShortcuts({
-    canRedo: controller.canRedo,
-    canUndo: controller.canUndo,
-    onCopySelection: copySelectedNode,
-    onDeleteSelection: deleteSelectedNode,
-    onDuplicateSelection: duplicateSelectedNode,
-    onPasteClipboard: pasteClipboard,
+    canCopySelection: permissions.canUseClipboard,
+    canDeleteSelection: permissions.canEditGraph,
+    canDuplicateSelection: permissions.canEditGraph,
+    canPasteClipboard: permissions.canUseClipboard,
+    canRedo: permissions.canUseHistory && controller.canRedo,
+    canUndo: permissions.canUseHistory && controller.canUndo,
+    onCopySelection: permissions.canUseClipboard ? copySelectedNode : () => false,
+    onDeleteSelection: permissions.canEditGraph ? deleteSelectedNode : () => undefined,
+    onDuplicateSelection: permissions.canEditGraph ? duplicateSelectedNode : () => undefined,
+    onPasteClipboard: permissions.canUseClipboard ? pasteClipboard : () => false,
     onRedo: redoWorkflowChange,
     onUndo: undoWorkflowChange,
   });
 
-  function selectWorkflowNode(nodeId: string) {
-    selectNode(nodeId);
-    setIsInspectorOpen(true);
-    setIsChecksOpen(false);
-    closeCanvasMenus();
-  }
-
-  function selectWorkflowEdge(edgeId: string) {
-    selectEdge(edgeId);
-    setIsChecksOpen(false);
-    closeCanvasMenus();
-  }
-
-  function updateSelectedNode(patch: Partial<WorkflowNodeData>) {
-    if (!selectedNodeId) {
-      return;
-    }
-
-    const result = controller.updateNodeData(selectedNodeId, patch);
-    if (result) {
-      markDirty(result.draft);
-    }
-  }
-
-  function undoWorkflowChange() {
-    const result = controller.undo();
-    if (result) {
-      markDirty(result.draft);
-    }
-    closeCanvasMenus();
-  }
-
-  function redoWorkflowChange() {
-    const result = controller.redo();
-    if (result) {
-      markDirty(result.draft);
-    }
-    closeCanvasMenus();
-  }
-
-  function addNode(kind: WorkflowNodeKind) {
-    const result = controller.addNode(kind);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleInsertNodeAfter(
-    previousNodeId: string,
-    kind: InsertableWorkflowNodeKind,
-    sourceHandle?: string,
-  ) {
-    const result = controller.insertNodeAfter(previousNodeId, kind, sourceHandle);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleInsertNodeBetween(
-    edgeId: string,
-    sourceNodeId: string,
-    targetNodeId: string,
-    kind: InsertableWorkflowNodeKind,
-  ) {
-    const result = controller.insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
-    handleWorkflowEditResult(result);
-  }
-
-  function connectNodes(connection: Connection) {
-    const result = controller.connectNodes(connection);
-
-    if (result) {
-      markDirty(result.draft);
-      closeCanvasMenus();
-      setIsChecksOpen(false);
-    }
-  }
-
-  function handleDeleteNode(nodeId: string) {
-    const result = controller.deleteNode(nodeId);
-
-    if (!result) {
-      return;
-    }
-
-    closeCanvasMenus();
-    runner.deleteNodeRun(nodeId);
-    markDirty(result.draft);
-    setIsChecksOpen(false);
-  }
-
-  function handleDeleteNodes(nodeIds: string[]) {
-    const result = controller.deleteNodes(nodeIds);
-
-    if (!result) {
-      return;
-    }
-
-    closeCanvasMenus();
-    result.nodeIds?.forEach((nodeId) => runner.deleteNodeRun(nodeId));
-    clearNodeSelection();
-    markDirty(result.draft);
-    setIsChecksOpen(false);
-  }
-
-  function handleDuplicateNode(nodeId: string) {
-    const result = controller.duplicateNode(nodeId);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleDeleteEdge(edgeId: string) {
-    const result = controller.deleteEdge(edgeId);
-
-    if (!result) {
-      return;
-    }
-
-    setSelectedEdgeId(null);
-    markDirty(result.draft);
-    closeCanvasMenus();
-    setIsChecksOpen(false);
-  }
-
-  function deleteSelectedNode() {
-    if (selectedEdgeId) {
-      handleDeleteEdge(selectedEdgeId);
-      return;
-    }
-
-    if (!selectedNodeIds.length) {
-      return;
-    }
-
-    handleDeleteNodes(selectedNodeIds);
-  }
-
-  function duplicateSelectedNode() {
-    if (selectedEdgeId || selectedNodeIds.length !== 1 || !selectedNodeId) {
-      return;
-    }
-
-    handleDuplicateNode(selectedNodeId);
-  }
-
-  function copySelectedNode() {
-    if (selectedEdgeId || !selectedNodeIds.length) {
-      return false;
-    }
-
-    const nextClipboardData = controller.copyNodes(selectedNodeIds);
-
-    if (!nextClipboardData) {
-      return false;
-    }
-
-    setClipboardData(nextClipboardData);
-    void writeWorkflowClipboard(nextClipboardData);
-    closeCanvasMenus();
-    return true;
-  }
-
-  function pasteClipboard() {
-    if (canReadWorkflowClipboard()) {
-      void pasteReadableClipboard(clipboardData);
-      return true;
-    }
-
-    return pasteClipboardData(clipboardData);
-  }
-
-  async function pasteReadableClipboard(fallbackClipboardData: WorkflowClipboardData | null) {
-    pasteClipboardDataRef.current(await readWorkflowClipboard() ?? fallbackClipboardData);
-  }
-
-  function pasteClipboardData(nextClipboardData: WorkflowClipboardData | null) {
-    if (!nextClipboardData) {
-      return false;
-    }
-
-    const result = controller.pasteClipboardData(nextClipboardData);
-
-    if (!result) {
-      return false;
-    }
-
-    handleWorkflowEditResult(result);
-    return true;
-  }
-
-  pasteClipboardDataRef.current = pasteClipboardData;
-
-  function handleWorkflowEditResult(result?: { draft: WorkflowDraft; nodeId?: string }) {
-    if (!result) {
-      return;
-    }
-
-    markDirty(result.draft);
-
-    if (result?.nodeId) {
-      setSelectedNodeId(result.nodeId);
-      setSelectedEdgeId(null);
-      setIsInspectorOpen(true);
-    }
-
-    closeCanvasMenus();
-    setPaletteOpen(false);
-    setIsChecksOpen(false);
-  }
-
-  function clearCanvasSelection() {
+  const clearCanvasSelection = useWorkflowStableCallback(() => {
     clearEdgeSelection();
     closeCanvasMenus();
-  }
+  });
 
-  function handleSelectionChange(selectionChange: {
-    edges: WorkflowRenderEdge[];
-    nodes: WorkflowRenderNode[];
-  }) {
-    if (!selectionChange.nodes.length) {
+  const openVariablesPanel = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "open-variables" });
+    setInspectorTab("variables");
+    clearEdgeSelection();
+    closeCanvasOverlays();
+  });
+
+  const handlePaletteOpenChange = useWorkflowStableCallback((open: boolean) => {
+    if (!permissions.canOpenInsertPalette) {
       return;
     }
 
-    selectNodes(selectionChange.nodes.map((node) => node.id));
-    setIsChecksOpen(false);
-    closeCanvasMenus();
-  }
-
-  function openVariablesPanel() {
-    setIsInspectorOpen(true);
-    setInspectorTab("variables");
-    setIsChecksOpen(false);
-    clearCanvasSelection();
-  }
-
-  function handlePaletteOpenChange(open: boolean) {
     setPaletteOpen(open);
     clearCanvasSelection();
-  }
+  });
 
-  function handlePaneClick() {
-    clearCanvasSelection();
-    setIsChecksOpen(false);
-  }
+  const handlePaneClick = useWorkflowStableCallback(() => {
+    clearEdgeSelection();
+    closeCanvasOverlays();
+    dispatchViewState({ type: "close-checks" });
+  });
 
-  function runSelectedNode() {
+  const runSelectedNode = useCallback(() => {
+    if (!permissions.canRunNode) {
+      return;
+    }
+
     if (!selectedNode) {
       return;
     }
 
     runner.runNode(selectedNode);
-    setIsInspectorOpen(true);
+    dispatchViewState({ type: "open-inspector" });
     setInspectorTab("run");
-  }
+  }, [permissions.canRunNode, runner, selectedNode]);
 
-  function handlePublishCheck() {
+  const handlePublishCheck = useWorkflowStableCallback(() => {
+    if (!permissions.canPublish) {
+      return;
+    }
+
     setPublishAttempted(true);
-    setIsChecksOpen(true);
-    closeCanvasMenus();
-  }
+    dispatchViewState({ type: "open-checks" });
+    closeCanvasOverlays();
+  });
 
-  function handleNodesChange(changes: NodeChange<WorkflowRenderNode>[]) {
-    const result = controller.onNodesChange(changes);
+  const publishCurrentDraft = useWorkflowStableCallback(async () => {
+    if (!permissions.canPublish) {
+      return;
+    }
+
+    setPublishAttempted(true);
+
+    if (!publishChecks.publishReady) {
+      dispatchViewState({ type: "open-checks" });
+      closeCanvasOverlays();
+      return;
+    }
+
+    dispatchViewState({ type: "close-checks" });
+    closeCanvasOverlays();
+    await publishDraft(controller.currentDraft);
+  });
+
+  const runCurrentWorkflow = useWorkflowStableCallback(() => {
+    if (!permissions.canRunWorkflow) {
+      return;
+    }
+
+    if (!publishChecks.canRun) {
+      setPublishAttempted(true);
+      dispatchViewState({ type: "open-checks" });
+      closeCanvasOverlays();
+      return;
+    }
+
+    runner.runWorkflow(controller.currentDraft);
+    dispatchViewState({ type: "open-run-history" });
+    closeCanvasOverlays();
+  });
+
+  const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    controller.onNodesChange(changes);
     controller.markDraftDirty();
+  });
+
+  const handleNodeDragStart: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    controller.beginNodeDrag();
+  });
+
+  const handleNodeDrag: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback(() => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+  });
+
+  const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.finishNodeDrag(node.id, node.position);
     if (result) {
       markDirty(result.draft);
     }
-  }
+  });
 
-  function handleEdgesChange(changes: EdgeChange<WorkflowRenderEdge>[]) {
+  const handleViewportChangeEnd = useWorkflowStableCallback((viewport: Viewport) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.updateViewport(viewport);
+
+    if (result) {
+      markDirty(result.draft);
+    }
+  });
+
+  const handleEdgesChange = useWorkflowStableCallback((changes: EdgeChange<WorkflowRenderEdge>[]) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
     const result = controller.onEdgesChange(changes);
 
     if (!result) {
@@ -385,33 +574,120 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     markDirty(result.draft);
-    closeCanvasMenus();
-    setIsChecksOpen(false);
+    closeCanvasOverlays();
+    dispatchViewState({ type: "close-checks" });
     if (result.edgeId && selectedEdgeId === result.edgeId) {
-      setSelectedEdgeId(null);
+      clearEdgeSelection();
     }
-  }
+  });
 
-  function arrangeNodes() {
+  const arrangeNodes = useWorkflowStableCallback(() => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
     const result = controller.arrangeNodes();
     if (result) {
       markDirty(result.draft);
     }
-  }
+  });
 
-  const isValidCanvasConnection: IsValidConnection<WorkflowRenderEdge> = (connection) =>
-    controller.isValidConnection({
+  const isValidCanvasConnection: IsValidConnection<WorkflowRenderEdge> = useWorkflowStableCallback((connection) =>
+    permissions.canEditGraph
+    && controller.isValidConnection({
       source: connection.source,
       sourceHandle: connection.sourceHandle ?? null,
       target: connection.target,
       targetHandle: connection.targetHandle ?? null,
+    }));
+
+  const closeVersionHistory = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "close-version-history" });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const openVersionHistory = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "open-version-history" });
+    closeCanvasOverlays();
+  });
+
+  const selectVersionPreview = useWorkflowStableCallback((versionId: string) => {
+    runner.exitRunHistory();
+    dispatchViewState({
+      type: "select-version-preview",
+      versionId,
     });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const closeRunHistory = useWorkflowStableCallback(() => {
+    runner.exitRunHistory();
+    dispatchViewState({ type: "close-run-history" });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const openRunHistory = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "open-run-history" });
+    closeCanvasOverlays();
+  });
+
+  const selectRunHistory = useWorkflowStableCallback((runId: string) => {
+    runner.viewRunHistory(runId);
+    dispatchViewState({ type: "select-run-history" });
+    setInspectorTab("run");
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const exitRunHistory = useWorkflowStableCallback(() => {
+    runner.exitRunHistory();
+    dispatchViewState({ type: "exit-run-history" });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const exitVersionPreview = useWorkflowStableCallback(() => {
+    dispatchViewState({ type: "exit-version-preview" });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const restorePreviewVersion = useWorkflowStableCallback(async (versionId: string) => {
+    const result = await restoreVersion(versionId);
+
+    if (!result) {
+      return;
+    }
+
+    dispatchViewState({ type: "version-restored" });
+    clearEdgeSelection();
+    clearNodeSelection();
+    closeCanvasOverlays();
+  });
+
+  const checksClose = useCallback(() => dispatchViewState({ type: "close-checks" }), []);
+  const inspectorNodeVariables = useMemo(
+    () => selectedNode
+      ? getNodeVariables(selectedNode, controller.nodes, controller.edges)
+      : undefined,
+    [controller.edges, controller.nodes, selectedNode],
+  );
 
   return {
     canvas: {
-      canRedo: controller.canRedo,
-      canUndo: controller.canUndo,
+      canRedo: permissions.canUseHistory && controller.canRedo,
+      canUndo: permissions.canUseHistory && controller.canUndo,
       edges: renderedEdges,
+      isReadOnly: permissions.canvasReadOnly,
       nodes: renderedNodes,
       nextRedoLabel: controller.nextRedoLabel,
       nextUndoLabel: controller.nextUndoLabel,
@@ -420,49 +696,89 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onConnect: connectNodes,
       onEdgesChange: handleEdgesChange,
       onIsValidConnection: isValidCanvasConnection,
+      onNodeDrag: handleNodeDrag,
+      onNodeDragStart: handleNodeDragStart,
+      onNodeDragStop: handleNodeDragStop,
       onNodeHoverEnd: handleNodeHoverEnd,
       onNodeHoverStart: handleNodeHoverStart,
       onNodesChange: handleNodesChange,
       onOpenVariables: openVariablesPanel,
       onPaletteOpenChange: handlePaletteOpenChange,
       onPaneClick: handlePaneClick,
+      onViewportChangeEnd: handleViewportChangeEnd,
       onRedo: redoWorkflowChange,
       onSearchChange: setPaletteQuery,
       onSelectEdge: selectWorkflowEdge,
       onSelectNode: selectWorkflowNode,
-      onSelectionChange: handleSelectionChange,
       onUndo: undoWorkflowChange,
       paletteOpen,
       searchValue: paletteQuery,
+      viewport: controller.currentDraft.viewport,
     },
     checks: {
       ...publishChecks,
-      isOpen: isChecksOpen,
-      onClose: () => setIsChecksOpen(false),
+      isOpen: viewState.activePanel === "checks",
+      onClose: checksClose,
       onNavigateToNode: selectWorkflowNode,
       publishAttempted,
     },
     document,
+    mode: workflowMode.mode,
+    permissions,
     inspector: {
       activeTab: inspectorTab,
-      isOpen: isInspectorOpen,
-      lastRun: runner.getNodeRun(selectedNode?.id),
+      edges: controller.edges,
+      isOpen: viewState.inspectorOpen,
+      lastRun: selectedNode?.id && historyRun
+        ? historyRun.nodeRuns[selectedNode.id]
+        : runner.getNodeRun(selectedNode?.id),
       node: selectedNode,
-      onClose: () => setIsInspectorOpen(false),
+      onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
       onRunNode: runSelectedNode,
       onTabChange: setInspectorTab,
       variables: selectedNode
-        ? getNodeVariables(selectedNode, controller.nodes, controller.edges)
+        ? inspectorNodeVariables
         : undefined,
     },
     topBar: {
       lastSavedAt,
+      onOpenRunHistory: openRunHistory,
+      onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
+      onPublish: publishCurrentDraft,
+      onRunWorkflow: runCurrentWorkflow,
+      onStopWorkflowRun: runner.stopWorkflowRun,
+      publishedAt: document.publishedAt,
+      publishState,
       publishReady: publishChecks.publishReady,
+      runningState: runner.activeRun?.status,
       readyChecks: publishChecks.readyChecks,
       saveState,
-      totalChecks: publishChecks.totalChecks,
+      totalChecks: publishChecks.totalSummaryChecks,
+    },
+    runHistory: {
+      activeRun: runner.activeRun,
+      currentHistoryRunId: runner.historyRun?.id,
+      historyRun: runner.historyRun,
+      isOpen: viewState.activePanel === "run-history",
+      isViewing: isViewingRunHistory,
+      onClose: closeRunHistory,
+      onExitHistory: exitRunHistory,
+      onSelectRun: selectRunHistory,
+      runs: runner.runHistory,
+    },
+    versionHistory: {
+      currentPreviewVersionId: previewVersion?.id,
+      isOpen: viewState.activePanel === "version-history",
+      isPreviewing: isPreviewingVersion,
+      onClose: closeVersionHistory,
+      onExitPreview: exitVersionPreview,
+      onRestoreVersion: restorePreviewVersion,
+      onSelectVersion: selectVersionPreview,
+      previewVersion,
+      restoreState,
+      versions: document.versionHistory,
     },
   };
 }

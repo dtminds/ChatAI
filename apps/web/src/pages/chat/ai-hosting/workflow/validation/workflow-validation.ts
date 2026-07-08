@@ -90,7 +90,7 @@ export function validateWorkflowNodeGraphState(
       code: "node-disconnected",
       message: "节点未接入从触发节点开始的主链路",
       severity: "warning",
-      source: "runtime",
+      source: "graph",
     },
   ];
 }

@@ -170,7 +170,7 @@ export type WorkflowNodeValidationIssue = {
   code: string;
   message: string;
   severity: "warning";
-  source: "catalog" | "runtime";
+  source: "catalog" | "graph";
 };
 
 export type WorkflowNodeValidationContext = {

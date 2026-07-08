@@ -28,7 +28,6 @@ describe("buildPublishChecks", () => {
       ["trigger", "ready"],
       ["connectivity", "warning"],
       ["config", "ready"],
-      ["ai", "ready"],
       ["goal", "ready"],
     ]);
     expect(checklist.checks.map((check) => [check.id, check.category])).toEqual([
@@ -314,19 +313,14 @@ describe("buildPublishChecks", () => {
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
-  it("keeps AI strategy optional when no AI node is present", () => {
+  it("keeps AI nodes out of the publish summary when no AI node is present", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 
-    expect(checklist.summary.find((check) => check.id === "ai")).toEqual(expect.objectContaining({
-      blocksPublish: false,
-      blocksRun: false,
-      description: "当前流程未启用 AI 接待动作",
-      status: "ready",
-    }));
-    expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
+    expect(checklist.summary.map((check) => check.id)).toEqual(["trigger", "connectivity", "config", "goal"]);
+    expect(checklist.checks.some((check) => check.category === "config" && check.id.includes("ai"))).toBe(false);
   });
 
-  it("marks AI strategy ready when an AI node is configured", () => {
+  it("does not create a special publish summary item for configured AI nodes", () => {
     const aiNode: WorkflowNode = {
       data: {
         actionType: "ai",
@@ -352,7 +346,7 @@ describe("buildPublishChecks", () => {
     ];
     const checklist = buildPublishChecklist(nodes, edges);
 
-    expect(checklist.summary.find((check) => check.id === "ai")?.status).toBe("ready");
+    expect(checklist.summary.map((check) => check.id)).toEqual(["trigger", "connectivity", "config", "goal"]);
     expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
   });
 
@@ -374,10 +368,10 @@ describe("buildPublishChecks", () => {
       createEdge("action-message", "ai-missing-agent"),
     ]);
 
-    expect(checklist.summary.find((check) => check.id === "ai")).toEqual(expect.objectContaining({
-      blocksPublish: false,
-      blocksRun: false,
-      description: "AI 接待节点仍需补全配置",
+    expect(checklist.summary.find((check) => check.id === "config")).toEqual(expect.objectContaining({
+      blocksPublish: true,
+      blocksRun: true,
+      description: "1 个节点仍需补全配置",
       status: "warning",
     }));
     expect(checklist.checks).toEqual(expect.arrayContaining([
@@ -495,9 +489,9 @@ describe("useWorkflowPublishChecks", () => {
     );
 
     expect(result.current.checks).toHaveLength(2);
-    expect(result.current.summary).toHaveLength(5);
-    expect(result.current.readyChecks).toBe(4);
-    expect(result.current.totalChecks).toBe(5);
+    expect(result.current.summary).toHaveLength(4);
+    expect(result.current.readyChecks).toBe(3);
+    expect(result.current.totalChecks).toBe(4);
     expect(result.current.publishReady).toBe(false);
     expect(result.current.canRun).toBe(false);
     expect(result.current.runBlockers).toEqual(expect.arrayContaining([

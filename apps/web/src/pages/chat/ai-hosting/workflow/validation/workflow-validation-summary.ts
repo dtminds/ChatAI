@@ -67,12 +67,9 @@ export function buildWorkflowValidationSummaryFromResult(
   ) || disconnectedIssues.some(({ issues }) =>
     issues.some((issue) => issue.code !== "node-disconnected"),
   );
-  const hasAiNode = nodes.some((node) => node.data.kind === "ai");
-  const hasConfiguredAiAction = validation.configuredAiNodes.length > 0;
-
   const summary: WorkflowPublishCheckSummaryItem[] = [
     {
-      ...getBlockingScope("trigger"),
+      ...getBlockingScope(),
       description: validation.triggerNode && !triggerIssue
         ? `当前人群：${validation.triggerNode.data.audience}`
         : triggerConfigIssues?.[0]?.message ?? "缺少触发节点",
@@ -81,7 +78,7 @@ export function buildWorkflowValidationSummaryFromResult(
       title: "触发人群",
     },
     {
-      ...getBlockingScope("connectivity"),
+      ...getBlockingScope(),
       description: hasGraphStructureIssue
         ? "图结构存在未连接出口、循环、多入口或深度超限"
         : hasDisconnectedNode
@@ -92,7 +89,7 @@ export function buildWorkflowValidationSummaryFromResult(
       title: "链路连通性",
     },
     {
-      ...getBlockingScope("config"),
+      ...getBlockingScope(),
       description: nodeConfigIssues.length
         ? `${nodeConfigIssues.length} 个节点仍需补全配置`
         : "所有节点已完成关键配置",
@@ -101,18 +98,7 @@ export function buildWorkflowValidationSummaryFromResult(
       title: "节点配置",
     },
     {
-      ...getBlockingScope("ai"),
-      description: hasConfiguredAiAction
-        ? "AI 接待动作已绑定 Agent 和知识库策略"
-        : hasAiNode
-          ? "AI 接待节点仍需补全配置"
-          : "当前流程未启用 AI 接待动作",
-      id: "ai",
-      status: hasAiNode && !hasConfiguredAiAction ? "warning" : "ready",
-      title: "AI 接待策略",
-    },
-    {
-      ...getBlockingScope("goal"),
+      ...getBlockingScope(),
       description: validation.goalNode ? "已配置退出目标和转化指标" : "缺少目标节点",
       id: "goal",
       status: validation.goalNode ? "ready" : "warning",
@@ -202,16 +188,7 @@ function createNodeIssueCheck(
   };
 }
 
-function getBlockingScope(
-  id: WorkflowPublishCheckSummaryItem["id"],
-): WorkflowCheckBlockingScope {
-  if (id === "ai") {
-    return {
-      blocksPublish: false,
-      blocksRun: false,
-    };
-  }
-
+function getBlockingScope(): WorkflowCheckBlockingScope {
   return {
     blocksPublish: true,
     blocksRun: true,
@@ -228,8 +205,6 @@ function getSummaryCheckCategory(
       return "connectivity";
     case "config":
       return "config";
-    case "ai":
-      return "strategy";
     case "goal":
       return "goal";
   }

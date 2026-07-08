@@ -148,7 +148,7 @@ export type WorkflowVariables = {
 export type WorkflowPublishCheck = {
   blocksPublish: boolean;
   blocksRun: boolean;
-  category: "connectivity" | "config" | "goal" | "strategy" | "trigger";
+  category: "connectivity" | "config" | "goal" | "trigger";
   description: string;
   id: string;
   messages?: string[];
@@ -161,7 +161,7 @@ export type WorkflowPublishCheckSummaryItem = {
   blocksPublish: boolean;
   blocksRun: boolean;
   description: string;
-  id: "trigger" | "connectivity" | "config" | "ai" | "goal";
+  id: "trigger" | "connectivity" | "config" | "goal";
   status: "ready" | "warning";
   title: string;
 };

@@ -23,7 +23,6 @@ export type WorkflowValidationNodeIssue = {
 };
 
 export type WorkflowValidationResult = {
-  configuredAiNodes: WorkflowNode[];
   disconnectedNodes: WorkflowNode[];
   goalNode?: WorkflowNode;
   graphIssues: WorkflowGraphValidationIssue[];
@@ -52,12 +51,8 @@ export function validateWorkflowDraft(
       node,
     }))
     .filter((item) => item.issues.length > 0);
-  const configuredAiNodes = nodes.filter(
-    (node) => node.data.kind === "ai" && hasText(node.data.agentName),
-  );
 
   return {
-    configuredAiNodes,
     disconnectedNodes,
     goalNode,
     graphIssues: graphValidation.graphIssues,
@@ -101,8 +96,4 @@ export function validateWorkflowNodeGraphState(
       source: "graph",
     },
   ];
-}
-
-function hasText(value: string | undefined) {
-  return typeof value === "string" && value.trim().length > 0;
 }

@@ -354,9 +354,9 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
 
 function getMiniProgramMaterialFooterNote(item: MaterialCollectionItem) {
   const note = readString(item.title);
-  const appDescription = readString(item.content?.description);
+  const displayedTitle = readString(item.content?.title) || note || "小程序";
 
-  return note && note !== appDescription ? `备注：${note}` : undefined;
+  return note && note !== displayedTitle ? `备注：${note}` : undefined;
 }
 
 function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {

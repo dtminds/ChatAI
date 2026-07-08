@@ -176,7 +176,7 @@ describe("material collection H5 content helpers", () => {
     ).toEqual({ errorMsg: "视频缺少封面，无法收录" });
   });
 
-  it("requires mini-program material title without changing raw content title", () => {
+  it("requires mini-program material remark without changing raw content title", () => {
     const rawContent = JSON.stringify({
       description: "【王知之周一答题】",
       fileUrl: "s5/msg/20260611/272/4cbef024e3e0431bb4278ce82113504c.png",

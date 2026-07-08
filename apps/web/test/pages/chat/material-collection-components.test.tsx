@@ -528,7 +528,7 @@ describe("material collection components", () => {
     expect(screen.getByRole("button", { name: "选择素材 活动页" })).toBeInTheDocument();
   });
 
-  it("renders mini-program material table title as footer note when it differs from description", () => {
+  it("renders mini-program material table title as footer note when it differs from displayed title", () => {
     const { rerender } = render(
       <MaterialCard
         item={createItem({
@@ -561,13 +561,13 @@ describe("material collection components", () => {
           },
           contentType: "mini-program",
           groupId: "group-mini",
-          title: "【王知之周一答题】",
+          title: "王知之自习室",
         })}
         onSelect={() => undefined}
       />,
     );
 
-    expect(screen.queryByText("备注：【王知之周一答题】")).not.toBeInTheDocument();
+    expect(screen.queryByText("备注：王知之自习室")).not.toBeInTheDocument();
     expect(screen.getByTestId("mini-program-mark")).toBeInTheDocument();
     expect(screen.getByText("小程序")).toBeInTheDocument();
   });

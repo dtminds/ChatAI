@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  findWorkflowEntryNode,
+  findWorkflowTerminalNode,
   getAvailableNextNodeKinds,
   getAvailablePrevNodeKinds,
   getInsertableNodeKindsBetween,
   getInsertableNodeKindsForSource,
+  getWorkflowNodeRole,
   getWorkflowPaletteItemGroups,
   getWorkflowNodeCatalogEntry,
   insertableNodeKinds,
@@ -75,6 +78,7 @@ describe("workflow node catalog", () => {
       expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.layout).toBe(catalogEntry.layout);
+      expect(definition.role).toBe(catalogEntry.role);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
       expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
@@ -128,6 +132,10 @@ describe("workflow node catalog", () => {
       edges: [],
       nodes,
     }).nodes.map((node) => node.data.kind)).toEqual(nodeKinds);
+    expect(getWorkflowNodeRole("trigger")).toBe("entry");
+    expect(getWorkflowNodeRole("goal")).toBe("terminal");
+    expect(findWorkflowEntryNode(nodes)?.data.kind).toBe("trigger");
+    expect(findWorkflowTerminalNode(nodes)?.data.kind).toBe("goal");
     expect(isWorkflowNodeKind("toString")).toBe(false);
     expect(isClipboardNodeStructurallyValid({
       data: { kind: "toString" },

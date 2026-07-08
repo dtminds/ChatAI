@@ -53,6 +53,8 @@ export type WorkflowNodePaletteGroup = {
   sort: number;
 };
 
+export type WorkflowNodeRole = "entry" | "terminal";
+
 type NodeDataInput = {
   actionType?: WorkflowNodeData["actionType"];
   agentName?: string;
@@ -85,6 +87,7 @@ export type WorkflowNodeCatalogEntry = {
   layout: WorkflowNodeLayoutMetrics;
   paletteLabel?: string;
   paletteGroup?: WorkflowNodePaletteGroupId;
+  role?: WorkflowNodeRole;
   getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
   getSourceHandles: (data: WorkflowNodeData) => WorkflowSourceHandleDefinition[];
   getTargetHandles: (data: WorkflowNodeData) => WorkflowTargetHandleDefinition[];
@@ -417,6 +420,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     insertable: false,
     kind: "goal",
     layout: standardNodeLayout,
+    role: "terminal",
     getOutputVariables: createDefaultOutputVariables,
     getSourceHandles: createNoSourceHandles,
     getTargetHandles: createDefaultTargetHandles,
@@ -479,6 +483,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     insertable: false,
     kind: "trigger",
     layout: standardNodeLayout,
+    role: "entry",
     getOutputVariables: createDefaultOutputVariables,
     getSourceHandles: createDefaultSourceHandles,
     getTargetHandles: createNoTargetHandles,
@@ -653,6 +658,26 @@ export function getWorkflowPaletteItemGroups({
 
 export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
   return workflowNodeCatalog[kind];
+}
+
+export function getWorkflowNodeRole(kind: WorkflowNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).role;
+}
+
+export function isWorkflowEntryNode(node: WorkflowNode) {
+  return getWorkflowNodeRole(node.data.kind) === "entry";
+}
+
+export function isWorkflowTerminalNode(node: WorkflowNode) {
+  return getWorkflowNodeRole(node.data.kind) === "terminal";
+}
+
+export function findWorkflowEntryNode(nodes: WorkflowNode[]) {
+  return nodes.find(isWorkflowEntryNode);
+}
+
+export function findWorkflowTerminalNode(nodes: WorkflowNode[]) {
+  return nodes.find(isWorkflowTerminalNode);
 }
 
 export function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {

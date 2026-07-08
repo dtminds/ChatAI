@@ -6,6 +6,11 @@ import {
   getWorkflowConnectionPolicyViolation,
 } from "../connection-policy";
 import {
+  findWorkflowEntryNode,
+  findWorkflowTerminalNode,
+  isWorkflowEntryNode,
+} from "../node-catalog";
+import {
   getNodeSourceHandleDefinitions,
   getNodeTargetHandleCapacity,
   getNodeUnconnectedSourceHandles,
@@ -51,8 +56,8 @@ export function validateWorkflowGraph(
   } = {},
 ): WorkflowGraphValidationResult {
   const maxDepthLimit = options.maxDepth ?? WORKFLOW_MAX_TREE_DEPTH;
-  const triggerNode = nodes.find((node) => node.data.kind === "trigger");
-  const goalNode = nodes.find((node) => node.data.kind === "goal");
+  const triggerNode = findWorkflowEntryNode(nodes);
+  const goalNode = findWorkflowTerminalNode(nodes);
   const { maxDepth, reachableNodeIds, validNodes } = getValidWorkflowTreeNodes(nodes, edges, triggerNode?.id);
   const disconnectedNodeIds = new Set(nodes
     .filter((node) => !reachableNodeIds.has(node.id))
@@ -89,7 +94,7 @@ export function validateWorkflowGraph(
   disconnectedNodeIds.forEach((nodeId) => {
     const node = nodes.find((item) => item.id === nodeId);
 
-    if (!node || node.data.kind === "trigger") {
+    if (!node || isWorkflowEntryNode(node)) {
       return;
     }
 

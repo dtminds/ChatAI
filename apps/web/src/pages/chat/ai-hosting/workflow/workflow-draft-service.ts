@@ -9,6 +9,10 @@ import {
   hydrateWorkflowDraft,
   isWorkflowGraphEqual,
 } from "./workflow-draft-normalizer";
+import {
+  findWorkflowEntryNode,
+  findWorkflowTerminalNode,
+} from "./node-catalog";
 import type { WorkflowDraft } from "./types";
 
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused";
@@ -698,11 +702,11 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
 }
 
 function getWorkflowTrigger(draft: WorkflowDraft) {
-  return draft.nodes.find((node) => node.data.kind === "trigger")?.data.audience;
+  return findWorkflowEntryNode(draft.nodes)?.data.audience;
 }
 
 function getWorkflowConversion(draft: WorkflowDraft) {
-  const conversion = draft.nodes.find((node) => node.data.kind === "goal")?.data.conversion;
+  const conversion = findWorkflowTerminalNode(draft.nodes)?.data.conversion;
   return typeof conversion === "number" ? `${conversion}%` : undefined;
 }
 

@@ -1,4 +1,8 @@
 import { getNodeDefinitionCore } from "../node-definition-core";
+import {
+  findWorkflowEntryNode,
+  findWorkflowTerminalNode,
+} from "../node-catalog";
 import { validateNodeConfigSections } from "../node-config-validation";
 import { getWorkflowNodeConfigSchema } from "../node-config-schema";
 import type {
@@ -37,8 +41,8 @@ export function validateWorkflowDraft(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowValidationResult {
-  const triggerNode = nodes.find((node) => node.data.kind === "trigger");
-  const goalNode = nodes.find((node) => node.data.kind === "goal");
+  const triggerNode = findWorkflowEntryNode(nodes);
+  const goalNode = findWorkflowTerminalNode(nodes);
   const graphValidation = validateWorkflowGraph(nodes, edges);
   const { reachableNodeIds } = graphValidation;
   const disconnectedNodes = nodes.filter((node) => graphValidation.disconnectedNodeIds.has(node.id));

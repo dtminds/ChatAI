@@ -134,6 +134,26 @@ describe("workflowHistoryReducer", () => {
     expect(branchedState.nextSequence).toBe(3);
   });
 
+  it("records a pending config edit as redoable when undoing it atomically", () => {
+    const initialState = createWorkflowHistoryInitialState(createDraft(0));
+    const undoneState = workflowHistoryReducer(initialState, {
+      event: "node:config-change",
+      nextDraft: createDraft(10),
+      previousDraft: initialState.currentDraft,
+      type: "commit-from-drafts-and-undo",
+    });
+
+    expect(undoneState.currentDraft.nodes[0].position.x).toBe(0);
+    expect(undoneState.pastStates).toHaveLength(0);
+    expect(undoneState.futureStates).toHaveLength(1);
+    expect(undoneState.futureStates[0].label).toBe("修改节点配置");
+
+    const redoneState = workflowHistoryReducer(undoneState, { type: "redo" });
+    expect(redoneState.currentDraft.nodes[0].position.x).toBe(10);
+    expect(redoneState.pastStates).toHaveLength(1);
+    expect(redoneState.futureStates).toHaveLength(0);
+  });
+
   it("preserves the current viewport when applying undo and redo snapshots", () => {
     const viewportBeforeMove = { x: 0, y: 0, zoom: 1 };
     const viewportAtUndoTime = { x: 320, y: 240, zoom: 0.72 };

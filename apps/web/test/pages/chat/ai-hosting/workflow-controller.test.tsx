@@ -211,6 +211,15 @@ describe("useWorkflowController", () => {
     expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title).toBe(originalTitle);
     expect(result.current.canRedo).toBe(true);
     expect(result.current.nextRedoLabel).toBe("修改节点配置");
+
+    act(() => {
+      result.current.redo();
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+      .toBe("更新后的动作标题");
+    expect(result.current.canUndo).toBe(true);
   });
 
   it("clears redo immediately when a new config edit branches from an undone state", () => {

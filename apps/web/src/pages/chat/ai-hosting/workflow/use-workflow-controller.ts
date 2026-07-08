@@ -70,6 +70,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const history = useWorkflowHistory(() => initialDraft);
   const {
     commitFromDrafts,
+    commitFromDraftsAndUndo,
     currentDraft,
     futureStates,
     pastStates,
@@ -115,6 +116,26 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     );
     return pendingHistory;
   }, [clearConfigHistoryTimer, commitFromDrafts]);
+
+  const undoPendingConfigHistory = useCallback((): PendingConfigHistory | null => {
+    const pendingHistory = pendingConfigHistoryRef.current;
+
+    clearConfigHistoryTimer();
+
+    if (!pendingHistory) {
+      return null;
+    }
+
+    pendingConfigHistoryRef.current = null;
+    setPendingConfigHistoryActive(false);
+    commitFromDraftsAndUndo(
+      "node:config-change",
+      pendingHistory.previousDraft,
+      pendingHistory.nextDraft,
+      pendingHistory.meta,
+    );
+    return pendingHistory;
+  }, [clearConfigHistoryTimer, commitFromDraftsAndUndo]);
 
   const scheduleConfigHistoryCommit = useCallback(() => {
     clearConfigHistoryTimer();
@@ -386,9 +407,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [commitGraphCommand, flushConfigHistory]);
 
   const undo = useCallback((): WorkflowControllerActionResult | undefined => {
-    const pendingConfigHistory = flushConfigHistory();
+    const pendingConfigHistory = undoPendingConfigHistory();
     if (pendingConfigHistory) {
-      history.undo();
       return {
         draft: sanitizeDraft(preserveCurrentViewport(pendingConfigHistory.previousDraft, currentDraft)),
       };
@@ -403,7 +423,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     return {
       draft: sanitizeDraft(preserveCurrentViewport(previousState.beforeDraft, currentDraft)),
     };
-  }, [currentDraft, flushConfigHistory, history, pastStates]);
+  }, [currentDraft, history, pastStates, undoPendingConfigHistory]);
 
   const redo = useCallback((): WorkflowControllerActionResult | undefined => {
     const pendingConfigHistory = flushConfigHistory();

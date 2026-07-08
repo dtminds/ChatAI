@@ -56,6 +56,13 @@ export type WorkflowHistoryReducerAction =
     type: "commit-from-drafts";
   }
   | {
+    event: WorkflowHistoryEvent;
+    meta?: WorkflowHistoryEventMeta;
+    nextDraft: WorkflowDraft;
+    previousDraft: WorkflowDraft;
+    type: "commit-from-drafts-and-undo";
+  }
+  | {
     clearFuture?: boolean;
     type: "replace";
     updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
@@ -127,6 +134,27 @@ export function workflowHistoryReducer(
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
         createHistoryEntry(previousDraft, nextDraft, action.event, state.nextSequence, action.meta),
       ],
+    };
+  }
+
+  if (action.type === "commit-from-drafts-and-undo") {
+    const previousDraft = sanitizeDraft(action.previousDraft);
+    const nextDraft = sanitizeDraft(action.nextDraft);
+
+    if (isWorkflowGraphEqual(previousDraft, nextDraft)) {
+      return state;
+    }
+
+    const entry = createHistoryEntry(previousDraft, nextDraft, action.event, state.nextSequence, action.meta);
+
+    return {
+      currentDraft: preserveCurrentViewport(previousDraft, state.currentDraft),
+      futureStates: [
+        entry,
+        ...state.futureStates.slice(0, WORKFLOW_HISTORY_LIMIT - 1),
+      ],
+      nextSequence: state.nextSequence + 1,
+      pastStates: state.pastStates,
     };
   }
 

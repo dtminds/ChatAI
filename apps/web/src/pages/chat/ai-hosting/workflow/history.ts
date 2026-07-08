@@ -62,6 +62,21 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     });
   }, []);
 
+  const commitFromDraftsAndUndo = useCallback((
+    event: WorkflowHistoryEvent,
+    previousDraft: WorkflowDraft,
+    nextDraft: WorkflowDraft,
+    meta?: WorkflowHistoryEventMeta,
+  ) => {
+    dispatch({
+      event,
+      meta,
+      nextDraft,
+      previousDraft,
+      type: "commit-from-drafts-and-undo",
+    });
+  }, []);
+
   const undo = useCallback(() => {
     dispatch({ type: "undo" });
   }, []);
@@ -76,6 +91,7 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
   return {
     canRedo: futureStates.length > 0,
     canUndo: pastStates.length > 0,
+    commitFromDraftsAndUndo,
     commitFromDrafts,
     commitDraft,
     currentDraft,

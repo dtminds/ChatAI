@@ -507,6 +507,9 @@ describe("useWorkflowWorkspace", () => {
 
       act(() => {
         result.current.canvas.onSelectNode("trigger");
+      });
+
+      act(() => {
         result.current.inspector.onNodeChange({ audience: "发布后的草稿修改" });
       });
 
@@ -519,6 +522,17 @@ describe("useWorkflowWorkspace", () => {
 
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe(publishedAudience);
+      expect(result.current.canvas.canRedo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("发布后的草稿修改");
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
         .toBe(publishedAudience);
     }
     finally {

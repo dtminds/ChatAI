@@ -1,6 +1,9 @@
 import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
 import { createWorkflowNodeExecutionConfig } from "./node-catalog";
-import { getNodeSourceOutletDefinition } from "./node-handle-definitions";
+import {
+  getNodeSourceOutletDefinition,
+  type WorkflowSourceOutletDefinition,
+} from "./node-handle-definitions";
 import type {
   WorkflowDraft,
   WorkflowEdge,
@@ -44,15 +47,9 @@ export type WorkflowExecutionEdge = {
   id: string;
   source: string;
   sourceHandle: string | null;
-  sourceOutlet: WorkflowExecutionEdgeOutlet | null;
+  sourceOutlet: WorkflowSourceOutletDefinition | null;
   target: string;
   targetHandle: string | null;
-};
-
-export type WorkflowExecutionEdgeOutlet = {
-  id: string;
-  kind: "branch-path" | "default";
-  label?: string;
 };
 
 export type WorkflowDslParseIssue = {
@@ -175,7 +172,7 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
 function createWorkflowExecutionEdgeOutlet(
   edge: WorkflowEdge,
   sourceNode: WorkflowNode | undefined,
-): WorkflowExecutionEdgeOutlet | null {
+): WorkflowSourceOutletDefinition | null {
   if (!sourceNode) {
     return null;
   }

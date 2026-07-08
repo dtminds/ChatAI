@@ -14,6 +14,12 @@ export type WorkflowSourceHandleDefinition = {
   top: number;
 };
 
+export type WorkflowSourceOutletDefinition = {
+  id: string;
+  kind: WorkflowSourceHandleDefinition["outletKind"];
+  label?: string;
+};
+
 export type WorkflowTargetHandleDefinition = {
   id?: string;
 };
@@ -84,7 +90,7 @@ export function getNodeUnconnectedSourceHandles(
 export function getNodeSourceOutletDefinition(
   node: WorkflowNode,
   sourceHandle?: string | null,
-) {
+): WorkflowSourceOutletDefinition | null {
   const handle = getNodeSourceHandleDefinitions(node.data).find((definition) =>
     isWorkflowHandleIdEqual(definition.id, sourceHandle),
   );

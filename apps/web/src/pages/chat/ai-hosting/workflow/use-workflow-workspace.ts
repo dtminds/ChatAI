@@ -35,6 +35,24 @@ import {
   reduceWorkflowViewState,
 } from "./workflow-view-state";
 
+type WorkflowWorkspaceEditResult = {
+  draft: WorkflowDraft;
+  edgeId?: string;
+  nodeId?: string;
+  nodeIds?: string[];
+};
+
+type WorkflowWorkspaceEditOptions = {
+  clearEdgeSelection?: boolean;
+  clearNodeSelection?: boolean;
+  clearSelectedRemovedEdge?: boolean;
+  closeChecks?: boolean;
+  closeOverlays?: boolean;
+  deleteNodeRuns?: boolean;
+  selectNode?: boolean;
+  workflowEdited?: boolean;
+};
+
 export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
     document,
@@ -136,6 +154,54 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     closeCanvasOverlays();
   });
 
+  const commitWorkflowEditResult = useWorkflowStableCallback((
+    result: WorkflowWorkspaceEditResult | undefined,
+    options: WorkflowWorkspaceEditOptions = {},
+  ) => {
+    if (!result) {
+      return false;
+    }
+
+    markDirty(result.draft);
+
+    if (options.deleteNodeRuns) {
+      (result.nodeIds ?? (result.nodeId ? [result.nodeId] : []))
+        .forEach((nodeId) => runner.deleteNodeRun(nodeId));
+    }
+
+    if (options.selectNode && result.nodeId) {
+      setSelectedNodeId(result.nodeId);
+    }
+
+    if (options.clearNodeSelection) {
+      clearNodeSelection();
+    }
+
+    if (
+      options.clearEdgeSelection
+      || (options.clearSelectedRemovedEdge && result.edgeId && selectedEdgeId === result.edgeId)
+    ) {
+      clearEdgeSelection();
+    }
+
+    if (options.workflowEdited) {
+      dispatchViewState({
+        openInspector: Boolean(options.selectNode && result.nodeId),
+        type: "workflow-edited",
+      });
+    }
+
+    if (options.closeChecks) {
+      dispatchViewState({ type: "close-checks" });
+    }
+
+    if (options.closeOverlays !== false) {
+      closeCanvasOverlays();
+    }
+
+    return true;
+  });
+
   const updateSelectedNode = useCallback((patch: Partial<WorkflowNodeData>) => {
     if (!permissions.canEditNodeSettings) {
       return;
@@ -146,10 +212,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.updateNodeData(selectedNodeId, patch);
-    if (result) {
-      markDirty(result.draft);
-    }
-  }, [controller, markDirty, permissions.canEditNodeSettings, selectedNodeId]);
+    commitWorkflowEditResult(result, {
+      closeOverlays: false,
+    });
+  }, [commitWorkflowEditResult, controller, permissions.canEditNodeSettings, selectedNodeId]);
 
   const undoWorkflowChange = useWorkflowStableCallback(() => {
     if (!permissions.canEditGraph) {
@@ -157,10 +223,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.undo();
-    if (result) {
-      markDirty(result.draft);
+    if (!commitWorkflowEditResult(result)) {
+      closeCanvasOverlays();
     }
-    closeCanvasOverlays();
   });
 
   const redoWorkflowChange = useWorkflowStableCallback(() => {
@@ -169,10 +234,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.redo();
-    if (result) {
-      markDirty(result.draft);
+    if (!commitWorkflowEditResult(result)) {
+      closeCanvasOverlays();
     }
-    closeCanvasOverlays();
   });
 
   const handleWorkflowEditResult = useWorkflowStableCallback((result?: { draft: WorkflowDraft; nodeId?: string }) => {
@@ -180,21 +244,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       return;
     }
 
-    if (!result) {
-      return;
-    }
-
-    markDirty(result.draft);
-
-    if (result?.nodeId) {
-      setSelectedNodeId(result.nodeId);
-    }
-
-    dispatchViewState({
-      openInspector: Boolean(result?.nodeId),
-      type: "workflow-edited",
+    commitWorkflowEditResult(result, {
+      selectNode: true,
+      workflowEdited: true,
     });
-    closeCanvasOverlays();
   });
 
   const addNode = useWorkflowStableCallback((kind: WorkflowNodeKind) => {
@@ -239,12 +292,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.connectNodes(connection);
-
-    if (result) {
-      markDirty(result.draft);
-      closeCanvasOverlays();
-      dispatchViewState({ type: "close-checks" });
-    }
+    commitWorkflowEditResult(result, {
+      closeChecks: true,
+    });
   });
 
   const handleDeleteNode = useWorkflowStableCallback((nodeId: string) => {
@@ -253,15 +303,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.deleteNode(nodeId);
-
-    if (!result) {
-      return;
-    }
-
-    closeCanvasOverlays();
-    runner.deleteNodeRun(nodeId);
-    markDirty(result.draft);
-    dispatchViewState({ type: "close-checks" });
+    commitWorkflowEditResult(result, {
+      closeChecks: true,
+      deleteNodeRuns: true,
+    });
   });
 
   const handleDeleteNodes = useWorkflowStableCallback((nodeIds: string[]) => {
@@ -270,16 +315,11 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.deleteNodes(nodeIds);
-
-    if (!result) {
-      return;
-    }
-
-    closeCanvasOverlays();
-    result.nodeIds?.forEach((nodeId) => runner.deleteNodeRun(nodeId));
-    clearNodeSelection();
-    markDirty(result.draft);
-    dispatchViewState({ type: "close-checks" });
+    commitWorkflowEditResult(result, {
+      clearNodeSelection: true,
+      closeChecks: true,
+      deleteNodeRuns: true,
+    });
   });
 
   const handleDuplicateNode = useWorkflowStableCallback((nodeId: string) => {
@@ -297,15 +337,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.deleteEdge(edgeId);
-
-    if (!result) {
-      return;
-    }
-
-    clearEdgeSelection();
-    markDirty(result.draft);
-    closeCanvasOverlays();
-    dispatchViewState({ type: "close-checks" });
+    commitWorkflowEditResult(result, {
+      clearEdgeSelection: true,
+      closeChecks: true,
+    });
   });
 
   const deleteSelectedNode = useWorkflowStableCallback(() => {
@@ -467,9 +502,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.finishNodeDrag(node.id, node.position, draggedNodes);
-    if (result) {
-      markDirty(result.draft);
-    }
+    commitWorkflowEditResult(result, {
+      closeOverlays: false,
+    });
   });
 
   const handleViewportChangeEnd = useWorkflowStableCallback((viewport: Viewport) => {
@@ -486,17 +521,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.onEdgesChange(changes);
-
-    if (!result) {
-      return;
-    }
-
-    markDirty(result.draft);
-    closeCanvasOverlays();
-    dispatchViewState({ type: "close-checks" });
-    if (result.edgeId && selectedEdgeId === result.edgeId) {
-      clearEdgeSelection();
-    }
+    commitWorkflowEditResult(result, {
+      clearSelectedRemovedEdge: true,
+      closeChecks: true,
+    });
   });
 
   const arrangeNodes = useWorkflowStableCallback(() => {
@@ -505,9 +533,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     const result = controller.arrangeNodes();
-    if (result) {
-      markDirty(result.draft);
-    }
+    commitWorkflowEditResult(result, {
+      closeOverlays: false,
+    });
   });
 
   const isValidCanvasConnection: IsValidConnection<WorkflowRenderEdge> = useWorkflowStableCallback((connection) =>

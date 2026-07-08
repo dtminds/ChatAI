@@ -7,9 +7,10 @@ import type {
   WorkflowNode,
 } from "./types";
 
-export const WORKFLOW_DSL_KIND = "chatai-marketing-workflow";
+export const WORKFLOW_DSL_KIND = "chatai-workflow";
 export const WORKFLOW_DSL_SCHEMA_VERSION = 1;
 export const SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS = [1] as const;
+const LEGACY_WORKFLOW_DSL_KINDS = ["chatai-marketing-workflow"] as const;
 
 export type WorkflowDslDocument = {
   exportedAt: string;
@@ -196,7 +197,7 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
     return createDslParseFailure("invalid-json", "DSL 必须是合法 JSON");
   }
 
-  if (!isPlainObject(parsed) || parsed.kind !== WORKFLOW_DSL_KIND) {
+  if (!isPlainObject(parsed) || !isSupportedWorkflowDslKind(parsed.kind)) {
     return createDslParseFailure("invalid-kind", "DSL 类型不匹配");
   }
 
@@ -301,6 +302,11 @@ function createDslParseFailure(
 function isSupportedWorkflowDslSchemaVersion(value: unknown): value is typeof WORKFLOW_DSL_SCHEMA_VERSION {
   return typeof value === "number"
     && SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS.includes(value as typeof WORKFLOW_DSL_SCHEMA_VERSION);
+}
+
+function isSupportedWorkflowDslKind(value: unknown) {
+  return value === WORKFLOW_DSL_KIND
+    || LEGACY_WORKFLOW_DSL_KINDS.includes(value as (typeof LEGACY_WORKFLOW_DSL_KINDS)[number]);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

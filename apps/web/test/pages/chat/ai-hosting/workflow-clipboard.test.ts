@@ -7,6 +7,7 @@ import {
   pasteWorkflowClipboardData,
   readWorkflowClipboard,
   stringifyWorkflowClipboardData,
+  WORKFLOW_CLIPBOARD_KIND,
   writeWorkflowClipboard,
 } from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import {
@@ -103,7 +104,10 @@ describe("workflow clipboard", () => {
       nodes: clipboardData.nodes,
     });
     const parsed = parseWorkflowClipboardText(text);
+    const payload = JSON.parse(text);
 
+    expect(payload.kind).toBe(WORKFLOW_CLIPBOARD_KIND);
+    expect(payload.kind).toBe("chatai-workflow-clipboard");
     expect(parsed?.nodes).toHaveLength(1);
     expect(parsed?.edges).toHaveLength(0);
     expect(parseWorkflowClipboardText("not-json")).toBeUndefined();
@@ -169,7 +173,7 @@ describe("workflow clipboard", () => {
     expect(hydrated.edges).toHaveLength(0);
   });
 
-  it("accepts legacy node and edge types before normalizing clipboard data", () => {
+  it("accepts legacy clipboard kind, node types, and edge types before normalizing data", () => {
     const draft = createDraft();
     const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
     const action = draft.nodes.find((node) => node.id === "action-message")!;

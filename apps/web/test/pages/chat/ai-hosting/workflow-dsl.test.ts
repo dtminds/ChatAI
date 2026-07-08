@@ -63,6 +63,7 @@ describe("workflow DSL", () => {
       },
       schemaVersion: WORKFLOW_DSL_SCHEMA_VERSION,
     }));
+    expect(parsed.kind).toBe("chatai-workflow");
     expect(parsed.workflow).toEqual(expect.objectContaining({
       id: "newcomer-conversion",
       name: "新人转化旅程",
@@ -118,6 +119,27 @@ describe("workflow DSL", () => {
     expect(parsed.document.workflow.executionGraph).toEqual(createWorkflowExecutionGraph(createInitialDraft()));
     expect(parsed.draft.nodes.map((node) => node.id)).toEqual(createInitialDraft().nodes.map((node) => node.id));
     expect(parsed.draft.edges.map((edge) => edge.id)).toEqual(createInitialDraft().edges.map((edge) => edge.id));
+  });
+
+  it("imports legacy marketing workflow DSL kind through the compatibility boundary", () => {
+    const document = createWorkflowDslDocument({
+      draft: createInitialDraft(),
+      exportedAt: "2026-07-08T00:00:00.000Z",
+      workflowName: "旧版 Workflow",
+    });
+    const text = JSON.stringify({
+      ...document,
+      kind: "chatai-marketing-workflow",
+    });
+    const parsed = parseWorkflowDslText(text);
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+
+    expect(parsed.document.kind).toBe(WORKFLOW_DSL_KIND);
+    expect(parsed.draft.nodes.map((node) => node.id)).toEqual(createInitialDraft().nodes.map((node) => node.id));
   });
 
   it("projects editor drafts into execution graphs without editor-only state", () => {

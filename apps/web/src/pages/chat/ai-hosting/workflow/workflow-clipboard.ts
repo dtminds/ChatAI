@@ -12,9 +12,10 @@ import type {
   WorkflowDraft,
 } from "./types";
 
-export const WORKFLOW_CLIPBOARD_KIND = "chatai-marketing-workflow-clipboard";
+export const WORKFLOW_CLIPBOARD_KIND = "chatai-workflow-clipboard";
 export const WORKFLOW_CLIPBOARD_VERSION = 1;
 const PASTE_OFFSET = 48;
+const LEGACY_WORKFLOW_CLIPBOARD_KINDS = ["chatai-marketing-workflow-clipboard"] as const;
 
 export type WorkflowClipboardData = {
   edges: WorkflowEdge[];
@@ -98,7 +99,7 @@ export function parseWorkflowClipboardText(text: string): WorkflowClipboardData 
     const parsed = JSON.parse(text) as Partial<WorkflowClipboardPayload>;
 
     if (
-      parsed.kind !== WORKFLOW_CLIPBOARD_KIND
+      !isSupportedWorkflowClipboardKind(parsed.kind)
       || parsed.version !== WORKFLOW_CLIPBOARD_VERSION
       || !Array.isArray(parsed.nodes)
       || !Array.isArray(parsed.edges)
@@ -114,6 +115,11 @@ export function parseWorkflowClipboardText(text: string): WorkflowClipboardData 
   catch {
     return undefined;
   }
+}
+
+function isSupportedWorkflowClipboardKind(value: unknown) {
+  return value === WORKFLOW_CLIPBOARD_KIND
+    || LEGACY_WORKFLOW_CLIPBOARD_KINDS.includes(value as (typeof LEGACY_WORKFLOW_CLIPBOARD_KINDS)[number]);
 }
 
 export async function writeWorkflowClipboard(data: WorkflowClipboardData) {

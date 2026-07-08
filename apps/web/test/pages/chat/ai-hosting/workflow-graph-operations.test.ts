@@ -90,24 +90,18 @@ describe("workflow graph operations", () => {
     );
   });
 
-  it("adds only insertable node kinds to the last action path", () => {
+  it("adds only insertable node kinds as unconnected floating nodes", () => {
     expect(addNodeOperation(createDraft(), "trigger", "trigger-copy")).toBeUndefined();
 
-    const operation = addNodeOperation(createDraft(), "ai", "ai-tail");
+    const draft = createDraft();
+    const operation = addNodeOperation(draft, "ai", "ai-tail");
 
-    expect(operation?.event).toBe("node:insert");
-    expect(operation?.draft.edges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source: "action-message",
-          target: "ai-tail",
-        }),
-        expect.objectContaining({
-          source: "ai-tail",
-          target: "goal",
-        }),
-      ]),
-    );
+    expect(operation?.event).toBe("node:add");
+    expect(operation?.draft.edges.map((edge) => edge.id)).toEqual(draft.edges.map((edge) => edge.id));
+    expect(operation?.draft.edges.some((edge) => edge.source === "ai-tail" || edge.target === "ai-tail"))
+      .toBe(false);
+    expect(operation?.draft.nodes.find((node) => node.id === "ai-tail")?.position)
+      .toEqual({ x: 395, y: -293 });
   });
 
   it("connects valid handles once and rejects invalid or occupied handles", () => {

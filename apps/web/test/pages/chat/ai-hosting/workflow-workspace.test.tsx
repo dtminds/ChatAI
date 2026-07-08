@@ -392,6 +392,26 @@ describe("useWorkflowWorkspace", () => {
       .toEqual(actionNode.position);
   });
 
+  it("adds palette nodes without auto-connecting them to the current graph", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialEdges = result.current.canvas.edges.map((edge) => edge.id);
+
+    act(() => {
+      result.current.canvas.onAddNode("ai");
+    });
+
+    const aiNode = result.current.canvas.nodes.find((node) =>
+      node.id !== "action-message" && node.data.kind === "ai",
+    );
+
+    expect(aiNode?.id).toMatch(/^ai-/);
+    expect(result.current.canvas.edges.map((edge) => edge.id)).toEqual(initialEdges);
+    expect(result.current.canvas.edges.some((edge) =>
+      edge.source === aiNode?.id || edge.target === aiNode?.id,
+    )).toBe(false);
+    expect(result.current.inspector.node?.id).toBe(aiNode?.id);
+  });
+
   it("keeps viewport changes out of the draft save boundary", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
@@ -422,11 +442,15 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedBranchOutlets());
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
-        result.current.canvas.onAddNode("ai");
+        result.current.canvas.onSelectNode("trigger");
+      });
+
+      act(() => {
+        result.current.inspector.onNodeChange({ audience: "更新后的发布人群" });
       });
       expect(result.current.topBar.publishReady).toBe(true);
 
@@ -439,8 +463,8 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.some((node) => node.data.kind === "ai"))
-        .toBe(true);
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("更新后的发布人群");
     }
     finally {
       vi.useRealTimers();
@@ -687,6 +711,26 @@ function createWorkflowDraftWithConnectedBranchOutlets() {
       {
         ...createNodeFromKind("action", "action-default", 11),
         position: { x: 930, y: 282 },
+      },
+    ],
+  };
+}
+
+function createWorkflowDraftWithConnectedAiNode() {
+  const draft = createWorkflowDraftWithConnectedBranchOutlets();
+
+  return {
+    ...draft,
+    edges: [
+      ...draft.edges.filter((edge) => edge.id !== "edge-action-message-goal"),
+      createEdge("action-message", "ai-support"),
+      createEdge("ai-support", "goal"),
+    ],
+    nodes: [
+      ...draft.nodes,
+      {
+        ...createNodeFromKind("ai", "ai-support", 12),
+        position: { x: 1240, y: -94 },
       },
     ],
   };

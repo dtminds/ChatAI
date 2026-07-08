@@ -17,7 +17,7 @@ describe("workflow graph commands", () => {
       type: "add-node",
     });
 
-    expect(addOperation?.event).toBe("node:insert");
+    expect(addOperation?.event).toBe("node:add");
     expect(addOperation?.result?.nodeId).toMatch(/^ai-/);
 
     const duplicateOperation = runWorkflowGraphCommand(createDraft(), {

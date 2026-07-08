@@ -6,7 +6,6 @@ import {
   createEdge,
   createNodeFromKind,
   duplicateWorkflowNode,
-  findLastActionNodeId,
   getAfterNodesInSameBranch,
   getBranchHandleLabel,
   getBranchInsertY,
@@ -35,6 +34,7 @@ import type {
   WorkflowNodeData,
   WorkflowNodeKind,
   WorkflowDraft,
+  WorkflowNode,
 } from "./types";
 
 export type WorkflowActionResult = {
@@ -57,6 +57,12 @@ export type WorkflowDraftChange = {
   };
   result?: WorkflowActionResult;
 };
+
+const FLOATING_NODE_SCREEN_X = 360;
+const FLOATING_NODE_SCREEN_Y = 180;
+const FLOATING_NODE_COLLISION_X = 260;
+const FLOATING_NODE_COLLISION_Y = 120;
+const FLOATING_NODE_OFFSET_Y = 140;
 
 function createWorkflowGraphOperation(
   operation: WorkflowGraphOperation,
@@ -85,11 +91,48 @@ export function addNodeOperation(
     return undefined;
   }
 
-  return insertNodeAfterOperation(
-    draft,
-    findLastActionNodeId(draft.nodes, draft.edges),
-    kind,
-    nodeId,
+  const node = {
+    ...createNodeFromKind(kind, nodeId, draft.nodes.length),
+    position: resolveFloatingNodePosition(draft),
+  };
+
+  return createWorkflowGraphOperation({
+    draft: {
+      ...draft,
+      nodes: [...draft.nodes, node],
+    },
+    event: "node:add",
+    meta: {
+      nodeId,
+      nodeTitle: node.data.title,
+    },
+    result: {
+      nodeId,
+    },
+  });
+}
+
+function resolveFloatingNodePosition(draft: WorkflowDraft) {
+  const zoom = draft.viewport.zoom || 1;
+  const position = {
+    x: Math.round((FLOATING_NODE_SCREEN_X - draft.viewport.x) / zoom),
+    y: Math.round((FLOATING_NODE_SCREEN_Y - draft.viewport.y) / zoom),
+  };
+
+  while (hasNearbyNode(draft.nodes, position)) {
+    position.y += FLOATING_NODE_OFFSET_Y;
+  }
+
+  return position;
+}
+
+function hasNearbyNode(
+  nodes: WorkflowNode[],
+  position: WorkflowNode["position"],
+) {
+  return nodes.some((node) =>
+    Math.abs(node.position.x - position.x) < FLOATING_NODE_COLLISION_X
+    && Math.abs(node.position.y - position.y) < FLOATING_NODE_COLLISION_Y,
   );
 }
 

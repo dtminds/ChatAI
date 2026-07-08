@@ -3,6 +3,7 @@ import {
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import { getUniqueDuplicatedNodeTitle } from "./graph";
+import { isWorkflowNodeKind } from "./node-catalog";
 import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definition-core";
 import type {
   WorkflowNodeKind,
@@ -42,15 +43,6 @@ export type WorkflowPasteOptions = {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
-  return value === "trigger"
-    || value === "wait"
-    || value === "branch"
-    || value === "action"
-    || value === "ai"
-    || value === "goal";
 }
 
 function isFinitePosition(value: unknown): value is { x: number; y: number } {

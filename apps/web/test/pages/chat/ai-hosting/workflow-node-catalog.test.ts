@@ -30,6 +30,11 @@ import {
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
 import { createInitialEdges } from "@/pages/chat/ai-hosting/workflow/graph";
+import { hydrateWorkflowDraft } from "@/pages/chat/ai-hosting/workflow/workflow-draft-normalizer";
+import {
+  hydrateWorkflowClipboardData,
+  isClipboardNodeStructurallyValid,
+} from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
@@ -70,6 +75,26 @@ describe("workflow node catalog", () => {
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
     }
+  });
+
+  it("uses registered node kinds at import and clipboard boundaries", () => {
+    const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
+    const nodes = nodeKinds.map((kind, index): WorkflowNode => ({
+      data: createDefaultNodeData(kind),
+      id: `node-${kind}`,
+      position: { x: index * 100, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    }));
+
+    expect(nodes.every(isClipboardNodeStructurallyValid)).toBe(true);
+    expect(hydrateWorkflowDraft({
+      edges: [],
+      nodes,
+    }).nodes.map((node) => node.data.kind)).toEqual(nodeKinds);
+    expect(hydrateWorkflowClipboardData({
+      edges: [],
+      nodes,
+    }).nodes.map((node) => node.data.kind)).toEqual(nodeKinds);
   });
 
   it("keeps core node definitions free of UI bindings", () => {

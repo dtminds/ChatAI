@@ -610,6 +610,10 @@ export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
   return workflowNodeCatalog[kind];
 }
 
+export function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
+  return typeof value === "string" && value in workflowNodeCatalog;
+}
+
 export function createWorkflowNodeExecutionConfig(data: WorkflowNodeData) {
   return getWorkflowNodeCatalogEntry(data.kind).createExecutionConfig(data);
 }

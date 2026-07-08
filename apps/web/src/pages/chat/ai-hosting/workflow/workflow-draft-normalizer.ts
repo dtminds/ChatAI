@@ -3,13 +3,13 @@ import { normalizeWorkflowBranchPaths } from "./branch-paths";
 import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
 import { createDefaultNodeData } from "./node-definition-core";
+import { isWorkflowNodeKind } from "./node-catalog";
 import type {
   WorkflowEdge,
   WorkflowEdgeData,
   WorkflowDraft,
   WorkflowNode,
   WorkflowNodeData,
-  WorkflowNodeKind,
 } from "./types";
 
 type UnknownDraft = Partial<WorkflowDraft> | undefined;
@@ -80,15 +80,6 @@ export function isWorkflowGraphEqual(firstDraft: WorkflowDraft, secondDraft: Wor
     edges: secondCanonicalDraft.edges,
     nodes: secondCanonicalDraft.nodes,
   });
-}
-
-function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
-  return value === "trigger"
-    || value === "wait"
-    || value === "branch"
-    || value === "action"
-    || value === "ai"
-    || value === "goal";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -8,6 +8,9 @@ import {
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
 
+const MINI_PROGRAM_APP_NAME_MAX_LENGTH = 18;
+const MINI_PROGRAM_TITLE_MAX_CHARS_PER_LINE = 16;
+
 type MiniAppMessageCardProps = {
   className?: string;
   content: MiniProgramMessageContent;
@@ -23,6 +26,14 @@ export function MiniAppMessageCard({
 }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
   const normalizedFooterNote = footerNote?.trim();
+  const displayAppName = truncateMiniProgramText(
+    content.appName,
+    MINI_PROGRAM_APP_NAME_MAX_LENGTH,
+  );
+  const displayTitle = truncateMiniProgramText(
+    content.title,
+    titleLines * MINI_PROGRAM_TITLE_MAX_CHARS_PER_LINE,
+  );
 
   return (
     <div
@@ -48,8 +59,9 @@ export function MiniAppMessageCard({
         <span
           className="min-w-0 truncate font-medium"
           data-testid="mini-program-app-name"
+          title={content.appName}
         >
-          {content.appName}
+          {displayAppName}
         </span>
       </div>
 
@@ -59,8 +71,9 @@ export function MiniAppMessageCard({
             "text-[14px] font-medium leading-5 text-foreground",
             titleLines === 1 ? "line-clamp-1" : "line-clamp-2",
           )}
+          title={content.title}
         >
-          {content.title}
+          {displayTitle}
         </p>
       </div>
 
@@ -92,6 +105,16 @@ export function MiniAppMessageCard({
       </div>
     </div>
   );
+}
+
+function truncateMiniProgramText(value: string, maxLength: number) {
+  const characters = Array.from(value);
+
+  if (characters.length <= maxLength) {
+    return value;
+  }
+
+  return `${characters.slice(0, Math.max(0, maxLength - 3)).join("")}...`;
 }
 
 function MiniProgramCoverFallback({ title }: { title: string }) {

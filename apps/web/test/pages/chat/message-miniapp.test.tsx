@@ -8,6 +8,29 @@ import { MiniAppMessageCard } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("MiniAppMessageCard", () => {
+  it("hard truncates long app name and title while preserving full hover title", () => {
+    render(
+      <MiniAppMessageCard
+        content={{
+          appName: "1看【杭州壹号院|CULLINAN(壹号院)】",
+          coverImageUrl: "   ",
+          title: "看【杭州壹号院|CULLINAN(壹号院)】江景大平层",
+          type: "mini-program",
+        }}
+        titleLines={1}
+      />,
+    );
+
+    expect(screen.getByText("1看【杭州壹号院|CULLIN...")).toHaveAttribute(
+      "title",
+      "1看【杭州壹号院|CULLINAN(壹号院)】",
+    );
+    expect(screen.getByText("看【杭州壹号院|CULLI...")).toHaveAttribute(
+      "title",
+      "看【杭州壹号院|CULLINAN(壹号院)】江景大平层",
+    );
+  });
+
   it("uses an image-not-found fallback when the cover image URL is empty", () => {
     render(
       <MiniAppMessageCard

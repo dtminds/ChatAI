@@ -5,9 +5,9 @@ import {
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
 } from "./constants";
 import {
-  getBranchPathIndex,
-  getWorkflowBranchPaths,
-} from "./branch-paths";
+  getNodeSourceHandleIndex,
+  getNodeSourceHandleLaneOffset,
+} from "./node-handle-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -273,7 +273,7 @@ function computeLaneById(
         }
 
         return (laneById.get(sourceNode.id) ?? getInitialLane(sourceNode))
-          + getBranchLaneOffset(sourceNode, edge);
+          + getSourceHandleLaneOffset(sourceNode, edge);
       })
       .filter((lane): lane is number => typeof lane === "number");
 
@@ -285,17 +285,8 @@ function computeLaneById(
   return laneById;
 }
 
-function getBranchLaneOffset(sourceNode: WorkflowNode, edge: WorkflowEdge) {
-  if (sourceNode.data.kind !== "branch") {
-    return 0;
-  }
-
-  const branchPaths = getWorkflowBranchPaths(sourceNode.data);
-  if (branchPaths.length <= 1) {
-    return 0;
-  }
-
-  return getBranchPathIndex(sourceNode.data, edge.sourceHandle) - (branchPaths.length - 1) / 2;
+function getSourceHandleLaneOffset(sourceNode: WorkflowNode, edge: WorkflowEdge) {
+  return getNodeSourceHandleLaneOffset(sourceNode, edge.sourceHandle);
 }
 
 function getLaneGap() {
@@ -313,8 +304,8 @@ function compareEdgesForLayout(
   nodeById: Map<string, WorkflowNode>,
 ) {
   return (first: LayoutEdge, second: LayoutEdge) =>
-    getBranchPathIndex(nodeById.get(first.source)?.data, first.sourceHandle)
-    - getBranchPathIndex(nodeById.get(second.source)?.data, second.sourceHandle)
+    getNodeSourceHandleIndex(nodeById.get(first.source)?.data, first.sourceHandle)
+    - getNodeSourceHandleIndex(nodeById.get(second.source)?.data, second.sourceHandle)
     || (originalIndexById.get(first.target) ?? 0) - (originalIndexById.get(second.target) ?? 0)
     || first.order - second.order
     || first.target.localeCompare(second.target);

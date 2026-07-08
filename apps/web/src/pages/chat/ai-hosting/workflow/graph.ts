@@ -4,10 +4,10 @@ import {
   WORKFLOW_NODE_TYPE,
 } from "./constants";
 import {
-  getBranchPathIndex,
-  getBranchPathLabel,
-  getWorkflowBranchPaths,
-} from "./branch-paths";
+  getNodeSourceHandleIndex,
+  getNodeSourceHandleLabel,
+  getNodeSourceHandleLaneOffset,
+} from "./node-handle-definitions";
 import { createDefaultNodeData } from "./node-definition-core";
 import type {
   InsertableWorkflowNodeKind,
@@ -205,26 +205,22 @@ export function findLastActionNodeId(nodes: WorkflowNode[], edges: WorkflowEdge[
 }
 
 export function getBranchHandleIndex(sourceHandle?: string | null) {
-  return getBranchPathIndex(undefined, sourceHandle);
+  return getNodeSourceHandleIndex(undefined, sourceHandle);
 }
 
-export function getBranchHandleLabel(
+export function getSourceHandleLabel(
   sourceHandle?: string | null,
   sourceNode?: WorkflowNode,
 ) {
-  return getBranchPathLabel(sourceNode?.data, sourceHandle);
+  return getNodeSourceHandleLabel(sourceNode?.data, sourceHandle);
 }
 
-export function getBranchInsertY(
+export function getSourceHandleInsertY(
   nodeY: number,
   sourceHandle?: string,
   sourceNode?: WorkflowNode,
 ) {
-  const branchPathCount = sourceNode?.data.kind === "branch"
-    ? getWorkflowBranchPaths(sourceNode.data).length
-    : 3;
-
-  return nodeY + (getBranchPathIndex(sourceNode?.data, sourceHandle) - Math.floor(branchPathCount / 2)) * 96;
+  return nodeY + getNodeSourceHandleLaneOffset(sourceNode, sourceHandle) * 96;
 }
 
 export function getAfterNodesInSameBranch(

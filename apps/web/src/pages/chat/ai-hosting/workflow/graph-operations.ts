@@ -7,8 +7,8 @@ import {
   createNodeFromKind,
   duplicateWorkflowNode,
   getAfterNodesInSameBranch,
-  getBranchHandleLabel,
-  getBranchInsertY,
+  getSourceHandleInsertY,
+  getSourceHandleLabel,
   getNodeIdSet,
   shiftNodesRight,
 } from "./graph";
@@ -170,9 +170,7 @@ export function insertNodeAfterOperation(
       x: nextNode?.position.x ?? (previousNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
       y:
         nextNode?.position.y
-        ?? (previousNode?.data.kind === "branch"
-          ? getBranchInsertY(previousNode.position.y, sourceHandle, previousNode)
-          : previousNode?.position.y ?? 0),
+        ?? getSourceHandleInsertY(previousNode.position.y, sourceHandle, previousNode),
     },
   };
   const baseEdges = edges.filter((edge) => edge.id !== replacedEdge?.id);
@@ -199,7 +197,7 @@ export function insertNodeAfterOperation(
 
   const nextEdges = [
     ...baseEdges,
-    createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle, previousNode), {
+    createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getSourceHandleLabel(sourceHandle, previousNode), {
       sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
     }),
   ];

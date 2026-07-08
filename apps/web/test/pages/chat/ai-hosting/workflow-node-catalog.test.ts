@@ -28,7 +28,11 @@ import {
 } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
 import {
   getDefaultSourceHandleId,
+  getNodeSourceHandleIndex,
   getNodeSourceHandleDefinitions,
+  getNodeSourceHandleLabel,
+  getNodeSourceHandleLaneOffset,
+  getNodeSourceHandleTop,
   getNodeTargetHandleDefinitions,
   getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
@@ -244,6 +248,19 @@ describe("workflow node catalog", () => {
         { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
       ],
     });
+    const customBranchNode: WorkflowNode = {
+      data: {
+        ...createDefaultNodeData("branch"),
+        branchPaths: [
+          { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
+          { id: "branch-risk", label: "风险客户", operator: "ELIF", title: "CASE 2" },
+          { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
+        ],
+      },
+      id: "branch-node",
+      position: { x: 0, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    };
 
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("goal"))).toEqual([]);
     expect(branchDefinitionHandles).toEqual(branchHandles);
@@ -268,6 +285,12 @@ describe("workflow node catalog", () => {
       "branch-risk",
       "branch-fallback",
     ]);
+    expect(getNodeSourceHandleIndex(customBranchNode.data, "branch-risk")).toBe(1);
+    expect(getNodeSourceHandleLabel(customBranchNode.data, "branch-risk")).toBe("风险客户");
+    expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-risk")).toBe(0);
+    expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-vip")).toBe(-1);
+    expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-fallback")).toBe(1);
+    expect(getNodeSourceHandleTop(customBranchNode, "branch-risk")).toBe(customBranchHandles[1].top);
     expect(getDefaultSourceHandleId("branch", {
       ...createDefaultNodeData("branch"),
       branchPaths: [

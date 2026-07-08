@@ -479,7 +479,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     controller.onNodesChange(changes);
-    controller.markDraftDirty();
+    controller.flushPendingConfigHistory();
   });
 
   const handleNodeDragStart: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event) => {

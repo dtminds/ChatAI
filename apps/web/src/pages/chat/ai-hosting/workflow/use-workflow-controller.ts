@@ -197,7 +197,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     };
   }, [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraftTransient]);
 
-  const markDraftDirty = useCallback(() => {
+  const flushPendingConfigHistory = useCallback(() => {
     flushConfigHistory();
   }, [flushConfigHistory]);
 
@@ -445,7 +445,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     nodes,
     onEdgesChange,
     onNodesChange,
-    markDraftDirty,
+    flushPendingConfigHistory,
     nextUndoLabel: pendingConfigHistoryActive ? "修改节点配置" : history.nextUndoLabel,
     pasteClipboardData,
     redo,

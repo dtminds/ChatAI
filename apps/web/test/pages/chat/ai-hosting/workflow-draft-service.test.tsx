@@ -104,6 +104,31 @@ describe("workflow draft service", () => {
     }
   });
 
+  it("does not schedule a save when the dirty draft matches the last saved hash", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+
+      act(() => {
+        result.current.markDirty(result.current.document.draft);
+      });
+
+      expect(result.current.saveState).toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(repository.pendingSaves).toHaveLength(0);
+      expect(result.current.lastSavedDraftHash).toBe(result.current.document.draftHash);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("flushes pending draft saves when the hook unmounts", () => {
     vi.useFakeTimers();
 

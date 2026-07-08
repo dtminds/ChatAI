@@ -289,6 +289,21 @@ export function useWorkflowDocument(
 
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
+    const nextDraftHash = createWorkflowDraftHash(draftToSave);
+
+    if (nextDraftHash === lastSavedDraftHash) {
+      saveRequestRef.current += 1;
+      pendingSaveRef.current = null;
+
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+
+      setSaveState("saved");
+      return;
+    }
+
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
     pendingSaveRef.current = {
@@ -305,7 +320,7 @@ export function useWorkflowDocument(
     saveTimerRef.current = setTimeout(() => {
       flushPendingSave();
     }, WORKFLOW_SAVE_DEBOUNCE_MS);
-  }, [flushPendingSave]);
+  }, [flushPendingSave, lastSavedDraftHash]);
 
   const importDraft = useCallback(async (draft: WorkflowDraft) => {
     const saveRequestId = saveRequestRef.current + 1;

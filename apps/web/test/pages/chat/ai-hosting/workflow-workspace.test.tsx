@@ -426,6 +426,41 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.saveState).toBe("saved");
   });
 
+  it("cancels pending saves when undo returns to the last saved draft", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const initialNodeIds = result.current.canvas.nodes.map((node) => node.id);
+
+      act(() => {
+        result.current.canvas.onAddNode("ai");
+      });
+
+      expect(result.current.topBar.saveState).toBe("saving");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.nodes.map((node) => node.id)).toEqual(initialNodeIds);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.map((node) => node.id))
+        .toEqual(initialNodeIds);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("opens checks instead of publishing when warnings remain", async () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

@@ -153,8 +153,21 @@ describe("workflow DSL", () => {
       .toEqual(expect.objectContaining({
         source: "branch-intent",
         sourceHandle: "branch-high",
+        sourceOutlet: {
+          id: "branch-high",
+          kind: "branch-path",
+          label: "高意向客户",
+        },
         target: "action-message",
         targetHandle: null,
+      }));
+    expect(graph.edges.find((edge) => edge.source === "trigger" && edge.target === "wait-2d"))
+      .toEqual(expect.objectContaining({
+        sourceHandle: null,
+        sourceOutlet: {
+          id: "default",
+          kind: "default",
+        },
       }));
   });
 

@@ -1,4 +1,5 @@
 import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
+import { getWorkflowBranchPaths } from "./branch-paths";
 import { createWorkflowNodeExecutionConfig } from "./node-catalog";
 import type {
   WorkflowDraft,
@@ -42,8 +43,15 @@ export type WorkflowExecutionEdge = {
   id: string;
   source: string;
   sourceHandle: string | null;
+  sourceOutlet: WorkflowExecutionEdgeOutlet | null;
   target: string;
   targetHandle: string | null;
+};
+
+export type WorkflowExecutionEdgeOutlet = {
+  id: string;
+  kind: "branch-path" | "default";
+  label?: string;
 };
 
 export type WorkflowDslParseIssue = {
@@ -142,12 +150,14 @@ export function exportWorkflowDsl(options: Parameters<typeof createWorkflowDslDo
 
 export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExecutionGraph {
   const canonicalDraft = canonicalizeWorkflowDraft(draft);
+  const nodeById = new Map(canonicalDraft.nodes.map((node) => [node.id, node]));
 
   return {
     edges: canonicalDraft.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       sourceHandle: edge.sourceHandle ?? null,
+      sourceOutlet: createWorkflowExecutionEdgeOutlet(edge, nodeById.get(edge.source)),
       target: edge.target,
       targetHandle: edge.targetHandle ?? null,
     })),
@@ -158,6 +168,32 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
         kind: node.data.kind,
       };
     }),
+  };
+}
+
+function createWorkflowExecutionEdgeOutlet(
+  edge: WorkflowEdge,
+  sourceNode: WorkflowNode | undefined,
+): WorkflowExecutionEdgeOutlet | null {
+  if (!sourceNode) {
+    return null;
+  }
+
+  if (sourceNode.data.kind === "branch") {
+    const branchPath = getWorkflowBranchPaths(sourceNode.data).find((path) => path.id === edge.sourceHandle);
+
+    return branchPath
+      ? {
+          id: branchPath.id,
+          kind: "branch-path",
+          label: branchPath.label,
+        }
+      : null;
+  }
+
+  return {
+    id: edge.sourceHandle ?? "default",
+    kind: "default",
   };
 }
 

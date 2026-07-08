@@ -53,7 +53,7 @@ describe("material collection components", () => {
     expect(screen.getByRole("textbox", { name: "文件名称" })).toHaveValue("新名称");
   });
 
-  it("edits mini-program and video material titles", async () => {
+  it("edits mini-program material remark and video material title", async () => {
     const user = userEvent.setup();
     const handleSubmit = vi.fn();
     const { rerender } = render(
@@ -72,17 +72,17 @@ describe("material collection components", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "编辑小程序" })).toBeInTheDocument();
-    const miniTitleInput = screen.getByRole("textbox", { name: "小程序标题" });
+    const miniTitleInput = screen.getByRole("textbox", { name: "小程序备注" });
     await user.clear(miniTitleInput);
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    await user.type(miniTitleInput, "新小程序标题");
+    await user.type(miniTitleInput, "新小程序备注");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(handleSubmit).toHaveBeenCalledWith({
       description: "",
       fileExtension: "",
       fileName: "",
-      title: "新小程序标题",
+      title: "新小程序备注",
     });
 
     rerender(
@@ -113,7 +113,7 @@ describe("material collection components", () => {
     });
   });
 
-  it("prefills mini-program edit form from material table title", () => {
+  it("prefills mini-program edit form from material table title as remark", () => {
     expect(
       getMaterialContentFormValues(
         createItem({
@@ -232,7 +232,7 @@ describe("material collection components", () => {
     expect(collectButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
   });
 
-  it("collects mini-program and video title fields", async () => {
+  it("collects mini-program remark and video title fields", async () => {
     const user = userEvent.setup();
     const handleMiniSubmit = vi.fn();
     const handleVideoSubmit = vi.fn();
@@ -254,18 +254,18 @@ describe("material collection components", () => {
       />,
     );
 
-    const miniTitleInput = screen.getByRole("textbox", { name: "小程序标题" });
+    const miniTitleInput = screen.getByRole("textbox", { name: "小程序备注" });
     expect(miniTitleInput).toHaveValue("客户跟进小程序");
     await user.clear(miniTitleInput);
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
-    await user.type(miniTitleInput, "新的小程序标题");
+    await user.type(miniTitleInput, "新的小程序备注");
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "小程序素材" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     expect(handleMiniSubmit).toHaveBeenCalledWith({
       groupId: "group-mini",
-      title: "新的小程序标题",
+      title: "新的小程序备注",
     });
 
     view.unmount();
@@ -526,6 +526,47 @@ describe("material collection components", () => {
     expect(screen.getByText("活动页")).toBeInTheDocument();
     expect(screen.getByText("活动说明")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选择素材 活动页" })).toBeInTheDocument();
+  });
+
+  it("renders mini-program material table title as footer note when it differs from description", () => {
+    const { rerender } = render(
+      <MaterialCard
+        item={createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          content: {
+            description: "【王知之周一答题】",
+            title: "王知之自习室",
+          },
+          contentType: "mini-program",
+          groupId: "group-mini",
+          title: "周一答题备注",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("备注：周一答题备注")).toBeInTheDocument();
+    expect(screen.queryByTestId("mini-program-mark")).not.toBeInTheDocument();
+
+    rerender(
+      <MaterialCard
+        item={createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          content: {
+            description: "【王知之周一答题】",
+            title: "王知之自习室",
+          },
+          contentType: "mini-program",
+          groupId: "group-mini",
+          title: "【王知之周一答题】",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("备注：【王知之周一答题】")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mini-program-mark")).toBeInTheDocument();
+    expect(screen.getByText("小程序")).toBeInTheDocument();
   });
 
   it("selects material and exposes management actions in library dialog", async () => {

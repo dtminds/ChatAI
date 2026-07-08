@@ -198,7 +198,7 @@ describe("material collection H5 content helpers", () => {
     });
     expect(
       resolveMaterialMiniProgramCollectFields(rawContent, { title: " " }),
-    ).toEqual({ errorMsg: "小程序标题不能为空" });
+    ).toEqual({ errorMsg: "小程序备注不能为空" });
   });
 
   it("allows blank video title while keeping video content title-free", () => {

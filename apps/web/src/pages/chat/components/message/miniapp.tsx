@@ -11,15 +11,18 @@ import {
 type MiniAppMessageCardProps = {
   className?: string;
   content: MiniProgramMessageContent;
+  footerNote?: string;
   titleLines?: 1 | 2;
 };
 
 export function MiniAppMessageCard({
   className,
   content,
+  footerNote,
   titleLines = 2,
 }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
+  const normalizedFooterNote = footerNote?.trim();
 
   return (
     <div
@@ -75,9 +78,15 @@ export function MiniAppMessageCard({
         )}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
-        <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />
-        <span>{content.sourceLabel ?? "小程序"}</span>
+      <div className="mt-2.5 flex min-w-0 items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
+        {normalizedFooterNote ? (
+          <span className="min-w-0 truncate">{normalizedFooterNote}</span>
+        ) : (
+          <>
+            <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />
+            <span className="min-w-0 truncate">{content.sourceLabel ?? "小程序"}</span>
+          </>
+        )}
       </div>
     </div>
   );

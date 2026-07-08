@@ -252,7 +252,7 @@ export function resolveMaterialMiniProgramCollectFields(
   const titleResult = validateBoundedMaterialText(
     titleSource,
     MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
-    "小程序标题",
+    "小程序备注",
   );
 
   if (isMaterialCollectFieldError(titleResult)) {
@@ -260,7 +260,7 @@ export function resolveMaterialMiniProgramCollectFields(
   }
 
   if (!titleResult) {
-    return { errorMsg: "小程序标题不能为空" };
+    return { errorMsg: "小程序备注不能为空" };
   }
 
   return { title: titleResult };

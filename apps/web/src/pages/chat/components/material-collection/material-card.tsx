@@ -267,6 +267,7 @@ function MaterialCardContent({
       <MiniAppMessageCard
         className="w-full"
         content={toMiniProgramContent(item)}
+        footerNote={getMiniProgramMaterialFooterNote(item)}
         titleLines={1}
       />
     );
@@ -349,6 +350,13 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
     title: readString(item.content.title) || item.title || "小程序",
     type: "mini-program",
   };
+}
+
+function getMiniProgramMaterialFooterNote(item: MaterialCollectionItem) {
+  const note = item.title.trim();
+  const appDescription = readString(item.content.description);
+
+  return note && note !== appDescription ? `备注：${note}` : undefined;
 }
 
 function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {

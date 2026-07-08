@@ -67,7 +67,8 @@ export function buildWorkflowValidationSummaryFromResult(
   ) || disconnectedIssues.some(({ issues }) =>
     issues.some((issue) => issue.code !== "node-disconnected"),
   );
-  const hasAiAction = validation.configuredAiNodes.length > 0;
+  const hasAiNode = nodes.some((node) => node.data.kind === "ai");
+  const hasConfiguredAiAction = validation.configuredAiNodes.length > 0;
 
   const summary: WorkflowPublishCheckSummaryItem[] = [
     {
@@ -101,11 +102,13 @@ export function buildWorkflowValidationSummaryFromResult(
     },
     {
       ...getBlockingScope("ai"),
-      description: hasAiAction
+      description: hasConfiguredAiAction
         ? "AI 接待动作已绑定 Agent 和知识库策略"
-        : "当前流程没有启用 AI 接待动作",
+        : hasAiNode
+          ? "AI 接待节点仍需补全配置"
+          : "当前流程未启用 AI 接待动作",
       id: "ai",
-      status: hasAiAction ? "ready" : "warning",
+      status: hasAiNode && !hasConfiguredAiAction ? "warning" : "ready",
       title: "AI 接待策略",
     },
     {
@@ -117,7 +120,7 @@ export function buildWorkflowValidationSummaryFromResult(
     },
   ];
   const globalChecks: WorkflowPublishCheck[] = summary
-    .filter((item) => item.status === "warning")
+    .filter((item) => item.status === "warning" && (item.blocksPublish || item.blocksRun))
     .map((item) => ({
       blocksPublish: item.blocksPublish,
       blocksRun: item.blocksRun,
@@ -204,7 +207,7 @@ function getBlockingScope(
 ): WorkflowCheckBlockingScope {
   if (id === "ai") {
     return {
-      blocksPublish: true,
+      blocksPublish: false,
       blocksRun: false,
     };
   }

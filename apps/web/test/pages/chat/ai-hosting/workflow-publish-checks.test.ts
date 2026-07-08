@@ -28,12 +28,11 @@ describe("buildPublishChecks", () => {
       ["trigger", "ready"],
       ["connectivity", "warning"],
       ["config", "ready"],
-      ["ai", "warning"],
+      ["ai", "ready"],
       ["goal", "ready"],
     ]);
     expect(checklist.checks.map((check) => [check.id, check.category])).toEqual([
       ["connectivity", "connectivity"],
-      ["ai", "strategy"],
       ["graph-branch-path-unconnected-branch-intent", "connectivity"],
     ]);
     expect(checklist.canPublish).toBe(false);
@@ -315,7 +314,19 @@ describe("buildPublishChecks", () => {
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
-  it("marks AI strategy ready only when an AI node is configured", () => {
+  it("keeps AI strategy optional when no AI node is present", () => {
+    const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
+
+    expect(checklist.summary.find((check) => check.id === "ai")).toEqual(expect.objectContaining({
+      blocksPublish: false,
+      blocksRun: false,
+      description: "当前流程未启用 AI 接待动作",
+      status: "ready",
+    }));
+    expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
+  });
+
+  it("marks AI strategy ready when an AI node is configured", () => {
     const aiNode: WorkflowNode = {
       data: {
         actionType: "ai",
@@ -342,6 +353,42 @@ describe("buildPublishChecks", () => {
     const checklist = buildPublishChecklist(nodes, edges);
 
     expect(checklist.summary.find((check) => check.id === "ai")?.status).toBe("ready");
+    expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
+  });
+
+  it("routes incomplete AI node setup through node config checks", () => {
+    const baseAiNode = createNodeFromKind("ai", "ai-missing-agent", createInitialNodes().length);
+    const aiNode = {
+      ...baseAiNode,
+      data: {
+        ...baseAiNode.data,
+        agentName: "",
+      },
+    };
+    const nodes = [
+      ...createInitialNodes(),
+      aiNode,
+    ];
+    const checklist = buildPublishChecklist(nodes, [
+      ...createInitialEdges(),
+      createEdge("action-message", "ai-missing-agent"),
+    ]);
+
+    expect(checklist.summary.find((check) => check.id === "ai")).toEqual(expect.objectContaining({
+      blocksPublish: false,
+      blocksRun: false,
+      description: "AI 接待节点仍需补全配置",
+      status: "warning",
+    }));
+    expect(checklist.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        blocksPublish: true,
+        blocksRun: true,
+        category: "config",
+        id: "node-config-ai-missing-agent",
+        nodeId: "ai-missing-agent",
+      }),
+    ]));
     expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
   });
 
@@ -447,9 +494,9 @@ describe("useWorkflowPublishChecks", () => {
       useWorkflowPublishChecks(createInitialNodes(), createInitialEdges()),
     );
 
-    expect(result.current.checks).toHaveLength(3);
+    expect(result.current.checks).toHaveLength(2);
     expect(result.current.summary).toHaveLength(5);
-    expect(result.current.readyChecks).toBe(3);
+    expect(result.current.readyChecks).toBe(4);
     expect(result.current.totalChecks).toBe(5);
     expect(result.current.publishReady).toBe(false);
     expect(result.current.canRun).toBe(false);

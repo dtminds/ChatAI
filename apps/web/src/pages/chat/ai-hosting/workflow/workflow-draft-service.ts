@@ -292,7 +292,6 @@ export function useWorkflowDocument(
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
     const nextDraftHash = createWorkflowDraftHash(draftToSave);
-    publishRequestRef.current += 1;
     setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
 
     if (nextDraftHash === lastSavedDraftHash) {
@@ -308,6 +307,7 @@ export function useWorkflowDocument(
       return;
     }
 
+    publishRequestRef.current += 1;
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
     pendingSaveRef.current = {

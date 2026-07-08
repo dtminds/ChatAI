@@ -688,6 +688,35 @@ describe("workflow draft service", () => {
     }
   });
 
+  it("keeps async publish results valid after a no-op dirty event", async () => {
+    const repository = createDeferredWorkflowDraftRepository();
+    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+
+    await act(async () => {
+      void result.current.publishDraft(createDraftWithTriggerAudience("异步发布的人群"));
+    });
+
+    expect(repository.pendingPublishes).toHaveLength(1);
+    expect(result.current.publishState).toBe("publishing");
+
+    act(() => {
+      result.current.markDirty(result.current.document.draft);
+    });
+
+    expect(result.current.saveState).toBe("saved");
+    expect(result.current.publishState).toBe("idle");
+
+    await act(async () => {
+      repository.resolvePublish(0);
+      await Promise.resolve();
+    });
+
+    expect(result.current.publishState).toBe("published");
+    expect(result.current.document.status).toBe("Published");
+    expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("异步发布的人群");
+  });
+
   it("restores through an async repository and resets the hook document draft", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const publishedDocument = repository.getDocument("vip-reactivation");

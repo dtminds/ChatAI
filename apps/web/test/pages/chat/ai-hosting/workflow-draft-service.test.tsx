@@ -246,7 +246,7 @@ describe("workflow draft service", () => {
     expect(saveResult.updatedAt).toBe(document.updatedAt);
   });
 
-  it("keeps draft hash and revision stable for viewport-only saves", () => {
+  it("keeps draft hash, revision, and persisted draft stable for viewport-only saves", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
     const viewportOnlyDraft = {
@@ -260,7 +260,7 @@ describe("workflow draft service", () => {
     expect(saveResult.draftHash).toBe(document.draftHash);
     expect(saveResult.savedAt).toBe(document.savedAt);
     expect(saveResult.updatedAt).toBe(document.updatedAt);
-    expect(repository.getDocument("newcomer-conversion").draft.viewport).toEqual({ x: 320, y: 180, zoom: 0.72 });
+    expect(repository.getDocument("newcomer-conversion").draft.viewport).toEqual(document.draft.viewport);
   });
 
   it("publishes the current draft as a versioned snapshot", () => {
@@ -618,7 +618,7 @@ describe("workflow draft service", () => {
     expect(publishedDocument.publishedRevision).toBe(1);
   });
 
-  it("keeps an existing revision when publishing a viewport-only draft", () => {
+  it("keeps an existing revision and published draft when publishing a viewport-only draft", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
     const publishedDocument = repository.publishDraft("newcomer-conversion", {
@@ -629,7 +629,8 @@ describe("workflow draft service", () => {
     expect(publishedDocument.revision).toBe(1);
     expect(publishedDocument.publishedRevision).toBe(1);
     expect(publishedDocument.draftHash).toBe(document.draftHash);
-    expect(publishedDocument.publishedDraft?.viewport).toEqual({ x: 320, y: 180, zoom: 0.72 });
+    expect(publishedDocument.draft.viewport).toEqual(document.draft.viewport);
+    expect(publishedDocument.publishedDraft?.viewport).toEqual(document.draft.viewport);
   });
 
   it("does not apply stale async publish results after switching workflow documents", async () => {

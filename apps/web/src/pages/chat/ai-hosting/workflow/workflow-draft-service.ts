@@ -765,9 +765,10 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const currentDocument = workflowDocuments[documentIndex];
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
+      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
       const nextRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
       const publishedAt = "刚刚";
-      const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, nextDraft);
+      const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, persistedDraft);
       const nextDraftHash = shouldCreateDraftRevision
         ? createWorkflowDraftHash(nextDraft)
         : currentDocument.draftHash;
@@ -775,11 +776,11 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         ...currentDocument,
         conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
         currentVersion: version,
-        draft: nextDraft,
+        draft: persistedDraft,
         draftHash: nextDraftHash,
-        nodes: nextDraft.nodes.length,
+        nodes: persistedDraft.nodes.length,
         publishedAt,
-        publishedDraft: cloneWorkflowDraft(nextDraft),
+        publishedDraft: cloneWorkflowDraft(persistedDraft),
         publishedRevision: nextRevision,
         revision: nextRevision,
         savedAt: publishedAt,
@@ -846,6 +847,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const currentDocument = workflowDocuments[documentIndex];
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
+      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
       const savedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.savedAt;
       const updatedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.updatedAt;
       const nextDraftHash = shouldCreateDraftRevision
@@ -854,9 +856,9 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const nextDocument: WorkflowDocument = {
         ...currentDocument,
         conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        draft: nextDraft,
+        draft: persistedDraft,
         draftHash: nextDraftHash,
-        nodes: nextDraft.nodes.length,
+        nodes: persistedDraft.nodes.length,
         revision: shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision,
         savedAt,
         trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,

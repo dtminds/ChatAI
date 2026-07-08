@@ -100,6 +100,35 @@ describe("workflow graph operations", () => {
     expect(operation!.draft.edges.filter((edge) => edge.target === "goal")).toHaveLength(1);
   });
 
+  it("replaces default-handle edges when inserting after imported null handles", () => {
+    const draft = createDraft();
+    const operation = insertNodeAfterOperation({
+      ...draft,
+      edges: draft.edges.map((edge) =>
+        edge.source === "trigger" && edge.target === "wait-2d"
+          ? { ...edge, sourceHandle: null, targetHandle: null }
+          : edge,
+      ),
+    }, "trigger", "ai", "ai-entry");
+
+    expect(operation?.event).toBe("node:insert");
+    expect(operation?.draft.edges.some((edge) =>
+      edge.source === "trigger" && edge.target === "wait-2d",
+    )).toBe(false);
+    expect(operation?.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "trigger",
+        sourceHandle: undefined,
+        target: "ai-entry",
+      }),
+      expect.objectContaining({
+        source: "ai-entry",
+        target: "wait-2d",
+        targetHandle: undefined,
+      }),
+    ]));
+  });
+
   it("inserts a node between an edge while preserving handle metadata", () => {
     expect(insertNodeBetweenOperation(
       createDraft(),

@@ -22,6 +22,7 @@ import {
   canInsertAfterNodeKind,
   canInsertNodeKind,
 } from "./node-definition-core";
+import { isWorkflowHandleIdEqual } from "./node-handle-definitions";
 import { normalizeWorkflowBranchPaths } from "./branch-paths";
 import {
   canonicalizeWorkflowDraft,
@@ -151,7 +152,7 @@ export function insertNodeAfterOperation(
 
   const replacedEdge = edges.find((edge) =>
     edge.source === previousNodeId
-    && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
+    && isWorkflowHandleIdEqual(edge.sourceHandle, sourceHandle),
   );
   const nextNode = replacedEdge
     ? nodes.find((node) => node.id === replacedEdge.target)

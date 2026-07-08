@@ -40,6 +40,7 @@ type WorkflowWorkspaceEditResult = {
   edgeId?: string;
   nodeId?: string;
   nodeIds?: string[];
+  transient?: boolean;
 };
 
 type WorkflowWorkspaceEditOptions = {
@@ -162,7 +163,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       return false;
     }
 
-    markDirty(result.draft);
+    if (!result.transient) {
+      markDirty(result.draft);
+    }
 
     if (options.deleteNodeRuns) {
       (result.nodeIds ?? (result.nodeId ? [result.nodeId] : []))

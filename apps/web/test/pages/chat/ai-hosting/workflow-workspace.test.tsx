@@ -402,6 +402,7 @@ describe("useWorkflowWorkspace", () => {
   it("keeps viewport changes out of the draft save boundary", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialDraftViewport = result.current.document.draft.viewport;
+    const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
 
     expect(result.current.topBar.saveState).toBe("saved");
 
@@ -413,6 +414,8 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
     expect(result.current.canvas.canUndo).toBe(false);
     expect(result.current.topBar.saveState).toBe("saved");
+    expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+    expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
   });
 
   it("keeps view and transient canvas interactions out of the draft history boundary", () => {

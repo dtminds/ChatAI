@@ -1,5 +1,9 @@
 import type { Connection } from "@xyflow/react";
 import { getNodeDefinitionCore } from "./node-definition-core";
+import {
+  getWorkflowHandleKey,
+  isWorkflowHandleIdEqual,
+} from "./node-handle-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -125,10 +129,10 @@ function isNodeHandleConnectionAllowed(
   const targetHandleDefinitions = targetDefinition.getTargetHandles(targetNode.data);
 
   return sourceHandleDefinitions.some((handle) =>
-    (handle.id ?? null) === (sourceHandle ?? null),
+    isWorkflowHandleIdEqual(handle.id, sourceHandle),
   )
     && targetHandleDefinitions.some((handle) =>
-      (handle.id ?? null) === (targetHandle ?? null),
+      isWorkflowHandleIdEqual(handle.id, targetHandle),
     );
 }
 
@@ -138,9 +142,9 @@ function hasDuplicateConnection(
 ) {
   return edges.some((edge) =>
     edge.source === connection.source
-    && edge.sourceHandle === (connection.sourceHandle ?? undefined)
+    && isWorkflowHandleIdEqual(edge.sourceHandle, connection.sourceHandle)
     && edge.target === connection.target
-    && edge.targetHandle === (connection.targetHandle ?? undefined),
+    && isWorkflowHandleIdEqual(edge.targetHandle, connection.targetHandle),
   );
 }
 
@@ -149,16 +153,12 @@ function hasSourceHandleConnection(
   source: string,
   sourceHandle: string | null | undefined,
 ) {
-  const sourceHandleKey = getSourceHandleKey(sourceHandle);
+  const sourceHandleKey = getWorkflowHandleKey(sourceHandle);
 
   return edges.some((edge) =>
     edge.source === source
-    && getSourceHandleKey(edge.sourceHandle) === sourceHandleKey,
+    && getWorkflowHandleKey(edge.sourceHandle) === sourceHandleKey,
   );
-}
-
-function getSourceHandleKey(sourceHandle: string | null | undefined) {
-  return sourceHandle ?? "__default__";
 }
 
 function hasTargetHandleConnection(
@@ -166,16 +166,12 @@ function hasTargetHandleConnection(
   target: string,
   targetHandle: string | null | undefined,
 ) {
-  const targetHandleKey = getTargetHandleKey(targetHandle);
+  const targetHandleKey = getWorkflowHandleKey(targetHandle);
 
   return edges.some((edge) =>
     edge.target === target
-    && getTargetHandleKey(edge.targetHandle) === targetHandleKey,
+    && getWorkflowHandleKey(edge.targetHandle) === targetHandleKey,
   );
-}
-
-function getTargetHandleKey(targetHandle: string | null | undefined) {
-  return targetHandle ?? "__default__";
 }
 
 function hasPathToNode(

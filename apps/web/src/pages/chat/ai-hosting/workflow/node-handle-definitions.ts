@@ -18,6 +18,19 @@ export type WorkflowTargetHandleDefinition = {
   id?: string;
 };
 
+export const WORKFLOW_DEFAULT_HANDLE_KEY = "__default__";
+
+export function getWorkflowHandleKey(handleId: string | null | undefined) {
+  return handleId ?? WORKFLOW_DEFAULT_HANDLE_KEY;
+}
+
+export function isWorkflowHandleIdEqual(
+  firstHandleId: string | null | undefined,
+  secondHandleId: string | null | undefined,
+) {
+  return getWorkflowHandleKey(firstHandleId) === getWorkflowHandleKey(secondHandleId);
+}
+
 export function getNodeSourceHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowSourceHandleDefinition[] {
@@ -61,11 +74,11 @@ export function getNodeUnconnectedSourceHandles(
         edge.source === node.id
         && (!nodeIds || nodeIds.has(edge.target)),
       )
-      .map((edge) => getSourceHandleKey(edge.sourceHandle)),
+      .map((edge) => getWorkflowHandleKey(edge.sourceHandle)),
   );
 
   return getNodeSourceHandleDefinitions(node.data)
-    .filter((handle) => !connectedSourceHandles.has(getSourceHandleKey(handle.id)));
+    .filter((handle) => !connectedSourceHandles.has(getWorkflowHandleKey(handle.id)));
 }
 
 export function getNodeSourceOutletDefinition(
@@ -73,7 +86,7 @@ export function getNodeSourceOutletDefinition(
   sourceHandle?: string | null,
 ) {
   const handle = getNodeSourceHandleDefinitions(node.data).find((definition) =>
-    (definition.id ?? null) === (sourceHandle ?? null),
+    isWorkflowHandleIdEqual(definition.id, sourceHandle),
   );
 
   if (!handle) {
@@ -93,7 +106,7 @@ export function getNodeSourceHandleIndex(
 ) {
   const handles = data ? getNodeSourceHandleDefinitions(data) : [];
   const index = handles.findIndex((handle) =>
-    (handle.id ?? null) === (sourceHandle ?? null),
+    isWorkflowHandleIdEqual(handle.id, sourceHandle),
   );
 
   return index >= 0 ? index : 0;
@@ -105,7 +118,7 @@ export function getNodeSourceHandleLabel(
 ) {
   return data
     ? getNodeSourceHandleDefinitions(data).find((handle) =>
-        (handle.id ?? null) === (sourceHandle ?? null),
+        isWorkflowHandleIdEqual(handle.id, sourceHandle),
       )?.label
     : undefined;
 }
@@ -125,13 +138,9 @@ export function getNodeSourceHandleLaneOffset(
 
 export function getNodeSourceHandleTop(
   node: WorkflowNode,
-  sourceHandle?: string,
+  sourceHandle?: string | null,
 ) {
   return getNodeSourceHandleDefinitions(node.data)
-    .find((handle) => handle.id === sourceHandle)
+    .find((handle) => isWorkflowHandleIdEqual(handle.id, sourceHandle))
     ?.top ?? WORKFLOW_NODE_HANDLE_TOP;
-}
-
-function getSourceHandleKey(sourceHandle: string | null | undefined) {
-  return sourceHandle ?? "__default__";
 }

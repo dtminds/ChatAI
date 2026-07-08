@@ -72,4 +72,19 @@ describe("workflow connection policy", () => {
       targetHandle: null,
     })).toBe("source-handle-occupied");
   });
+
+  it("treats null and undefined default handles as the same connection identity", () => {
+    const draft = createInitialDraft();
+
+    expect(getWorkflowConnectionPolicyViolation(draft, {
+      source: "trigger",
+      sourceHandle: null,
+      target: "wait-2d",
+      targetHandle: null,
+    })).toBe("duplicate-connection");
+
+    expect(draft.edges.find((edge) =>
+      edge.source === "trigger" && edge.target === "wait-2d",
+    )?.sourceHandle).toBeUndefined();
+  });
 });

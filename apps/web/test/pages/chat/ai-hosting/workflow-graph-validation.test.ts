@@ -272,6 +272,29 @@ describe("workflow graph validation", () => {
     expect(sourceHandleIssues[0]?.edgeIds).toHaveLength(2);
   });
 
+  it("groups null and undefined default source handles as one duplicate outlet", () => {
+    const nodes = createInitialNodes();
+    const edges: WorkflowEdge[] = [
+      ...createInitialEdges(),
+      {
+        ...createEdge("wait-2d", "goal"),
+        id: "edge-wait-2d-null-default-goal",
+        sourceHandle: null,
+        targetHandle: null,
+      },
+    ];
+    const validation = validateWorkflowGraph(nodes, edges);
+    const sourceHandleIssues = validation.graphIssues.filter(
+      (issue) => issue.code === "source-handle-multiple-outgoing" && issue.nodeId === "wait-2d",
+    );
+
+    expect(sourceHandleIssues).toHaveLength(1);
+    expect(sourceHandleIssues[0]?.edgeIds).toEqual(expect.arrayContaining([
+      "edge-wait-2d-branch-intent",
+      "edge-wait-2d-null-default-goal",
+    ]));
+  });
+
   it("flags graph depth over the configured limit", () => {
     const baseNodes = createInitialNodes();
     const trigger = baseNodes.find((node) => node.id === "trigger")!;

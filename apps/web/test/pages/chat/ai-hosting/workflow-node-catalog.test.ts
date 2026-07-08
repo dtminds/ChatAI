@@ -43,6 +43,8 @@ import {
   getNodeTargetHandleCapacity,
   getNodeTargetHandleDefinitions,
   getNodeUnconnectedSourceHandles,
+  getWorkflowHandleKey,
+  isWorkflowHandleIdEqual,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
 import {
@@ -331,6 +333,7 @@ describe("workflow node catalog", () => {
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-vip")).toBe(-1);
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-fallback")).toBe(1);
     expect(getNodeSourceHandleTop(customBranchNode, "branch-risk")).toBe(customBranchHandles[1].top);
+    expect(getNodeSourceHandleTop(customBranchNode, null)).toBe(getNodeSourceHandleTop(customBranchNode, undefined));
     expect(getDefaultSourceHandleId("branch", {
       ...createDefaultNodeData("branch"),
       branchPaths: [
@@ -338,6 +341,10 @@ describe("workflow node catalog", () => {
       ],
     })).toBe("branch-vip");
     expect(getDefaultSourceHandleId("wait")).toBeUndefined();
+    expect(getWorkflowHandleKey(null)).toBe(getWorkflowHandleKey(undefined));
+    expect(isWorkflowHandleIdEqual(null, undefined)).toBe(true);
+    expect(isWorkflowHandleIdEqual("branch-vip", "branch-vip")).toBe(true);
+    expect(isWorkflowHandleIdEqual("branch-vip", undefined)).toBe(false);
   });
 
   it("derives target handles from the shared handle boundary", () => {

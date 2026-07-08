@@ -12,6 +12,7 @@ import {
 } from "../node-catalog";
 import {
   getNodeSourceHandleDefinitions,
+  getWorkflowHandleKey,
   getNodeTargetHandleCapacity,
   getNodeUnconnectedSourceHandles,
 } from "../node-handle-definitions";
@@ -232,7 +233,7 @@ function getConnectionPolicyIssues(
     };
 
     if (issueCode === "source-handle-multiple-outgoing") {
-      const sourceHandleKey = edge.sourceHandle ?? "__default__";
+      const sourceHandleKey = getWorkflowHandleKey(edge.sourceHandle);
       const issueKey = `${edge.source}:${sourceHandleKey}`;
       const existingIssue = sourceHandleIssueByKey.get(issueKey);
 

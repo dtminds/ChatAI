@@ -1,6 +1,3 @@
-import {
-  getWorkflowNodeConfigSchema,
-} from "../node-config-schema";
 import type {
   InspectorTab,
   WorkflowEdge,
@@ -14,7 +11,6 @@ import {
   LastRunPanel,
   NodeVariablesPanel,
 } from "./inspector-tabs";
-import { NodeConfigSchemaSections } from "./schema-fields";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 
@@ -70,17 +66,6 @@ export function NodeConfigPanel({
 
 function NodeSettingsForm({ edges, node, onNodeChange }: NodeSettingsProps) {
   const SettingsPanel = getNodeDefinition(node.data.kind).settings;
-  const configSchema = getWorkflowNodeConfigSchema(node.data.kind);
 
-  return (
-    <>
-      <NodeConfigSchemaSections
-        data={node.data}
-        onNodeChange={onNodeChange}
-        sections={configSchema.baseSections}
-      />
-
-      <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />
-    </>
-  );
+  return <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />;
 }

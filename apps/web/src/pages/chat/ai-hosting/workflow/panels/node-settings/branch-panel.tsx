@@ -40,7 +40,7 @@ export function BranchConfig({ edges, node, onNodeChange }: NodeSettingsProps) {
 
   return (
     <>
-      <SchemaNodeSettingsPanel node={node} onNodeChange={onNodeChange} edges={edges} />
+      <SchemaNodeSettingsPanel includeBase node={node} onNodeChange={onNodeChange} edges={edges} />
       <FieldGroup title="分支路径">
         <div className="space-y-2">
           {branchPaths.map((branch, index) => {

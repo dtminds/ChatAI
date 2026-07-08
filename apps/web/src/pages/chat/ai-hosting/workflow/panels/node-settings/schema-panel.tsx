@@ -1,26 +1,36 @@
 import type { ReactNode } from "react";
 import type { WorkflowNodeKind } from "../../types";
-import { getNodeConfigSections } from "../../node-config-schema";
+import {
+  getNodeConfigSections,
+  getWorkflowNodeConfigSchema,
+} from "../../node-config-schema";
 import { NodeConfigSchemaSections } from "../schema-fields";
 import type { NodeSettingsProps } from "../types";
 
 type SchemaNodeSettingsPanelProps = NodeSettingsProps & {
   children?: ReactNode;
+  includeBase?: boolean;
   kind?: WorkflowNodeKind;
 };
 
 export function SchemaNodeSettingsPanel({
   children,
+  includeBase = false,
   kind,
   node,
   onNodeChange,
 }: SchemaNodeSettingsPanelProps) {
+  const nodeKind = kind ?? node.data.kind;
+  const sections = includeBase
+    ? getWorkflowNodeConfigSchema(nodeKind).sections
+    : getNodeConfigSections(nodeKind);
+
   return (
     <>
       <NodeConfigSchemaSections
         data={node.data}
         onNodeChange={onNodeChange}
-        sections={getNodeConfigSections(kind ?? node.data.kind)}
+        sections={sections}
       />
       {children}
     </>
@@ -32,7 +42,7 @@ export function createSchemaNodeSettingsPanel(
   renderAfterSchema?: (props: NodeSettingsProps) => ReactNode,
 ) {
   const SchemaSettingsPanel = (props: NodeSettingsProps) => (
-    <SchemaNodeSettingsPanel kind={kind} {...props}>
+    <SchemaNodeSettingsPanel includeBase kind={kind} {...props}>
       {renderAfterSchema?.(props)}
     </SchemaNodeSettingsPanel>
   );

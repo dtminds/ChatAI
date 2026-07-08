@@ -407,12 +407,14 @@ export function deleteNodesOperation(
   draft: WorkflowDraft,
   nodeIds: string[],
 ): WorkflowGraphOperation | undefined {
-  const deletedNodeIdSet = new Set(nodeIds);
-  const deletedNodes = draft.nodes.filter((node) =>
-    deletedNodeIdSet.has(node.id) && canDeleteNodeKind(node.data.kind),
-  );
+  const requestedNodeIdSet = new Set(nodeIds);
+  const deletedNodes = draft.nodes.filter((node) => requestedNodeIdSet.has(node.id));
 
-  if (!deletedNodes.length) {
+  if (
+    !requestedNodeIdSet.size
+    || deletedNodes.length !== requestedNodeIdSet.size
+    || deletedNodes.some((node) => !canDeleteNodeKind(node.data.kind))
+  ) {
     return undefined;
   }
 

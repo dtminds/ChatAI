@@ -92,7 +92,7 @@ describe("workflow graph commands", () => {
         type: "delete-node",
       },
       {
-        nodeIds: ["trigger", "wait-2d", "action-message"],
+        nodeIds: ["wait-2d", "action-message"],
         type: "delete-nodes",
       },
       {

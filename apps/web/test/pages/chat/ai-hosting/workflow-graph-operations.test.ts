@@ -420,20 +420,25 @@ describe("workflow graph operations", () => {
     expect(deleteNodeOperation(createDraft(), "goal")).toBeUndefined();
   });
 
-  it("deletes multiple editable nodes in one operation and skips protected nodes", () => {
-    const operation = deleteNodesOperation(createDraft(), ["trigger", "wait-2d", "action-message"]);
+  it("deletes multiple editable nodes in one atomic operation", () => {
+    const operation = deleteNodesOperation(createDraft(), ["wait-2d", "action-message"]);
 
     expect(operation?.event).toBe("node:delete");
     expect(operation?.result?.nodeIds).toEqual(["wait-2d", "action-message"]);
     expect(operation?.draft.nodes.map((node) => node.id)).not.toContain("wait-2d");
     expect(operation?.draft.nodes.map((node) => node.id)).not.toContain("action-message");
-    expect(operation?.draft.nodes.map((node) => node.id)).toContain("trigger");
     expect(operation?.draft.edges.some((edge) =>
       edge.source === "wait-2d"
       || edge.target === "wait-2d"
       || edge.source === "action-message"
       || edge.target === "action-message",
     )).toBe(false);
+  });
+
+  it("rejects batched node deletion when any requested node is missing or protected", () => {
+    expect(deleteNodesOperation(createDraft(), ["trigger", "wait-2d"])).toBeUndefined();
+    expect(deleteNodesOperation(createDraft(), ["goal", "action-message"])).toBeUndefined();
+    expect(deleteNodesOperation(createDraft(), ["missing-node", "action-message"])).toBeUndefined();
   });
 
   it("duplicates nodes with a unique title and without carrying selection runtime state", () => {

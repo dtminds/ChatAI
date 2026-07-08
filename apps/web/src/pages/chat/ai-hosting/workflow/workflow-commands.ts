@@ -9,6 +9,7 @@ import {
   duplicateNodeOperation,
   insertNodeAfterOperation,
   insertNodeBetweenOperation,
+  pasteClipboardOperation,
 } from "./graph-operations";
 import type { WorkflowGraphOperation } from "./graph-operations";
 import type {
@@ -16,7 +17,6 @@ import type {
   WorkflowDraft,
   WorkflowNodeKind,
 } from "./types";
-import { pasteWorkflowClipboardData } from "./workflow-clipboard";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
 import { createUniqueWorkflowNodeIdFactory } from "./workflow-id";
 
@@ -114,7 +114,7 @@ export function runWorkflowGraphCommand(
     }
 
     case "paste-clipboard":
-      return pasteWorkflowClipboardData(draft, command.clipboardData, {
+      return pasteClipboardOperation(draft, command.clipboardData, {
         nodeIdFactory: (kind) => createNodeId(kind),
       });
 

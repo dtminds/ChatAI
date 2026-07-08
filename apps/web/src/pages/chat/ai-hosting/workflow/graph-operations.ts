@@ -27,6 +27,13 @@ import {
   canonicalizeWorkflowDraft,
   isWorkflowGraphEqual,
 } from "./workflow-draft-normalizer";
+import {
+  pasteWorkflowClipboardData,
+} from "./workflow-clipboard";
+import type {
+  WorkflowClipboardData,
+  WorkflowPasteOptions,
+} from "./workflow-clipboard";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowBranchPath,
@@ -446,6 +453,16 @@ export function duplicateNodeOperation(
     },
     result: { nodeId: duplicatedNodeId },
   });
+}
+
+export function pasteClipboardOperation(
+  draft: WorkflowDraft,
+  clipboardData: WorkflowClipboardData,
+  options: WorkflowPasteOptions,
+): WorkflowGraphOperation | undefined {
+  const operation = pasteWorkflowClipboardData(draft, clipboardData, options);
+
+  return operation ? createWorkflowGraphOperation(operation) : undefined;
 }
 
 export function deleteEdgeOperation(

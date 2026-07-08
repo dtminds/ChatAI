@@ -10,8 +10,10 @@ import {
   insertNodeAfterOperation,
   insertNodeBetweenOperation,
   moveNodesOperation,
+  pasteClipboardOperation,
   updateNodeDataOperation,
 } from "@/pages/chat/ai-hosting/workflow/graph-operations";
+import { createWorkflowClipboardData } from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import { WORKFLOW_EDGE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import {
   createEdge,
@@ -363,6 +365,20 @@ describe("workflow graph operations", () => {
     expect(duplicatedNode?.data.title).toBe("发送欢迎消息 (1)");
     expect(duplicatedNode?.selected).toBe(false);
     expect(duplicatedNode?.zIndex).toBeUndefined();
+  });
+
+  it("pastes clipboard nodes as a graph operation", () => {
+    const draft = createDraft();
+    const clipboardData = createWorkflowClipboardData(draft, ["action-message"])!;
+    const operation = pasteClipboardOperation(draft, clipboardData, {
+      nodeIdFactory: (kind, index) => `${kind}-paste-${index}`,
+    });
+
+    expect(operation?.event).toBe("node:paste");
+    expect(operation?.result).toEqual({ nodeId: "action-paste-0" });
+    expect(operation?.draft.nodes.some((node) => node.id === "action-paste-0")).toBe(true);
+    expect(operation?.draft.nodes.find((node) => node.id === "action-paste-0")?.data.title)
+      .toBe("发送欢迎消息 (1)");
   });
 
   it("moves one or more nodes as a graph operation", () => {

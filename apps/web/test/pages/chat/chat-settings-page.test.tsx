@@ -283,6 +283,59 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
+    mock.onGet("/server/settings/group-chats").reply((config) => {
+      const keyword = config.params?.keyword as string | undefined;
+      const managedAccountId = config.params?.managedAccountId as string | undefined;
+      const groupChats = [
+        {
+          avatarUrl: "https://example.com/group-1.png",
+          id: "501",
+          name: "护肤交流群",
+          openingManagedAccount: {
+            avatarUrl: "https://example.com/drc.png",
+            id: "101",
+            name: "德瑞可",
+          },
+          receptionSeatCount: 3,
+          thirdGroupId: "29F71A2ED8125854B6A1",
+        },
+        {
+          avatarUrl: "",
+          id: "502",
+          name: "售后答疑群",
+          openingManagedAccount: {
+            avatarUrl: "https://example.com/ndt.png",
+            id: "102",
+            name: "念都堂",
+          },
+          receptionSeatCount: 2,
+          thirdGroupId: "8C2D4F1A9B7765432100",
+        },
+      ].filter((groupChat) => {
+        const matchesKeyword =
+          !keyword ||
+          groupChat.name.includes(keyword) ||
+          groupChat.thirdGroupId.includes(keyword);
+        const matchesManagedAccount =
+          !managedAccountId || groupChat.openingManagedAccount.id === managedAccountId;
+
+        return matchesKeyword && matchesManagedAccount;
+      });
+
+      return [
+        200,
+        {
+          data: {
+            filterManagedAccounts: [
+              { id: "101", name: "德瑞可" },
+              { id: "102", name: "念都堂" },
+            ],
+            groupChats,
+          },
+          success: true,
+        },
+      ];
+    });
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: [
@@ -351,11 +404,66 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("shows enabled group chats in the managed-account settings tab", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+
+    expect(await screen.findByRole("table", { name: "开通群聊列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "群ID" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "开通企微号" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "可接待企微号" })).toBeInTheDocument();
+    expect(await screen.findByText("护肤交流群")).toBeInTheDocument();
+    expect(screen.getByText("29F71A2ED8125854B6A1")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^设置 / }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
+  });
+
+  it("opens single and batch group chat reception dialogs from the same component", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("button", { name: "设置 护肤交流群" }));
+
+    const singleDialog = await screen.findByRole("dialog", { name: "群聊接待设置" });
+    expect(within(singleDialog).getByText("护肤交流群")).toBeInTheDocument();
+    expect(within(singleDialog).getByLabelText("可接待的企微号")).toBeInTheDocument();
+    expect(within(singleDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
+      "请选择企微号",
+    );
+
+    await user.click(within(singleDialog).getByRole("button", { name: "选择可接待企微号" }));
+    await user.click(await within(document.body).findByRole("checkbox", { name: "德瑞可" }));
+    expect(within(singleDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
+      "德瑞可",
+    );
+
+    await user.click(within(singleDialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "群聊接待设置" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "选择 护肤交流群" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 售后答疑群" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+
+    const batchDialog = await screen.findByRole("dialog", { name: "群聊接待批量设置" });
+    expect(
+      within(batchDialog).getByText("注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略"),
+    ).toBeInTheDocument();
+    expect(within(batchDialog).queryByText("护肤交流群")).not.toBeInTheDocument();
+    expect(within(batchDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
+      "请选择企微号",
+    );
+  });
+
   it("shows real managed-account and form reference pages inside the settings shell", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "企微账号" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "开通群聊" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
     expect(await screen.findByText("德瑞可")).toBeInTheDocument();

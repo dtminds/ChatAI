@@ -1,5 +1,7 @@
 import type {
   ApiSuccessEnvelope,
+  SettingsGroupChatsQuery,
+  SettingsGroupChatsResponse,
   SettingsManagedAccount,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
@@ -32,6 +34,17 @@ export async function listSubAccounts() {
 export async function listManagedAccounts() {
   const response = await http.get<ApiSuccessEnvelope<SettingsManagedAccountsResponse>>(
     "/server/settings/managed-accounts",
+  );
+
+  return response.data;
+}
+
+export async function listGroupChats(query: SettingsGroupChatsQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<SettingsGroupChatsResponse>>(
+    "/server/settings/group-chats",
+    {
+      params: query,
+    },
   );
 
   return response.data;

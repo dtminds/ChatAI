@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createSubAccount,
   deleteSubAccount,
+  listGroupChats,
   listSubAccounts,
   syncManagedAccountSeatGroups,
   updateSubAccount,
@@ -88,6 +89,24 @@ describe("settings service", () => {
     );
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       syncMembers: true,
+    });
+  });
+
+  it("uses public /server settings endpoints for group chat listing", async () => {
+    mock.onGet("/server/settings/group-chats").reply(200, {
+      data: {
+        filterManagedAccounts: [{ id: "101", name: "德瑞可" }],
+        groupChats: [],
+      },
+      success: true,
+    });
+
+    await listGroupChats({ keyword: "护肤", managedAccountId: "101" });
+
+    expect(mock.history.get[0]?.url).toBe("/server/settings/group-chats");
+    expect(mock.history.get[0]?.params).toEqual({
+      keyword: "护肤",
+      managedAccountId: "101",
     });
   });
 });

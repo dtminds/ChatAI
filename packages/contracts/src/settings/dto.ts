@@ -72,6 +72,36 @@ export const SettingsManagedAccountSyncSeatGroupsResponseSchema = Type.Object({
   synced: Type.Boolean(),
 });
 
+export const SettingsGroupChatOpeningManagedAccountSchema = Type.Object({
+  avatarUrl: Type.String(),
+  id: Type.String(),
+  name: Type.String(),
+});
+
+export const SettingsGroupChatSchema = Type.Object({
+  avatarUrl: Type.String(),
+  id: Type.String(),
+  name: Type.String(),
+  openingManagedAccount: SettingsGroupChatOpeningManagedAccountSchema,
+  receptionSeatCount: Type.Integer({ minimum: 0 }),
+  thirdGroupId: Type.String(),
+});
+
+export const SettingsGroupChatFilterManagedAccountSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+});
+
+export const SettingsGroupChatsResponseSchema = Type.Object({
+  filterManagedAccounts: Type.Array(SettingsGroupChatFilterManagedAccountSchema),
+  groupChats: Type.Array(SettingsGroupChatSchema),
+});
+
+export const SettingsGroupChatsQuerySchema = Type.Object({
+  keyword: Type.Optional(Type.String()),
+  managedAccountId: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
 export const SettingsSubAccountCreateRequestSchema = Type.Object({
   account: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
@@ -166,6 +196,15 @@ export type SettingsManagedAccountSyncSeatGroupsRequest = Static<
 export type SettingsManagedAccountSyncSeatGroupsResponse = Static<
   typeof SettingsManagedAccountSyncSeatGroupsResponseSchema
 >;
+export type SettingsGroupChatOpeningManagedAccount = Static<
+  typeof SettingsGroupChatOpeningManagedAccountSchema
+>;
+export type SettingsGroupChat = Static<typeof SettingsGroupChatSchema>;
+export type SettingsGroupChatFilterManagedAccount = Static<
+  typeof SettingsGroupChatFilterManagedAccountSchema
+>;
+export type SettingsGroupChatsResponse = Static<typeof SettingsGroupChatsResponseSchema>;
+export type SettingsGroupChatsQuery = Static<typeof SettingsGroupChatsQuerySchema>;
 export type SettingsSubAccountCreateRequest = Static<
   typeof SettingsSubAccountCreateRequestSchema
 >;

@@ -59,6 +59,11 @@ export type WorkflowDraftChange = {
   result?: WorkflowActionResult;
 };
 
+export type WorkflowNodePositionUpdate = {
+  nodeId: string;
+  position: WorkflowNode["position"];
+};
+
 const FLOATING_NODE_SCREEN_X = 360;
 const FLOATING_NODE_SCREEN_Y = 180;
 const FLOATING_NODE_COLLISION_X = 260;
@@ -477,6 +482,63 @@ export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperat
       nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
     },
     event: "layout:organize",
+  });
+}
+
+export function moveNodesInDraft(
+  draft: WorkflowDraft,
+  updates: WorkflowNodePositionUpdate[],
+) {
+  let changed = false;
+  const positionByNodeId = new Map(
+    updates.map((update) => [update.nodeId, update.position]),
+  );
+  const nodes = draft.nodes.map((node) => {
+    const position = positionByNodeId.get(node.id);
+
+    if (
+      !position
+      || (node.position.x === position.x && node.position.y === position.y)
+    ) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      position: { ...position },
+    };
+  });
+
+  return changed
+    ? {
+        ...draft,
+        nodes,
+      }
+    : draft;
+}
+
+export function moveNodesOperation(
+  draft: WorkflowDraft,
+  updates: WorkflowNodePositionUpdate[],
+  nodeId: string,
+): WorkflowGraphOperation | undefined {
+  const nextDraft = moveNodesInDraft(draft, updates);
+
+  if (isWorkflowGraphEqual(draft, nextDraft)) {
+    return undefined;
+  }
+
+  const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
+
+  return createWorkflowGraphOperation({
+    draft: nextDraft,
+    event: "node:move",
+    meta: {
+      nodeId,
+      nodeTitle: node?.data.title,
+    },
+    result: { nodeId },
   });
 }
 

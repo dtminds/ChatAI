@@ -14,9 +14,14 @@ import {
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import {
+  moveNodesInDraft,
+  moveNodesOperation,
   updateNodeDataOperation,
 } from "./graph-operations";
-import type { WorkflowActionResult } from "./graph-operations";
+import type {
+  WorkflowActionResult,
+  WorkflowNodePositionUpdate,
+} from "./graph-operations";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableWorkflowNodeKind,
@@ -53,11 +58,6 @@ type WorkflowControllerActionResult = WorkflowActionResult & {
   transient?: boolean;
 };
 
-type WorkflowNodePositionUpdate = {
-  nodeId: string;
-  position: WorkflowNode["position"];
-};
-
 function preserveCurrentViewport(
   draft: WorkflowDraft,
   currentDraft: WorkflowDraft,
@@ -66,47 +66,6 @@ function preserveCurrentViewport(
     ...draft,
     viewport: currentDraft.viewport,
   };
-}
-
-function updateNodePositionInDraft(
-  draft: WorkflowDraft,
-  nodeId: string,
-  position: WorkflowNode["position"],
-) {
-  return updateNodePositionsInDraft(draft, [{ nodeId, position }]);
-}
-
-function updateNodePositionsInDraft(
-  draft: WorkflowDraft,
-  updates: WorkflowNodePositionUpdate[],
-) {
-  let changed = false;
-  const positionByNodeId = new Map(
-    updates.map((update) => [update.nodeId, update.position]),
-  );
-  const nodes = draft.nodes.map((node) => {
-    const position = positionByNodeId.get(node.id);
-
-    if (
-      !position
-      || (node.position.x === position.x && node.position.y === position.y)
-    ) {
-      return node;
-    }
-
-    changed = true;
-    return {
-      ...node,
-      position: { ...position },
-    };
-  });
-
-  return changed
-    ? {
-        ...draft,
-        nodes,
-      }
-    : draft;
 }
 
 export function useWorkflowController(initialDraft: WorkflowDraft) {
@@ -192,7 +151,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [currentDraft, flushConfigHistory]);
 
   const updateNodeDrag = useCallback((nodeId: string, position: WorkflowNode["position"]) => {
-    const nextDraft = updateNodePositionInDraft(currentDraft, nodeId, position);
+    const nextDraft = moveNodesInDraft(currentDraft, [{ nodeId, position }]);
 
     if (nextDraft === currentDraft) {
       return undefined;
@@ -224,17 +183,18 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       positionUpdates.push({ nodeId, position });
     }
 
-    const nextDraft = sanitizeDraft(updateNodePositionsInDraft(currentDraft, positionUpdates));
+    const operation = moveNodesOperation(previousDraft, positionUpdates, nodeId);
     moveStartDraftRef.current = null;
 
-    if (isWorkflowDraftEqual(previousDraft, nextDraft)) {
-      replaceDraftTransient(() => nextDraft);
+    if (!operation) {
+      replaceDraftTransient(() => sanitizeDraft(moveNodesInDraft(currentDraft, positionUpdates)));
       return undefined;
     }
 
-    commitFromDrafts("node:move", previousDraft, nextDraft, { nodeId });
+    commitFromDrafts(operation.event, previousDraft, operation.draft, operation.meta);
     return {
-      draft: preserveCurrentViewport(nextDraft, currentDraft),
+      ...operation.result,
+      draft: preserveCurrentViewport(operation.draft, currentDraft),
       nodeId,
     };
   }, [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraftTransient]);

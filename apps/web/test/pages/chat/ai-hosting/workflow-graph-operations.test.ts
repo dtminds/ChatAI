@@ -8,6 +8,7 @@ import {
   duplicateNodeOperation,
   insertNodeAfterOperation,
   insertNodeBetweenOperation,
+  moveNodesOperation,
   updateNodeDataOperation,
 } from "@/pages/chat/ai-hosting/workflow/graph-operations";
 import { WORKFLOW_EDGE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
@@ -337,6 +338,34 @@ describe("workflow graph operations", () => {
     expect(duplicatedNode?.data.title).toBe("发送欢迎消息 (1)");
     expect(duplicatedNode?.selected).toBe(false);
     expect(duplicatedNode?.zIndex).toBeUndefined();
+  });
+
+  it("moves one or more nodes as a graph operation", () => {
+    const draft = createDraft();
+    const operation = moveNodesOperation(draft, [
+      { nodeId: "wait-2d", position: { x: 420, y: 120 } },
+      { nodeId: "branch-intent", position: { x: 760, y: 180 } },
+    ], "wait-2d");
+
+    expect(operation?.event).toBe("node:move");
+    expect(operation?.meta).toEqual({
+      nodeId: "wait-2d",
+      nodeTitle: "观察期",
+    });
+    expect(operation?.result).toEqual({ nodeId: "wait-2d" });
+    expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({ x: 420, y: 120 });
+    expect(operation?.draft.nodes.find((node) => node.id === "branch-intent")?.position).toEqual({ x: 760, y: 180 });
+    expect(operation?.draft.nodes.find((node) => node.id === "trigger")?.position)
+      .toEqual(draft.nodes.find((node) => node.id === "trigger")?.position);
+  });
+
+  it("does not create a move operation when positions are unchanged", () => {
+    const draft = createDraft();
+    const waitNode = draft.nodes.find((node) => node.id === "wait-2d")!;
+
+    expect(moveNodesOperation(draft, [
+      { nodeId: waitNode.id, position: waitNode.position },
+    ], waitNode.id)).toBeUndefined();
   });
 
   it("updates node config without changing unrelated nodes or edges", () => {

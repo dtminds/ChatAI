@@ -367,13 +367,13 @@ function getCardinalityIssues(
       });
     }
 
-    const supportsMultipleSourceHandles = getNodeSourceHandleDefinitions(node.data).length > 1;
+    const sourceHandleCapacity = getNodeSourceHandleDefinitions(node.data).length;
 
-    if (!supportsMultipleSourceHandles && node.data.kind !== "goal" && outgoingEdges.length > 1) {
+    if (sourceHandleCapacity <= 1 && outgoingEdges.length > 1) {
       issues.push({
         code: "node-multiple-outgoing",
         edgeIds: outgoingEdges.map((edge) => edge.id),
-        message: "非条件节点不能有多个出口连线",
+        message: "节点出口数量超出当前连接桩能力",
         nodeId: node.id,
         severity: "warning",
         source: "graph",

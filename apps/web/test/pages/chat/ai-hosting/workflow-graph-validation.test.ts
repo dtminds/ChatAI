@@ -116,6 +116,25 @@ describe("workflow graph validation", () => {
     )).toBe(false);
   });
 
+  it("flags outgoing edges on nodes without source handles through the same cardinality rule", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-after-goal", 10),
+    ];
+    const validation = validateWorkflowGraph(nodes, [
+      ...createInitialEdges(),
+      createEdge("goal", "action-after-goal"),
+      createEdge("goal", "wait-2d"),
+    ]);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "node-multiple-outgoing",
+        nodeId: "goal",
+      }),
+    ]));
+  });
+
   it("flags branch paths without downstream nodes", () => {
     const validation = validateWorkflowGraph(createInitialNodes(), createInitialEdges());
 

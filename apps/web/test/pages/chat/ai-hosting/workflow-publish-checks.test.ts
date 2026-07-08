@@ -75,6 +75,49 @@ describe("buildPublishChecks", () => {
     );
   });
 
+  it("ignores render and runtime-only fields when building publish checks", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const cleanChecklist = buildPublishChecklist(nodes, edges);
+    const runtimeNodes = nodes.map((node) =>
+      node.id === "branch-intent"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              _runtimeStatus: "hovered",
+              insertMenuOpen: true,
+              onDelete: () => undefined,
+              selected: true,
+            },
+            selected: true,
+            zIndex: 20,
+          }
+        : node,
+    );
+    const runtimeEdges = edges.map((edge) =>
+      edge.id === "edge-branch-intent-branch-high-action-message"
+        ? {
+            ...edge,
+            data: {
+              ...edge.data,
+              _runtimeEdgeState: "selected",
+              highlightState: "connected" as const,
+              insertMenuOpen: true,
+              onInsertBetween: () => undefined,
+            },
+            selected: true,
+          }
+        : edge,
+    );
+    const runtimeChecklist = buildPublishChecklist(runtimeNodes, runtimeEdges);
+
+    expect(runtimeChecklist.canPublish).toBe(cleanChecklist.canPublish);
+    expect(runtimeChecklist.canRun).toBe(cleanChecklist.canRun);
+    expect(runtimeChecklist.summary).toEqual(cleanChecklist.summary);
+    expect(runtimeChecklist.checks).toEqual(cleanChecklist.checks);
+  });
+
   it("keeps validation issues structured for publish checklist routing", () => {
     const nodes = createInitialNodes().map((node) =>
       node.id === "branch-intent"
@@ -336,6 +379,31 @@ describe("buildPublishChecks", () => {
         title: "观察期",
       }),
     ]));
+  });
+
+  it("keeps publish checks aligned with source handle connection policy", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-high-extra", 10),
+    ];
+    const checklist = buildPublishChecklist(nodes, [
+      ...createInitialEdges(),
+      createEdge("branch-intent", "action-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
+    ]);
+    const sourceHandleCheck = checklist.checks.find(
+      (check) => check.id === "graph-source-handle-multiple-outgoing-branch-intent",
+    );
+
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.canRun).toBe(false);
+    expect(sourceHandleCheck).toEqual(expect.objectContaining({
+      blocksPublish: true,
+      blocksRun: true,
+      category: "connectivity",
+      description: "同一个出口只能连接一条下游连线",
+      nodeId: "branch-intent",
+      title: "意向判断",
+    }));
   });
 
   it("blocks run and publish when a branch path has no downstream node", () => {

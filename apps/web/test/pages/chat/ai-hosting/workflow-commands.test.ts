@@ -55,4 +55,17 @@ describe("workflow graph commands", () => {
     expect(operation?.result?.nodeId).toMatch(/^action-/);
     expect(operation?.draft.nodes.some((node) => node.id === operation.result?.nodeId)).toBe(true);
   });
+
+  it("maps batched edge removals to one graph operation", () => {
+    const draft = createDraft();
+    const edgeIds = draft.edges.slice(0, 2).map((edge) => edge.id);
+    const operation = runWorkflowGraphCommand(draft, {
+      edgeIds,
+      type: "delete-edges",
+    });
+
+    expect(operation?.event).toBe("edge:delete");
+    expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[0]);
+    expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[1]);
+  });
 });

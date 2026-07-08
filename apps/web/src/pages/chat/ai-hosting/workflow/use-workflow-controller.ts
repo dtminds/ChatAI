@@ -11,7 +11,6 @@ import {
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import {
-  deleteEdgesOperation,
   moveNodesInDraft,
   moveNodesOperation,
   updateNodeDataOperation,
@@ -251,7 +250,10 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
         .filter((edgeId) => currentEdgeIds.has(edgeId));
 
       if (removedEdgeIds.length > 0) {
-        const operation = deleteEdgesOperation(currentDraft, removedEdgeIds);
+        const operation = runWorkflowGraphCommand(currentDraft, {
+          edgeIds: removedEdgeIds,
+          type: "delete-edges",
+        });
 
         if (!operation) {
           return undefined;

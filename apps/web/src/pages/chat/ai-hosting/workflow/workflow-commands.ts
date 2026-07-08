@@ -4,6 +4,7 @@ import {
   arrangeNodesOperation,
   connectNodesOperation,
   deleteEdgeOperation,
+  deleteEdgesOperation,
   deleteNodeOperation,
   deleteNodesOperation,
   duplicateNodeOperation,
@@ -63,6 +64,10 @@ export type WorkflowGraphCommand =
     type: "delete-edge";
   }
   | {
+    edgeIds: string[];
+    type: "delete-edges";
+  }
+  | {
     type: "arrange-nodes";
   };
 
@@ -120,6 +125,9 @@ export function runWorkflowGraphCommand(
 
     case "delete-edge":
       return deleteEdgeOperation(draft, command.edgeId);
+
+    case "delete-edges":
+      return deleteEdgesOperation(draft, command.edgeIds);
 
     case "arrange-nodes":
       return arrangeNodesOperation(draft);

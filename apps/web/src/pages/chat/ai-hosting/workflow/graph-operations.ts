@@ -69,7 +69,7 @@ const FLOATING_NODE_COLLISION_X = 260;
 const FLOATING_NODE_COLLISION_Y = 120;
 const FLOATING_NODE_OFFSET_Y = 140;
 
-function createWorkflowGraphOperation(
+function finalizeWorkflowGraphOperation(
   operation: WorkflowGraphOperation,
 ): WorkflowGraphOperation {
   return {
@@ -92,7 +92,7 @@ export function addNodeOperation(
     position: resolveFloatingNodePosition(draft),
   };
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       nodes: [...draft.nodes, node],
@@ -192,7 +192,7 @@ export function insertNodeAfterOperation(
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: [
@@ -271,7 +271,7 @@ export function insertNodeBetweenOperation(
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: [
@@ -334,7 +334,7 @@ export function connectNodesOperation(
 
   const edge = createEdge(source, target, undefined, { sourceHandle, targetHandle });
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: [...draft.edges, edge],
@@ -360,7 +360,7 @@ export function deleteNodeOperation(
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: draft.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
@@ -390,7 +390,7 @@ export function deleteNodesOperation(
 
   const deletableNodeIdSet = new Set(deletedNodes.map((node) => node.id));
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: draft.edges.filter((edge) =>
@@ -424,7 +424,7 @@ export function duplicateNodeOperation(
   const reservedTitles = new Set(draft.nodes.map((currentNode) => currentNode.data.title));
   const duplicatedNode = duplicateWorkflowNode(node, duplicatedNodeId, reservedTitles);
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       nodes: [...draft.nodes, duplicatedNode],
@@ -445,7 +445,7 @@ export function pasteClipboardOperation(
 ): WorkflowGraphOperation | undefined {
   const operation = pasteWorkflowClipboardData(draft, clipboardData, options);
 
-  return operation ? createWorkflowGraphOperation(operation) : undefined;
+  return operation ? finalizeWorkflowGraphOperation(operation) : undefined;
 }
 
 export function deleteEdgeOperation(
@@ -458,7 +458,7 @@ export function deleteEdgeOperation(
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: draft.edges.filter((currentEdge) => currentEdge.id !== edgeId),
@@ -488,7 +488,7 @@ export function deleteEdgesOperation(
 
   const firstDeletedEdge = deletedEdges[0];
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: draft.edges.filter((edge) => !deletedEdgeIdSet.has(edge.id)),
@@ -515,7 +515,7 @@ export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperat
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: nextDraft,
     event: "layout:organize",
   });
@@ -567,7 +567,7 @@ export function moveNodesOperation(
 
   const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: nextDraft,
     event: "node:move",
     meta: {
@@ -607,7 +607,7 @@ export function updateNodeDataOperation(
     return undefined;
   }
 
-  return createWorkflowGraphOperation({
+  return finalizeWorkflowGraphOperation({
     draft: nextDraft,
     event: "node:config-change",
     meta: {

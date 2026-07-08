@@ -273,4 +273,34 @@ describe("workflow clipboard", () => {
     expect(operation?.result).toEqual({ nodeId: "action-message-1" });
     expect(operation?.draft.nodes.some((node) => node.id === "action-message-1")).toBe(true);
   });
+
+  it("returns a canonical draft when pasting into a target graph with invalid edges", () => {
+    const draft = createDraft();
+    const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
+    const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const operation = pasteWorkflowClipboardData({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        {
+          ...createEdge("missing-node", "goal"),
+          id: "edge-missing-node-goal",
+        },
+      ],
+    }, {
+      edges: [
+        createEdge("branch-intent", "action-message", "高意向", {
+          sourceHandle: "branch-high",
+        }),
+      ],
+      nodes: [branch, action],
+    }, {
+      nodeIdFactory: (kind, index) => `${kind}-paste-${index}`,
+      offset: { x: 0, y: 0 },
+    });
+
+    expect(operation?.draft.nodes.some((node) => node.id === "branch-paste-0")).toBe(true);
+    expect(operation?.draft.nodes.some((node) => node.id === "action-paste-1")).toBe(true);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-missing-node-goal")).toBe(false);
+  });
 });

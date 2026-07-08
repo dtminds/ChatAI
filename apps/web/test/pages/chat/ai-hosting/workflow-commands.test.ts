@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWorkflowClipboardData } from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
+import { getWorkflowConnectionPolicyViolation } from "@/pages/chat/ai-hosting/workflow/connection-policy";
 import { runWorkflowGraphCommand } from "@/pages/chat/ai-hosting/workflow/workflow-commands";
 import {
   createEdge,
@@ -111,6 +112,7 @@ describe("workflow graph commands", () => {
       expect(operation!.draft.nodes.every((node) => node.selected === false)).toBe(true);
       expect(operation!.draft.nodes.every((node) => node.zIndex === undefined)).toBe(true);
       expect(operation!.draft.nodes.every((node) => typeof node.data.onDelete === "undefined")).toBe(true);
+      expect(getGraphPolicyViolations(operation!.draft), command.type).toEqual([]);
     });
   });
 
@@ -184,4 +186,19 @@ function createDirtyDraftForCommandBoundary(): WorkflowDraft {
       zoom: 1.4,
     },
   };
+}
+
+function getGraphPolicyViolations(draft: WorkflowDraft) {
+  return draft.edges.flatMap((edge) => {
+    const violation = getWorkflowConnectionPolicyViolation(draft, {
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    }, {
+      ignoreEdgeId: edge.id,
+    });
+
+    return violation ? [{ edgeId: edge.id, violation }] : [];
+  });
 }

@@ -1,4 +1,5 @@
 import {
+  canonicalizeWorkflowDraft,
   hydrateWorkflowDraft,
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
@@ -249,7 +250,7 @@ export function pasteWorkflowClipboardData(
     }];
   });
 
-  const nextDraft = sanitizeDraft({
+  const nextDraft = canonicalizeWorkflowDraft({
     edges: [...draft.edges, ...pastedEdges],
     nodes: [...draft.nodes, ...pastedNodes],
     viewport: draft.viewport,

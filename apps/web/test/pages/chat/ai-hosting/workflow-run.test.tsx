@@ -2,7 +2,12 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import { useWorkflowRun } from "@/pages/chat/ai-hosting/workflow/run/use-workflow-run";
-import { createMockWorkflowRunAdapter } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-adapter";
+import {
+  createMockWorkflowRunAdapter,
+  type WorkflowRunRequest,
+} from "@/pages/chat/ai-hosting/workflow/run/workflow-run-adapter";
+import { createWorkflowRuntimeSnapshot } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-snapshot";
+import type { WorkflowRuntimeSnapshot } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-snapshot";
 import type {
   NodeRunRecord,
   WorkflowDraft,
@@ -89,7 +94,7 @@ describe("useWorkflowRun", () => {
     const draft = createWorkflowDraft();
     const runRecord = await adapter.runNode({ node });
     const workflowRunRecord = await adapter.runWorkflow({
-      draft,
+      snapshot: createWorkflowRuntimeSnapshot(draft),
       workflowId: "workflow-a",
     });
 
@@ -136,11 +141,11 @@ describe("useWorkflowRun", () => {
     let resolveWorkflowRun: (() => void) | undefined;
     const adapter = {
       runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
-      runWorkflow: vi.fn(({ draft, workflowId }: {
-        draft: WorkflowDraft;
+      runWorkflow: vi.fn(({ snapshot, workflowId }: {
+        snapshot: WorkflowRuntimeSnapshot;
         workflowId: string;
       }) => new Promise<ReturnType<typeof createWorkflowRunRecord>>((resolve) => {
-        resolveWorkflowRun = () => resolve(createWorkflowRunRecord(workflowId, draft));
+        resolveWorkflowRun = () => resolve(createWorkflowRunRecord(workflowId, snapshot.draft));
       })),
     };
     const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
@@ -153,15 +158,35 @@ describe("useWorkflowRun", () => {
     draft.nodes[0]!.data.title = "后续编辑的节点标题";
 
     expect(adapter.runWorkflow).toHaveBeenCalledWith({
-      draft: expect.objectContaining({
-        nodes: [
-          expect.objectContaining({
-            data: expect.objectContaining({ title: "AI 接待" }),
-          }),
-        ],
+      snapshot: expect.objectContaining({
+        draft: expect.objectContaining({
+          nodes: [
+            expect.objectContaining({
+              data: expect.objectContaining({ title: "AI 接待" }),
+            }),
+          ],
+        }),
+        executionGraph: expect.objectContaining({
+          edges: [],
+          nodes: [
+            expect.objectContaining({
+              config: expect.objectContaining({
+                agentName: "护肤小助理",
+              }),
+              id: "ai-node",
+              kind: "ai",
+            }),
+          ],
+        }),
       }),
       workflowId: "workflow-a",
     });
+    const runRequest = adapter.runWorkflow.mock.calls[0]?.[0];
+    expect(runRequest?.snapshot.executionGraph).not.toHaveProperty("viewport");
+    expect(runRequest?.snapshot.executionGraph.nodes[0]).not.toHaveProperty("position");
+    expect(runRequest?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("title");
+    expect(runRequest?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("status");
+    expect(runRequest?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("selected");
     expect(result.current.activeRun?.draft.nodes[0]?.data.title).toBe("AI 接待");
 
     await act(async () => {
@@ -171,6 +196,60 @@ describe("useWorkflowRun", () => {
 
     expect(result.current.activeRun?.draft.nodes[0]?.data.title).toBe("AI 接待");
     expect(result.current.runHistory[0]?.draft.nodes[0]?.data.title).toBe("AI 接待");
+  });
+
+  it("does not pass editor-only draft fields as workflow execution input", () => {
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(({ snapshot, workflowId }: {
+        snapshot: WorkflowRuntimeSnapshot;
+        workflowId: string;
+      }) => createWorkflowRunRecord(workflowId, snapshot.draft)),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const draft = createWorkflowDraft();
+    draft.nodes[0] = {
+      ...draft.nodes[0]!,
+      data: {
+        ...draft.nodes[0]!.data,
+        _runtimeStatus: "selected",
+        onDelete: vi.fn(),
+        selected: true,
+      },
+      selected: true,
+      zIndex: 20,
+    };
+    draft.viewport = { x: 120, y: 80, zoom: 1.6 };
+
+    act(() => {
+      result.current.runWorkflow(draft);
+    });
+
+    const request = adapter.runWorkflow.mock.calls[0]?.[0];
+
+    expect(request?.snapshot.draft.nodes[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ title: "AI 接待" }),
+      selected: false,
+    }));
+    expect(request?.snapshot.draft.nodes[0]?.zIndex).toBeUndefined();
+    expect(request?.snapshot.draft.nodes[0]?.data._runtimeStatus).toBeUndefined();
+    expect(request?.snapshot.draft.nodes[0]?.data.onDelete).toBeUndefined();
+    expect(request?.snapshot.executionGraph).toEqual(expect.objectContaining({
+      edges: [],
+      nodes: [
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agentName: "护肤小助理",
+          }),
+          id: "ai-node",
+          kind: "ai",
+        }),
+      ],
+    }));
+    expect(request?.snapshot.executionGraph).not.toHaveProperty("viewport");
+    expect(request?.snapshot.executionGraph.nodes[0]).not.toHaveProperty("position");
+    expect(request?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("title");
+    expect(request?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("_runtimeStatus");
   });
 
   it("enters and exits workflow run history view by run id", async () => {
@@ -226,7 +305,7 @@ describe("useWorkflowRun", () => {
       runWorkflow: vi.fn(() => new Promise<ReturnType<typeof createWorkflowRunRecord>>((resolve) => {
         resolveWorkflowRun = resolve;
       })),
-      stopWorkflowRun: vi.fn(() => undefined),
+      stopWorkflowRun: vi.fn((_request: WorkflowRunRequest & { runId: string }) => undefined),
     };
     const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
     const draft = createWorkflowDraft();
@@ -242,16 +321,30 @@ describe("useWorkflowRun", () => {
     });
 
     expect(adapter.stopWorkflowRun).toHaveBeenCalledWith({
-      draft: expect.objectContaining({
-        nodes: [
-          expect.objectContaining({
-            id: "ai-node",
-          }),
-        ],
-      }),
       runId,
+      snapshot: expect.objectContaining({
+        draft: expect.objectContaining({
+          nodes: [
+            expect.objectContaining({
+              id: "ai-node",
+            }),
+          ],
+        }),
+        executionGraph: expect.objectContaining({
+          nodes: [
+            expect.objectContaining({
+              id: "ai-node",
+              kind: "ai",
+            }),
+          ],
+        }),
+      }),
       workflowId: "workflow-a",
     });
+    expect(adapter.stopWorkflowRun.mock.calls[0]?.[0].snapshot.executionGraph.nodes[0])
+      .not.toHaveProperty("position");
+    expect(adapter.stopWorkflowRun.mock.calls[0]?.[0].snapshot.executionGraph.nodes[0]?.config)
+      .not.toHaveProperty("title");
     expect(result.current.activeRun?.status).toBe("stopped");
     expect(result.current.getNodeRun("ai-node")?.status).toBe("stopped");
     expect(result.current.runHistory[0]?.status).toBe("stopped");

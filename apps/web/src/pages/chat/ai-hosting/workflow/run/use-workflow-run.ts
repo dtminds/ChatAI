@@ -12,7 +12,7 @@ import {
   initialWorkflowRunState,
   workflowRunReducer,
 } from "./workflow-run-state";
-import { createWorkflowRunDraftSnapshot } from "./workflow-run-snapshot";
+import { createWorkflowRuntimeSnapshot } from "./workflow-run-snapshot";
 
 const defaultWorkflowRunAdapter = createMockWorkflowRunAdapter();
 
@@ -78,7 +78,8 @@ export function useWorkflowRun(
     const scopeVersion = scopeVersionRef.current;
     const workflowRunVersion = workflowRunVersionRef.current + 1;
     workflowRunVersionRef.current = workflowRunVersion;
-    const draftSnapshot = createWorkflowRunDraftSnapshot(draft);
+    const runtimeSnapshot = createWorkflowRuntimeSnapshot(draft);
+    const draftSnapshot = runtimeSnapshot.draft;
     const pendingRun = createPendingWorkflowRun({
       draft: draftSnapshot,
       runId: `${workflowId}-run-${Date.now()}`,
@@ -92,7 +93,7 @@ export function useWorkflowRun(
       type: "workflow-run-started",
     });
 
-    void Promise.resolve(adapter.runWorkflow({ draft: draftSnapshot, workflowId }))
+    void Promise.resolve(adapter.runWorkflow({ snapshot: runtimeSnapshot, workflowId }))
       .then((workflowRun) => {
         if (
           scopeVersionRef.current !== scopeVersion
@@ -130,9 +131,11 @@ export function useWorkflowRun(
     }
 
     workflowRunVersionRef.current += 1;
+    const runtimeSnapshot = createWorkflowRuntimeSnapshot(state.activeRun.draft);
+
     void Promise.resolve(adapter.stopWorkflowRun?.({
-      draft: state.activeRun.draft,
       runId: state.activeRun.id,
+      snapshot: runtimeSnapshot,
       workflowId,
     })).catch(() => undefined);
 

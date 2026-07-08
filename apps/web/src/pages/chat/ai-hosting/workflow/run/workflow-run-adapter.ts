@@ -5,14 +5,14 @@ import type {
   WorkflowRunTraceItem,
   WorkflowRunRecord,
 } from "../types";
-import { createWorkflowRunDraftSnapshot } from "./workflow-run-snapshot";
+import type { WorkflowRuntimeSnapshot } from "./workflow-run-snapshot";
 
 export type WorkflowNodeRunRequest = {
   node: WorkflowNode;
 };
 
 export type WorkflowRunRequest = {
-  draft: WorkflowDraft;
+  snapshot: WorkflowRuntimeSnapshot;
   workflowId: string;
 };
 
@@ -25,7 +25,7 @@ export type WorkflowRunAdapter = {
 export function createMockWorkflowRunAdapter(): WorkflowRunAdapter {
   return {
     runNode: ({ node }) => createMockNodeRunRecord(node),
-    runWorkflow: ({ draft, workflowId }) => createMockWorkflowRunRecord(workflowId, draft),
+    runWorkflow: ({ snapshot, workflowId }) => createMockWorkflowRunRecord(workflowId, snapshot),
     stopWorkflowRun: () => undefined,
   };
 }
@@ -93,8 +93,11 @@ export function createFailedNodeRunRecord(
   };
 }
 
-function createMockWorkflowRunRecord(workflowId: string, draft: WorkflowDraft): WorkflowRunRecord {
-  const draftSnapshot = createWorkflowRunDraftSnapshot(draft);
+function createMockWorkflowRunRecord(
+  workflowId: string,
+  snapshot: WorkflowRuntimeSnapshot,
+): WorkflowRunRecord {
+  const draftSnapshot = snapshot.draft;
   const startedAt = new Date();
   const nodeRuns = Object.fromEntries(
     draftSnapshot.nodes.map((node) => [node.id, createMockNodeRunRecord(node)]),

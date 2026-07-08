@@ -4,6 +4,15 @@ import type {
   WorkflowNodeData,
 } from "../types";
 import { canonicalizeWorkflowDraft } from "../workflow-draft-normalizer";
+import {
+  createWorkflowExecutionGraph,
+  type WorkflowExecutionGraph,
+} from "../workflow-dsl";
+
+export type WorkflowRuntimeSnapshot = {
+  draft: WorkflowDraft;
+  executionGraph: WorkflowExecutionGraph;
+};
 
 export function createWorkflowRunDraftSnapshot(draft: WorkflowDraft): WorkflowDraft {
   const canonicalDraft = canonicalizeWorkflowDraft(draft);
@@ -19,6 +28,15 @@ export function createWorkflowRunDraftSnapshot(draft: WorkflowDraft): WorkflowDr
       position: { ...node.position },
     })),
     viewport: { ...canonicalDraft.viewport },
+  };
+}
+
+export function createWorkflowRuntimeSnapshot(draft: WorkflowDraft): WorkflowRuntimeSnapshot {
+  const draftSnapshot = createWorkflowRunDraftSnapshot(draft);
+
+  return {
+    draft: draftSnapshot,
+    executionGraph: createWorkflowExecutionGraph(draftSnapshot),
   };
 }
 

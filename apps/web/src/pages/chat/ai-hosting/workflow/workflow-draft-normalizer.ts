@@ -225,10 +225,52 @@ function sanitizePersistableDataRecord<TData extends Record<string, unknown>>(
   data: TData,
 ): TData {
   return Object.fromEntries(
-    Object.entries(data).filter(([key, value]) =>
-      !key.startsWith("_") && typeof value !== "function",
-    ),
+    Object.entries(data)
+      .flatMap(([key, value]) => {
+        const sanitizedValue = sanitizePersistableDataValue(key, value);
+
+        return sanitizedValue === undefined ? [] : [[key, sanitizedValue]];
+      }),
   ) as TData;
+}
+
+function sanitizePersistableDataValue(
+  key: string,
+  value: unknown,
+): unknown {
+  if (key.startsWith("_") || typeof value === "function") {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizePersistableArrayItem(item))
+      .filter((item) => item !== undefined);
+  }
+
+  if (isPlainObject(value)) {
+    return sanitizePersistableDataRecord(value);
+  }
+
+  return value;
+}
+
+function sanitizePersistableArrayItem(value: unknown): unknown {
+  if (typeof value === "function") {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizePersistableArrayItem(item))
+      .filter((item) => item !== undefined);
+  }
+
+  if (isPlainObject(value)) {
+    return sanitizePersistableDataRecord(value);
+  }
+
+  return value;
 }
 
 function sanitizeEdgeForDraft(edge: WorkflowEdge): WorkflowEdge {

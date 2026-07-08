@@ -35,6 +35,18 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
       status: "ready",
       summary: "发送消息",
       title: `发送消息 ${index}`,
+      deliveryOptions: {
+        _runtimePreview: "open",
+        onPreview: vi.fn(),
+        quietHours: ["22:00", "08:00"],
+      },
+      segments: [
+        {
+          _runtimeMatched: true,
+          name: "高意向",
+          onInspect: vi.fn(),
+        },
+      ],
       _connectedSourceHandleIds: ["source"],
       _runtimeStatus: "hovered",
     },
@@ -53,6 +65,11 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
       onRuntimeInspect: vi.fn(),
       onToggleInsertMenu: vi.fn(),
       _runtimeEdgeState: "selected",
+      routeMeta: {
+        _runtimeHovered: true,
+        label: "分支",
+        onInspect: vi.fn(),
+      },
     },
     id: "edge-1",
     selected: true,
@@ -86,12 +103,23 @@ describe("workflow draft normalizer", () => {
     expect(sanitizedDraft.nodes[0].data.onRuntimeInspect).toBeUndefined();
     expect(sanitizedDraft.nodes[0].data._connectedSourceHandleIds).toBeUndefined();
     expect(sanitizedDraft.nodes[0].data._runtimeStatus).toBeUndefined();
+    expect(sanitizedDraft.nodes[0].data.deliveryOptions).toEqual({
+      quietHours: ["22:00", "08:00"],
+    });
+    expect(sanitizedDraft.nodes[0].data.segments).toEqual([
+      {
+        name: "高意向",
+      },
+    ]);
     expect(sanitizedDraft.edges[0].selected).toBe(false);
     expect(sanitizedDraft.edges[0].data?.highlightState).toBeUndefined();
     expect(sanitizedDraft.edges[0].data?.insertMenuOpen).toBeUndefined();
     expect(sanitizedDraft.edges[0].data?.onInsertBetween).toBeUndefined();
     expect(sanitizedDraft.edges[0].data?.onRuntimeInspect).toBeUndefined();
     expect(sanitizedDraft.edges[0].data?._runtimeEdgeState).toBeUndefined();
+    expect(sanitizedDraft.edges[0].data?.routeMeta).toEqual({
+      label: "分支",
+    });
     expect(sanitizedDraft.viewport).toEqual({ x: 120, y: 240, zoom: 1.25 });
   });
 

@@ -510,7 +510,7 @@ export function deleteEdgesOperation(
   const deletedEdgeIdSet = new Set(edgeIds);
   const deletedEdges = draft.edges.filter((edge) => deletedEdgeIdSet.has(edge.id));
 
-  if (!deletedEdges.length) {
+  if (!deletedEdgeIdSet.size || deletedEdges.length !== deletedEdgeIdSet.size) {
     return undefined;
   }
 

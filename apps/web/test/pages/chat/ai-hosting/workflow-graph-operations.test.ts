@@ -281,7 +281,6 @@ describe("workflow graph operations", () => {
     const operation = deleteEdgesOperation(draft, [
       "edge-wait-2d-branch-intent",
       "edge-action-message-goal",
-      "missing-edge",
     ]);
 
     expect(operation?.event).toBe("edge:delete");
@@ -297,6 +296,10 @@ describe("workflow graph operations", () => {
     expect(operation?.draft.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
     expect(operation?.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
       .toBe(true);
+    expect(deleteEdgesOperation(draft, [
+      "edge-wait-2d-branch-intent",
+      "missing-edge",
+    ])).toBeUndefined();
     expect(deleteEdgesOperation(draft, ["missing-edge"])).toBeUndefined();
   });
 

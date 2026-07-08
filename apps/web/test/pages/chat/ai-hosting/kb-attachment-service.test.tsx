@@ -455,8 +455,15 @@ describe("KbAttachmentsTab", () => {
       initialized: true,
       syncStatus: 0,
     });
-    vi.mocked(listKbAttachments)
-      .mockResolvedValueOnce({
+    vi.mocked(listKbAttachments).mockImplementation(async (_kbId, params) => {
+      if (params?.page === 2) {
+        return {
+          attachments: [],
+          pagination: { page: 2, pageSize: 10, total: 0 },
+        };
+      }
+
+      return {
         attachments: [
           createKbAttachmentListItem({
             chunkId: "chunk-page-1",
@@ -465,11 +472,8 @@ describe("KbAttachmentsTab", () => {
           }),
         ],
         pagination: { page: 1, pageSize: 10, total: 11 },
-      })
-      .mockResolvedValueOnce({
-        attachments: [],
-        pagination: { page: 2, pageSize: 10, total: 0 },
-      });
+      };
+    });
 
     render(
       <KbAttachmentsTab

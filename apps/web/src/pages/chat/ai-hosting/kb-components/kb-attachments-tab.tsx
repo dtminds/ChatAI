@@ -2,12 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
-  Album02Icon,
-  File02Icon,
-  Link04Icon,
   Search01Icon,
-  Video01Icon,
-  VideoAiIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -29,7 +24,6 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
-import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   batchDeleteKbAttachments,
@@ -45,6 +39,7 @@ import {
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAddAttachmentDialog } from "./kb-add-attachment-dialog";
 import { KbAttachmentsTable } from "./kb-attachments-table";
+import { KbEmptyStatePanel } from "./kb-empty-state-panel";
 import {
   getKbAttachmentTitle,
   kbAttachmentTypeFilters,
@@ -66,20 +61,10 @@ const kbAttachmentInitLoadingIllustrationUrl =
 const ATTACHMENT_SYNC_POLL_MS = 5000;
 const ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS = 3 * 60 * 1000;
 
-const kbAttachmentExampleTagRows = [
-  [
-    { icon: "file" as const, label: "产品说明书" },
-    { icon: "image" as const, label: "营销活动海报" },
-    { icon: "poster" as const, label: "直播预告海报" },
-    { icon: "video" as const, label: "产品安装视频" },
-  ],
-  [
-    { brand: "mini-program" as const, label: "小程序商城链接" },
-    { brand: "wechat" as const, label: "公众号文章" },
-    { brand: "xiaohongshu" as const, label: "小红书链接" },
-    { brand: "more" as const, label: "..." },
-  ],
-] as const;
+const KB_ATTACHMENT_EMPTY_DESCRIPTION =
+  "你可以添加各类附件，用于Agent在做话术推荐或自动回复时，检索并发送该附件";
+const KB_ATTACHMENT_EMPTY_SUGGESTION =
+  "建议添加的附件：产品说明书、营销活动海报、直播预告海报、产品安装视频、小程序商城链接、公众号文章、小红书链接等";
 
 type AttachmentPhase =
   | "loading"
@@ -857,7 +842,7 @@ function KbAttachmentsInitState({
       <img
         alt=""
         aria-hidden="true"
-        className="mb-6 h-40 w-40 object-contain"
+        className="mb-6 size-[200px] object-contain"
         src={kbAttachmentInitIllustrationUrl}
       />
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
@@ -884,7 +869,7 @@ function KbAttachmentsInitLoadingState() {
       <img
         alt=""
         aria-hidden="true"
-        className="mb-8 h-40 w-40 object-contain"
+        className="mb-8 size-[200px] object-contain"
         src={kbAttachmentInitLoadingIllustrationUrl}
       />
       <Spinner aria-hidden="true" className="text-primary" size={24} />
@@ -926,77 +911,13 @@ function KbAttachmentsFailedState({
 
 function KbAttachmentsEmptyState() {
   return (
-    <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-      <img
-        alt=""
-        aria-hidden="true"
-        className="mb-6 h-40 w-40 object-contain"
-        src={kbAttachmentEmptyIllustrationUrl}
-      />
-
-      <div
-        aria-hidden="true"
-        className="flex max-w-3xl flex-col items-center gap-3"
-      >
-        {kbAttachmentExampleTagRows.map((row, rowIndex) => (
-          <div
-            className="flex flex-wrap items-center justify-center gap-2"
-            key={rowIndex}
-          >
-            {row.map((tag) => (
-              <span
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-muted/70 px-3 text-sm text-muted-foreground"
-                key={tag.label}
-              >
-                {"brand" in tag && tag.brand === "more" ? (
-                  "..."
-                ) : (
-                  <>
-                    {"icon" in tag ? (
-                      <KbAttachmentExampleOutlineIcon type={tag.icon} />
-                    ) : (
-                      <KbAttachmentExampleBrandIcon type={tag.brand} />
-                    )}
-                    {tag.label}
-                  </>
-                )}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <p className="mt-6 max-w-xl text-sm leading-6 text-muted-foreground">
-        你可以添加各类附件，用于 Agent 在做话术推荐或自动回复时，检索并发送该附件
-      </p>
-    </div>
-  );
-}
-
-function KbAttachmentExampleOutlineIcon({
-  type,
-}: {
-  type: "file" | "image" | "poster" | "video";
-}) {
-  const icon =
-    type === "file"
-      ? File02Icon
-      : type === "image"
-        ? Album02Icon
-        : type === "poster"
-          ? Video01Icon
-          : VideoAiIcon;
-
-  return (
-    <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
-      <HugeiconsIcon
-        aria-hidden="true"
-        color="currentColor"
-        icon={icon}
-        size={15}
-        strokeWidth={1.8}
-      />
-    </span>
+    <KbEmptyStatePanel
+      description={KB_ATTACHMENT_EMPTY_DESCRIPTION}
+      illustrationUrl={kbAttachmentEmptyIllustrationUrl}
+      keepSuggestionOnSameLine
+      suggestionContent={KB_ATTACHMENT_EMPTY_SUGGESTION}
+      suggestionLabel="建议添加附件"
+    />
   );
 }
 
@@ -1014,32 +935,4 @@ function resolveAttachmentSyncStatus(syncStatus: number | undefined): Attachment
   }
 
   return "queued";
-}
-
-function KbAttachmentExampleBrandIcon({
-  type,
-}: {
-  type: "mini-program" | "wechat" | "xiaohongshu";
-}) {
-  if (type === "mini-program") {
-    return (
-      <span className="inline-flex size-5 items-center justify-center rounded-full bg-mini-program-brand text-white">
-        <MiniProgramMark className="size-3! text-white" />
-      </span>
-    );
-  }
-
-  const icon = type === "wechat" ? File02Icon : Link04Icon;
-
-  return (
-    <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
-      <HugeiconsIcon
-        aria-hidden="true"
-        color="currentColor"
-        icon={icon}
-        size={15}
-        strokeWidth={1.8}
-      />
-    </span>
-  );
 }

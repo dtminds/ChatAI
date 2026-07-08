@@ -1,6 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "@/pages/chat/ai-hosting/workflow/constants";
 import { useWorkflowRun } from "@/pages/chat/ai-hosting/workflow/run/use-workflow-run";
 import {
   createMockWorkflowRunAdapter,
@@ -11,6 +14,7 @@ import type { WorkflowRuntimeSnapshot } from "@/pages/chat/ai-hosting/workflow/r
 import type {
   NodeRunRecord,
   WorkflowDraft,
+  WorkflowEdge,
   WorkflowNode,
 } from "@/pages/chat/ai-hosting/workflow/types";
 
@@ -252,6 +256,37 @@ describe("useWorkflowRun", () => {
     expect(request?.snapshot.executionGraph.nodes[0]?.config).not.toHaveProperty("_runtimeStatus");
   });
 
+  it("passes execution outlet metadata to workflow run adapters", () => {
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(({ snapshot, workflowId }: {
+        snapshot: WorkflowRuntimeSnapshot;
+        workflowId: string;
+      }) => createWorkflowRunRecord(workflowId, snapshot.draft)),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+
+    act(() => {
+      result.current.runWorkflow(createBranchWorkflowDraft());
+    });
+
+    const request = adapter.runWorkflow.mock.calls[0]?.[0];
+
+    expect(request?.snapshot.executionGraph.edges).toEqual([
+      expect.objectContaining({
+        source: "branch-node",
+        sourceHandle: "branch-high",
+        sourceOutlet: {
+          id: "branch-high",
+          kind: "branch-path",
+          label: "高意向客户",
+        },
+        target: "action-node",
+      }),
+    ]);
+    expect(request?.snapshot.executionGraph.edges[0]).not.toHaveProperty("data");
+  });
+
   it("enters and exits workflow run history view by run id", async () => {
     const { result } = renderHook(() => useWorkflowRun("workflow-a"));
 
@@ -479,6 +514,51 @@ function createWorkflowDraft(): WorkflowDraft {
   return {
     edges: [],
     nodes: [createWorkflowNode()],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
+function createBranchWorkflowDraft(): WorkflowDraft {
+  const branchNode = createWorkflowNode({
+    data: {
+      branchPaths: [
+        { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
+        { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+      ],
+      branchRule: "按意向分流",
+      kind: "branch",
+      label: "条件",
+      metric: "2 个出口",
+      status: "ready",
+      summary: "按意向分流",
+      title: "条件分支",
+    },
+    id: "branch-node",
+  });
+  const actionNode = createWorkflowNode({
+    data: {
+      actionType: "message",
+      kind: "action",
+      label: "动作",
+      metric: "消息",
+      status: "ready",
+      summary: "发送消息",
+      title: "发送消息",
+    },
+    id: "action-node",
+  });
+  const edge: WorkflowEdge = {
+    data: { label: "高意向客户" },
+    id: "edge-branch-high-action",
+    source: "branch-node",
+    sourceHandle: "branch-high",
+    target: "action-node",
+    type: WORKFLOW_EDGE_TYPE,
+  };
+
+  return {
+    edges: [edge],
+    nodes: [branchNode, actionNode],
     viewport: { x: 0, y: 0, zoom: 1 },
   };
 }

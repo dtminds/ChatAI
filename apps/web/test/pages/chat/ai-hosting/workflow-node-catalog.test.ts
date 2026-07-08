@@ -22,6 +22,7 @@ import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-con
 import {
   getDefaultSourceHandleId,
   getNodeSourceHandleDefinitions,
+  getNodeTargetHandleDefinitions,
   getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
@@ -55,6 +56,7 @@ describe("workflow node catalog", () => {
       expect(definition.getSourceHandles).toBe(getNodeSourceHandleDefinitions);
       expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));
       expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
+      expect(getNodeTargetHandleDefinitions(defaultData)).toEqual(expect.any(Array));
       expect(defaultData.kind).toBe(kind);
       expect(defaultData.title).toBeTruthy();
       expect(defaultData.summary).toBeTruthy();
@@ -187,6 +189,13 @@ describe("workflow node catalog", () => {
       ],
     })).toBe("branch-vip");
     expect(getDefaultSourceHandleId("wait")).toBeUndefined();
+  });
+
+  it("derives target handles from the shared handle boundary", () => {
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("trigger"))).toEqual([]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{}]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("branch"))).toEqual([{}]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("goal"))).toEqual([{}]);
   });
 
   it("derives unconnected named source handles from the same handle boundary", () => {

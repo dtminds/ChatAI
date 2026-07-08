@@ -16,6 +16,10 @@ export type WorkflowSourceHandleDefinition = {
   top: number;
 };
 
+export type WorkflowTargetHandleDefinition = {
+  id?: string;
+};
+
 export function getNodeSourceHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowSourceHandleDefinition[] {
@@ -32,6 +36,16 @@ export function getNodeSourceHandleDefinitions(
   }
 
   return [{ top: 16 }];
+}
+
+export function getNodeTargetHandleDefinitions(
+  data: WorkflowNodeRenderData,
+): WorkflowTargetHandleDefinition[] {
+  if (data.kind === "trigger") {
+    return [];
+  }
+
+  return [{}];
 }
 
 export function getDefaultSourceHandleId(

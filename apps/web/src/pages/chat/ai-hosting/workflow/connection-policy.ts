@@ -3,7 +3,10 @@ import {
   getAvailableNextNodeKinds,
   getAvailablePrevNodeKinds,
 } from "./node-catalog";
-import { getNodeSourceHandleDefinitions } from "./node-handle-definitions";
+import {
+  getNodeSourceHandleDefinitions,
+  getNodeTargetHandleDefinitions,
+} from "./node-handle-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -80,7 +83,7 @@ export function getWorkflowConnectionPolicyViolation(
     return "invalid-node-kind";
   }
 
-  if (!isNodeHandleConnectionAllowed(sourceNode, sourceHandle, targetHandle)) {
+  if (!isNodeHandleConnectionAllowed(sourceNode, targetNode, sourceHandle, targetHandle)) {
     return "invalid-handle";
   }
 
@@ -114,18 +117,19 @@ function isNodeKindConnectionAllowed(
 
 function isNodeHandleConnectionAllowed(
   sourceNode: WorkflowNode,
+  targetNode: WorkflowNode,
   sourceHandle: string | null | undefined,
   targetHandle: string | null | undefined,
 ) {
-  if (targetHandle) {
-    return false;
-  }
-
   const sourceHandleDefinitions = getNodeSourceHandleDefinitions(sourceNode.data);
+  const targetHandleDefinitions = getNodeTargetHandleDefinitions(targetNode.data);
 
   return sourceHandleDefinitions.some((handle) =>
     (handle.id ?? null) === (sourceHandle ?? null),
-  );
+  )
+    && targetHandleDefinitions.some((handle) =>
+      (handle.id ?? null) === (targetHandle ?? null),
+    );
 }
 
 function hasDuplicateConnection(

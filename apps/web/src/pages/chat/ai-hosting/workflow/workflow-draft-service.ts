@@ -7,7 +7,7 @@ import {
 import {
   canonicalizeWorkflowDraft,
   hydrateWorkflowDraft,
-  isWorkflowDraftEqual,
+  isWorkflowGraphEqual,
 } from "./workflow-draft-normalizer";
 import type { WorkflowDraft } from "./types";
 
@@ -679,7 +679,11 @@ function cloneWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
 }
 
 export function createWorkflowDraftHash(draft: WorkflowDraft): string {
-  const serializedDraft = JSON.stringify(canonicalizeWorkflowDraft(draft));
+  const canonicalDraft = canonicalizeWorkflowDraft(draft);
+  const serializedDraft = JSON.stringify({
+    edges: canonicalDraft.edges,
+    nodes: canonicalDraft.nodes,
+  });
   let hash = 2166136261;
 
   for (let index = 0; index < serializedDraft.length; index += 1) {
@@ -757,7 +761,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       const nextDraft = cloneWorkflowDraft(draft);
-      const shouldCreateDraftRevision = !isWorkflowDraftEqual(currentDocument.draft, nextDraft);
+      const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
       const nextRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
       const publishedAt = "刚刚";
       const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, nextDraft);
@@ -838,7 +842,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       const nextDraft = cloneWorkflowDraft(draft);
-      const shouldCreateDraftRevision = !isWorkflowDraftEqual(currentDocument.draft, nextDraft);
+      const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
       const savedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.savedAt;
       const updatedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.updatedAt;
       const nextDraftHash = shouldCreateDraftRevision

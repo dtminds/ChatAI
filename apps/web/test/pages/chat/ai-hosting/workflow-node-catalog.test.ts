@@ -15,7 +15,10 @@ import {
 import {
   createDefaultNodeData,
   getNodeDefinition,
+  getNodeDefinitionCore,
+  nodeDefinitionCore,
   nodeDefinitions,
+  orderedNodeDefinitionCore,
   orderedNodeDefinitions,
 } from "@/pages/chat/ai-hosting/workflow/node-definitions";
 import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
@@ -45,7 +48,9 @@ describe("workflow node catalog", () => {
       const defaultData = createDefaultNodeData(kind);
 
       expect(definition.kind).toBe(catalogEntry.kind);
+      expect(getNodeDefinitionCore(kind)).toBe(nodeDefinitionCore[kind]);
       expect(getNodeDefinition(kind)).toBe(definition);
+      expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
@@ -64,6 +69,16 @@ describe("workflow node catalog", () => {
       expect(defaultData.metric).toBeTruthy();
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
+    }
+  });
+
+  it("keeps core node definitions free of UI bindings", () => {
+    const nodeKinds = Object.keys(nodeDefinitionCore) as WorkflowNodeKind[];
+
+    for (const kind of nodeKinds) {
+      expect(nodeDefinitionCore[kind]).not.toHaveProperty("body");
+      expect(nodeDefinitionCore[kind]).not.toHaveProperty("settings");
+      expect(nodeDefinitionCore[kind].configSections).toBe(getNodeConfigSections(kind));
     }
   });
 
@@ -112,6 +127,9 @@ describe("workflow node catalog", () => {
       "engagement",
     ]);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
+      orderedWorkflowNodeCatalog.map((definition) => definition.kind),
+    );
+    expect(orderedNodeDefinitionCore.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
     );
   });

@@ -1,4 +1,4 @@
-import { getWorkflowNodeCatalogEntry } from "./node-catalog";
+import { getNodeDefinitionCore } from "./node-definition-core";
 import type { WorkflowNodeKind } from "./types";
 import type {
   NodeConfigField,
@@ -41,7 +41,7 @@ export const baseNodeConfigSections = [
 ] satisfies NodeConfigSection[];
 
 export function getNodeConfigSections(kind: WorkflowNodeKind) {
-  return getWorkflowNodeCatalogEntry(kind).configSections;
+  return getNodeDefinitionCore(kind).configSections;
 }
 
 export type WorkflowNodeConfigSchema = {

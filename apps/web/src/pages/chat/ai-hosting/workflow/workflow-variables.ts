@@ -4,7 +4,7 @@ import type {
   WorkflowVariable,
   WorkflowVariables,
 } from "./types";
-import { getNodeDefinition } from "./node-definitions";
+import { getNodeDefinitionCore } from "./node-definition-core";
 
 export type WorkflowVariableContext = {
   currentNode: WorkflowNode;
@@ -136,7 +136,7 @@ export function getBeforeNodesInSameBranch(
 }
 
 export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariable[] {
-  return (getNodeDefinition(node.data.kind).getOutputVariables?.(node) ?? createFallbackOutputVariables(node))
+  return (getNodeDefinitionCore(node.data.kind).getOutputVariables?.(node) ?? createFallbackOutputVariables(node))
     .map((variable) => createNodeScopedVariable(node, variable));
 }
 

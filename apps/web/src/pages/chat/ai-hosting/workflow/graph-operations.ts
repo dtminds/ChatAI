@@ -21,7 +21,7 @@ import {
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
   canInsertNodeKind,
-} from "./node-definitions";
+} from "./node-definition-core";
 import { normalizeWorkflowBranchPaths } from "./branch-paths";
 import {
   canonicalizeWorkflowDraft,

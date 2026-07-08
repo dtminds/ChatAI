@@ -8,7 +8,7 @@ import {
   getBranchPathLabel,
   getWorkflowBranchPaths,
 } from "./branch-paths";
-import { createDefaultNodeData } from "./node-definitions";
+import { createDefaultNodeData } from "./node-definition-core";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowEdge,

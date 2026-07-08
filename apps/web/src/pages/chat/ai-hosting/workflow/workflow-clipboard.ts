@@ -3,7 +3,7 @@ import {
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import { getUniqueDuplicatedNodeTitle } from "./graph";
-import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
+import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definition-core";
 import type {
   WorkflowNodeKind,
   WorkflowEdge,

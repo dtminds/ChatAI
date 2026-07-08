@@ -1,4 +1,4 @@
-import { getNodeDefinition } from "../node-definitions";
+import { getNodeDefinitionCore } from "../node-definition-core";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -72,7 +72,7 @@ export function validateWorkflowNodeConfig(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {
-  const definition = getNodeDefinition(node.data.kind);
+  const definition = getNodeDefinitionCore(node.data.kind);
   return definition.validate?.(node, { edges, nodes }) ?? [];
 }
 

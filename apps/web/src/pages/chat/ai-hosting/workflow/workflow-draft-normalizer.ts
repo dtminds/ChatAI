@@ -2,7 +2,7 @@ import { DEFAULT_WORKFLOW_VIEWPORT } from "./graph";
 import { normalizeWorkflowBranchPaths } from "./branch-paths";
 import { filterWorkflowEdgesByConnectionPolicy } from "./connection-policy";
 import { WORKFLOW_EDGE_TYPE, WORKFLOW_NODE_TYPE } from "./constants";
-import { createDefaultNodeData } from "./node-definitions";
+import { createDefaultNodeData } from "./node-definition-core";
 import type {
   WorkflowEdge,
   WorkflowEdgeData,

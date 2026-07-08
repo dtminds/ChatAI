@@ -704,9 +704,7 @@ function isInsertableWorkflowNodeCatalogEntry(
 ): definition is InsertableWorkflowNodeCatalogEntry {
   return definition.insertable
     && definition.paletteGroup !== undefined
-    && definition.paletteLabel !== undefined
-    && definition.kind !== "goal"
-    && definition.kind !== "trigger";
+    && definition.paletteLabel !== undefined;
 }
 
 function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): WorkflowPaletteItem {

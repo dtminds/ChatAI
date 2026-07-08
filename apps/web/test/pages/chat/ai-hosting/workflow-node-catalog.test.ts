@@ -17,6 +17,10 @@ import {
   workflowNodeCatalog,
 } from "@/pages/chat/ai-hosting/workflow/node-catalog";
 import {
+  canDeleteNodeKind,
+  canDuplicateNodeKind,
+  canInsertAfterNodeKind,
+  canInsertNodeKind,
   createDefaultNodeData,
   getNodeDefinition,
   getNodeDefinitionCore,
@@ -136,6 +140,14 @@ describe("workflow node catalog", () => {
     expect(getWorkflowNodeRole("goal")).toBe("terminal");
     expect(findWorkflowEntryNode(nodes)?.data.kind).toBe("trigger");
     expect(findWorkflowTerminalNode(nodes)?.data.kind).toBe("goal");
+    expect(canInsertNodeKind("trigger")).toBe(false);
+    expect(canDeleteNodeKind("trigger")).toBe(false);
+    expect(canDuplicateNodeKind("trigger")).toBe(false);
+    expect(canInsertAfterNodeKind("trigger")).toBe(true);
+    expect(canInsertNodeKind("goal")).toBe(false);
+    expect(canDeleteNodeKind("goal")).toBe(false);
+    expect(canDuplicateNodeKind("goal")).toBe(false);
+    expect(canInsertAfterNodeKind("goal")).toBe(false);
     expect(isWorkflowNodeKind("toString")).toBe(false);
     expect(isClipboardNodeStructurallyValid({
       data: { kind: "toString" },

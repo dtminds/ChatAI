@@ -1,15 +1,17 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Connection,
   IsValidConnection,
+  OnNodeDrag,
   OnEdgesChange,
   OnNodesChange,
+  Viewport,
 } from "@xyflow/react";
 import {
+  applyNodeChanges,
   Background,
   MiniMap,
   ReactFlow,
-  SelectionMode,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
@@ -24,13 +26,6 @@ import {
   Undo03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_MAX_ZOOM,
@@ -50,6 +45,7 @@ import type {
   WorkflowRenderEdge,
   WorkflowRenderNode,
 } from "../types";
+import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowBezierEdge } from "./workflow-edge";
 import { WorkflowPalette } from "./workflow-palette";
 
@@ -61,10 +57,14 @@ const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: WorkflowBezierEdge,
 };
 
+const workflowNodeOrigin: [number, number] = [0, 0.5];
+const workflowPanOnDrag = [1];
+
 export function WorkflowCanvas({
   canRedo,
   canUndo,
   edges,
+  isReadOnly = false,
   nodes,
   nextRedoLabel,
   nextUndoLabel,
@@ -78,19 +78,24 @@ export function WorkflowCanvas({
   onPaletteOpenChange,
   onPaneClick,
   onRedo,
+  onNodeDrag,
+  onNodeDragStart,
+  onNodeDragStop,
   onNodeHoverEnd,
   onNodeHoverStart,
   onSelectEdge,
   onSelectNode,
-  onSelectionChange,
   onSearchChange,
   onUndo,
+  onViewportChangeEnd,
   paletteOpen,
   searchValue,
+  viewport,
 }: {
   canRedo: boolean;
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
+  isReadOnly?: boolean;
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
@@ -104,32 +109,95 @@ export function WorkflowCanvas({
   onPaletteOpenChange: (open: boolean) => void;
   onPaneClick: () => void;
   onRedo: () => void;
+  onNodeDrag: OnNodeDrag<WorkflowRenderNode>;
+  onNodeDragStart: OnNodeDrag<WorkflowRenderNode>;
+  onNodeDragStop: OnNodeDrag<WorkflowRenderNode>;
   onNodeHoverEnd: () => void;
   onNodeHoverStart: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
-  onSelectNode: (nodeId: string) => void;
-  onSelectionChange: (selection: {
-    edges: WorkflowRenderEdge[];
-    nodes: WorkflowRenderNode[];
-  }) => void;
+  onSelectNode: (nodeId: string, options?: { additive?: boolean }) => void;
   onSearchChange: (value: string) => void;
   onUndo: () => void;
+  onViewportChangeEnd: (viewport: Viewport) => void;
   paletteOpen: boolean;
   searchValue: string;
+  viewport: Viewport;
 }) {
-  const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
+  const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
   const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
     WorkflowRenderNode,
     WorkflowRenderEdge
   >();
   const { zoom } = useViewport();
   const [showMiniMap, setShowMiniMap] = useState(true);
-  const activeInsertNode = nodes.find((node) => node.data.insertMenuOpen);
+  const [flowNodes, setFlowNodes] = useState(nodes);
+  const canvasRef = useRef<HTMLElement | null>(null);
+  const isNodeDraggingRef = useRef(false);
+  const activeInsertNode = flowNodes.find((node) => node.data.insertMenuOpen);
+
+  useEffect(() => {
+    if (!isNodeDraggingRef.current) {
+      setFlowNodes(nodes);
+    }
+  }, [nodes]);
+
+  const handleNodesChange: OnNodesChange<WorkflowRenderNode> = useCallback((changes) => {
+    setFlowNodes((currentNodes) => applyCanvasNodeChanges(changes, currentNodes));
+
+    const durableChanges = changes.filter((change) =>
+      change.type === "add" || change.type === "remove",
+    );
+
+    if (durableChanges.length > 0) {
+      onNodesChange(durableChanges);
+    }
+  }, [onNodesChange]);
+
+  const handleNodeDragStart: OnNodeDrag<WorkflowRenderNode> = useCallback((event, node, nodes) => {
+    event.stopPropagation();
+    isNodeDraggingRef.current = true;
+    canvasRef.current?.classList.add("agent-workflow-canvas-dragging");
+    onNodeHoverEnd();
+    onNodeDragStart(event, node, nodes);
+  }, [onNodeDragStart, onNodeHoverEnd]);
+
+  const handleNodeDrag: OnNodeDrag<WorkflowRenderNode> = useCallback((event, node, draggedNodes) => {
+    event.stopPropagation();
+    setFlowNodes((currentNodes) =>
+      mergeDraggedNodePositions(currentNodes, draggedNodes.length > 0 ? draggedNodes : [node]));
+    onNodeDrag(event, node, draggedNodes);
+  }, [onNodeDrag]);
+
+  const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useCallback((event, node, nodes) => {
+    event.stopPropagation();
+    setFlowNodes((currentNodes) =>
+      mergeDraggedNodePositions(currentNodes, nodes.length > 0 ? nodes : [node]));
+    isNodeDraggingRef.current = false;
+    canvasRef.current?.classList.remove("agent-workflow-canvas-dragging");
+    onNodeDragStop(event, node, nodes);
+  }, [onNodeDragStop]);
+
+  const handleNodeMouseEnter = useCallback((nodeId: string) => {
+    if (isNodeDraggingRef.current) {
+      return;
+    }
+
+    onNodeHoverStart(nodeId);
+  }, [onNodeHoverStart]);
+
+  const handleNodeMouseLeave = useCallback(() => {
+    if (isNodeDraggingRef.current) {
+      return;
+    }
+
+    onNodeHoverEnd();
+  }, [onNodeHoverEnd]);
 
   return (
     <section
       aria-label="营销 Workflow 画布"
       className="agent-workflow-canvas absolute inset-0"
+      ref={canvasRef}
       role="application"
     >
       <ReactFlow
@@ -140,33 +208,41 @@ export function WorkflowCanvas({
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
         multiSelectionKeyCode={null}
-        nodeOrigin={[0, 0.5]}
+        nodeOrigin={workflowNodeOrigin}
         nodeTypes={nodeTypes}
-        nodes={nodes}
-        nodesConnectable
+        nodes={flowNodes}
+        nodesConnectable={!isReadOnly}
+        nodesDraggable={!isReadOnly}
+        nodesFocusable={!isReadOnly}
+        edgesFocusable={!isReadOnly}
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}
         onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
-        onNodeClick={(_, node) => onSelectNode(node.id)}
-        onNodeMouseEnter={(_, node) => onNodeHoverStart(node.id)}
-        onNodeMouseLeave={onNodeHoverEnd}
-        onNodesChange={onNodesChange}
+        onNodeClick={(event, node) => onSelectNode(node.id, {
+          additive: event.metaKey || event.ctrlKey || event.shiftKey,
+        })}
+        onNodeDrag={handleNodeDrag}
+        onNodeDragStart={handleNodeDragStart}
+        onNodeDragStop={handleNodeDragStop}
+        onNodeMouseEnter={(_, node) => handleNodeMouseEnter(node.id)}
+        onNodeMouseLeave={handleNodeMouseLeave}
+        onNodesChange={handleNodesChange}
         onPaneClick={onPaneClick}
-        onSelectionChange={onSelectionChange}
-        panOnDrag={[1]}
+        onMoveEnd={(_, nextViewport) => onViewportChangeEnd(nextViewport)}
+        panOnDrag={workflowPanOnDrag}
         panOnScroll
         isValidConnection={onIsValidConnection}
-        selectionMode={SelectionMode.Partial}
-        selectionOnDrag
+        selectionOnDrag={false}
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
         <WorkflowControlDock
           onPaletteOpenChange={onPaletteOpenChange}
           onArrange={onArrange}
+          disabled={isReadOnly}
           onOpenVariables={onOpenVariables}
           paletteOpen={paletteOpen}
         />
-        {paletteOpen ? (
+        {paletteOpen && !isReadOnly ? (
           <WorkflowPalette
             onAddNode={onAddNode}
             onClose={() => onPaletteOpenChange(false)}
@@ -208,6 +284,7 @@ export function WorkflowCanvas({
           </div>
           <button
             className="workflow-operator-chip workflow-operator-chip-strong"
+            disabled={isReadOnly}
             onClick={(event) => {
               event.stopPropagation();
               onOpenVariables();
@@ -258,6 +335,45 @@ export function WorkflowCanvas({
       </ReactFlow>
     </section>
   );
+}
+
+function applyCanvasNodeChanges(
+  changes: Parameters<OnNodesChange<WorkflowRenderNode>>[0],
+  nodes: WorkflowRenderNode[],
+) {
+  return applyNodeChanges(changes, nodes);
+}
+
+function mergeDraggedNodePositions(
+  nodes: WorkflowRenderNode[],
+  draggedNodes: WorkflowRenderNode[],
+) {
+  if (draggedNodes.length === 0) {
+    return nodes;
+  }
+
+  const draggedNodePositions = new Map(
+    draggedNodes.map((node) => [node.id, node.position]),
+  );
+  let changed = false;
+  const nextNodes = nodes.map((node) => {
+    const nextPosition = draggedNodePositions.get(node.id);
+
+    if (
+      !nextPosition
+      || (node.position.x === nextPosition.x && node.position.y === nextPosition.y)
+    ) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      position: { ...nextPosition },
+    };
+  });
+
+  return changed ? nextNodes : nodes;
 }
 
 function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
@@ -327,9 +443,19 @@ function WorkflowZoomControls({
   const zoomLabel = `${Math.round(zoom * 100)}%`;
   const canZoomOut = zoom > WORKFLOW_MIN_ZOOM;
   const canZoomIn = zoom < WORKFLOW_MAX_ZOOM;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useWorkflowDismissableLayer<HTMLDivElement>({
+    enabled: menuOpen,
+    onDismiss: () => setMenuOpen(false),
+  });
+
+  const handleMenuAction = (action: () => void) => {
+    action();
+    setMenuOpen(false);
+  };
 
   return (
-    <div className="workflow-operator-group workflow-zoom-control" aria-label="缩放比例">
+    <div className="workflow-operator-group workflow-zoom-control" aria-label="缩放比例" ref={menuRef}>
       <button
         aria-label="缩小"
         className="workflow-operator-button"
@@ -343,45 +469,55 @@ function WorkflowZoomControls({
       >
         -
       </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
-          className="workflow-operator-button workflow-operator-zoom-label"
-          type="button"
-        >
-          {zoomLabel}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" className="min-w-[132px]" side="top">
+      <button
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
+        aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
+        className="workflow-operator-button workflow-operator-zoom-label"
+        onClick={() => setMenuOpen(!menuOpen)}
+        type="button"
+      >
+        {zoomLabel}
+      </button>
+      {menuOpen ? (
+        <div aria-label="缩放菜单" className="workflow-zoom-menu" role="menu">
           {workflowZoomOptions.map((option) => (
-            <DropdownMenuItem
+            <button
               className="workflow-zoom-menu-item"
               key={option.label}
-              onSelect={() => zoomTo(option.value)}
+              onClick={() => handleMenuAction(() => zoomTo(option.value))}
+              role="menuitem"
+              type="button"
             >
               <span className="workflow-zoom-menu-icon" />
               {option.label}
-            </DropdownMenuItem>
+            </button>
           ))}
-          <DropdownMenuItem className="workflow-zoom-menu-item" onSelect={fitView}>
+          <button
+            className="workflow-zoom-menu-item"
+            onClick={() => handleMenuAction(fitView)}
+            role="menuitem"
+            type="button"
+          >
             <span className="workflow-zoom-menu-icon">
               <HugeiconsIcon icon={SquareArrowExpand01Icon} size={16} strokeWidth={1.8} />
             </span>
             适配画布
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
+          </button>
+          <div className="workflow-zoom-menu-separator" />
+          <button
             className="workflow-zoom-menu-item"
-            onSelect={() => {
-              onToggleMiniMap();
-            }}
+            onClick={() => handleMenuAction(onToggleMiniMap)}
+            role="menuitem"
+            type="button"
           >
             <span className="workflow-zoom-menu-icon">
               {showMiniMap ? <HugeiconsIcon icon={Tick02Icon} size={16} strokeWidth={1.8} /> : null}
             </span>
             显示小地图
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </button>
+        </div>
+      ) : null}
       <button
         aria-label="放大"
         className="workflow-operator-button"
@@ -400,11 +536,13 @@ function WorkflowZoomControls({
 }
 
 function WorkflowControlDock({
+  disabled = false,
   onArrange,
   onOpenVariables,
   onPaletteOpenChange,
   paletteOpen,
 }: {
+  disabled?: boolean;
   onArrange: () => void;
   onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
@@ -421,9 +559,12 @@ function WorkflowControlDock({
         aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
         className="workflow-left-dock-button"
         data-active={paletteOpen ? "true" : undefined}
+        disabled={disabled}
         onClick={(event) => {
           event.stopPropagation();
-          onPaletteOpenChange(!paletteOpen);
+          if (!disabled) {
+            onPaletteOpenChange(!paletteOpen);
+          }
         }}
         type="button"
       >
@@ -433,6 +574,7 @@ function WorkflowControlDock({
         aria-label="选择模式"
         className="workflow-left-dock-button"
         data-active="true"
+        disabled={disabled}
         type="button"
       >
         <HugeiconsIcon icon={FlowConnectionIcon} size={16} strokeWidth={1.8} />
@@ -440,9 +582,12 @@ function WorkflowControlDock({
       <button
         aria-label="自动整理画布"
         className="workflow-left-dock-button"
+        disabled={disabled}
         onClick={(event) => {
           event.stopPropagation();
-          onArrange();
+          if (!disabled) {
+            onArrange();
+          }
         }}
         type="button"
       >
@@ -452,9 +597,12 @@ function WorkflowControlDock({
       <button
         aria-label="打开变量面板"
         className="workflow-left-dock-button"
+        disabled={disabled}
         onClick={(event) => {
           event.stopPropagation();
-          onOpenVariables();
+          if (!disabled) {
+            onOpenVariables();
+          }
         }}
         type="button"
       >
@@ -464,7 +612,11 @@ function WorkflowControlDock({
   );
 }
 
-function getInitialWorkflowViewport() {
+function getInitialWorkflowViewport(viewport: Viewport) {
+  if (viewport) {
+    return viewport;
+  }
+
   if (typeof window !== "undefined" && window.innerWidth < 1024) {
     return { x: 28, y: 260, zoom: 0.82 };
   }

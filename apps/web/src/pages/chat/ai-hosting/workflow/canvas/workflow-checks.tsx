@@ -62,19 +62,19 @@ export function WorkflowChecks({
         </div>
 
         <div className="grid gap-3">
-          {checks.map((check) => {
-            const isReady = check.status === "ready";
-            const canNavigate = !isReady && Boolean(check.nodeId && onNavigateToNode);
+          {checks.length === 0 ? (
+            <article className="rounded-[12px] border bg-background p-4 text-sm text-muted-foreground shadow-xs">
+              当前 Workflow 已通过发布前检查
+            </article>
+          ) : checks.map((check) => {
+            const canNavigate = Boolean(check.nodeId && onNavigateToNode);
             const content = (
               <div className="flex items-start gap-3">
                 <span
-                  className={cn(
-                    "mt-0.5 flex size-8 items-center justify-center rounded-[8px]",
-                    isReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-                  )}
+                  className="mt-0.5 flex size-8 items-center justify-center rounded-[8px] bg-amber-50 text-amber-700"
                 >
                   <HugeiconsIcon
-                    icon={isReady ? CheckmarkCircle02Icon : AlertCircleIcon}
+                    icon={AlertCircleIcon}
                     size={17}
                     strokeWidth={1.8}
                   />

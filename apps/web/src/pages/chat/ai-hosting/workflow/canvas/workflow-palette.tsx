@@ -2,7 +2,7 @@ import { Cancel01Icon, FlowConnectionIcon, PlayIcon, Search01Icon } from "@hugei
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { paletteItems } from "../node-definitions";
+import { getWorkflowPaletteItemGroups } from "../node-definitions";
 import type { WorkflowNodeKind } from "../types";
 
 export function WorkflowPalette({
@@ -16,14 +16,8 @@ export function WorkflowPalette({
   onSearchChange: (value: string) => void;
   searchValue: string;
 }) {
-  const normalizedQuery = searchValue.trim().toLowerCase();
-  const visiblePaletteItems = paletteItems.filter((item) => {
-    if (!normalizedQuery) {
-      return true;
-    }
-
-    return `${item.label} ${item.description}`.toLowerCase().includes(normalizedQuery);
-  });
+  const paletteGroups = getWorkflowPaletteItemGroups({ query: searchValue });
+  const visibleItemCount = paletteGroups.reduce((count, group) => count + group.items.length, 0);
 
   return (
     <aside
@@ -69,7 +63,7 @@ export function WorkflowPalette({
         <div className="mb-2 flex items-center justify-between px-1">
           <h3 className="text-xs font-semibold text-muted-foreground">节点</h3>
           <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
-            {visiblePaletteItems.length}
+            {visibleItemCount}
           </Badge>
         </div>
 
@@ -85,30 +79,37 @@ export function WorkflowPalette({
           </div>
         </div>
 
-        <div className="space-y-1">
-          {visiblePaletteItems.map((item) => (
-            <button
-              aria-label={`添加 ${item.label}节点`}
-              className="group flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-              key={item.id}
-              onClick={() => {
-                onAddNode(item.id);
-                onClose?.();
-              }}
-              type="button"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-                <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.8} />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {item.description}
-                </span>
-              </span>
-            </button>
+        <div className="space-y-3">
+          {paletteGroups.map((group) => (
+            <div key={group.id}>
+              <div className="mb-1 px-2 text-[11px] font-medium text-muted-foreground">{group.label}</div>
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <button
+                    aria-label={`添加 ${item.label}节点`}
+                    className="group flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+                    key={item.id}
+                    onClick={() => {
+                      onAddNode(item.id);
+                      onClose?.();
+                    }}
+                    type="button"
+                  >
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                      <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.8} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {item.description}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
-          {visiblePaletteItems.length === 0 ? (
+          {visibleItemCount === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--workflow-border)] bg-card px-3 py-6 text-center text-xs text-muted-foreground">
               未找到匹配节点
             </div>

@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import { WorkflowCanvas } from "./workflow/canvas/workflow-canvas";
 import { WorkflowChecks } from "./workflow/canvas/workflow-checks";
+import { WorkflowRunHistoryPanel } from "./workflow/canvas/workflow-run-history";
 import { WorkflowTopBar } from "./workflow/canvas/workflow-topbar";
+import { WorkflowVersionHistoryPanel } from "./workflow/canvas/workflow-version-history";
 import { NodeConfigPanel } from "./workflow/panels";
 import { useWorkflowWorkspace } from "./workflow/use-workflow-workspace";
 import {
@@ -161,15 +163,39 @@ function WorkflowWorkspaceContent({
 }) {
   const { workflowId } = useParams();
   const workspace = useWorkflowWorkspace(workflowId);
-  const { canvas, checks, document, inspector, topBar } = workspace;
+  const { canvas, checks, document, inspector, runHistory, topBar, versionHistory } = workspace;
 
   return (
     <>
       <WorkflowTopBar
+        isPreviewingVersion={versionHistory.isPreviewing}
+        isViewingRunHistory={runHistory.isViewing}
         lastSavedAt={topBar.lastSavedAt}
+        onExitPreview={versionHistory.onExitPreview}
+        onExitRunHistory={runHistory.onExitHistory}
+        onOpenRunHistory={topBar.onOpenRunHistory}
+        onOpenVersionHistory={topBar.onOpenVersionHistory}
+        onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
+        onRestoreVersion={versionHistory.currentPreviewVersionId
+            ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
+            : undefined}
+        onRunWorkflow={topBar.onRunWorkflow}
+        onStopWorkflowRun={topBar.onStopWorkflowRun}
+        previewRunLabel={runHistory.historyRun?.title}
+        previewRunMeta={runHistory.historyRun
+          ? `${runHistory.historyRun.finishedAt || runHistory.historyRun.createdAt} · ${runHistory.historyRun.status}`
+          : undefined}
+        previewVersionLabel={versionHistory.previewVersion?.name}
+        previewVersionMeta={versionHistory.previewVersion
+          ? `${versionHistory.previewVersion.publishedAt} · Revision ${versionHistory.previewVersion.revision}`
+          : undefined}
+        publishedAt={topBar.publishedAt}
+        publishState={topBar.publishState}
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}
+        restoreState={versionHistory.restoreState}
+        runningState={topBar.runningState}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
         workflowName={document.name || workflowName}
@@ -178,12 +204,15 @@ function WorkflowWorkspaceContent({
       <div
         className="workflow-editor-body relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
+        data-run-panel-open={runHistory.isOpen ? "true" : undefined}
+        data-version-panel-open={versionHistory.isOpen ? "true" : undefined}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           <WorkflowCanvas
             canRedo={canvas.canRedo}
             canUndo={canvas.canUndo}
             edges={canvas.edges}
+            isReadOnly={canvas.isReadOnly}
             nodes={canvas.nodes}
             nextRedoLabel={canvas.nextRedoLabel}
             nextUndoLabel={canvas.nextUndoLabel}
@@ -197,15 +226,19 @@ function WorkflowWorkspaceContent({
             onPaletteOpenChange={canvas.onPaletteOpenChange}
             onPaneClick={canvas.onPaneClick}
             onRedo={canvas.onRedo}
+            onNodeDrag={canvas.onNodeDrag}
+            onNodeDragStart={canvas.onNodeDragStart}
+            onNodeDragStop={canvas.onNodeDragStop}
             onNodeHoverEnd={canvas.onNodeHoverEnd}
             onNodeHoverStart={canvas.onNodeHoverStart}
             onSelectEdge={canvas.onSelectEdge}
             onSelectNode={canvas.onSelectNode}
-            onSelectionChange={canvas.onSelectionChange}
             onSearchChange={canvas.onSearchChange}
             onUndo={canvas.onUndo}
+            onViewportChangeEnd={canvas.onViewportChangeEnd}
             paletteOpen={canvas.paletteOpen}
             searchValue={canvas.searchValue}
+            viewport={canvas.viewport}
           />
           {checks.isOpen ? (
             <WorkflowChecks
@@ -216,17 +249,39 @@ function WorkflowWorkspaceContent({
               publishReady={checks.publishReady}
             />
           ) : null}
+          {versionHistory.isOpen ? (
+            <WorkflowVersionHistoryPanel
+              currentPreviewVersionId={versionHistory.currentPreviewVersionId}
+              onClose={versionHistory.onClose}
+              onExitPreview={versionHistory.onExitPreview}
+              onRestoreVersion={versionHistory.onRestoreVersion}
+              onSelectVersion={versionHistory.onSelectVersion}
+              restoreState={versionHistory.restoreState}
+              versions={versionHistory.versions}
+            />
+          ) : null}
+          {runHistory.isOpen ? (
+            <WorkflowRunHistoryPanel
+              currentRunId={runHistory.currentHistoryRunId}
+              onClose={runHistory.onClose}
+              onExitHistory={runHistory.onExitHistory}
+              onSelectRun={runHistory.onSelectRun}
+              runs={runHistory.runs}
+            />
+          ) : null}
         </section>
 
-        {inspector.isOpen ? (
+        {inspector.isOpen && !versionHistory.isPreviewing ? (
           <NodeConfigPanel
             activeTab={inspector.activeTab}
+            edges={inspector.edges}
             lastRun={inspector.lastRun}
             node={inspector.node}
             onClose={inspector.onClose}
             onNodeChange={inspector.onNodeChange}
             onRunNode={inspector.onRunNode}
             onTabChange={inspector.onTabChange}
+            readOnlyRunMode={runHistory.isViewing}
             variables={inspector.variables}
           />
         ) : null}

@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -21,7 +22,8 @@ export function KbEmptyStatePanel({
   suggestionLabel,
 }: KbEmptyStatePanelProps) {
   return (
-    <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
+    <TooltipProvider>
+      <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
       <img
         alt=""
         aria-hidden="true"
@@ -63,6 +65,7 @@ export function KbEmptyStatePanel({
           </TooltipContent>
         </Tooltip>
       </p>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

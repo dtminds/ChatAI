@@ -7,9 +7,15 @@ describe("useWorkflowTransientState", () => {
     const { result } = renderHook(() => useWorkflowTransientState());
 
     act(() => {
+      result.current.setPaletteOpen(true);
+    });
+    expect(result.current.paletteOpen).toBe(true);
+
+    act(() => {
       result.current.toggleNodeInsertMenu("node-1", "branch-high");
     });
 
+    expect(result.current.paletteOpen).toBe(false);
     expect(result.current.quickInsertTarget).toEqual({
       nodeId: "node-1",
       sourceHandle: "branch-high",
@@ -17,9 +23,15 @@ describe("useWorkflowTransientState", () => {
     expect(result.current.activeEdgeInsertMenuId).toBeNull();
 
     act(() => {
+      result.current.setPaletteOpen(true);
+    });
+    expect(result.current.paletteOpen).toBe(true);
+
+    act(() => {
       result.current.toggleEdgeInsertMenu("edge-1");
     });
 
+    expect(result.current.paletteOpen).toBe(false);
     expect(result.current.quickInsertTarget).toBeNull();
     expect(result.current.activeEdgeInsertMenuId).toBe("edge-1");
 
@@ -27,6 +39,27 @@ describe("useWorkflowTransientState", () => {
       result.current.closeCanvasMenus();
     });
 
+    expect(result.current.quickInsertTarget).toBeNull();
+    expect(result.current.activeEdgeInsertMenuId).toBeNull();
+  });
+
+  it("closes all canvas overlays together", () => {
+    const { result } = renderHook(() => useWorkflowTransientState());
+
+    act(() => {
+      result.current.setPaletteOpen(true);
+      result.current.toggleNodeInsertMenu("node-1");
+      result.current.setPaletteOpen(true);
+    });
+
+    expect(result.current.paletteOpen).toBe(true);
+    expect(result.current.quickInsertTarget).toEqual({ nodeId: "node-1" });
+
+    act(() => {
+      result.current.closeCanvasOverlays();
+    });
+
+    expect(result.current.paletteOpen).toBe(false);
     expect(result.current.quickInsertTarget).toBeNull();
     expect(result.current.activeEdgeInsertMenuId).toBeNull();
   });

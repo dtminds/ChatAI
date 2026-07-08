@@ -9,13 +9,17 @@ import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/ai-hosting/workflow/constants";
+import { DEFAULT_WORKFLOW_VIEWPORT } from "@/pages/chat/ai-hosting/workflow/graph";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowDraft,
 } from "@/pages/chat/ai-hosting/workflow/types";
 
-function createDraft(index = 0): WorkflowDraft {
+function createDraft(
+  index = 0,
+  viewport: WorkflowDraft["viewport"] = DEFAULT_WORKFLOW_VIEWPORT,
+): WorkflowDraft {
   const node: WorkflowNode = {
     data: {
       insertMenuOpen: true,
@@ -56,6 +60,7 @@ function createDraft(index = 0): WorkflowDraft {
   return {
     edges: [edge],
     nodes: [node],
+    viewport,
   };
 }
 
@@ -80,6 +85,19 @@ describe("workflowHistoryReducer", () => {
     expect(nextState.pastStates).toHaveLength(0);
   });
 
+  it("does not create graph history entries for viewport-only changes", () => {
+    const state = createWorkflowHistoryInitialState(createDraft(0, { x: 0, y: 0, zoom: 1 }));
+    const nextState = workflowHistoryReducer(state, {
+      event: "node:move",
+      nextDraft: createDraft(0, { x: 180, y: 240, zoom: 0.8 }),
+      previousDraft: state.currentDraft,
+      type: "commit-from-drafts",
+    });
+
+    expect(nextState).toBe(state);
+    expect(nextState.pastStates).toHaveLength(0);
+  });
+
   it("supports undo, redo, and clears redo after a new commit", () => {
     const initialState = createWorkflowHistoryInitialState(createDraft(0));
     const movedState = workflowHistoryReducer(initialState, {
@@ -91,7 +109,8 @@ describe("workflowHistoryReducer", () => {
     const undoneState = workflowHistoryReducer(movedState, { type: "undo" });
 
     expect(undoneState.currentDraft.nodes[0].position.x).toBe(0);
-    expect(undoneState.futureStates[0].draft.nodes[0].position.x).toBe(10);
+    expect(undoneState.futureStates[0].beforeDraft.nodes[0].position.x).toBe(0);
+    expect(undoneState.futureStates[0].afterDraft.nodes[0].position.x).toBe(10);
     expect(undoneState.futureStates[0].event).toBe("node:move");
     expect(undoneState.futureStates).toHaveLength(1);
 
@@ -108,6 +127,62 @@ describe("workflowHistoryReducer", () => {
     expect(branchedState.futureStates).toHaveLength(0);
   });
 
+  it("preserves the current viewport when applying undo and redo snapshots", () => {
+    const viewportBeforeMove = { x: 0, y: 0, zoom: 1 };
+    const viewportAtUndoTime = { x: 320, y: 240, zoom: 0.72 };
+    const initialState = createWorkflowHistoryInitialState(createDraft(0, viewportBeforeMove));
+    const movedState = workflowHistoryReducer(initialState, {
+      event: "node:move",
+      nextDraft: createDraft(10, viewportBeforeMove),
+      previousDraft: initialState.currentDraft,
+      type: "commit-from-drafts",
+    });
+    const pannedState = workflowHistoryReducer(movedState, {
+      type: "replace",
+      updateDraft: (draft) => ({
+        ...draft,
+        viewport: viewportAtUndoTime,
+      }),
+    });
+
+    const undoneState = workflowHistoryReducer(pannedState, { type: "undo" });
+    expect(undoneState.currentDraft.nodes[0].position.x).toBe(0);
+    expect(undoneState.currentDraft.viewport).toEqual(viewportAtUndoTime);
+
+    const redoneState = workflowHistoryReducer(undoneState, { type: "redo" });
+    expect(redoneState.currentDraft.nodes[0].position.x).toBe(10);
+    expect(redoneState.currentDraft.viewport).toEqual(viewportAtUndoTime);
+  });
+
+  it("can clear redo states for replacing edits while keeping viewport replaces redoable", () => {
+    const initialState = createWorkflowHistoryInitialState(createDraft(0));
+    const movedState = workflowHistoryReducer(initialState, {
+      event: "node:move",
+      nextDraft: createDraft(10),
+      previousDraft: initialState.currentDraft,
+      type: "commit-from-drafts",
+    });
+    const undoneState = workflowHistoryReducer(movedState, { type: "undo" });
+    const pannedState = workflowHistoryReducer(undoneState, {
+      type: "replace",
+      updateDraft: (draft) => ({
+        ...draft,
+        viewport: { x: 100, y: 100, zoom: 0.8 },
+      }),
+    });
+
+    expect(pannedState.futureStates).toHaveLength(1);
+
+    const editedState = workflowHistoryReducer(pannedState, {
+      clearFuture: true,
+      type: "replace",
+      updateDraft: () => createDraft(20),
+    });
+
+    expect(editedState.futureStates).toHaveLength(0);
+    expect(editedState.currentDraft.nodes[0].position.x).toBe(20);
+  });
+
   it("caps retained history states", () => {
     let state = createWorkflowHistoryInitialState(createDraft(0));
 
@@ -121,7 +196,8 @@ describe("workflowHistoryReducer", () => {
     }
 
     expect(state.pastStates).toHaveLength(WORKFLOW_HISTORY_LIMIT);
-    expect(state.pastStates[0].draft.nodes[0].position.x).toBe(8);
+    expect(state.pastStates[0].beforeDraft.nodes[0].position.x).toBe(8);
+    expect(state.pastStates[0].afterDraft.nodes[0].position.x).toBe(9);
   });
 
   it("maps history events to stable user-facing labels", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createWorkflowClipboardData,
+  hydrateWorkflowClipboardData,
   isClipboardNodeStructurallyValid,
   parseWorkflowClipboardText,
   pasteWorkflowClipboardData,
@@ -10,17 +11,16 @@ import {
 } from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
 import {
   createEdge,
-  createInitialEdges,
-  createInitialNodes,
+  createInitialDraft,
 } from "@/pages/chat/ai-hosting/workflow/graph";
-import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "@/pages/chat/ai-hosting/workflow/constants";
 import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
 
 function createDraft(): WorkflowDraft {
-  return {
-    edges: createInitialEdges(),
-    nodes: createInitialNodes(),
-  };
+  return createInitialDraft();
 }
 
 function setNavigatorClipboard(clipboard: Partial<Clipboard> | undefined) {
@@ -45,6 +45,7 @@ describe("workflow clipboard", () => {
     const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
     const action = draft.nodes.find((node) => node.id === "action-message")!;
     const clipboardData = createWorkflowClipboardData({
+      ...draft,
       edges: [
         ...draft.edges,
         createEdge("branch-intent", "action-message", "低意向", {
@@ -63,6 +64,18 @@ describe("workflow clipboard", () => {
               selected: true,
               zIndex: 20,
             }
+          : node.id === "branch-intent"
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  branchPaths: [
+                    { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
+                    { id: "branch-low", label: "低意向客户", operator: "ELIF", title: "CASE 2" },
+                    { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+                  ],
+                },
+              }
           : node,
       ),
     }, [branch.id, action.id]);
@@ -84,7 +97,7 @@ describe("workflow clipboard", () => {
           id: "edge-missing",
           source: "missing",
           target: "action-message",
-          type: WORKFLOW_NODE_TYPE,
+          type: "legacy-edge-type" as typeof WORKFLOW_EDGE_TYPE,
         },
       ],
       nodes: clipboardData.nodes,
@@ -98,8 +111,101 @@ describe("workflow clipboard", () => {
       data: { kind: "action" },
       id: "action",
       position: { x: Number.NaN, y: 0 },
-      type: WORKFLOW_NODE_TYPE,
+      type: "legacy-node-type",
     })).toBe(false);
+  });
+
+  it("hydrates clipboard payloads through the draft normalizer", () => {
+    const draft = createDraft();
+    const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const hydrated = hydrateWorkflowClipboardData({
+      edges: [
+        {
+          id: "edge-action-message-action-message",
+          source: "action-message",
+          target: "action-message",
+          type: "legacy-edge-type" as typeof WORKFLOW_EDGE_TYPE,
+        },
+        {
+          id: "edge-action-message-action-message",
+          source: "action-message",
+          target: "action-message",
+          type: WORKFLOW_EDGE_TYPE,
+        },
+        {
+          id: "edge-missing",
+          source: "missing",
+          target: "action-message",
+          type: WORKFLOW_EDGE_TYPE,
+        },
+      ],
+      nodes: [
+        {
+          ...action,
+          data: {
+            kind: "action",
+            title: "外部动作",
+          } as typeof action.data,
+          selected: true,
+          type: "legacy-node-type" as typeof WORKFLOW_NODE_TYPE,
+          zIndex: 99,
+        },
+      ],
+    });
+
+    expect(hydrated.nodes).toHaveLength(1);
+    expect(hydrated.nodes[0]).toEqual(expect.objectContaining({
+      selected: false,
+      type: WORKFLOW_NODE_TYPE,
+      zIndex: undefined,
+    }));
+    expect(hydrated.nodes[0].data).toEqual(expect.objectContaining({
+      kind: "action",
+      metric: expect.any(String),
+      status: expect.any(String),
+      summary: expect.any(String),
+      title: "外部动作",
+    }));
+    expect(hydrated.edges).toHaveLength(0);
+  });
+
+  it("accepts legacy node and edge types before normalizing clipboard data", () => {
+    const draft = createDraft();
+    const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
+    const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const parsed = parseWorkflowClipboardText(JSON.stringify({
+      edges: [
+        {
+          id: "edge-legacy",
+          source: "branch-intent",
+          sourceHandle: "branch-high",
+          target: "action-message",
+          type: "legacy-edge-type",
+        },
+      ],
+      kind: "chatai-marketing-workflow-clipboard",
+      nodes: [
+        {
+          ...branch,
+          type: "legacy-node-type",
+        },
+        {
+          ...action,
+          type: "legacy-node-type",
+        },
+      ],
+      version: 1,
+    }));
+
+    expect(parsed?.nodes.map((node) => node.type)).toEqual([WORKFLOW_NODE_TYPE, WORKFLOW_NODE_TYPE]);
+    expect(parsed?.edges).toEqual([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "action-message",
+        type: WORKFLOW_EDGE_TYPE,
+      }),
+    ]);
   });
 
   it("reads and writes workflow data through the system clipboard without leaking permission errors", async () => {

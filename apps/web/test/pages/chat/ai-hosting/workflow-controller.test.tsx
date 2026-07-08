@@ -1,8 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createInitialEdges,
-  createInitialNodes,
+  createInitialDraft,
 } from "@/pages/chat/ai-hosting/workflow/graph";
 import { useWorkflowController } from "@/pages/chat/ai-hosting/workflow/use-workflow-controller";
 import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
@@ -41,10 +40,7 @@ vi.mock("@xyflow/react", async () => {
 
 describe("useWorkflowController", () => {
   function createDraft(): WorkflowDraft {
-    return {
-      edges: createInitialEdges(),
-      nodes: createInitialNodes(),
-    };
+    return createInitialDraft();
   }
 
   it("undoes a node move back to the drag start draft", () => {
@@ -54,19 +50,18 @@ describe("useWorkflowController", () => {
       { initialProps: { draft: initialDraft } },
     );
     const originalPosition = result.current.nodes.find((node) => node.id === "wait-2d")?.position;
+    const originalTriggerNode = result.current.nodes.find((node) => node.id === "trigger");
+
+    let dragResult: ReturnType<typeof result.current.updateNodeDrag>;
 
     act(() => {
-      result.current.onNodesChange([
-        {
-          dragging: true,
-          id: "wait-2d",
-          position: { x: 420, y: 120 },
-          type: "position",
-        },
-      ]);
+      result.current.beginNodeDrag();
+      dragResult = result.current.updateNodeDrag("wait-2d", { x: 420, y: 120 });
     });
     rerender({ draft: initialDraft });
 
+    expect(dragResult?.transient).toBe(true);
+    expect(result.current.nodes.find((node) => node.id === "trigger")).toBe(originalTriggerNode);
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({
       x: 420,
       y: 120,
@@ -74,14 +69,7 @@ describe("useWorkflowController", () => {
     expect(result.current.canUndo).toBe(false);
 
     act(() => {
-      result.current.onNodesChange([
-        {
-          dragging: false,
-          id: "wait-2d",
-          position: { x: 420, y: 120 },
-          type: "position",
-        },
-      ]);
+      result.current.finishNodeDrag("wait-2d", { x: 420, y: 120 });
     });
     rerender({ draft: initialDraft });
 
@@ -96,14 +84,13 @@ describe("useWorkflowController", () => {
     expect(result.current.nextRedoLabel).toBe("移动节点");
   });
 
-  it("undoes a multi-node move as one history step", () => {
+  it("ignores React Flow position changes outside the explicit drag lifecycle", () => {
     const initialDraft = createDraft();
     const { rerender, result } = renderHook(
       ({ draft }) => useWorkflowController(draft),
       { initialProps: { draft: initialDraft } },
     );
     const originalWaitPosition = result.current.nodes.find((node) => node.id === "wait-2d")?.position;
-    const originalBranchPosition = result.current.nodes.find((node) => node.id === "branch-intent")?.position;
 
     act(() => {
       result.current.onNodesChange([
@@ -113,35 +100,84 @@ describe("useWorkflowController", () => {
           position: { x: 400, y: 80 },
           type: "position",
         },
-        {
-          dragging: true,
-          id: "branch-intent",
-          position: { x: 700, y: 80 },
-          type: "position",
-        },
       ]);
     });
     rerender({ draft: initialDraft });
 
     expect(result.current.canUndo).toBe(false);
-    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({ x: 400, y: 80 });
-    expect(result.current.nodes.find((node) => node.id === "branch-intent")?.position).toEqual({ x: 700, y: 80 });
+    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalWaitPosition);
+  });
+
+  it("keeps the current viewport when undoing graph edits", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const currentViewport = { x: 180, y: 260, zoom: 0.72 };
 
     act(() => {
-      result.current.onNodesChange([
-        {
-          dragging: false,
-          id: "wait-2d",
-          position: { x: 430, y: 120 },
-          type: "position",
-        },
-        {
-          dragging: false,
-          id: "branch-intent",
-          position: { x: 730, y: 120 },
-          type: "position",
-        },
-      ]);
+      result.current.beginNodeDrag();
+      result.current.finishNodeDrag("wait-2d", { x: 420, y: 120 });
+    });
+    rerender({ draft: initialDraft });
+
+    act(() => {
+      result.current.updateViewport(currentViewport);
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+
+    act(() => {
+      result.current.undo();
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position)
+      .not.toEqual({ x: 420, y: 120 });
+  });
+
+  it("undoes a pending config edit with one action before the debounce commits", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const originalTitle = result.current.nodes.find((node) => node.id === "action-message")?.data.title;
+
+    act(() => {
+      result.current.updateNodeData("action-message", {
+        title: "更新后的动作标题",
+      });
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+      .toBe("更新后的动作标题");
+    expect(result.current.canUndo).toBe(false);
+
+    act(() => {
+      result.current.undo();
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title).toBe(originalTitle);
+    expect(result.current.canRedo).toBe(true);
+    expect(result.current.nextRedoLabel).toBe("修改节点配置");
+  });
+
+  it("clears redo immediately when a new config edit branches from an undone state", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+
+    act(() => {
+      result.current.beginNodeDrag();
+      result.current.finishNodeDrag("wait-2d", { x: 420, y: 120 });
     });
     rerender({ draft: initialDraft });
 
@@ -150,10 +186,85 @@ describe("useWorkflowController", () => {
     act(() => {
       result.current.undo();
     });
+    rerender({ draft: initialDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalWaitPosition);
-    expect(result.current.nodes.find((node) => node.id === "branch-intent")?.position).toEqual(originalBranchPosition);
+    expect(result.current.canRedo).toBe(true);
+
+    act(() => {
+      result.current.updateNodeData("action-message", {
+        title: "撤销后新分支标题",
+      });
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.canRedo).toBe(false);
+    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+      .toBe("撤销后新分支标题");
+
+    act(() => {
+      result.current.undo();
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+      .not.toBe("撤销后新分支标题");
+    expect(result.current.nextRedoLabel).toBe("修改节点配置");
+  });
+
+  it("does not create config history for no-op node data updates", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const actionNode = result.current.nodes.find((node) => node.id === "action-message")!;
+
+    let updateResult: ReturnType<typeof result.current.updateNodeData>;
+
+    act(() => {
+      updateResult = result.current.updateNodeData("action-message", {
+        title: actionNode.data.title,
+      });
+    });
+    rerender({ draft: initialDraft });
+
+    expect(updateResult).toBeUndefined();
     expect(result.current.canUndo).toBe(false);
+  });
+
+  it("keeps branch path edge cleanup undoable with node config history", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+
+    expect(result.current.edges.some((edge) =>
+      edge.source === "branch-intent" && edge.sourceHandle === "branch-high",
+    )).toBe(true);
+
+    act(() => {
+      result.current.updateNodeData("branch-intent", {
+        branchPaths: [
+          { id: "branch-normal", label: "普通客户", operator: "IF", title: "CASE 1" },
+          { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+        ],
+      });
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.edges.some((edge) =>
+      edge.source === "branch-intent" && edge.sourceHandle === "branch-high",
+    )).toBe(false);
+
+    act(() => {
+      result.current.undo();
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.edges.some((edge) =>
+      edge.source === "branch-intent" && edge.sourceHandle === "branch-high",
+    )).toBe(true);
   });
 
   it("creates unique node ids for repeated node additions", () => {

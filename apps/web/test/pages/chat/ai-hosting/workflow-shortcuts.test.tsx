@@ -4,6 +4,10 @@ import { useWorkflowShortcuts } from "@/pages/chat/ai-hosting/workflow/shortcuts
 
 function renderWorkflowShortcuts(overrides: Partial<Parameters<typeof useWorkflowShortcuts>[0]> = {}) {
   const handlers = {
+    canCopySelection: true,
+    canDeleteSelection: true,
+    canDuplicateSelection: true,
+    canPasteClipboard: true,
     canRedo: true,
     canUndo: true,
     onCopySelection: vi.fn(() => true),
@@ -94,5 +98,24 @@ describe("useWorkflowShortcuts", () => {
     finally {
       input.remove();
     }
+  });
+
+  it("does not swallow disabled workflow shortcuts", () => {
+    const handlers = renderWorkflowShortcuts({
+      canDeleteSelection: false,
+      canRedo: false,
+      canUndo: false,
+    });
+
+    const deleteEvent = dispatchShortcut("Backspace", { ctrlKey: false });
+    const undoEvent = dispatchShortcut("z");
+    const redoEvent = dispatchShortcut("y");
+
+    expect(handlers.onDeleteSelection).not.toHaveBeenCalled();
+    expect(handlers.onUndo).not.toHaveBeenCalled();
+    expect(handlers.onRedo).not.toHaveBeenCalled();
+    expect(deleteEvent.defaultPrevented).toBe(false);
+    expect(undoEvent.defaultPrevented).toBe(false);
+    expect(redoEvent.defaultPrevented).toBe(false);
   });
 });

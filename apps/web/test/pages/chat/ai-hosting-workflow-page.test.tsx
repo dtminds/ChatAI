@@ -12,15 +12,18 @@ import {
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
   createDefaultNodeData,
+  getNodeDefinition,
   insertableNodeKinds,
   nodeDefinitions,
   orderedNodeDefinitions,
   paletteItems,
 } from "@/pages/chat/ai-hosting/workflow/node-definitions";
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
-import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
 import type { WorkflowNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
-import { resetWorkflowDocumentsForTest } from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
+import {
+  getWorkflowDocument,
+  resetWorkflowDocumentsForTest,
+} from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
 import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
@@ -89,13 +92,18 @@ vi.mock("@xyflow/react", async () => {
       nodeTypes,
       nodes,
       nodesConnectable,
+      nodesDraggable,
       onConnect,
       onEdgeClick,
       onNodeClick,
+      onNodeDrag,
+      onNodeDragStart,
+      onNodeDragStop,
       onNodeMouseEnter,
       onNodeMouseLeave,
       onNodesChange,
       onPaneClick,
+      onMoveEnd,
       isValidConnection,
     }: {
       children?: React.ReactNode;
@@ -122,9 +130,13 @@ vi.mock("@xyflow/react", async () => {
         zIndex?: number;
       }>;
       nodesConnectable?: boolean;
+      nodesDraggable?: boolean;
       onConnect?: (connection: { source: string; target: string }) => void;
       onEdgeClick?: (_event: unknown, edge: { id: string }) => void;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
+      onNodeDrag?: (_event: { stopPropagation: () => void }, node: any, nodes: any[]) => void;
+      onNodeDragStart?: (_event: { stopPropagation: () => void }, node: any, nodes: any[]) => void;
+      onNodeDragStop?: (_event: { stopPropagation: () => void }, node: any, nodes: any[]) => void;
       onNodeMouseEnter?: (_event: unknown, node: { id: string }) => void;
       onNodeMouseLeave?: (_event: unknown, node: { id: string }) => void;
       onNodesChange?: (changes: Array<{
@@ -133,6 +145,7 @@ vi.mock("@xyflow/react", async () => {
         position?: { x: number; y: number };
         type: string;
       }>) => void;
+      onMoveEnd?: (_event: unknown, viewport: { x: number; y: number; zoom: number }) => void;
       onPaneClick?: () => void;
       isValidConnection?: (connection: { source: string; target: string }) => boolean;
     }) => (
@@ -150,19 +163,37 @@ vi.mock("@xyflow/react", async () => {
           点击画布空白处
         </button>
         <button
+          onClick={() => onMoveEnd?.(null, { x: 140, y: 260, zoom: 1.1 })}
+          type="button"
+        >
+          移动画布视角
+        </button>
+        <button
           disabled={!nodesConnectable}
           onClick={() => {
-            const connection = { source: "wait-2d", target: "goal" };
+            const connection = { source: "branch-intent", sourceHandle: "branch-normal", target: "goal", targetHandle: null };
             if (isValidConnection?.(connection) ?? true) {
               onConnect?.(connection);
             }
           }}
           type="button"
         >
-          连接观察期到首单转化
+          连接普通客户分支到首单转化
         </button>
         <button
+          disabled={!nodesDraggable}
           onClick={() => {
+            const node = nodes.find((node) => node.id === "wait-2d");
+            if (!node) {
+              return;
+            }
+            const nextNode = {
+              ...node,
+              position: { x: 420, y: 120 },
+            };
+            const dragEvent = { stopPropagation: vi.fn() };
+
+            onNodeDragStart?.(dragEvent, node, nodes);
             onNodesChange?.([
               {
                 dragging: true,
@@ -171,6 +202,7 @@ vi.mock("@xyflow/react", async () => {
                 type: "position",
               },
             ]);
+            onNodeDrag?.(dragEvent, nextNode, [nextNode]);
             onNodesChange?.([
               {
                 dragging: false,
@@ -179,6 +211,7 @@ vi.mock("@xyflow/react", async () => {
                 type: "position",
               },
             ]);
+            onNodeDragStop?.(dragEvent, nextNode, [nextNode]);
           }}
           type="button"
         >
@@ -379,8 +412,8 @@ describe("Agent workflow page", () => {
       expect(defaultData.summary).toBeTruthy();
       expect(defaultData.metric).toBeTruthy();
       expect(defaultData.status).toBeTruthy();
+      expect(getNodeDefinition(kind)).toBe(definition);
       expect(NodeComponentMap[kind]).toBe(definition.body);
-      expect(PanelComponentMap[kind]).toBe(definition.settings);
       expect(canDeleteNodeKind(kind)).toBe(definition.canDelete);
       expect(canDuplicateNodeKind(kind)).toBe(definition.canDuplicate);
       expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
@@ -494,7 +527,7 @@ describe("Agent workflow page", () => {
     expect(panel).toHaveTextContent("售后小助理");
   });
 
-  it("does not create workflow history entries for unchanged layout results", async () => {
+  it("does not create workflow history entries for unchanged repeated layout results", async () => {
     const user = setupCanvasUser();
 
     renderWorkflowPage();
@@ -503,7 +536,18 @@ describe("Agent workflow page", () => {
     expect(getUndoButton(canvas)).toBeDisabled();
 
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+    expect(getUndoButton(canvas)).toBeEnabled();
 
+    await user.click(getUndoButton(canvas));
+    expect(getUndoButton(canvas)).toBeDisabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+    expect(getUndoButton(canvas)).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+    expect(getUndoButton(canvas)).toBeEnabled();
+
+    await user.click(getUndoButton(canvas));
     expect(getUndoButton(canvas)).toBeDisabled();
   });
 
@@ -785,6 +829,24 @@ describe("Agent workflow page", () => {
 
     expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
     expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
+  });
+
+  it("saves viewport changes without adding workflow undo history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "移动画布视角" }));
+
+    await waitFor(() => {
+      expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual({
+        x: 140,
+        y: 260,
+        zoom: 1.1,
+      });
+    });
+    expect(getUndoButton(canvas)).toBeDisabled();
   });
 
   it("merges rapid node config edits into a single undo step", async () => {
@@ -1145,9 +1207,9 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "连接观察期到首单转化" }));
+    await user.click(within(canvas).getByRole("button", { name: "连接普通客户分支到首单转化" }));
 
-    expect(screen.getByTestId("workflow-edge-edge-wait-2d-goal")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-normal-goal")).toBeInTheDocument();
     expect(getUndoButton(canvas)).toBeEnabled();
   });
 

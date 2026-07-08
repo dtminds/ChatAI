@@ -1,8 +1,13 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 import { useWorkflowRun } from "@/pages/chat/ai-hosting/workflow/run/use-workflow-run";
-import type { WorkflowNode } from "@/pages/chat/ai-hosting/workflow/types";
+import { createMockWorkflowRunAdapter } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-adapter";
+import type {
+  NodeRunRecord,
+  WorkflowDraft,
+  WorkflowNode,
+} from "@/pages/chat/ai-hosting/workflow/types";
 
 function createWorkflowNode(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
   return {
@@ -24,7 +29,7 @@ function createWorkflowNode(overrides: Partial<WorkflowNode> = {}): WorkflowNode
 }
 
 describe("useWorkflowRun", () => {
-  it("stores a node run record keyed by node id", () => {
+  it("stores a node run record keyed by node id", async () => {
     const { result } = renderHook(() => useWorkflowRun());
     const node = createWorkflowNode();
 
@@ -34,6 +39,12 @@ describe("useWorkflowRun", () => {
       result.current.runNode(node);
     });
 
+    expect(result.current.getNodeRun(node.id)?.status).toBe("running");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     const runRecord = result.current.getNodeRun(node.id);
 
     expect(runRecord?.status).toBe("succeeded");
@@ -41,6 +52,217 @@ describe("useWorkflowRun", () => {
     expect(runRecord?.input).toContain("\"nodeId\": \"ai-node\"");
     expect(runRecord?.output).toContain("\"title\": \"AI 接待\"");
     expect(runRecord?.logs).toContain("匹配 Agent 与知识库策略");
+  });
+
+  it("delegates node execution to the configured adapter", async () => {
+    const adapter = {
+      runNode: vi.fn(() => ({
+        durationMs: 12,
+        finishedAt: "10:24:18",
+        input: "{}",
+        logs: ["adapter run"],
+        output: "{\"ok\":true}",
+        status: "succeeded" as const,
+      })),
+      runWorkflow: createUnusedWorkflowRunAdapter(),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const node = createWorkflowNode();
+
+    act(() => {
+      result.current.runNode(node);
+    });
+
+    expect(adapter.runNode).toHaveBeenCalledWith({ node });
+    expect(result.current.getNodeRun(node.id)?.status).toBe("running");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.getNodeRun(node.id)?.logs).toEqual(["adapter run"]);
+  });
+
+  it("provides a replaceable mock adapter for local workflow runs", async () => {
+    const adapter = createMockWorkflowRunAdapter();
+    const node = createWorkflowNode();
+    const draft = createWorkflowDraft();
+    const runRecord = await adapter.runNode({ node });
+    const workflowRunRecord = await adapter.runWorkflow({
+      draft,
+      workflowId: "workflow-a",
+    });
+
+    draft.nodes[0]!.data.title = "后续编辑的节点标题";
+
+    expect(runRecord.status).toBe("succeeded");
+    expect(runRecord.input).toContain("\"nodeId\": \"ai-node\"");
+    expect(runRecord.output).toContain("\"title\": \"AI 接待\"");
+    expect(workflowRunRecord.draft.nodes[0]?.data.title).toBe("AI 接待");
+  });
+
+  it("archives workflow run history with a graph snapshot and node records", async () => {
+    const { result } = renderHook(() => useWorkflowRun("workflow-a"));
+    const draft = createWorkflowDraft();
+
+    act(() => {
+      result.current.runWorkflow(draft);
+    });
+
+    expect(result.current.activeRun?.status).toBe("running");
+    expect(result.current.getNodeRun("ai-node")?.status).toBe("running");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeRun?.status).toBe("succeeded");
+    expect(result.current.runHistory).toHaveLength(1);
+    expect(result.current.runHistory[0]?.draft.nodes[0]?.id).toBe("ai-node");
+    expect(result.current.runHistory[0]?.nodeRuns["ai-node"]?.status).toBe("succeeded");
+    expect(result.current.runHistory[0]?.inputs).toEqual(expect.objectContaining({
+      nodeCount: 1,
+    }));
+    expect(result.current.runHistory[0]?.outputs).toEqual(expect.objectContaining({
+      summary: "测试运行完成",
+    }));
+    expect(result.current.runHistory[0]?.trace[0]).toEqual(expect.objectContaining({
+      nodeId: "ai-node",
+      nodeTitle: "AI 接待",
+    }));
+  });
+
+  it("runs workflows from an immutable draft snapshot", async () => {
+    let resolveWorkflowRun: (() => void) | undefined;
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(({ draft, workflowId }: {
+        draft: WorkflowDraft;
+        workflowId: string;
+      }) => new Promise<ReturnType<typeof createWorkflowRunRecord>>((resolve) => {
+        resolveWorkflowRun = () => resolve(createWorkflowRunRecord(workflowId, draft));
+      })),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const draft = createWorkflowDraft();
+
+    act(() => {
+      result.current.runWorkflow(draft);
+    });
+
+    draft.nodes[0]!.data.title = "后续编辑的节点标题";
+
+    expect(adapter.runWorkflow).toHaveBeenCalledWith({
+      draft: expect.objectContaining({
+        nodes: [
+          expect.objectContaining({
+            data: expect.objectContaining({ title: "AI 接待" }),
+          }),
+        ],
+      }),
+      workflowId: "workflow-a",
+    });
+    expect(result.current.activeRun?.draft.nodes[0]?.data.title).toBe("AI 接待");
+
+    await act(async () => {
+      resolveWorkflowRun?.();
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeRun?.draft.nodes[0]?.data.title).toBe("AI 接待");
+    expect(result.current.runHistory[0]?.draft.nodes[0]?.data.title).toBe("AI 接待");
+  });
+
+  it("enters and exits workflow run history view by run id", async () => {
+    const { result } = renderHook(() => useWorkflowRun("workflow-a"));
+
+    act(() => {
+      result.current.runWorkflow(createWorkflowDraft());
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const runId = result.current.runHistory[0]?.id ?? "";
+
+    act(() => {
+      result.current.viewRunHistory(runId);
+    });
+
+    expect(result.current.historyRun?.id).toBe(runId);
+
+    act(() => {
+      result.current.exitRunHistory();
+    });
+
+    expect(result.current.historyRun).toBeNull();
+  });
+
+  it("stores failed workflow runs in history when the adapter rejects", async () => {
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(() => Promise.reject(new Error("workflow failed"))),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+
+    act(() => {
+      result.current.runWorkflow(createWorkflowDraft());
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeRun?.status).toBe("failed");
+    expect(result.current.runHistory[0]?.errorMessage).toBe("workflow failed");
+    expect(result.current.getNodeRun("ai-node")?.status).toBe("failed");
+  });
+
+  it("stops active workflow runs and ignores stale adapter results", async () => {
+    let resolveWorkflowRun: ((record: ReturnType<typeof createWorkflowRunRecord>) => void) | undefined;
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(() => new Promise<ReturnType<typeof createWorkflowRunRecord>>((resolve) => {
+        resolveWorkflowRun = resolve;
+      })),
+      stopWorkflowRun: vi.fn(() => undefined),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const draft = createWorkflowDraft();
+
+    act(() => {
+      result.current.runWorkflow(draft);
+    });
+
+    const runId = result.current.activeRun?.id;
+
+    act(() => {
+      result.current.stopWorkflowRun();
+    });
+
+    expect(adapter.stopWorkflowRun).toHaveBeenCalledWith({
+      draft: expect.objectContaining({
+        nodes: [
+          expect.objectContaining({
+            id: "ai-node",
+          }),
+        ],
+      }),
+      runId,
+      workflowId: "workflow-a",
+    });
+    expect(result.current.activeRun?.status).toBe("stopped");
+    expect(result.current.getNodeRun("ai-node")?.status).toBe("stopped");
+    expect(result.current.runHistory[0]?.status).toBe("stopped");
+
+    await act(async () => {
+      resolveWorkflowRun?.(createWorkflowRunRecord("workflow-a", draft, runId));
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeRun?.status).toBe("stopped");
+    expect(result.current.runHistory[0]?.status).toBe("stopped");
   });
 
   it("clears node run records by node id and workflow scope", () => {
@@ -70,4 +292,152 @@ describe("useWorkflowRun", () => {
     rerender({ scopeKey: "workflow-b" });
     expect(result.current.getNodeRun(node.id)).toBeUndefined();
   });
+
+  it("stores a failed run record when the adapter rejects", async () => {
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("run failed"))),
+      runWorkflow: createUnusedWorkflowRunAdapter(),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const node = createWorkflowNode();
+
+    act(() => {
+      result.current.runNode(node);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.getNodeRun(node.id)?.status).toBe("failed");
+    expect(result.current.getNodeRun(node.id)?.errorMessage).toBe("run failed");
+  });
+
+  it("ignores stale run results after workflow scope changes", async () => {
+    let resolveRun: ((record: NodeRunRecord) => void) | undefined;
+    const adapter = {
+      runNode: vi.fn(() => new Promise<NodeRunRecord>((resolve) => {
+        resolveRun = resolve;
+      })),
+      runWorkflow: createUnusedWorkflowRunAdapter(),
+    };
+    const node = createWorkflowNode();
+    const { result, rerender } = renderHook(
+      ({ scopeKey }: { scopeKey: string }) => useWorkflowRun(scopeKey, adapter),
+      {
+        initialProps: { scopeKey: "workflow-a" },
+      },
+    );
+
+    act(() => {
+      result.current.runNode(node);
+    });
+
+    rerender({ scopeKey: "workflow-b" });
+
+    await act(async () => {
+      resolveRun?.({
+        durationMs: 12,
+        finishedAt: "10:24:18",
+        input: "{}",
+        logs: ["stale"],
+        output: "{}",
+        status: "succeeded",
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.getNodeRun(node.id)).toBeUndefined();
+  });
+
+  it("ignores stale run results after the node run is deleted", async () => {
+    let resolveRun: ((record: NodeRunRecord) => void) | undefined;
+    const adapter = {
+      runNode: vi.fn(() => new Promise<NodeRunRecord>((resolve) => {
+        resolveRun = resolve;
+      })),
+      runWorkflow: createUnusedWorkflowRunAdapter(),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const node = createWorkflowNode();
+
+    act(() => {
+      result.current.runNode(node);
+      result.current.deleteNodeRun(node.id);
+    });
+
+    await act(async () => {
+      resolveRun?.({
+        durationMs: 12,
+        finishedAt: "10:24:18",
+        input: "{}",
+        logs: ["stale"],
+        output: "{}",
+        status: "succeeded",
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.getNodeRun(node.id)).toBeUndefined();
+  });
 });
+
+function createWorkflowDraft(): WorkflowDraft {
+  return {
+    edges: [],
+    nodes: [createWorkflowNode()],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
+function createUnusedWorkflowRunAdapter() {
+  return vi.fn(() => {
+    throw new Error("runWorkflow should not be called");
+  });
+}
+
+function createWorkflowRunRecord(
+  workflowId: string,
+  draft: WorkflowDraft,
+  runId = `${workflowId}-run`,
+) {
+  const nodeRuns = Object.fromEntries(
+    draft.nodes.map((node) => [
+      node.id,
+      {
+        durationMs: 12,
+        finishedAt: "10:24:18",
+        input: "{}",
+        logs: ["completed"],
+        output: "{}",
+        status: "succeeded" as const,
+      },
+    ]),
+  );
+
+  return {
+    createdAt: "10:24:18",
+    draft,
+    durationMs: 12,
+    finishedAt: "10:24:18",
+    id: runId,
+    inputs: {},
+    nodeRuns,
+    outputs: {},
+    status: "succeeded" as const,
+    title: "Test Run",
+    totalNodes: draft.nodes.length,
+    totalSteps: draft.nodes.length,
+    totalTokens: 12,
+    trace: draft.nodes.map((node) => ({
+      durationMs: 12,
+      finishedAt: "10:24:18",
+      logs: ["completed"],
+      nodeId: node.id,
+      nodeTitle: node.data.title,
+      nodeType: node.data.kind,
+      startedAt: "10:24:17",
+      status: "succeeded" as const,
+    })),
+  };
+}

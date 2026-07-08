@@ -638,6 +638,56 @@ describe("workflow draft service", () => {
       .toBe("旧工作流发布结果");
   });
 
+  it("does not apply stale async publish results after the same workflow draft changes", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+
+      await act(async () => {
+        void result.current.publishDraft(createDraftWithTriggerAudience("旧发布请求的人群"));
+      });
+
+      expect(repository.pendingPublishes).toHaveLength(1);
+      expect(result.current.publishState).toBe("publishing");
+
+      act(() => {
+        result.current.markDirty(createDraftWithTriggerAudience("发布期间继续编辑的人群"));
+      });
+
+      expect(result.current.publishState).toBe("idle");
+
+      await act(async () => {
+        repository.resolvePublish(0);
+        await Promise.resolve();
+      });
+
+      expect(result.current.publishState).toBe("idle");
+      expect(result.current.document.status).toBe("Draft");
+      expect(result.current.document.publishedDraft).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(repository.pendingSaves).toHaveLength(1);
+
+      await act(async () => {
+        repository.resolveSave(0);
+        await Promise.resolve();
+      });
+
+      expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("发布期间继续编辑的人群");
+      expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("旧发布请求的人群");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("restores through an async repository and resets the hook document draft", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const publishedDocument = repository.getDocument("vip-reactivation");

@@ -292,6 +292,7 @@ export function useWorkflowDocument(
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
     const nextDraftHash = createWorkflowDraftHash(draftToSave);
+    publishRequestRef.current += 1;
     setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
 
     if (nextDraftHash === lastSavedDraftHash) {
@@ -328,6 +329,7 @@ export function useWorkflowDocument(
   const importDraft = useCallback(async (draft: WorkflowDraft) => {
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
+    publishRequestRef.current += 1;
     const workflowIdToImport = workflowIdRef.current;
     const draftToImport = cloneWorkflowDraft(draft);
 
@@ -440,6 +442,7 @@ export function useWorkflowDocument(
     restoreRequestRef.current = restoreRequestId;
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
+    publishRequestRef.current += 1;
     const workflowIdToRestore = workflowIdRef.current;
 
     setRestoreState("restoring");

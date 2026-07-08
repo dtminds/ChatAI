@@ -611,7 +611,7 @@ export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
 }
 
 export function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
-  return typeof value === "string" && value in workflowNodeCatalog;
+  return typeof value === "string" && Object.hasOwn(workflowNodeCatalog, value);
 }
 
 export function createWorkflowNodeExecutionConfig(data: WorkflowNodeData) {

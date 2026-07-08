@@ -7,6 +7,7 @@ import {
   getWorkflowPaletteItemGroups,
   getWorkflowNodeCatalogEntry,
   insertableNodeKinds,
+  isWorkflowNodeKind,
   orderedWorkflowNodeCatalog,
   paletteItems,
   workflowNodePaletteGroups,
@@ -99,6 +100,24 @@ describe("workflow node catalog", () => {
       edges: [],
       nodes,
     }).nodes.map((node) => node.data.kind)).toEqual(nodeKinds);
+    expect(isWorkflowNodeKind("toString")).toBe(false);
+    expect(isClipboardNodeStructurallyValid({
+      data: { kind: "toString" },
+      id: "invalid-prototype-kind",
+      position: { x: 0, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    })).toBe(false);
+    expect(hydrateWorkflowDraft({
+      edges: [],
+      nodes: [
+        {
+          data: { kind: "toString" },
+          id: "invalid-prototype-kind",
+          position: { x: 0, y: 0 },
+          type: WORKFLOW_NODE_TYPE,
+        } as unknown as WorkflowNode,
+      ],
+    }).nodes).toEqual([]);
   });
 
   it("keeps core node definitions free of UI bindings", () => {

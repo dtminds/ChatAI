@@ -1,4 +1,4 @@
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SettingsGroupChat } from "@chatai/contracts";
 import type { FormEvent } from "react";
@@ -108,22 +108,19 @@ export function GroupChatReceptionSettingsDialog({
       >
         <DialogHeader>
           <DialogTitle>{isBatchMode ? "群聊接待批量设置" : "群聊接待设置"}</DialogTitle>
-          <DialogDescription className="space-y-2 pt-1">
-            <span className="block">可接待的企微号即可在对应群聊收发消息</span>
-            {isBatchMode ? (
-              <span className="block text-muted-foreground">
-                注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略
-              </span>
-            ) : null}
+          <DialogDescription className="pt-1">
+            可接待的企微号即可在对应群聊收发消息
           </DialogDescription>
         </DialogHeader>
 
         {singleGroupChat ? (
-          <div className="flex min-w-0 items-center gap-2 rounded-[10px] border border-border px-3 py-3">
+          <div className="flex min-w-0 items-center gap-2">
             <GroupChatAvatar groupChat={singleGroupChat} />
             <p className="truncate text-sm font-medium text-foreground">{singleGroupChat.name}</p>
           </div>
         ) : null}
+
+        {isBatchMode ? <BatchReceptionNotice /> : null}
 
         <form
           aria-label={isBatchMode ? "群聊接待批量设置表单" : "群聊接待设置表单"}
@@ -218,6 +215,26 @@ export function GroupChatReceptionSettingsDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function BatchReceptionNotice() {
+  return (
+    <div
+      aria-label="注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略"
+      className="flex items-start gap-2 rounded-[8px] border border-border bg-muted/35 px-3 py-2.5 text-sm leading-5 text-muted-foreground"
+      role="note"
+    >
+      <HugeiconsIcon
+        aria-hidden="true"
+        className="mt-0.5 shrink-0"
+        color="currentColor"
+        icon={InformationCircleIcon}
+        size={16}
+        strokeWidth={1.8}
+      />
+      <p>注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略</p>
+    </div>
   );
 }
 

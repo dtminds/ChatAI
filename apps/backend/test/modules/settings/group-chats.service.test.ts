@@ -22,6 +22,18 @@ describe("GroupChatSettingsService", () => {
             id: "101",
             name: "德瑞可",
           },
+          receptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/ndt.png",
+              id: "102",
+              name: "念都堂",
+            },
+            {
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
+            },
+          ],
           receptionSeatCount: 2,
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
@@ -34,6 +46,13 @@ describe("GroupChatSettingsService", () => {
             id: "102",
             name: "念都堂",
           },
+          receptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/ndt.png",
+              id: "102",
+              name: "念都堂",
+            },
+          ],
           receptionSeatCount: 1,
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
@@ -46,6 +65,18 @@ describe("GroupChatSettingsService", () => {
             id: "102",
             name: "念都堂",
           },
+          receptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/ndt.png",
+              id: "102",
+              name: "念都堂",
+            },
+            {
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
+            },
+          ],
           receptionSeatCount: 2,
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
@@ -71,6 +102,13 @@ describe("GroupChatSettingsService", () => {
           id: "102",
           name: "念都堂",
         },
+        receptionManagedAccounts: [
+          {
+            avatarUrl: "https://example.com/ndt.png",
+            id: "102",
+            name: "念都堂",
+          },
+        ],
         receptionSeatCount: 1,
         thirdGroupId: "8C2D4F1A9B7765432100",
       },
@@ -139,8 +177,8 @@ function createDbMock() {
         return createSeatQueryBuilder(seats);
       }
 
-      if (table === "xy_wap_embed_group_seat") {
-        return createGroupSeatAggregateBuilder(groupSeats);
+      if (table === "xy_wap_embed_group_seat as reception_group_seat") {
+        return createReceptionManagedAccountsBuilder(groupSeats, seats);
       }
 
       if (table === "xy_wap_embed_group_seat as group_seat") {
@@ -184,44 +222,58 @@ function createSeatQueryBuilder(seats: Array<{
   return builder;
 }
 
-function createGroupSeatAggregateBuilder(groupSeats: Array<{
-  biz_status: number;
-  platform: number;
-  third_group_id: string;
-  third_userid: string;
-  uid: number;
-}>) {
+function createReceptionManagedAccountsBuilder(
+  groupSeats: Array<{
+    biz_status: number;
+    platform: number;
+    third_group_id: string;
+    third_userid: string;
+    uid: number;
+  }>,
+  seats: Array<{
+    id: number;
+    platform: number;
+    third_avatar: string;
+    third_user_name: string | null;
+    third_userid: string;
+    uid: number;
+  }>,
+) {
   const wheres: Array<[string, string, unknown]> = [];
   const builder = {
-    execute: async () => {
-      const filtered = groupSeats.filter((groupSeat) =>
-        matchesWhere(groupSeat, wheres, {
-          biz_status: "biz_status",
-          platform: "platform",
-          uid: "uid",
-        }),
-      );
-      const counts = new Map<string, Set<string>>();
+    execute: async () =>
+      groupSeats
+        .filter((groupSeat) =>
+          matchesWhere(groupSeat, wheres, {
+            "reception_group_seat.biz_status": "biz_status",
+            "reception_group_seat.platform": "platform",
+            "reception_group_seat.uid": "uid",
+          }),
+        )
+        .map((groupSeat) => {
+          const seat = seats.find(
+            (item) =>
+              item.third_userid === groupSeat.third_userid &&
+              item.uid === groupSeat.uid &&
+              item.platform === groupSeat.platform,
+          );
 
-      for (const groupSeat of filtered) {
-        const thirdUserIds = counts.get(groupSeat.third_group_id) ?? new Set<string>();
-        thirdUserIds.add(groupSeat.third_userid);
-        counts.set(groupSeat.third_group_id, thirdUserIds);
-      }
+          if (!seat) {
+            return null;
+          }
 
-      return [...counts.entries()].map(([third_group_id, thirdUserIds]) => ({
-        reception_seat_count: thirdUserIds.size,
-        third_group_id,
-      }));
-    },
-    groupBy: () => builder,
-    select: (...args: unknown[]) => {
-      if (typeof args[0] === "function") {
-        return builder;
-      }
-
-      return builder;
-    },
+          return {
+            seat_avatar: seat.third_avatar,
+            seat_id: seat.id,
+            seat_name: seat.third_user_name,
+            third_group_id: groupSeat.third_group_id,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null)
+        .sort((left, right) => right.seat_id - left.seat_id),
+    innerJoin: () => builder,
+    orderBy: () => builder,
+    select: () => builder,
     where: (...whereArgs: [string, string, unknown]) => {
       wheres.push(whereArgs);
       return builder;

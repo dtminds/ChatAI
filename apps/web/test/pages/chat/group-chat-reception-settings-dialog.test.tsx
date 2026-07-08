@@ -24,6 +24,7 @@ const dialogState: GroupChatReceptionDialogState = {
         id: "101",
         name: "德瑞可",
       },
+      receptionManagedAccounts: [],
       receptionSeatCount: 0,
       thirdGroupId: "group-501",
     },

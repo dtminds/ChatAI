@@ -78,11 +78,15 @@ export const SettingsGroupChatOpeningManagedAccountSchema = Type.Object({
   name: Type.String(),
 });
 
+export const SettingsGroupChatReceptionManagedAccountSchema =
+  SettingsGroupChatOpeningManagedAccountSchema;
+
 export const SettingsGroupChatSchema = Type.Object({
   avatarUrl: Type.String(),
   id: Type.String(),
   name: Type.String(),
   openingManagedAccount: SettingsGroupChatOpeningManagedAccountSchema,
+  receptionManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
   receptionSeatCount: Type.Integer({ minimum: 0 }),
   thirdGroupId: Type.String(),
 });
@@ -198,6 +202,9 @@ export type SettingsManagedAccountSyncSeatGroupsResponse = Static<
 >;
 export type SettingsGroupChatOpeningManagedAccount = Static<
   typeof SettingsGroupChatOpeningManagedAccountSchema
+>;
+export type SettingsGroupChatReceptionManagedAccount = Static<
+  typeof SettingsGroupChatReceptionManagedAccountSchema
 >;
 export type SettingsGroupChat = Static<typeof SettingsGroupChatSchema>;
 export type SettingsGroupChatFilterManagedAccount = Static<

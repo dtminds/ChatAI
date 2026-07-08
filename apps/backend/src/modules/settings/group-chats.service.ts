@@ -3,7 +3,7 @@ import type {
   SettingsGroupChatsQuery,
   SettingsGroupChatsResponse,
 } from "@chatai/contracts";
-import { sql, type Kysely } from "kysely";
+import { type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 
@@ -35,11 +35,12 @@ export class GroupChatSettingsService {
     scope: TenantScope,
     query: SettingsGroupChatsQuery = {},
   ): Promise<SettingsGroupChatsResponse> {
-    const [filterManagedAccounts, receptionSeatCountByGroupId, groupChatRows] = await Promise.all([
-      this.listFilterManagedAccounts(scope),
-      this.countReceptionSeatsByGroupId(scope),
-      this.listGroupChatRows(scope, query),
-    ]);
+    const [filterManagedAccounts, receptionManagedAccountsByGroupId, groupChatRows] =
+      await Promise.all([
+        this.listFilterManagedAccounts(scope),
+        this.listReceptionManagedAccountsByGroupId(scope),
+        this.listGroupChatRows(scope, query),
+      ]);
 
     return {
       filterManagedAccounts: filterManagedAccounts.map((account) => ({
@@ -47,7 +48,10 @@ export class GroupChatSettingsService {
         name: account.name || "未命名托管账号",
       })),
       groupChats: groupChatRows.map((row) =>
-        mapGroupChat(row, receptionSeatCountByGroupId.get(row.third_group_id) ?? 0),
+        mapGroupChat(
+          row,
+          receptionManagedAccountsByGroupId.get(row.third_group_id) ?? [],
+        ),
       ),
     };
   }
@@ -62,22 +66,55 @@ export class GroupChatSettingsService {
       .execute() as Promise<ManagedAccountFilterRow[]>;
   }
 
-  private async countReceptionSeatsByGroupId(scope: TenantScope) {
+  private async listReceptionManagedAccountsByGroupId(scope: TenantScope) {
     const rows = await this.db
-      .selectFrom("xy_wap_embed_group_seat")
+      .selectFrom("xy_wap_embed_group_seat as reception_group_seat")
+      .innerJoin("xy_wap_embed_user_seat as reception_seat", (join) =>
+        join
+          .onRef("reception_seat.third_userid", "=", "reception_group_seat.third_userid")
+          .onRef("reception_seat.uid", "=", "reception_group_seat.uid")
+          .onRef("reception_seat.platform", "=", "reception_group_seat.platform"),
+      )
       .select([
-        "third_group_id",
-        sql<number>`count(distinct third_userid)`.as("reception_seat_count"),
+        "reception_group_seat.third_group_id as third_group_id",
+        "reception_seat.id as seat_id",
+        "reception_seat.third_avatar as seat_avatar",
+        "reception_seat.third_user_name as seat_name",
       ])
-      .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
-      .where("biz_status", "=", dbActiveStatus)
-      .groupBy("third_group_id")
+      .where("reception_group_seat.uid", "=", scope.uid)
+      .where("reception_group_seat.platform", "=", scope.platform)
+      .where("reception_group_seat.biz_status", "=", dbActiveStatus)
+      .orderBy("reception_seat.id", "desc")
       .execute();
 
-    return new Map(
-      rows.map((row) => [row.third_group_id, Number(row.reception_seat_count)]),
-    );
+    const accountsByGroupId = new Map<
+      string,
+      SettingsGroupChat["receptionManagedAccounts"]
+    >();
+    const seenSeatIdsByGroupId = new Map<string, Set<string>>();
+
+    for (const row of rows) {
+      const seatId = String(row.seat_id);
+      const seenSeatIds =
+        seenSeatIdsByGroupId.get(row.third_group_id) ?? new Set<string>();
+
+      if (seenSeatIds.has(seatId)) {
+        continue;
+      }
+
+      seenSeatIds.add(seatId);
+      seenSeatIdsByGroupId.set(row.third_group_id, seenSeatIds);
+
+      const accounts = accountsByGroupId.get(row.third_group_id) ?? [];
+      accounts.push({
+        avatarUrl: row.seat_avatar || "",
+        id: seatId,
+        name: row.seat_name || "未命名托管账号",
+      });
+      accountsByGroupId.set(row.third_group_id, accounts);
+    }
+
+    return accountsByGroupId;
   }
 
   private listGroupChatRows(scope: TenantScope, query: SettingsGroupChatsQuery) {
@@ -133,7 +170,10 @@ export function createGroupChatSettingsService(db: Kysely<Database>) {
   return new GroupChatSettingsService(db);
 }
 
-function mapGroupChat(row: GroupChatRow, receptionSeatCount: number): SettingsGroupChat {
+function mapGroupChat(
+  row: GroupChatRow,
+  receptionManagedAccounts: SettingsGroupChat["receptionManagedAccounts"],
+): SettingsGroupChat {
   return {
     avatarUrl: row.avatar || "",
     id: String(row.group_seat_id),
@@ -143,7 +183,8 @@ function mapGroupChat(row: GroupChatRow, receptionSeatCount: number): SettingsGr
       id: String(row.seat_id),
       name: row.seat_name || "未命名托管账号",
     },
-    receptionSeatCount,
+    receptionManagedAccounts,
+    receptionSeatCount: receptionManagedAccounts.length,
     thirdGroupId: row.third_group_id,
   };
 }

@@ -296,6 +296,23 @@ describe("Chat settings pages", () => {
             id: "101",
             name: "德瑞可",
           },
+          receptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/reception-1.png",
+              id: "201",
+              name: "小明",
+            },
+            {
+              avatarUrl: "https://example.com/reception-2.png",
+              id: "202",
+              name: "小红",
+            },
+            {
+              avatarUrl: "https://example.com/reception-3.png",
+              id: "203",
+              name: "小刚",
+            },
+          ],
           receptionSeatCount: 3,
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
@@ -308,6 +325,18 @@ describe("Chat settings pages", () => {
             id: "102",
             name: "念都堂",
           },
+          receptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/reception-4.png",
+              id: "204",
+              name: "小李",
+            },
+            {
+              avatarUrl: "https://example.com/reception-5.png",
+              id: "205",
+              name: "小王",
+            },
+          ],
           receptionSeatCount: 2,
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
@@ -408,7 +437,7 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("radio", { name: "开通群聊" }));
 
     expect(await screen.findByRole("table", { name: "开通群聊列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "群ID" })).toBeInTheDocument();
@@ -416,6 +445,9 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("columnheader", { name: "可接待企微号" })).toBeInTheDocument();
     expect(await screen.findByText("护肤交流群")).toBeInTheDocument();
     expect(screen.getByText("29F71A2ED8125854B6A1")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "查看可接待企微号 3 个" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^设置 / }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
   });
@@ -424,7 +456,7 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("radio", { name: "开通群聊" }));
     await user.click(await screen.findByRole("button", { name: "设置 护肤交流群" }));
 
     const singleDialog = await screen.findByRole("dialog", { name: "群聊接待设置" });
@@ -449,7 +481,9 @@ describe("Chat settings pages", () => {
 
     const batchDialog = await screen.findByRole("dialog", { name: "群聊接待批量设置" });
     expect(
-      within(batchDialog).getByText("注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略"),
+      within(batchDialog).getByRole("note", {
+        name: "注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略",
+      }),
     ).toBeInTheDocument();
     expect(within(batchDialog).queryByText("护肤交流群")).not.toBeInTheDocument();
     expect(within(batchDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
@@ -462,8 +496,8 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "企微账号" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "开通群聊" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "企微账号" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "开通群聊" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
     expect(await screen.findByText("德瑞可")).toBeInTheDocument();

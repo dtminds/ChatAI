@@ -1239,12 +1239,17 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByLabelText("关联Agent")).toBeInTheDocument();
     expect(within(dialog).getByRole("combobox", { name: "关联Agent" })).toBeInTheDocument();
     expect(within(dialog).getByText("托管设置")).toBeInTheDocument();
-    expect(within(dialog).getByRole("switch", { name: "允许开启AI回复" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("switch", { name: "允许开启 AI回复" })).toBeInTheDocument();
     expect(within(dialog).getByLabelText("自动回复账号")).toBeInTheDocument();
-    expect(within(dialog).getByRole("radiogroup", { name: "回复规则" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("group", { name: "回复规则" })).toBeInTheDocument();
     expect(within(dialog).getByRole("radio", { name: "回复时引用消息" })).toBeChecked();
     expect(within(dialog).getByRole("switch", { name: "允许话术推荐" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "确认提交" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "保存设置" })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("switch", { name: "允许开启 AI回复" }));
+
+    expect(within(dialog).queryByLabelText("自动回复账号")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("group", { name: "回复规则" })).not.toBeInTheDocument();
   });
 
   it("filters group chat hosting rows by search query", async () => {

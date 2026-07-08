@@ -24,6 +24,7 @@ export function AgentHostingSettingsPage() {
 
         <SegmentedControl
           aria-label="托管范围"
+          className="h-auto gap-0.5 rounded-[8px] border border-border bg-surface-muted p-1"
           onValueChange={(value) => {
             if (value) {
               setActiveTab(value as HostingScopeTab);
@@ -34,7 +35,7 @@ export function AgentHostingSettingsPage() {
         >
           {hostingScopeTabs.map((tab) => (
             <SegmentedControlItem
-              className="h-6 min-w-[88px] w-auto px-3 text-sm"
+              className="h-8 min-w-[88px] w-auto rounded-[6px] px-4 text-sm data-[state=on]:shadow-none"
               key={tab.value}
               value={tab.value}
             >

@@ -1,7 +1,11 @@
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { SettingsGroupChat, SettingsGroupChatsResponse } from "@chatai/contracts";
-import { useEffect, useMemo, useState } from "react";
+import type {
+  SettingsGroupChat,
+  SettingsGroupChatReceptionManagedAccount,
+  SettingsGroupChatsResponse,
+} from "@chatai/contracts";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -15,6 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -341,8 +350,8 @@ function GroupChatRow({
           </p>
         </div>
       </TableCell>
-      <TableCell className="px-5 py-5 text-sm text-muted-foreground">
-        {groupChat.receptionSeatCount}
+      <TableCell className="px-5 py-5">
+        <ReceptionManagedAccountsCell accounts={groupChat.receptionManagedAccounts} />
       </TableCell>
       <TableCell className="px-5 py-5">
         <Button
@@ -357,6 +366,99 @@ function GroupChatRow({
         </Button>
       </TableCell>
     </TableRow>
+  );
+}
+
+function ReceptionManagedAccountsCell({
+  accounts,
+}: {
+  accounts: SettingsGroupChatReceptionManagedAccount[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (accounts.length === 0) {
+    return <span className="text-sm text-muted-foreground">0</span>;
+  }
+
+  function openPopover() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
+    setIsOpen(true);
+  }
+
+  function scheduleClosePopover() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 120);
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          aria-label={`查看可接待企微号 ${accounts.length} 个`}
+          className="inline-flex max-w-full rounded-[8px] p-0.5 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+          onBlur={scheduleClosePopover}
+          onFocus={openPopover}
+          onMouseEnter={openPopover}
+          onMouseLeave={scheduleClosePopover}
+          type="button"
+        >
+          <span aria-hidden="true" className="flex -space-x-2">
+            {accounts.map((account) => (
+              <ManagedAccountAvatar
+                avatarUrl={account.avatarUrl}
+                className="size-7 ring-2 ring-background"
+                key={account.id}
+                name={account.name}
+              />
+            ))}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[16rem] p-3"
+        onBlur={scheduleClosePopover}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onFocus={openPopover}
+        onMouseEnter={openPopover}
+        onMouseLeave={scheduleClosePopover}
+      >
+        <div className="space-y-2">
+          <p className="px-1 text-sm font-medium text-foreground">
+            可接待企微号 · {accounts.length}
+          </p>
+          <div className="space-y-1">
+            {accounts.map((account) => (
+              <div
+                className="flex h-9 items-center gap-2 rounded-[8px] px-1 text-sm text-foreground"
+                key={account.id}
+              >
+                <ManagedAccountAvatar avatarUrl={account.avatarUrl} name={account.name} />
+                <span className="truncate">{account.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -379,15 +481,17 @@ function GroupChatAvatar({ groupChat }: { groupChat: SettingsGroupChat }) {
 
 function ManagedAccountAvatar({
   avatarUrl,
+  className,
   name,
 }: {
   avatarUrl: string;
+  className?: string;
   name: string;
 }) {
   return (
     <Avatar
       aria-label={`企微账号 ${name}`}
-      className={cn("size-8 rounded-full border-2 border-surface")}
+      className={cn("size-8 rounded-full border-2 border-surface", className)}
       title={name}
     >
       {avatarUrl ? <AvatarImage alt={name} src={avatarUrl} /> : null}

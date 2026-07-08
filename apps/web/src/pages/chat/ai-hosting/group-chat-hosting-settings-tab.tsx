@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -171,9 +171,10 @@ export function GroupChatHostingSettingsTab() {
   }
 
   function handleSaveSettings(groupChatIds: string[], draft: GroupChatHostingSettingsDraft) {
-    const selectedAutoReplyAccount = draft.autoReplyAccountId
-      ? mockAutoReplyAccounts.find((account) => account.id === draft.autoReplyAccountId)
-      : undefined;
+    const selectedAutoReplyAccount =
+      draft.fullAutoAuth && draft.autoReplyAccountId
+        ? mockAutoReplyAccounts.find((account) => account.id === draft.autoReplyAccountId)
+        : undefined;
 
     setGroupChats((current) =>
       current.map((groupChat) =>
@@ -181,7 +182,7 @@ export function GroupChatHostingSettingsTab() {
           ? {
               ...groupChat,
               agentId: draft.agentId ?? null,
-              autoReplyAccount: selectedAutoReplyAccount ?? groupChat.autoReplyAccount,
+              autoReplyAccount: selectedAutoReplyAccount ?? null,
               fullAutoAuth: draft.fullAutoAuth,
               replyRule: draft.replyRule,
               semiAutoAuth: draft.semiAutoAuth,
@@ -350,12 +351,12 @@ function GroupChatHostingSettingsDialog({
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <DialogHeader className="px-6 pt-6">
-          <DialogTitle>{isBatchMode ? "群聊托管批量设置" : "群聊托管设置"}</DialogTitle>
+          <DialogTitle>{isBatchMode ? "群聊批量设置" : "群聊托管设置"}</DialogTitle>
         </DialogHeader>
 
         <form className="space-y-5 px-6 py-5" onSubmit={handleSubmit}>
           {singleGroupChat ? (
-            <div className="flex min-w-0 items-center gap-2 rounded-[10px] border border-border px-3 py-3">
+            <div className="flex min-w-0 items-center gap-2">
               <GroupChatAvatar avatarUrl={singleGroupChat.avatarUrl} name={singleGroupChat.name} />
               <p className="truncate text-sm font-medium text-foreground">{singleGroupChat.name}</p>
             </div>
@@ -383,46 +384,41 @@ function GroupChatHostingSettingsDialog({
                 description="开启后群聊自动进入托管模式，Agent将自动回复群内被@的消息。"
                 disabled={fullAutoAuthDisabled}
                 id="group-hosting-settings-auto-hosting"
-                onCheckedChange={setFullAutoAuth}
-                title="允许开启AI回复"
+                onCheckedChange={(checked) => {
+                  setFullAutoAuth(checked);
+                  if (!checked) {
+                    setAutoReplyAccountId(undefined);
+                  }
+                }}
+                title="允许开启 AI回复"
                 tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
               />
-              <div className="space-y-2 border-b border-border px-4 py-3.5">
-                <Label htmlFor="group-hosting-settings-auto-reply-account">自动回复账号</Label>
-                <Select onValueChange={setAutoReplyAccountId} value={autoReplyAccountId}>
-                  <SelectTrigger className="w-full" id="group-hosting-settings-auto-reply-account">
-                    <SelectValue placeholder="请选择使用账号进行回复" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {autoReplyAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 border-b border-border px-4 py-3.5">
-                <p className="text-sm font-medium text-foreground">回复规则</p>
-                <RadioGroup
-                  aria-label="回复规则"
-                  className="flex flex-wrap gap-x-6 gap-y-2"
-                  onValueChange={(value) => setReplyRule(value as GroupChatHostingReplyRule)}
-                  value={replyRule}
-                >
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                    <RadioGroupItem aria-label="回复时引用消息" value="quote" />
-                    <span>回复时引用消息</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                    <RadioGroupItem aria-label="回复时@客户" value="at_customer" />
-                    <span>回复时@客户</span>
-                  </label>
-                </RadioGroup>
-              </div>
+              {fullAutoAuth ? (
+                <div className="space-y-4 border-b border-border bg-muted/35 px-4 py-3.5">
+                  <div className="space-y-2">
+                    <Label htmlFor="group-hosting-settings-auto-reply-account">自动回复账号</Label>
+                    <Select onValueChange={setAutoReplyAccountId} value={autoReplyAccountId}>
+                      <SelectTrigger className="w-full" id="group-hosting-settings-auto-reply-account">
+                        <SelectValue placeholder="请选择使用账号进行自动回复" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {autoReplyAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">回复规则</p>
+                    <ReplyRuleSelector onValueChange={setReplyRule} value={replyRule} />
+                  </div>
+                </div>
+              ) : null}
               <PermissionSettingRow
                 checked={semiAutoAuth}
-                description="Agent会自动生成回复建议，提升客服服务效率"
+                description="Agent 会自动生成回复建议，提升客服服务效率"
                 id="group-hosting-settings-script-recommendation"
                 onCheckedChange={setSemiAutoAuth}
                 title="允许话术推荐"
@@ -436,11 +432,46 @@ function GroupChatHostingSettingsDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit">确认提交</Button>
+            <Button type="submit">保存设置</Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReplyRuleSelector({
+  onValueChange,
+  value,
+}: {
+  onValueChange: (value: GroupChatHostingReplyRule) => void;
+  value: GroupChatHostingReplyRule;
+}) {
+  return (
+    <SegmentedControl
+      aria-label="回复规则"
+      className="h-auto w-full flex-wrap gap-2 rounded-none border-0 bg-transparent p-0"
+      onValueChange={(nextValue) => {
+        if (nextValue) {
+          onValueChange(nextValue as GroupChatHostingReplyRule);
+        }
+      }}
+      type="single"
+      value={value}
+    >
+      <SegmentedControlItem
+        className="h-10 min-w-0 flex-1 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
+        value="quote"
+      >
+        回复时引用消息
+      </SegmentedControlItem>
+      <SegmentedControlItem
+        className="h-10 min-w-0 flex-1 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
+        value="at_customer"
+      >
+        回复时@客户
+      </SegmentedControlItem>
+    </SegmentedControl>
   );
 }
 

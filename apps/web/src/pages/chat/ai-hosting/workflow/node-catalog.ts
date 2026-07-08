@@ -27,6 +27,7 @@ import {
   getWorkflowBranchPaths,
 } from "./branch-paths";
 import type { NodeConfigSection } from "./node-config-types";
+import { validateNodeConfigSections } from "./node-config-validation";
 
 export type NodeVisual = {
   accentClassName: string;
@@ -154,6 +155,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
                 label: option.label,
                 value: option.type,
               })),
+            getValidationValue: (data) => data.actionType,
             getValue: (data) => data.actionType ?? defaultActionOption.type,
             id: "workflow-action-type",
             kind: "option-cards",
@@ -166,6 +168,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               summary: option.description ?? "",
               title: option.label,
             }),
+            validation: {
+              required: {
+                code: "action-type-required",
+                message: "营销动作需要选择动作类型",
+              },
+            },
           },
         ],
         id: "action-type",
@@ -207,6 +215,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
                 label: agent.name,
                 value: agent.name,
               })),
+            getValidationValue: (data) => data.agentName,
             getValue: (data) => data.agentName ?? defaultAgentOption.name,
             id: "workflow-agent",
             kind: "option-cards",
@@ -222,6 +231,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
                 status: "ready",
                 summary: agent.name,
               };
+            },
+            validation: {
+              required: {
+                code: "ai-agent-required",
+                message: "AI 接待需要绑定 Agent",
+              },
             },
           },
           {
@@ -277,6 +292,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               metric: value ? "2 条分支" : "未配置分支",
               status: value ? "ready" : "warning",
             }),
+            validation: {
+              required: {
+                code: "branch-rule-required",
+                message: "条件分支需要配置条件表达式",
+              },
+            },
           },
         ],
         id: "branch-rule",
@@ -323,6 +344,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               conversion: value,
               metric: `目标 ${value}%`,
             }),
+            validation: {
+              number: {
+                code: "goal-conversion-required",
+                message: "目标节点需要配置有效转化指标",
+              },
+            },
           },
         ],
         id: "goal",
@@ -341,11 +368,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     kind: "goal",
     getOutputVariables: createDefaultOutputVariables,
     sort: 100,
-    validate: (node) => (
-      isFiniteNonNegativeNumber(node.data.conversion)
-        ? []
-        : [createCatalogIssue("goal-conversion-required", "目标节点需要配置有效转化指标")]
-    ),
+    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.goal,
   },
   trigger: {
@@ -367,6 +390,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               metric: value ? "预计进入 124.8万人" : "未配置人群",
               status: value ? "running" : "warning",
             }),
+            validation: {
+              required: {
+                code: "trigger-audience-required",
+                message: "触发节点需要选择进入人群",
+              },
+            },
           },
           {
             description: "同一客户 7 天内最多进入一次",
@@ -395,11 +424,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     kind: "trigger",
     getOutputVariables: createDefaultOutputVariables,
     sort: 0,
-    validate: (node) => (
-      hasText(node.data.audience)
-        ? []
-        : [createCatalogIssue("trigger-audience-required", "触发节点需要选择进入人群")]
-    ),
+    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.trigger,
   },
   wait: {
@@ -423,6 +448,12 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
               metric: `${value} 天后唤醒`,
               summary: `等待 ${value} 天后继续触达`,
             }),
+            validation: {
+              number: {
+                code: "wait-delay-required",
+                message: "等待节点需要配置等待天数",
+              },
+            },
           },
         ],
         id: "wait",
@@ -444,11 +475,7 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteLabel: "等待",
     getOutputVariables: createDefaultOutputVariables,
     sort: 10,
-    validate: (node) => (
-      isFiniteNonNegativeNumber(node.data.delayDays)
-        ? []
-        : [createCatalogIssue("wait-delay-required", "等待节点需要配置等待天数")]
-    ),
+    validate: validateNodeConfigFromCatalog,
     visual: nodeVisuals.wait,
   },
 };
@@ -616,11 +643,13 @@ function hasText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isFiniteNonNegativeNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-
 function validateActionNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  const issues = validateNodeConfigFromCatalog(node);
+
+  if (issues.length > 0) {
+    return issues;
+  }
+
   if (!hasText(node.data.actionType)) {
     return [createCatalogIssue("action-type-required", "营销动作需要选择动作类型")];
   }
@@ -633,6 +662,12 @@ function validateActionNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
 }
 
 function validateAiNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  const issues = validateNodeConfigFromCatalog(node);
+
+  if (issues.length > 0) {
+    return issues;
+  }
+
   if (!hasText(node.data.agentName)) {
     return [createCatalogIssue("ai-agent-required", "AI 接待需要绑定 Agent")];
   }
@@ -645,18 +680,18 @@ function validateAiNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
 }
 
 function validateBranchNode(node: WorkflowNode): WorkflowNodeValidationIssue[] {
-  const issues: WorkflowNodeValidationIssue[] = [];
+  const issues: WorkflowNodeValidationIssue[] = validateNodeConfigFromCatalog(node);
   const branchPaths = getWorkflowBranchPaths(node.data);
-
-  if (!hasText(node.data.branchRule)) {
-    issues.push(createCatalogIssue("branch-rule-required", "条件分支需要配置条件表达式"));
-  }
 
   if (branchPaths.some((path) => !hasText(path.label))) {
     issues.push(createCatalogIssue("branch-path-label-required", "条件分支路径需要填写分支名称"));
   }
 
   return issues;
+}
+
+function validateNodeConfigFromCatalog(node: WorkflowNode): WorkflowNodeValidationIssue[] {
+  return validateNodeConfigSections(node, workflowNodeCatalog[node.data.kind].configSections);
 }
 
 function createCatalogIssue(

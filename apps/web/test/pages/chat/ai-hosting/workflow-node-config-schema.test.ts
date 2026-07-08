@@ -10,7 +10,9 @@ import {
   baseNodeConfigSections,
   getNodeConfigSections,
 } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
+import { validateNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-config-validation";
 import { createDefaultNodeData } from "@/pages/chat/ai-hosting/workflow/node-definitions";
+import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
 
 describe("workflow node config schema", () => {
   it("defines reusable base node fields", () => {
@@ -89,5 +91,47 @@ describe("workflow node config schema", () => {
     expect(triggerRepeatField.toPatch(false, createDefaultNodeData("trigger"))).toEqual({
       repeatEntryEnabled: false,
     });
+  });
+
+  it("validates required config from persisted data instead of panel defaults", () => {
+    const actionData = createDefaultNodeData("action");
+
+    expect(validateNodeConfigSections({
+      data: {
+        ...actionData,
+        actionType: undefined,
+      },
+      id: "action",
+      position: { x: 0, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    }, getNodeConfigSections("action"))).toEqual([
+      {
+        code: "action-type-required",
+        message: "营销动作需要选择动作类型",
+        severity: "warning",
+        source: "catalog",
+      },
+    ]);
+  });
+
+  it("validates numeric config through schema metadata", () => {
+    const waitData = createDefaultNodeData("wait");
+
+    expect(validateNodeConfigSections({
+      data: {
+        ...waitData,
+        delayDays: -1,
+      },
+      id: "wait",
+      position: { x: 0, y: 0 },
+      type: WORKFLOW_NODE_TYPE,
+    }, getNodeConfigSections("wait"))).toEqual([
+      {
+        code: "wait-delay-required",
+        message: "等待节点需要配置等待天数",
+        severity: "warning",
+        source: "catalog",
+      },
+    ]);
   });
 });

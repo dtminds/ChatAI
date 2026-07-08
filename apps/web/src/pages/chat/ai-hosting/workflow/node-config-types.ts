@@ -5,8 +5,18 @@ import type {
 } from "./types";
 
 type NodeConfigFieldBase = {
+  getValidationValue?: (data: WorkflowNodeData) => unknown;
   id: string;
   label: string;
+  validation?: {
+    number?: NodeConfigValidationIssue;
+    required?: NodeConfigValidationIssue;
+  };
+};
+
+export type NodeConfigValidationIssue = {
+  code: string;
+  message: string;
 };
 
 export type NodeConfigTextField = NodeConfigFieldBase & {

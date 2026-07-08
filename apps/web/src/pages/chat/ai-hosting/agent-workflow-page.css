@@ -44,7 +44,7 @@
   overflow: hidden;
   border: 0.5px solid var(--workflow-border);
   border-radius: 10px;
-  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(8px);
 }
@@ -65,7 +65,7 @@
   overflow: hidden;
   border: 0.5px solid var(--workflow-border);
   border-radius: 8px;
-  background: hsl(var(--background));
+  background: var(--background);
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
 }
 
@@ -567,7 +567,7 @@
   max-height: 180px;
   overflow: auto;
   border-radius: 10px;
-  background: hsl(var(--background));
+  background: var(--background);
   margin: 0;
   padding: 10px;
   color: hsl(var(--foreground));
@@ -744,41 +744,6 @@
 .workflow-node-actionbar-button[aria-expanded="true"] {
   background: rgba(15, 23, 42, 0.06);
   color: var(--workflow-blue);
-}
-
-.workflow-node-menu {
-  position: absolute;
-  top: 28px;
-  right: 0;
-  z-index: 48;
-  min-width: 132px;
-  overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
-  background: hsl(var(--popover));
-  padding: 4px;
-  color: hsl(var(--popover-foreground));
-  box-shadow: 0 10px 28px var(--shadow-soft);
-}
-
-.workflow-node-menu-item {
-  display: flex;
-  width: 100%;
-  height: 32px;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 0 10px;
-  color: inherit;
-  font-size: 13px;
-  text-align: left;
-}
-
-.workflow-node-menu-item:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
 }
 
 .react-flow__node:hover .workflow-node-actionbar,
@@ -1176,9 +1141,9 @@
   overflow: hidden;
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
-  background: hsl(var(--popover));
+  background: var(--popover);
   padding: 4px;
-  color: hsl(var(--popover-foreground));
+  color: var(--popover-foreground);
   box-shadow: 0 10px 28px var(--shadow-soft);
 }
 
@@ -1198,8 +1163,8 @@
 }
 
 .workflow-zoom-menu-item:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .workflow-zoom-menu-icon {
@@ -1291,7 +1256,7 @@
 }
 
 .workflow-operator-chip:hover {
-  background: hsl(var(--background));
+  background: var(--background);
   color: hsl(var(--foreground));
 }
 

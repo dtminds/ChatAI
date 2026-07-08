@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useState } from "react";
 import type {
   Connection,
   EdgeChange,
@@ -29,17 +29,11 @@ import {
   useWorkflowDocument,
 } from "./workflow-draft-service";
 import { useWorkflowStableCallback } from "./workflow-hooks";
-import {
-  canReadWorkflowClipboard,
-  readWorkflowClipboard,
-  writeWorkflowClipboard,
-} from "./workflow-clipboard";
 import { deriveWorkflowMode } from "./workflow-mode";
 import {
   createDefaultWorkflowViewState,
   reduceWorkflowViewState,
 } from "./workflow-view-state";
-import type { WorkflowClipboardData } from "./workflow-clipboard";
 
 export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
@@ -59,8 +53,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     createDefaultWorkflowViewState,
   );
   const [publishAttempted, setPublishAttempted] = useState(false);
-  const [clipboardData, setClipboardData] = useState<WorkflowClipboardData | null>(null);
-  const pasteClipboardDataRef = useRef<(nextClipboardData: WorkflowClipboardData | null) => boolean>(() => false);
   const previewVersion = document.versionHistory.find((version) => version.id === viewState.previewVersionId);
   const runner = useWorkflowRun(document.id);
   const historyRun = runner.historyRun;
@@ -113,7 +105,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     selectionDeleteTarget,
     selectedNode,
     selectedNodeId,
-    selectedNodeIds,
     selectedNodeIdSet,
     selectNode,
     setSelectedNodeId,
@@ -330,69 +321,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     handleDeleteNodes(selectionDeleteTarget.nodeIds);
   });
 
-  const duplicateSelectedNode = useWorkflowStableCallback(() => {
-    if (selectedEdgeId || selectedNodeIds.length !== 1 || !selectedNodeId) {
-      return;
-    }
-
-    handleDuplicateNode(selectedNodeId);
-  });
-
-  const copySelectedNode = useWorkflowStableCallback(() => {
-    if (!permissions.canUseClipboard) {
-      return false;
-    }
-
-    if (selectedEdgeId || !selectedNodeIds.length) {
-      return false;
-    }
-
-    const nextClipboardData = controller.copyNodes(selectedNodeIds);
-
-    if (!nextClipboardData) {
-      return false;
-    }
-
-    setClipboardData(nextClipboardData);
-    void writeWorkflowClipboard(nextClipboardData);
-    closeCanvasOverlays();
-    return true;
-  });
-
-  const pasteClipboardData = useWorkflowStableCallback((nextClipboardData: WorkflowClipboardData | null) => {
-    if (!permissions.canUseClipboard) {
-      return false;
-    }
-
-    if (!nextClipboardData) {
-      return false;
-    }
-
-    const result = controller.pasteClipboardData(nextClipboardData);
-
-    if (!result) {
-      return false;
-    }
-
-    handleWorkflowEditResult(result);
-    return true;
-  });
-
-  pasteClipboardDataRef.current = pasteClipboardData;
-
-  const pasteReadableClipboard = useWorkflowStableCallback(async (fallbackClipboardData: WorkflowClipboardData | null) => {
-    pasteClipboardDataRef.current(await readWorkflowClipboard() ?? fallbackClipboardData);
-  });
-
-  const pasteClipboard = useWorkflowStableCallback(() => {
-    if (canReadWorkflowClipboard()) {
-      void pasteReadableClipboard(clipboardData);
-      return true;
-    }
-
-    return pasteClipboardData(clipboardData);
-  });
-
   const {
     edges: renderedEdges,
     nodes: renderedNodes,
@@ -416,16 +344,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   });
 
   useWorkflowShortcuts({
-    canCopySelection: permissions.canUseClipboard,
     canDeleteSelection: permissions.canEditGraph,
-    canDuplicateSelection: permissions.canEditGraph,
-    canPasteClipboard: permissions.canUseClipboard,
     canRedo: permissions.canUseHistory && controller.canRedo,
     canUndo: permissions.canUseHistory && controller.canUndo,
-    onCopySelection: permissions.canUseClipboard ? copySelectedNode : () => false,
     onDeleteSelection: permissions.canEditGraph ? deleteSelectedNode : () => undefined,
-    onDuplicateSelection: permissions.canEditGraph ? duplicateSelectedNode : () => undefined,
-    onPasteClipboard: permissions.canUseClipboard ? pasteClipboard : () => false,
     onRedo: redoWorkflowChange,
     onUndo: undoWorkflowChange,
   });
@@ -539,12 +461,12 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
   });
 
-  const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node) => {
+  const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node, draggedNodes) => {
     if (!permissions.canEditGraph) {
       return;
     }
 
-    const result = controller.finishNodeDrag(node.id, node.position);
+    const result = controller.finishNodeDrag(node.id, node.position, draggedNodes);
     if (result) {
       markDirty(result.draft);
     }

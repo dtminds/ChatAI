@@ -15,31 +15,20 @@ function createKeyEvent(key: string, init: KeyboardEventInit = {}) {
 describe("workflow shortcut definitions", () => {
   it("keeps workflow shortcut metadata centralized and displayable", () => {
     expect(Object.keys(WORKFLOW_SHORTCUTS)).toEqual([
-      "workflow.copy",
       "workflow.delete",
-      "workflow.duplicate",
-      "workflow.paste",
       "workflow.redo",
       "workflow.undo",
     ]);
     expect(getWorkflowShortcutDisplayHotkey("workflow.delete")).toBe("Delete");
     expect(getWorkflowShortcutDisplayHotkey("workflow.redo")).toBe("Mod+Y");
-    expect(getWorkflowShortcutDisplayHotkey("workflow.copy")).toBe("Mod+C");
   });
 
   it("matches modifier-aware workflow hotkeys", () => {
     expect(matchesWorkflowShortcut(
-      createKeyEvent("c", { ctrlKey: true }),
-      "workflow.copy",
+      createKeyEvent("z", { ctrlKey: true }),
+      "workflow.undo",
     )).toBe(true);
-    expect(matchesWorkflowShortcut(
-      createKeyEvent("v", { metaKey: true }),
-      "workflow.paste",
-    )).toBe(true);
-    expect(matchesWorkflowShortcut(
-      createKeyEvent("d", { ctrlKey: true, shiftKey: true }),
-      "workflow.duplicate",
-    )).toBe(false);
+    expect(matchesWorkflowShortcut(createKeyEvent("z"), "workflow.undo")).toBe(false);
   });
 
   it("matches delete and redo shortcut variants strictly", () => {

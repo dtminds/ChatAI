@@ -1,19 +1,13 @@
 import { renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useWorkflowShortcuts } from "@/pages/chat/ai-hosting/workflow/shortcuts";
 
 function renderWorkflowShortcuts(overrides: Partial<Parameters<typeof useWorkflowShortcuts>[0]> = {}) {
   const handlers = {
-    canCopySelection: true,
     canDeleteSelection: true,
-    canDuplicateSelection: true,
-    canPasteClipboard: true,
     canRedo: true,
     canUndo: true,
-    onCopySelection: vi.fn(() => true),
     onDeleteSelection: vi.fn(),
-    onDuplicateSelection: vi.fn(),
-    onPasteClipboard: vi.fn(() => true),
     onRedo: vi.fn(),
     onUndo: vi.fn(),
     ...overrides,
@@ -35,48 +29,20 @@ function dispatchShortcut(key: string, init: KeyboardEventInit = {}) {
   return event;
 }
 
-function selectDocumentText() {
-  const host = document.createElement("div");
-  host.textContent = "selected workflow text";
-  document.body.append(host);
-
-  const range = document.createRange();
-  range.selectNodeContents(host);
-  document.getSelection()?.removeAllRanges();
-  document.getSelection()?.addRange(range);
-
-  return () => {
-    document.getSelection()?.removeAllRanges();
-    host.remove();
-  };
-}
-
 describe("useWorkflowShortcuts", () => {
-  afterEach(() => {
-    document.getSelection()?.removeAllRanges();
-  });
-
-  it("does not steal browser copy when document text is selected", () => {
-    const clearSelection = selectDocumentText();
+  it("handles delete, undo, and redo shortcuts", () => {
     const handlers = renderWorkflowShortcuts();
 
-    try {
-      const event = dispatchShortcut("c");
+    const deleteEvent = dispatchShortcut("Backspace", { ctrlKey: false });
+    const undoEvent = dispatchShortcut("z");
+    const redoEvent = dispatchShortcut("y");
 
-      expect(handlers.onCopySelection).not.toHaveBeenCalled();
-      expect(event.defaultPrevented).toBe(false);
-    }
-    finally {
-      clearSelection();
-    }
-  });
-
-  it("handles workflow copy when there is no active text selection", () => {
-    const handlers = renderWorkflowShortcuts();
-    const event = dispatchShortcut("c");
-
-    expect(handlers.onCopySelection).toHaveBeenCalledTimes(1);
-    expect(event.defaultPrevented).toBe(true);
+    expect(handlers.onDeleteSelection).toHaveBeenCalledTimes(1);
+    expect(handlers.onUndo).toHaveBeenCalledTimes(1);
+    expect(handlers.onRedo).toHaveBeenCalledTimes(1);
+    expect(deleteEvent.defaultPrevented).toBe(true);
+    expect(undoEvent.defaultPrevented).toBe(true);
+    expect(redoEvent.defaultPrevented).toBe(true);
   });
 
   it("keeps editable targets outside workflow shortcut handling", () => {

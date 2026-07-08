@@ -53,6 +53,11 @@ type WorkflowControllerActionResult = WorkflowActionResult & {
   transient?: boolean;
 };
 
+type WorkflowNodePositionUpdate = {
+  nodeId: string;
+  position: WorkflowNode["position"];
+};
+
 function preserveCurrentViewport(
   draft: WorkflowDraft,
   currentDraft: WorkflowDraft,
@@ -68,10 +73,22 @@ function updateNodePositionInDraft(
   nodeId: string,
   position: WorkflowNode["position"],
 ) {
+  return updateNodePositionsInDraft(draft, [{ nodeId, position }]);
+}
+
+function updateNodePositionsInDraft(
+  draft: WorkflowDraft,
+  updates: WorkflowNodePositionUpdate[],
+) {
   let changed = false;
+  const positionByNodeId = new Map(
+    updates.map((update) => [update.nodeId, update.position]),
+  );
   const nodes = draft.nodes.map((node) => {
+    const position = positionByNodeId.get(node.id);
+
     if (
-      node.id !== nodeId
+      !position
       || (node.position.x === position.x && node.position.y === position.y)
     ) {
       return node;
@@ -186,10 +203,25 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     };
   }, [currentDraft, replaceDraftTransient]);
 
-  const finishNodeDrag = useCallback((nodeId: string, position: WorkflowNode["position"]) => {
+  const finishNodeDrag = useCallback((
+    nodeId: string,
+    position: WorkflowNode["position"],
+    draggedNodes: Array<Pick<WorkflowNode, "id" | "position">> = [],
+  ) => {
     flushConfigHistory();
     const previousDraft = moveStartDraftRef.current ?? currentDraft;
-    const nextDraft = sanitizeDraft(updateNodePositionInDraft(currentDraft, nodeId, position));
+    const positionUpdates: WorkflowNodePositionUpdate[] = draggedNodes.length > 0
+      ? draggedNodes.map((node) => ({
+          nodeId: node.id,
+          position: node.position,
+        }))
+      : [{ nodeId, position }];
+
+    if (!positionUpdates.some((update) => update.nodeId === nodeId)) {
+      positionUpdates.push({ nodeId, position });
+    }
+
+    const nextDraft = sanitizeDraft(updateNodePositionsInDraft(currentDraft, positionUpdates));
     moveStartDraftRef.current = null;
 
     if (isWorkflowDraftEqual(previousDraft, nextDraft)) {

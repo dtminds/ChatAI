@@ -831,21 +831,17 @@ describe("Agent workflow page", () => {
     expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
   });
 
-  it("saves viewport changes without adding workflow undo history", async () => {
+  it("keeps viewport changes out of workflow save and undo history", async () => {
     const user = userEvent.setup();
 
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const initialViewport = getWorkflowDocument("newcomer-conversion").draft.viewport;
+
     await user.click(within(canvas).getByRole("button", { name: "移动画布视角" }));
 
-    await waitFor(() => {
-      expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual({
-        x: 140,
-        y: 260,
-        zoom: 1.1,
-      });
-    });
+    expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual(initialViewport);
     expect(getUndoButton(canvas)).toBeDisabled();
   });
 
@@ -1126,7 +1122,7 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(2\) / })).toBeInTheDocument();
   });
 
-  it("duplicates the selected node with keyboard shortcuts outside editable fields", async () => {
+  it("does not duplicate the selected node with keyboard shortcuts", async () => {
     const user = userEvent.setup();
 
     renderWorkflowPage();
@@ -1135,12 +1131,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     fireEvent.keyDown(window, { key: "d", metaKey: true });
 
-    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / })).toBeInTheDocument();
-
-    const panel = screen.getByRole("complementary", { name: "节点配置" });
-    fireEvent.keyDown(within(panel).getByLabelText("节点名称"), { key: "d", metaKey: true });
-
-    expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 \(2\) / })).not.toBeInTheDocument();
+    expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 \(1\) / })).not.toBeInTheDocument();
   });
 
   it("deletes the selected node with keyboard shortcuts and records the change in history", async () => {

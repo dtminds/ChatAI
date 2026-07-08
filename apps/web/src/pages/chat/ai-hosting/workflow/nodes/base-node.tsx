@@ -2,6 +2,12 @@ import { memo, useState } from "react";
 import type { ReactNode } from "react";
 import { Copy01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
   canDeleteNodeKind,
@@ -12,7 +18,6 @@ import {
 import { getDefaultSourceHandleId } from "../node-handle-definitions";
 import type { NodeVisual } from "../node-definitions";
 import type { WorkflowNodeRenderData } from "../types";
-import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowTargetHandle } from "./node-handles";
 
 function WorkflowBaseNodeComponent({
@@ -118,100 +123,72 @@ function NodeActionMenu({
   id: string;
   setActionMenuOpen: (open: boolean) => void;
 }) {
-  const menuRef = useWorkflowDismissableLayer<HTMLDivElement>({
-    enabled: actionMenuOpen,
-    onDismiss: () => setActionMenuOpen(false),
-  });
-
   return (
-    <div
-      className={cn(
-        "workflow-node-actionbar nodrag nopan",
-        (data.selected || actionMenuOpen) && "workflow-node-actionbar-visible",
-      )}
-      ref={menuRef}
-    >
-      <button
-        aria-expanded={actionMenuOpen}
-        aria-haspopup="menu"
-        aria-label={`更多操作：${data.title}`}
-        className="workflow-node-actionbar-button"
-        onClick={(event) => {
-          event.stopPropagation();
-          setActionMenuOpen(!actionMenuOpen);
-        }}
-        type="button"
+    <DropdownMenu modal={false} open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+      <div
+        className={cn(
+          "workflow-node-actionbar nodrag nopan",
+          (data.selected || actionMenuOpen) && "workflow-node-actionbar-visible",
+        )}
       >
-        <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
-      </button>
-      {actionMenuOpen ? (
-        <div
-          aria-label={`节点操作：${data.title}`}
-          className="workflow-node-menu"
-          onClick={(event) => event.stopPropagation()}
-          role="menu"
-        >
+        <DropdownMenuTrigger asChild>
           <button
-            className="workflow-node-menu-item"
-            onClick={(event) => {
-              event.stopPropagation();
-              data.onSelect?.(id);
-              setActionMenuOpen(false);
-            }}
-            role="menuitem"
+            aria-label={`更多操作：${data.title}`}
+            className="workflow-node-actionbar-button"
+            onClick={(event) => event.stopPropagation()}
             type="button"
           >
-            打开配置
+            <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
           </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          aria-label={`节点操作：${data.title}`}
+          className="w-36"
+          onClick={(event) => event.stopPropagation()}
+          sideOffset={4}
+        >
+          <DropdownMenuItem
+            onSelect={() => {
+              data.onSelect?.(id);
+            }}
+          >
+            打开配置
+          </DropdownMenuItem>
           {canInsertAfterNodeKind(data.kind) ? (
-            <button
-              className="workflow-node-menu-item"
-              onClick={(event) => {
-                event.stopPropagation();
+            <DropdownMenuItem
+              onSelect={() => {
                 data.onToggleInsertMenu?.(
                   id,
                   getDefaultSourceHandleId(data.kind, data),
                 );
-                setActionMenuOpen(false);
               }}
-              role="menuitem"
-              type="button"
             >
               添加后续节点
-            </button>
+            </DropdownMenuItem>
           ) : null}
           {canDuplicateNodeKind(data.kind) ? (
-            <button
-              className="workflow-node-menu-item"
-              onClick={(event) => {
-                event.stopPropagation();
+            <DropdownMenuItem
+              onSelect={() => {
                 data.onDuplicate?.(id);
-                setActionMenuOpen(false);
               }}
-              role="menuitem"
-              type="button"
             >
               <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={1.8} />
               复制节点
-            </button>
+            </DropdownMenuItem>
           ) : null}
           {canDeleteNodeKind(data.kind) ? (
-            <button
-              className="workflow-node-menu-item"
-              onClick={(event) => {
-                event.stopPropagation();
+            <DropdownMenuItem
+              onSelect={() => {
                 data.onDelete?.(id);
-                setActionMenuOpen(false);
               }}
-              role="menuitem"
-              type="button"
             >
               <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
               删除节点
-            </button>
+            </DropdownMenuItem>
           ) : null}
-        </div>
-      ) : null}
-    </div>
+        </DropdownMenuContent>
+      </div>
+    </DropdownMenu>
   );
 }

@@ -12,36 +12,18 @@ function isEditableShortcutTarget(target: EventTarget | null) {
     || target.isContentEditable;
 }
 
-function hasActiveDocumentTextSelection() {
-  const selection = document.getSelection();
-
-  return Boolean(selection && !selection.isCollapsed && selection.rangeCount > 0);
-}
-
 export function useWorkflowShortcuts({
-  canCopySelection,
   canDeleteSelection,
-  canDuplicateSelection,
-  canPasteClipboard,
   canRedo,
   canUndo,
-  onCopySelection,
   onDeleteSelection,
-  onDuplicateSelection,
-  onPasteClipboard,
   onRedo,
   onUndo,
 }: {
-  canCopySelection: boolean;
   canDeleteSelection: boolean;
-  canDuplicateSelection: boolean;
-  canPasteClipboard: boolean;
   canRedo: boolean;
   canUndo: boolean;
-  onCopySelection: () => boolean;
   onDeleteSelection: () => void;
-  onDuplicateSelection: () => void;
-  onPasteClipboard: () => boolean;
   onRedo: () => void;
   onUndo: () => void;
 }) {
@@ -55,35 +37,6 @@ export function useWorkflowShortcuts({
         event.preventDefault();
         event.stopPropagation();
         onDeleteSelection();
-        return;
-      }
-
-      if (canDuplicateSelection && matchesWorkflowShortcut(event, "workflow.duplicate")) {
-        event.preventDefault();
-        event.stopPropagation();
-        onDuplicateSelection();
-        return;
-      }
-
-      if (canCopySelection && matchesWorkflowShortcut(event, "workflow.copy")) {
-        if (hasActiveDocumentTextSelection()) {
-          return;
-        }
-
-        if (onCopySelection()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-
-        return;
-      }
-
-      if (canPasteClipboard && matchesWorkflowShortcut(event, "workflow.paste")) {
-        if (onPasteClipboard()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-
         return;
       }
 
@@ -108,16 +61,10 @@ export function useWorkflowShortcuts({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
-    canCopySelection,
     canDeleteSelection,
-    canDuplicateSelection,
-    canPasteClipboard,
     canRedo,
     canUndo,
-    onCopySelection,
     onDeleteSelection,
-    onDuplicateSelection,
-    onPasteClipboard,
     onRedo,
     onUndo,
   ]);

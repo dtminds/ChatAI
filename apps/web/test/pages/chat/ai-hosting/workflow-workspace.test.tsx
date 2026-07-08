@@ -2,10 +2,6 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/ai-hosting/workflow/use-workflow-workspace";
 import {
-  createWorkflowClipboardData,
-  stringifyWorkflowClipboardData,
-} from "@/pages/chat/ai-hosting/workflow/workflow-clipboard";
-import {
   createEdge,
   createNodeFromKind,
 } from "@/pages/chat/ai-hosting/workflow/graph";
@@ -61,22 +57,6 @@ vi.mock("@xyflow/react", async () => {
       }),
   };
 });
-
-function setNavigatorClipboard(clipboard: Partial<Clipboard> | undefined) {
-  const previousClipboard = navigator.clipboard;
-
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: clipboard,
-  });
-
-  return () => {
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: previousClipboard,
-    });
-  };
-}
 
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
@@ -164,98 +144,6 @@ describe("useWorkflowWorkspace", () => {
     }
     finally {
       vi.useRealTimers();
-    }
-  });
-
-  it("copies and pastes the selected node through shortcuts with undo and redo support", () => {
-    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-
-    act(() => {
-      result.current.canvas.onSelectNode("action-message");
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
-    });
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
-    });
-
-    const pastedNodeId = result.current.inspector.node?.id;
-    expect(pastedNodeId).toMatch(/^action-/);
-    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(true);
-    expect(result.current.canvas.canUndo).toBe(true);
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "z" }));
-    });
-
-    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(false);
-    expect(result.current.canvas.canRedo).toBe(true);
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "y" }));
-    });
-
-    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(true);
-  });
-
-  it("copies and pastes modifier-click selected nodes with their internal edges", () => {
-    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-
-    act(() => {
-      result.current.canvas.onSelectNode("wait-2d");
-      result.current.canvas.onSelectNode("branch-intent", { additive: true });
-    });
-
-    expect(result.current.inspector.node).toBeUndefined();
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
-    });
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
-    });
-
-    const pastedWaitNode = result.current.canvas.nodes.find((node) =>
-      node.id !== "wait-2d" && node.data.kind === "wait" && node.data.title === "观察期 (1)",
-    );
-    const pastedBranchNode = result.current.canvas.nodes.find((node) =>
-      node.id !== "branch-intent" && node.data.kind === "branch" && node.data.title === "意向判断 (1)",
-    );
-
-    expect(pastedWaitNode?.id).toMatch(/^wait-/);
-    expect(pastedBranchNode?.id).toMatch(/^branch-/);
-    expect(result.current.canvas.edges).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        source: pastedWaitNode?.id,
-        target: pastedBranchNode?.id,
-      }),
-    ]));
-  });
-
-  it("pastes workflow data from the system clipboard before using local clipboard fallback", async () => {
-    const systemClipboardData = createWorkflowClipboardData(
-      getWorkflowDocument("newcomer-conversion").draft,
-      ["wait-2d"],
-    )!;
-    const restoreClipboard = setNavigatorClipboard({
-      readText: vi.fn().mockResolvedValue(stringifyWorkflowClipboardData(systemClipboardData)),
-      writeText: vi.fn().mockResolvedValue(undefined),
-    });
-    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-
-    try {
-      await act(async () => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
-      });
-
-      await waitFor(() => {
-        expect(result.current.inspector.node?.id).toMatch(/^wait-/);
-      });
-      expect(result.current.inspector.node?.data.title).toBe("观察期 (1)");
-    }
-    finally {
-      restoreClipboard();
     }
   });
 
@@ -465,6 +353,43 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
       .toEqual(finalNode.position);
     expect(result.current.topBar.saveState).toBe("saving");
+  });
+
+  it("persists every selected node position when a multi-node drag finishes", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
+    const waitNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
+    const branchNode = result.current.canvas.nodes.find((node) => node.id === "branch-intent")!;
+    const actionNode = result.current.canvas.nodes.find((node) => node.id === "action-message")!;
+    const nextWaitNode = { ...waitNode, position: { x: waitNode.position.x + 120, y: waitNode.position.y + 48 } };
+    const nextBranchNode = { ...branchNode, position: { x: branchNode.position.x + 120, y: branchNode.position.y + 48 } };
+    const nextActionNode = { ...actionNode, position: { x: actionNode.position.x + 120, y: actionNode.position.y + 48 } };
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onSelectNode("branch-intent", { additive: true });
+      result.current.canvas.onSelectNode("action-message", { additive: true });
+      result.current.canvas.onNodeDragStart(event, actionNode, [waitNode, branchNode, actionNode]);
+      result.current.canvas.onNodeDragStop(event, nextActionNode, [nextWaitNode, nextBranchNode, nextActionNode]);
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(nextWaitNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual(nextBranchNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.position)
+      .toEqual(nextActionNode.position);
+
+    act(() => {
+      result.current.canvas.onUndo();
+    });
+
+    expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual(waitNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual(branchNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.position)
+      .toEqual(actionNode.position);
   });
 
   it("keeps viewport changes out of the draft save boundary", () => {

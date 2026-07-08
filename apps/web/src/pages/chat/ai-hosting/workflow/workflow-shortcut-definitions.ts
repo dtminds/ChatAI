@@ -1,8 +1,5 @@
 export type WorkflowShortcutId =
-  | "workflow.copy"
   | "workflow.delete"
-  | "workflow.duplicate"
-  | "workflow.paste"
   | "workflow.redo"
   | "workflow.undo";
 
@@ -15,30 +12,12 @@ export type WorkflowShortcutDefinition = {
 };
 
 export const WORKFLOW_SHORTCUTS: Record<WorkflowShortcutId, WorkflowShortcutDefinition> = {
-  "workflow.copy": {
-    description: "复制选中的节点",
-    hotkeys: ["Mod+C"],
-    id: "workflow.copy",
-    name: "复制",
-  },
   "workflow.delete": {
     description: "删除选中的节点或边",
     displayHotkey: "Delete",
     hotkeys: ["Delete", "Backspace"],
     id: "workflow.delete",
     name: "删除",
-  },
-  "workflow.duplicate": {
-    description: "复制并插入当前选中的节点",
-    hotkeys: ["Mod+D"],
-    id: "workflow.duplicate",
-    name: "创建副本",
-  },
-  "workflow.paste": {
-    description: "粘贴已复制的节点",
-    hotkeys: ["Mod+V"],
-    id: "workflow.paste",
-    name: "粘贴",
   },
   "workflow.redo": {
     description: "恢复下一个画布改动",

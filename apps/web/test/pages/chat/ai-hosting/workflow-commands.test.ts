@@ -7,7 +7,10 @@ import {
   createInitialDraft,
 } from "@/pages/chat/ai-hosting/workflow/graph";
 import type { WorkflowGraphCommand } from "@/pages/chat/ai-hosting/workflow/workflow-commands";
-import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
+import type {
+  WorkflowDraft,
+  WorkflowNodeConfigPatch,
+} from "@/pages/chat/ai-hosting/workflow/types";
 
 function createDraft(): WorkflowDraft {
   return createInitialDraft();
@@ -98,6 +101,18 @@ describe("workflow graph commands", () => {
       {
         type: "arrange-nodes",
       },
+      {
+        nodeId: "wait-2d",
+        type: "move-nodes",
+        updates: [
+          { nodeId: "wait-2d", position: { x: 420, y: 120 } },
+        ],
+      },
+      {
+        nodeId: "wait-2d",
+        patch: { title: "等待确认" },
+        type: "update-node-data",
+      },
     ];
 
     commands.forEach((command) => {
@@ -140,6 +155,36 @@ describe("workflow graph commands", () => {
     expect(operation?.event).toBe("edge:delete");
     expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[0]);
     expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[1]);
+  });
+
+  it("routes node movement and config edits through the command boundary", () => {
+    const moveOperation = runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "wait-2d", position: { x: 420, y: 120 } },
+        { nodeId: "branch-intent", position: { x: 760, y: 180 } },
+      ],
+    });
+
+    expect(moveOperation?.event).toBe("node:move");
+    expect(moveOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.position)
+      .toEqual({ x: 420, y: 120 });
+    expect(moveOperation?.draft.nodes.find((node) => node.id === "branch-intent")?.position)
+      .toEqual({ x: 760, y: 180 });
+
+    const configOperation = runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      patch: {
+        kind: "goal",
+        title: "等待确认",
+      } as unknown as WorkflowNodeConfigPatch,
+      type: "update-node-data",
+    });
+
+    expect(configOperation?.event).toBe("node:config-change");
+    expect(configOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.kind).toBe("wait");
+    expect(configOperation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title).toBe("等待确认");
   });
 });
 

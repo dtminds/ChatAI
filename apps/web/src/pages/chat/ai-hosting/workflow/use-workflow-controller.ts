@@ -12,8 +12,6 @@ import {
 } from "./workflow-draft-normalizer";
 import {
   moveNodesInDraft,
-  moveNodesOperation,
-  updateNodeDataOperation,
 } from "./graph-operations";
 import type {
   WorkflowActionResult,
@@ -201,7 +199,11 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       positionUpdates.push({ nodeId, position });
     }
 
-    const operation = moveNodesOperation(previousDraft, positionUpdates, nodeId);
+    const operation = runWorkflowGraphCommand(previousDraft, {
+      nodeId,
+      type: "move-nodes",
+      updates: positionUpdates,
+    });
     moveStartDraftRef.current = null;
 
     if (!operation) {
@@ -281,7 +283,11 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     nodeId: string,
     patch: WorkflowNodeConfigPatch,
   ): WorkflowControllerActionResult | undefined => {
-    const operation = updateNodeDataOperation(currentDraft, nodeId, patch);
+    const operation = runWorkflowGraphCommand(currentDraft, {
+      nodeId,
+      patch,
+      type: "update-node-data",
+    });
 
     if (!operation) {
       return undefined;

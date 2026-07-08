@@ -10,12 +10,18 @@ import {
   duplicateNodeOperation,
   insertNodeAfterOperation,
   insertNodeBetweenOperation,
+  moveNodesOperation,
   pasteClipboardOperation,
+  updateNodeDataOperation,
 } from "./graph-operations";
-import type { WorkflowGraphOperation } from "./graph-operations";
+import type {
+  WorkflowGraphOperation,
+  WorkflowNodePositionUpdate,
+} from "./graph-operations";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowDraft,
+  WorkflowNodeConfigPatch,
   WorkflowNodeKind,
 } from "./types";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
@@ -69,6 +75,16 @@ export type WorkflowGraphCommand =
   }
   | {
     type: "arrange-nodes";
+  }
+  | {
+    nodeId: string;
+    type: "move-nodes";
+    updates: WorkflowNodePositionUpdate[];
+  }
+  | {
+    nodeId: string;
+    patch: WorkflowNodeConfigPatch;
+    type: "update-node-data";
   };
 
 export function runWorkflowGraphCommand(
@@ -131,6 +147,12 @@ export function runWorkflowGraphCommand(
 
     case "arrange-nodes":
       return arrangeNodesOperation(draft);
+
+    case "move-nodes":
+      return moveNodesOperation(draft, command.updates, command.nodeId);
+
+    case "update-node-data":
+      return updateNodeDataOperation(draft, command.nodeId, command.patch);
 
     default:
       return undefined;

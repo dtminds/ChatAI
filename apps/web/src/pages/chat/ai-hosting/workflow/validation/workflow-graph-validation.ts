@@ -209,6 +209,10 @@ function getConnectionPolicyIssues(
       return;
     }
 
+    if (violation === "target-handle-occupied") {
+      return;
+    }
+
     const issueCode = violation === "source-handle-occupied"
       ? "source-handle-multiple-outgoing"
       : "edge-invalid-connection";
@@ -257,6 +261,8 @@ function getConnectionPolicyIssueMessage(
       return "节点不能连接到自身";
     case "source-handle-occupied":
       return "同一个出口只能连接一条下游连线";
+    case "target-handle-occupied":
+      return "节点入口已被其他连线占用";
     case "edge-cycle":
       return "Workflow 不能包含循环连线";
   }

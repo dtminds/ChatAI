@@ -14,7 +14,8 @@ export type WorkflowConnectionPolicyViolationCode =
   | "missing-endpoint"
   | "missing-node"
   | "self-connection"
-  | "source-handle-occupied";
+  | "source-handle-occupied"
+  | "target-handle-occupied";
 
 export function filterWorkflowEdgesByConnectionPolicy(
   draft: WorkflowDraft,
@@ -93,6 +94,10 @@ export function getWorkflowConnectionPolicyViolation(
     return "source-handle-occupied";
   }
 
+  if (hasTargetHandleConnection(edges, target, targetHandle)) {
+    return "target-handle-occupied";
+  }
+
   if (checkCycle && hasPathToNode(edges, target, source)) {
     return "edge-cycle";
   }
@@ -154,6 +159,23 @@ function hasSourceHandleConnection(
 
 function getSourceHandleKey(sourceHandle: string | null | undefined) {
   return sourceHandle ?? "__default__";
+}
+
+function hasTargetHandleConnection(
+  edges: WorkflowEdge[],
+  target: string,
+  targetHandle: string | null | undefined,
+) {
+  const targetHandleKey = getTargetHandleKey(targetHandle);
+
+  return edges.some((edge) =>
+    edge.target === target
+    && getTargetHandleKey(edge.targetHandle) === targetHandleKey,
+  );
+}
+
+function getTargetHandleKey(targetHandle: string | null | undefined) {
+  return targetHandle ?? "__default__";
 }
 
 function hasPathToNode(

@@ -5,6 +5,7 @@ import { runWorkflowGraphCommand } from "@/pages/chat/ai-hosting/workflow/workfl
 import {
   createEdge,
   createInitialDraft,
+  createNodeFromKind,
 } from "@/pages/chat/ai-hosting/workflow/graph";
 import type { WorkflowGraphCommand } from "@/pages/chat/ai-hosting/workflow/workflow-commands";
 import type {
@@ -73,7 +74,7 @@ describe("workflow graph commands", () => {
         connection: {
           source: "branch-intent",
           sourceHandle: "branch-normal",
-          target: "goal",
+          target: "action-normal",
           targetHandle: null,
         },
         type: "connect-nodes",
@@ -237,19 +238,22 @@ function createDirtyDraftForCommandBoundary(): WorkflowDraft {
         id: "edge-missing-goal",
       },
     ],
-    nodes: draft.nodes.map((node) =>
-      node.id === "action-message"
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              onDelete: () => undefined,
-            },
-            selected: true,
-            zIndex: 20,
-          }
-        : node,
-    ),
+    nodes: [
+      ...draft.nodes.map((node) =>
+        node.id === "action-message"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                onDelete: () => undefined,
+              },
+              selected: true,
+              zIndex: 20,
+            }
+          : node,
+      ),
+      createNodeFromKind("action", "action-normal", 10),
+    ],
     viewport: {
       x: 320,
       y: 180,

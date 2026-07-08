@@ -3,6 +3,7 @@ import {
   getWorkflowConnectionPolicyViolation,
 } from "@/pages/chat/ai-hosting/workflow/connection-policy";
 import {
+  createEdge,
   createInitialDraft,
 } from "@/pages/chat/ai-hosting/workflow/graph";
 
@@ -38,5 +39,37 @@ describe("workflow connection policy", () => {
       target: "trigger",
       targetHandle: null,
     })).toBe("invalid-node-kind");
+  });
+
+  it("rejects connections when the source or target handle is already occupied", () => {
+    const draft = createInitialDraft();
+
+    expect(getWorkflowConnectionPolicyViolation(draft, {
+      source: "wait-2d",
+      sourceHandle: null,
+      target: "goal",
+      targetHandle: null,
+    })).toBe("source-handle-occupied");
+    expect(getWorkflowConnectionPolicyViolation(draft, {
+      source: "branch-intent",
+      sourceHandle: "branch-normal",
+      target: "goal",
+      targetHandle: null,
+    })).toBe("target-handle-occupied");
+
+    const reconnectableDraft = {
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("branch-intent", "goal", undefined, { sourceHandle: "branch-normal" }),
+      ],
+    };
+
+    expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
+      source: "branch-intent",
+      sourceHandle: "branch-normal",
+      target: "action-message",
+      targetHandle: null,
+    })).toBe("source-handle-occupied");
   });
 });

@@ -147,31 +147,48 @@ describe("workflow graph operations", () => {
 
     const reconnectableDraft = {
       ...draft,
-      edges: draft.edges.filter((edge) => edge.source !== "wait-2d"),
+      edges: draft.edges.filter((edge) =>
+        edge.source !== "wait-2d" && edge.target !== "action-message",
+      ),
     };
     const operation = connectNodesOperation(reconnectableDraft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "goal",
+      target: "action-message",
       targetHandle: null,
     });
 
     expect(operation?.event).toBe("edge:connect");
-    expect(operation?.result?.edgeId).toBe("edge-wait-2d-goal");
+    expect(operation?.result?.edgeId).toBe("edge-wait-2d-action-message");
     expect(connectNodesOperation(operation!.draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "goal",
+      target: "action-message",
       targetHandle: null,
     })).toBeUndefined();
-    const branchOperation = connectNodesOperation(draft, {
+    expect(connectNodesOperation(draft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
       target: "goal",
       targetHandle: null,
+    })).toBeUndefined();
+
+    const branchReconnectableDraft = {
+      ...draft,
+      edges: draft.edges.filter((edge) => edge.id !== "edge-branch-intent-branch-high-action-message"),
+      nodes: [
+        ...draft.nodes,
+        createNodeFromKind("action", "action-normal", 10),
+      ],
+    };
+    const branchOperation = connectNodesOperation(branchReconnectableDraft, {
+      source: "branch-intent",
+      sourceHandle: "branch-normal",
+      target: "action-normal",
+      targetHandle: null,
     });
 
-    expect(branchOperation?.result?.edgeId).toBe("edge-branch-intent-branch-normal-goal");
+    expect(branchOperation?.result?.edgeId).toBe("edge-branch-intent-branch-normal-action-normal");
     expect(connectNodesOperation(branchOperation!.draft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",

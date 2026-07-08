@@ -1,6 +1,7 @@
 import type {
   WorkflowDraft,
   WorkflowEdgeData,
+  WorkflowNode,
   WorkflowNodeData,
 } from "../types";
 import { canonicalizeWorkflowDraft } from "../workflow-draft-normalizer";
@@ -29,6 +30,14 @@ export function createWorkflowRunDraftSnapshot(draft: WorkflowDraft): WorkflowDr
     })),
     viewport: { ...canonicalDraft.viewport },
   };
+}
+
+export function createWorkflowNodeRunSnapshot(node: WorkflowNode): WorkflowNode | undefined {
+  return createWorkflowRunDraftSnapshot({
+    edges: [],
+    nodes: [node],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }).nodes[0];
 }
 
 export function createWorkflowRuntimeSnapshot(draft: WorkflowDraft): WorkflowRuntimeSnapshot {

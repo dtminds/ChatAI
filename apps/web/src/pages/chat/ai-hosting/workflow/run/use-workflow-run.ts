@@ -12,7 +12,10 @@ import {
   initialWorkflowRunState,
   workflowRunReducer,
 } from "./workflow-run-state";
-import { createWorkflowRuntimeSnapshot } from "./workflow-run-snapshot";
+import {
+  createWorkflowNodeRunSnapshot,
+  createWorkflowRuntimeSnapshot,
+} from "./workflow-run-snapshot";
 
 const defaultWorkflowRunAdapter = createMockWorkflowRunAdapter();
 
@@ -34,26 +37,32 @@ export function useWorkflowRun(
   }, [scopeKey]);
 
   const runNode = useCallback((node: WorkflowNode) => {
+    const nodeSnapshot = createWorkflowNodeRunSnapshot(node);
+
+    if (!nodeSnapshot) {
+      return;
+    }
+
     const scopeVersion = scopeVersionRef.current;
-    const nodeRunVersion = (nodeRunVersionsRef.current[node.id] ?? 0) + 1;
-    nodeRunVersionsRef.current[node.id] = nodeRunVersion;
+    const nodeRunVersion = (nodeRunVersionsRef.current[nodeSnapshot.id] ?? 0) + 1;
+    nodeRunVersionsRef.current[nodeSnapshot.id] = nodeRunVersion;
 
     dispatch({
-      node,
+      node: nodeSnapshot,
       type: "node-run-started",
     });
 
-    void Promise.resolve(adapter.runNode({ node }))
+    void Promise.resolve(adapter.runNode({ node: nodeSnapshot }))
       .then((runRecord) => {
         if (
           scopeVersionRef.current !== scopeVersion
-          || nodeRunVersionsRef.current[node.id] !== nodeRunVersion
+          || nodeRunVersionsRef.current[nodeSnapshot.id] !== nodeRunVersion
         ) {
           return;
         }
 
         dispatch({
-          node,
+          node: nodeSnapshot,
           record: runRecord,
           type: "node-run-resolved",
         });
@@ -61,14 +70,14 @@ export function useWorkflowRun(
       .catch((error: unknown) => {
         if (
           scopeVersionRef.current !== scopeVersion
-          || nodeRunVersionsRef.current[node.id] !== nodeRunVersion
+          || nodeRunVersionsRef.current[nodeSnapshot.id] !== nodeRunVersion
         ) {
           return;
         }
 
         dispatch({
           error,
-          node,
+          node: nodeSnapshot,
           type: "node-run-rejected",
         });
       });

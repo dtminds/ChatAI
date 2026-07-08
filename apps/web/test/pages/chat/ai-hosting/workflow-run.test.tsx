@@ -7,6 +7,7 @@ import {
 import { useWorkflowRun } from "@/pages/chat/ai-hosting/workflow/run/use-workflow-run";
 import {
   createMockWorkflowRunAdapter,
+  type WorkflowNodeRunRequest,
   type WorkflowRunRequest,
 } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-adapter";
 import { createWorkflowRuntimeSnapshot } from "@/pages/chat/ai-hosting/workflow/run/workflow-run-snapshot";
@@ -82,7 +83,16 @@ describe("useWorkflowRun", () => {
       result.current.runNode(node);
     });
 
-    expect(adapter.runNode).toHaveBeenCalledWith({ node });
+    expect(adapter.runNode).toHaveBeenCalledWith({
+      node: expect.objectContaining({
+        data: expect.objectContaining({
+          agentName: "护肤小助理",
+          kind: "ai",
+        }),
+        id: node.id,
+        selected: false,
+      }),
+    });
     expect(result.current.getNodeRun(node.id)?.status).toBe("running");
 
     await act(async () => {
@@ -90,6 +100,52 @@ describe("useWorkflowRun", () => {
     });
 
     expect(result.current.getNodeRun(node.id)?.logs).toEqual(["adapter run"]);
+  });
+
+  it("runs individual nodes from a sanitized runtime snapshot", async () => {
+    const adapter = {
+      runNode: vi.fn((_request: WorkflowNodeRunRequest) => ({
+        durationMs: 12,
+        finishedAt: "10:24:18",
+        input: "{}",
+        logs: ["adapter run"],
+        output: "{\"ok\":true}",
+        status: "succeeded" as const,
+      })),
+      runWorkflow: createUnusedWorkflowRunAdapter(),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+    const baseNode = createWorkflowNode();
+    const node = createWorkflowNode({
+      data: {
+        ...baseNode.data,
+        _runtimeStatus: "selected",
+        onDelete: vi.fn(),
+        selected: true,
+      } as WorkflowNode["data"],
+      selected: true,
+      zIndex: 20,
+    });
+
+    act(() => {
+      result.current.runNode(node);
+    });
+
+    expect(adapter.runNode).toHaveBeenCalled();
+    const requestNode = adapter.runNode.mock.calls[0]![0].node;
+
+    expect(requestNode).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "ai",
+        title: "AI 接待",
+      }),
+      id: "ai-node",
+      selected: false,
+    }));
+    expect(requestNode?.zIndex).toBeUndefined();
+    expect(requestNode?.data._runtimeStatus).toBeUndefined();
+    expect(requestNode?.data.onDelete).toBeUndefined();
+    expect(result.current.getNodeRun("ai-node")?.input).toContain("\"nodeId\": \"ai-node\"");
   });
 
   it("provides a replaceable mock adapter for local workflow runs", async () => {

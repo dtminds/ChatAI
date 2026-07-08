@@ -91,6 +91,20 @@ describe("workflow graph validation", () => {
     ]));
   });
 
+  it("derives incoming capability from target handle definitions", () => {
+    const validation = validateWorkflowGraph(createInitialNodes(), [
+      ...createInitialEdges(),
+      createEdge("wait-2d", "trigger"),
+    ]);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "node-multiple-incoming",
+        nodeId: "trigger",
+      }),
+    ]));
+  });
+
   it("derives multiple outgoing capability from source handle definitions", () => {
     const nodes = [
       ...createInitialNodes(),

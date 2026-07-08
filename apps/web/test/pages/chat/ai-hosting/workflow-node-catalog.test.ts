@@ -33,6 +33,7 @@ import {
   getNodeSourceHandleLabel,
   getNodeSourceHandleLaneOffset,
   getNodeSourceHandleTop,
+  getNodeTargetHandleCapacity,
   getNodeTargetHandleDefinitions,
   getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
@@ -324,6 +325,8 @@ describe("workflow node catalog", () => {
     expect(getNodeTargetHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{}]);
     expect(getNodeTargetHandleDefinitions(createDefaultNodeData("branch"))).toEqual([{}]);
     expect(getNodeTargetHandleDefinitions(createDefaultNodeData("goal"))).toEqual([{}]);
+    expect(getNodeTargetHandleCapacity(createDefaultNodeData("trigger"))).toBe(0);
+    expect(getNodeTargetHandleCapacity(createDefaultNodeData("wait"))).toBe(1);
   });
 
   it("derives unconnected named source handles from the same handle boundary", () => {

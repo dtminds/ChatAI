@@ -30,6 +30,12 @@ export function getNodeTargetHandleDefinitions(
   return getNodeDefinitionCore(data.kind).getTargetHandles(data);
 }
 
+export function getNodeTargetHandleCapacity(
+  data: WorkflowNodeRenderData,
+) {
+  return getNodeTargetHandleDefinitions(data).length;
+}
+
 export function getDefaultSourceHandleId(
   kind: WorkflowNodeKind,
   data?: WorkflowNodeRenderData,

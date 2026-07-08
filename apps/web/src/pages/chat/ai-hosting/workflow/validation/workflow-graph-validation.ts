@@ -7,6 +7,7 @@ import {
 } from "../connection-policy";
 import {
   getNodeSourceHandleDefinitions,
+  getNodeTargetHandleCapacity,
   getNodeUnconnectedSourceHandles,
 } from "../node-handle-definitions";
 
@@ -355,12 +356,13 @@ function getCardinalityIssues(
   nodes.forEach((node) => {
     const incomingEdges = incomingByTarget.get(node.id) ?? [];
     const outgoingEdges = outgoingBySource.get(node.id) ?? [];
+    const targetHandleCapacity = getNodeTargetHandleCapacity(node.data);
 
-    if (node.data.kind !== "trigger" && incomingEdges.length > 1) {
+    if (incomingEdges.length > targetHandleCapacity) {
       issues.push({
         code: "node-multiple-incoming",
         edgeIds: incomingEdges.map((edge) => edge.id),
-        message: "节点不能有多个入口连线",
+        message: "节点入口数量超出当前连接桩能力",
         nodeId: node.id,
         severity: "warning",
         source: "graph",

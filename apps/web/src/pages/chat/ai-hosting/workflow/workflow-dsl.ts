@@ -1,4 +1,5 @@
 import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
+import { createWorkflowNodeExecutionConfig } from "./node-catalog";
 import type {
   WorkflowDraft,
   WorkflowEdge,
@@ -151,12 +152,10 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
       targetHandle: edge.targetHandle ?? null,
     })),
     nodes: canonicalDraft.nodes.map((node) => {
-      const { kind, ...config } = node.data;
-
       return {
-        config,
+        config: createWorkflowNodeExecutionConfig(node.data),
         id: node.id,
-        kind,
+        kind: node.data.kind,
       };
     }),
   };

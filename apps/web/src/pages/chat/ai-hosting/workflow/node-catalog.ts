@@ -67,6 +67,7 @@ export type WorkflowNodeCatalogEntry = {
   canDuplicate: boolean;
   canInsertAfter: boolean;
   configSections: NodeConfigSection[];
+  createExecutionConfig: (data: WorkflowNodeData) => Record<string, unknown>;
   createDefaultData: () => WorkflowNodeData;
   description?: string;
   insertable: boolean;
@@ -188,6 +189,9 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: "发放新人专属优惠券",
         title: defaultActionOption.label,
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      actionType: data.actionType,
+    }),
     description: "发送私域消息、优惠券或打标签",
     insertable: true,
     kind: "action",
@@ -262,6 +266,10 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: defaultAgentOption.name,
         title: "AI 接待",
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      agentName: data.agentName,
+      handoffRule: data.handoffRule,
+    }),
     description: "启用指定 Agent，接管后续会话",
     insertable: true,
     kind: "ai",
@@ -314,6 +322,10 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: "按客户标签、行为或会话意图拆分路径",
         title: "条件分支",
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      branchPaths: data.branchPaths,
+      branchRule: data.branchRule,
+    }),
     description: "按标签、行为、会话意图分支",
     insertable: true,
     kind: "branch",
@@ -364,6 +376,9 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: "完成首单或领取新人券后退出",
         title: "首单转化",
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      conversion: data.conversion,
+    }),
     insertable: false,
     kind: "goal",
     getOutputVariables: createDefaultOutputVariables,
@@ -420,6 +435,10 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: "客户入会后立即进入新人转化旅程",
         title: "新人入会触发",
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      audience: data.audience,
+      repeatEntryEnabled: data.repeatEntryEnabled,
+    }),
     insertable: false,
     kind: "trigger",
     getOutputVariables: createDefaultOutputVariables,
@@ -468,6 +487,9 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
         summary: "等待 1 天后继续触达",
         title: "等待",
       }),
+    createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+      delayDays: data.delayDays,
+    }),
     description: "按天、小时或固定窗口延迟触达",
     insertable: true,
     kind: "wait",
@@ -592,6 +614,10 @@ export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
   return workflowNodeCatalog[kind];
 }
 
+export function createWorkflowNodeExecutionConfig(data: WorkflowNodeData) {
+  return getWorkflowNodeCatalogEntry(data.kind).createExecutionConfig(data);
+}
+
 function createNodeData(
   kind: WorkflowNodeKind,
   data: NodeDataInput,
@@ -637,6 +663,12 @@ function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): Work
 
 function normalizePaletteSearchText(value: string) {
   return value.trim().toLowerCase();
+}
+
+function pickDefinedWorkflowConfig(config: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(config).filter(([, value]) => value !== undefined),
+  );
 }
 
 function hasText(value: unknown) {

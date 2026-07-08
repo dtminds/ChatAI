@@ -47,6 +47,7 @@ describe("workflow node catalog", () => {
       expect(getNodeDefinition(kind)).toBe(definition);
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
+      expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
       expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
       expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
@@ -58,6 +59,8 @@ describe("workflow node catalog", () => {
       expect(defaultData.title).toBeTruthy();
       expect(defaultData.summary).toBeTruthy();
       expect(defaultData.metric).toBeTruthy();
+      expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
+      expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
     }
   });
 

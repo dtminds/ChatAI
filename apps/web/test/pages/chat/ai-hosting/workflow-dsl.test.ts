@@ -85,7 +85,12 @@ describe("workflow DSL", () => {
       id: "action-message",
       kind: "action",
     }));
+    expect(executionNode.config).toEqual({
+      actionType: "message",
+    });
     expect(executionNode.config.kind).toBeUndefined();
+    expect(executionNode.config.title).toBeUndefined();
+    expect(executionNode.config.status).toBeUndefined();
     expect(executionNode.config.onDelete).toBeUndefined();
     expect(executionNode.config._connectedSourceHandleIds).toBeUndefined();
     expect(executionNode.config._runtimeStatus).toBeUndefined();
@@ -133,12 +138,15 @@ describe("workflow DSL", () => {
 
     expect(graph.nodes.find((node) => node.id === "trigger")).toEqual(expect.objectContaining({
       config: expect.objectContaining({
-        title: "新人入会触发",
+        audience: "近 30 天新入会且未首购客户",
+        repeatEntryEnabled: true,
       }),
       id: "trigger",
       kind: "trigger",
     }));
     expect(graph.nodes.find((node) => node.id === "trigger")?.config.kind).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "trigger")?.config.title).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "trigger")?.config.status).toBeUndefined();
     expect(graph.nodes.find((node) => node.id === "trigger")?.config._runtimeStatus).toBeUndefined();
     expect(graph.nodes.find((node) => node.id === "trigger")?.config.onDelete).toBeUndefined();
     expect(graph.edges.find((edge) => edge.source === "branch-intent" && edge.sourceHandle === "branch-high"))

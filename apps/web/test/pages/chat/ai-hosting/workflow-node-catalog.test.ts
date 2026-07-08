@@ -209,7 +209,11 @@ describe("workflow node catalog", () => {
     });
 
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("goal"))).toEqual([]);
-    expect(getNodeSourceHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{ top: 16 }]);
+    expect(getNodeSourceHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{
+      outletKind: "default",
+      top: 16,
+    }]);
+    expect(branchHandles.every((handle) => handle.outletKind === "branch-path")).toBe(true);
     expect(branchHandles.map((handle) => handle.id)).toEqual([
       "branch-high",
       "branch-normal",

@@ -91,6 +91,31 @@ describe("workflow graph validation", () => {
     ]));
   });
 
+  it("derives multiple outgoing capability from source handle definitions", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-normal", 10),
+      createNodeFromKind("action", "action-default", 11),
+    ];
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("branch-intent", "action-normal", "普通客户", { sourceHandle: "branch-normal" }),
+      createEdge("branch-intent", "action-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("wait-2d", "goal"),
+    ];
+    const validation = validateWorkflowGraph(nodes, edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "node-multiple-outgoing",
+        nodeId: "wait-2d",
+      }),
+    ]));
+    expect(validation.graphIssues.some((issue) =>
+      issue.code === "node-multiple-outgoing" && issue.nodeId === "branch-intent",
+    )).toBe(false);
+  });
+
   it("flags branch paths without downstream nodes", () => {
     const validation = validateWorkflowGraph(createInitialNodes(), createInitialEdges());
 

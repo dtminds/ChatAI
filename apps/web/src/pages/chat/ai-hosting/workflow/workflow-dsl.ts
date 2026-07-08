@@ -1,6 +1,6 @@
 import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
-import { getWorkflowBranchPaths } from "./branch-paths";
 import { createWorkflowNodeExecutionConfig } from "./node-catalog";
+import { getNodeSourceOutletDefinition } from "./node-handle-definitions";
 import type {
   WorkflowDraft,
   WorkflowEdge,
@@ -179,22 +179,7 @@ function createWorkflowExecutionEdgeOutlet(
     return null;
   }
 
-  if (sourceNode.data.kind === "branch") {
-    const branchPath = getWorkflowBranchPaths(sourceNode.data).find((path) => path.id === edge.sourceHandle);
-
-    return branchPath
-      ? {
-          id: branchPath.id,
-          kind: "branch-path",
-          label: branchPath.label,
-        }
-      : null;
-  }
-
-  return {
-    id: edge.sourceHandle ?? "default",
-    kind: "default",
-  };
+  return getNodeSourceOutletDefinition(sourceNode, edge.sourceHandle);
 }
 
 export function parseWorkflowDslText(text: string): WorkflowDslParseResult {

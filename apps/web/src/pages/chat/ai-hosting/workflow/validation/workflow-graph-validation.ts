@@ -6,6 +6,7 @@ import {
   getWorkflowConnectionPolicyViolation,
 } from "../connection-policy";
 import {
+  getNodeSourceHandleDefinitions,
   getNodeUnconnectedSourceHandles,
 } from "../node-handle-definitions";
 
@@ -273,11 +274,11 @@ function getSourceHandleOutletIssues(
         return [];
       }
 
-      const isBranchNode = node.data.kind === "branch";
+      const hasBranchOutlet = unconnectedHandles.some((handle) => handle.outletKind === "branch-path");
 
       return [{
-        code: isBranchNode ? "branch-path-unconnected" as const : "source-handle-unconnected" as const,
-        message: isBranchNode ? "条件分支存在未连接的出口" : "节点存在未连接的出口",
+        code: hasBranchOutlet ? "branch-path-unconnected" as const : "source-handle-unconnected" as const,
+        message: hasBranchOutlet ? "条件分支存在未连接的出口" : "节点存在未连接的出口",
         nodeId: node.id,
         severity: "warning" as const,
         source: "graph" as const,
@@ -360,7 +361,9 @@ function getCardinalityIssues(
       });
     }
 
-    if (node.data.kind !== "branch" && node.data.kind !== "goal" && outgoingEdges.length > 1) {
+    const supportsMultipleSourceHandles = getNodeSourceHandleDefinitions(node.data).length > 1;
+
+    if (!supportsMultipleSourceHandles && node.data.kind !== "goal" && outgoingEdges.length > 1) {
       issues.push({
         code: "node-multiple-outgoing",
         edgeIds: outgoingEdges.map((edge) => edge.id),

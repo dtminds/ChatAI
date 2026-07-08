@@ -13,6 +13,7 @@ import type {
 export type WorkflowSourceHandleDefinition = {
   id?: string;
   label?: string;
+  outletKind: "branch-path" | "default";
   top: number;
 };
 
@@ -31,11 +32,12 @@ export function getNodeSourceHandleDefinitions(
     return getWorkflowBranchPaths(data).map((branch) => ({
       id: branch.id,
       label: branch.label,
+      outletKind: "branch-path",
       top: getBranchPathTop(data, branch.id),
     }));
   }
 
-  return [{ top: 16 }];
+  return [{ outletKind: "default", top: 16 }];
 }
 
 export function getNodeTargetHandleDefinitions(
@@ -81,4 +83,23 @@ export function getNodeUnconnectedSourceHandles(
 
   return getNodeSourceHandleDefinitions(node.data)
     .filter((handle) => handle.id && !connectedSourceHandles.has(handle.id));
+}
+
+export function getNodeSourceOutletDefinition(
+  node: WorkflowNode,
+  sourceHandle?: string | null,
+) {
+  const handle = getNodeSourceHandleDefinitions(node.data).find((definition) =>
+    (definition.id ?? null) === (sourceHandle ?? null),
+  );
+
+  if (!handle) {
+    return null;
+  }
+
+  return {
+    id: handle.id ?? "default",
+    kind: handle.outletKind,
+    label: handle.label,
+  };
 }

@@ -112,7 +112,7 @@ function createMockWorkflowRunRecord(
     id: `${workflowId || "workflow"}-run-${startedAt.getTime()}`,
     inputs: createWorkflowRunInputs(draftSnapshot),
     nodeRuns,
-    outputs: createWorkflowRunOutputs(draftSnapshot, nodeRuns),
+    outputs: createWorkflowRunOutputs(snapshot, nodeRuns),
     status: "succeeded",
     totalTokens: draftSnapshot.nodes.length * 128,
     title: "Test Run",
@@ -133,15 +133,20 @@ function createWorkflowRunInputs(draft: WorkflowDraft) {
 }
 
 function createWorkflowRunOutputs(
-  draft: WorkflowDraft,
+  snapshot: WorkflowRuntimeSnapshot,
   nodeRuns: Record<string, NodeRunRecord>,
 ) {
+  const { draft, executionGraph } = snapshot;
   const goal = draft.nodes.find((node) => node.data.kind === "goal");
 
   return {
     conversion: goal?.data.conversion ?? null,
+    edgeCount: executionGraph.edges.length,
     next: "workflow_completed",
     nodeResults: Object.keys(nodeRuns).length,
+    outlets: executionGraph.edges
+      .map((edge) => edge.sourceOutlet)
+      .filter((outlet) => outlet !== null),
     summary: "测试运行完成",
   };
 }

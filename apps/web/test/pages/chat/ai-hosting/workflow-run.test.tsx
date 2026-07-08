@@ -287,6 +287,29 @@ describe("useWorkflowRun", () => {
     expect(request?.snapshot.executionGraph.edges[0]).not.toHaveProperty("data");
   });
 
+  it("summarizes execution graph outlets in mock workflow outputs", async () => {
+    const { result } = renderHook(() => useWorkflowRun("workflow-a"));
+
+    act(() => {
+      result.current.runWorkflow(createBranchWorkflowDraft());
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.runHistory[0]?.outputs).toEqual(expect.objectContaining({
+      edgeCount: 1,
+      outlets: [
+        {
+          id: "branch-high",
+          kind: "branch-path",
+          label: "高意向客户",
+        },
+      ],
+    }));
+  });
+
   it("enters and exits workflow run history view by run id", async () => {
     const { result } = renderHook(() => useWorkflowRun("workflow-a"));
 

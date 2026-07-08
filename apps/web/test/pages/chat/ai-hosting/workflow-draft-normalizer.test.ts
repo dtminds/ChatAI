@@ -95,6 +95,68 @@ describe("workflow draft normalizer", () => {
     expect(sanitizedDraft.viewport).toEqual({ x: 120, y: 240, zoom: 1.25 });
   });
 
+  it("removes React Flow render-only fields from canonical draft records", () => {
+    const sanitizedDraft = sanitizeDraft({
+      edges: [
+        {
+          ...createRuntimeDraft().edges[0],
+          animated: true,
+          hidden: true,
+          interactionWidth: 32,
+          markerEnd: "arrow",
+          style: { stroke: "red" },
+        } as unknown as WorkflowEdge,
+      ],
+      nodes: [
+        {
+          ...createRuntimeDraft().nodes[0],
+          dragging: true,
+          measured: { height: 120, width: 240 },
+          resizing: true,
+          style: { opacity: 0.5 },
+          width: 240,
+        } as unknown as WorkflowNode,
+      ],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+    const sanitizedNode = sanitizedDraft.nodes[0] as WorkflowNode & Record<string, unknown>;
+    const sanitizedEdge = sanitizedDraft.edges[0] as WorkflowEdge & Record<string, unknown>;
+
+    expect(sanitizedNode).toEqual({
+      data: expect.objectContaining({
+        kind: "action",
+        title: "发送消息 0",
+      }),
+      id: "action-message",
+      position: { x: 0, y: 0 },
+      selected: false,
+      type: WORKFLOW_NODE_TYPE,
+      zIndex: undefined,
+    });
+    expect(sanitizedNode.dragging).toBeUndefined();
+    expect(sanitizedNode.measured).toBeUndefined();
+    expect(sanitizedNode.resizing).toBeUndefined();
+    expect(sanitizedNode.style).toBeUndefined();
+    expect(sanitizedNode.width).toBeUndefined();
+    expect(sanitizedEdge).toEqual({
+      data: expect.objectContaining({
+        label: "高意向",
+      }),
+      id: "edge-1",
+      selected: false,
+      source: "action-message",
+      sourceHandle: undefined,
+      target: "goal",
+      targetHandle: undefined,
+      type: WORKFLOW_EDGE_TYPE,
+    });
+    expect(sanitizedEdge.animated).toBeUndefined();
+    expect(sanitizedEdge.hidden).toBeUndefined();
+    expect(sanitizedEdge.interactionWidth).toBeUndefined();
+    expect(sanitizedEdge.markerEnd).toBeUndefined();
+    expect(sanitizedEdge.style).toBeUndefined();
+  });
+
   it("normalizes missing or invalid viewport values to the workflow default", () => {
     expect(sanitizeDraft({
       ...createRuntimeDraft(),

@@ -204,8 +204,10 @@ function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
 
 function sanitizeNodeForDraft(node: WorkflowNode): WorkflowNode {
   return {
-    ...node,
+    id: node.id,
+    position: { ...node.position },
     selected: false,
+    type: WORKFLOW_NODE_TYPE,
     zIndex: undefined,
     data: sanitizeNodeData(node.data),
   };
@@ -240,8 +242,13 @@ function sanitizePersistableDataRecord<TData extends Record<string, unknown>>(
 
 function sanitizeEdgeForDraft(edge: WorkflowEdge): WorkflowEdge {
   return {
-    ...edge,
+    id: edge.id,
     selected: false,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle,
+    target: edge.target,
+    targetHandle: edge.targetHandle,
+    type: WORKFLOW_EDGE_TYPE,
     data: sanitizeEdgeData(edge.data),
   };
 }

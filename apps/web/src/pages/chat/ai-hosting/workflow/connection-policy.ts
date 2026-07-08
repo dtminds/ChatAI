@@ -1,12 +1,5 @@
 import type { Connection } from "@xyflow/react";
-import {
-  getAvailableNextNodeKinds,
-  getAvailablePrevNodeKinds,
-} from "./node-catalog";
-import {
-  getNodeSourceHandleDefinitions,
-  getNodeTargetHandleDefinitions,
-} from "./node-handle-definitions";
+import { getNodeDefinitionCore } from "./node-definition-core";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -111,8 +104,8 @@ function isNodeKindConnectionAllowed(
   sourceNode: WorkflowNode,
   targetNode: WorkflowNode,
 ) {
-  return getAvailableNextNodeKinds(sourceNode.data.kind).includes(targetNode.data.kind)
-    && getAvailablePrevNodeKinds(targetNode.data.kind).includes(sourceNode.data.kind);
+  return getNodeDefinitionCore(sourceNode.data.kind).availableNextKinds.includes(targetNode.data.kind)
+    && getNodeDefinitionCore(targetNode.data.kind).availablePrevKinds.includes(sourceNode.data.kind);
 }
 
 function isNodeHandleConnectionAllowed(
@@ -121,8 +114,10 @@ function isNodeHandleConnectionAllowed(
   sourceHandle: string | null | undefined,
   targetHandle: string | null | undefined,
 ) {
-  const sourceHandleDefinitions = getNodeSourceHandleDefinitions(sourceNode.data);
-  const targetHandleDefinitions = getNodeTargetHandleDefinitions(targetNode.data);
+  const sourceDefinition = getNodeDefinitionCore(sourceNode.data.kind);
+  const targetDefinition = getNodeDefinitionCore(targetNode.data.kind);
+  const sourceHandleDefinitions = sourceDefinition.getSourceHandles(sourceNode.data);
+  const targetHandleDefinitions = targetDefinition.getTargetHandles(targetNode.data);
 
   return sourceHandleDefinitions.some((handle) =>
     (handle.id ?? null) === (sourceHandle ?? null),

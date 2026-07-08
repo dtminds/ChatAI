@@ -13,12 +13,16 @@ import {
 import {
   createEdge,
   createInitialDraft,
+  createNodeFromKind,
 } from "@/pages/chat/ai-hosting/workflow/graph";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/ai-hosting/workflow/constants";
-import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
+import type {
+  WorkflowBranchPath,
+  WorkflowDraft,
+} from "@/pages/chat/ai-hosting/workflow/types";
 
 function createDraft(): WorkflowDraft {
   return createInitialDraft();
@@ -45,43 +49,48 @@ describe("workflow clipboard", () => {
     const draft = createDraft();
     const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
     const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const lowAction = createNodeFromKind("action", "action-low", 10);
+    const branchPaths = [
+      { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
+      { id: "branch-low", label: "低意向客户", operator: "ELIF", title: "CASE 2" },
+      { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+    ] satisfies WorkflowBranchPath[];
     const clipboardData = createWorkflowClipboardData({
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "action-message", "低意向", {
+        createEdge("branch-intent", "action-low", "低意向", {
           sourceHandle: "branch-low",
         }),
       ],
-      nodes: draft.nodes.map((node) =>
-        node.id === "action-message"
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                onDelete: vi.fn(),
-                selected: true,
-              },
-              selected: true,
-              zIndex: 20,
-            }
-          : node.id === "branch-intent"
+      nodes: [
+        ...draft.nodes.map((node) =>
+          node.id === "action-message"
             ? {
                 ...node,
                 data: {
                   ...node.data,
-                  branchPaths: [
-                    { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-                    { id: "branch-low", label: "低意向客户", operator: "ELIF", title: "CASE 2" },
-                    { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
-                  ],
+                  onDelete: vi.fn(),
+                  selected: true,
                 },
+                selected: true,
+                zIndex: 20,
               }
-          : node,
-      ),
-    }, [branch.id, action.id]);
+            : node.id === "branch-intent"
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    branchPaths,
+                  },
+                }
+            : node,
+        ),
+        lowAction,
+      ],
+    }, [branch.id, action.id, lowAction.id]);
 
-    expect(clipboardData?.nodes.map((node) => node.id)).toEqual(["branch-intent", "action-message"]);
+    expect(clipboardData?.nodes.map((node) => node.id)).toEqual(["branch-intent", "action-message", "action-low"]);
     expect(clipboardData?.edges).toHaveLength(2);
     expect(clipboardData?.nodes.find((node) => node.id === "action-message")?.selected).toBe(false);
     expect(clipboardData?.nodes.find((node) => node.id === "action-message")?.zIndex).toBeUndefined();

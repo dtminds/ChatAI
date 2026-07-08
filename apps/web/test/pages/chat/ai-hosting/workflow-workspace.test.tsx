@@ -506,6 +506,41 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
+  it("keeps publish state consistent when undo returns to the published draft", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const publishedAudience = result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience;
+
+      await act(async () => {
+        await result.current.topBar.onPublish();
+      });
+
+      expect(result.current.topBar.publishState).toBe("published");
+
+      act(() => {
+        result.current.canvas.onSelectNode("trigger");
+        result.current.inspector.onNodeChange({ audience: "发布后的草稿修改" });
+      });
+
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe(publishedAudience);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("previews a version history snapshot as read-only and exits back to the draft", () => {
     const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("历史版本人群"));
     importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("当前草稿人群"));

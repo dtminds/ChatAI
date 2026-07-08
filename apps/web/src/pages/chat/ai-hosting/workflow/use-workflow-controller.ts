@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Connection,
   EdgeChange,
@@ -121,6 +121,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     resetDraft,
   } = history;
   const { edges, nodes } = currentDraft;
+  const [pendingConfigHistoryActive, setPendingConfigHistoryActive] = useState(false);
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moveStartDraftRef = useRef<{
@@ -148,6 +149,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     }
 
     pendingConfigHistoryRef.current = null;
+    setPendingConfigHistoryActive(false);
     commitFromDrafts(
       "node:config-change",
       pendingHistory.previousDraft,
@@ -170,6 +172,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   useEffect(() => {
     pendingConfigHistoryRef.current = null;
+    setPendingConfigHistoryActive(false);
     moveStartDraftRef.current = null;
     clearConfigHistoryTimer();
     resetDraft(initialDraft);
@@ -307,6 +310,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       nextDraft: operation.draft,
       previousDraft: pendingConfigHistoryRef.current?.previousDraft ?? currentDraft,
     };
+    setPendingConfigHistoryActive(true);
     replaceDraft(() => operation.draft, { clearFuture: true });
     scheduleConfigHistoryCommit();
 
@@ -466,6 +470,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     addNode,
     arrangeNodes,
     beginNodeDrag,
+    canUndo: pendingConfigHistoryActive || history.canUndo,
     connectNodes,
     copyNode,
     copyNodes,
@@ -482,6 +487,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     onEdgesChange,
     onNodesChange,
     markDraftDirty,
+    nextUndoLabel: pendingConfigHistoryActive ? "修改节点配置" : history.nextUndoLabel,
     pasteClipboardData,
     redo,
     undo,

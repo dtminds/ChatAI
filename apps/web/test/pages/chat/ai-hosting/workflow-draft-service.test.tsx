@@ -471,6 +471,46 @@ describe("workflow draft service", () => {
       .toBe("异步发布的人群");
   });
 
+  it("keeps publish state aligned with the editable draft and published snapshot", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
+
+      await act(async () => {
+        await result.current.publishDraft(createDraftWithTriggerAudience("已发布的人群"));
+      });
+
+      expect(result.current.publishState).toBe("published");
+      expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("已发布的人群");
+
+      act(() => {
+        result.current.markDirty(createDraftWithTriggerAudience("发布后的草稿修改"));
+      });
+
+      expect(result.current.publishState).toBe("idle");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("发布后的草稿修改");
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("已发布的人群");
+
+      act(() => {
+        result.current.markDirty(createDraftWithTriggerAudience("已发布的人群"));
+      });
+
+      expect(result.current.publishState).toBe("published");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("marks publish as failed when the async repository publish rejects", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));

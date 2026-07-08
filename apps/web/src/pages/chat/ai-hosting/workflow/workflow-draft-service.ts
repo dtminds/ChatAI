@@ -184,6 +184,7 @@ export function useWorkflowDocument(
   const [saveState, setSaveState] = useState<WorkflowDraftSaveStatus>("saved");
   const [lastSavedAt, setLastSavedAt] = useState(() => document.savedAt);
   const [lastSavedDraftHash, setLastSavedDraftHash] = useState(() => document.draftHash);
+  const [lastPublishedDraftHash, setLastPublishedDraftHash] = useState(() => createWorkflowPublishedDraftHash(document));
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishRequestRef = useRef(0);
   const restoreRequestRef = useRef(0);
@@ -275,11 +276,12 @@ export function useWorkflowDocument(
     workflowIdRef.current = nextDocument.id;
     setDocument(nextDocument);
     setImportState("idle");
-    setPublishState("idle");
+    setPublishState(getWorkflowPublishStateForDraft(nextDocument.draft, nextDocument));
     setRestoreState("idle");
     setSaveState("saved");
     setLastSavedAt(nextDocument.savedAt);
     setLastSavedDraftHash(nextDocument.draftHash);
+    setLastPublishedDraftHash(createWorkflowPublishedDraftHash(nextDocument));
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -290,6 +292,7 @@ export function useWorkflowDocument(
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
     const nextDraftHash = createWorkflowDraftHash(draftToSave);
+    setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
 
     if (nextDraftHash === lastSavedDraftHash) {
       saveRequestRef.current += 1;
@@ -320,7 +323,7 @@ export function useWorkflowDocument(
     saveTimerRef.current = setTimeout(() => {
       flushPendingSave();
     }, WORKFLOW_SAVE_DEBOUNCE_MS);
-  }, [flushPendingSave, lastSavedDraftHash]);
+  }, [flushPendingSave, lastPublishedDraftHash, lastSavedDraftHash]);
 
   const importDraft = useCallback(async (draft: WorkflowDraft) => {
     const saveRequestId = saveRequestRef.current + 1;
@@ -354,6 +357,8 @@ export function useWorkflowDocument(
       setSaveState("saved");
       setLastSavedAt(normalizedImportResult.savedAt);
       setLastSavedDraftHash(normalizedImportResult.draftHash);
+      setLastPublishedDraftHash(createWorkflowPublishedDraftHash(importedDocument));
+      setPublishState(getWorkflowPublishStateForDraft(normalizedImportResult.draft, importedDocument));
       setDocument(importedDocument);
 
       return normalizedImportResult;
@@ -398,6 +403,7 @@ export function useWorkflowDocument(
       setSaveState("saved");
       setLastSavedAt(publishedDocument.savedAt);
       setLastSavedDraftHash(normalizedPublishResult.draftHash);
+      setLastPublishedDraftHash(normalizedPublishResult.draftHash);
       setDocument((currentDocument) => ({
         ...currentDocument,
         conversion: publishedDocument.conversion,
@@ -463,6 +469,8 @@ export function useWorkflowDocument(
       setSaveState("saved");
       setLastSavedAt(normalizedRestoreResult.savedAt);
       setLastSavedDraftHash(normalizedRestoreResult.draftHash);
+      setLastPublishedDraftHash(createWorkflowPublishedDraftHash(restoredDocument));
+      setPublishState(getWorkflowPublishStateForDraft(normalizedRestoreResult.draft, restoredDocument));
       setDocument(restoredDocument);
 
       return normalizedRestoreResult;
@@ -498,6 +506,29 @@ export function useWorkflowDocument(
     restoreVersion,
     saveState,
   }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishState, restoreState, restoreVersion, saveState]);
+}
+
+function createWorkflowPublishedDraftHash(
+  document: WorkflowDocument,
+) {
+  return document.publishedDraft ? createWorkflowDraftHash(document.publishedDraft) : undefined;
+}
+
+function getWorkflowPublishStateForDraft(
+  draft: WorkflowDraft,
+  document: WorkflowDocument,
+): WorkflowDraftPublishStatus {
+  return getWorkflowPublishStateFromHashes(
+    createWorkflowDraftHash(draft),
+    createWorkflowPublishedDraftHash(document),
+  );
+}
+
+function getWorkflowPublishStateFromHashes(
+  draftHash: string,
+  publishedDraftHash: string | undefined,
+): WorkflowDraftPublishStatus {
+  return publishedDraftHash && draftHash === publishedDraftHash ? "published" : "idle";
 }
 
 function cloneWorkflowDocument(document: WorkflowDocument): WorkflowDocument {

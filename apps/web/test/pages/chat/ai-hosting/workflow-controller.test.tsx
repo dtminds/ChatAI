@@ -177,7 +177,8 @@ describe("useWorkflowController", () => {
 
     expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
       .toBe("更新后的动作标题");
-    expect(result.current.canUndo).toBe(false);
+    expect(result.current.canUndo).toBe(true);
+    expect(result.current.nextUndoLabel).toBe("修改节点配置");
 
     act(() => {
       result.current.undo();

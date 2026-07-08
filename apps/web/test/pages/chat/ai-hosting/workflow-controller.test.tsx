@@ -321,6 +321,155 @@ describe("useWorkflowController", () => {
     )).toBe(true);
   });
 
+  it("undoes and redoes structural graph commands as single history entries", () => {
+    const initialDraft = createDraft();
+    let currentDraftProp = initialDraft;
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+
+    const resetController = () => {
+      currentDraftProp = createDraft();
+      rerender({ draft: currentDraftProp });
+    };
+    const undo = () => {
+      act(() => {
+        result.current.undo();
+      });
+      rerender({ draft: currentDraftProp });
+    };
+    const redo = () => {
+      act(() => {
+        result.current.redo();
+      });
+      rerender({ draft: currentDraftProp });
+    };
+
+    let addedNodeId = "";
+    act(() => {
+      addedNodeId = result.current.addNode("ai")?.nodeId ?? "";
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("添加节点");
+    expect(result.current.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+    undo();
+    expect(result.current.nodes.some((node) => node.id === addedNodeId)).toBe(false);
+    expect(result.current.canRedo).toBe(true);
+    redo();
+    expect(result.current.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+
+    resetController();
+    let insertedAfterNodeId = "";
+    act(() => {
+      insertedAfterNodeId = result.current.insertNodeAfter("branch-intent", "wait", "branch-high")?.nodeId ?? "";
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("插入节点");
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+      .toBe(false);
+    expect(result.current.edges.some((edge) =>
+      edge.source === "branch-intent" && edge.sourceHandle === "branch-high" && edge.target === insertedAfterNodeId,
+    )).toBe(true);
+    undo();
+    expect(result.current.nodes.some((node) => node.id === insertedAfterNodeId)).toBe(false);
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+      .toBe(true);
+    redo();
+    expect(result.current.nodes.some((node) => node.id === insertedAfterNodeId)).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+      .toBe(false);
+
+    resetController();
+    let insertedBetweenNodeId = "";
+    act(() => {
+      insertedBetweenNodeId = result.current.insertNodeBetween(
+        "edge-wait-2d-branch-intent",
+        "wait-2d",
+        "branch-intent",
+        "ai",
+      )?.nodeId ?? "";
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("插入节点");
+    expect(result.current.edges.some((edge) => edge.id === "edge-wait-2d-branch-intent")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.source === "wait-2d" && edge.target === insertedBetweenNodeId))
+      .toBe(true);
+    undo();
+    expect(result.current.nodes.some((node) => node.id === insertedBetweenNodeId)).toBe(false);
+    expect(result.current.edges.some((edge) => edge.id === "edge-wait-2d-branch-intent")).toBe(true);
+    redo();
+    expect(result.current.nodes.some((node) => node.id === insertedBetweenNodeId)).toBe(true);
+
+    resetController();
+    act(() => {
+      result.current.connectNodes({
+        source: "branch-intent",
+        sourceHandle: "branch-normal",
+        target: "goal",
+        targetHandle: null,
+      });
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("连接节点");
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(true);
+    undo();
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(false);
+    redo();
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(true);
+
+    resetController();
+    act(() => {
+      result.current.onEdgesChange([{ id: "edge-action-message-goal", type: "remove" }]);
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("删除连线");
+    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+    undo();
+    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    redo();
+    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+
+    resetController();
+    act(() => {
+      result.current.deleteNode("action-message");
+    });
+    rerender({ draft: currentDraftProp });
+    expect(result.current.nextUndoLabel).toBe("删除节点");
+    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.source === "action-message" || edge.target === "action-message"))
+      .toBe(false);
+    undo();
+    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    redo();
+    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(false);
+
+    resetController();
+    const initialPositions = new Map(result.current.nodes.map((node) => [node.id, node.position]));
+    act(() => {
+      result.current.arrangeNodes();
+    });
+    rerender({ draft: currentDraftProp });
+    const arrangedPositions = new Map(result.current.nodes.map((node) => [node.id, node.position]));
+    expect(result.current.nextUndoLabel).toBe("整理画布");
+    expect(result.current.nodes.some((node) => {
+      const initialPosition = initialPositions.get(node.id);
+      return initialPosition && (
+        initialPosition.x !== node.position.x
+        || initialPosition.y !== node.position.y
+      );
+    })).toBe(true);
+    undo();
+    result.current.nodes.forEach((node) => {
+      expect(node.position).toEqual(initialPositions.get(node.id));
+    });
+    redo();
+    result.current.nodes.forEach((node) => {
+      expect(node.position).toEqual(arrangedPositions.get(node.id));
+    });
+  });
+
   it("creates unique node ids for repeated node additions", () => {
     const initialDraft = createDraft();
     const { rerender, result } = renderHook(

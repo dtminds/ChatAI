@@ -402,21 +402,32 @@ describe("useWorkflowController", () => {
     expect(result.current.nodes.some((node) => node.id === insertedBetweenNodeId)).toBe(true);
 
     resetController();
+    let connectTargetNodeId = "";
+    act(() => {
+      connectTargetNodeId = result.current.addNode("action")?.nodeId ?? "";
+    });
+    rerender({ draft: currentDraftProp });
+    undo();
+    redo();
+
     act(() => {
       result.current.connectNodes({
         source: "branch-intent",
         sourceHandle: "branch-normal",
-        target: "goal",
+        target: connectTargetNodeId,
         targetHandle: null,
       });
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("连接节点");
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+      .toBe(true);
     undo();
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+      .toBe(false);
     redo();
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-normal-goal")).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+      .toBe(true);
 
     resetController();
     act(() => {

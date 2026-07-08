@@ -413,6 +413,84 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.saveState).toBe("saved");
   });
 
+  it("keeps view and transient canvas interactions out of the draft history boundary", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const assertCleanCanvasState = () => {
+      expect(result.current.canvas.canUndo).toBe(false);
+      expect(result.current.canvas.canRedo).toBe(false);
+      expect(result.current.topBar.saveState).toBe("saved");
+    };
+
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onSelectNode("branch-intent", { additive: true });
+      result.current.canvas.onSelectEdge("edge-action-message-goal");
+    });
+    expect(result.current.inspector.node).toBeUndefined();
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onNodeHoverStart("action-message");
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.highlightState)
+      .toBe("connected");
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onNodeHoverEnd();
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.highlightState)
+      .toBeUndefined();
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onPaletteOpenChange(true);
+      result.current.canvas.onSearchChange("ai");
+    });
+    expect(result.current.canvas.paletteOpen).toBe(true);
+    expect(result.current.canvas.searchValue).toBe("ai");
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.onToggleInsertMenu?.("action-message");
+    });
+    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.insertMenuOpen)
+      .toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.onToggleInsertMenu?.(
+        "edge-action-message-goal",
+      );
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.insertMenuOpen)
+      .toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onPaneClick();
+    });
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.insertMenuOpen)
+      .toBe(false);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+    });
+    expect(result.current.checks.isOpen).toBe(true);
+    assertCleanCanvasState();
+
+    act(() => {
+      result.current.canvas.onOpenVariables();
+    });
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.activeTab).toBe("variables");
+    expect(result.current.checks.isOpen).toBe(false);
+    assertCleanCanvasState();
+  });
+
   it("cancels pending saves when undo returns to the last saved draft", async () => {
     vi.useFakeTimers();
 

@@ -18,9 +18,11 @@ import {
 } from "./graph-operations";
 import type {
   WorkflowActionResult,
+  WorkflowGraphOperation,
   WorkflowNodePositionUpdate,
 } from "./graph-operations";
 import { useWorkflowHistory } from "./history";
+import type { WorkflowHistoryEventMeta } from "./history";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowNodeConfigPatch,
@@ -43,10 +45,8 @@ import type { WorkflowGraphCommand } from "./workflow-commands";
 const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
 
 type PendingConfigHistory = {
-  meta: {
-    nodeId: string;
-    nodeTitle?: string;
-  };
+  event: WorkflowGraphOperation["event"];
+  meta: WorkflowHistoryEventMeta & { nodeId: string };
   nextDraft: WorkflowDraft;
   previousDraft: WorkflowDraft;
 };
@@ -109,7 +109,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     pendingConfigHistoryRef.current = null;
     setPendingConfigHistoryActive(false);
     commitFromDrafts(
-      "node:config-change",
+      pendingHistory.event,
       pendingHistory.previousDraft,
       pendingHistory.nextDraft,
       pendingHistory.meta,
@@ -129,7 +129,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     pendingConfigHistoryRef.current = null;
     setPendingConfigHistoryActive(false);
     commitFromDraftsAndUndo(
-      "node:config-change",
+      pendingHistory.event,
       pendingHistory.previousDraft,
       pendingHistory.nextDraft,
       pendingHistory.meta,
@@ -285,8 +285,16 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
       return undefined;
     }
 
+    if (!operation.meta?.nodeId) {
+      return undefined;
+    }
+
     pendingConfigHistoryRef.current = {
-      meta: operation.meta,
+      event: operation.event,
+      meta: {
+        ...operation.meta,
+        nodeId: operation.meta.nodeId,
+      },
       nextDraft: operation.draft,
       previousDraft: pendingConfigHistoryRef.current?.previousDraft ?? currentDraft,
     };

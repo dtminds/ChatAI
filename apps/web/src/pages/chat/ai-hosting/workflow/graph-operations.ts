@@ -58,14 +58,6 @@ export type WorkflowGraphOperation = {
   result?: WorkflowActionResult;
 };
 
-export type WorkflowDraftChange = {
-  draft: WorkflowDraft;
-  meta: WorkflowHistoryEventMeta & {
-    nodeId: string;
-  };
-  result?: WorkflowActionResult;
-};
-
 export type WorkflowNodePositionUpdate = {
   nodeId: string;
   position: WorkflowNode["position"];
@@ -83,15 +75,6 @@ function createWorkflowGraphOperation(
   return {
     ...operation,
     draft: canonicalizeWorkflowDraft(operation.draft),
-  };
-}
-
-function createWorkflowDraftChange(
-  change: WorkflowDraftChange,
-): WorkflowDraftChange {
-  return {
-    ...change,
-    draft: canonicalizeWorkflowDraft(change.draft),
   };
 }
 
@@ -599,7 +582,7 @@ export function updateNodeDataOperation(
   draft: WorkflowDraft,
   nodeId: string,
   patch: WorkflowNodeConfigPatch,
-) {
+): WorkflowGraphOperation | undefined {
   const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
 
   if (!node) {
@@ -624,8 +607,9 @@ export function updateNodeDataOperation(
     return undefined;
   }
 
-  return createWorkflowDraftChange({
+  return createWorkflowGraphOperation({
     draft: nextDraft,
+    event: "node:config-change",
     meta: {
       nodeId,
       nodeTitle: node.data.title,

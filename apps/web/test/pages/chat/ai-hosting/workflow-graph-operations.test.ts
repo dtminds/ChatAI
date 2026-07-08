@@ -416,6 +416,7 @@ describe("workflow graph operations", () => {
       title: "等待 5 天",
     });
 
+    expect(operation?.event).toBe("node:config-change");
     expect(operation?.result).toEqual({ nodeId: "wait-2d" });
     expect(operation?.meta).toEqual({
       nodeId: "wait-2d",

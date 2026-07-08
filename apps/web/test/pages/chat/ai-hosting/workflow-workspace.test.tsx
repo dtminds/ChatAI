@@ -307,7 +307,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.saveState).toBe("saving");
   });
 
-  it("keeps node dragging transient until the drag finishes", () => {
+  it("keeps node dragging transient and unsaved until the drag finishes", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDrag>[0];
     const initialNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
@@ -328,7 +328,8 @@ describe("useWorkflowWorkspace", () => {
     });
 
     expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
-      .toEqual(initialNode.position);
+      .toEqual(draggingNode.position);
+    expect(result.current.canvas.canUndo).toBe(false);
     expect(result.current.topBar.saveState).toBe("saved");
 
     act(() => {
@@ -337,6 +338,7 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
       .toEqual(finalNode.position);
+    expect(result.current.canvas.canUndo).toBe(true);
     expect(result.current.topBar.saveState).toBe("saving");
   });
 

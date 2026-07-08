@@ -490,10 +490,12 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     controller.beginNodeDrag();
   });
 
-  const handleNodeDrag: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback(() => {
+  const handleNodeDrag: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node) => {
     if (!permissions.canEditGraph) {
       return;
     }
+
+    controller.updateNodeDrag(node.id, node.position);
   });
 
   const handleNodeDragStop: OnNodeDrag<WorkflowRenderNode> = useWorkflowStableCallback((event, node, draggedNodes) => {

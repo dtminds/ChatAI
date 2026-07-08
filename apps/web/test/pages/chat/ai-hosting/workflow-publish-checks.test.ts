@@ -484,6 +484,31 @@ describe("buildPublishChecks", () => {
     }));
   });
 
+  it("keeps publish checks aligned with target handle connection policy", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-second", 10),
+    ];
+    const checklist = buildPublishChecklist(nodes, [
+      ...createInitialEdges(),
+      createEdge("action-second", "goal"),
+    ]);
+    const targetHandleCheck = checklist.checks.find(
+      (check) => check.id === "graph-target-handle-multiple-incoming-goal",
+    );
+
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.canRun).toBe(false);
+    expect(targetHandleCheck).toEqual(expect.objectContaining({
+      blocksPublish: true,
+      blocksRun: true,
+      category: "connectivity",
+      description: "同一个入口只能连接一条上游连线",
+      nodeId: "goal",
+      title: "首单转化",
+    }));
+  });
+
   it("blocks run and publish when a branch path has no downstream node", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 

@@ -32,6 +32,7 @@ export type WorkflowGraphValidationIssue = {
     | "node-multiple-outgoing"
     | "source-handle-unconnected"
     | "source-handle-multiple-outgoing"
+    | "target-handle-multiple-incoming"
     | "tree-depth-exceeded";
   edgeIds?: string[];
   message: string;
@@ -196,6 +197,7 @@ function getConnectionPolicyIssues(
 ): WorkflowGraphValidationIssue[] {
   const issues: WorkflowGraphValidationIssue[] = [];
   const sourceHandleIssueByKey = new Map<string, WorkflowGraphValidationIssue>();
+  const targetHandleIssueByKey = new Map<string, WorkflowGraphValidationIssue>();
 
   edges.forEach((edge) => {
     const violation = getWorkflowConnectionPolicyViolation({
@@ -216,18 +218,12 @@ function getConnectionPolicyIssues(
       return;
     }
 
-    if (violation === "target-handle-occupied") {
-      return;
-    }
-
-    const issueCode = violation === "source-handle-occupied"
-      ? "source-handle-multiple-outgoing"
-      : "edge-invalid-connection";
+    const issueCode = getConnectionPolicyIssueCode(violation);
     const issue: WorkflowGraphValidationIssue = {
       code: issueCode,
       edgeIds: [edge.id],
       message: getConnectionPolicyIssueMessage(violation),
-      nodeId: nodes.find((node) => node.id === edge.source)?.id,
+      nodeId: getConnectionPolicyIssueNodeId(edge, issueCode, nodes),
       severity: "warning",
       source: "graph",
     };
@@ -245,10 +241,47 @@ function getConnectionPolicyIssues(
       sourceHandleIssueByKey.set(issueKey, issue);
     }
 
+    if (issueCode === "target-handle-multiple-incoming") {
+      const targetHandleKey = getWorkflowHandleKey(edge.targetHandle);
+      const issueKey = `${edge.target}:${targetHandleKey}`;
+      const existingIssue = targetHandleIssueByKey.get(issueKey);
+
+      if (existingIssue) {
+        existingIssue.edgeIds = [...(existingIssue.edgeIds ?? []), edge.id];
+        return;
+      }
+
+      targetHandleIssueByKey.set(issueKey, issue);
+    }
+
     issues.push(issue);
   });
 
   return issues;
+}
+
+function getConnectionPolicyIssueNodeId(
+  edge: WorkflowEdge,
+  issueCode: WorkflowGraphValidationIssue["code"],
+  nodes: WorkflowNode[],
+) {
+  const nodeId = issueCode === "target-handle-multiple-incoming" ? edge.target : edge.source;
+
+  return nodes.find((node) => node.id === nodeId)?.id;
+}
+
+function getConnectionPolicyIssueCode(
+  violation: NonNullable<ReturnType<typeof getWorkflowConnectionPolicyViolation>>,
+): WorkflowGraphValidationIssue["code"] {
+  if (violation === "source-handle-occupied") {
+    return "source-handle-multiple-outgoing";
+  }
+
+  if (violation === "target-handle-occupied") {
+    return "target-handle-multiple-incoming";
+  }
+
+  return "edge-invalid-connection";
 }
 
 function getConnectionPolicyIssueMessage(
@@ -269,7 +302,7 @@ function getConnectionPolicyIssueMessage(
     case "source-handle-occupied":
       return "同一个出口只能连接一条下游连线";
     case "target-handle-occupied":
-      return "节点入口已被其他连线占用";
+      return "同一个入口只能连接一条上游连线";
     case "edge-cycle":
       return "Workflow 不能包含循环连线";
   }

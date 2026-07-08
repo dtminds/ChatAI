@@ -272,6 +272,33 @@ describe("workflow graph validation", () => {
     expect(sourceHandleIssues[0]?.edgeIds).toHaveLength(2);
   });
 
+  it("flags duplicate incoming edges on the same target handle", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-second", 10),
+    ];
+    const validation = validateWorkflowGraph(nodes, [
+      ...createInitialEdges(),
+      createEdge("action-second", "goal"),
+    ]);
+    const targetHandleIssues = validation.graphIssues.filter(
+      (issue) => issue.code === "target-handle-multiple-incoming" && issue.nodeId === "goal",
+    );
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "target-handle-multiple-incoming",
+        message: "同一个入口只能连接一条上游连线",
+        nodeId: "goal",
+      }),
+    ]));
+    expect(targetHandleIssues).toHaveLength(1);
+    expect(targetHandleIssues[0]?.edgeIds).toEqual(expect.arrayContaining([
+      "edge-action-message-goal",
+      "edge-action-second-goal",
+    ]));
+  });
+
   it("groups null and undefined default source handles as one duplicate outlet", () => {
     const nodes = createInitialNodes();
     const edges: WorkflowEdge[] = [

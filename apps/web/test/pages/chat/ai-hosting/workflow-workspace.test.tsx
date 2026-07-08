@@ -620,6 +620,83 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
+  it("keeps publish state published across non-draft canvas interactions", async () => {
+    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    await act(async () => {
+      await result.current.topBar.onPublish();
+    });
+    expect(result.current.topBar.publishState).toBe("published");
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 180, y: 260, zoom: 0.72 });
+      result.current.canvas.onSelectNode("wait-2d");
+      result.current.canvas.onNodeHoverStart("action-message");
+      result.current.canvas.onPaletteOpenChange(true);
+      result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.onToggleInsertMenu?.("action-message");
+      result.current.topBar.onPublishCheck();
+      result.current.canvas.onOpenVariables();
+      result.current.canvas.onPaneClick();
+    });
+
+    expect(result.current.topBar.publishState).toBe("published");
+    expect(result.current.topBar.saveState).toBe("saved");
+    expect(result.current.canvas.canUndo).toBe(false);
+  });
+
+  it("keeps publish state consistent when undo and redo cross a structural graph edit", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      await act(async () => {
+        await result.current.topBar.onPublish();
+      });
+      expect(result.current.topBar.publishState).toBe("published");
+
+      act(() => {
+        result.current.canvas.onAddNode("ai");
+      });
+      const addedNodeId = result.current.inspector.node?.id ?? "";
+
+      expect(addedNodeId).toMatch(/^ai-/);
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.saveState).toBe("saving");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(false);
+      expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.saveState).toBe("saved");
+      expect(result.current.canvas.canRedo).toBe(true);
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+      expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.some((node) => node.id === addedNodeId))
+        .toBe(false);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("previews a version history snapshot as read-only and exits back to the draft", () => {
     const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("历史版本人群"));
     importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("当前草稿人群"));

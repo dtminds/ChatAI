@@ -528,6 +528,26 @@ describe("workflow draft service", () => {
     }
   });
 
+  it("keeps published state for viewport-only dirty events", async () => {
+    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
+
+    await act(async () => {
+      await result.current.publishDraft(result.current.document.draft);
+    });
+
+    expect(result.current.publishState).toBe("published");
+
+    act(() => {
+      result.current.markDirty({
+        ...result.current.document.draft,
+        viewport: { x: 320, y: 180, zoom: 0.72 },
+      });
+    });
+
+    expect(result.current.publishState).toBe("published");
+    expect(result.current.saveState).toBe("saved");
+  });
+
   it("marks publish as failed when the async repository publish rejects", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));

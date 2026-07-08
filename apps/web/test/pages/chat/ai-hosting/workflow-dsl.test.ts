@@ -202,6 +202,47 @@ describe("workflow DSL", () => {
     expect(parsed.draft.nodes.find((node) => node.id === "ai-reception")?.data.handoffRule).toBe("客户要求人工");
   });
 
+  it("keeps execution config limited to runtime-facing node parameters", () => {
+    const draft = createInitialDraft();
+    const aiNode = createNodeFromKind("ai", "ai-reception", draft.nodes.length);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("action-message", "ai-reception"),
+      ],
+      nodes: [
+        ...draft.nodes,
+        aiNode,
+      ],
+    });
+    const configByKind = new Map(graph.nodes.map((node) => [node.kind, node.config]));
+
+    expect(configByKind.get("trigger")).toEqual({
+      audience: "近 30 天新入会且未首购客户",
+      repeatEntryEnabled: true,
+    });
+    expect(configByKind.get("wait")).toEqual({ delayDays: 2 });
+    expect(configByKind.get("branch")).toEqual({
+      branchPaths: expect.any(Array),
+      branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
+    });
+    expect(configByKind.get("action")).toEqual({ actionType: "message" });
+    expect(configByKind.get("ai")).toEqual({
+      agentName: "护肤小助理",
+      handoffRule: "客户要求人工、投诉升级、识别到价格异议",
+    });
+    expect(configByKind.get("goal")).toEqual({ conversion: 18.4 });
+
+    graph.nodes.forEach((node) => {
+      expect(node.config).not.toHaveProperty("label");
+      expect(node.config).not.toHaveProperty("metric");
+      expect(node.config).not.toHaveProperty("status");
+      expect(node.config).not.toHaveProperty("summary");
+      expect(node.config).not.toHaveProperty("title");
+    });
+  });
+
   it("rejects invalid JSON, unknown kind, unsupported schema version, and empty drafts", () => {
     expect(parseWorkflowDslText("not-json")).toEqual({
       issues: [expect.objectContaining({ code: "invalid-json" })],

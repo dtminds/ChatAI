@@ -1,16 +1,31 @@
 import {
-  branchHandleOptions,
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_LAYOUT_X_GAP,
-  WORKFLOW_LAYOUT_Y_GAP,
   WORKFLOW_NODE_TYPE,
 } from "./constants";
+import {
+  getBranchPathIndex,
+  getBranchPathLabel,
+  getWorkflowBranchPaths,
+} from "./branch-paths";
 import { createDefaultNodeData } from "./node-definitions";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowEdge,
+  WorkflowDraft,
   WorkflowNode,
 } from "./types";
+export { arrangeWorkflowNodes } from "./workflow-layout";
+
+export const DEFAULT_WORKFLOW_VIEWPORT = { x: 36, y: 420, zoom: 0.82 };
+
+export function createInitialDraft(): WorkflowDraft {
+  return {
+    edges: createInitialEdges(),
+    nodes: createInitialNodes(),
+    viewport: DEFAULT_WORKFLOW_VIEWPORT,
+  };
+}
 
 export function createInitialNodes(): WorkflowNode[] {
   return [
@@ -190,17 +205,26 @@ export function findLastActionNodeId(nodes: WorkflowNode[], edges: WorkflowEdge[
 }
 
 export function getBranchHandleIndex(sourceHandle?: string | null) {
-  const index = branchHandleOptions.findIndex((branch) => branch.id === sourceHandle);
-
-  return index >= 0 ? index : 0;
+  return getBranchPathIndex(undefined, sourceHandle);
 }
 
-export function getBranchHandleLabel(sourceHandle?: string | null) {
-  return branchHandleOptions.find((branch) => branch.id === sourceHandle)?.label;
+export function getBranchHandleLabel(
+  sourceHandle?: string | null,
+  sourceNode?: WorkflowNode,
+) {
+  return getBranchPathLabel(sourceNode?.data, sourceHandle);
 }
 
-export function getBranchInsertY(nodeY: number, sourceHandle?: string) {
-  return nodeY + (getBranchHandleIndex(sourceHandle) - 1) * 96;
+export function getBranchInsertY(
+  nodeY: number,
+  sourceHandle?: string,
+  sourceNode?: WorkflowNode,
+) {
+  const branchPathCount = sourceNode?.data.kind === "branch"
+    ? getWorkflowBranchPaths(sourceNode.data).length
+    : 3;
+
+  return nodeY + (getBranchPathIndex(sourceNode?.data, sourceHandle) - Math.floor(branchPathCount / 2)) * 96;
 }
 
 export function getAfterNodesInSameBranch(
@@ -260,132 +284,4 @@ export function shiftNodesRight(
         }
       : node,
   );
-}
-
-export function arrangeWorkflowNodes(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-) {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const originalIndexById = new Map(nodes.map((node, index) => [node.id, index]));
-  const incomingCountById = new Map(nodes.map((node) => [node.id, 0]));
-  const outgoingById = new Map(nodes.map((node) => [node.id, [] as WorkflowEdge[]]));
-  const layoutOrderById = new Map(nodes.map((node) => [node.id, 0]));
-
-  edges.forEach((edge) => {
-    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
-      return;
-    }
-
-    outgoingById.get(edge.source)?.push(edge);
-    incomingCountById.set(edge.target, (incomingCountById.get(edge.target) ?? 0) + 1);
-  });
-
-  const depthById = new Map(nodes.map((node) => [node.id, 0]));
-  const queue = nodes
-    .filter((node) => incomingCountById.get(node.id) === 0)
-    .sort(compareNodesForLayout(originalIndexById, layoutOrderById));
-  const arrangedIds = new Set<string>();
-
-  while (queue.length > 0) {
-    const node = queue.shift();
-
-    if (!node || arrangedIds.has(node.id)) {
-      continue;
-    }
-
-    arrangedIds.add(node.id);
-
-    (outgoingById.get(node.id) ?? []).forEach((edge) => {
-      const targetId = edge.target;
-      const nextDepth = (depthById.get(node.id) ?? 0) + 1;
-      const nextLayoutOrder = getLayoutOrder(node.id, edge.sourceHandle, layoutOrderById);
-
-      depthById.set(
-        targetId,
-        Math.max(depthById.get(targetId) ?? 0, nextDepth),
-      );
-      layoutOrderById.set(
-        targetId,
-        Math.max(layoutOrderById.get(targetId) ?? 0, nextLayoutOrder),
-      );
-      incomingCountById.set(targetId, (incomingCountById.get(targetId) ?? 1) - 1);
-
-      if (incomingCountById.get(targetId) === 0) {
-        const targetNode = nodeById.get(targetId);
-
-        if (targetNode) {
-          queue.push(targetNode);
-          queue.sort(compareNodesForLayout(originalIndexById, layoutOrderById));
-        }
-      }
-    });
-  }
-
-  nodes.forEach((node) => {
-    if (!arrangedIds.has(node.id)) {
-      depthById.set(node.id, Math.max(0, Math.round(node.position.x / WORKFLOW_LAYOUT_X_GAP)));
-    }
-  });
-
-  const nodesByDepth = new Map<number, WorkflowNode[]>();
-
-  nodes.forEach((node) => {
-    const depth = depthById.get(node.id) ?? 0;
-    nodesByDepth.set(depth, [...(nodesByDepth.get(depth) ?? []), node]);
-  });
-
-  const yById = new Map<string, number>();
-
-  nodesByDepth.forEach((nodesInDepth) => {
-    const sortedNodes = [...nodesInDepth].sort(compareNodesForLayout(originalIndexById, layoutOrderById));
-
-    if (sortedNodes.length === 1) {
-      yById.set(sortedNodes[0].id, sortedNodes[0].position.y);
-      return;
-    }
-
-    sortedNodes.forEach((node, index) => {
-      yById.set(
-        node.id,
-        (index - (sortedNodes.length - 1) / 2) * WORKFLOW_LAYOUT_Y_GAP,
-      );
-    });
-  });
-
-  return nodes.map((node) => ({
-    ...node,
-    position: {
-      x: (depthById.get(node.id) ?? 0) * WORKFLOW_LAYOUT_X_GAP,
-      y: yById.get(node.id) ?? node.position.y,
-    },
-  }));
-}
-
-function getLayoutOrder(
-  sourceNodeId: string,
-  sourceHandle: string | null | undefined,
-  layoutOrderById: Map<string, number>,
-) {
-  return (layoutOrderById.get(sourceNodeId) ?? 0) + getBranchHandleIndex(sourceHandle) - 1;
-}
-
-function compareNodesForLayout(
-  originalIndexById: Map<string, number>,
-  layoutOrderById: Map<string, number> = new Map(),
-) {
-  return (first: WorkflowNode, second: WorkflowNode) => {
-    if (first.id === "trigger") {
-      return -1;
-    }
-
-    if (second.id === "trigger") {
-      return 1;
-    }
-
-    return (layoutOrderById.get(first.id) ?? 0) - (layoutOrderById.get(second.id) ?? 0)
-      || first.position.y - second.position.y
-      || first.position.x - second.position.x
-      || (originalIndexById.get(first.id) ?? 0) - (originalIndexById.get(second.id) ?? 0);
-  };
 }

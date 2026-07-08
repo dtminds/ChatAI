@@ -17,9 +17,21 @@ import type {
   WorkflowHistoryEvent,
   WorkflowHistoryEventMeta,
 } from "./history";
-import { canDeleteNodeKind, canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
+import {
+  canDeleteNodeKind,
+  canDuplicateNodeKind,
+  canInsertAfterNodeKind,
+  canInsertNodeKind,
+} from "./node-definitions";
+import { normalizeWorkflowBranchPaths } from "./branch-paths";
+import {
+  canonicalizeWorkflowDraft,
+  isWorkflowGraphEqual,
+} from "./workflow-draft-normalizer";
 import type {
   InsertableWorkflowNodeKind,
+  WorkflowBranchPath,
+  WorkflowEdge,
   WorkflowNodeData,
   WorkflowNodeKind,
   WorkflowDraft,
@@ -37,6 +49,32 @@ export type WorkflowGraphOperation = {
   meta?: WorkflowHistoryEventMeta;
   result?: WorkflowActionResult;
 };
+
+export type WorkflowDraftChange = {
+  draft: WorkflowDraft;
+  meta: WorkflowHistoryEventMeta & {
+    nodeId: string;
+  };
+  result?: WorkflowActionResult;
+};
+
+function createWorkflowGraphOperation(
+  operation: WorkflowGraphOperation,
+): WorkflowGraphOperation {
+  return {
+    ...operation,
+    draft: canonicalizeWorkflowDraft(operation.draft),
+  };
+}
+
+function createWorkflowDraftChange(
+  change: WorkflowDraftChange,
+): WorkflowDraftChange {
+  return {
+    ...change,
+    draft: canonicalizeWorkflowDraft(change.draft),
+  };
+}
 
 export function addNodeOperation(
   draft: WorkflowDraft,
@@ -61,15 +99,23 @@ export function insertNodeAfterOperation(
   kind: InsertableWorkflowNodeKind,
   nodeId: string,
   sourceHandle?: string,
-): WorkflowGraphOperation {
+): WorkflowGraphOperation | undefined {
   const { edges, nodes } = draft;
   const previousNode = nodes.find((node) => node.id === previousNodeId);
+  if (!previousNode || !canInsertAfterNodeKind(previousNode.data.kind)) {
+    return undefined;
+  }
+
   const replacedEdge = edges.find((edge) =>
     edge.source === previousNodeId
     && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
   );
   const nextNodeId = replacedEdge?.target ?? "goal";
   const nextNode = nodes.find((node) => node.id === nextNodeId);
+  if (!nextNode) {
+    return undefined;
+  }
+
   const nodesToShift = replacedEdge
     ? getAfterNodesInSameBranch(nodes, edges, nextNodeId)
     : [];
@@ -81,16 +127,38 @@ export function insertNodeAfterOperation(
       y:
         nextNode?.position.y
         ?? (previousNode?.data.kind === "branch"
-          ? getBranchInsertY(previousNode.position.y, sourceHandle)
+          ? getBranchInsertY(previousNode.position.y, sourceHandle, previousNode)
           : previousNode?.position.y ?? 0),
     },
   };
+  const baseEdges = edges.filter((edge) => edge.id !== replacedEdge?.id);
+  const incomingConnection = {
+    source: previousNodeId,
+    sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle ?? null,
+    target: nodeId,
+    targetHandle: null,
+  };
+  const outgoingConnection = {
+    source: nodeId,
+    sourceHandle: null,
+    target: nextNodeId,
+    targetHandle: replacedEdge?.targetHandle ?? null,
+  };
 
-  return {
+  if (!areWorkflowInsertConnectionsAllowed({
+    ...draft,
+    edges: baseEdges,
+    nodes: [...nodes, node],
+  }, incomingConnection, outgoingConnection)) {
+    return undefined;
+  }
+
+  return createWorkflowGraphOperation({
     draft: {
+      ...draft,
       edges: [
-        ...edges.filter((edge) => edge.id !== replacedEdge?.id),
-        createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
+        ...baseEdges,
+        createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle, previousNode), {
           sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
         }),
         createEdge(nodeId, nextNodeId, undefined, {
@@ -108,7 +176,7 @@ export function insertNodeAfterOperation(
       edgeId: replacedEdge?.id,
       nodeId,
     },
-  };
+  });
 }
 
 export function insertNodeBetweenOperation(
@@ -118,11 +186,21 @@ export function insertNodeBetweenOperation(
   targetNodeId: string,
   kind: InsertableWorkflowNodeKind,
   nodeId: string,
-): WorkflowGraphOperation {
+): WorkflowGraphOperation | undefined {
   const { edges, nodes } = draft;
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
   const targetNode = nodes.find((node) => node.id === targetNodeId);
   const replacedEdge = edges.find((edge) => edge.id === edgeId);
+  if (
+    !sourceNode
+    || !targetNode
+    || !replacedEdge
+    || replacedEdge.source !== sourceNodeId
+    || replacedEdge.target !== targetNodeId
+  ) {
+    return undefined;
+  }
+
   const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
   const node = {
@@ -132,11 +210,33 @@ export function insertNodeBetweenOperation(
       y: targetNode?.position.y ?? sourceNode?.position.y ?? 0,
     },
   };
+  const baseEdges = edges.filter((edge) => edge.id !== edgeId);
+  const incomingConnection = {
+    source: sourceNodeId,
+    sourceHandle: replacedEdge.sourceHandle ?? null,
+    target: nodeId,
+    targetHandle: replacedEdge.targetHandle ?? null,
+  };
+  const outgoingConnection = {
+    source: nodeId,
+    sourceHandle: null,
+    target: targetNodeId,
+    targetHandle: null,
+  };
 
-  return {
+  if (!areWorkflowInsertConnectionsAllowed({
+    ...draft,
+    edges: baseEdges,
+    nodes: [...nodes, node],
+  }, incomingConnection, outgoingConnection)) {
+    return undefined;
+  }
+
+  return createWorkflowGraphOperation({
     draft: {
+      ...draft,
       edges: [
-        ...edges.filter((edge) => edge.id !== edgeId),
+        ...baseEdges,
         createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
           sourceHandle: replacedEdge?.sourceHandle,
           targetHandle: replacedEdge?.targetHandle,
@@ -155,7 +255,32 @@ export function insertNodeBetweenOperation(
       edgeId,
       nodeId,
     },
-  };
+  });
+}
+
+function areWorkflowInsertConnectionsAllowed(
+  draft: WorkflowDraft,
+  incomingConnection: Connection,
+  outgoingConnection: Connection,
+) {
+  if (!isWorkflowConnectionAllowed(draft, incomingConnection)) {
+    return false;
+  }
+
+  const incomingEdge = createEdge(
+    incomingConnection.source!,
+    incomingConnection.target!,
+    undefined,
+    {
+      sourceHandle: incomingConnection.sourceHandle,
+      targetHandle: incomingConnection.targetHandle,
+    },
+  );
+
+  return isWorkflowConnectionAllowed({
+    ...draft,
+    edges: [...draft.edges, incomingEdge],
+  }, outgoingConnection);
 }
 
 export function connectNodesOperation(
@@ -170,7 +295,7 @@ export function connectNodesOperation(
 
   const edge = createEdge(source, target, undefined, { sourceHandle, targetHandle });
 
-  return {
+  return createWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: [...draft.edges, edge],
@@ -183,7 +308,7 @@ export function connectNodesOperation(
       edgeId: edge.id,
       nodeId: source,
     },
-  };
+  });
 }
 
 export function deleteNodeOperation(
@@ -196,8 +321,9 @@ export function deleteNodeOperation(
     return undefined;
   }
 
-  return {
+  return createWorkflowGraphOperation({
     draft: {
+      ...draft,
       edges: draft.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
       nodes: draft.nodes.filter((currentNode) => currentNode.id !== nodeId),
     },
@@ -207,7 +333,7 @@ export function deleteNodeOperation(
       nodeTitle: node.data.title,
     },
     result: { nodeId },
-  };
+  });
 }
 
 export function deleteNodesOperation(
@@ -225,8 +351,9 @@ export function deleteNodesOperation(
 
   const deletableNodeIdSet = new Set(deletedNodes.map((node) => node.id));
 
-  return {
+  return createWorkflowGraphOperation({
     draft: {
+      ...draft,
       edges: draft.edges.filter((edge) =>
         !deletableNodeIdSet.has(edge.source) && !deletableNodeIdSet.has(edge.target),
       ),
@@ -241,7 +368,7 @@ export function deleteNodesOperation(
       nodeId: deletedNodes[0].id,
       nodeIds: deletedNodes.map((node) => node.id),
     },
-  };
+  });
 }
 
 export function duplicateNodeOperation(
@@ -258,7 +385,7 @@ export function duplicateNodeOperation(
   const reservedTitles = new Set(draft.nodes.map((currentNode) => currentNode.data.title));
   const duplicatedNode = duplicateWorkflowNode(node, duplicatedNodeId, reservedTitles);
 
-  return {
+  return createWorkflowGraphOperation({
     draft: {
       ...draft,
       nodes: [...draft.nodes, duplicatedNode],
@@ -269,7 +396,7 @@ export function duplicateNodeOperation(
       nodeTitle: duplicatedNode.data.title,
     },
     result: { nodeId: duplicatedNodeId },
-  };
+  });
 }
 
 export function deleteEdgeOperation(
@@ -282,7 +409,7 @@ export function deleteEdgeOperation(
     return undefined;
   }
 
-  return {
+  return createWorkflowGraphOperation({
     draft: {
       ...draft,
       edges: draft.edges.filter((currentEdge) => currentEdge.id !== edgeId),
@@ -296,17 +423,17 @@ export function deleteEdgeOperation(
       edgeId,
       nodeId: edge.source,
     },
-  };
+  });
 }
 
 export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperation {
-  return {
+  return createWorkflowGraphOperation({
     draft: {
       ...draft,
       nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
     },
     event: "layout:organize",
-  };
+  });
 }
 
 export function updateNodeDataOperation(
@@ -320,25 +447,106 @@ export function updateNodeDataOperation(
     return undefined;
   }
 
-  return {
-    draft: {
-      ...draft,
-      nodes: draft.nodes.map((currentNode) =>
-        currentNode.id === nodeId
-          ? {
-              ...currentNode,
-              data: {
-                ...currentNode.data,
-                ...patch,
-              },
-            }
-          : currentNode,
-      ),
-    },
+  const nextData = createUpdatedNodeData(node.data, patch);
+  const nextDraft = {
+    ...draft,
+    edges: reconcileBranchPathEdges(draft.edges, nodeId, node.data, nextData),
+    nodes: draft.nodes.map((currentNode) =>
+      currentNode.id === nodeId
+        ? {
+            ...currentNode,
+            data: nextData,
+          }
+        : currentNode,
+    ),
+  };
+
+  if (isWorkflowGraphEqual(draft, nextDraft)) {
+    return undefined;
+  }
+
+  return createWorkflowDraftChange({
+    draft: nextDraft,
     meta: {
       nodeId,
       nodeTitle: node.data.title,
     },
     result: { nodeId },
+  });
+}
+
+function createUpdatedNodeData(
+  currentData: WorkflowNodeData,
+  patch: Partial<WorkflowNodeData>,
+): WorkflowNodeData {
+  if (currentData.kind !== "branch" || !Array.isArray(patch.branchPaths)) {
+    return {
+      ...currentData,
+      ...patch,
+    };
+  }
+
+  return {
+    ...currentData,
+    ...patch,
+    branchPaths: normalizeWorkflowBranchPaths(patch.branchPaths),
+  };
+}
+
+function reconcileBranchPathEdges(
+  edges: WorkflowEdge[],
+  nodeId: string,
+  currentData: WorkflowNodeData,
+  nextData: WorkflowNodeData,
+): WorkflowEdge[] {
+  if (
+    currentData.kind !== "branch"
+    || nextData.kind !== "branch"
+    || !Array.isArray(nextData.branchPaths)
+  ) {
+    return edges;
+  }
+
+  const nextBranchLabelById = new Map(
+    nextData.branchPaths.map((path) => [path.id, path.label]),
+  );
+
+  return edges.flatMap((edge) => {
+    if (edge.source !== nodeId) {
+      return [edge];
+    }
+
+    if (!edge.sourceHandle || !nextBranchLabelById.has(edge.sourceHandle)) {
+      return [];
+    }
+
+    return [syncBranchEdgeLabel(edge, nextBranchLabelById.get(edge.sourceHandle))];
+  });
+}
+
+function syncBranchEdgeLabel(
+  edge: WorkflowEdge,
+  label: WorkflowBranchPath["label"] | undefined,
+): WorkflowEdge {
+  if (edge.data?.label === label) {
+    return edge;
+  }
+
+  const {
+    label: _previousLabel,
+    ...restData
+  } = edge.data ?? {};
+  const data = label
+    ? {
+        ...restData,
+        label,
+      }
+    : Object.keys(restData).length > 0
+      ? restData
+      : undefined;
+
+  return {
+    ...edge,
+    data,
   };
 }

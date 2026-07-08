@@ -3,6 +3,14 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./types";
+import {
+  normalizeWorkflowSelection,
+  resolveWorkflowSelectionDeleteTarget,
+  selectWorkflowEdge,
+  selectWorkflowNodes,
+  toggleWorkflowNodeSelection,
+} from "./workflow-selection";
+import type { WorkflowSelection } from "./workflow-selection";
 
 export function useWorkflowSelectionState({
   defaultNodeId,
@@ -14,25 +22,33 @@ export function useWorkflowSelectionState({
   nodes: WorkflowNode[];
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [selectedNodeIds, setSelectedNodeIdsState] = useState<string[]>(defaultNodeId ? [defaultNodeId] : []);
+  const [selection, setSelection] = useState<WorkflowSelection>(() => ({
+    selectedEdgeId: null,
+    selectedNodeIds: defaultNodeId ? [defaultNodeId] : [],
+  }));
 
   useEffect(() => {
-    if (selectedEdgeId || selectedNodeIds.length === 0 || !nodes.length) {
-      return;
-    }
+    setSelection((currentSelection) => {
+      const nextSelection = normalizeWorkflowSelection({
+        defaultNodeId,
+        edges,
+        nodes,
+        selection: currentSelection,
+      });
 
-    const existingSelectedNodeIds = selectedNodeIds.filter((nodeId) =>
-      nodes.some((node) => node.id === nodeId),
-    );
+      if (
+        nextSelection.selectedEdgeId === currentSelection.selectedEdgeId
+        && nextSelection.selectedNodeIds.length === currentSelection.selectedNodeIds.length
+        && nextSelection.selectedNodeIds.every((nodeId, index) => nodeId === currentSelection.selectedNodeIds[index])
+      ) {
+        return currentSelection;
+      }
 
-    if (existingSelectedNodeIds.length === selectedNodeIds.length) {
-      return;
-    }
+      return nextSelection;
+    });
+  }, [defaultNodeId, edges, nodes]);
 
-    setSelectedNodeIdsState(existingSelectedNodeIds.length > 0 ? existingSelectedNodeIds : [nodes[0].id]);
-  }, [nodes, selectedEdgeId, selectedNodeIds]);
-
+  const { selectedEdgeId, selectedNodeIds } = selection;
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
 
   const selectedNode = useMemo(
@@ -63,11 +79,17 @@ export function useWorkflowSelectionState({
   }, [edges, hoveredNodeId]);
 
   const clearEdgeSelection = useCallback(() => {
-    setSelectedEdgeId(null);
+    setSelection((currentSelection) => ({
+      ...currentSelection,
+      selectedEdgeId: null,
+    }));
   }, []);
 
   const clearNodeSelection = useCallback(() => {
-    setSelectedNodeIdsState([]);
+    setSelection((currentSelection) => ({
+      ...currentSelection,
+      selectedNodeIds: [],
+    }));
   }, []);
 
   const handleNodeHoverEnd = useCallback(() => {
@@ -79,27 +101,29 @@ export function useWorkflowSelectionState({
   }, []);
 
   const selectEdge = useCallback((edgeId: string) => {
-    setSelectedEdgeId(edgeId);
-    setSelectedNodeIdsState([]);
+    setSelection(selectWorkflowEdge(edgeId));
   }, []);
 
   const selectNode = useCallback((nodeId: string) => {
-    setSelectedNodeIdsState([nodeId]);
-    setSelectedEdgeId(null);
+    setSelection(selectWorkflowNodes([nodeId]));
   }, []);
 
   const selectNodes = useCallback((nodeIds: string[]) => {
-    const uniqueNodeIds = Array.from(new Set(nodeIds));
+    setSelection(selectWorkflowNodes(nodeIds));
+  }, []);
 
-    setSelectedNodeIdsState(uniqueNodeIds);
-    if (uniqueNodeIds.length > 0) {
-      setSelectedEdgeId(null);
-    }
+  const toggleNodeSelection = useCallback((nodeId: string) => {
+    setSelection((currentSelection) => toggleWorkflowNodeSelection(currentSelection, nodeId));
   }, []);
 
   const setSelectedNodeId = useCallback((nodeId: string | null) => {
-    setSelectedNodeIdsState(nodeId ? [nodeId] : []);
+    setSelection(selectWorkflowNodes(nodeId ? [nodeId] : []));
   }, []);
+
+  const deleteTarget = useMemo(
+    () => resolveWorkflowSelectionDeleteTarget(selection),
+    [selection],
+  );
 
   return {
     clearEdgeSelection,
@@ -114,10 +138,10 @@ export function useWorkflowSelectionState({
     selectedNodeIds,
     selectedNodeIdSet,
     selectedNodes,
+    selectionDeleteTarget: deleteTarget,
     selectNode,
     selectNodes,
-    setSelectedEdgeId,
     setSelectedNodeId,
-    setSelectedNodeIds: setSelectedNodeIdsState,
+    toggleNodeSelection,
   };
 }

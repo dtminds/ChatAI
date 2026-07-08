@@ -12,13 +12,21 @@ export function useWorkflowTransientState() {
     setQuickInsertTarget(null);
   }, []);
 
+  const closeCanvasOverlays = useCallback(() => {
+    setActiveEdgeInsertMenuId(null);
+    setPaletteOpen(false);
+    setQuickInsertTarget(null);
+  }, []);
+
   const toggleEdgeInsertMenu = useCallback((edgeId: string) => {
+    setPaletteOpen(false);
     setQuickInsertTarget(null);
     setActiveEdgeInsertMenuId((currentEdgeId) => (currentEdgeId === edgeId ? null : edgeId));
   }, []);
 
   const toggleNodeInsertMenu = useCallback((nodeId: string, sourceHandle?: string) => {
     setActiveEdgeInsertMenuId(null);
+    setPaletteOpen(false);
     setQuickInsertTarget((currentTarget) =>
       currentTarget?.nodeId === nodeId && currentTarget.sourceHandle === sourceHandle
         ? null
@@ -29,6 +37,7 @@ export function useWorkflowTransientState() {
   return {
     activeEdgeInsertMenuId,
     closeCanvasMenus,
+    closeCanvasOverlays,
     paletteOpen,
     paletteQuery,
     quickInsertTarget,

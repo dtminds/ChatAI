@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { matchesWorkflowShortcut } from "./workflow-shortcut-definitions";
 
 function isEditableShortcutTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -17,51 +18,11 @@ function hasActiveDocumentTextSelection() {
   return Boolean(selection && !selection.isCollapsed && selection.rangeCount > 0);
 }
 
-function isUndoShortcut(event: KeyboardEvent) {
-  return (event.metaKey || event.ctrlKey)
-    && !event.shiftKey
-    && event.key.toLowerCase() === "z";
-}
-
-function isRedoShortcut(event: KeyboardEvent) {
-  if (!(event.metaKey || event.ctrlKey)) {
-    return false;
-  }
-
-  return event.key.toLowerCase() === "y"
-    || (event.shiftKey && event.key.toLowerCase() === "z");
-}
-
-function isDeleteShortcut(event: KeyboardEvent) {
-  return !event.altKey
-    && !event.ctrlKey
-    && !event.metaKey
-    && !event.shiftKey
-    && (event.key === "Delete" || event.key === "Backspace");
-}
-
-function isDuplicateShortcut(event: KeyboardEvent) {
-  return (event.metaKey || event.ctrlKey)
-    && !event.altKey
-    && !event.shiftKey
-    && event.key.toLowerCase() === "d";
-}
-
-function isCopyShortcut(event: KeyboardEvent) {
-  return (event.metaKey || event.ctrlKey)
-    && !event.altKey
-    && !event.shiftKey
-    && event.key.toLowerCase() === "c";
-}
-
-function isPasteShortcut(event: KeyboardEvent) {
-  return (event.metaKey || event.ctrlKey)
-    && !event.altKey
-    && !event.shiftKey
-    && event.key.toLowerCase() === "v";
-}
-
 export function useWorkflowShortcuts({
+  canCopySelection,
+  canDeleteSelection,
+  canDuplicateSelection,
+  canPasteClipboard,
   canRedo,
   canUndo,
   onCopySelection,
@@ -71,6 +32,10 @@ export function useWorkflowShortcuts({
   onRedo,
   onUndo,
 }: {
+  canCopySelection: boolean;
+  canDeleteSelection: boolean;
+  canDuplicateSelection: boolean;
+  canPasteClipboard: boolean;
   canRedo: boolean;
   canUndo: boolean;
   onCopySelection: () => boolean;
@@ -86,21 +51,21 @@ export function useWorkflowShortcuts({
         return;
       }
 
-      if (isDeleteShortcut(event)) {
+      if (canDeleteSelection && matchesWorkflowShortcut(event, "workflow.delete")) {
         event.preventDefault();
         event.stopPropagation();
         onDeleteSelection();
         return;
       }
 
-      if (isDuplicateShortcut(event)) {
+      if (canDuplicateSelection && matchesWorkflowShortcut(event, "workflow.duplicate")) {
         event.preventDefault();
         event.stopPropagation();
         onDuplicateSelection();
         return;
       }
 
-      if (isCopyShortcut(event)) {
+      if (canCopySelection && matchesWorkflowShortcut(event, "workflow.copy")) {
         if (hasActiveDocumentTextSelection()) {
           return;
         }
@@ -113,7 +78,7 @@ export function useWorkflowShortcuts({
         return;
       }
 
-      if (isPasteShortcut(event)) {
+      if (canPasteClipboard && matchesWorkflowShortcut(event, "workflow.paste")) {
         if (onPasteClipboard()) {
           event.preventDefault();
           event.stopPropagation();
@@ -122,24 +87,18 @@ export function useWorkflowShortcuts({
         return;
       }
 
-      if (isUndoShortcut(event)) {
+      if (canUndo && matchesWorkflowShortcut(event, "workflow.undo")) {
         event.preventDefault();
         event.stopPropagation();
-
-        if (canUndo) {
-          onUndo();
-        }
+        onUndo();
 
         return;
       }
 
-      if (isRedoShortcut(event)) {
+      if (canRedo && matchesWorkflowShortcut(event, "workflow.redo")) {
         event.preventDefault();
         event.stopPropagation();
-
-        if (canRedo) {
-          onRedo();
-        }
+        onRedo();
       }
     }
 
@@ -149,6 +108,10 @@ export function useWorkflowShortcuts({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
+    canCopySelection,
+    canDeleteSelection,
+    canDuplicateSelection,
+    canPasteClipboard,
     canRedo,
     canUndo,
     onCopySelection,

@@ -1,8 +1,7 @@
-import { sanitizeDraft } from "./workflow-draft-normalizer";
 import {
-  WORKFLOW_EDGE_TYPE,
-  WORKFLOW_NODE_TYPE,
-} from "./constants";
+  hydrateWorkflowDraft,
+  sanitizeDraft,
+} from "./workflow-draft-normalizer";
 import { getUniqueDuplicatedNodeTitle } from "./graph";
 import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
 import type {
@@ -65,7 +64,7 @@ export function isClipboardNodeStructurallyValid(value: unknown): value is Workf
     return false;
   }
 
-  if (typeof value.id !== "string" || value.type !== WORKFLOW_NODE_TYPE) {
+  if (typeof value.id !== "string") {
     return false;
   }
 
@@ -83,16 +82,16 @@ export function isClipboardEdgeStructurallyValid(value: unknown): value is Workf
 
   return typeof value.id === "string"
     && typeof value.source === "string"
-    && typeof value.target === "string"
-    && value.type === WORKFLOW_EDGE_TYPE;
+    && typeof value.target === "string";
 }
 
 export function stringifyWorkflowClipboardData(data: WorkflowClipboardData) {
+  const clipboardData = hydrateWorkflowClipboardData(data);
   const payload: WorkflowClipboardPayload = {
     kind: WORKFLOW_CLIPBOARD_KIND,
     version: WORKFLOW_CLIPBOARD_VERSION,
-    edges: data.edges,
-    nodes: data.nodes,
+    edges: clipboardData.edges,
+    nodes: clipboardData.nodes,
   };
 
   return JSON.stringify(payload);
@@ -115,13 +114,10 @@ export function parseWorkflowClipboardText(text: string): WorkflowClipboardData 
       return undefined;
     }
 
-    const nodes = parsed.nodes.filter(isClipboardNodeStructurallyValid);
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edges = parsed.edges
-      .filter(isClipboardEdgeStructurallyValid)
-      .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
-
-    return { edges, nodes };
+    return hydrateWorkflowClipboardData({
+      edges: parsed.edges.filter(isClipboardEdgeStructurallyValid),
+      nodes: parsed.nodes.filter(isClipboardNodeStructurallyValid),
+    });
   }
   catch {
     return undefined;
@@ -181,11 +177,17 @@ export function createWorkflowClipboardData(
   }
 
   const validNodeIdSet = new Set(nodes.map((node) => node.id));
-  return sanitizeDraft({
+  const sanitizedClipboardDraft = sanitizeDraft({
     edges: draft.edges.filter((edge) =>
       validNodeIdSet.has(edge.source) && validNodeIdSet.has(edge.target),
     ),
     nodes,
+    viewport: draft.viewport,
+  });
+
+  return hydrateWorkflowClipboardData({
+    edges: sanitizedClipboardDraft.edges,
+    nodes: sanitizedClipboardDraft.nodes,
   });
 }
 
@@ -194,7 +196,8 @@ export function pasteWorkflowClipboardData(
   clipboardData: WorkflowClipboardData,
   options: WorkflowPasteOptions,
 ) {
-  const sourceNodes = clipboardData.nodes
+  const hydratedClipboardData = hydrateWorkflowClipboardData(clipboardData);
+  const sourceNodes = hydratedClipboardData.nodes
     .filter(isClipboardNodeStructurallyValid)
     .filter((node) => canInsertNodeKind(node.data.kind) && canDuplicateNodeKind(node.data.kind));
 
@@ -203,7 +206,7 @@ export function pasteWorkflowClipboardData(
   }
 
   const sourceNodeIds = new Set(sourceNodes.map((node) => node.id));
-  const sourceEdges = clipboardData.edges
+  const sourceEdges = hydratedClipboardData.edges
     .filter(isClipboardEdgeStructurallyValid)
     .filter((edge) => sourceNodeIds.has(edge.source) && sourceNodeIds.has(edge.target));
   const reservedTitles = new Set(draft.nodes.map((node) => node.data.title));
@@ -251,6 +254,7 @@ export function pasteWorkflowClipboardData(
   const nextDraft = sanitizeDraft({
     edges: [...draft.edges, ...pastedEdges],
     nodes: [...draft.nodes, ...pastedNodes],
+    viewport: draft.viewport,
   });
   const firstPastedNode = pastedNodes[0];
 
@@ -278,4 +282,16 @@ function getUniquePastedNodeId(nodeId: string, reservedNodeIds: Set<string>) {
 
   reservedNodeIds.add(candidate);
   return candidate;
+}
+
+export function hydrateWorkflowClipboardData(data: WorkflowClipboardData): WorkflowClipboardData {
+  const draft = hydrateWorkflowDraft({
+    edges: data.edges,
+    nodes: data.nodes,
+  });
+
+  return {
+    edges: draft.edges,
+    nodes: draft.nodes,
+  };
 }

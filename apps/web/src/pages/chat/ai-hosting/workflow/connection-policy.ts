@@ -3,11 +3,36 @@ import {
   getAvailableNextNodeKinds,
   getAvailablePrevNodeKinds,
 } from "./node-catalog";
+import { getNodeSourceHandleDefinitions } from "./node-handle-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowDraft,
 } from "./types";
+
+export function filterWorkflowEdgesByConnectionPolicy(
+  draft: WorkflowDraft,
+): WorkflowEdge[] {
+  const acceptedEdges: WorkflowEdge[] = [];
+
+  draft.edges.forEach((edge) => {
+    if (!isWorkflowConnectionAllowed({
+      ...draft,
+      edges: acceptedEdges,
+    }, {
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    })) {
+      return;
+    }
+
+    acceptedEdges.push(edge);
+  });
+
+  return acceptedEdges;
+}
 
 export function isWorkflowConnectionAllowed(
   draft: WorkflowDraft,
@@ -30,6 +55,10 @@ export function isWorkflowConnectionAllowed(
     return false;
   }
 
+  if (!isNodeHandleConnectionAllowed(sourceNode, sourceHandle, targetHandle)) {
+    return false;
+  }
+
   if (hasDuplicateConnection(draft.edges, {
     source,
     sourceHandle,
@@ -39,7 +68,7 @@ export function isWorkflowConnectionAllowed(
     return false;
   }
 
-  if (sourceHandle && hasSourceHandleConnection(draft.edges, source, sourceHandle)) {
+  if (hasSourceHandleConnection(draft.edges, source, sourceHandle)) {
     return false;
   }
 
@@ -52,6 +81,22 @@ function isNodeKindConnectionAllowed(
 ) {
   return getAvailableNextNodeKinds(sourceNode.data.kind).includes(targetNode.data.kind)
     && getAvailablePrevNodeKinds(targetNode.data.kind).includes(sourceNode.data.kind);
+}
+
+function isNodeHandleConnectionAllowed(
+  sourceNode: WorkflowNode,
+  sourceHandle: string | null | undefined,
+  targetHandle: string | null | undefined,
+) {
+  if (targetHandle) {
+    return false;
+  }
+
+  const sourceHandleDefinitions = getNodeSourceHandleDefinitions(sourceNode.data);
+
+  return sourceHandleDefinitions.some((handle) =>
+    (handle.id ?? null) === (sourceHandle ?? null),
+  );
 }
 
 function hasDuplicateConnection(
@@ -69,12 +114,18 @@ function hasDuplicateConnection(
 function hasSourceHandleConnection(
   edges: WorkflowEdge[],
   source: string,
-  sourceHandle: string,
+  sourceHandle: string | null | undefined,
 ) {
+  const sourceHandleKey = getSourceHandleKey(sourceHandle);
+
   return edges.some((edge) =>
     edge.source === source
-    && edge.sourceHandle === sourceHandle,
+    && getSourceHandleKey(edge.sourceHandle) === sourceHandleKey,
   );
+}
+
+function getSourceHandleKey(sourceHandle: string | null | undefined) {
+  return sourceHandle ?? "__default__";
 }
 
 function hasPathToNode(

@@ -34,29 +34,38 @@ export function buildWorkflowValidationSummary(
   edges: WorkflowEdge[],
 ): WorkflowValidationSummary {
   const validation = validateWorkflowDraft(nodes, edges);
+  return buildWorkflowValidationSummaryFromResult(nodes, validation);
+}
+
+export function buildWorkflowValidationSummaryFromResult(
+  nodes: WorkflowNode[],
+  validation: WorkflowValidationResult,
+): WorkflowValidationSummary {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const triggerIssue = validation.nodeIssues.find(
     (item) => item.node.id === validation.triggerNode?.id,
   );
   const disconnectedIssues = validation.nodeIssues
     .map(({ issues, node }) => ({
-      issues: issues.filter((issue) => issue.code === "node-disconnected"),
+      issues: issues.filter((issue) => issue.source === "graph"),
       node,
     }))
     .filter((item) => item.issues.length > 0);
   const nodeConfigIssues = validation.nodeIssues
     .filter((item) => item.node.id !== validation.triggerNode?.id)
     .map(({ issues, node }) => ({
-      issues: issues.filter((issue) => issue.code !== "node-disconnected"),
+      issues: issues.filter((issue) => issue.source !== "graph"),
       node,
     }))
     .filter((item) => item.issues.length > 0);
   const triggerConfigIssues = triggerIssue?.issues.filter(
-    (issue) => issue.code !== "node-disconnected",
+    (issue) => issue.source !== "graph",
   );
   const hasDisconnectedNode = validation.disconnectedNodes.length > 0;
   const hasGraphStructureIssue = validation.graphIssues.some((issue) =>
     issue.code !== "node-disconnected" && issue.code !== "goal-unreachable",
+  ) || disconnectedIssues.some(({ issues }) =>
+    issues.some((issue) => issue.code !== "node-disconnected"),
   );
   const hasAiAction = validation.configuredAiNodes.length > 0;
 

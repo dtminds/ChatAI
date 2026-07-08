@@ -18,6 +18,7 @@ import {
   validateWorkflowNodeConfig,
   validateWorkflowNodeGraphState,
 } from "@/pages/chat/ai-hosting/workflow/validation/workflow-validation";
+import { buildWorkflowValidationSummaryFromResult } from "@/pages/chat/ai-hosting/workflow/validation/workflow-validation-summary";
 
 describe("buildPublishChecks", () => {
   it("returns only unresolved checklist items while keeping a readiness summary", () => {
@@ -233,6 +234,42 @@ describe("buildPublishChecks", () => {
         source: "graph",
       },
     ]);
+  });
+
+  it("routes graph-source node validation issues to connectivity checks", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const actionNode = nodes.find((node) => node.id === "action-message")!;
+    const validation = validateWorkflowDraft(nodes, edges);
+    const summary = buildWorkflowValidationSummaryFromResult(nodes, {
+      ...validation,
+      graphIssues: [],
+      nodeIssues: [
+        {
+          issues: [
+            {
+              code: "node-multiple-incoming",
+              message: "节点存在多个上游入口",
+              severity: "warning",
+              source: "graph",
+            },
+          ],
+          node: actionNode,
+        },
+      ],
+    });
+
+    expect(summary.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: "connectivity",
+        id: "node-connectivity-action-message",
+        messages: ["节点存在多个上游入口"],
+        nodeId: "action-message",
+      }),
+    ]));
+    expect(summary.checks.some((check) => check.id === "node-config-action-message")).toBe(false);
+    expect(summary.summary.find((check) => check.id === "config")?.status).toBe("ready");
+    expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
   it("marks AI strategy ready only when an AI node is configured", () => {

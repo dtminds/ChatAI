@@ -264,18 +264,7 @@ export function insertNodeBetweenOperation(
     },
   };
   const baseEdges = edges.filter((edge) => edge.id !== edgeId);
-  const incomingConnection = {
-    source: sourceNodeId,
-    sourceHandle: replacedEdge.sourceHandle ?? null,
-    target: nodeId,
-    targetHandle: replacedEdge.targetHandle ?? null,
-  };
-  const outgoingConnection = {
-    source: nodeId,
-    sourceHandle: null,
-    target: targetNodeId,
-    targetHandle: null,
-  };
+  const { incomingConnection, outgoingConnection } = createInsertNodeBetweenConnections(replacedEdge, nodeId);
 
   if (!areWorkflowInsertConnectionsAllowed({
     ...draft,
@@ -292,9 +281,10 @@ export function insertNodeBetweenOperation(
         ...baseEdges,
         createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
           sourceHandle: replacedEdge?.sourceHandle,
+        }),
+        createEdge(nodeId, targetNodeId, undefined, {
           targetHandle: replacedEdge?.targetHandle,
         }),
-        createEdge(nodeId, targetNodeId),
       ],
       nodes: [...shiftNodesRight(nodes, shiftedNodeIds), node],
     },
@@ -309,6 +299,26 @@ export function insertNodeBetweenOperation(
       nodeId,
     },
   });
+}
+
+export function createInsertNodeBetweenConnections(
+  replacedEdge: Pick<WorkflowEdge, "source" | "sourceHandle" | "target" | "targetHandle">,
+  nodeId: string,
+) {
+  return {
+    incomingConnection: {
+      source: replacedEdge.source,
+      sourceHandle: replacedEdge.sourceHandle ?? null,
+      target: nodeId,
+      targetHandle: null,
+    },
+    outgoingConnection: {
+      source: nodeId,
+      sourceHandle: null,
+      target: replacedEdge.target,
+      targetHandle: replacedEdge.targetHandle ?? null,
+    },
+  };
 }
 
 function areWorkflowInsertConnectionsAllowed(

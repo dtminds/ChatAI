@@ -3,6 +3,7 @@ import {
   addNodeOperation,
   arrangeNodesOperation,
   connectNodesOperation,
+  createInsertNodeBetweenConnections,
   deleteEdgesOperation,
   deleteNodeOperation,
   deleteNodesOperation,
@@ -130,13 +131,37 @@ describe("workflow graph operations", () => {
           source: "branch-intent",
           sourceHandle: "branch-high",
           target: "ai-high",
+          targetHandle: undefined,
         }),
         expect.objectContaining({
           source: "ai-high",
           target: "action-message",
+          targetHandle: undefined,
         }),
       ]),
     );
+  });
+
+  it("keeps split-edge source handles on incoming edges and target handles on outgoing edges", () => {
+    expect(createInsertNodeBetweenConnections({
+      source: "source-node",
+      sourceHandle: "branch-high",
+      target: "target-node",
+      targetHandle: "target-custom",
+    }, "inserted-node")).toEqual({
+      incomingConnection: {
+        source: "source-node",
+        sourceHandle: "branch-high",
+        target: "inserted-node",
+        targetHandle: null,
+      },
+      outgoingConnection: {
+        source: "inserted-node",
+        sourceHandle: null,
+        target: "target-node",
+        targetHandle: "target-custom",
+      },
+    });
   });
 
   it("adds only insertable node kinds as unconnected floating nodes", () => {

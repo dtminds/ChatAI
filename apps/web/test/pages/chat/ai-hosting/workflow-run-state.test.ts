@@ -208,6 +208,38 @@ describe("workflowRunReducer", () => {
     expect(state.runHistory[0]?.status).toBe("stopped");
   });
 
+  it("derives pending workflow inputs from the entry node role", () => {
+    const pendingRun = createPendingWorkflowRun({
+      draft: {
+        edges: [],
+        nodes: [
+          createWorkflowNode({
+            data: {
+              audience: "高价值会员",
+              kind: "trigger",
+              label: "触发",
+              metric: "预计进入",
+              status: "ready",
+              summary: "进入旅程",
+              title: "会员进入",
+            },
+            id: "entry-node",
+          }),
+          createWorkflowNode({
+            id: "ai-node",
+          }),
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+      runId: "pending-run",
+    });
+
+    expect(pendingRun.inputs).toEqual(expect.objectContaining({
+      audience: "高价值会员",
+      trigger: "会员进入",
+    }));
+  });
+
   it("resets all run state when the workflow scope changes", () => {
     const draft = createWorkflowDraft();
     const state = workflowRunReducer(initialWorkflowRunState, {

@@ -5,6 +5,11 @@ import type {
   WorkflowRunTraceItem,
   WorkflowRunRecord,
 } from "../types";
+import {
+  findWorkflowEntryNode,
+  findWorkflowTerminalNode,
+  isWorkflowTerminalNode,
+} from "../node-catalog";
 import type { WorkflowRuntimeSnapshot } from "./workflow-run-snapshot";
 
 export type WorkflowNodeRunRequest = {
@@ -36,7 +41,7 @@ function createMockNodeRunRecord(node: WorkflowNode): NodeRunRecord {
   const output = JSON.stringify(
     {
       metric: node.data.metric,
-      next: node.data.kind === "goal" ? "journey_exit" : "continue",
+      next: isWorkflowTerminalNode(node) ? "journey_exit" : "continue",
       title: node.data.title,
     },
     null,
@@ -123,7 +128,7 @@ function createMockWorkflowRunRecord(
 }
 
 function createWorkflowRunInputs(draft: WorkflowDraft) {
-  const trigger = draft.nodes.find((node) => node.data.kind === "trigger");
+  const trigger = findWorkflowEntryNode(draft.nodes);
 
   return {
     audience: trigger?.data.audience ?? "当前 Workflow 目标人群",
@@ -137,7 +142,7 @@ function createWorkflowRunOutputs(
   nodeRuns: Record<string, NodeRunRecord>,
 ) {
   const { draft, executionGraph } = snapshot;
-  const goal = draft.nodes.find((node) => node.data.kind === "goal");
+  const goal = findWorkflowTerminalNode(draft.nodes);
 
   return {
     conversion: goal?.data.conversion ?? null,

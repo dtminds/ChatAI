@@ -4,6 +4,7 @@ import type {
   WorkflowNode,
   WorkflowRunRecord,
 } from "../types";
+import { findWorkflowEntryNode } from "../node-catalog";
 import {
   createFailedNodeRunRecord,
   createPendingNodeRunRecord,
@@ -412,7 +413,7 @@ function createStoppedWorkflowRunRecord(
 }
 
 function createWorkflowInputs(draft: WorkflowDraft) {
-  const trigger = draft.nodes.find((node) => node.data.kind === "trigger");
+  const trigger = findWorkflowEntryNode(draft.nodes);
 
   return {
     audience: trigger?.data.audience ?? "当前 Workflow 目标人群",

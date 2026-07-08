@@ -166,6 +166,26 @@ describe("useWorkflowRun", () => {
     expect(workflowRunRecord.draft.nodes[0]?.data.title).toBe("AI 接待");
   });
 
+  it("derives mock workflow run summaries from entry and terminal node roles", async () => {
+    const adapter = createMockWorkflowRunAdapter();
+    const draft = createEntryTerminalWorkflowDraft();
+    const terminalRunRecord = await adapter.runNode({ node: draft.nodes[1]! });
+    const workflowRunRecord = await adapter.runWorkflow({
+      snapshot: createWorkflowRuntimeSnapshot(draft),
+      workflowId: "workflow-a",
+    });
+
+    expect(terminalRunRecord.output).toContain("\"next\": \"journey_exit\"");
+    expect(workflowRunRecord.inputs).toEqual(expect.objectContaining({
+      audience: "高价值会员",
+      trigger: "会员进入",
+    }));
+    expect(workflowRunRecord.outputs).toEqual(expect.objectContaining({
+      conversion: 42,
+      next: "workflow_completed",
+    }));
+  });
+
   it("archives workflow run history with a graph snapshot and node records", async () => {
     const { result } = renderHook(() => useWorkflowRun("workflow-a"));
     const draft = createWorkflowDraft();
@@ -593,6 +613,39 @@ function createWorkflowDraft(): WorkflowDraft {
   return {
     edges: [],
     nodes: [createWorkflowNode()],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
+function createEntryTerminalWorkflowDraft(): WorkflowDraft {
+  return {
+    edges: [],
+    nodes: [
+      createWorkflowNode({
+        data: {
+          audience: "高价值会员",
+          kind: "trigger",
+          label: "触发",
+          metric: "预计进入",
+          status: "ready",
+          summary: "进入旅程",
+          title: "会员进入",
+        },
+        id: "entry-node",
+      }),
+      createWorkflowNode({
+        data: {
+          conversion: 42,
+          kind: "goal",
+          label: "目标",
+          metric: "目标 42%",
+          status: "ready",
+          summary: "完成目标",
+          title: "完成转化",
+        },
+        id: "terminal-node",
+      }),
+    ],
     viewport: { x: 0, y: 0, zoom: 1 },
   };
 }

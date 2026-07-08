@@ -149,14 +149,15 @@ export function insertNodeAfterOperation(
     edge.source === previousNodeId
     && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
   );
-  const nextNodeId = replacedEdge?.target ?? "goal";
-  const nextNode = nodes.find((node) => node.id === nextNodeId);
-  if (!nextNode) {
+  const nextNode = replacedEdge
+    ? nodes.find((node) => node.id === replacedEdge.target)
+    : undefined;
+  if (replacedEdge && !nextNode) {
     return undefined;
   }
 
   const nodesToShift = replacedEdge
-    ? getAfterNodesInSameBranch(nodes, edges, nextNodeId)
+    ? getAfterNodesInSameBranch(nodes, edges, replacedEdge.target)
     : [];
   const shiftedNodeIds = getNodeIdSet(nodesToShift);
   const node = {
@@ -180,7 +181,7 @@ export function insertNodeAfterOperation(
   const outgoingConnection = {
     source: nodeId,
     sourceHandle: null,
-    target: nextNodeId,
+    target: replacedEdge?.target ?? "",
     targetHandle: replacedEdge?.targetHandle ?? null,
   };
 
@@ -188,22 +189,27 @@ export function insertNodeAfterOperation(
     ...draft,
     edges: baseEdges,
     nodes: [...nodes, node],
-  }, incomingConnection, outgoingConnection)) {
+  }, incomingConnection, replacedEdge ? outgoingConnection : undefined)) {
     return undefined;
+  }
+
+  const nextEdges = [
+    ...baseEdges,
+    createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle, previousNode), {
+      sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
+    }),
+  ];
+
+  if (replacedEdge) {
+    nextEdges.push(createEdge(nodeId, replacedEdge.target, undefined, {
+      targetHandle: replacedEdge.targetHandle,
+    }));
   }
 
   return finalizeWorkflowGraphOperation({
     draft: {
       ...draft,
-      edges: [
-        ...baseEdges,
-        createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle, previousNode), {
-          sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
-        }),
-        createEdge(nodeId, nextNodeId, undefined, {
-          targetHandle: replacedEdge?.targetHandle,
-        }),
-      ],
+      edges: nextEdges,
       nodes: [...shiftNodesRight(nodes, shiftedNodeIds), node],
     },
     event: replacedEdge ? "node:insert" : "node:add",
@@ -300,10 +306,14 @@ export function insertNodeBetweenOperation(
 function areWorkflowInsertConnectionsAllowed(
   draft: WorkflowDraft,
   incomingConnection: Connection,
-  outgoingConnection: Connection,
+  outgoingConnection?: Connection,
 ) {
   if (!isWorkflowConnectionAllowed(draft, incomingConnection)) {
     return false;
+  }
+
+  if (!outgoingConnection) {
+    return true;
   }
 
   const incomingEdge = createEdge(

@@ -927,9 +927,21 @@ function createWorkflowDraftWithConnectedBranchOutlets() {
       createEdge("branch-intent", "action-default", "默认路径", {
         sourceHandle: "branch-default",
       }),
+      createEdge("action-normal", "goal-normal"),
+      createEdge("action-default", "goal-default"),
     ],
     nodes: [
       ...draft.nodes,
+      {
+        ...draft.nodes.find((node) => node.id === "goal")!,
+        id: "goal-normal",
+        position: { x: 1240, y: 94 },
+      },
+      {
+        ...draft.nodes.find((node) => node.id === "goal")!,
+        id: "goal-default",
+        position: { x: 1240, y: 282 },
+      },
       {
         ...createNodeFromKind("action", "action-normal", 10),
         position: { x: 930, y: 94 },

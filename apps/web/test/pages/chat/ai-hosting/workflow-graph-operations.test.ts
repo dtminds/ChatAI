@@ -63,6 +63,34 @@ describe("workflow graph operations", () => {
     expect(operation!.draft.nodes.find((node) => node.id === "action-message")?.position.x).toBe(1240);
   });
 
+  it("inserts after an empty source handle without auto-connecting a downstream goal", () => {
+    const operation = insertNodeAfterOperation(
+      createDraft(),
+      "branch-intent",
+      "wait",
+      "wait-normal",
+      "branch-normal",
+    );
+
+    expect(operation).toBeDefined();
+    expect(operation!.event).toBe("node:add");
+    expect(operation!.result).toEqual({
+      edgeId: undefined,
+      nodeId: "wait-normal",
+    });
+    expect(operation!.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-normal",
+        target: "wait-normal",
+      }),
+    ]));
+    expect(operation!.draft.edges.some((edge) =>
+      edge.source === "wait-normal" && edge.target === "goal",
+    )).toBe(false);
+    expect(operation!.draft.edges.filter((edge) => edge.target === "goal")).toHaveLength(1);
+  });
+
   it("inserts a node between an edge while preserving handle metadata", () => {
     const operation = insertNodeBetweenOperation(
       createDraft(),

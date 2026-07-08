@@ -157,6 +157,31 @@ describe("workflow graph commands", () => {
     expect(operation?.draft.edges.map((edge) => edge.id)).not.toContain(edgeIds[1]);
   });
 
+  it("does not invent downstream edges when inserting after an empty outlet", () => {
+    const operation = runWorkflowGraphCommand(createDraft(), {
+      kind: "wait",
+      previousNodeId: "branch-intent",
+      sourceHandle: "branch-normal",
+      type: "insert-node-after",
+    });
+
+    expect(operation?.event).toBe("node:add");
+    expect(operation).toBeDefined();
+    const insertedNodeId = operation!.result?.nodeId;
+
+    expect(operation!.draft.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-normal",
+        target: insertedNodeId,
+      }),
+    ]));
+    expect(operation!.draft.edges.some((edge) =>
+      edge.source === insertedNodeId && edge.target === "goal",
+    )).toBe(false);
+    expect(getGraphPolicyViolations(operation!.draft)).toEqual([]);
+  });
+
   it("routes node movement and config edits through the command boundary", () => {
     const moveOperation = runWorkflowGraphCommand(createDraft(), {
       nodeId: "wait-2d",

@@ -19,10 +19,30 @@ export type WorkflowDslDocument = {
   schemaVersion: typeof WORKFLOW_DSL_SCHEMA_VERSION;
   workflow: {
     draft: WorkflowDraft;
+    executionGraph: WorkflowExecutionGraph;
     id?: string;
     name: string;
     revision?: number;
   };
+};
+
+export type WorkflowExecutionGraph = {
+  edges: WorkflowExecutionEdge[];
+  nodes: WorkflowExecutionNode[];
+};
+
+export type WorkflowExecutionNode = {
+  config: Record<string, unknown>;
+  id: string;
+  kind: WorkflowNode["data"]["kind"];
+};
+
+export type WorkflowExecutionEdge = {
+  id: string;
+  source: string;
+  sourceHandle: string | null;
+  target: string;
+  targetHandle: string | null;
 };
 
 export type WorkflowDslParseIssue = {
@@ -82,6 +102,8 @@ export function createWorkflowDslDocument({
   workflowName: string;
   workflowRevision?: number;
 }): WorkflowDslDocument {
+  const canonicalDraft = canonicalizeWorkflowDraft(draft);
+
   return {
     exportedAt,
     kind: WORKFLOW_DSL_KIND,
@@ -91,7 +113,8 @@ export function createWorkflowDslDocument({
     },
     schemaVersion: WORKFLOW_DSL_SCHEMA_VERSION,
     workflow: {
-      draft: canonicalizeWorkflowDraft(draft),
+      draft: canonicalDraft,
+      executionGraph: createWorkflowExecutionGraph(canonicalDraft),
       id: workflowId,
       name: workflowName,
       revision: workflowRevision,
@@ -100,17 +123,43 @@ export function createWorkflowDslDocument({
 }
 
 export function stringifyWorkflowDslDocument(document: WorkflowDslDocument): string {
+  const draft = canonicalizeWorkflowDraft(document.workflow.draft);
+
   return JSON.stringify({
     ...document,
     workflow: {
       ...document.workflow,
-      draft: canonicalizeWorkflowDraft(document.workflow.draft),
+      draft,
+      executionGraph: createWorkflowExecutionGraph(draft),
     },
   }, null, 2);
 }
 
 export function exportWorkflowDsl(options: Parameters<typeof createWorkflowDslDocument>[0]): string {
   return stringifyWorkflowDslDocument(createWorkflowDslDocument(options));
+}
+
+export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExecutionGraph {
+  const canonicalDraft = canonicalizeWorkflowDraft(draft);
+
+  return {
+    edges: canonicalDraft.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    })),
+    nodes: canonicalDraft.nodes.map((node) => {
+      const { kind, ...config } = node.data;
+
+      return {
+        config,
+        id: node.id,
+        kind,
+      };
+    }),
+  };
 }
 
 export function parseWorkflowDslText(text: string): WorkflowDslParseResult {

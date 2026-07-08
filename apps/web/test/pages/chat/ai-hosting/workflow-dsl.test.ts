@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createWorkflowExecutionGraph,
   createWorkflowDslDocument,
   exportWorkflowDsl,
   parseWorkflowDslText,
@@ -77,6 +78,19 @@ describe("workflow DSL", () => {
       .toBeUndefined();
     expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data._runtimeStatus)
       .toBeUndefined();
+    const executionNode = parsed.workflow.executionGraph.nodes.find(
+      (node: { id: string }) => node.id === "action-message",
+    );
+    expect(executionNode).toEqual(expect.objectContaining({
+      id: "action-message",
+      kind: "action",
+    }));
+    expect(executionNode.config.kind).toBeUndefined();
+    expect(executionNode.config.onDelete).toBeUndefined();
+    expect(executionNode.config._connectedSourceHandleIds).toBeUndefined();
+    expect(executionNode.config._runtimeStatus).toBeUndefined();
+    expect(parsed.workflow.executionGraph).not.toHaveProperty("viewport");
+    expect(parsed.workflow.executionGraph.nodes[0]).not.toHaveProperty("position");
   });
 
   it("round-trips exported workflow DSL text through the import boundary", () => {
@@ -96,8 +110,44 @@ describe("workflow DSL", () => {
     expect(parsed.importedSchemaVersion).toBe(WORKFLOW_DSL_SCHEMA_VERSION);
     expect(parsed.sourceFormat).toBe("draft");
     expect(parsed.document.workflow.name).toBe("新人转化旅程");
+    expect(parsed.document.workflow.executionGraph).toEqual(createWorkflowExecutionGraph(createInitialDraft()));
     expect(parsed.draft.nodes.map((node) => node.id)).toEqual(createInitialDraft().nodes.map((node) => node.id));
     expect(parsed.draft.edges.map((edge) => edge.id)).toEqual(createInitialDraft().edges.map((edge) => edge.id));
+  });
+
+  it("projects editor drafts into execution graphs without editor-only state", () => {
+    const draft = createInitialDraft();
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      nodes: draft.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          _runtimeStatus: "selected",
+          onDelete: vi.fn(),
+        },
+        selected: true,
+      })),
+      viewport: { x: 320, y: 180, zoom: 1.4 },
+    });
+
+    expect(graph.nodes.find((node) => node.id === "trigger")).toEqual(expect.objectContaining({
+      config: expect.objectContaining({
+        title: "新人入会触发",
+      }),
+      id: "trigger",
+      kind: "trigger",
+    }));
+    expect(graph.nodes.find((node) => node.id === "trigger")?.config.kind).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "trigger")?.config._runtimeStatus).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "trigger")?.config.onDelete).toBeUndefined();
+    expect(graph.edges.find((edge) => edge.source === "branch-intent" && edge.sourceHandle === "branch-high"))
+      .toEqual(expect.objectContaining({
+        source: "branch-intent",
+        sourceHandle: "branch-high",
+        target: "action-message",
+        targetHandle: null,
+      }));
   });
 
   it("preserves persisted node configuration fields through export and import", () => {

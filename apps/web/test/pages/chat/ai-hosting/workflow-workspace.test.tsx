@@ -401,6 +401,7 @@ describe("useWorkflowWorkspace", () => {
 
   it("keeps viewport changes out of the draft save boundary", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialDraftViewport = result.current.document.draft.viewport;
 
     expect(result.current.topBar.saveState).toBe("saved");
 
@@ -409,6 +410,7 @@ describe("useWorkflowWorkspace", () => {
     });
 
     expect(result.current.canvas.viewport).toEqual({ x: 180, y: 260, zoom: 0.72 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
     expect(result.current.canvas.canUndo).toBe(false);
     expect(result.current.topBar.saveState).toBe("saved");
   });

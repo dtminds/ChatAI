@@ -150,14 +150,16 @@ describe("useWorkflowController", () => {
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+    expect(result.current.currentDraft.viewport).toEqual(initialDraft.viewport);
+    expect(result.current.currentViewport).toEqual(currentViewport);
 
     act(() => {
       result.current.undo();
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+    expect(result.current.currentDraft.viewport).toEqual(initialDraft.viewport);
+    expect(result.current.currentViewport).toEqual(currentViewport);
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position)
       .not.toEqual({ x: 420, y: 120 });
   });
@@ -178,7 +180,9 @@ describe("useWorkflowController", () => {
     rerender({ draft: initialDraft });
 
     expect(viewportResult?.transient).toBe(true);
-    expect(result.current.currentDraft.viewport).toEqual(currentViewport);
+    expect(viewportResult?.draft.viewport).toEqual(currentViewport);
+    expect(result.current.currentDraft.viewport).toEqual(initialDraft.viewport);
+    expect(result.current.currentViewport).toEqual(currentViewport);
     expect(result.current.canUndo).toBe(false);
     expect(result.current.canRedo).toBe(false);
   });

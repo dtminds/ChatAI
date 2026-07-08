@@ -661,7 +661,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onUndo: undoWorkflowChange,
       paletteOpen,
       searchValue: paletteQuery,
-      viewport: controller.currentDraft.viewport,
+      viewport: controller.currentViewport,
     },
     checks: {
       ...publishChecks,

@@ -7,7 +7,6 @@ import type {
 } from "@xyflow/react";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
 import {
-  isWorkflowDraftEqual,
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import {
@@ -76,6 +75,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     resetDraft,
   } = history;
   const { edges, nodes } = currentDraft;
+  const [currentViewport, setCurrentViewport] = useState(initialDraft.viewport);
   const [pendingConfigHistoryActive, setPendingConfigHistoryActive] = useState(false);
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,6 +149,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     pendingConfigHistoryRef.current = null;
     setPendingConfigHistoryActive(false);
     moveStartDraftRef.current = null;
+    setCurrentViewport(initialDraft.viewport);
     clearConfigHistoryTimer();
     resetDraft(initialDraft);
   }, [clearConfigHistoryTimer, initialDraft, resetDraft]);
@@ -224,21 +225,23 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [flushConfigHistory]);
 
   const updateViewport = useCallback((viewport: Viewport) => {
-    const nextDraft = sanitizeDraft({
-      ...currentDraft,
-      viewport,
-    });
-
-    if (isWorkflowDraftEqual(currentDraft, nextDraft)) {
+    if (
+      currentViewport.x === viewport.x
+      && currentViewport.y === viewport.y
+      && currentViewport.zoom === viewport.zoom
+    ) {
       return undefined;
     }
 
-    replaceDraftTransient(() => nextDraft);
+    setCurrentViewport(viewport);
     return {
-      draft: nextDraft,
+      draft: {
+        ...currentDraft,
+        viewport,
+      },
       transient: true,
     };
-  }, [currentDraft, replaceDraftTransient]);
+  }, [currentDraft, currentViewport]);
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<WorkflowRenderEdge>[]) => {
@@ -469,6 +472,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     connectNodes,
     copyNode,
     copyNodes,
+    currentViewport,
     deleteEdge,
     deleteNode,
     deleteNodes,

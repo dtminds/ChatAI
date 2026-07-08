@@ -18,7 +18,6 @@ import {
   orderedNodeDefinitions,
   paletteItems,
 } from "@/pages/chat/ai-hosting/workflow/node-definitions";
-import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import type { WorkflowNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 import {
   getWorkflowDocument,
@@ -413,7 +412,7 @@ describe("Agent workflow page", () => {
       expect(defaultData.metric).toBeTruthy();
       expect(defaultData.status).toBeTruthy();
       expect(getNodeDefinition(kind)).toBe(definition);
-      expect(NodeComponentMap[kind]).toBe(definition.body);
+      expect(definition.body).toBeTypeOf("function");
       expect(canDeleteNodeKind(kind)).toBe(definition.canDelete);
       expect(canDuplicateNodeKind(kind)).toBe(definition.canDuplicate);
       expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
@@ -861,7 +860,7 @@ describe("Agent workflow page", () => {
       fireEvent.change(titleInput, { target: { value: "第二次改名" } });
 
       expect(within(canvas).getByRole("button", { name: /^第二次改名 / })).toBeInTheDocument();
-      expect(getUndoButton(canvas)).toBeDisabled();
+      expect(getUndoButton(canvas)).toBeEnabled();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);

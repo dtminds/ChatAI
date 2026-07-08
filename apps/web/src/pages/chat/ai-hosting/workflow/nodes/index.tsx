@@ -7,10 +7,10 @@ import { getNodeDefinition, nodeVisuals } from "../node-definitions";
 import type { WorkflowRenderNode } from "../types";
 import { WorkflowBaseNode } from "./base-node";
 import { WorkflowSourceHandle } from "./node-handles";
-import { NodeComponentMap } from "./registry";
 
 function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) {
-  const NodeComponent = NodeComponentMap[data.kind];
+  const definition = getNodeDefinition(data.kind);
+  const NodeComponent = definition.body;
 
   return (
     <WorkflowBaseNode

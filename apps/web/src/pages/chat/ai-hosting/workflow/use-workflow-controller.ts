@@ -20,7 +20,7 @@ import type { WorkflowActionResult } from "./graph-operations";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableWorkflowNodeKind,
-  WorkflowNodeData,
+  WorkflowNodeConfigPatch,
   WorkflowNodeKind,
   WorkflowEdge,
   WorkflowNode,
@@ -294,7 +294,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   const updateNodeData = useCallback((
     nodeId: string,
-    patch: Partial<WorkflowNodeData>,
+    patch: WorkflowNodeConfigPatch,
   ): WorkflowControllerActionResult | undefined => {
     const operation = updateNodeDataOperation(currentDraft, nodeId, patch);
 

@@ -8,7 +8,10 @@ import type {
   NodeConfigField,
   NodeConfigSection,
 } from "../node-config-schema";
-import type { WorkflowNodeData } from "../types";
+import type {
+  WorkflowNodeConfigPatch,
+  WorkflowNodeData,
+} from "../types";
 import { FieldGroup } from "./field-group";
 
 export function NodeConfigSchemaSections({
@@ -17,7 +20,7 @@ export function NodeConfigSchemaSections({
   sections,
 }: {
   data: WorkflowNodeData;
-  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
+  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
   sections: NodeConfigSection[];
 }) {
   return (
@@ -47,7 +50,7 @@ function NodeConfigFieldControl({
 }: {
   data: WorkflowNodeData;
   field: NodeConfigField;
-  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
+  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
 }) {
   if (field.kind === "option-cards") {
     const activeValue = field.getValue(data);

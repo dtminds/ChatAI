@@ -13,7 +13,7 @@ import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
   InspectorTab,
-  WorkflowNodeData,
+  WorkflowNodeConfigPatch,
   WorkflowNodeKind,
   WorkflowRenderEdge,
   WorkflowRenderNode,
@@ -202,7 +202,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     return true;
   });
 
-  const updateSelectedNode = useCallback((patch: Partial<WorkflowNodeData>) => {
+  const updateSelectedNode = useCallback((patch: WorkflowNodeConfigPatch) => {
     if (!permissions.canEditNodeSettings) {
       return;
     }

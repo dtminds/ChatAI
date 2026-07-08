@@ -35,6 +35,10 @@ export type WorkflowNodeData = Record<string, unknown> & {
   title: string;
 };
 
+export type WorkflowNodeConfigPatch = Omit<Partial<WorkflowNodeData>, "kind"> & {
+  kind?: never;
+};
+
 export type WorkflowNodeRuntimeData = {
   insertMenuOpen?: boolean;
   insertMenuSourceHandle?: string;

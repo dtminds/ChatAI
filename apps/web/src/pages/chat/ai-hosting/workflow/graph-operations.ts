@@ -31,6 +31,7 @@ import type {
   InsertableWorkflowNodeKind,
   WorkflowBranchPath,
   WorkflowEdge,
+  WorkflowNodeConfigPatch,
   WorkflowNodeData,
   WorkflowNodeKind,
   WorkflowDraft,
@@ -482,7 +483,7 @@ export function arrangeNodesOperation(draft: WorkflowDraft): WorkflowGraphOperat
 export function updateNodeDataOperation(
   draft: WorkflowDraft,
   nodeId: string,
-  patch: Partial<WorkflowNodeData>,
+  patch: WorkflowNodeConfigPatch,
 ) {
   const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
 
@@ -490,7 +491,7 @@ export function updateNodeDataOperation(
     return undefined;
   }
 
-  const nextData = createUpdatedNodeData(node.data, patch);
+  const nextData = createUpdatedNodeData(node.data, sanitizeNodeConfigPatch(patch));
   const nextDraft = {
     ...draft,
     edges: reconcileBranchPathEdges(draft.edges, nodeId, node.data, nextData),
@@ -520,7 +521,7 @@ export function updateNodeDataOperation(
 
 function createUpdatedNodeData(
   currentData: WorkflowNodeData,
-  patch: Partial<WorkflowNodeData>,
+  patch: WorkflowNodeConfigPatch,
 ): WorkflowNodeData {
   if (currentData.kind !== "branch" || !Array.isArray(patch.branchPaths)) {
     return {
@@ -534,6 +535,17 @@ function createUpdatedNodeData(
     ...patch,
     branchPaths: normalizeWorkflowBranchPaths(patch.branchPaths),
   };
+}
+
+function sanitizeNodeConfigPatch(
+  patch: WorkflowNodeConfigPatch,
+): WorkflowNodeConfigPatch {
+  const {
+    kind: _ignoredKind,
+    ...configPatch
+  } = patch as WorkflowNodeConfigPatch & { kind?: WorkflowNodeKind };
+
+  return configPatch;
 }
 
 function reconcileBranchPathEdges(

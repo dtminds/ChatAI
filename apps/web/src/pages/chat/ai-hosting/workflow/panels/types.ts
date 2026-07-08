@@ -1,11 +1,11 @@
 import type {
   WorkflowEdge,
-  WorkflowNodeData,
+  WorkflowNodeConfigPatch,
   WorkflowNode,
 } from "../types";
 
 export type NodeSettingsProps = {
   edges: WorkflowEdge[];
   node: WorkflowNode;
-  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
+  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
 };

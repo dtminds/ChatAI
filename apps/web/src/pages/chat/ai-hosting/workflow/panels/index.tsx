@@ -4,7 +4,7 @@ import {
 import type {
   InspectorTab,
   WorkflowEdge,
-  WorkflowNodeData,
+  WorkflowNodeConfigPatch,
   WorkflowNode,
   NodeRunRecord,
   WorkflowVariables,
@@ -35,7 +35,7 @@ export function NodeConfigPanel({
   lastRun?: NodeRunRecord;
   node?: WorkflowNode;
   onClose: () => void;
-  onNodeChange: (patch: Partial<WorkflowNodeData>) => void;
+  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
   readOnlyRunMode?: boolean;

@@ -1,5 +1,8 @@
 import type { IconSvgElement } from "@hugeicons/react";
-import type { WorkflowNodeData } from "./types";
+import type {
+  WorkflowNodeConfigPatch,
+  WorkflowNodeData,
+} from "./types";
 
 type NodeConfigFieldBase = {
   id: string;
@@ -9,14 +12,14 @@ type NodeConfigFieldBase = {
 export type NodeConfigTextField = NodeConfigFieldBase & {
   kind: "text";
   getValue: (data: WorkflowNodeData) => string;
-  toPatch: (value: string, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
+  toPatch: (value: string, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
 };
 
 export type NodeConfigTextareaField = NodeConfigFieldBase & {
   kind: "textarea";
   getValue: (data: WorkflowNodeData) => string;
   minRows?: number;
-  toPatch: (value: string, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
+  toPatch: (value: string, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
 };
 
 export type NodeConfigNumberField = NodeConfigFieldBase & {
@@ -24,14 +27,14 @@ export type NodeConfigNumberField = NodeConfigFieldBase & {
   getValue: (data: WorkflowNodeData) => number;
   min?: number;
   suffix?: string;
-  toPatch: (value: number, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
+  toPatch: (value: number, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
 };
 
 export type NodeConfigSwitchField = NodeConfigFieldBase & {
   description?: string;
   getValue: (data: WorkflowNodeData) => boolean;
   kind: "switch";
-  toPatch: (value: boolean, data: WorkflowNodeData) => Partial<WorkflowNodeData>;
+  toPatch: (value: boolean, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
 };
 
 export type NodeConfigOptionCard = {
@@ -50,7 +53,7 @@ export type NodeConfigOptionCardsField = NodeConfigFieldBase & {
     value: string,
     data: WorkflowNodeData,
     option: NodeConfigOptionCard,
-  ) => Partial<WorkflowNodeData>;
+  ) => WorkflowNodeConfigPatch;
 };
 
 export type NodeConfigField =

@@ -3,6 +3,9 @@ import type {
   WorkflowNode,
 } from "../types";
 import {
+  getWorkflowConnectionPolicyViolation,
+} from "../connection-policy";
+import {
   getNodeUnconnectedSourceHandles,
 } from "../node-handle-definitions";
 
@@ -11,6 +14,7 @@ export const WORKFLOW_MAX_TREE_DEPTH = 20;
 export type WorkflowGraphValidationIssue = {
   code:
     | "edge-cycle"
+    | "edge-invalid-connection"
     | "branch-path-unconnected"
     | "goal-unreachable"
     | "missing-goal"
@@ -19,6 +23,7 @@ export type WorkflowGraphValidationIssue = {
     | "node-multiple-incoming"
     | "node-multiple-outgoing"
     | "source-handle-unconnected"
+    | "source-handle-multiple-outgoing"
     | "tree-depth-exceeded";
   edgeIds?: string[];
   message: string;
@@ -116,6 +121,7 @@ export function validateWorkflowGraph(
   }
 
   getCardinalityIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
+  getConnectionPolicyIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
   getSourceHandleOutletIssues(nodes, edges).forEach((issue) => graphIssues.push(issue));
 
   return {
@@ -174,6 +180,85 @@ export function getValidWorkflowTreeNodes(
     reachableNodeIds,
     validNodes,
   };
+}
+
+function getConnectionPolicyIssues(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowGraphValidationIssue[] {
+  const issues: WorkflowGraphValidationIssue[] = [];
+  const sourceHandleIssueByKey = new Map<string, WorkflowGraphValidationIssue>();
+
+  edges.forEach((edge) => {
+    const violation = getWorkflowConnectionPolicyViolation({
+      edges,
+      nodes,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }, {
+      source: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      target: edge.target,
+      targetHandle: edge.targetHandle ?? null,
+    }, {
+      checkCycle: false,
+      ignoreEdgeId: edge.id,
+    });
+
+    if (!violation) {
+      return;
+    }
+
+    const issueCode = violation === "source-handle-occupied"
+      ? "source-handle-multiple-outgoing"
+      : "edge-invalid-connection";
+    const issue: WorkflowGraphValidationIssue = {
+      code: issueCode,
+      edgeIds: [edge.id],
+      message: getConnectionPolicyIssueMessage(violation),
+      nodeId: nodes.find((node) => node.id === edge.source)?.id,
+      severity: "warning",
+      source: "graph",
+    };
+
+    if (issueCode === "source-handle-multiple-outgoing") {
+      const sourceHandleKey = edge.sourceHandle ?? "__default__";
+      const issueKey = `${edge.source}:${sourceHandleKey}`;
+      const existingIssue = sourceHandleIssueByKey.get(issueKey);
+
+      if (existingIssue) {
+        existingIssue.edgeIds = [...(existingIssue.edgeIds ?? []), edge.id];
+        return;
+      }
+
+      sourceHandleIssueByKey.set(issueKey, issue);
+    }
+
+    issues.push(issue);
+  });
+
+  return issues;
+}
+
+function getConnectionPolicyIssueMessage(
+  violation: NonNullable<ReturnType<typeof getWorkflowConnectionPolicyViolation>>,
+) {
+  switch (violation) {
+    case "duplicate-connection":
+      return "不能存在重复连线";
+    case "invalid-handle":
+      return "连线使用了当前节点不支持的连接桩";
+    case "invalid-node-kind":
+      return "连线不符合当前节点连接规则";
+    case "missing-endpoint":
+    case "missing-node":
+      return "连线引用了不存在的节点";
+    case "self-connection":
+      return "节点不能连接到自身";
+    case "source-handle-occupied":
+      return "同一个出口只能连接一条下游连线";
+    case "edge-cycle":
+      return "Workflow 不能包含循环连线";
+  }
 }
 
 function getSourceHandleOutletIssues(

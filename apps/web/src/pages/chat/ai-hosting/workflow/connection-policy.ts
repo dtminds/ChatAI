@@ -10,6 +10,16 @@ import type {
   WorkflowDraft,
 } from "./types";
 
+export type WorkflowConnectionPolicyViolationCode =
+  | "duplicate-connection"
+  | "edge-cycle"
+  | "invalid-handle"
+  | "invalid-node-kind"
+  | "missing-endpoint"
+  | "missing-node"
+  | "self-connection"
+  | "source-handle-occupied";
+
 export function filterWorkflowEdgesByConnectionPolicy(
   draft: WorkflowDraft,
 ): WorkflowEdge[] {
@@ -38,41 +48,60 @@ export function isWorkflowConnectionAllowed(
   draft: WorkflowDraft,
   connection: Connection,
 ) {
+  return !getWorkflowConnectionPolicyViolation(draft, connection);
+}
+
+export function getWorkflowConnectionPolicyViolation(
+  draft: WorkflowDraft,
+  connection: Connection,
+  options: {
+    checkCycle?: boolean;
+    ignoreEdgeId?: string;
+  } = {},
+): WorkflowConnectionPolicyViolationCode | undefined {
+  const checkCycle = options.checkCycle ?? true;
+  const edges = options.ignoreEdgeId
+    ? draft.edges.filter((edge) => edge.id !== options.ignoreEdgeId)
+    : draft.edges;
   const { source, sourceHandle, target, targetHandle } = connection;
 
   if (!source || !target || source === target) {
-    return false;
+    return source && target && source === target ? "self-connection" : "missing-endpoint";
   }
 
   const sourceNode = draft.nodes.find((node) => node.id === source);
   const targetNode = draft.nodes.find((node) => node.id === target);
 
   if (!sourceNode || !targetNode) {
-    return false;
+    return "missing-node";
   }
 
   if (!isNodeKindConnectionAllowed(sourceNode, targetNode)) {
-    return false;
+    return "invalid-node-kind";
   }
 
   if (!isNodeHandleConnectionAllowed(sourceNode, sourceHandle, targetHandle)) {
-    return false;
+    return "invalid-handle";
   }
 
-  if (hasDuplicateConnection(draft.edges, {
+  if (hasDuplicateConnection(edges, {
     source,
     sourceHandle,
     target,
     targetHandle,
   })) {
-    return false;
+    return "duplicate-connection";
   }
 
-  if (hasSourceHandleConnection(draft.edges, source, sourceHandle)) {
-    return false;
+  if (hasSourceHandleConnection(edges, source, sourceHandle)) {
+    return "source-handle-occupied";
   }
 
-  return !hasPathToNode(draft.edges, target, source);
+  if (checkCycle && hasPathToNode(edges, target, source)) {
+    return "edge-cycle";
+  }
+
+  return undefined;
 }
 
 function isNodeKindConnectionAllowed(

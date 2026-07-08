@@ -142,6 +142,63 @@ describe("workflow graph validation", () => {
     expect(validation.graphIssues.some((issue) => issue.code === "branch-path-unconnected")).toBe(false);
   });
 
+  it("flags edges whose handle metadata is rejected by the connection policy", () => {
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("branch-intent", "goal", "未知路径", { sourceHandle: "branch-missing" }),
+    ];
+    const validation = validateWorkflowGraph(createInitialNodes(), edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "edge-invalid-connection",
+        message: "连线使用了当前节点不支持的连接桩",
+        nodeId: "branch-intent",
+      }),
+    ]));
+  });
+
+  it("flags single outgoing edges from nodes without source handles", () => {
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("goal", "action-message"),
+    ];
+    const validation = validateWorkflowGraph(createInitialNodes(), edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "edge-invalid-connection",
+        message: "连线不符合当前节点连接规则",
+        nodeId: "goal",
+      }),
+    ]));
+  });
+
+  it("flags duplicate downstream edges from the same source handle", () => {
+    const nodes = [
+      ...createInitialNodes(),
+      createNodeFromKind("action", "action-high-extra", 10),
+    ];
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("branch-intent", "action-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
+    ];
+    const validation = validateWorkflowGraph(nodes, edges);
+    const sourceHandleIssues = validation.graphIssues.filter(
+      (issue) => issue.code === "source-handle-multiple-outgoing" && issue.nodeId === "branch-intent",
+    );
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "source-handle-multiple-outgoing",
+        message: "同一个出口只能连接一条下游连线",
+        nodeId: "branch-intent",
+      }),
+    ]));
+    expect(sourceHandleIssues).toHaveLength(1);
+    expect(sourceHandleIssues[0]?.edgeIds).toHaveLength(2);
+  });
+
   it("flags graph depth over the configured limit", () => {
     const baseNodes = createInitialNodes();
     const trigger = baseNodes.find((node) => node.id === "trigger")!;

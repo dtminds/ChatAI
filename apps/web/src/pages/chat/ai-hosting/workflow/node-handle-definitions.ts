@@ -1,8 +1,4 @@
-import {
-  getBranchPathTop,
-  getDefaultBranchPathId,
-  getWorkflowBranchPaths,
-} from "./branch-paths";
+import { getNodeDefinitionCore } from "./node-definition-core";
 import type {
   WorkflowEdge,
   WorkflowNodeKind,
@@ -24,41 +20,22 @@ export type WorkflowTargetHandleDefinition = {
 export function getNodeSourceHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowSourceHandleDefinition[] {
-  if (data.kind === "goal") {
-    return [];
-  }
-
-  if (data.kind === "branch") {
-    return getWorkflowBranchPaths(data).map((branch) => ({
-      id: branch.id,
-      label: branch.label,
-      outletKind: "branch-path",
-      top: getBranchPathTop(data, branch.id),
-    }));
-  }
-
-  return [{ outletKind: "default", top: 16 }];
+  return getNodeDefinitionCore(data.kind).getSourceHandles(data);
 }
 
 export function getNodeTargetHandleDefinitions(
   data: WorkflowNodeRenderData,
 ): WorkflowTargetHandleDefinition[] {
-  if (data.kind === "trigger") {
-    return [];
-  }
-
-  return [{}];
+  return getNodeDefinitionCore(data.kind).getTargetHandles(data);
 }
 
 export function getDefaultSourceHandleId(
   kind: WorkflowNodeKind,
   data?: WorkflowNodeRenderData,
 ) {
-  if (kind === "branch") {
-    return getDefaultBranchPathId(data);
-  }
-
-  return undefined;
+  return getNodeDefinitionCore(kind).getSourceHandles(data ?? getNodeDefinitionCore(kind).createDefaultData())
+    .find((handle) => typeof handle.id === "string")
+    ?.id;
 }
 
 export function getNodeUnconnectedSourceHandles(

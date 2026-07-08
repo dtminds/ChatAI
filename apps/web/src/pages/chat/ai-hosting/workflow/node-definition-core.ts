@@ -11,10 +11,6 @@ import type {
   WorkflowSourceHandleDefinition,
   WorkflowTargetHandleDefinition,
 } from "./node-handle-definitions";
-import {
-  getNodeSourceHandleDefinitions,
-  getNodeTargetHandleDefinitions,
-} from "./node-handle-definitions";
 
 export {
   getInsertableNodeKindsBetween,
@@ -45,8 +41,8 @@ export const nodeDefinitionCore = Object.fromEntries(
     kind,
     {
       ...catalogEntry,
-      getSourceHandles: getNodeSourceHandleDefinitions,
-      getTargetHandles: getNodeTargetHandleDefinitions,
+      getSourceHandles: catalogEntry.getSourceHandles,
+      getTargetHandles: catalogEntry.getTargetHandles,
     },
   ]),
 ) as Record<WorkflowNodeKind, NodeDefinitionCore>;

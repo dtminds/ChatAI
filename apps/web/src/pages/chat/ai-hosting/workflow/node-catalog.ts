@@ -23,10 +23,15 @@ import {
   agentOptions,
 } from "./node-options";
 import {
+  getBranchPathTop,
   createDefaultBranchPaths,
   getWorkflowBranchPaths,
 } from "./branch-paths";
 import type { NodeConfigSection } from "./node-config-types";
+import type {
+  WorkflowSourceHandleDefinition,
+  WorkflowTargetHandleDefinition,
+} from "./node-handle-definitions";
 
 export type NodeVisual = {
   accentClassName: string;
@@ -74,6 +79,8 @@ export type WorkflowNodeCatalogEntry = {
   paletteLabel?: string;
   paletteGroup?: WorkflowNodePaletteGroupId;
   getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
+  getSourceHandles: (data: WorkflowNodeData) => WorkflowSourceHandleDefinition[];
+  getTargetHandles: (data: WorkflowNodeData) => WorkflowTargetHandleDefinition[];
   sort: number;
   validate?: (
     node: WorkflowNode,
@@ -197,6 +204,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteGroup: "engagement",
     paletteLabel: "营销动作",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createDefaultSourceHandles,
+    getTargetHandles: createDefaultTargetHandles,
     sort: 30,
     validate: validateActionNode,
     visual: nodeVisuals.action,
@@ -275,6 +284,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteGroup: "engagement",
     paletteLabel: "AI 接待",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createDefaultSourceHandles,
+    getTargetHandles: createDefaultTargetHandles,
     sort: 40,
     validate: validateAiNode,
     visual: nodeVisuals.ai,
@@ -331,6 +342,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteGroup: "logic",
     paletteLabel: "条件分支",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createBranchSourceHandles,
+    getTargetHandles: createDefaultTargetHandles,
     sort: 20,
     validate: validateBranchNode,
     visual: nodeVisuals.branch,
@@ -381,6 +394,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     insertable: false,
     kind: "goal",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createNoSourceHandles,
+    getTargetHandles: createDefaultTargetHandles,
     sort: 100,
     visual: nodeVisuals.goal,
   },
@@ -440,6 +455,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     insertable: false,
     kind: "trigger",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createDefaultSourceHandles,
+    getTargetHandles: createNoTargetHandles,
     sort: 0,
     visual: nodeVisuals.trigger,
   },
@@ -493,6 +510,8 @@ export const workflowNodeCatalog: Record<WorkflowNodeKind, WorkflowNodeCatalogEn
     paletteGroup: "flow",
     paletteLabel: "等待",
     getOutputVariables: createDefaultOutputVariables,
+    getSourceHandles: createDefaultSourceHandles,
+    getTargetHandles: createDefaultTargetHandles,
     sort: 10,
     visual: nodeVisuals.wait,
   },
@@ -720,6 +739,33 @@ function createCatalogIssue(
     severity: "warning",
     source: "catalog",
   };
+}
+
+function createDefaultSourceHandles(): WorkflowSourceHandleDefinition[] {
+  return [{ outletKind: "default", top: 16 }];
+}
+
+function createNoSourceHandles(): WorkflowSourceHandleDefinition[] {
+  return [];
+}
+
+function createBranchSourceHandles(
+  data: WorkflowNodeData,
+): WorkflowSourceHandleDefinition[] {
+  return getWorkflowBranchPaths(data).map((branch) => ({
+    id: branch.id,
+    label: branch.label,
+    outletKind: "branch-path",
+    top: getBranchPathTop(data, branch.id),
+  }));
+}
+
+function createDefaultTargetHandles(): WorkflowTargetHandleDefinition[] {
+  return [{}];
+}
+
+function createNoTargetHandles(): WorkflowTargetHandleDefinition[] {
+  return [];
 }
 
 function createDefaultOutputVariables(node: WorkflowNode): WorkflowVariable[] {

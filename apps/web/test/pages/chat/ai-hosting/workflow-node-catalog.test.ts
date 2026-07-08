@@ -68,8 +68,8 @@ describe("workflow node catalog", () => {
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
       expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
       expect(getWorkflowNodeConfigSchema(kind).nodeSections).toBe(catalogEntry.configSections);
-      expect(definition.getSourceHandles).toBe(getNodeSourceHandleDefinitions);
-      expect(definition.getTargetHandles).toBe(getNodeTargetHandleDefinitions);
+      expect(definition.getSourceHandles).toBe(catalogEntry.getSourceHandles);
+      expect(definition.getTargetHandles).toBe(catalogEntry.getTargetHandles);
       expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));
       expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
       expect(definition.getTargetHandles(defaultData)).toEqual(getNodeTargetHandleDefinitions(defaultData));
@@ -222,6 +222,7 @@ describe("workflow node catalog", () => {
 
   it("derives node source handles from the node definition boundary", () => {
     const branchHandles = getNodeSourceHandleDefinitions(createDefaultNodeData("branch"));
+    const branchDefinitionHandles = getNodeDefinitionCore("branch").getSourceHandles(createDefaultNodeData("branch"));
     const customBranchHandles = getNodeSourceHandleDefinitions({
       ...createDefaultNodeData("branch"),
       branchPaths: [
@@ -232,6 +233,7 @@ describe("workflow node catalog", () => {
     });
 
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("goal"))).toEqual([]);
+    expect(branchDefinitionHandles).toEqual(branchHandles);
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{
       outletKind: "default",
       top: 16,

@@ -12,15 +12,24 @@ import {
   createSchemaNodeSettingsPanel,
 } from "./panels/node-settings";
 import type { NodeSettingsProps } from "./panels/types";
+import type { ReactNode } from "react";
 
 export type WorkflowNodeUiBinding = {
   body: ComponentType<NodeBodyProps>;
   settings: ComponentType<NodeSettingsProps>;
 };
 
-const ActionConfig = createSchemaNodeSettingsPanel("action");
-const AiReceptionConfig = createSchemaNodeSettingsPanel("ai");
-const GoalConfig = createSchemaNodeSettingsPanel("goal", ({ node }) => {
+function createStandardNodeUiBinding(
+  kind: WorkflowNodeKind,
+  renderAfterSchema?: (props: NodeSettingsProps) => ReactNode,
+): WorkflowNodeUiBinding {
+  return {
+    body: StandardNodeBody,
+    settings: createSchemaNodeSettingsPanel(kind, renderAfterSchema),
+  };
+}
+
+const goalProgress = ({ node }: NodeSettingsProps) => {
   const conversion = node.data.conversion ?? 18.4;
 
   return createElement(Progress, {
@@ -28,38 +37,23 @@ const GoalConfig = createSchemaNodeSettingsPanel("goal", ({ node }) => {
     className: "h-2",
     value: conversion * 4,
   });
-});
-const TriggerConfig = createSchemaNodeSettingsPanel("trigger");
-const WaitConfig = createSchemaNodeSettingsPanel("wait", () =>
+};
+
+const waitHelp = () =>
   createElement(
     "div",
     { className: "rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground" },
     "客户进入等待后，将在设定时间结束时继续执行下一步",
-  ));
+  );
 
 export const workflowNodeUiBindings = {
-  action: {
-    body: StandardNodeBody,
-    settings: ActionConfig,
-  },
-  ai: {
-    body: StandardNodeBody,
-    settings: AiReceptionConfig,
-  },
+  action: createStandardNodeUiBinding("action"),
+  ai: createStandardNodeUiBinding("ai"),
   branch: {
     body: BranchNodeBody,
     settings: BranchConfig,
   },
-  goal: {
-    body: StandardNodeBody,
-    settings: GoalConfig,
-  },
-  trigger: {
-    body: StandardNodeBody,
-    settings: TriggerConfig,
-  },
-  wait: {
-    body: StandardNodeBody,
-    settings: WaitConfig,
-  },
+  goal: createStandardNodeUiBinding("goal", goalProgress),
+  trigger: createStandardNodeUiBinding("trigger"),
+  wait: createStandardNodeUiBinding("wait", waitHelp),
 } satisfies Record<WorkflowNodeKind, WorkflowNodeUiBinding>;

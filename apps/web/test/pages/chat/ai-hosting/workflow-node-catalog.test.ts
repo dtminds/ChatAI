@@ -33,6 +33,10 @@ import {
   getNodeUnconnectedSourceHandles,
 } from "@/pages/chat/ai-hosting/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
+import {
+  BranchNodeBody,
+  StandardNodeBody,
+} from "@/pages/chat/ai-hosting/workflow/nodes/node-bodies";
 import { createInitialEdges } from "@/pages/chat/ai-hosting/workflow/graph";
 import { hydrateWorkflowDraft } from "@/pages/chat/ai-hosting/workflow/workflow-draft-normalizer";
 import {
@@ -154,6 +158,15 @@ describe("workflow node catalog", () => {
         expect.any(Array),
       );
     }
+  });
+
+  it("uses the standard node UI binding for non-branch node kinds", () => {
+    const standardNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "trigger", "wait"];
+
+    standardNodeKinds.forEach((kind) => {
+      expect(workflowNodeUiBindings[kind].body).toBe(StandardNodeBody);
+    });
+    expect(workflowNodeUiBindings.branch.body).toBe(BranchNodeBody);
   });
 
   it("derives palette nodes from sorted insertable catalog entries", () => {

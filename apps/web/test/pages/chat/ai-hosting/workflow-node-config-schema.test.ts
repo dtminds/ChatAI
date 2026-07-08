@@ -9,6 +9,7 @@ import type {
 import {
   baseNodeConfigSections,
   getNodeConfigSections,
+  getWorkflowNodeConfigSchema,
 } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
 import { validateNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-config-validation";
 import { createDefaultNodeData } from "@/pages/chat/ai-hosting/workflow/node-definitions";
@@ -24,6 +25,23 @@ describe("workflow node config schema", () => {
     expect(section.title).toBe("基础信息");
     expect(titleField.toPatch("新标题", data)).toEqual({ title: "新标题" });
     expect(summaryField.toPatch("新说明", data)).toEqual({ summary: "新说明" });
+  });
+
+  it("builds a full node config schema from base and node sections", () => {
+    const schema = getWorkflowNodeConfigSchema("ai");
+
+    expect(schema.baseSections).toBe(baseNodeConfigSections);
+    expect(schema.nodeSections).toBe(getNodeConfigSections("ai"));
+    expect(schema.sections).toEqual([
+      ...baseNodeConfigSections,
+      ...getNodeConfigSections("ai"),
+    ]);
+    expect(schema.fields.map((field) => field.id)).toEqual([
+      "workflow-node-title",
+      "workflow-node-summary",
+      "workflow-agent",
+      "workflow-handoff-rule",
+    ]);
   });
 
   it("keeps panel-only controls backed by persisted node data defaults", () => {

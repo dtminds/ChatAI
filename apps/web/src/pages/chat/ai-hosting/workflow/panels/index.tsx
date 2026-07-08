@@ -1,5 +1,5 @@
 import {
-  baseNodeConfigSections,
+  getWorkflowNodeConfigSchema,
 } from "../node-config-schema";
 import type {
   InspectorTab,
@@ -70,13 +70,14 @@ export function NodeConfigPanel({
 
 function NodeSettingsForm({ edges, node, onNodeChange }: NodeSettingsProps) {
   const SettingsPanel = getNodeDefinition(node.data.kind).settings;
+  const configSchema = getWorkflowNodeConfigSchema(node.data.kind);
 
   return (
     <>
       <NodeConfigSchemaSections
         data={node.data}
         onNodeChange={onNodeChange}
-        sections={baseNodeConfigSections}
+        sections={configSchema.baseSections}
       />
 
       <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />

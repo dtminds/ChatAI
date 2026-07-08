@@ -1,5 +1,6 @@
 import { getNodeDefinitionCore } from "../node-definition-core";
 import { validateNodeConfigSections } from "../node-config-validation";
+import { getWorkflowNodeConfigSchema } from "../node-config-schema";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -74,7 +75,7 @@ export function validateWorkflowNodeConfig(
   edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {
   const definition = getNodeDefinitionCore(node.data.kind);
-  const configIssues = validateNodeConfigSections(node, definition.configSections);
+  const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
   const definitionIssues = definition.validate?.(node, { edges, nodes }) ?? [];
 
   return [

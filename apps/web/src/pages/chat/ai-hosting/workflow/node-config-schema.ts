@@ -47,5 +47,21 @@ export function getNodeConfigSections(kind: WorkflowNodeKind) {
 export type WorkflowNodeConfigSchema = {
   baseSections: NodeConfigSection[];
   fields: NodeConfigField[];
+  nodeSections: NodeConfigSection[];
   sections: NodeConfigSection[];
 };
+
+export function getWorkflowNodeConfigSchema(kind: WorkflowNodeKind): WorkflowNodeConfigSchema {
+  const nodeSections = getNodeConfigSections(kind);
+  const sections = [
+    ...baseNodeConfigSections,
+    ...nodeSections,
+  ];
+
+  return {
+    baseSections: baseNodeConfigSections,
+    fields: sections.flatMap((section) => section.fields),
+    nodeSections,
+    sections,
+  };
+}

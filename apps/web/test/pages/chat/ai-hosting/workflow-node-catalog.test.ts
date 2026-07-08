@@ -21,7 +21,10 @@ import {
   orderedNodeDefinitionCore,
   orderedNodeDefinitions,
 } from "@/pages/chat/ai-hosting/workflow/node-definitions";
-import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
+import {
+  getNodeConfigSections,
+  getWorkflowNodeConfigSchema,
+} from "@/pages/chat/ai-hosting/workflow/node-config-schema";
 import {
   getDefaultSourceHandleId,
   getNodeSourceHandleDefinitions,
@@ -63,6 +66,7 @@ describe("workflow node catalog", () => {
       expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
       expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
       expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
+      expect(getWorkflowNodeConfigSchema(kind).nodeSections).toBe(catalogEntry.configSections);
       expect(definition.getSourceHandles).toBe(getNodeSourceHandleDefinitions);
       expect(definition.getTargetHandles).toBe(getNodeTargetHandleDefinitions);
       expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));

@@ -595,40 +595,130 @@
   white-space: nowrap;
 }
 
+.workflow-node-picker {
+  z-index: 18;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0.5px solid var(--workflow-border);
+  border-radius: 10px;
+  background: var(--workflow-panel-bg-blur);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
 .workflow-floating-palette {
   position: absolute;
   right: 0;
   bottom: 40px;
-  z-index: 18;
-  width: 264px;
-  max-height: min(560px, calc(100vh - 148px));
-  overflow: hidden;
-  border: 0.5px solid var(--workflow-border);
-  border-radius: 12px;
-  background: var(--workflow-panel-bg-blur);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
-  backdrop-filter: blur(10px);
+  width: 340px;
+  min-height: min(240px, calc(100vh - 148px));
+  max-height: min(420px, calc(100vh - 148px));
 }
 
-.workflow-floating-palette-close {
-  display: flex;
-  width: 28px;
-  height: 28px;
+.workflow-node-picker-search {
+  position: relative;
   flex: none;
-  align-items: center;
-  justify-content: center;
-  border: 0;
+  padding: 10px;
+}
+
+.workflow-node-picker-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.workflow-node-picker-search-input {
+  height: 30px;
+  border-color: var(--workflow-border);
   border-radius: 8px;
   background: transparent;
-  color: hsl(var(--muted-foreground));
+  padding-left: 30px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.workflow-node-picker-groups {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 10px 10px;
+}
+
+.workflow-node-picker-group + .workflow-node-picker-group {
+  margin-top: 10px;
+}
+
+.workflow-node-picker-group-title {
+  margin-bottom: 4px;
+  color: var(--workflow-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.workflow-node-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 6px;
+}
+
+.workflow-node-picker-item {
+  display: flex;
+  min-width: 0;
+  height: 26px;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 0 6px;
+  color: hsl(var(--foreground));
+  text-align: left;
   transition:
     background 150ms ease,
     color 150ms ease;
 }
 
-.workflow-floating-palette-close:hover {
-  background: rgba(15, 23, 42, 0.06);
-  color: hsl(var(--foreground));
+.workflow-node-picker-item:hover {
+  background: var(--workflow-panel-section);
+}
+
+.workflow-node-picker-item-icon {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--workflow-soft);
+  color: var(--workflow-text-tertiary);
+}
+
+.workflow-node-picker-item-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-node-picker-empty {
+  margin: 0 10px 10px;
+  border: 1px dashed var(--workflow-border);
+  border-radius: 10px;
+  padding: 20px 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  text-align: center;
 }
 
 .workflow-node-shell {
@@ -885,35 +975,9 @@
 .workflow-candidate-menu {
   position: absolute;
   z-index: 45;
-  width: 400px;
-  min-width: 0;
-  overflow: hidden;
-  border: 0.5px solid var(--workflow-border);
-  border-radius: 12px;
-  background: var(--workflow-panel-bg);
-  padding: 6px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
-  pointer-events: auto;
-}
-
-.workflow-candidate-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 7px 8px;
-  text-align: left;
-  transition:
-    background 150ms ease,
-    transform 150ms ease;
-}
-
-.workflow-candidate-item:hover {
-  background: rgba(15, 23, 42, 0.05);
-  transform: none;
+  width: 340px;
+  min-height: min(220px, calc(100vh - 120px));
+  max-height: min(360px, calc(100vh - 120px));
 }
 
 .workflow-edge-action {

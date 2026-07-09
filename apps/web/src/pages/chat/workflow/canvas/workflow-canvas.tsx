@@ -41,10 +41,7 @@ import {
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
-import {
-  getInsertableNodeKindsForSource,
-  getPaletteItemsByKinds,
-} from "../node-definitions";
+import { getInsertableNodeKindsForSource } from "../node-definitions";
 import { WorkflowNodeCard } from "../nodes";
 import type {
   InsertableWorkflowNodeKind,
@@ -54,7 +51,7 @@ import type {
 } from "../types";
 import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowBezierEdge } from "./workflow-edge";
-import { WorkflowPalette } from "./workflow-palette";
+import { WorkflowNodePicker } from "./workflow-palette";
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPE]: WorkflowNodeCard,
@@ -344,45 +341,24 @@ function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
   const { x, y, zoom } = useViewport();
   const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;
   const menuTop = getInsertMenuTop(node, sourceHandle) * zoom + y;
-  const candidatePaletteItems = getPaletteItemsByKinds(
-    getInsertableNodeKindsForSource(node.data.kind),
-  );
+  const [searchValue, setSearchValue] = useState("");
+  const candidateKinds = getInsertableNodeKindsForSource(node.data.kind);
 
   return (
-    <div
-      aria-label="选择要添加的节点"
+    <WorkflowNodePicker
       className="workflow-candidate-menu nodrag nopan"
+      kinds={candidateKinds}
+      onAddNode={(kind) => {
+        node.data.onInsertAfter?.(node.id, kind, sourceHandle);
+      }}
+      onSearchChange={setSearchValue}
       role="menu"
+      searchValue={searchValue}
       style={{
         left: menuLeft,
         top: menuTop,
       }}
-    >
-      {candidatePaletteItems.map((item) => (
-        <button
-          className="workflow-candidate-item"
-          key={item.id}
-          onClick={(event) => {
-            event.stopPropagation();
-            node.data.onInsertAfter?.(node.id, item.id, sourceHandle);
-          }}
-          role="menuitem"
-          type="button"
-        >
-          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-            <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-foreground">
-              {item.label}
-            </span>
-            <span className="block truncate text-[11px] text-muted-foreground">
-              {item.description}
-            </span>
-          </span>
-        </button>
-      ))}
-    </div>
+    />
   );
 }
 
@@ -595,9 +571,12 @@ function WorkflowBottomToolbar({
         <span className="workflow-toolbar-separator" />
         <div className="workflow-toolbar-palette-wrap">
           {paletteOpen && !disabled ? (
-            <WorkflowPalette
-              onAddNode={onAddNode}
-              onClose={() => onPaletteOpenChange(false)}
+            <WorkflowNodePicker
+              className="workflow-floating-palette"
+              onAddNode={(kind) => {
+                onAddNode(kind);
+                onPaletteOpenChange(false);
+              }}
               onSearchChange={onSearchChange}
               searchValue={searchValue}
             />

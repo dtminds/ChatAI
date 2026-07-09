@@ -1,109 +1,146 @@
-import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import type React from "react";
+import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { getWorkflowPaletteItemGroups } from "../node-definitions";
+import type {
+  WorkflowPaletteItem,
+  WorkflowPaletteItemGroup,
+} from "../node-definitions";
 import type { InsertableWorkflowNodeKind } from "../types";
 
-export function WorkflowPalette({
-  onClose,
+export function WorkflowNodePicker({
+  className,
+  kinds,
   onAddNode,
   onSearchChange,
+  role = "region",
   searchValue,
+  style,
 }: {
-  onClose?: () => void;
+  className?: string;
+  kinds?: InsertableWorkflowNodeKind[];
   onAddNode: (kind: InsertableWorkflowNodeKind) => void;
   onSearchChange: (value: string) => void;
+  role?: "menu" | "region";
   searchValue: string;
+  style?: React.CSSProperties;
 }) {
-  const paletteGroups = getWorkflowPaletteItemGroups({ query: searchValue });
-  const visibleItemCount = paletteGroups.reduce((count, group) => count + group.items.length, 0);
+  const paletteGroups = getWorkflowPaletteItemGroups({ kinds, query: searchValue });
 
   return (
-    <aside
-      aria-label="节点库"
-      className="workflow-sidebar workflow-floating-palette flex min-h-0 flex-col bg-background"
-      role="region"
+    <section
+      aria-label={role === "menu" ? "选择要添加的节点" : "节点库"}
+      className={cn("workflow-node-picker nodrag nopan", className)}
+      onClick={(event) => event.stopPropagation()}
+      role={role}
+      style={style}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--workflow-border)] px-3 py-2.5">
-        <div className="min-w-0">
-          <h2 className="text-xs font-semibold">Blocks</h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">选择节点加入当前流程</p>
-        </div>
-        {onClose ? (
-          <button
-            aria-label="关闭节点库"
-            className="workflow-floating-palette-close"
-            onClick={onClose}
-            type="button"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.8} />
-          </button>
-        ) : null}
-      </div>
-      <div className="border-b border-[var(--workflow-border)] px-3 py-3">
-        <div className="relative">
+      <TooltipProvider delayDuration={300}>
+        <div className="workflow-node-picker-search">
           <HugeiconsIcon
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="workflow-node-picker-search-icon"
             icon={Search01Icon}
-            size={15}
+            size={16}
             strokeWidth={1.8}
           />
           <Input
             aria-label="搜索节点"
-            className="h-8 rounded-lg border-[var(--workflow-border)] bg-[var(--workflow-soft)] pl-8 text-xs shadow-none"
+            className="workflow-node-picker-search-input"
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="搜索节点"
             value={searchValue}
           />
         </div>
-      </div>
+        <WorkflowNodePickerGroups
+          groups={paletteGroups}
+          itemRole={role === "menu" ? "menuitem" : undefined}
+          onAddNode={onAddNode}
+        />
+      </TooltipProvider>
+    </section>
+  );
+}
 
-      <section className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <h3 className="text-xs font-semibold text-muted-foreground">节点</h3>
-          <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
-            {visibleItemCount}
-          </Badge>
-        </div>
+function WorkflowNodePickerGroups({
+  groups,
+  itemRole,
+  onAddNode,
+}: {
+  groups: WorkflowPaletteItemGroup[];
+  itemRole?: "menuitem";
+  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+}) {
+  if (groups.length === 0) {
+    return <div className="workflow-node-picker-empty">未找到匹配节点</div>;
+  }
 
-        <div className="space-y-3">
-          {paletteGroups.map((group) => (
-            <div key={group.id}>
-              <div className="mb-1 px-2 text-[11px] font-medium text-muted-foreground">{group.label}</div>
-              <div className="space-y-1">
-                {group.items.map((item) => (
-                  <button
-                    aria-label={`添加 ${item.label}节点`}
-                    className="group flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-                    key={item.id}
-                    onClick={() => {
-                      onAddNode(item.id);
-                      onClose?.();
-                    }}
-                    type="button"
-                  >
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-                      <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.8} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {item.description}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {visibleItemCount === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--workflow-border)] bg-card px-3 py-6 text-center text-xs text-muted-foreground">
-              未找到匹配节点
-            </div>
-          ) : null}
+  return (
+    <div className="workflow-node-picker-groups">
+      {groups.map((group) => (
+        <div className="workflow-node-picker-group" key={group.id}>
+          <div className="workflow-node-picker-group-title">{group.label}</div>
+          <div
+            className="workflow-node-picker-grid"
+          >
+            {group.items.map((item, itemIndex) => (
+              <WorkflowNodePickerItem
+                item={item}
+                itemRole={itemRole}
+                key={item.id}
+                onAddNode={onAddNode}
+                tooltipSide={itemIndex % 2 === 0 ? "left" : "right"}
+              />
+            ))}
+          </div>
         </div>
-      </section>
-    </aside>
+      ))}
+    </div>
+  );
+}
+
+function WorkflowNodePickerItem({
+  item,
+  itemRole,
+  onAddNode,
+  tooltipSide,
+}: {
+  item: WorkflowPaletteItem;
+  itemRole?: "menuitem";
+  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  tooltipSide: "left" | "right";
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={`添加 ${item.label}节点`}
+          className="workflow-node-picker-item"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAddNode(item.id);
+          }}
+          role={itemRole}
+          type="button"
+        >
+          <span className="workflow-node-picker-item-icon">
+            <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
+          </span>
+          <span className="workflow-node-picker-item-label">{item.label}</span>
+        </button>
+      </TooltipTrigger>
+      {item.description ? (
+        <TooltipContent side={tooltipSide} sideOffset={12}>
+          {item.description}
+        </TooltipContent>
+      ) : null}
+    </Tooltip>
   );
 }

@@ -15,7 +15,10 @@ import {
   updateNodeDataOperation,
 } from "@/pages/chat/workflow/graph-operations";
 import { createWorkflowClipboardData } from "@/pages/chat/workflow/workflow-clipboard";
-import { WORKFLOW_EDGE_TYPE } from "@/pages/chat/workflow/constants";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_LAYOUT_X_GAP,
+} from "@/pages/chat/workflow/constants";
 import {
   createEdge,
   createInitialDraft,
@@ -69,7 +72,8 @@ describe("workflow graph operations", () => {
         }),
       ]),
     );
-    expect(operation!.draft.nodes.find((node) => node.id === "action-message")?.position.x).toBe(1240);
+    expect(operation!.draft.nodes.find((node) => node.id === "action-message")?.position.x)
+      .toBe(WORKFLOW_LAYOUT_X_GAP * 3 + WORKFLOW_LAYOUT_X_GAP);
   });
 
   it("inserts after an empty source handle without auto-connecting a downstream goal", () => {

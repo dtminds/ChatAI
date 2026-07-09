@@ -25,13 +25,16 @@ export type WorkflowNodeData = Record<string, unknown> & {
   branchRule?: string;
   conversion?: number;
   delayDays?: number;
+  entryLimitSummary?: string;
   handoffRule?: string;
+  hostingAccountSummary?: string;
   kind: WorkflowNodeKind;
   label: string;
   metric: string;
   repeatEntryEnabled?: boolean;
   status: WorkflowNodeStatus;
   summary: string;
+  sendWindow?: string;
   title: string;
 };
 

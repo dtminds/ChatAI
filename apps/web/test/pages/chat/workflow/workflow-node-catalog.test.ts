@@ -56,6 +56,8 @@ import {
   BranchNodeBody,
   StandardNodeBody,
 } from "@/pages/chat/workflow/nodes/node-bodies";
+import { TriggerNodeBody } from "@/pages/chat/workflow/nodes/trigger/body";
+import { TriggerConfig } from "@/pages/chat/workflow/nodes/trigger/panel";
 import { createInitialEdges } from "@/pages/chat/workflow/graph";
 import {
   getWorkflowNodeEstimatedHeight,
@@ -227,13 +229,27 @@ describe("workflow node catalog", () => {
     }
   });
 
-  it("uses the standard node UI binding for non-branch node kinds", () => {
-    const standardNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "trigger", "wait"];
+  it("supports custom UI bindings for specialized nodes", () => {
+    const standardNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "wait"];
 
     standardNodeKinds.forEach((kind) => {
       expect(workflowNodeUiBindings[kind].body).toBe(StandardNodeBody);
     });
     expect(workflowNodeUiBindings.branch.body).toBe(BranchNodeBody);
+    expect(workflowNodeUiBindings.trigger.body).toBe(TriggerNodeBody);
+    expect(workflowNodeUiBindings.trigger.settings).toBe(TriggerConfig);
+    expect(workflowNodeUiRegistry.trigger.settings.kind).toBe("custom");
+    expect(workflowNodeCatalog.trigger.visual.label).toBe("开始");
+    expect(createDefaultNodeData("trigger")).toEqual(
+      expect.objectContaining({
+        audience: "添加标签、添加好友事件、用户输入",
+        entryLimitSummary: "同一客户进入此SOP最多2次",
+        hostingAccountSummary: "已选 4 个托管账号",
+        label: "开始",
+        sendWindow: "09:00:00 - 18:00:00",
+        title: "开始",
+      }),
+    );
   });
 
   it("derives palette nodes from sorted insertable catalog entries", () => {

@@ -1,10 +1,11 @@
-import { StandardNodeBody } from "../node-bodies";
+import { TriggerConfig } from "./panel";
+import { TriggerNodeBody } from "./body";
 import type { WorkflowNodeUiBinding } from "../ui-types";
 
 export const triggerNodeUi: WorkflowNodeUiBinding = {
-  body: StandardNodeBody,
+  body: TriggerNodeBody,
   settings: {
-    kind: "schema",
-    nodeKind: "trigger",
+    component: TriggerConfig,
+    kind: "custom",
   },
 };

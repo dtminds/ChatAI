@@ -259,8 +259,12 @@ describe("workflow clipboard", () => {
 
     const pastedBranch = operation?.draft.nodes.find((node) => node.id === "branch-paste-0");
     const pastedAction = operation?.draft.nodes.find((node) => node.id === "action-paste-1");
+    const sourceBranch = draft.nodes.find((node) => node.id === "branch-intent")!;
 
-    expect(pastedBranch?.position).toEqual({ x: 668, y: 48 });
+    expect(pastedBranch?.position).toEqual({
+      x: sourceBranch.position.x + 48,
+      y: sourceBranch.position.y + 48,
+    });
     expect(pastedBranch?.data.title).toBe("意向判断 (1)");
     expect(pastedAction?.data.title).toBe("发送欢迎消息 (1)");
     expect(operation?.draft.edges).toEqual(expect.arrayContaining([

@@ -52,7 +52,7 @@ export function createInitialNodes(): WorkflowNode[] {
         title: "观察期",
       },
       id: "wait-2d",
-      position: { x: 310, y: 0 },
+      position: { x: WORKFLOW_LAYOUT_X_GAP, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     },
     {
@@ -65,7 +65,7 @@ export function createInitialNodes(): WorkflowNode[] {
         title: "意向判断",
       },
       id: "branch-intent",
-      position: { x: 620, y: 0 },
+      position: { x: WORKFLOW_LAYOUT_X_GAP * 2, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     },
     {
@@ -79,7 +79,7 @@ export function createInitialNodes(): WorkflowNode[] {
         title: "发送欢迎消息",
       },
       id: "action-message",
-      position: { x: 930, y: -94 },
+      position: { x: WORKFLOW_LAYOUT_X_GAP * 3, y: -94 },
       type: WORKFLOW_NODE_TYPE,
     },
     {
@@ -92,7 +92,7 @@ export function createInitialNodes(): WorkflowNode[] {
         title: "首单转化",
       },
       id: "goal",
-      position: { x: 1240, y: 0 },
+      position: { x: WORKFLOW_LAYOUT_X_GAP * 4, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     },
   ];
@@ -115,7 +115,7 @@ export function createNodeFromKind(
   index: number,
 ): WorkflowNode {
   const commonPosition = {
-    x: 300 + index * 310,
+    x: 300 + index * WORKFLOW_LAYOUT_X_GAP,
     y: index % 2 === 0 ? -94 : 94,
   };
 

@@ -1,3 +1,10 @@
+/*
+ * Workflow canvas global stylesheet.
+ * Keep component-owned node bodies, panels, menus, and form layouts in TSX with Tailwind classes.
+ * Use this file only for React Flow generated DOM, pseudo-elements, canvas-wide states,
+ * responsive canvas shell rules, and shared workflow CSS variables that cannot live on one component.
+ */
+
 .workflow-page {
   --workflow-canvas-bg: #f7f8fa;
   --workflow-grid: rgba(16, 24, 40, 0.13);
@@ -734,7 +741,7 @@
 
 .workflow-node-card {
   position: relative;
-  width: 240px;
+  width: 320px;
   border: 1px solid transparent;
   border-radius: 15px;
   background: var(--workflow-panel-bg);
@@ -743,7 +750,7 @@
 }
 
 .workflow-node-card-branch {
-  width: 278px;
+  width: 320px;
   padding-bottom: 10px;
 }
 
@@ -1334,3 +1341,8 @@
     left: calc((100% - 23.5rem) / 2);
   }
 }
+
+/*
+ * End workflow canvas global stylesheet.
+ * Do not add node-specific or panel-specific component styles here.
+ */

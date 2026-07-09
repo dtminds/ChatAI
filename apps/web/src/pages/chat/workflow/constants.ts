@@ -2,14 +2,14 @@ export const WORKFLOW_NODE_TYPE = "workflow";
 export const WORKFLOW_EDGE_TYPE = "workflow";
 export const WORKFLOW_MIN_ZOOM = 0.25;
 export const WORKFLOW_MAX_ZOOM = 2;
-export const WORKFLOW_NODE_WIDTH = 240;
-export const WORKFLOW_BRANCH_NODE_WIDTH = 278;
+export const WORKFLOW_NODE_WIDTH = 320;
+export const WORKFLOW_BRANCH_NODE_WIDTH = 320;
 export const WORKFLOW_NODE_ESTIMATED_HEIGHT = 176;
 export const WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT = 288;
 export const WORKFLOW_NODE_HANDLE_TOP = 16;
 export const WORKFLOW_BRANCH_FIRST_HANDLE_TOP = 124;
 export const WORKFLOW_BRANCH_HANDLE_ROW_GAP = 60;
-export const WORKFLOW_LAYOUT_X_GAP = 310;
+export const WORKFLOW_LAYOUT_X_GAP = 390;
 export const WORKFLOW_LAYOUT_Y_GAP = 118;
 
 export const workflowZoomOptions = [

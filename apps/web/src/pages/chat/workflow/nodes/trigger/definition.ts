@@ -1,4 +1,4 @@
-import { Rocket01Icon } from "@hugeicons/core-free-icons";
+import { PlayIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createDefaultOutputVariables,
@@ -51,13 +51,16 @@ export const triggerNodeDefinition: WorkflowNodeDefinition = {
   ],
   createDefaultData: () =>
     createNodeData("trigger", {
-      audience: "近 30 天新入会且未首购客户",
-      label: "触发",
-      metric: "预计进入 124.8万人",
+      audience: "添加标签、添加好友事件、用户输入",
+      entryLimitSummary: "同一客户进入此SOP最多2次",
+      hostingAccountSummary: "已选 4 个托管账号",
+      label: "开始",
+      metric: "已选 4 个托管账号",
       repeatEntryEnabled: true,
+      sendWindow: "09:00:00 - 18:00:00",
       status: "running",
-      summary: "客户入会后立即进入新人转化旅程",
-      title: "新人入会触发",
+      summary: "添加标签、添加好友事件、用户输入",
+      title: "开始",
     }),
   createExecutionConfig: (data) => pickDefinedWorkflowConfig({
     audience: data.audience,
@@ -72,8 +75,8 @@ export const triggerNodeDefinition: WorkflowNodeDefinition = {
   getTargetHandles: createNoTargetHandles,
   sort: 0,
   visual: {
-    accentClassName: "bg-rose-600 text-white ring-rose-600/20",
-    icon: Rocket01Icon,
-    label: "触发",
+    accentClassName: "bg-blue-600 text-white ring-blue-600/20",
+    icon: PlayIcon,
+    label: "开始",
   },
 };

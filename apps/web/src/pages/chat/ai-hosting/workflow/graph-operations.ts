@@ -21,9 +21,14 @@ import {
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
   canInsertNodeKind,
+  getNodeDefinitionCore,
 } from "./node-definition-core";
-import { isWorkflowHandleIdEqual } from "./node-handle-definitions";
-import { normalizeWorkflowBranchPaths } from "./branch-paths";
+import {
+  getNodeSourceHandleDefinitions,
+  getWorkflowHandleKey,
+  isWorkflowHandleIdEqual,
+} from "./node-handle-definitions";
+import type { WorkflowSourceHandleDefinition } from "./node-handle-definitions";
 import {
   canonicalizeWorkflowDraft,
   isWorkflowGraphEqual,
@@ -37,7 +42,6 @@ import type {
 } from "./workflow-clipboard";
 import type {
   InsertableWorkflowNodeKind,
-  WorkflowBranchPath,
   WorkflowEdge,
   WorkflowNodeConfigPatch,
   WorkflowNodeData,
@@ -656,7 +660,7 @@ export function updateNodeDataOperation(
   const nextData = createUpdatedNodeData(node.data, sanitizeNodeConfigPatch(patch));
   const nextDraft = {
     ...draft,
-    edges: reconcileBranchPathEdges(draft.edges, nodeId, node.data, nextData),
+    edges: reconcileSourceHandleEdges(draft.edges, nodeId, nextData),
     nodes: draft.nodes.map((currentNode) =>
       currentNode.id === nodeId
         ? {
@@ -686,18 +690,13 @@ function createUpdatedNodeData(
   currentData: WorkflowNodeData,
   patch: WorkflowNodeConfigPatch,
 ): WorkflowNodeData {
-  if (currentData.kind !== "branch" || !Array.isArray(patch.branchPaths)) {
-    return {
-      ...currentData,
-      ...patch,
-    };
-  }
-
-  return {
+  const nextData = {
     ...currentData,
     ...patch,
-    branchPaths: normalizeWorkflowBranchPaths(patch.branchPaths),
   };
+  const definition = getNodeDefinitionCore(nextData.kind);
+
+  return definition.sanitizeData?.(nextData) ?? nextData;
 }
 
 function sanitizeNodeConfigPatch(
@@ -711,22 +710,16 @@ function sanitizeNodeConfigPatch(
   return configPatch;
 }
 
-function reconcileBranchPathEdges(
+function reconcileSourceHandleEdges(
   edges: WorkflowEdge[],
   nodeId: string,
-  currentData: WorkflowNodeData,
   nextData: WorkflowNodeData,
 ): WorkflowEdge[] {
-  if (
-    currentData.kind !== "branch"
-    || nextData.kind !== "branch"
-    || !Array.isArray(nextData.branchPaths)
-  ) {
-    return edges;
-  }
-
-  const nextBranchLabelById = new Map(
-    nextData.branchPaths.map((path) => [path.id, path.label]),
+  const nextSourceHandleByKey = new Map(
+    getNodeSourceHandleDefinitions(nextData).map((handle) => [
+      getWorkflowHandleKey(handle.id),
+      handle,
+    ]),
   );
 
   return edges.flatMap((edge) => {
@@ -734,18 +727,26 @@ function reconcileBranchPathEdges(
       return [edge];
     }
 
-    if (!edge.sourceHandle || !nextBranchLabelById.has(edge.sourceHandle)) {
+    const sourceHandle = nextSourceHandleByKey.get(getWorkflowHandleKey(edge.sourceHandle));
+
+    if (!sourceHandle) {
       return [];
     }
 
-    return [syncBranchEdgeLabel(edge, nextBranchLabelById.get(edge.sourceHandle))];
+    return [syncSourceHandleEdgeLabel(edge, sourceHandle)];
   });
 }
 
-function syncBranchEdgeLabel(
+function syncSourceHandleEdgeLabel(
   edge: WorkflowEdge,
-  label: WorkflowBranchPath["label"] | undefined,
+  handle: WorkflowSourceHandleDefinition,
 ): WorkflowEdge {
+  const label = handle.label;
+
+  if (label === undefined) {
+    return edge;
+  }
+
   if (edge.data?.label === label) {
     return edge;
   }

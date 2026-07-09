@@ -17,6 +17,7 @@ import {
 import { createInitialDraft } from "@/pages/chat/ai-hosting/workflow/graph";
 import type {
   WorkflowDraftRepository,
+  WorkflowDraftPublishOptions,
   WorkflowDraftReader,
   WorkflowDraftWriter,
 } from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
@@ -304,6 +305,37 @@ describe("workflow draft service", () => {
       .toBe("发布版本的人群");
     expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
       .toBe("发布版本的人群");
+  });
+
+  it("deep-clones nested node config in published snapshots and version history", () => {
+    const draft = createDraftWithBranchPaths();
+    const sourceBranchPaths = draft.nodes.find((node) => node.id === "branch-intent")?.data.branchPaths ?? [];
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", draft);
+    const storedDocument = getWorkflowDocument("newcomer-conversion");
+    const publishedBranchPaths = publishedDocument.publishedDraft?.nodes.find((node) =>
+      node.id === "branch-intent",
+    )?.data.branchPaths;
+    const versionBranchPaths = publishedDocument.versionHistory[0]?.draft.nodes.find((node) =>
+      node.id === "branch-intent",
+    )?.data.branchPaths;
+    const storedBranchPaths = storedDocument.publishedDraft?.nodes.find((node) =>
+      node.id === "branch-intent",
+    )?.data.branchPaths;
+
+    expect(publishedBranchPaths).toEqual(sourceBranchPaths);
+    expect(versionBranchPaths).toEqual(sourceBranchPaths);
+    expect(storedBranchPaths).toEqual(sourceBranchPaths);
+    expect(publishedBranchPaths).not.toBe(sourceBranchPaths);
+    expect(publishedBranchPaths?.[0]).not.toBe(sourceBranchPaths[0]);
+    expect(versionBranchPaths).not.toBe(sourceBranchPaths);
+    expect(versionBranchPaths?.[0]).not.toBe(sourceBranchPaths[0]);
+    expect(storedBranchPaths).not.toBe(publishedBranchPaths);
+    expect(storedBranchPaths?.[0]).not.toBe(publishedBranchPaths?.[0]);
+
+    sourceBranchPaths[0]!.label = "外部串改";
+    expect(publishedBranchPaths?.[0]?.label).toBe("VIP");
+    expect(versionBranchPaths?.[0]?.label).toBe("VIP");
+    expect(storedBranchPaths?.[0]?.label).toBe("VIP");
   });
 
   it("imports a sanitized draft without overwriting the published snapshot", () => {
@@ -656,6 +688,20 @@ describe("workflow draft service", () => {
     expect(publishedDocument.publishedDraft?.viewport).toEqual(document.draft.viewport);
   });
 
+  it("rejects stale repository publishes when the saved draft hash changed", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+
+    repository.saveDraft("newcomer-conversion", createDraftWithTriggerAudience("并发保存的人群"));
+
+    expect(() => repository.publishDraft("newcomer-conversion", document.draft, {
+      expectedBaseDraftHash: document.draftHash,
+    })).toThrow("Workflow draft has changed since publish started");
+    expect(repository.getDocument("newcomer-conversion").publishedDraft).toBeNull();
+    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("并发保存的人群");
+  });
+
   it("does not apply stale async publish results after switching workflow documents", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { rerender, result } = renderHook(
@@ -682,7 +728,7 @@ describe("workflow draft service", () => {
       .toBe("旧工作流发布结果");
   });
 
-  it("does not apply stale async publish results after the same workflow draft changes", async () => {
+  it("ignores direct dirty writes while a publish is in progress", async () => {
     vi.useFakeTimers();
 
     try {
@@ -700,30 +746,23 @@ describe("workflow draft service", () => {
         result.current.markDirty(createDraftWithTriggerAudience("发布期间继续编辑的人群"));
       });
 
-      expect(result.current.publishState).toBe("idle");
+      expect(result.current.publishState).toBe("publishing");
+      expect(repository.pendingSaves).toHaveLength(0);
 
       await act(async () => {
         repository.resolvePublish(0);
         await Promise.resolve();
       });
 
-      expect(result.current.publishState).toBe("idle");
-      expect(result.current.document.status).toBe("Draft");
-      expect(result.current.document.publishedDraft).toBeNull();
+      expect(result.current.publishState).toBe("published");
+      expect(result.current.document.status).toBe("Published");
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(repository.pendingSaves).toHaveLength(1);
-
-      await act(async () => {
-        repository.resolveSave(0);
-        await Promise.resolve();
-      });
-
       expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
-        .toBe("发布期间继续编辑的人群");
+        .toBe("旧发布请求的人群");
       expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
         .toBe("旧发布请求的人群");
     }
@@ -748,7 +787,7 @@ describe("workflow draft service", () => {
     });
 
     expect(result.current.saveState).toBe("saved");
-    expect(result.current.publishState).toBe("idle");
+    expect(result.current.publishState).toBe("publishing");
 
     await act(async () => {
       repository.resolvePublish(0);
@@ -845,6 +884,27 @@ function createDraftWithTriggerAudience(audience: string): WorkflowDraft {
   };
 }
 
+function createDraftWithBranchPaths(): WorkflowDraft {
+  return {
+    ...createInitialDraft(),
+    nodes: createInitialDraft().nodes.map((node) =>
+      node.id === "branch-intent"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              branchPaths: [
+                { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
+                { id: "branch-regular", label: "普通客户", operator: "ELIF", title: "CASE 2" },
+                { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+              ],
+            },
+          }
+        : node,
+    ),
+  };
+}
+
 function createDeferredWorkflowDraftRepository() {
   const baseRepository = createInMemoryWorkflowDraftRepository();
   type ImportResult = ReturnType<typeof baseRepository.importDraft>;
@@ -859,6 +919,7 @@ function createDeferredWorkflowDraftRepository() {
   }> = [];
   const pendingPublishes: Array<{
     draft: WorkflowDraft;
+    options?: WorkflowDraftPublishOptions;
     reject: (error: Error) => void;
     resolve: (document: PublishResult) => void;
     workflowId: string | undefined;
@@ -904,9 +965,10 @@ function createDeferredWorkflowDraftRepository() {
     pendingPublishes,
     pendingRestores,
     pendingSaves,
-    publishDraft: (workflowId, draft) => new Promise((resolve, reject) => {
+    publishDraft: (workflowId, draft, options) => new Promise((resolve, reject) => {
       pendingPublishes.push({
         draft,
+        options,
         reject,
         resolve,
         workflowId,
@@ -941,7 +1003,11 @@ function createDeferredWorkflowDraftRepository() {
         return;
       }
 
-      pendingPublish.resolve(baseRepository.publishDraft(pendingPublish.workflowId, pendingPublish.draft));
+      pendingPublish.resolve(baseRepository.publishDraft(
+        pendingPublish.workflowId,
+        pendingPublish.draft,
+        pendingPublish.options,
+      ));
     },
     resolveRestore: (index) => {
       const pendingRestore = pendingRestores[index];

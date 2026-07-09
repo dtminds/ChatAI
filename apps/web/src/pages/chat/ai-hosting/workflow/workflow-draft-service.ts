@@ -82,6 +82,10 @@ export type WorkflowDraftPublishResult = {
   version: WorkflowPublishedVersion;
 };
 
+export type WorkflowDraftPublishOptions = {
+  expectedBaseDraftHash?: string;
+};
+
 export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
   restoredAt: string;
   restoredVersion: WorkflowVersionHistoryItem;
@@ -100,6 +104,7 @@ export type WorkflowDraftWriter = {
   publishDraft: (
     workflowId: string | undefined,
     draft: WorkflowDraft,
+    options?: WorkflowDraftPublishOptions,
   ) => Promise<WorkflowDraftPublishResult | WorkflowDocument> | WorkflowDraftPublishResult | WorkflowDocument;
   reset: () => void;
   restoreVersion: (
@@ -116,7 +121,11 @@ export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = Omit<WorkflowDraftRepository, "importDraft" | "publishDraft" | "restoreVersion" | "saveDraft"> & {
   importDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDraftImportResult;
-  publishDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDraftPublishResult;
+  publishDraft: (
+    workflowId: string | undefined,
+    draft: WorkflowDraft,
+    options?: WorkflowDraftPublishOptions,
+  ) => WorkflowDraftPublishResult;
   restoreVersion: (workflowId: string | undefined, versionId: string) => WorkflowDraftRestoreResult;
   saveDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDraftSaveResult;
 };
@@ -192,6 +201,7 @@ export function useWorkflowDocument(
   const [lastPublishedDraftHash, setLastPublishedDraftHash] = useState(() => createWorkflowPublishedDraftHash(document));
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishRequestRef = useRef(0);
+  const publishingRef = useRef(false);
   const restoreRequestRef = useRef(0);
   const saveRequestRef = useRef(0);
   const pendingSaveRef = useRef<{
@@ -280,6 +290,7 @@ export function useWorkflowDocument(
 
     const nextDocument = repository.getDocument(workflowId);
     workflowIdRef.current = nextDocument.id;
+    publishingRef.current = false;
     setDocument(nextDocument);
     setImportState("idle");
     setPublishState(getWorkflowPublishStateForDraft(nextDocument.draft, nextDocument));
@@ -298,6 +309,11 @@ export function useWorkflowDocument(
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
     const nextDraftHash = createWorkflowDraftHash(draftToSave);
+
+    if (publishingRef.current) {
+      return;
+    }
+
     setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
 
     if (nextDraftHash === lastSavedDraftHash) {
@@ -336,6 +352,7 @@ export function useWorkflowDocument(
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
     publishRequestRef.current += 1;
+    publishingRef.current = false;
     const workflowIdToImport = workflowIdRef.current;
     const draftToImport = cloneWorkflowDraft(draft);
 
@@ -390,12 +407,16 @@ export function useWorkflowDocument(
     const workflowIdToPublish = workflowIdRef.current;
     const draftToPublish = cloneWorkflowDraft(draft);
 
+    publishingRef.current = true;
     setPublishState("publishing");
 
     try {
-      await flushPendingSave();
+      const flushedSaveResult = await flushPendingSave();
+      const expectedBaseDraftHash = flushedSaveResult?.draftHash ?? lastSavedDraftHash;
       const publishResult = await Promise.resolve(
-        repository.publishDraft(workflowIdToPublish, draftToPublish),
+        repository.publishDraft(workflowIdToPublish, draftToPublish, {
+          expectedBaseDraftHash,
+        }),
       );
       const normalizedPublishResult = normalizeWorkflowDraftPublishResult(publishResult);
       const { document: publishedDocument } = normalizedPublishResult;
@@ -407,6 +428,7 @@ export function useWorkflowDocument(
         return normalizedPublishResult;
       }
 
+      publishingRef.current = false;
       setPublishState("published");
       setSaveState("saved");
       setLastSavedAt(publishedDocument.savedAt);
@@ -437,12 +459,13 @@ export function useWorkflowDocument(
         publishRequestRef.current === publishRequestId
         && workflowIdRef.current === workflowIdToPublish
       ) {
+        publishingRef.current = false;
         setPublishState("error");
       }
 
       return undefined;
     }
-  }, [flushPendingSave, repository]);
+  }, [flushPendingSave, lastSavedDraftHash, repository]);
 
   const restoreVersion = useCallback(async (versionId: string) => {
     const restoreRequestId = restoreRequestRef.current + 1;
@@ -450,6 +473,7 @@ export function useWorkflowDocument(
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
     publishRequestRef.current += 1;
+    publishingRef.current = false;
     const workflowIdToRestore = workflowIdRef.current;
 
     setRestoreState("restoring");
@@ -677,15 +701,33 @@ function cloneWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   return {
     edges: sanitizedDraft.edges.map((edge) => ({
       ...edge,
-      data: edge.data ? { ...edge.data } : edge.data,
+      data: edge.data ? clonePersistableWorkflowData(edge.data) : edge.data,
     })),
     nodes: sanitizedDraft.nodes.map((node) => ({
       ...node,
-      data: { ...node.data },
+      data: clonePersistableWorkflowData(node.data),
       position: { ...node.position },
     })),
     viewport: { ...sanitizedDraft.viewport },
   };
+}
+
+function clonePersistableWorkflowData<TData extends Record<string, unknown>>(data: TData): TData {
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [key, clonePersistableWorkflowValue(value)]),
+  ) as TData;
+}
+
+function clonePersistableWorkflowValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(clonePersistableWorkflowValue);
+  }
+
+  if (value && typeof value === "object") {
+    return clonePersistableWorkflowData(value as Record<string, unknown>);
+  }
+
+  return value;
 }
 
 export function createWorkflowDraftHash(draft: WorkflowDraft): string {
@@ -773,9 +815,17 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       versionHistory: _versionHistory,
       ...workflow
     }) => workflow),
-    publishDraft: (workflowId, draft) => {
+    publishDraft: (workflowId, draft, options) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
+
+      if (
+        options?.expectedBaseDraftHash
+        && currentDocument.draftHash !== options.expectedBaseDraftHash
+      ) {
+        throw new Error("Workflow draft has changed since publish started");
+      }
+
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
       const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;

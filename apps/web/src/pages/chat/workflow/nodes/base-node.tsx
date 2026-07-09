@@ -99,7 +99,7 @@ function NodeHeader({
   visual: NodeVisual;
 }) {
   return (
-    <span className="flex items-center rounded-t-2xl px-3 pb-2 pr-10 pt-3">
+    <span className="flex items-center rounded-t-2xl px-3 pb-3.5 pr-10 pt-3">
       <span
         className={cn(
           "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg",

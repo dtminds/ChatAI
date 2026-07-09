@@ -203,7 +203,7 @@ function WorkflowWorkspaceContent({
       />
 
       <div
-        className="workflow-editor-body relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]"
+        className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
         data-run-panel-open={runHistory.isOpen ? "true" : undefined}
         data-version-panel-open={versionHistory.isOpen ? "true" : undefined}

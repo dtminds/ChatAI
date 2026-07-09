@@ -33,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_MAX_ZOOM,
@@ -348,7 +349,7 @@ function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
 
   return (
     <WorkflowNodePicker
-      className="workflow-candidate-menu nodrag nopan"
+      className="workflow-candidate-menu nodrag nopan absolute z-[45] w-[340px] min-h-[min(220px,calc(100vh-120px))] max-h-[min(360px,calc(100vh-120px))]"
       kinds={candidateKinds}
       onAddNode={(kind) => {
         node.data.onInsertAfter?.(node.id, kind, sourceHandle);
@@ -415,6 +416,7 @@ function WorkflowBottomToolbar({
     enabled: menuOpen,
     onDismiss: () => setMenuOpen(false),
   });
+  const toolbarButtonClassName = "workflow-toolbar-button size-[30px] shrink-0 rounded-[7px] data-[active=true]:bg-slate-950/6";
 
   const handleMenuAction = (action: () => void) => {
     action();
@@ -425,16 +427,16 @@ function WorkflowBottomToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         aria-label="画布工具"
-        className="workflow-bottom-toolbar nodrag nopan"
+        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-slate-950/10 bg-white/95 py-[5px] pl-2.5 pr-[7px] text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.08),0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-xl max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
         onClick={(event) => event.stopPropagation()}
         ref={menuRef}
       >
         {showMiniMap ? <WorkflowMiniMap /> : null}
-        <div className="workflow-toolbar-zoom" aria-label="缩放比例">
+        <div className="workflow-toolbar-zoom relative flex h-[30px] items-center gap-0.5" aria-label="缩放比例">
           <WorkflowToolbarTooltip label="缩小">
             <Button
               aria-label="缩小"
-              className="workflow-toolbar-button"
+              className={cn(toolbarButtonClassName, "w-[26px]")}
               disabled={!canZoomOut}
               onClick={() => {
                 if (canZoomOut) {
@@ -453,7 +455,7 @@ function WorkflowBottomToolbar({
               aria-expanded={menuOpen}
               aria-haspopup="menu"
               aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
-              className="workflow-toolbar-zoom-label"
+              className="workflow-toolbar-zoom-label h-[30px] min-w-12 rounded-[7px] text-[13px] font-semibold leading-none"
               onClick={() => setMenuOpen(!menuOpen)}
               type="button"
               variant="ghost"
@@ -464,7 +466,7 @@ function WorkflowBottomToolbar({
           <WorkflowToolbarTooltip label="放大">
             <Button
               aria-label="放大"
-              className="workflow-toolbar-button"
+              className={cn(toolbarButtonClassName, "w-[26px]")}
               disabled={!canZoomIn}
               onClick={() => {
                 if (canZoomIn) {
@@ -479,26 +481,30 @@ function WorkflowBottomToolbar({
             </Button>
           </WorkflowToolbarTooltip>
           {menuOpen ? (
-            <div aria-label="缩放菜单" className="workflow-zoom-menu" role="menu">
+            <div
+              aria-label="缩放菜单"
+              className="workflow-zoom-menu absolute bottom-12 left-1/2 z-[48] min-w-[118px] -translate-x-1/2 overflow-hidden rounded-[10px] border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
+              role="menu"
+            >
               {workflowZoomOptions.map((option) => (
                 <button
-                  className="workflow-zoom-menu-item"
+                  className="workflow-zoom-menu-item flex h-8 w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 text-left text-[13px] text-inherit hover:bg-accent hover:text-accent-foreground"
                   key={option.label}
                   onClick={() => handleMenuAction(() => zoomTo(option.value))}
                   role="menuitem"
                   type="button"
                 >
-                  <span className="workflow-zoom-menu-icon" />
+                  <span className="workflow-zoom-menu-icon flex size-4 shrink-0 items-center justify-center text-current" />
                   {option.label}
                 </button>
               ))}
               <button
-                className="workflow-zoom-menu-item"
+                className="workflow-zoom-menu-item flex h-8 w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 text-left text-[13px] text-inherit hover:bg-accent hover:text-accent-foreground"
                 onClick={() => handleMenuAction(fitView)}
                 role="menuitem"
                 type="button"
               >
-                <span className="workflow-zoom-menu-icon">
+                <span className="workflow-zoom-menu-icon flex size-4 shrink-0 items-center justify-center text-current">
                   <HugeiconsIcon icon={SquareArrowExpand01Icon} size={15} strokeWidth={1.8} />
                 </span>
                 适配画布
@@ -506,11 +512,11 @@ function WorkflowBottomToolbar({
             </div>
           ) : null}
         </div>
-        <span className="workflow-toolbar-separator" />
+        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
         <WorkflowToolbarTooltip label="撤销">
           <Button
             aria-label={nextUndoLabel ? `撤销：${nextUndoLabel}` : "撤销"}
-            className="workflow-toolbar-button"
+            className={toolbarButtonClassName}
             disabled={!canUndo}
             onClick={() => {
               onUndo();
@@ -525,7 +531,7 @@ function WorkflowBottomToolbar({
         <WorkflowToolbarTooltip label="重做">
           <Button
             aria-label={nextRedoLabel ? `重做：${nextRedoLabel}` : "重做"}
-            className="workflow-toolbar-button"
+            className={toolbarButtonClassName}
             disabled={!canRedo}
             onClick={() => {
               onRedo();
@@ -540,7 +546,7 @@ function WorkflowBottomToolbar({
         <WorkflowToolbarTooltip label="自动整理">
           <Button
             aria-label="自动整理画布"
-            className="workflow-toolbar-button"
+            className={toolbarButtonClassName}
             disabled={disabled}
             onClick={() => {
               if (!disabled) {
@@ -554,12 +560,12 @@ function WorkflowBottomToolbar({
             <HugeiconsIcon icon={DashboardSquare02Icon} size={16} strokeWidth={1.8} />
           </Button>
         </WorkflowToolbarTooltip>
-        <div className="workflow-toolbar-minimap-wrap">
+        <div className="workflow-toolbar-minimap-wrap relative flex shrink-0">
           <WorkflowToolbarTooltip label="小地图">
             <Button
               aria-pressed={showMiniMap}
               aria-label="显示小地图"
-              className="workflow-toolbar-button"
+              className={toolbarButtonClassName}
               data-active={showMiniMap ? "true" : undefined}
               onClick={onToggleMiniMap}
               type="button"
@@ -570,11 +576,11 @@ function WorkflowBottomToolbar({
             </Button>
           </WorkflowToolbarTooltip>
         </div>
-        <span className="workflow-toolbar-separator" />
-        <div className="workflow-toolbar-palette-wrap">
+        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
+        <div className="workflow-toolbar-palette-wrap relative flex shrink-0">
           {paletteOpen && !disabled ? (
             <WorkflowNodePicker
-              className="workflow-floating-palette"
+              className="workflow-floating-palette absolute bottom-10 right-0 w-[340px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(420px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
               onAddNode={(kind) => {
                 onAddNode(kind);
                 onPaletteOpenChange(false);
@@ -586,7 +592,7 @@ function WorkflowBottomToolbar({
           <Button
             aria-expanded={paletteOpen}
             aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
-            className="workflow-toolbar-add-button shadow-none"
+            className="workflow-toolbar-add-button h-[30px] shrink-0 rounded-[7px] px-2.5 text-[13px] leading-none shadow-none"
             data-active={paletteOpen ? "true" : undefined}
             disabled={disabled}
             onClick={() => {

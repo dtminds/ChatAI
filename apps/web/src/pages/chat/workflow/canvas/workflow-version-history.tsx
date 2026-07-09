@@ -28,11 +28,14 @@ export function WorkflowVersionHistoryPanel({
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
 
   return (
-    <aside aria-label="版本历史" className="workflow-version-panel">
-      <div className="workflow-version-panel-header">
+    <aside
+      aria-label="版本历史"
+      className="workflow-version-panel absolute right-4 top-[72px] z-[16] flex max-h-[calc(100%-88px)] w-[268px] flex-col overflow-hidden rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-[0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-28 max-lg:max-h-[calc(100%-124px)] max-lg:w-auto"
+    >
+      <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
-          <h2 className="workflow-version-panel-title">版本历史</h2>
-          <p className="workflow-version-panel-description">
+          <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">版本历史</h2>
+          <p className="workflow-version-panel-description mt-0.5 text-xs leading-[18px] text-muted-foreground">
             选择版本后以只读方式预览
           </p>
         </div>
@@ -48,7 +51,7 @@ export function WorkflowVersionHistoryPanel({
         </Button>
       </div>
 
-      <div className="workflow-version-list">
+      <div className="workflow-version-list min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
         {versions.length ? versions.map((version, index) => {
           const isSelected = version.id === currentPreviewVersionId;
           const isLatest = index === 0;
@@ -57,29 +60,40 @@ export function WorkflowVersionHistoryPanel({
             <button
               aria-current={isSelected ? "true" : undefined}
               className={cn(
-                "workflow-version-item",
-                isSelected && "workflow-version-item-selected",
+                "workflow-version-item relative flex w-full min-w-0 gap-2 rounded-[10px] border-0 bg-transparent p-2 text-left text-inherit hover:bg-slate-950/5",
+                isSelected && "workflow-version-item-selected bg-[rgba(82,139,255,0.12)]",
               )}
               key={version.id}
               onClick={() => onSelectVersion(version.id)}
               type="button"
             >
-              {index < versions.length - 1 ? <span className="workflow-version-line" /> : null}
-              <span className="workflow-version-dot" />
-              <span className="workflow-version-content">
-                <span className="workflow-version-name-row">
-                  <span className="workflow-version-name">{version.name}</span>
-                  {isLatest ? <span className="workflow-version-badge">Latest</span> : null}
+              {index < versions.length - 1 ? (
+                <span className="workflow-version-line absolute left-[13px] top-[22px] h-[calc(100%-8px)] w-0.5 rounded-full bg-[var(--workflow-border)]" />
+              ) : null}
+              <span
+                className={cn(
+                  "workflow-version-dot z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-[#98a2b3] bg-[var(--workflow-panel-bg)]",
+                  isSelected && "border-[var(--workflow-blue)]",
+                )}
+              />
+              <span className="workflow-version-content grid min-w-0 flex-1 gap-[3px]">
+                <span className="workflow-version-name-row flex min-w-0 items-center gap-1.5">
+                  <span className="workflow-version-name min-w-0 truncate text-[13px] font-bold leading-[18px] text-foreground">{version.name}</span>
+                  {isLatest ? (
+                    <span className="workflow-version-badge shrink-0 rounded-md border-[0.5px] border-[rgba(82,139,255,0.28)] bg-[rgba(82,139,255,0.1)] px-[5px] py-px text-[10px] font-bold leading-[14px] text-[var(--workflow-blue)]">
+                      Latest
+                    </span>
+                  ) : null}
                 </span>
-                <span className="workflow-version-meta">
+                <span className="workflow-version-meta truncate text-xs leading-[18px] text-muted-foreground">
                   {version.publishedAt} · Revision {version.revision}
                 </span>
               </span>
             </button>
           );
         }) : (
-          <div className="workflow-version-empty">
-            <span className="workflow-version-empty-icon">
+          <div className="workflow-version-empty flex min-h-40 flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
+            <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-[var(--workflow-soft)]">
               <HugeiconsIcon icon={WorkflowSquare01Icon} size={18} strokeWidth={1.8} />
             </span>
             <span>暂无发布版本</span>
@@ -88,16 +102,16 @@ export function WorkflowVersionHistoryPanel({
       </div>
 
       {selectedVersion ? (
-        <div className="workflow-version-preview-actions">
-          <div className="workflow-version-preview-copy">
-            <span className="workflow-version-preview-title">
+        <div className="workflow-version-preview-actions grid gap-2.5 border-t-[0.5px] border-[var(--workflow-border)] px-3 pb-3 pt-2.5">
+          <div className="workflow-version-preview-copy grid gap-0.5">
+            <span className="workflow-version-preview-title text-[13px] font-bold leading-[18px] text-foreground">
               {selectedVersion.name}
             </span>
-            <span className="workflow-version-preview-meta">
+            <span className="workflow-version-preview-meta text-xs leading-[18px] text-muted-foreground">
               当前为只读预览
             </span>
           </div>
-          <div className="workflow-version-action-row">
+          <div className="workflow-version-action-row flex justify-end gap-2">
             <Button
               className="h-8 rounded-lg px-3 text-xs"
               onClick={onExitPreview}

@@ -56,7 +56,10 @@ export function WorkflowBezierEdge({
       />
       <EdgeLabelRenderer>
         <div
-          className={cn("workflow-edge-action nodrag nopan", isActionVisible && "workflow-edge-action-visible")}
+          className={cn(
+            "workflow-edge-action nodrag nopan group/edge absolute z-[35] flex items-center p-2.5 opacity-0 transition-opacity pointer-events-auto",
+            isActionVisible && "workflow-edge-action-visible opacity-100",
+          )}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           style={{
@@ -66,7 +69,10 @@ export function WorkflowBezierEdge({
           <button
             aria-expanded={menuOpen}
             aria-label={data?.label ? `在${data.label}连线上添加节点` : "在连线上添加节点"}
-            className="workflow-edge-add"
+            className={cn(
+              "workflow-edge-add flex size-5 items-center justify-center rounded-full border-[0.5px] border-[rgba(82,139,255,0.28)] bg-[var(--workflow-panel-bg)] text-[var(--workflow-blue)] shadow-[0_8px_18px_rgba(82,139,255,0.18)] transition-[background,color,transform,box-shadow] hover:bg-[var(--workflow-blue)] hover:text-white hover:shadow-[0_10px_24px_rgba(82,139,255,0.28)] group-hover/edge:scale-[1.08]",
+              menuOpen && "scale-[1.08] bg-[var(--workflow-blue)] text-white shadow-[0_10px_24px_rgba(82,139,255,0.28)]",
+            )}
             onClick={(event) => {
               event.stopPropagation();
               data?.onToggleInsertMenu?.(id);
@@ -78,13 +84,13 @@ export function WorkflowBezierEdge({
           {menuOpen ? (
             <div
               aria-label="从连线添加节点"
-              className="workflow-edge-menu"
+              className="workflow-edge-menu absolute left-1/2 top-[34px] z-40 w-[248px] -translate-x-1/2 rounded-xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] p-1.5 shadow-[0_18px_44px_rgba(15,23,42,0.18)] backdrop-blur-[10px]"
               onClick={(event) => event.stopPropagation()}
               role="menu"
             >
               {candidatePaletteItems.map((item) => (
                 <button
-                  className="workflow-edge-menu-item"
+                  className="workflow-edge-menu-item flex w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-[7px] text-left transition-colors hover:bg-slate-950/5"
                   key={item.id}
                   onClick={(event) => {
                     event.stopPropagation();

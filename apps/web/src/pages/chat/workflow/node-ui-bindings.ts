@@ -1,59 +1,34 @@
-import type { ComponentType } from "react";
-import { createElement } from "react";
-import { Progress } from "@/components/ui/progress";
 import type { WorkflowNodeKind } from "./types";
-import type { NodeBodyProps } from "./nodes/types";
-import {
-  BranchNodeBody,
-  StandardNodeBody,
-} from "./nodes/node-bodies";
-import {
-  BranchConfig,
-  createSchemaNodeSettingsPanel,
-} from "./panels/node-settings";
-import type { NodeSettingsProps } from "./panels/types";
-import type { ReactNode } from "react";
+import { createSchemaNodeSettingsPanel } from "./panels/node-settings";
+import { workflowNodeUiRegistry } from "./nodes/ui-registry";
+import type { WorkflowNodeUiBinding } from "./nodes/ui-types";
 
-export type WorkflowNodeUiBinding = {
-  body: ComponentType<NodeBodyProps>;
-  settings: ComponentType<NodeSettingsProps>;
-};
+export type { WorkflowNodeUiBinding } from "./nodes/ui-types";
 
-function createStandardNodeUiBinding(
-  kind: WorkflowNodeKind,
-  renderAfterSchema?: (props: NodeSettingsProps) => ReactNode,
-): WorkflowNodeUiBinding {
+export const workflowNodeUiBindings = Object.fromEntries(
+  Object.entries(workflowNodeUiRegistry).map(([kind, binding]) => [
+    kind,
+    resolveWorkflowNodeUiBinding(binding),
+  ]),
+) as Record<WorkflowNodeKind, {
+  body: WorkflowNodeUiBinding["body"];
+  settings: ReturnType<typeof resolveWorkflowNodeSettingsBinding>;
+}>;
+
+function resolveWorkflowNodeUiBinding(binding: WorkflowNodeUiBinding) {
   return {
-    body: StandardNodeBody,
-    settings: createSchemaNodeSettingsPanel(kind, renderAfterSchema),
+    body: binding.body,
+    settings: resolveWorkflowNodeSettingsBinding(binding),
   };
 }
 
-const goalProgress = ({ node }: NodeSettingsProps) => {
-  const conversion = node.data.conversion ?? 18.4;
+function resolveWorkflowNodeSettingsBinding(binding: WorkflowNodeUiBinding) {
+  if (binding.settings.kind === "custom") {
+    return binding.settings.component;
+  }
 
-  return createElement(Progress, {
-    "aria-label": "目标达成进度",
-    className: "h-2",
-    value: conversion * 4,
-  });
-};
-
-const waitHelp = () =>
-  createElement(
-    "div",
-    { className: "rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground" },
-    "客户进入等待后，将在设定时间结束时继续执行下一步",
+  return createSchemaNodeSettingsPanel(
+    binding.settings.nodeKind,
+    binding.settings.after,
   );
-
-export const workflowNodeUiBindings = {
-  action: createStandardNodeUiBinding("action"),
-  ai: createStandardNodeUiBinding("ai"),
-  branch: {
-    body: BranchNodeBody,
-    settings: BranchConfig,
-  },
-  goal: createStandardNodeUiBinding("goal", goalProgress),
-  trigger: createStandardNodeUiBinding("trigger"),
-  wait: createStandardNodeUiBinding("wait", waitHelp),
-} satisfies Record<WorkflowNodeKind, WorkflowNodeUiBinding>;
+}

@@ -130,7 +130,12 @@ function WorkflowNodePickerItem({
           role={itemRole}
           type="button"
         >
-          <span className="workflow-node-picker-item-icon">
+          <span
+            className={cn(
+              "workflow-node-picker-item-icon",
+              item.accentClassName,
+            )}
+          >
             <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
           </span>
           <span className="workflow-node-picker-item-label">{item.label}</span>

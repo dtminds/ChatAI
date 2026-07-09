@@ -697,8 +697,6 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: var(--workflow-soft);
-  color: var(--workflow-text-tertiary);
 }
 
 .workflow-node-picker-item-label {

@@ -98,7 +98,7 @@ function NodeHeader({
     <span className="flex items-center rounded-t-2xl px-3 pb-2 pr-10 pt-3">
       <span
         className={cn(
-          "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
+          "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg",
           visual.accentClassName,
         )}
       >

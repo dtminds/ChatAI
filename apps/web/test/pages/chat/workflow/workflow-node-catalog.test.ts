@@ -48,6 +48,11 @@ import {
 } from "@/pages/chat/workflow/node-handle-definitions";
 import { workflowNodeUiBindings } from "@/pages/chat/workflow/node-ui-bindings";
 import {
+  orderedWorkflowNodeDefinitions,
+  workflowNodeDefinitions,
+} from "@/pages/chat/workflow/nodes/registry";
+import { workflowNodeUiRegistry } from "@/pages/chat/workflow/nodes/ui-registry";
+import {
   BranchNodeBody,
   StandardNodeBody,
 } from "@/pages/chat/workflow/nodes/node-bodies";
@@ -68,6 +73,21 @@ import {
 import type { WorkflowNode, WorkflowNodeKind } from "@/pages/chat/workflow/types";
 
 describe("workflow node catalog", () => {
+  it("uses per-node registry modules as the catalog and UI source of truth", () => {
+    const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
+
+    expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
+    expect(workflowNodeCatalog).toBe(workflowNodeDefinitions);
+    expect(orderedWorkflowNodeCatalog).toBe(orderedWorkflowNodeDefinitions);
+    expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
+
+    for (const kind of nodeKinds) {
+      expect(workflowNodeDefinitions[kind].kind).toBe(kind);
+      expect(workflowNodeUiRegistry[kind].body).toBeTypeOf("function");
+      expect(workflowNodeUiRegistry[kind].settings.kind).toMatch(/custom|schema/);
+    }
+  });
+
   it("keeps pure node metadata, UI bindings and config schema in sync", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
@@ -223,6 +243,9 @@ describe("workflow node catalog", () => {
 
     expect(insertableNodeKinds).toEqual(sortedInsertableKinds);
     expect(paletteItems.map((item) => item.id)).toEqual(insertableNodeKinds);
+    expect(paletteItems.map((item) => item.accentClassName)).toEqual(
+      insertableNodeKinds.map((kind) => workflowNodeCatalog[kind].visual.accentClassName),
+    );
     expect(paletteItems.map((item) => item.groupId)).toEqual([
       "flow",
       "logic",

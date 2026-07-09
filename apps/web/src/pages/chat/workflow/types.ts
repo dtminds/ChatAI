@@ -4,7 +4,7 @@ import type {
   WORKFLOW_NODE_TYPE,
 } from "./constants";
 
-export type InspectorTab = "settings" | "run" | "variables";
+export type InspectorTab = "settings" | "variables";
 export type WorkflowNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
 export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "trigger" | "goal">;
@@ -91,48 +91,6 @@ export type QuickInsertTarget = {
   sourceHandle?: string;
 };
 
-export type NodeRunRecord = {
-  completedAt?: number;
-  durationMs: number;
-  errorMessage?: string;
-  finishedAt: string;
-  input: string;
-  logs: string[];
-  output: string;
-  status: "failed" | "running" | "stopped" | "succeeded" | "waiting";
-  startedAt?: number;
-};
-
-export type WorkflowRunTraceItem = {
-  durationMs: number;
-  errorMessage?: string;
-  finishedAt: string;
-  logs: string[];
-  nodeId: string;
-  nodeTitle: string;
-  nodeType: WorkflowNodeKind;
-  startedAt: string;
-  status: NodeRunRecord["status"];
-};
-
-export type WorkflowRunRecord = {
-  createdAt: string;
-  draft: WorkflowDraft;
-  durationMs: number;
-  errorMessage?: string;
-  finishedAt: string;
-  id: string;
-  inputs: Record<string, unknown>;
-  nodeRuns: Record<string, NodeRunRecord>;
-  outputs: Record<string, unknown>;
-  status: "failed" | "running" | "stopped" | "succeeded";
-  totalTokens: number;
-  title: string;
-  totalNodes: number;
-  totalSteps: number;
-  trace: WorkflowRunTraceItem[];
-};
-
 export type WorkflowVariable = {
   name: string;
   scope?: "node" | "system";
@@ -150,7 +108,6 @@ export type WorkflowVariables = {
 
 export type WorkflowPublishCheck = {
   blocksPublish: boolean;
-  blocksRun: boolean;
   category: "connectivity" | "config" | "goal" | "trigger";
   description: string;
   id: string;
@@ -162,7 +119,6 @@ export type WorkflowPublishCheck = {
 
 export type WorkflowPublishCheckSummaryItem = {
   blocksPublish: boolean;
-  blocksRun: boolean;
   description: string;
   id: "trigger" | "connectivity" | "config" | "goal";
   status: "ready" | "warning";

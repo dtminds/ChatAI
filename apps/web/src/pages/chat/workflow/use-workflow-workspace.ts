@@ -8,7 +8,6 @@ import type {
   Viewport,
 } from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
-import { useWorkflowRun } from "./run/use-workflow-run";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
@@ -48,7 +47,6 @@ type WorkflowWorkspaceEditOptions = {
   clearSelectedRemovedEdge?: boolean;
   closeChecks?: boolean;
   closeOverlays?: boolean;
-  deleteNodeRuns?: boolean;
   selectNode?: boolean;
   workflowEdited?: boolean;
 };
@@ -72,31 +70,22 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   );
   const [publishAttempted, setPublishAttempted] = useState(false);
   const previewVersion = document.versionHistory.find((version) => version.id === viewState.previewVersionId);
-  const runner = useWorkflowRun(document.id);
-  const historyRun = runner.historyRun;
   const previewDraft = useMemo(
-    () => historyRun
-      ? cloneWorkflowDraftSnapshot(historyRun.draft)
-      : previewVersion
-        ? cloneWorkflowDraftSnapshot(previewVersion.draft)
-        : document.draft,
-    [document.draft, historyRun, previewVersion],
+    () => previewVersion
+      ? cloneWorkflowDraftSnapshot(previewVersion.draft)
+      : document.draft,
+    [document.draft, previewVersion],
   );
   const isPreviewingVersion = Boolean(previewVersion);
-  const isViewingRunHistory = Boolean(historyRun);
   const workflowMode = deriveWorkflowMode({
     isPreviewingVersion,
-    isViewingRunHistory,
     publishState,
     restoreState,
-    workflowRunStatus: runner.activeRun?.status,
   });
   const { permissions } = workflowMode;
-  const controllerResetKey = historyRun
-    ? `run:${historyRun.id}`
-    : previewVersion
-      ? `version:${previewVersion.id}`
-      : `edit:${document.id}`;
+  const controllerResetKey = previewVersion
+    ? `version:${previewVersion.id}`
+    : `edit:${document.id}`;
   const controller = useWorkflowController(previewDraft, controllerResetKey);
   const transient = useWorkflowTransientState();
   const selection = useWorkflowSelectionState({
@@ -148,9 +137,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       inspectorOpen: !isPreviewingVersion,
       type: "select-node",
     });
-    if (isViewingRunHistory) {
-      setInspectorTab("run");
-    }
     closeCanvasOverlays();
   });
 
@@ -170,11 +156,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
 
     if (!result.transient) {
       markDirty(result.draft);
-    }
-
-    if (options.deleteNodeRuns) {
-      (result.nodeIds ?? (result.nodeId ? [result.nodeId] : []))
-        .forEach((nodeId) => runner.deleteNodeRun(nodeId));
     }
 
     if (options.selectNode && result.nodeId) {
@@ -313,7 +294,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     const result = controller.deleteNode(nodeId);
     commitWorkflowEditResult(result, {
       closeChecks: true,
-      deleteNodeRuns: true,
     });
   });
 
@@ -326,7 +306,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     commitWorkflowEditResult(result, {
       clearNodeSelection: true,
       closeChecks: true,
-      deleteNodeRuns: true,
     });
   });
 
@@ -424,20 +403,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     dispatchViewState({ type: "close-inspector" });
   });
 
-  const runSelectedNode = useCallback(() => {
-    if (!permissions.canRunNode) {
-      return;
-    }
-
-    if (!selectedNode) {
-      return;
-    }
-
-    runner.runNode(selectedNode);
-    dispatchViewState({ type: "open-inspector" });
-    setInspectorTab("run");
-  }, [permissions.canRunNode, runner, selectedNode]);
-
   const handlePublishCheck = useWorkflowStableCallback(() => {
     if (!permissions.canPublish) {
       return;
@@ -464,23 +429,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     dispatchViewState({ type: "close-checks" });
     closeCanvasOverlays();
     await publishDraft(controller.currentDraft);
-  });
-
-  const runCurrentWorkflow = useWorkflowStableCallback(() => {
-    if (!permissions.canRunWorkflow) {
-      return;
-    }
-
-    if (!publishChecks.canRun) {
-      setPublishAttempted(true);
-      dispatchViewState({ type: "open-checks" });
-      closeCanvasOverlays();
-      return;
-    }
-
-    runner.runWorkflow(controller.currentDraft);
-    dispatchViewState({ type: "open-run-history" });
-    closeCanvasOverlays();
   });
 
   const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
@@ -572,41 +520,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   });
 
   const selectVersionPreview = useWorkflowStableCallback((versionId: string) => {
-    runner.exitRunHistory();
     dispatchViewState({
       type: "select-version-preview",
       versionId,
     });
-    clearEdgeSelection();
-    clearNodeSelection();
-    closeCanvasOverlays();
-  });
-
-  const closeRunHistory = useWorkflowStableCallback(() => {
-    runner.exitRunHistory();
-    dispatchViewState({ type: "close-run-history" });
-    clearEdgeSelection();
-    clearNodeSelection();
-    closeCanvasOverlays();
-  });
-
-  const openRunHistory = useWorkflowStableCallback(() => {
-    dispatchViewState({ type: "open-run-history" });
-    closeCanvasOverlays();
-  });
-
-  const selectRunHistory = useWorkflowStableCallback((runId: string) => {
-    runner.viewRunHistory(runId);
-    dispatchViewState({ type: "select-run-history" });
-    setInspectorTab("run");
-    clearEdgeSelection();
-    clearNodeSelection();
-    closeCanvasOverlays();
-  });
-
-  const exitRunHistory = useWorkflowStableCallback(() => {
-    runner.exitRunHistory();
-    dispatchViewState({ type: "exit-run-history" });
     clearEdgeSelection();
     clearNodeSelection();
     closeCanvasOverlays();
@@ -688,13 +605,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       activeTab: inspectorTab,
       edges: controller.edges,
       isOpen: viewState.inspectorOpen,
-      lastRun: selectedNode?.id && historyRun
-        ? historyRun.nodeRuns[selectedNode.id]
-        : runner.getNodeRun(selectedNode?.id),
       node: selectedNode,
       onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
-      onRunNode: runSelectedNode,
       onTabChange: setInspectorTab,
       variables: selectedNode
         ? inspectorNodeVariables
@@ -702,30 +615,15 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     },
     topBar: {
       lastSavedAt,
-      onOpenRunHistory: openRunHistory,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
-      onRunWorkflow: runCurrentWorkflow,
-      onStopWorkflowRun: runner.stopWorkflowRun,
       publishedAt: document.publishedAt,
       publishState,
       publishReady: publishChecks.publishReady,
-      runningState: runner.activeRun?.status,
       readyChecks: publishChecks.readyChecks,
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
-    },
-    runHistory: {
-      activeRun: runner.activeRun,
-      currentHistoryRunId: runner.historyRun?.id,
-      historyRun: runner.historyRun,
-      isOpen: viewState.activePanel === "run-history",
-      isViewing: isViewingRunHistory,
-      onClose: closeRunHistory,
-      onExitHistory: exitRunHistory,
-      onSelectRun: selectRunHistory,
-      runs: runner.runHistory,
     },
     versionHistory: {
       currentPreviewVersionId: previewVersion?.id,

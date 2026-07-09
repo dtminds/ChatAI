@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import {
   Cancel01Icon,
   MoreHorizontalIcon,
-  PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
@@ -20,14 +19,12 @@ export function BasePanel({
   children,
   node,
   onClose,
-  onRunNode,
   onTabChange,
 }: {
   activeTab: InspectorTab;
   children: ReactNode;
   node: WorkflowNode;
   onClose: () => void;
-  onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
 }) {
   return (
@@ -40,7 +37,6 @@ export function BasePanel({
         activeTab={activeTab}
         node={node}
         onClose={onClose}
-        onRunNode={onRunNode}
         onTabChange={onTabChange}
       />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">{children}</div>
@@ -52,13 +48,11 @@ function PanelHeader({
   activeTab,
   node,
   onClose,
-  onRunNode,
   onTabChange,
 }: {
   activeTab: InspectorTab;
   node: WorkflowNode;
   onClose: () => void;
-  onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
 }) {
   const visual = nodeVisuals[node.data.kind];
@@ -84,15 +78,6 @@ function PanelHeader({
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{node.data.summary}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            aria-label="运行当前节点"
-            className="size-8 rounded-lg p-0"
-            onClick={onRunNode}
-            type="button"
-            variant="outline"
-          >
-            <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-          </Button>
           <Button aria-label="更多节点操作" className="size-8 rounded-lg p-0" type="button" variant="ghost">
             <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.8} />
           </Button>
@@ -119,9 +104,6 @@ function PanelHeader({
         <TabsList aria-label="节点配置视图" className="h-9 w-full rounded-[10px]">
           <TabsTrigger className="h-7 flex-1 rounded-[8px] px-3 py-0 text-xs" value="settings">
             设置
-          </TabsTrigger>
-          <TabsTrigger className="h-7 flex-1 rounded-[8px] px-3 py-0 text-xs" value="run">
-            上次运行
           </TabsTrigger>
           <TabsTrigger className="h-7 flex-1 rounded-[8px] px-3 py-0 text-xs" value="variables">
             变量

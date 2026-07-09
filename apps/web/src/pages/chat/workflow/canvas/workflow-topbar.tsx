@@ -1,4 +1,4 @@
-import { AlertCircleIcon, CancelSquareIcon, CheckmarkCircle02Icon, PlayIcon, Settings02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, CheckmarkCircle02Icon, Settings02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,20 +10,13 @@ import type {
 
 export function WorkflowTopBar({
   isPreviewingVersion,
-  isViewingRunHistory,
   lastSavedAt,
   onExitPreview,
-  onExitRunHistory,
-  onOpenRunHistory,
   onOpenVersionHistory,
   onOpenVariables,
   onPublish,
   onPublishCheck,
   onRestoreVersion,
-  onRunWorkflow,
-  onStopWorkflowRun,
-  previewRunLabel,
-  previewRunMeta,
   previewVersionLabel,
   previewVersionMeta,
   publishedAt,
@@ -31,26 +24,18 @@ export function WorkflowTopBar({
   publishReady,
   readyChecks,
   restoreState,
-  runningState,
   saveState,
   totalChecks,
   workflowName,
 }: {
   isPreviewingVersion?: boolean;
-  isViewingRunHistory?: boolean;
   lastSavedAt: string;
   onExitPreview?: () => void;
-  onExitRunHistory?: () => void;
-  onOpenRunHistory: () => void;
   onOpenVersionHistory: () => void;
   onOpenVariables: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
   onRestoreVersion?: () => void;
-  onRunWorkflow: () => void;
-  onStopWorkflowRun?: () => void;
-  previewRunLabel?: string;
-  previewRunMeta?: string;
   previewVersionLabel?: string;
   previewVersionMeta?: string;
   publishedAt: string | null;
@@ -58,7 +43,6 @@ export function WorkflowTopBar({
   publishReady: boolean;
   readyChecks: number;
   restoreState?: WorkflowDraftRestoreStatus;
-  runningState?: "failed" | "running" | "stopped" | "succeeded";
   saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
   workflowName: string;
@@ -66,12 +50,9 @@ export function WorkflowTopBar({
   const saveStateLabel = getSaveStateLabel(saveState);
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
-  const isRunning = runningState === "running";
-  const readOnlyMode = isPreviewingVersion || isViewingRunHistory;
-  const previewLabel = isViewingRunHistory
-    ? previewRunLabel ?? "Test Run"
-    : previewVersionLabel ?? "历史版本";
-  const previewMeta = isViewingRunHistory ? previewRunMeta : previewVersionMeta;
+  const readOnlyMode = Boolean(isPreviewingVersion);
+  const previewLabel = previewVersionLabel ?? "历史版本";
+  const previewMeta = previewVersionMeta;
   const topbarButtonClassName = "workflow-topbar-button pointer-events-auto h-10 gap-1.5 rounded-xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] px-3.5 text-[13px] font-semibold shadow-[0_10px_28px_rgba(15,23,42,0.12)] backdrop-blur-[10px]";
 
   return (
@@ -120,11 +101,11 @@ export function WorkflowTopBar({
             ) : null}
             <Button
               className={topbarButtonClassName}
-              onClick={isViewingRunHistory ? onExitRunHistory : onExitPreview}
+              onClick={onExitPreview}
               type="button"
               variant="secondary"
             >
-              {isViewingRunHistory ? "返回编辑" : "退出版本"}
+              退出版本
             </Button>
           </>
         ) : (
@@ -138,37 +119,6 @@ export function WorkflowTopBar({
             >
               <HugeiconsIcon icon={Settings02Icon} size={16} strokeWidth={1.8} />
               <span>变量</span>
-            </Button>
-            <Button
-              className={topbarButtonClassName}
-              disabled={isRunning}
-              onClick={onRunWorkflow}
-              type="button"
-              variant="secondary"
-            >
-              <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-              <span>{isRunning ? "运行中" : "测试运行"}</span>
-            </Button>
-            {isRunning ? (
-              <Button
-                aria-label="停止运行"
-                className={topbarButtonClassName}
-                onClick={onStopWorkflowRun}
-                type="button"
-                variant="secondary"
-              >
-                <HugeiconsIcon icon={CancelSquareIcon} size={16} strokeWidth={1.8} />
-                <span>停止</span>
-              </Button>
-            ) : null}
-            <Button
-              className={topbarButtonClassName}
-              onClick={onOpenRunHistory}
-              type="button"
-              variant="secondary"
-            >
-              <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-              <span>运行历史</span>
             </Button>
             <Button
               className={topbarButtonClassName}

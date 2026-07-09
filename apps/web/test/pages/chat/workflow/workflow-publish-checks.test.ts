@@ -35,8 +35,7 @@ describe("buildPublishChecks", () => {
       ["graph-branch-path-unconnected-branch-intent", "connectivity"],
     ]);
     expect(checklist.canPublish).toBe(false);
-    expect(checklist.canRun).toBe(false);
-    expect(checklist.runBlockers).toEqual(expect.arrayContaining([
+    expect(checklist.publishBlockers).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "graph-branch-path-unconnected-branch-intent",
         nodeId: "branch-intent",
@@ -64,7 +63,7 @@ describe("buildPublishChecks", () => {
     expect(checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          blocksRun: true,
+          blocksPublish: true,
           id: "node-connectivity-action-message",
           nodeId: "action-message",
           status: "warning",
@@ -111,7 +110,6 @@ describe("buildPublishChecks", () => {
     const runtimeChecklist = buildPublishChecklist(runtimeNodes, runtimeEdges);
 
     expect(runtimeChecklist.canPublish).toBe(cleanChecklist.canPublish);
-    expect(runtimeChecklist.canRun).toBe(cleanChecklist.canRun);
     expect(runtimeChecklist.summary).toEqual(cleanChecklist.summary);
     expect(runtimeChecklist.checks).toEqual(cleanChecklist.checks);
   });
@@ -165,7 +163,7 @@ describe("buildPublishChecks", () => {
     const checks = buildPublishChecks(nodes, createInitialEdges());
 
     expect(checks.find((check) => check.id === "trigger")?.status).toBe("warning");
-    expect(checks.find((check) => check.id === "trigger")?.blocksRun).toBe(true);
+    expect(checks.find((check) => check.id === "trigger")?.blocksPublish).toBe(true);
     expect(checks.find((check) => check.id === "trigger")?.description).toBe(
       "触发节点需要选择进入人群",
     );
@@ -423,14 +421,12 @@ describe("buildPublishChecks", () => {
 
     expect(checklist.summary.find((check) => check.id === "config")).toEqual(expect.objectContaining({
       blocksPublish: true,
-      blocksRun: true,
       description: "1 个节点仍需补全配置",
       status: "warning",
     }));
     expect(checklist.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         blocksPublish: true,
-        blocksRun: true,
         category: "config",
         id: "node-config-ai-missing-agent",
         nodeId: "ai-missing-agent",
@@ -489,10 +485,8 @@ describe("buildPublishChecks", () => {
     );
 
     expect(checklist.canPublish).toBe(false);
-    expect(checklist.canRun).toBe(false);
     expect(sourceHandleCheck).toEqual(expect.objectContaining({
       blocksPublish: true,
-      blocksRun: true,
       category: "connectivity",
       description: "同一个出口只能连接一条下游连线",
       nodeId: "branch-intent",
@@ -514,10 +508,8 @@ describe("buildPublishChecks", () => {
     );
 
     expect(checklist.canPublish).toBe(false);
-    expect(checklist.canRun).toBe(false);
     expect(targetHandleCheck).toEqual(expect.objectContaining({
       blocksPublish: true,
-      blocksRun: true,
       category: "connectivity",
       description: "同一个入口只能连接一条上游连线",
       nodeId: "goal",
@@ -525,13 +517,12 @@ describe("buildPublishChecks", () => {
     }));
   });
 
-  it("blocks run and publish when a branch path has no downstream node", () => {
+  it("blocks publish when a branch path has no downstream node", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 
     expect(checklist.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         blocksPublish: true,
-        blocksRun: true,
         category: "connectivity",
         description: "条件分支存在未连接的出口",
         id: "graph-branch-path-unconnected-branch-intent",
@@ -584,12 +575,6 @@ describe("useWorkflowPublishChecks", () => {
     expect(result.current.readyChecks).toBe(3);
     expect(result.current.totalChecks).toBe(4);
     expect(result.current.publishReady).toBe(false);
-    expect(result.current.canRun).toBe(false);
-    expect(result.current.runBlockers).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "graph-branch-path-unconnected-branch-intent",
-      }),
-    ]));
     expect(result.current.hasWarnings).toBe(true);
   });
 });

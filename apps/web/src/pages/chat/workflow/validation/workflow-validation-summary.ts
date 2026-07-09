@@ -14,16 +14,13 @@ import type {
 
 type WorkflowCheckBlockingScope = {
   blocksPublish: boolean;
-  blocksRun: boolean;
 };
 
 export type WorkflowValidationSummary = {
   canPublish: boolean;
-  canRun: boolean;
   checks: WorkflowPublishCheck[];
   publishBlockers: WorkflowPublishCheck[];
   readyChecks: number;
-  runBlockers: WorkflowPublishCheck[];
   summary: WorkflowPublishCheckSummaryItem[];
   totalSummaryChecks: number;
   validation: WorkflowValidationResult;
@@ -106,10 +103,9 @@ export function buildWorkflowValidationSummaryFromResult(
     },
   ];
   const globalChecks: WorkflowPublishCheck[] = summary
-    .filter((item) => item.status === "warning" && (item.blocksPublish || item.blocksRun))
+    .filter((item) => item.status === "warning" && item.blocksPublish)
     .map((item) => ({
       blocksPublish: item.blocksPublish,
-      blocksRun: item.blocksRun,
       category: getSummaryCheckCategory(item.id),
       description: item.description,
       id: item.id,
@@ -124,7 +120,6 @@ export function buildWorkflowValidationSummaryFromResult(
 
       return {
         blocksPublish: true,
-        blocksRun: true,
         category: "connectivity" as const,
         description: issue.message,
         id: `graph-${issue.code}${issue.nodeId ? `-${issue.nodeId}` : ""}`,
@@ -138,13 +133,11 @@ export function buildWorkflowValidationSummaryFromResult(
     ...disconnectedIssues.map(({ issues, node }) =>
       createNodeIssueCheck("connectivity", `node-connectivity-${node.id}`, node, issues, {
         blocksPublish: true,
-        blocksRun: true,
       }),
     ),
     ...nodeConfigIssues.map(({ issues, node }) =>
       createNodeIssueCheck("config", `node-config-${node.id}`, node, issues, {
         blocksPublish: true,
-        blocksRun: true,
       }),
     ),
   ];
@@ -153,16 +146,13 @@ export function buildWorkflowValidationSummaryFromResult(
     ...graphIssueChecks,
     ...nodeIssueChecks,
   ];
-  const runBlockers = checks.filter((check) => check.blocksRun);
   const publishBlockers = checks.filter((check) => check.blocksPublish);
 
   return {
     canPublish: publishBlockers.length === 0,
-    canRun: runBlockers.length === 0,
     checks,
     publishBlockers,
     readyChecks: summary.filter((check) => check.status === "ready").length,
-    runBlockers,
     summary,
     totalSummaryChecks: summary.length,
     validation,
@@ -191,7 +181,6 @@ function createNodeIssueCheck(
 function getBlockingScope(): WorkflowCheckBlockingScope {
   return {
     blocksPublish: true,
-    blocksRun: true,
   };
 }
 

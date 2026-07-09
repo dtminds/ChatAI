@@ -3,12 +3,10 @@ import type {
   WorkflowEdge,
   WorkflowNodeConfigPatch,
   WorkflowNode,
-  NodeRunRecord,
   WorkflowVariables,
 } from "../types";
 import { BasePanel } from "./base-panel";
 import {
-  LastRunPanel,
   NodeVariablesPanel,
 } from "./inspector-tabs";
 import { getNodeDefinition } from "../node-definitions";
@@ -17,24 +15,18 @@ import type { NodeSettingsProps } from "./types";
 export function NodeConfigPanel({
   activeTab,
   edges,
-  lastRun,
   node,
   onClose,
   onNodeChange,
-  onRunNode,
   onTabChange,
-  readOnlyRunMode = false,
   variables,
 }: {
   activeTab: InspectorTab;
   edges: WorkflowEdge[];
-  lastRun?: NodeRunRecord;
   node?: WorkflowNode;
   onClose: () => void;
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
-  onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
-  readOnlyRunMode?: boolean;
   variables?: WorkflowVariables;
 }) {
   if (!node) {
@@ -50,16 +42,12 @@ export function NodeConfigPanel({
       activeTab={activeTab}
       node={node}
       onClose={onClose}
-      onRunNode={onRunNode}
-      onTabChange={readOnlyRunMode ? () => undefined : onTabChange}
+      onTabChange={onTabChange}
     >
-      {activeTab === "settings" && !readOnlyRunMode ? (
+      {activeTab === "settings" ? (
         <NodeSettingsForm edges={edges} node={node} onNodeChange={onNodeChange} />
       ) : null}
-      {activeTab === "run" || readOnlyRunMode ? (
-        <LastRunPanel lastRun={lastRun} node={node} onRunNode={onRunNode} />
-      ) : null}
-      {activeTab === "variables" && variables && !readOnlyRunMode ? <NodeVariablesPanel variables={variables} /> : null}
+      {activeTab === "variables" && variables ? <NodeVariablesPanel variables={variables} /> : null}
     </BasePanel>
   );
 }

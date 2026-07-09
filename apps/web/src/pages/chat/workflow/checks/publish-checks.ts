@@ -12,15 +12,13 @@ export function useWorkflowPublishChecks(
   edges: WorkflowEdge[],
 ) {
   const checklist = useMemo(() => buildPublishChecklist(nodes, edges), [edges, nodes]);
-  const { canPublish, canRun, checks, readyChecks, runBlockers, summary, totalSummaryChecks } = checklist;
+  const { canPublish, checks, readyChecks, summary, totalSummaryChecks } = checklist;
 
   return {
-    canRun,
     checks,
     hasWarnings: checks.length > 0,
     publishReady: canPublish,
     readyChecks,
-    runBlockers,
     summary,
     totalChecks: totalSummaryChecks,
     totalSummaryChecks,
@@ -33,9 +31,8 @@ export function buildPublishChecklist(
 ): {
   checks: WorkflowPublishCheck[];
   canPublish: boolean;
-  canRun: boolean;
+  publishBlockers: WorkflowPublishCheck[];
   readyChecks: number;
-  runBlockers: WorkflowPublishCheck[];
   summary: WorkflowPublishCheckSummaryItem[];
   totalSummaryChecks: number;
 } {

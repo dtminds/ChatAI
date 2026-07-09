@@ -724,7 +724,7 @@ describe("Agent workflow page", () => {
     expect(within(palette).getByText("未找到匹配节点")).toBeInTheDocument();
   });
 
-  it("runs the selected node and opens the variable inspector from the canvas operator", async () => {
+  it("opens the variable inspector from the canvas operator", async () => {
     const user = setupCanvasUser();
 
     renderWorkflowPage();
@@ -733,11 +733,6 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    await user.click(within(panel).getByRole("button", { name: "运行当前节点" }));
-
-    expect(panel).toHaveTextContent("运行成功");
-    expect(panel).toHaveTextContent("读取上游客户上下文");
-
     await user.click(screen.getByRole("button", { name: "打开变量面板" }));
 
     expect(panel).toHaveTextContent("输入变量");

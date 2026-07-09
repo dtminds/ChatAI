@@ -1,4 +1,3 @@
-import type { WorkflowRunRecord } from "./types";
 import type {
   WorkflowDraftPublishStatus,
   WorkflowDraftRestoreStatus,
@@ -8,8 +7,6 @@ export type WorkflowWorkspaceMode =
   | "editing"
   | "publishing"
   | "restoring"
-  | "run-history"
-  | "running"
   | "version-preview";
 
 export type WorkflowReadOnlyReason =
@@ -17,17 +14,13 @@ export type WorkflowReadOnlyReason =
   | "permission-denied"
   | "publishing"
   | "restoring"
-  | "run-history"
-  | "running"
   | "version-preview";
 
 export type WorkflowModeState = {
   canEdit?: boolean;
   isPreviewingVersion: boolean;
-  isViewingRunHistory: boolean;
   publishState?: WorkflowDraftPublishStatus;
   restoreState?: WorkflowDraftRestoreStatus;
-  workflowRunStatus?: WorkflowRunRecord["status"];
 };
 
 export type WorkflowModePermissions = {
@@ -35,8 +28,6 @@ export type WorkflowModePermissions = {
   canEditNodeSettings: boolean;
   canOpenInsertPalette: boolean;
   canPublish: boolean;
-  canRunNode: boolean;
-  canRunWorkflow: boolean;
   canUseClipboard: boolean;
   canUseHistory: boolean;
   canvasReadOnly: boolean;
@@ -53,29 +44,22 @@ export type WorkflowModeStateResult = {
 export function deriveWorkflowMode({
   canEdit = true,
   isPreviewingVersion,
-  isViewingRunHistory,
   publishState,
   restoreState,
-  workflowRunStatus,
 }: WorkflowModeState): WorkflowModeStateResult {
   const isPublishing = publishState === "publishing";
   const isRestoring = restoreState === "restoring";
-  const isRunning = workflowRunStatus === "running";
-  const isPreviewMode = isPreviewingVersion || isViewingRunHistory;
+  const isPreviewMode = isPreviewingVersion;
   const mode = getWorkflowWorkspaceMode({
     isPreviewingVersion,
     isPublishing,
     isRestoring,
-    isRunning,
-    isViewingRunHistory,
   });
   const readOnlyReason = getWorkflowReadOnlyReason({
     canEdit,
     isPreviewingVersion,
     isPublishing,
     isRestoring,
-    isRunning,
-    isViewingRunHistory,
   });
   const nodesReadOnly = readOnlyReason !== "none";
   const canvasReadOnly = readOnlyReason !== "none" && readOnlyReason !== "permission-denied";
@@ -89,8 +73,6 @@ export function deriveWorkflowMode({
       canEditNodeSettings: canMutate,
       canOpenInsertPalette: canMutate,
       canPublish: canMutate,
-      canRunNode: canMutate,
-      canRunWorkflow: canMutate,
       canUseClipboard: canMutate,
       canUseHistory: canMutate,
       canvasReadOnly,
@@ -104,29 +86,17 @@ function getWorkflowWorkspaceMode({
   isPreviewingVersion,
   isPublishing,
   isRestoring,
-  isRunning,
-  isViewingRunHistory,
 }: {
   isPreviewingVersion: boolean;
   isPublishing: boolean;
   isRestoring: boolean;
-  isRunning: boolean;
-  isViewingRunHistory: boolean;
 }): WorkflowWorkspaceMode {
   if (isRestoring) {
     return "restoring";
   }
 
-  if (isViewingRunHistory) {
-    return "run-history";
-  }
-
   if (isPreviewingVersion) {
     return "version-preview";
-  }
-
-  if (isRunning) {
-    return "running";
   }
 
   if (isPublishing) {
@@ -141,15 +111,11 @@ function getWorkflowReadOnlyReason({
   isPreviewingVersion,
   isPublishing,
   isRestoring,
-  isRunning,
-  isViewingRunHistory,
 }: {
   canEdit: boolean;
   isPreviewingVersion: boolean;
   isPublishing: boolean;
   isRestoring: boolean;
-  isRunning: boolean;
-  isViewingRunHistory: boolean;
 }): WorkflowReadOnlyReason {
   if (!canEdit) {
     return "permission-denied";
@@ -159,16 +125,8 @@ function getWorkflowReadOnlyReason({
     return "restoring";
   }
 
-  if (isViewingRunHistory) {
-    return "run-history";
-  }
-
   if (isPreviewingVersion) {
     return "version-preview";
-  }
-
-  if (isRunning) {
-    return "running";
   }
 
   if (isPublishing) {

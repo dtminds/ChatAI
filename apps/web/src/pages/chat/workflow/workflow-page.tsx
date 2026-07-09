@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { WorkflowChecks } from "./canvas/workflow-checks";
-import { WorkflowRunHistoryPanel } from "./canvas/workflow-run-history";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
 import { WorkflowVersionHistoryPanel } from "./canvas/workflow-version-history";
 import { NodeConfigPanel } from "./panels";
@@ -163,17 +162,14 @@ function WorkflowWorkspaceContent({
 }) {
   const { workflowId } = useParams();
   const workspace = useWorkflowWorkspace(workflowId);
-  const { canvas, checks, document, inspector, runHistory, topBar, versionHistory } = workspace;
+  const { canvas, checks, document, inspector, topBar, versionHistory } = workspace;
 
   return (
     <>
       <WorkflowTopBar
         isPreviewingVersion={versionHistory.isPreviewing}
-        isViewingRunHistory={runHistory.isViewing}
         lastSavedAt={topBar.lastSavedAt}
         onExitPreview={versionHistory.onExitPreview}
-        onExitRunHistory={runHistory.onExitHistory}
-        onOpenRunHistory={topBar.onOpenRunHistory}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onOpenVariables={canvas.onOpenVariables}
         onPublish={topBar.onPublish}
@@ -181,12 +177,6 @@ function WorkflowWorkspaceContent({
         onRestoreVersion={versionHistory.currentPreviewVersionId
             ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
             : undefined}
-        onRunWorkflow={topBar.onRunWorkflow}
-        onStopWorkflowRun={topBar.onStopWorkflowRun}
-        previewRunLabel={runHistory.historyRun?.title}
-        previewRunMeta={runHistory.historyRun
-          ? `${runHistory.historyRun.finishedAt || runHistory.historyRun.createdAt} · ${runHistory.historyRun.status}`
-          : undefined}
         previewVersionLabel={versionHistory.previewVersion?.name}
         previewVersionMeta={versionHistory.previewVersion
           ? `${versionHistory.previewVersion.publishedAt} · Revision ${versionHistory.previewVersion.revision}`
@@ -196,7 +186,6 @@ function WorkflowWorkspaceContent({
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}
         restoreState={versionHistory.restoreState}
-        runningState={topBar.runningState}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
         workflowName={document.name || workflowName}
@@ -205,7 +194,6 @@ function WorkflowWorkspaceContent({
       <div
         className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
-        data-run-panel-open={runHistory.isOpen ? "true" : undefined}
         data-version-panel-open={versionHistory.isOpen ? "true" : undefined}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
@@ -260,28 +248,16 @@ function WorkflowWorkspaceContent({
               versions={versionHistory.versions}
             />
           ) : null}
-          {runHistory.isOpen ? (
-            <WorkflowRunHistoryPanel
-              currentRunId={runHistory.currentHistoryRunId}
-              onClose={runHistory.onClose}
-              onExitHistory={runHistory.onExitHistory}
-              onSelectRun={runHistory.onSelectRun}
-              runs={runHistory.runs}
-            />
-          ) : null}
         </section>
 
         {inspector.isOpen && !versionHistory.isPreviewing ? (
           <NodeConfigPanel
             activeTab={inspector.activeTab}
             edges={inspector.edges}
-            lastRun={inspector.lastRun}
             node={inspector.node}
             onClose={inspector.onClose}
             onNodeChange={inspector.onNodeChange}
-            onRunNode={inspector.onRunNode}
             onTabChange={inspector.onTabChange}
-            readOnlyRunMode={runHistory.isViewing}
             variables={inspector.variables}
           />
         ) : null}

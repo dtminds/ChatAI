@@ -15,10 +15,6 @@ describe("reduceWorkflowViewState", () => {
     expect(reduceWorkflowViewState(state, {
       type: "open-checks",
     }).activePanel).toBe("checks");
-
-    expect(reduceWorkflowViewState(state, {
-      type: "open-run-history",
-    }).activePanel).toBe("run-history");
   });
 
   it("enters and exits version preview state", () => {
@@ -37,30 +33,6 @@ describe("reduceWorkflowViewState", () => {
       type: "close-version-history",
     })).toEqual({
       activePanel: null,
-      inspectorOpen: true,
-      previewVersionId: null,
-    });
-  });
-
-  it("keeps run history selection read-only until exiting the history run", () => {
-    const previewState = reduceWorkflowViewState(createDefaultWorkflowViewState(), {
-      type: "select-version-preview",
-      versionId: "version-1",
-    });
-    const historyState = reduceWorkflowViewState(previewState, {
-      type: "select-run-history",
-    });
-
-    expect(historyState).toEqual({
-      activePanel: "run-history",
-      inspectorOpen: false,
-      previewVersionId: null,
-    });
-
-    expect(reduceWorkflowViewState(historyState, {
-      type: "exit-run-history",
-    })).toEqual({
-      activePanel: "run-history",
       inspectorOpen: true,
       previewVersionId: null,
     });

@@ -22,14 +22,13 @@ import type {
   InsertableWorkflowNodeKind,
   WorkflowDraft,
   WorkflowNodeConfigPatch,
-  WorkflowNodeKind,
 } from "./types";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
 import { createUniqueWorkflowNodeIdFactory } from "./workflow-id";
 
 export type WorkflowGraphCommand =
   | {
-    kind: WorkflowNodeKind;
+    kind: InsertableWorkflowNodeKind;
     type: "add-node";
   }
   | {

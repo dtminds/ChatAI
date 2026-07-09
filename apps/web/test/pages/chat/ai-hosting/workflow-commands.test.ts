@@ -45,7 +45,7 @@ describe("workflow graph commands", () => {
     })).toBeUndefined();
 
     expect(runWorkflowGraphCommand(createDraft(), {
-      kind: "trigger",
+      kind: "trigger" as never,
       type: "add-node",
     })).toBeUndefined();
 

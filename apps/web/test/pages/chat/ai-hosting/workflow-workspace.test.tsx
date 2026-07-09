@@ -399,6 +399,99 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.node?.id).toBe(aiNode?.id);
   });
 
+  it("persists manual connections through the workspace boundary and supports undo", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithoutEdge("edge-action-message-goal"));
+      const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+        .toBe(false);
+
+      act(() => {
+        result.current.canvas.onConnect({
+          source: "action-message",
+          sourceHandle: null,
+          target: "goal",
+          targetHandle: null,
+        });
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+        .toBe(true);
+      expect(result.current.canvas.canUndo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+        .toBe(false);
+      expect(result.current.canvas.canRedo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
+      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) =>
+        edge.source === "action-message" && edge.target === "goal",
+      )).toBe(false);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps automatic layout undoable without confusing saved draft state", async () => {
+    vi.useFakeTimers();
+
+    try {
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithDisorderedPositions());
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const originalPositions = getCanvasPositions(result.current.canvas.nodes);
+
+      act(() => {
+        result.current.canvas.onArrange();
+      });
+
+      const arrangedPositions = getCanvasPositions(result.current.canvas.nodes);
+      expect(arrangedPositions).not.toEqual(originalPositions);
+      expect(result.current.canvas.canUndo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getCanvasPositions(getWorkflowDocument("newcomer-conversion").draft.nodes))
+        .toEqual(arrangedPositions);
+      expect(result.current.topBar.saveState).toBe("saved");
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(getCanvasPositions(result.current.canvas.nodes)).toEqual(originalPositions);
+      expect(result.current.canvas.canRedo).toBe(true);
+      expect(result.current.topBar.saveState).toBe("saving");
+
+      act(() => {
+        result.current.canvas.onRedo();
+      });
+
+      expect(getCanvasPositions(result.current.canvas.nodes)).toEqual(arrangedPositions);
+      expect(result.current.topBar.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps viewport changes out of the draft save boundary", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialDraftViewport = result.current.document.draft.viewport;
@@ -917,6 +1010,44 @@ function createWorkflowDraftWithTriggerAudience(audience: string) {
         : node,
     ),
   };
+}
+
+function createWorkflowDraftWithoutEdge(edgeId: string) {
+  const draft = getWorkflowDocument("newcomer-conversion").draft;
+
+  return {
+    ...draft,
+    edges: draft.edges.filter((edge) => edge.id !== edgeId),
+  };
+}
+
+function createWorkflowDraftWithDisorderedPositions() {
+  const draft = getWorkflowDocument("newcomer-conversion").draft;
+
+  return {
+    ...draft,
+    nodes: draft.nodes.map((node) => {
+      if (node.id === "wait-2d") {
+        return {
+          ...node,
+          position: { x: 960, y: 360 },
+        };
+      }
+
+      if (node.id === "branch-intent") {
+        return {
+          ...node,
+          position: { x: 120, y: -180 },
+        };
+      }
+
+      return node;
+    }),
+  };
+}
+
+function getCanvasPositions(nodes: Array<{ id: string; position: { x: number; y: number } }>) {
+  return Object.fromEntries(nodes.map((node) => [node.id, node.position]));
 }
 
 function createWorkflowDraftWithConnectedBranchOutlets() {

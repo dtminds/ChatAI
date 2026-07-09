@@ -1197,6 +1197,9 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(screen.getByTestId("workflow-edge-edge-action-message-goal"));
+    fireEvent.keyDown(window, { key: "Delete" });
+
     await user.click(within(canvas).getByRole("button", { name: "连接普通客户分支到首单转化" }));
 
     expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-normal-goal")).toBeInTheDocument();

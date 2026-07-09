@@ -9,10 +9,30 @@ describe("deriveWorkflowMode", () => {
     });
 
     expect(state.mode).toBe("editing");
+    expect(state.readOnlyReason).toBe("none");
     expect(state.permissions.canEditGraph).toBe(true);
     expect(state.permissions.canRunWorkflow).toBe(true);
     expect(state.permissions.canvasReadOnly).toBe(false);
     expect(state.permissions.nodesReadOnly).toBe(false);
+  });
+
+  it("locks all draft mutations while publishing", () => {
+    const state = deriveWorkflowMode({
+      isPreviewingVersion: false,
+      isViewingRunHistory: false,
+      publishState: "publishing",
+    });
+
+    expect(state.mode).toBe("publishing");
+    expect(state.readOnlyReason).toBe("publishing");
+    expect(state.permissions.canEditGraph).toBe(false);
+    expect(state.permissions.canEditNodeSettings).toBe(false);
+    expect(state.permissions.canOpenInsertPalette).toBe(false);
+    expect(state.permissions.canPublish).toBe(false);
+    expect(state.permissions.canRunWorkflow).toBe(false);
+    expect(state.permissions.canUseHistory).toBe(false);
+    expect(state.permissions.canvasReadOnly).toBe(true);
+    expect(state.permissions.nodesReadOnly).toBe(true);
   });
 
   it("locks workflow operations while a run is active", () => {
@@ -23,6 +43,7 @@ describe("deriveWorkflowMode", () => {
     });
 
     expect(state.mode).toBe("running");
+    expect(state.readOnlyReason).toBe("running");
     expect(state.permissions.canEditGraph).toBe(false);
     expect(state.permissions.canRunWorkflow).toBe(false);
     expect(state.permissions.canvasReadOnly).toBe(true);
@@ -36,6 +57,7 @@ describe("deriveWorkflowMode", () => {
     })).toEqual(expect.objectContaining({
       isPreviewMode: true,
       mode: "version-preview",
+      readOnlyReason: "version-preview",
     }));
 
     expect(deriveWorkflowMode({
@@ -44,15 +66,18 @@ describe("deriveWorkflowMode", () => {
     })).toEqual(expect.objectContaining({
       isPreviewMode: true,
       mode: "run-history",
+      readOnlyReason: "run-history",
     }));
   });
 
   it("locks edits during restore and when edit access is missing", () => {
-    expect(deriveWorkflowMode({
+    const restoringState = deriveWorkflowMode({
       isPreviewingVersion: false,
       isViewingRunHistory: false,
       restoreState: "restoring",
-    }).permissions.canEditGraph).toBe(false);
+    });
+    expect(restoringState.readOnlyReason).toBe("restoring");
+    expect(restoringState.permissions.canEditGraph).toBe(false);
 
     const readOnlyState = deriveWorkflowMode({
       canEdit: false,
@@ -61,8 +86,20 @@ describe("deriveWorkflowMode", () => {
     });
 
     expect(readOnlyState.mode).toBe("editing");
+    expect(readOnlyState.readOnlyReason).toBe("permission-denied");
     expect(readOnlyState.permissions.canEditGraph).toBe(false);
     expect(readOnlyState.permissions.nodesReadOnly).toBe(true);
     expect(readOnlyState.permissions.canvasReadOnly).toBe(false);
+  });
+
+  it("keeps historical snapshots read-only before publishing state", () => {
+    const state = deriveWorkflowMode({
+      isPreviewingVersion: true,
+      isViewingRunHistory: false,
+      publishState: "publishing",
+    });
+
+    expect(state.mode).toBe("version-preview");
+    expect(state.readOnlyReason).toBe("version-preview");
   });
 });

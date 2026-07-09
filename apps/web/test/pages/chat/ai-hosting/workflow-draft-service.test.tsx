@@ -40,7 +40,30 @@ describe("workflow draft service", () => {
       "vip-reactivation",
       "live-follow-up",
     ]);
-    expect(getWorkflowName("missing-workflow")).toBe("新人转化旅程");
+    expect(() => getWorkflowName("missing-workflow")).toThrow("Unknown workflow document");
+  });
+
+  it("keeps the new workflow draft isolated from existing documents", () => {
+    const newDocument = getWorkflowDocument(undefined);
+
+    expect(newDocument.id).toBe("new-workflow-draft");
+    expect(newDocument.name).toBe("未命名 Workflow");
+    expect(listWorkflowDocuments().map((workflow) => workflow.id)).not.toContain("new-workflow-draft");
+
+    saveWorkflowDraft(undefined, createDraftWithTriggerAudience("新建 Workflow 人群"));
+
+    expect(getWorkflowDocument(undefined).draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("新建 Workflow 人群");
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("近 30 天新入会且未首购客户");
+  });
+
+  it("rejects unknown workflow ids instead of mutating the first document", () => {
+    expect(() => getWorkflowDocument("missing-workflow")).toThrow("Unknown workflow document");
+    expect(() => saveWorkflowDraft("missing-workflow", createDraftWithTriggerAudience("错误 id 保存的人群")))
+      .toThrow("Unknown workflow document");
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("近 30 天新入会且未首购客户");
   });
 
   it("debounces mock draft saving state", async () => {
@@ -466,7 +489,7 @@ describe("workflow draft service", () => {
     }
   });
 
-  it("publishes through an async repository without replacing the controller draft input", async () => {
+  it("publishes through an async repository and keeps the hook draft current", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
@@ -483,7 +506,7 @@ describe("workflow draft service", () => {
     expect(result.current.document.status).toBe("Published");
     expect(result.current.document.publishedRevision).toBe(2);
     expect(result.current.document.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
-      .toBe("近 30 天新入会且未首购客户");
+      .toBe("异步发布的人群");
     expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
       .toBe("异步发布的人群");
   });

@@ -7,8 +7,8 @@ import {
 describe("workflow list data", () => {
   it("resolves workflow names for editor routes", () => {
     expect(getWorkflowName("vip-reactivation")).toBe("会员复购唤醒");
-    expect(getWorkflowName(undefined)).toBe("新人转化旅程");
-    expect(getWorkflowName("missing-workflow")).toBe("新人转化旅程");
+    expect(getWorkflowName(undefined)).toBe("未命名 Workflow");
+    expect(() => getWorkflowName("missing-workflow")).toThrow("Unknown workflow document");
   });
 
   it("keeps list items addressable by id", () => {

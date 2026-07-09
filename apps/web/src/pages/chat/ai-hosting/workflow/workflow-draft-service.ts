@@ -122,6 +122,7 @@ export type SyncWorkflowDraftRepository = Omit<WorkflowDraftRepository, "importD
 };
 
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
+const NEW_WORKFLOW_DOCUMENT_ID = "new-workflow-draft";
 
 const workflowDraftRepository = createWorkflowDraftRepository();
 
@@ -247,6 +248,7 @@ export function useWorkflowDocument(
       setDocument((currentDocument) => ({
         ...currentDocument,
         conversion: savedDocument.conversion,
+        draft: cloneWorkflowDraft(normalizedSaveResult.draft),
         draftHash: normalizedSaveResult.draftHash,
         nodes: savedDocument.nodes,
         revision: savedDocument.revision,
@@ -414,6 +416,7 @@ export function useWorkflowDocument(
         ...currentDocument,
         conversion: publishedDocument.conversion,
         currentVersion: normalizedPublishResult.version,
+        draft: cloneWorkflowDraft(normalizedPublishResult.draft),
         draftHash: normalizedPublishResult.draftHash,
         nodes: publishedDocument.nodes,
         publishedAt: normalizedPublishResult.publishedAt,
@@ -714,8 +717,14 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   let workflowDocuments = createWorkflowDocuments();
 
   function getWorkflowDocumentIndex(workflowId: string | undefined) {
-    const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === workflowId);
-    return documentIndex >= 0 ? documentIndex : 0;
+    const resolvedWorkflowId = workflowId ?? NEW_WORKFLOW_DOCUMENT_ID;
+    const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === resolvedWorkflowId);
+
+    if (documentIndex < 0) {
+      throw new Error(`Unknown workflow document: ${resolvedWorkflowId}`);
+    }
+
+    return documentIndex;
   }
 
   return {
@@ -752,7 +761,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         updatedAt: importedAt,
       };
     },
-    listDocuments: () => workflowDocuments.map(({
+    listDocuments: () => workflowDocuments.filter((workflow) => workflow.id !== NEW_WORKFLOW_DOCUMENT_ID).map(({
       currentVersion: _currentVersion,
       draft: _draft,
       draftHash: _draftHash,
@@ -901,6 +910,7 @@ function createWorkflowVersionHistoryItem(
 }
 
 function createWorkflowDocuments(): WorkflowDocument[] {
+  const newWorkflowDraft = createInitialDraft();
   const newcomerConversionDraft = createInitialDraft();
   const vipReactivationDraft: WorkflowDraft = {
     edges: createInitialEdges(),
@@ -936,6 +946,26 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   };
 
   return [
+    {
+      conversion: "0%",
+      currentVersion: null,
+      draft: newWorkflowDraft,
+      draftHash: createWorkflowDraftHash(newWorkflowDraft),
+      entered: "0",
+      id: NEW_WORKFLOW_DOCUMENT_ID,
+      name: "未命名 Workflow",
+      nodes: newWorkflowDraft.nodes.length,
+      owner: "运营主管",
+      publishedAt: null,
+      publishedDraft: null,
+      publishedRevision: null,
+      revision: 1,
+      savedAt: "刚刚",
+      status: "Draft",
+      trigger: "待配置进入条件",
+      updatedAt: "刚刚",
+      versionHistory: [],
+    },
     {
       conversion: "18.4%",
       currentVersion: null,

@@ -839,6 +839,47 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.isOpen).toBe(true);
   });
 
+  it("keeps saved graph edits after entering and exiting version preview", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const publishedDocument = publishWorkflowDraft(
+        "newcomer-conversion",
+        createWorkflowDraftWithTriggerAudience("历史版本人群"),
+      );
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+      const versionId = publishedDocument.currentVersion?.id ?? "";
+
+      act(() => {
+        result.current.canvas.onAddNode("ai");
+      });
+      const addedNodeId = result.current.inspector.node?.id ?? "";
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.some((node) => node.id === addedNodeId))
+        .toBe(true);
+
+      act(() => {
+        result.current.versionHistory.onSelectVersion(versionId);
+      });
+      expect(result.current.versionHistory.isPreviewing).toBe(true);
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(false);
+
+      act(() => {
+        result.current.versionHistory.onExitPreview();
+      });
+
+      expect(result.current.versionHistory.isPreviewing).toBe(false);
+      expect(result.current.canvas.nodes.some((node) => node.id === addedNodeId)).toBe(true);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("restores the selected version history snapshot into the editable draft", async () => {
     const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("第一版恢复人群"));
     publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("第二版仍是发布快照"));

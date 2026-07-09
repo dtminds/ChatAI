@@ -87,11 +87,17 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const workflowMode = deriveWorkflowMode({
     isPreviewingVersion,
     isViewingRunHistory,
+    publishState,
     restoreState,
     workflowRunStatus: runner.activeRun?.status,
   });
   const { permissions } = workflowMode;
-  const controller = useWorkflowController(previewDraft);
+  const controllerResetKey = historyRun
+    ? `run:${historyRun.id}`
+    : previewVersion
+      ? `version:${previewVersion.id}`
+      : `edit:${document.id}`;
+  const controller = useWorkflowController(previewDraft, controllerResetKey);
   const transient = useWorkflowTransientState();
   const selection = useWorkflowSelectionState({
     defaultNodeId: "action-message",
@@ -675,6 +681,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     document,
     mode: workflowMode.mode,
     permissions,
+    readOnlyReason: workflowMode.readOnlyReason,
     inspector: {
       activeTab: inspectorTab,
       edges: controller.edges,

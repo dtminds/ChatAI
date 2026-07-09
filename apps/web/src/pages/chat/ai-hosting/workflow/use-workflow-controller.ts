@@ -7,6 +7,7 @@ import type {
 } from "@xyflow/react";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
 import {
+  isWorkflowGraphEqual,
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import {
@@ -61,7 +62,7 @@ function preserveCurrentViewport(
   };
 }
 
-export function useWorkflowController(initialDraft: WorkflowDraft) {
+export function useWorkflowController(initialDraft: WorkflowDraft, resetKey = "default") {
   const history = useWorkflowHistory(() => initialDraft);
   const {
     commitFromDrafts,
@@ -78,11 +79,13 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const [pendingConfigHistoryActive, setPendingConfigHistoryActive] = useState(false);
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentDraftRef = useRef(currentDraft);
   const moveStartDraftRef = useRef<{
     edges: WorkflowEdge[];
     nodes: WorkflowNode[];
     viewport: WorkflowDraft["viewport"];
   } | null>(null);
+  const resetKeyRef = useRef(resetKey);
 
   const clearConfigHistoryTimer = useCallback(() => {
     if (!configHistoryTimerRef.current) {
@@ -145,13 +148,24 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   }, [clearConfigHistoryTimer]);
 
   useEffect(() => {
+    currentDraftRef.current = currentDraft;
+  }, [currentDraft]);
+
+  useEffect(() => {
+    const resetScopeChanged = resetKeyRef.current !== resetKey;
+    resetKeyRef.current = resetKey;
+
+    if (!resetScopeChanged && isWorkflowGraphEqual(currentDraftRef.current, initialDraft)) {
+      return;
+    }
+
     pendingConfigHistoryRef.current = null;
     setPendingConfigHistoryActive(false);
     moveStartDraftRef.current = null;
     setCurrentViewport(initialDraft.viewport);
     clearConfigHistoryTimer();
     resetDraft(initialDraft);
-  }, [clearConfigHistoryTimer, initialDraft, resetDraft]);
+  }, [clearConfigHistoryTimer, initialDraft, resetDraft, resetKey]);
 
   const onNodesChange = useCallback(
     (_changes: NodeChange<WorkflowRenderNode>[]) => {

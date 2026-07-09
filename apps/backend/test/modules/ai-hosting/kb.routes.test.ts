@@ -137,7 +137,21 @@ describe("KB read routes", () => {
     });
   });
 
-  it("rejects deleting a kb that still has documents", async () => {
+  it("deletes a kb that still has documents through the Java internal API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
     const context = await createAuthenticatedKbApp();
     app = context.app;
 
@@ -147,14 +161,21 @@ describe("KB read routes", () => {
       url: "/api/server/ai-hosting/kbs/1/delete",
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "KB_DELETE_HAS_DOCUMENTS",
-        message: "请先删除所有文档后，再删除知识库",
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        deleted: true,
       },
-      success: false,
+      success: true,
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb/del",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 1,
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
   });
 
   it("deletes an empty kb through the Java internal API", async () => {

@@ -33,7 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { ChatMessage } from "@/pages/chat/chat-types";
+import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
   canRequestSmartReplyMakeShorter,
@@ -47,9 +47,8 @@ import {
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
   SMART_REPLY_THINKING_LABEL,
   type SmartReplySendPayload,
-} from "@/pages/chat/api/smart-reply-adapter";
-import {
   adaptSmartReplyViolationResult,
+  enrichSmartReplyRecommendedAttachmentsFromMessages,
   mergeSmartReplyRecommendedAttachments,
   resolveSmartReplyAttachmentCount,
   resolveSmartReplyRecommendedAttachmentsSource,
@@ -63,11 +62,13 @@ import {
   SmartReplyEditDialog,
   type SmartReplyRecommendedAttachment,
 } from "@/pages/chat/components/smart-reply-edit-dialog";
+import { useWorkbenchStore } from "@/store/workbench-store";
 
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
 const SMART_REPLY_DISMISS_COLLAPSE_MS = 520;
 const SMART_REPLY_DISMISS_FLIGHT_MS = 560;
+const EMPTY_CONVERSATION_MESSAGES: Message[] = [];
 const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 320;
 const SMART_REPLY_DISMISS_PLACEHOLDER_COLLAPSE_MS = 220;
 const SMART_REPLY_DISMISS_STACK_GAP_PX = 6;
@@ -685,7 +686,7 @@ export function SmartReplyMessageAnchor({
   const [automaticCheckIllegalWords, setAutomaticCheckIllegalWords] = useState<
     number | null
   >(null);
-  const [recommendedAttachments, setRecommendedAttachments] = useState<
+  const [rawRecommendedAttachments, setRawRecommendedAttachments] = useState<
     SmartReplyRecommendedAttachment[]
   >([]);
   const [isRecommendedAttachmentsLoading, setIsRecommendedAttachmentsLoading] =
@@ -721,6 +722,19 @@ export function SmartReplyMessageAnchor({
   );
   const attachmentIds = attachmentSource.attachmentIds;
   const inlineAttachments = attachmentSource.inlineAttachments;
+  const conversationMessages = useWorkbenchStore((state) =>
+    conversationId
+      ? (state.messagesByConversationId[conversationId] ?? EMPTY_CONVERSATION_MESSAGES)
+      : EMPTY_CONVERSATION_MESSAGES,
+  );
+  const recommendedAttachments = useMemo(
+    () =>
+      enrichSmartReplyRecommendedAttachmentsFromMessages(
+        rawRecommendedAttachments,
+        conversationMessages,
+      ),
+    [conversationMessages, rawRecommendedAttachments],
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -736,7 +750,7 @@ export function SmartReplyMessageAnchor({
     }
 
     if (!conversationId || attachmentIds.length === 0) {
-      setRecommendedAttachments(inlineAttachments);
+      setRawRecommendedAttachments(inlineAttachments);
       setIsRecommendedAttachmentsLoading(false);
       return;
     }
@@ -747,14 +761,14 @@ export function SmartReplyMessageAnchor({
     void listSmartReplyAttachments(conversationId, attachmentIds)
       .then((attachments) => {
         if (!cancelled) {
-          setRecommendedAttachments(
+          setRawRecommendedAttachments(
             mergeSmartReplyRecommendedAttachments(attachments, inlineAttachments),
           );
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRecommendedAttachments(inlineAttachments);
+          setRawRecommendedAttachments(inlineAttachments);
         }
       })
       .finally(() => {
@@ -802,7 +816,7 @@ export function SmartReplyMessageAnchor({
     setIsEditDialogOpen(open);
 
     if (!open) {
-      setRecommendedAttachments([]);
+      setRawRecommendedAttachments([]);
       setIsRecommendedAttachmentsLoading(false);
       setAutomaticCheckIllegalWords(null);
     }

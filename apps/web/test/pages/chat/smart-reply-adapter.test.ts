@@ -6,6 +6,7 @@ import {
   adaptSmartReplyViolationResult,
   buildSmartReplySendSegments,
   extractSmartReplyGenAnswerInlineAttachments,
+  enrichSmartReplyRecommendedAttachmentsFromMessages,
   mergeSmartReplyRecommendedAttachments,
   resolveSmartReplyAttachmentCount,
   resolveSmartReplyAttachmentIds,
@@ -999,6 +1000,137 @@ describe("smart-reply-adapter", () => {
     ]);
   });
 
+  it("maps genAnswer weapp forward segments to mini-program attachments", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"建议回复"},{"msgtype":"weapp","transMsgInfoId":2486}]';
+
+    expect(extractSmartReplyGenAnswerInlineAttachments(genAnswer)).toEqual([
+      {
+        content: undefined,
+        coverUrl: undefined,
+        defaultSelected: true,
+        fileName: "小程序",
+        fileType: "7",
+        id: "transmsg:weapp:2486",
+        localPath: undefined,
+        slocalPath: undefined,
+        transMsgInfoId: "2486",
+      },
+    ]);
+    expect(
+      resolveSmartReplyAttachmentIds({
+        genAnswer,
+      }),
+    ).toEqual([]);
+    expect(resolveSmartReplyAttachmentCount({ genAnswer })).toBe(1);
+  });
+
+  it("enriches forward mini-program attachments from conversation messages", () => {
+    expect(
+      enrichSmartReplyRecommendedAttachmentsFromMessages(
+        [
+          {
+            fileName: "小程序",
+            fileType: "7",
+            id: "transmsg:weapp:2486",
+            transMsgInfoId: "2486",
+          },
+        ],
+        [
+          {
+            content: {
+              appName: "品牌小程序",
+              coverImageUrl: "https://example.com/cover.png",
+              title: "抗老护肤指南",
+              type: "mini-program",
+            },
+            role: "agent",
+            seq: 2486,
+            uiMessageKey: "msg-2486",
+          } as ChatMessage,
+        ],
+      ),
+    ).toEqual([
+      {
+        coverUrl: "https://example.com/cover.png",
+        fileName: "抗老护肤指南",
+        fileType: "7",
+        id: "transmsg:weapp:2486",
+        transMsgInfoId: "2486",
+      },
+    ]);
+  });
+
+  it("maps genAnswer link segments to link attachments", () => {
+    const genAnswer =
+      '[{"msgtype":"link","id":201,"title":"中共中央政治局召开会议","coverUrl":"s5/msg/cover.png","href":"https://example.com/article"}]';
+
+    expect(extractSmartReplyGenAnswerInlineAttachments(genAnswer)).toEqual([
+      {
+        content: undefined,
+        coverUrl: "s5/msg/cover.png",
+        defaultSelected: true,
+        fileName: "中共中央政治局召开会议",
+        fileType: "4",
+        id: "201",
+        jumpUrl: "https://example.com/article",
+        localPath: undefined,
+        slocalPath: undefined,
+      },
+    ]);
+  });
+
+  it("infers link attachment type from jumpUrl when API mislabels image", () => {
+    expect(
+      adaptSmartReplyAttachments([
+        {
+          coverUrl: "https://example.com/cover.png",
+          fileName: "中共中央政治局召开会议",
+          fileType: 1,
+          id: 201,
+          jumpUrl: "https://example.com/article",
+        },
+      ]),
+    ).toEqual([
+      {
+        content: undefined,
+        coverUrl: "https://example.com/cover.png",
+        defaultSelected: true,
+        fileName: "中共中央政治局召开会议",
+        fileType: "4",
+        id: "201",
+        jumpUrl: "https://example.com/article",
+        localPath: undefined,
+        slocalPath: undefined,
+      },
+    ]);
+  });
+
+  it("uses link href instead of cover image when building send segments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/article.png",
+            fileName: "图文素材",
+            fileType: "4",
+            id: "105",
+            jumpUrl: "https://example.com/article",
+          },
+        ],
+        selectedAttachmentIds: ["105"],
+      }),
+    ).toEqual([
+      {
+        coverUrl: "https://example.com/article.png",
+        href: "https://example.com/article",
+        title: "图文素材",
+        type: "h5",
+      },
+    ]);
+  });
+
   it("resolves attachment count from ids and inline attachments", () => {
     expect(
       resolveSmartReplyAttachmentCount({
@@ -1112,6 +1244,7 @@ describe("smart-reply-adapter", () => {
             fileName: "图文素材",
             fileType: "4",
             id: "105",
+            jumpUrl: "https://example.com/article",
           },
           {
             coverUrl: "https://example.com/mini.png",
@@ -1136,19 +1269,132 @@ describe("smart-reply-adapter", () => {
         extension: "pdf",
         fileName: "说明.pdf",
         type: "file",
-        url: "https://b1.dtminds.com/files/guide.pdf",
+        url: "https://b5.bokr.com.cn/files/guide.pdf",
       },
       {
         extension: "pdf",
         fileName: "规格.pdf",
         type: "file",
-        url: "https://b1.dtminds.com/files/spec.pdf",
+        url: "https://b5.bokr.com.cn/files/spec.pdf",
       },
       {
         extension: "mp4",
         fileName: "演示视频.mp4",
         type: "file",
-        url: "https://b1.dtminds.com/videos/demo.mp4",
+        url: "https://b5.bokr.com.cn/videos/demo.mp4",
+      },
+      {
+        coverUrl: "https://example.com/article.png",
+        href: "https://example.com/article",
+        title: "图文素材",
+        type: "h5",
+      },
+    ]);
+  });
+
+  it("builds weapp send segments from forward mini-program attachments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "请查看小程序",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/cover.png",
+            fileName: "抗老护肤指南",
+            fileType: "7",
+            id: "transmsg:weapp:2486",
+            transMsgInfoId: "2486",
+          },
+        ],
+        selectedAttachmentIds: ["transmsg:weapp:2486"],
+      }),
+    ).toEqual([
+      {
+        text: "请查看小程序",
+        type: "text",
+      },
+      {
+        appName: "抗老护肤指南",
+        coverImageUrl: "https://example.com/cover.png",
+        msgInfoId: "2486",
+        title: "抗老护肤指南",
+        type: "weapp",
+      },
+    ]);
+  });
+
+  it("builds sphfeed and video send segments from forward attachments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/sphfeed.png",
+            fileName: "品牌视频号",
+            fileType: "3",
+            id: "transmsg:sphfeed:9108",
+            transMsgInfoId: "9108",
+          },
+          {
+            coverUrl: "https://example.com/video-cover.png",
+            fileName: "演示视频",
+            fileType: "3",
+            id: "transmsg:video:2205",
+            transMsgInfoId: "2205",
+          },
+        ],
+        selectedAttachmentIds: ["transmsg:sphfeed:9108", "transmsg:video:2205"],
+      }),
+    ).toEqual([
+      {
+        imageUrl: "https://example.com/sphfeed.png",
+        msgInfoId: "9108",
+        title: "品牌视频号",
+        type: "sphfeed",
+      },
+      {
+        coverUrl: "https://example.com/video-cover.png",
+        materialCollectionId: "",
+        msgInfoId: "2205",
+        title: "演示视频",
+        type: "video",
+        url: "",
+      },
+    ]);
+  });
+
+  it("ignores undefined entries when enriching attachments from messages", () => {
+    expect(
+      enrichSmartReplyRecommendedAttachmentsFromMessages(
+        [
+          {
+            fileName: "小程序",
+            fileType: "7",
+            id: "transmsg:weapp:2486",
+            transMsgInfoId: "2486",
+          },
+        ],
+        [
+          undefined,
+          {
+            content: {
+              appName: "品牌小程序",
+              coverImageUrl: "https://example.com/cover.png",
+              title: "抗老护肤指南",
+              type: "mini-program",
+            },
+            role: "agent",
+            seq: 2486,
+            uiMessageKey: "msg-2486",
+          } as ChatMessage,
+        ] as Message[],
+      ),
+    ).toEqual([
+      {
+        coverUrl: "https://example.com/cover.png",
+        fileName: "抗老护肤指南",
+        fileType: "7",
+        id: "transmsg:weapp:2486",
+        transMsgInfoId: "2486",
       },
     ]);
   });

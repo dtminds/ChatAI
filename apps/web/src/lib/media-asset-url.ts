@@ -17,3 +17,17 @@ export function buildMediaAssetUrl(objectKey: string) {
 
   return `https://${getPlayableMediaHost()}/${encodeCosObjectKey(normalizedKey)}`;
 }
+
+export function resolveMediaAssetUrl(path?: string) {
+  const trimmed = path?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return buildMediaAssetUrl(trimmed);
+}

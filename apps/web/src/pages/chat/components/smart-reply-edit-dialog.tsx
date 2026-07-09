@@ -333,12 +333,9 @@ export function SmartReplyEditDialog({
       <SmartReplyAddToFaqDialog
         initialAnswer={draftContent.trim()}
         initialQuestion={faqInitialQuestion}
-        initialSelectedAttachmentIds={selectedAttachmentIds}
-        isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
         onOpenChange={setIsFaqDialogOpen}
         onSaved={() => onOpenChange(false)}
         open={isFaqDialogOpen}
-        recommendedAttachments={recommendedAttachments}
       />
     </>
   );

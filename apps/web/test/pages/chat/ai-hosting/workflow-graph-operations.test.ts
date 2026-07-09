@@ -337,6 +337,20 @@ describe("workflow graph operations", () => {
 
     expect(insertNodeAfterOperation(
       draft,
+      "wait-2d",
+      "goal" as Parameters<typeof insertNodeAfterOperation>[2],
+      "goal-extra",
+    )).toBeUndefined();
+    expect(insertNodeBetweenOperation(
+      draft,
+      "edge-wait-2d-branch-intent",
+      "wait-2d",
+      "branch-intent",
+      "trigger" as Parameters<typeof insertNodeBetweenOperation>[4],
+      "trigger-extra",
+    )).toBeUndefined();
+    expect(insertNodeAfterOperation(
+      draft,
       "missing-node",
       "wait",
       "wait-missing",
@@ -533,6 +547,26 @@ describe("workflow graph operations", () => {
 
     expect(moveNodesOperation(draft, [
       { nodeId: waitNode.id, position: waitNode.position },
+    ], waitNode.id)).toBeUndefined();
+  });
+
+  it("rejects invalid move operations instead of partially applying them", () => {
+    const draft = createDraft();
+    const waitNode = draft.nodes.find((node) => node.id === "wait-2d")!;
+
+    expect(moveNodesOperation(draft, [], waitNode.id)).toBeUndefined();
+    expect(moveNodesOperation(draft, [
+      { nodeId: "missing-node", position: { x: 420, y: 120 } },
+    ], "missing-node")).toBeUndefined();
+    expect(moveNodesOperation(draft, [
+      { nodeId: waitNode.id, position: { x: 420, y: 120 } },
+    ], "missing-primary")).toBeUndefined();
+    expect(moveNodesOperation(draft, [
+      { nodeId: waitNode.id, position: { x: 420, y: 120 } },
+      { nodeId: waitNode.id, position: { x: 520, y: 220 } },
+    ], waitNode.id)).toBeUndefined();
+    expect(moveNodesOperation(draft, [
+      { nodeId: waitNode.id, position: { x: Number.NaN, y: 120 } },
     ], waitNode.id)).toBeUndefined();
   });
 

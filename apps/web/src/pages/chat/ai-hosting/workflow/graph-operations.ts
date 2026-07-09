@@ -140,7 +140,7 @@ export function insertNodeAfterOperation(
   nodeId: string,
   sourceHandle?: string,
 ): WorkflowGraphOperation | undefined {
-  if (hasNodeId(draft, nodeId)) {
+  if (!canInsertNodeKind(kind) || hasNodeId(draft, nodeId)) {
     return undefined;
   }
 
@@ -235,7 +235,7 @@ export function insertNodeBetweenOperation(
   kind: InsertableWorkflowNodeKind,
   nodeId: string,
 ): WorkflowGraphOperation | undefined {
-  if (hasNodeId(draft, nodeId)) {
+  if (!canInsertNodeKind(kind) || hasNodeId(draft, nodeId)) {
     return undefined;
   }
 
@@ -588,6 +588,10 @@ export function moveNodesOperation(
   updates: WorkflowNodePositionUpdate[],
   nodeId: string,
 ): WorkflowGraphOperation | undefined {
+  if (!areWorkflowNodePositionUpdatesValid(draft, updates, nodeId)) {
+    return undefined;
+  }
+
   const nextDraft = moveNodesInDraft(draft, updates);
 
   if (isWorkflowGraphEqual(draft, nextDraft)) {
@@ -604,6 +608,37 @@ export function moveNodesOperation(
       nodeTitle: node?.data.title,
     },
     result: { nodeId },
+  });
+}
+
+function areWorkflowNodePositionUpdatesValid(
+  draft: WorkflowDraft,
+  updates: WorkflowNodePositionUpdate[],
+  primaryNodeId: string,
+) {
+  if (updates.length === 0) {
+    return false;
+  }
+
+  const nodeIds = new Set(draft.nodes.map((node) => node.id));
+  const updateNodeIds = new Set<string>();
+
+  if (!nodeIds.has(primaryNodeId)) {
+    return false;
+  }
+
+  return updates.every((update) => {
+    if (
+      updateNodeIds.has(update.nodeId)
+      || !nodeIds.has(update.nodeId)
+      || !Number.isFinite(update.position.x)
+      || !Number.isFinite(update.position.y)
+    ) {
+      return false;
+    }
+
+    updateNodeIds.add(update.nodeId);
+    return true;
   });
 }
 

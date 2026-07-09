@@ -48,6 +48,36 @@ describe("workflow graph commands", () => {
       kind: "trigger",
       type: "add-node",
     })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      kind: "goal" as never,
+      previousNodeId: "wait-2d",
+      type: "insert-node-after",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      edgeId: "edge-wait-2d-branch-intent",
+      kind: "trigger" as never,
+      sourceNodeId: "wait-2d",
+      targetNodeId: "branch-intent",
+      type: "insert-node-between",
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "missing-node", position: { x: 420, y: 120 } },
+      ],
+    })).toBeUndefined();
+
+    expect(runWorkflowGraphCommand(createDraft(), {
+      nodeId: "wait-2d",
+      type: "move-nodes",
+      updates: [
+        { nodeId: "wait-2d", position: { x: Number.NaN, y: 120 } },
+      ],
+    })).toBeUndefined();
   });
 
   it("returns canonical drafts for every structural command boundary", () => {

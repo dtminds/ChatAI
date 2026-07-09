@@ -40,8 +40,8 @@ import {
 } from "../node-definitions";
 import { WorkflowNodeCard } from "../nodes";
 import type {
+  InsertableWorkflowNodeKind,
   WorkflowNodeData,
-  WorkflowNodeKind,
   WorkflowRenderEdge,
   WorkflowRenderNode,
 } from "../types";
@@ -99,7 +99,7 @@ export function WorkflowCanvas({
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
-  onAddNode: (kind: WorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
   onEdgesChange: OnEdgesChange<WorkflowRenderEdge>;

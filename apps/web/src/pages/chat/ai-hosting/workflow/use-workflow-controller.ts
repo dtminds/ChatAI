@@ -22,7 +22,6 @@ import type { WorkflowHistoryEventMeta } from "./history";
 import type {
   InsertableWorkflowNodeKind,
   WorkflowNodeConfigPatch,
-  WorkflowNodeKind,
   WorkflowEdge,
   WorkflowNode,
   WorkflowRenderEdge,
@@ -369,7 +368,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     });
   }, [commitGraphCommand, flushConfigHistory]);
 
-  const addNode = useCallback((kind: WorkflowNodeKind): WorkflowControllerActionResult | undefined => {
+  const addNode = useCallback((kind: InsertableWorkflowNodeKind): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     return commitGraphCommand({ kind, type: "add-node" });
   }, [commitGraphCommand, flushConfigHistory]);

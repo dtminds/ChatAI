@@ -14,7 +14,6 @@ import type {
   InsertableWorkflowNodeKind,
   InspectorTab,
   WorkflowNodeConfigPatch,
-  WorkflowNodeKind,
   WorkflowRenderEdge,
   WorkflowRenderNode,
   WorkflowDraft,
@@ -253,7 +252,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     });
   });
 
-  const addNode = useWorkflowStableCallback((kind: WorkflowNodeKind) => {
+  const addNode = useWorkflowStableCallback((kind: InsertableWorkflowNodeKind) => {
     if (!permissions.canEditGraph) {
       return;
     }

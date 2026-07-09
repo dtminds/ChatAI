@@ -686,7 +686,7 @@ export function SmartReplyMessageAnchor({
   const [automaticCheckIllegalWords, setAutomaticCheckIllegalWords] = useState<
     number | null
   >(null);
-  const [recommendedAttachments, setRecommendedAttachments] = useState<
+  const [rawRecommendedAttachments, setRawRecommendedAttachments] = useState<
     SmartReplyRecommendedAttachment[]
   >([]);
   const [isRecommendedAttachmentsLoading, setIsRecommendedAttachmentsLoading] =
@@ -727,13 +727,13 @@ export function SmartReplyMessageAnchor({
       ? (state.messagesByConversationId[conversationId] ?? EMPTY_CONVERSATION_MESSAGES)
       : EMPTY_CONVERSATION_MESSAGES,
   );
-  const resolveRecommendedAttachments = useCallback(
-    (attachments: SmartReplyRecommendedAttachment[]) =>
+  const recommendedAttachments = useMemo(
+    () =>
       enrichSmartReplyRecommendedAttachmentsFromMessages(
-        attachments,
+        rawRecommendedAttachments,
         conversationMessages,
       ),
-    [conversationMessages],
+    [conversationMessages, rawRecommendedAttachments],
   );
 
   useEffect(() => {
@@ -750,7 +750,7 @@ export function SmartReplyMessageAnchor({
     }
 
     if (!conversationId || attachmentIds.length === 0) {
-      setRecommendedAttachments(resolveRecommendedAttachments(inlineAttachments));
+      setRawRecommendedAttachments(inlineAttachments);
       setIsRecommendedAttachmentsLoading(false);
       return;
     }
@@ -761,18 +761,14 @@ export function SmartReplyMessageAnchor({
     void listSmartReplyAttachments(conversationId, attachmentIds)
       .then((attachments) => {
         if (!cancelled) {
-          setRecommendedAttachments(
-            resolveRecommendedAttachments(
-              mergeSmartReplyRecommendedAttachments(attachments, inlineAttachments),
-            ),
+          setRawRecommendedAttachments(
+            mergeSmartReplyRecommendedAttachments(attachments, inlineAttachments),
           );
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRecommendedAttachments(
-            resolveRecommendedAttachments(inlineAttachments),
-          );
+          setRawRecommendedAttachments(inlineAttachments);
         }
       })
       .finally(() => {
@@ -784,13 +780,7 @@ export function SmartReplyMessageAnchor({
     return () => {
       cancelled = true;
     };
-  }, [
-    attachmentIds,
-    conversationId,
-    inlineAttachments,
-    isEditDialogOpen,
-    resolveRecommendedAttachments,
-  ]);
+  }, [attachmentIds, conversationId, inlineAttachments, isEditDialogOpen]);
 
   useEffect(() => {
     if (!isEditDialogOpen) {
@@ -826,7 +816,7 @@ export function SmartReplyMessageAnchor({
     setIsEditDialogOpen(open);
 
     if (!open) {
-      setRecommendedAttachments([]);
+      setRawRecommendedAttachments([]);
       setIsRecommendedAttachmentsLoading(false);
       setAutomaticCheckIllegalWords(null);
     }

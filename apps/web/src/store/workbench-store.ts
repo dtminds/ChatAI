@@ -6967,7 +6967,8 @@ function toWorkbenchSendSegment(
     (segment.type === "file" ||
       segment.type === "h5" ||
       segment.type === "weapp" ||
-      segment.type === "sphfeed") &&
+      segment.type === "sphfeed" ||
+      segment.type === "video") &&
     segment.msgInfoId
   ) {
     return segment;

@@ -1322,6 +1322,83 @@ describe("smart-reply-adapter", () => {
     ]);
   });
 
+  it("builds sphfeed and video send segments from forward attachments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/sphfeed.png",
+            fileName: "品牌视频号",
+            fileType: "3",
+            id: "transmsg:sphfeed:9108",
+            transMsgInfoId: "9108",
+          },
+          {
+            coverUrl: "https://example.com/video-cover.png",
+            fileName: "演示视频",
+            fileType: "3",
+            id: "transmsg:video:2205",
+            transMsgInfoId: "2205",
+          },
+        ],
+        selectedAttachmentIds: ["transmsg:sphfeed:9108", "transmsg:video:2205"],
+      }),
+    ).toEqual([
+      {
+        imageUrl: "https://example.com/sphfeed.png",
+        msgInfoId: "9108",
+        title: "品牌视频号",
+        type: "sphfeed",
+      },
+      {
+        coverUrl: "https://example.com/video-cover.png",
+        materialCollectionId: "",
+        msgInfoId: "2205",
+        title: "演示视频",
+        type: "video",
+        url: "",
+      },
+    ]);
+  });
+
+  it("ignores undefined entries when enriching attachments from messages", () => {
+    expect(
+      enrichSmartReplyRecommendedAttachmentsFromMessages(
+        [
+          {
+            fileName: "小程序",
+            fileType: "7",
+            id: "transmsg:weapp:2486",
+            transMsgInfoId: "2486",
+          },
+        ],
+        [
+          undefined,
+          {
+            content: {
+              appName: "品牌小程序",
+              coverImageUrl: "https://example.com/cover.png",
+              title: "抗老护肤指南",
+              type: "mini-program",
+            },
+            role: "agent",
+            seq: 2486,
+            uiMessageKey: "msg-2486",
+          } as ChatMessage,
+        ] as Message[],
+      ),
+    ).toEqual([
+      {
+        coverUrl: "https://example.com/cover.png",
+        fileName: "抗老护肤指南",
+        fileType: "7",
+        id: "transmsg:weapp:2486",
+        transMsgInfoId: "2486",
+      },
+    ]);
+  });
+
   it("skips selected attachments that cannot be sent", () => {
     expect(
       buildSmartReplySendSegments({

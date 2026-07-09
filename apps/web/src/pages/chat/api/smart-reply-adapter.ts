@@ -1104,12 +1104,24 @@ function normalizeSmartReplyRecommendedAttachments(
   }));
 }
 
-function findChatMessageBySeq(messages: Message[], seq: number) {
+function findChatMessageBySeq(messages: Message[], seq: number): ChatMessage | undefined {
   const message = messages.find(
-    (item) => item.role !== "system" && item.seq === seq,
+    (item) => item && item.role !== "system" && item.seq === seq,
   );
 
-  return message?.role !== "system" ? message : undefined;
+  return message && message.role !== "system" ? message : undefined;
+}
+
+function readSmartReplyForwardAttachmentMsgtype(
+  attachmentId: string,
+): "sphfeed" | "video" | "weapp" | undefined {
+  const match = /^transmsg:(weapp|sphfeed|video):/.exec(attachmentId);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return match[1] as "sphfeed" | "video" | "weapp";
 }
 
 function mapChatMessageToRecommendedAttachmentFields(
@@ -1504,6 +1516,30 @@ function mapSmartReplyAttachmentToComposerSegment(
       msgInfoId,
       title: attachment.fileName,
       type: "weapp",
+    };
+  }
+
+  const forwardMsgtype = readSmartReplyForwardAttachmentMsgtype(attachment.id);
+  const forwardMsgInfoId =
+    readSmartReplyRecommendedAttachmentTransMsgInfoId(attachment);
+
+  if (forwardMsgtype === "sphfeed" && forwardMsgInfoId) {
+    return {
+      imageUrl: attachment.coverUrl,
+      msgInfoId: forwardMsgInfoId,
+      title: attachment.fileName,
+      type: "sphfeed",
+    };
+  }
+
+  if (forwardMsgtype === "video" && forwardMsgInfoId) {
+    return {
+      coverUrl: attachment.coverUrl || "",
+      materialCollectionId: "",
+      msgInfoId: forwardMsgInfoId,
+      title: attachment.fileName,
+      type: "video",
+      url: "",
     };
   }
 

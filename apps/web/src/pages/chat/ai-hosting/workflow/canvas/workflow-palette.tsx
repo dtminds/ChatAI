@@ -1,4 +1,4 @@
-import { Cancel01Icon, FlowConnectionIcon, PlayIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -67,18 +67,6 @@ export function WorkflowPalette({
           </Badge>
         </div>
 
-        <div className="mb-3 rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-soft)] p-2">
-          <div className="flex items-center gap-2 px-1 py-0.5">
-            <span className="flex size-6 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
-              <HugeiconsIcon icon={FlowConnectionIcon} size={14} strokeWidth={1.8} />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium">新人转化</div>
-              <div className="truncate text-[11px] text-muted-foreground">124.8 万进入 · 18.4% 目标</div>
-            </div>
-          </div>
-        </div>
-
         <div className="space-y-3">
           {paletteGroups.map((group) => (
             <div key={group.id}>
@@ -116,29 +104,6 @@ export function WorkflowPalette({
           ) : null}
         </div>
       </section>
-
-      <section className="workflow-palette-preview border-t border-[var(--workflow-border)] p-2">
-        <div className="rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-section)] p-2 shadow-xs">
-          <div className="flex items-center gap-2 px-0.5 text-xs font-medium">
-            <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-            <span>Run preview</span>
-          </div>
-          <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[11px]">
-            <MetricPill label="进入" value="124.8万" />
-            <MetricPill label="触达" value="83.6%" />
-            <MetricPill label="转化" value="18.4%" />
-          </div>
-        </div>
-      </section>
     </aside>
-  );
-}
-
-function MetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-[var(--workflow-soft)] px-1.5 py-1.5">
-      <div className="font-semibold text-foreground">{value}</div>
-      <div className="mt-0.5 text-muted-foreground">{label}</div>
-    </div>
   );
 }

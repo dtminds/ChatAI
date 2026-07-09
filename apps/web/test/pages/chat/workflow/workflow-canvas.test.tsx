@@ -48,7 +48,6 @@ function renderWorkflowCanvas(overrides: Partial<ComponentProps<typeof WorkflowC
     onNodeHoverEnd: vi.fn(),
     onNodeHoverStart: vi.fn(),
     onNodesChange: vi.fn(),
-    onOpenVariables: vi.fn(),
     onPaletteOpenChange: vi.fn(),
     onPaneClick: vi.fn(),
     onRedo: vi.fn(),

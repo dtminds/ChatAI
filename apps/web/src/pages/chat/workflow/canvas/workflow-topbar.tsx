@@ -1,4 +1,4 @@
-import { AlertCircleIcon, CancelSquareIcon, CheckmarkCircle02Icon, PlayIcon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, CancelSquareIcon, CheckmarkCircle02Icon, PlayIcon, Settings02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import type {
@@ -15,6 +15,7 @@ export function WorkflowTopBar({
   onExitRunHistory,
   onOpenRunHistory,
   onOpenVersionHistory,
+  onOpenVariables,
   onPublish,
   onPublishCheck,
   onRestoreVersion,
@@ -41,6 +42,7 @@ export function WorkflowTopBar({
   onExitRunHistory?: () => void;
   onOpenRunHistory: () => void;
   onOpenVersionHistory: () => void;
+  onOpenVariables: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
   onRestoreVersion?: () => void;
@@ -125,6 +127,16 @@ export function WorkflowTopBar({
           </>
         ) : (
           <>
+            <Button
+              aria-label="打开变量面板"
+              className="workflow-topbar-button"
+              onClick={onOpenVariables}
+              type="button"
+              variant="secondary"
+            >
+              <HugeiconsIcon icon={Settings02Icon} size={16} strokeWidth={1.8} />
+              <span>变量</span>
+            </Button>
             <Button
               className="workflow-topbar-button"
               disabled={isRunning}

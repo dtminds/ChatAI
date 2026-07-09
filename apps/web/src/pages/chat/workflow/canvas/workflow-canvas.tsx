@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type {
   Connection,
   IsValidConnection,
@@ -17,15 +17,22 @@ import {
 } from "@xyflow/react";
 import {
   Add01Icon,
-  ArrangeIcon,
-  FlowConnectionIcon,
+  DashboardSquare02Icon,
+  MinusSignIcon,
+  Navigation04Icon,
+  PlusSignIcon,
   Redo03Icon,
-  Settings02Icon,
   SquareArrowExpand01Icon,
-  Tick02Icon,
   Undo03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_MAX_ZOOM,
@@ -74,7 +81,6 @@ export function WorkflowCanvas({
   onEdgesChange,
   onIsValidConnection,
   onNodesChange,
-  onOpenVariables,
   onPaletteOpenChange,
   onPaneClick,
   onRedo,
@@ -105,7 +111,6 @@ export function WorkflowCanvas({
   onEdgesChange: OnEdgesChange<WorkflowRenderEdge>;
   onIsValidConnection: IsValidConnection<WorkflowRenderEdge>;
   onNodesChange: OnNodesChange<WorkflowRenderNode>;
-  onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
   onPaneClick: () => void;
   onRedo: () => void;
@@ -129,7 +134,7 @@ export function WorkflowCanvas({
     WorkflowRenderEdge
   >();
   const { zoom } = useViewport();
-  const [showMiniMap, setShowMiniMap] = useState(true);
+  const [showMiniMap, setShowMiniMap] = useState(false);
   const [flowNodes, setFlowNodes] = useState(nodes);
   const canvasRef = useRef<HTMLElement | null>(null);
   const isNodeDraggingRef = useRef(false);
@@ -236,105 +241,62 @@ export function WorkflowCanvas({
         zoomOnScroll
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
-        <WorkflowControlDock
-          onPaletteOpenChange={onPaletteOpenChange}
-          onArrange={onArrange}
-          disabled={isReadOnly}
-          onOpenVariables={onOpenVariables}
-          paletteOpen={paletteOpen}
-        />
-        {paletteOpen && !isReadOnly ? (
-          <WorkflowPalette
-            onAddNode={onAddNode}
-            onClose={() => onPaletteOpenChange(false)}
-            onSearchChange={onSearchChange}
-            searchValue={searchValue}
-          />
-        ) : null}
         {activeInsertNode ? <WorkflowCandidateMenuOverlay node={activeInsertNode} /> : null}
-        <div
-          className="workflow-bottom-operator nodrag nopan"
-          aria-label="画布操作"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="workflow-operator-group">
-            <button
-              aria-label={nextUndoLabel ? `撤销：${nextUndoLabel}` : "撤销"}
-              className="workflow-operator-button"
-              disabled={!canUndo}
-              onClick={(event) => {
-                event.stopPropagation();
-                onUndo();
-              }}
-              type="button"
-            >
-              <HugeiconsIcon icon={Undo03Icon} size={15} strokeWidth={1.8} />
-            </button>
-            <button
-              aria-label={nextRedoLabel ? `重做：${nextRedoLabel}` : "重做"}
-              className="workflow-operator-button"
-              disabled={!canRedo}
-              onClick={(event) => {
-                event.stopPropagation();
-                onRedo();
-              }}
-              type="button"
-            >
-              <HugeiconsIcon icon={Redo03Icon} size={15} strokeWidth={1.8} />
-            </button>
-          </div>
-          <button
-            className="workflow-operator-chip workflow-operator-chip-strong"
-            disabled={isReadOnly}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenVariables();
-            }}
-            type="button"
-          >
-            Variables
-          </button>
-          <div className="workflow-operator-map-wrap">
-            {showMiniMap ? (
-              <MiniMap
-                className="workflow-minimap"
-                maskColor="var(--workflow-minimap-mask)"
-                nodeColor={(node) => {
-                  const data = node.data as WorkflowNodeData;
-                  if (data.kind === "trigger") {
-                    return "var(--workflow-minimap-trigger)";
-                  }
-                  if (data.kind === "ai") {
-                    return "var(--workflow-minimap-ai)";
-                  }
-                  if (data.kind === "goal") {
-                    return "var(--workflow-minimap-goal)";
-                  }
-                  return "var(--workflow-minimap-node)";
-                }}
-                nodeStrokeWidth={3}
-                pannable
-                position="bottom-right"
-                style={{
-                  height: 73,
-                  width: 103,
-                }}
-                zoomable
-              />
-            ) : null}
-            <WorkflowZoomControls
-              fitView={() => fitView({ duration: 160, padding: 0.2 })}
-              onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
-              showMiniMap={showMiniMap}
-              zoom={zoom}
-              zoomIn={zoomIn}
-              zoomOut={zoomOut}
-              zoomTo={zoomTo}
-            />
-          </div>
-        </div>
+        <WorkflowBottomToolbar
+          canRedo={canRedo}
+          canUndo={canUndo}
+          disabled={isReadOnly}
+          fitView={() => fitView({ duration: 160, padding: 0.2 })}
+          nextRedoLabel={nextRedoLabel}
+          nextUndoLabel={nextUndoLabel}
+          onAddNode={onAddNode}
+          onArrange={onArrange}
+          onPaletteOpenChange={onPaletteOpenChange}
+          onRedo={onRedo}
+          onSearchChange={onSearchChange}
+          onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
+          onUndo={onUndo}
+          paletteOpen={paletteOpen}
+          searchValue={searchValue}
+          showMiniMap={showMiniMap}
+          zoom={zoom}
+          zoomIn={zoomIn}
+          zoomOut={zoomOut}
+          zoomTo={zoomTo}
+        />
       </ReactFlow>
     </section>
+  );
+}
+
+function WorkflowMiniMap() {
+  return (
+    <MiniMap
+      bgColor="var(--background)"
+      className="workflow-minimap"
+      maskColor="oklch(from var(--secondary) l c h / 50%)"
+      nodeColor={(node) => {
+        const data = node.data as WorkflowNodeData;
+        if (data.kind === "trigger") {
+          return "var(--workflow-minimap-trigger)";
+        }
+        if (data.kind === "ai") {
+          return "var(--workflow-minimap-ai)";
+        }
+        if (data.kind === "goal") {
+          return "var(--workflow-minimap-goal)";
+        }
+        return "var(--workflow-minimap-node)";
+      }}
+      nodeStrokeWidth={3}
+      pannable
+      position="bottom-right"
+      style={{
+        height: 73,
+        width: 103,
+      }}
+      zoomable
+    />
   );
 }
 
@@ -424,17 +386,43 @@ function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
   );
 }
 
-function WorkflowZoomControls({
+function WorkflowBottomToolbar({
+  canRedo,
+  canUndo,
+  disabled,
   fitView,
+  nextRedoLabel,
+  nextUndoLabel,
+  onAddNode,
+  onArrange,
+  onPaletteOpenChange,
+  onRedo,
+  onSearchChange,
   onToggleMiniMap,
+  onUndo,
+  paletteOpen,
+  searchValue,
   showMiniMap,
   zoom,
   zoomIn,
   zoomOut,
   zoomTo,
 }: {
+  canRedo: boolean;
+  canUndo: boolean;
+  disabled: boolean;
   fitView: () => void;
+  nextRedoLabel?: string;
+  nextUndoLabel?: string;
+  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onArrange: () => void;
+  onPaletteOpenChange: (open: boolean) => void;
+  onRedo: () => void;
+  onSearchChange: (value: string) => void;
   onToggleMiniMap: () => void;
+  onUndo: () => void;
+  paletteOpen: boolean;
+  searchValue: string;
   showMiniMap: boolean;
   zoom: number;
   zoomIn: () => void;
@@ -456,160 +444,200 @@ function WorkflowZoomControls({
   };
 
   return (
-    <div className="workflow-operator-group workflow-zoom-control" aria-label="缩放比例" ref={menuRef}>
-      <button
-        aria-label="缩小"
-        className="workflow-operator-button"
-        disabled={!canZoomOut}
-        onClick={() => {
-          if (canZoomOut) {
-            zoomOut();
-          }
-        }}
-        type="button"
+    <TooltipProvider delayDuration={300}>
+      <div
+        aria-label="画布工具"
+        className="workflow-bottom-toolbar nodrag nopan"
+        onClick={(event) => event.stopPropagation()}
+        ref={menuRef}
       >
-        -
-      </button>
-      <button
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
-        className="workflow-operator-button workflow-operator-zoom-label"
-        onClick={() => setMenuOpen(!menuOpen)}
-        type="button"
-      >
-        {zoomLabel}
-      </button>
-      {menuOpen ? (
-        <div aria-label="缩放菜单" className="workflow-zoom-menu" role="menu">
-          {workflowZoomOptions.map((option) => (
-            <button
-              className="workflow-zoom-menu-item"
-              key={option.label}
-              onClick={() => handleMenuAction(() => zoomTo(option.value))}
-              role="menuitem"
+        {showMiniMap ? <WorkflowMiniMap /> : null}
+        <div className="workflow-toolbar-zoom" aria-label="缩放比例">
+          <WorkflowToolbarTooltip label="缩小">
+            <Button
+              aria-label="缩小"
+              className="workflow-toolbar-button"
+              disabled={!canZoomOut}
+              onClick={() => {
+                if (canZoomOut) {
+                  zoomOut();
+                }
+              }}
               type="button"
+              variant="ghost"
+              size="icon"
             >
-              <span className="workflow-zoom-menu-icon" />
-              {option.label}
-            </button>
-          ))}
-          <button
-            className="workflow-zoom-menu-item"
-            onClick={() => handleMenuAction(fitView)}
-            role="menuitem"
-            type="button"
-          >
-            <span className="workflow-zoom-menu-icon">
-              <HugeiconsIcon icon={SquareArrowExpand01Icon} size={16} strokeWidth={1.8} />
-            </span>
-            适配画布
-          </button>
-          <div className="workflow-zoom-menu-separator" />
-          <button
-            className="workflow-zoom-menu-item"
-            onClick={() => handleMenuAction(onToggleMiniMap)}
-            role="menuitem"
-            type="button"
-          >
-            <span className="workflow-zoom-menu-icon">
-              {showMiniMap ? <HugeiconsIcon icon={Tick02Icon} size={16} strokeWidth={1.8} /> : null}
-            </span>
-            显示小地图
-          </button>
+              <HugeiconsIcon icon={MinusSignIcon} size={16} strokeWidth={1.8} />
+            </Button>
+          </WorkflowToolbarTooltip>
+          <WorkflowToolbarTooltip label="视图比例">
+            <Button
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
+              className="workflow-toolbar-zoom-label"
+              onClick={() => setMenuOpen(!menuOpen)}
+              type="button"
+              variant="ghost"
+            >
+              {zoomLabel}
+            </Button>
+          </WorkflowToolbarTooltip>
+          <WorkflowToolbarTooltip label="放大">
+            <Button
+              aria-label="放大"
+              className="workflow-toolbar-button"
+              disabled={!canZoomIn}
+              onClick={() => {
+                if (canZoomIn) {
+                  zoomIn();
+                }
+              }}
+              type="button"
+              variant="ghost"
+              size="icon"
+            >
+              <HugeiconsIcon icon={PlusSignIcon} size={16} strokeWidth={1.8} />
+            </Button>
+          </WorkflowToolbarTooltip>
+          {menuOpen ? (
+            <div aria-label="缩放菜单" className="workflow-zoom-menu" role="menu">
+              {workflowZoomOptions.map((option) => (
+                <button
+                  className="workflow-zoom-menu-item"
+                  key={option.label}
+                  onClick={() => handleMenuAction(() => zoomTo(option.value))}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span className="workflow-zoom-menu-icon" />
+                  {option.label}
+                </button>
+              ))}
+              <button
+                className="workflow-zoom-menu-item"
+                onClick={() => handleMenuAction(fitView)}
+                role="menuitem"
+                type="button"
+              >
+                <span className="workflow-zoom-menu-icon">
+                  <HugeiconsIcon icon={SquareArrowExpand01Icon} size={15} strokeWidth={1.8} />
+                </span>
+                适配画布
+              </button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-      <button
-        aria-label="放大"
-        className="workflow-operator-button"
-        disabled={!canZoomIn}
-        onClick={() => {
-          if (canZoomIn) {
-            zoomIn();
-          }
-        }}
-        type="button"
-      >
-        +
-      </button>
-    </div>
+        <span className="workflow-toolbar-separator" />
+        <WorkflowToolbarTooltip label="撤销">
+          <Button
+            aria-label={nextUndoLabel ? `撤销：${nextUndoLabel}` : "撤销"}
+            className="workflow-toolbar-button"
+            disabled={!canUndo}
+            onClick={() => {
+              onUndo();
+            }}
+            type="button"
+            variant="ghost"
+            size="icon"
+          >
+            <HugeiconsIcon icon={Undo03Icon} size={16} strokeWidth={1.8} />
+          </Button>
+        </WorkflowToolbarTooltip>
+        <WorkflowToolbarTooltip label="重做">
+          <Button
+            aria-label={nextRedoLabel ? `重做：${nextRedoLabel}` : "重做"}
+            className="workflow-toolbar-button"
+            disabled={!canRedo}
+            onClick={() => {
+              onRedo();
+            }}
+            type="button"
+            variant="ghost"
+            size="icon"
+          >
+            <HugeiconsIcon icon={Redo03Icon} size={16} strokeWidth={1.8} />
+          </Button>
+        </WorkflowToolbarTooltip>
+        <WorkflowToolbarTooltip label="自动整理">
+          <Button
+            aria-label="自动整理画布"
+            className="workflow-toolbar-button"
+            disabled={disabled}
+            onClick={() => {
+              if (!disabled) {
+                onArrange();
+              }
+            }}
+            type="button"
+            variant="ghost"
+            size="icon"
+          >
+            <HugeiconsIcon icon={DashboardSquare02Icon} size={16} strokeWidth={1.8} />
+          </Button>
+        </WorkflowToolbarTooltip>
+        <div className="workflow-toolbar-minimap-wrap">
+          <WorkflowToolbarTooltip label="小地图">
+            <Button
+              aria-pressed={showMiniMap}
+              aria-label="显示小地图"
+              className="workflow-toolbar-button"
+              data-active={showMiniMap ? "true" : undefined}
+              onClick={onToggleMiniMap}
+              type="button"
+              variant="ghost"
+              size="icon"
+            >
+              <HugeiconsIcon icon={Navigation04Icon} size={16} strokeWidth={1.8} />
+            </Button>
+          </WorkflowToolbarTooltip>
+        </div>
+        <span className="workflow-toolbar-separator" />
+        <div className="workflow-toolbar-palette-wrap">
+          {paletteOpen && !disabled ? (
+            <WorkflowPalette
+              onAddNode={onAddNode}
+              onClose={() => onPaletteOpenChange(false)}
+              onSearchChange={onSearchChange}
+              searchValue={searchValue}
+            />
+          ) : null}
+          <Button
+            aria-expanded={paletteOpen}
+            aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
+            className="workflow-toolbar-add-button shadow-none"
+            data-active={paletteOpen ? "true" : undefined}
+            disabled={disabled}
+            onClick={() => {
+              if (!disabled) {
+                onPaletteOpenChange(!paletteOpen);
+              }
+            }}
+            type="button"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={2} />
+            <span>添加节点</span>
+          </Button>
+        </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
-function WorkflowControlDock({
-  disabled = false,
-  onArrange,
-  onOpenVariables,
-  onPaletteOpenChange,
-  paletteOpen,
+function WorkflowToolbarTooltip({
+  children,
+  label,
 }: {
-  disabled?: boolean;
-  onArrange: () => void;
-  onOpenVariables: () => void;
-  onPaletteOpenChange: (open: boolean) => void;
-  paletteOpen: boolean;
+  children: ReactElement;
+  label: string;
 }) {
   return (
-    <div
-      aria-label="画布工具"
-      className="workflow-left-dock nodrag nopan"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <button
-        aria-expanded={paletteOpen}
-        aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
-        className="workflow-left-dock-button"
-        data-active={paletteOpen ? "true" : undefined}
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (!disabled) {
-            onPaletteOpenChange(!paletteOpen);
-          }
-        }}
-        type="button"
-      >
-        <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-      </button>
-      <button
-        aria-label="选择模式"
-        className="workflow-left-dock-button"
-        data-active="true"
-        disabled={disabled}
-        type="button"
-      >
-        <HugeiconsIcon icon={FlowConnectionIcon} size={16} strokeWidth={1.8} />
-      </button>
-      <button
-        aria-label="自动整理画布"
-        className="workflow-left-dock-button"
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (!disabled) {
-            onArrange();
-          }
-        }}
-        type="button"
-      >
-        <HugeiconsIcon icon={ArrangeIcon} size={16} strokeWidth={1.8} />
-      </button>
-      <span className="workflow-left-dock-divider" />
-      <button
-        aria-label="打开变量面板"
-        className="workflow-left-dock-button"
-        disabled={disabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (!disabled) {
-            onOpenVariables();
-          }
-        }}
-        type="button"
-      >
-        <HugeiconsIcon icon={Settings02Icon} size={16} strokeWidth={1.8} />
-      </button>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

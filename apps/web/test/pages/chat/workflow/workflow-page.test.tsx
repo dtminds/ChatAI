@@ -481,6 +481,24 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
   });
 
+  it("groups canvas actions in a single bottom toolbar", async () => {
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const toolbar = within(canvas).getByLabelText("画布工具");
+
+    expect(toolbar).toHaveClass("nodrag", "nopan");
+    expect(within(toolbar).getByRole("button", { name: "缩小" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "放大" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "撤销" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "重做" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "自动整理画布" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "显示小地图" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "打开变量面板" })).not.toBeInTheDocument();
+    expect(within(canvas).queryByRole("button", { name: "选择模式" })).not.toBeInTheDocument();
+  });
+
   it("keeps checks as a dismissible overlay instead of a workspace tab", async () => {
     const user = userEvent.setup();
 
@@ -717,8 +735,7 @@ describe("Agent workflow page", () => {
     expect(panel).toHaveTextContent("运行成功");
     expect(panel).toHaveTextContent("读取上游客户上下文");
 
-    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "Variables" }));
+    await user.click(screen.getByRole("button", { name: "打开变量面板" }));
 
     expect(panel).toHaveTextContent("输入变量");
     expect(panel).toHaveTextContent("customer.profile");
@@ -747,7 +764,6 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    expect(within(canvas).getByLabelText("画布操作")).toHaveClass("nodrag", "nopan");
     expect(within(canvas).getByLabelText("画布工具")).toHaveClass("nodrag", "nopan");
 
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
@@ -952,14 +968,12 @@ describe("Agent workflow page", () => {
     await user.click(zoomMenuTrigger);
     await user.click(await screen.findByRole("menuitem", { name: "适配画布" }));
 
-    expect(screen.getByTestId("workflow-minimap")).toBeInTheDocument();
-    await user.click(zoomMenuTrigger);
-    await user.click(await screen.findByRole("menuitem", { name: "显示小地图" }));
     expect(screen.queryByTestId("workflow-minimap")).not.toBeInTheDocument();
-
-    await user.click(zoomMenuTrigger);
-    await user.click(await screen.findByRole("menuitem", { name: "显示小地图" }));
+    await user.click(within(canvas).getByRole("button", { name: "显示小地图" }));
     expect(screen.getByTestId("workflow-minimap")).toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "显示小地图" }));
+    expect(screen.queryByTestId("workflow-minimap")).not.toBeInTheDocument();
 
     expect(reactFlowControlMock.zoomOut).toHaveBeenCalledTimes(1);
     expect(reactFlowControlMock.zoomIn).toHaveBeenCalledTimes(1);

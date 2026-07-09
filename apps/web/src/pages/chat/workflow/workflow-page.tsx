@@ -175,6 +175,7 @@ function WorkflowWorkspaceContent({
         onExitRunHistory={runHistory.onExitHistory}
         onOpenRunHistory={topBar.onOpenRunHistory}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
+        onOpenVariables={canvas.onOpenVariables}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onRestoreVersion={versionHistory.currentPreviewVersionId
@@ -222,7 +223,6 @@ function WorkflowWorkspaceContent({
             onEdgesChange={canvas.onEdgesChange}
             onIsValidConnection={canvas.onIsValidConnection}
             onNodesChange={canvas.onNodesChange}
-            onOpenVariables={canvas.onOpenVariables}
             onPaletteOpenChange={canvas.onPaletteOpenChange}
             onPaneClick={canvas.onPaneClick}
             onRedo={canvas.onRedo}

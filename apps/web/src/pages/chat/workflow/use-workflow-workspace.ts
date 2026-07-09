@@ -100,7 +100,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const controller = useWorkflowController(previewDraft, controllerResetKey);
   const transient = useWorkflowTransientState();
   const selection = useWorkflowSelectionState({
-    defaultNodeId: "action-message",
+    defaultNodeId: "",
     edges: controller.edges,
     nodes: controller.nodes,
   });
@@ -418,8 +418,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
 
   const handlePaneClick = useWorkflowStableCallback(() => {
     clearEdgeSelection();
+    clearNodeSelection();
     closeCanvasOverlays();
     dispatchViewState({ type: "close-checks" });
+    dispatchViewState({ type: "close-inspector" });
   });
 
   const runSelectedNode = useCallback(() => {

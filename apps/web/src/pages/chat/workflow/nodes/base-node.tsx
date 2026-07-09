@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Copy01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -35,6 +35,9 @@ function WorkflowBaseNodeComponent({
   const visual = nodeVisuals[data.kind];
   const isSelected = Boolean(data.selected);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const nodeCardStyle = {
+    "--workflow-node-accent-rgb": visual.accentRgb,
+  } as CSSProperties;
 
   return (
     <div
@@ -48,6 +51,7 @@ function WorkflowBaseNodeComponent({
           "workflow-node-card group",
           data.kind === "branch" && "workflow-node-card-branch",
         )}
+        style={nodeCardStyle}
       >
         {targetHandles}
         <NodeActionMenu

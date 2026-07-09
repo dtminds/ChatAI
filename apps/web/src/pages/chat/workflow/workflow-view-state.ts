@@ -8,7 +8,7 @@ export type WorkflowViewState = {
 
 export const createDefaultWorkflowViewState = (): WorkflowViewState => ({
   activePanel: null,
-  inspectorOpen: true,
+  inspectorOpen: false,
   previewVersionId: null,
 });
 

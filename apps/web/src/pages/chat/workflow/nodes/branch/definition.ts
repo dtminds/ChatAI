@@ -82,6 +82,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition = {
   validate: validateBranchNode,
   visual: {
     accentClassName: "bg-amber-600 text-white ring-amber-600/20",
+    accentRgb: "217 119 6",
     icon: GitBranchIcon,
     label: "条件",
   },

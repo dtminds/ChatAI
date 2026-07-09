@@ -85,6 +85,7 @@ export const actionNodeDefinition: WorkflowNodeDefinition = {
   validate: validateActionNode,
   visual: {
     accentClassName: "bg-sky-600 text-white ring-sky-600/20",
+    accentRgb: "2 132 199",
     icon: Message01Icon,
     label: "动作",
   },

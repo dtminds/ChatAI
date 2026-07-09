@@ -63,6 +63,7 @@ export const goalNodeDefinition: WorkflowNodeDefinition = {
   sort: 100,
   visual: {
     accentClassName: "bg-emerald-600 text-white ring-emerald-600/20",
+    accentRgb: "5 150 105",
     icon: Target01Icon,
     label: "目标",
   },

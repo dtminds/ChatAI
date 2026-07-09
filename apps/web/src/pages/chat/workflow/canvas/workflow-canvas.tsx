@@ -63,6 +63,7 @@ const edgeTypes = {
 
 const workflowNodeOrigin: [number, number] = [0, 0.5];
 const workflowPanOnDrag = true;
+const workflowPaneClickDistance = 8;
 
 export function WorkflowCanvas({
   canRedo,
@@ -230,6 +231,7 @@ export function WorkflowCanvas({
         onNodeMouseLeave={handleNodeMouseLeave}
         onNodesChange={handleNodesChange}
         onPaneClick={onPaneClick}
+        paneClickDistance={workflowPaneClickDistance}
         onMoveEnd={(_, nextViewport) => onViewportChangeEnd(nextViewport)}
         panOnDrag={workflowPanOnDrag}
         panOnScroll={false}

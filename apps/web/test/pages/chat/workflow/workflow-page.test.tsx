@@ -456,7 +456,7 @@ describe("Agent workflow page", () => {
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "节点库" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回列表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
   });
@@ -568,7 +568,7 @@ describe("Agent workflow page", () => {
     expect(getUndoButton(canvas)).toBeDisabled();
   });
 
-  it("keeps the selected workflow node above neighboring nodes after pane clicks", async () => {
+  it("clears selected workflow nodes after pane clicks", async () => {
     const user = userEvent.setup();
 
     renderWorkflowPage();
@@ -583,8 +583,8 @@ describe("Agent workflow page", () => {
 
     await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
 
-    expect(branchNode).toHaveAttribute("data-selected", "true");
-    expect(branchNode).toHaveAttribute("data-z-index", "20");
+    expect(branchNode).not.toHaveAttribute("data-selected");
+    expect(branchNode).not.toHaveAttribute("data-z-index");
   });
 
   it("lets users insert the next node from the canvas candidate menu", async () => {
@@ -729,7 +729,10 @@ describe("Agent workflow page", () => {
 
     renderWorkflowPage();
 
-    const panel = await screen.findByRole("complementary", { name: "节点配置" });
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
     await user.click(within(panel).getByRole("button", { name: "运行当前节点" }));
 
     expect(panel).toHaveTextContent("运行成功");
@@ -746,16 +749,16 @@ describe("Agent workflow page", () => {
 
     renderWorkflowPage();
 
-    expect(await screen.findByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent("观察期");
 
     await user.click(screen.getByRole("button", { name: "关闭节点配置" }));
 
     expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
-
-    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
-
-    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent("观察期");
   });
 
   it("supports undo and redo for inserted canvas nodes", async () => {
@@ -1054,6 +1057,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
 
     const actionMenu = await screen.findByRole("menu");
@@ -1062,6 +1066,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
     const reopenedActionMenu = await screen.findByRole("menu");
     await user.click(within(reopenedActionMenu).getByRole("menuitem", { name: "添加后续节点" }));
@@ -1074,6 +1079,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
     const actionMenu = await screen.findByRole("menu");
     await user.click(within(actionMenu).getByRole("menuitem", { name: "删除节点" }));
@@ -1096,6 +1102,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
     const actionMenu = await screen.findByRole("menu");
     await user.click(within(actionMenu).getByRole("menuitem", { name: "复制节点" }));
@@ -1124,6 +1131,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
     await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
     await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "复制节点" }));
 

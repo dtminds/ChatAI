@@ -67,6 +67,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition = {
   sort: 10,
   visual: {
     accentClassName: "bg-indigo-600 text-white ring-indigo-600/20",
+    accentRgb: "79 70 229",
     icon: Clock01Icon,
     label: "等待",
   },

@@ -71,6 +71,7 @@ describe("WorkflowCanvas", () => {
 
     expect(reactFlowProps.latest?.panOnDrag).toBe(true);
     expect(reactFlowProps.latest?.panOnScroll).toBe(false);
+    expect(reactFlowProps.latest?.paneClickDistance).toBe(8);
     expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
     expect(reactFlowProps.latest?.selectionOnDrag).toBe(false);
   });

@@ -15,6 +15,7 @@ import type {
 
 export type NodeVisual = {
   accentClassName: string;
+  accentRgb: string;
   icon: typeof Rocket01Icon;
   label: string;
 };

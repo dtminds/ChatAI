@@ -76,6 +76,7 @@ export const triggerNodeDefinition: WorkflowNodeDefinition = {
   sort: 0,
   visual: {
     accentClassName: "bg-blue-600 text-white ring-blue-600/20",
+    accentRgb: "37 99 235",
     icon: PlayIcon,
     label: "开始",
   },

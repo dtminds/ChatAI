@@ -99,6 +99,7 @@ export const aiNodeDefinition: WorkflowNodeDefinition = {
   validate: validateAiNode,
   visual: {
     accentClassName: "bg-violet-600 text-white ring-violet-600/20",
+    accentRgb: "124 58 237",
     icon: AiChat02Icon,
     label: "AI",
   },

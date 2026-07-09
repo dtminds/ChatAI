@@ -68,6 +68,24 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.node?.id).toBe("wait-2d");
   });
 
+  it("clears selected nodes when clicking the empty canvas pane", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("wait-2d");
+
+    act(() => {
+      result.current.canvas.onPaneClick();
+    });
+
+    expect(result.current.inspector.isOpen).toBe(false);
+    expect(result.current.inspector.node).toBeUndefined();
+    expect(result.current.canvas.nodes.some((node) => node.data.selected)).toBe(false);
+  });
+
   it("navigates from publish check items to the affected node", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
@@ -137,6 +155,9 @@ describe("useWorkflowWorkspace", () => {
 
     act(() => {
       result.current.canvas.onSelectNode("action-message");
+    });
+
+    act(() => {
       result.current.inspector.onRunNode();
     });
 
@@ -277,6 +298,9 @@ describe("useWorkflowWorkspace", () => {
 
     act(() => {
       result.current.canvas.onSelectNode("action-message");
+    });
+
+    act(() => {
       result.current.inspector.onRunNode();
     });
     await waitFor(() => {
@@ -293,6 +317,10 @@ describe("useWorkflowWorkspace", () => {
 
   it("does not mark dirty drafts as saved when opening publish checks", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+    });
 
     act(() => {
       result.current.inspector.onNodeChange({ title: "更新后的动作节点" });
@@ -959,6 +987,10 @@ describe("useWorkflowWorkspace", () => {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
+        result.current.canvas.onSelectNode("action-message");
+      });
+
+      act(() => {
         result.current.inspector.onNodeChange({ title: "保存后的动作节点" });
       });
 
@@ -1015,6 +1047,10 @@ describe("useWorkflowWorkspace", () => {
 
   it("opens variables through canvas controls and clears canvas menus", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+    });
 
     act(() => {
       result.current.canvas.onPaletteOpenChange(true);

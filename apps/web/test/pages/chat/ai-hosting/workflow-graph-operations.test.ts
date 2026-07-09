@@ -745,4 +745,26 @@ describe("workflow graph operations", () => {
     expect(positionById.get("action-first")?.y).toBeLessThan(positionById.get("action-second")?.y ?? 0);
     expect(positionById.get("action-second")?.y).toBeLessThan(positionById.get("action-fallback")?.y ?? 0);
   });
+
+  it("prioritizes entry nodes by role during layout instead of a fixed node id", () => {
+    const draft = createDraft();
+    const entryNode = {
+      ...draft.nodes.find((node) => node.id === "trigger")!,
+      id: "entry-start",
+      position: { x: 640, y: 0 },
+    };
+    const looseWaitNode = {
+      ...createNodeFromKind("wait", "loose-wait", 1),
+      position: { x: 0, y: 0 },
+    };
+    const operation = arrangeNodesOperation({
+      edges: [],
+      nodes: [looseWaitNode, entryNode],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
+
+    expect(positionById.get("entry-start")?.y).toBeLessThan(positionById.get("loose-wait")?.y ?? 0);
+  });
 });

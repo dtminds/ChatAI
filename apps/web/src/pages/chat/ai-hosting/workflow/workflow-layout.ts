@@ -7,6 +7,7 @@ import {
   getNodeSourceHandleIndex,
   getNodeSourceHandleLaneOffset,
 } from "./node-handle-definitions";
+import { isWorkflowEntryNode } from "./node-catalog";
 import { getWorkflowNodeEstimatedHeight } from "./layout";
 import type {
   WorkflowEdge,
@@ -309,11 +310,11 @@ function compareRootNodesForLayout(
   originalIndexById: Map<string, number>,
 ) {
   return (first: WorkflowNode, second: WorkflowNode) => {
-    if (first.id === "trigger") {
+    if (isWorkflowEntryNode(first)) {
       return -1;
     }
 
-    if (second.id === "trigger") {
+    if (isWorkflowEntryNode(second)) {
       return 1;
     }
 
@@ -336,11 +337,11 @@ function compareNodesForLayout(
   laneById: Map<string, number>,
 ) {
   return (first: WorkflowNode, second: WorkflowNode) => {
-    if (first.id === "trigger") {
+    if (isWorkflowEntryNode(first)) {
       return -1;
     }
 
-    if (second.id === "trigger") {
+    if (isWorkflowEntryNode(second)) {
       return 1;
     }
 

@@ -193,17 +193,6 @@ export function createEdge(
   };
 }
 
-export function findLastActionNodeId(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
-  const edgeToGoal = edges.find((edge) => edge.target === "goal");
-
-  if (edgeToGoal) {
-    return edgeToGoal.source;
-  }
-
-  const nonGoalNodes = nodes.filter((node) => node.id !== "goal");
-  return nonGoalNodes[nonGoalNodes.length - 1]?.id ?? "trigger";
-}
-
 export function getBranchHandleIndex(sourceHandle?: string | null) {
   return getNodeSourceHandleIndex(undefined, sourceHandle);
 }

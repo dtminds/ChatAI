@@ -3,11 +3,10 @@ import type {
   AiHostingSettingsAccount,
   AiHostingSettingsAgentOption,
 } from "@chatai/contracts";
-import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon, Search01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,8 +38,12 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { listAiHostingSettings, updateAiHostingSettings } from "./agent-service";
 import {
+  GroupChatSettingsDialog,
+  type GroupChatSettingsTargetAccount,
+} from "./group-chat-settings-dialog";
+import {
   AgentAssociationField,
-  FeatureStatus,
+  HostingAgentCapabilityCell,
   PermissionSettingRow,
   getErrorMessage,
 } from "./hosting-settings-shared";
@@ -51,6 +60,42 @@ type HostingSettingsDraft = {
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
 const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
+const mockGroupChatAgentByAccountId: Record<
+  string,
+  { fullAutoAuth: boolean; semiAutoAuth: boolean }
+> = {
+  "101": { fullAutoAuth: true, semiAutoAuth: true },
+  "102": { fullAutoAuth: true, semiAutoAuth: false },
+  "103": { fullAutoAuth: false, semiAutoAuth: true },
+};
+
+function getMockGroupChatAgentDisplay(
+  accountId: string,
+  singleChatAgentName: string | null,
+): {
+  agentName: string | null;
+  fullAutoAuth: boolean;
+  semiAutoAuth: boolean;
+} {
+  if (!singleChatAgentName) {
+    return {
+      agentName: null,
+      fullAutoAuth: false,
+      semiAutoAuth: false,
+    };
+  }
+
+  const mockStatus = mockGroupChatAgentByAccountId[accountId] ?? {
+    fullAutoAuth: false,
+    semiAutoAuth: false,
+  };
+
+  return {
+    agentName: singleChatAgentName,
+    ...mockStatus,
+  };
+}
+
 export function SingleChatHostingSettingsTab() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<HostingAgent[]>([]);
@@ -59,6 +104,10 @@ export function SingleChatHostingSettingsTab() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
+  const [groupChatSettingsDialogOpen, setGroupChatSettingsDialogOpen] = useState(false);
+  const [groupChatSettingsTargetAccounts, setGroupChatSettingsTargetAccounts] = useState<
+    GroupChatSettingsTargetAccount[]
+  >([]);
   const [fullAutoAuthAvailable, setFullAutoAuthAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -150,6 +199,19 @@ export function SingleChatHostingSettingsTab() {
     setSettingsDialogOpen(true);
   }
 
+  function openGroupChatSettingsDialog(accountIds: string[]) {
+    setGroupChatSettingsTargetAccounts(
+      accounts
+        .filter((account) => accountIds.includes(account.id))
+        .map((account) => ({
+          avatarUrl: account.avatarUrl,
+          id: account.id,
+          name: account.name,
+        })),
+    );
+    setGroupChatSettingsDialogOpen(true);
+  }
+
   async function handleSaveSettings(accountIds: string[], draft: HostingSettingsDraft) {
     try {
       const response = await updateAiHostingSettings({
@@ -183,7 +245,7 @@ export function SingleChatHostingSettingsTab() {
         </p>
       ) : null}
 
-      <section aria-label="单聊托管设置列表">
+      <section aria-label="托管设置列表">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-[280px] max-w-full">
             <HugeiconsIcon
@@ -202,29 +264,41 @@ export function SingleChatHostingSettingsTab() {
             />
           </div>
 
-          <Button
-            className="h-10 px-4"
-            disabled={visibleSelectedAccountIds.length === 0}
-            onClick={() => openSettingsDialog(visibleSelectedAccountIds)}
-            type="button"
-            variant="outline"
-          >
-            <span>批量设置</span>
-            {visibleSelectedAccountIds.length > 0 ? (
-              <Badge className="-mr-1 px-2 py-0.5" variant="secondary">
-                {visibleSelectedAccountIds.length}
-              </Badge>
-            ) : null}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="h-10 gap-1 px-4"
+                disabled={visibleSelectedAccountIds.length === 0}
+                type="button"
+                variant="outline"
+              >
+                <span>批量设置</span>
+                <HugeiconsIcon icon={ArrowDown01Icon} size={16} strokeWidth={1.8} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[120px]">
+              <DropdownMenuItem
+                onSelect={() => openSettingsDialog(visibleSelectedAccountIds)}
+              >
+                单聊设置
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => openGroupChatSettingsDialog(visibleSelectedAccountIds)}
+              >
+                群聊设置
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="mt-4">
-          <SingleChatHostingSettingsTable
+          <HostingSettingsTable
             accounts={filteredAccounts}
             agents={agents}
             headerCheckboxState={headerCheckboxState}
             loading={loading}
-            onOpenSettings={openSettingsDialog}
+            onOpenGroupChatSettings={openGroupChatSettingsDialog}
+            onOpenSingleChatSettings={openSettingsDialog}
             onToggleAccount={toggleAccountSelection}
             onToggleAll={toggleAllAccounts}
             selectedAccountIds={selectedAccountIds}
@@ -241,6 +315,12 @@ export function SingleChatHostingSettingsTab() {
         onSave={handleSaveSettings}
         open={settingsDialogOpen}
         targetAccountIds={settingsTargetAccountIds}
+      />
+
+      <GroupChatSettingsDialog
+        onOpenChange={setGroupChatSettingsDialogOpen}
+        open={groupChatSettingsDialogOpen}
+        targetAccounts={groupChatSettingsTargetAccounts}
       />
     </>
   );
@@ -275,7 +355,7 @@ function SingleChatHostingSettingsDialog({
     () => accounts.filter((account) => targetAccountIds.includes(account.id)),
     [accounts, targetAccountIds],
   );
-  const dialogTitle = targetAccounts.length === 1 ? "设置" : "批量设置";
+  const dialogTitle = targetAccounts.length === 1 ? "单聊设置" : "单聊批量设置";
   const fullAutoAuthDisabled = !fullAutoAuthAvailable && !fullAutoAuth;
 
   useEffect(() => {
@@ -456,12 +536,13 @@ function SelectedAccountsPreview({ accounts }: { accounts: HostingAccount[] }) {
   );
 }
 
-function SingleChatHostingSettingsTable({
+function HostingSettingsTable({
   accounts,
   agents,
   headerCheckboxState,
   loading,
-  onOpenSettings,
+  onOpenGroupChatSettings,
+  onOpenSingleChatSettings,
   onToggleAccount,
   onToggleAll,
   selectedAccountIds,
@@ -470,17 +551,18 @@ function SingleChatHostingSettingsTable({
   agents: HostingAgent[];
   headerCheckboxState: boolean | "indeterminate";
   loading: boolean;
-  onOpenSettings: (accountIds: string[]) => void;
+  onOpenGroupChatSettings: (accountIds: string[]) => void;
+  onOpenSingleChatSettings: (accountIds: string[]) => void;
   onToggleAccount: (accountId: string) => void;
   onToggleAll: (checked: boolean) => void;
   selectedAccountIds: string[];
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
   const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
-  const tableColumnCount = 6;
+  const tableColumnCount = 5;
 
   return (
-    <Table aria-label="单聊托管设置列表" className="table-fixed">
+    <Table aria-label="托管设置列表" className="table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="h-11 w-10">
@@ -491,11 +573,10 @@ function SingleChatHostingSettingsTable({
               onCheckedChange={(checked) => onToggleAll(checked === true)}
             />
           </TableHead>
-          <TableHead className="h-11 w-[24%]">托管账号</TableHead>
-          <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
-          <TableHead className="h-11 w-[18%]">允许开启 AI 回复</TableHead>
-          <TableHead className="h-11 w-[16%]">允许话术推荐</TableHead>
-          <TableHead className="h-11 w-[140px] text-right">操作</TableHead>
+          <TableHead className="h-11 w-[18%]">托管账号</TableHead>
+          <TableHead className="h-11 w-[24%]">单聊Agent</TableHead>
+          <TableHead className="h-11 w-[24%]">群聊Agent</TableHead>
+          <TableHead className="h-11 w-[160px] text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -519,39 +600,66 @@ function SingleChatHostingSettingsTable({
             </TableCell>
           </TableRow>
         ) : (
-          accounts.map((account) => (
-            <TableRow key={account.id}>
-              <TableCell className="w-10 py-4">
-                <Checkbox
-                  aria-label={`选择${account.name}`}
-                  checked={selectedAccountIdSet.has(account.id)}
-                  onCheckedChange={() => onToggleAccount(account.id)}
-                />
-              </TableCell>
-              <TableCell className="py-4">
-                <WeComAccountIdentity avatarUrl={account.avatarUrl} name={account.name} />
-              </TableCell>
-              <TableCell className="py-4 text-muted-foreground">
-                {account.agentId ? agentNameById.get(account.agentId) ?? "-" : "-"}
-              </TableCell>
-              <TableCell className="py-4">
-                <FeatureStatus enabled={account.fullAutoAuth} />
-              </TableCell>
-              <TableCell className="py-4">
-                <FeatureStatus enabled={account.semiAutoAuth} />
-              </TableCell>
-              <TableCell className="py-4 text-right">
-                <Button
-                  className="h-auto p-0 text-primary"
-                  onClick={() => onOpenSettings([account.id])}
-                  type="button"
-                  variant="link"
-                >
-                  设置
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))
+          accounts.map((account) => {
+            const singleChatAgentName = account.agentId
+              ? agentNameById.get(account.agentId) ?? null
+              : null;
+            const groupChatAgentDisplay = getMockGroupChatAgentDisplay(
+              account.id,
+              singleChatAgentName,
+            );
+
+            return (
+              <TableRow key={account.id}>
+                <TableCell className="w-10 py-4">
+                  <Checkbox
+                    aria-label={`选择${account.name}`}
+                    checked={selectedAccountIdSet.has(account.id)}
+                    onCheckedChange={() => onToggleAccount(account.id)}
+                  />
+                </TableCell>
+                <TableCell className="py-4">
+                  <WeComAccountIdentity avatarUrl={account.avatarUrl} name={account.name} />
+                </TableCell>
+                <TableCell className="py-4">
+                  <HostingAgentCapabilityCell
+                    agentName={singleChatAgentName}
+                    fullAutoAuth={account.fullAutoAuth}
+                    semiAutoAuth={account.semiAutoAuth}
+                  />
+                </TableCell>
+                <TableCell className="py-4">
+                  <HostingAgentCapabilityCell
+                    agentName={groupChatAgentDisplay.agentName}
+                    fullAutoAuth={groupChatAgentDisplay.fullAutoAuth}
+                    semiAutoAuth={groupChatAgentDisplay.semiAutoAuth}
+                  />
+                </TableCell>
+                <TableCell className="py-4 text-right">
+                  <div className="inline-flex items-center gap-3">
+                    <Button
+                      aria-label={`${account.name}单聊设置`}
+                      className="h-auto p-0 text-primary"
+                      onClick={() => onOpenSingleChatSettings([account.id])}
+                      type="button"
+                      variant="link"
+                    >
+                      单聊设置
+                    </Button>
+                    <Button
+                      aria-label={`${account.name}群聊设置`}
+                      className="h-auto p-0 text-primary"
+                      onClick={() => onOpenGroupChatSettings([account.id])}
+                      type="button"
+                      variant="link"
+                    >
+                      群聊设置
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })
         )}
       </TableBody>
     </Table>
@@ -561,9 +669,11 @@ function SingleChatHostingSettingsTable({
 function WeComAccountIdentity({ avatarUrl, name }: { avatarUrl: string; name: string }) {
   return (
     <div className="flex items-center gap-2.5">
-      <Avatar className="size-8 rounded-[8px]">
+      <Avatar className="size-8 rounded-full">
         {avatarUrl ? <AvatarImage alt={`${name}头像`} src={avatarUrl} /> : null}
-        <AvatarFallback className="rounded-[8px] bg-muted text-muted-foreground" />
+        <AvatarFallback className="rounded-full bg-emerald-500 text-xs font-medium text-white">
+          {name.slice(0, 1)}
+        </AvatarFallback>
       </Avatar>
       <span className="font-medium text-foreground">{name}</span>
     </div>

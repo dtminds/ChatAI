@@ -129,6 +129,51 @@ export function FeatureStatus({ enabled }: { enabled: boolean }) {
   );
 }
 
+export function HostingCapabilityBadge({
+  enabled,
+  label,
+}: {
+  enabled: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-xs leading-5",
+        enabled ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground",
+      )}
+    >
+      <span>{label}</span>
+      <span aria-hidden="true">|</span>
+      <span>{enabled ? "启用" : "关闭"}</span>
+    </span>
+  );
+}
+
+export function HostingAgentCapabilityCell({
+  agentName,
+  fullAutoAuth,
+  semiAutoAuth,
+}: {
+  agentName: string | null;
+  fullAutoAuth: boolean;
+  semiAutoAuth: boolean;
+}) {
+  if (!agentName) {
+    return <span className="text-sm text-muted-foreground">-</span>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-foreground">{agentName}</p>
+      <div className="flex flex-wrap gap-2">
+        <HostingCapabilityBadge enabled={fullAutoAuth} label="AI自动回复" />
+        <HostingCapabilityBadge enabled={semiAutoAuth} label="话术推荐" />
+      </div>
+    </div>
+  );
+}
+
 export function getErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
     const message = (error as { message?: unknown }).message;

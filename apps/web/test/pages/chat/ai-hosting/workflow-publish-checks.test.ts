@@ -357,6 +357,22 @@ describe("buildPublishChecks", () => {
     expect(checklist.checks.some((check) => check.category === "config" && check.id.includes("ai"))).toBe(false);
   });
 
+  it("does not duplicate global trigger and goal blockers as graph checks", () => {
+    const nodes = createInitialNodes().filter((node) =>
+      node.data.kind !== "trigger" && node.data.kind !== "goal",
+    );
+    const checklist = buildPublishChecklist(nodes, []);
+
+    expect(checklist.summary.find((check) => check.id === "trigger")?.status).toBe("warning");
+    expect(checklist.summary.find((check) => check.id === "goal")?.status).toBe("warning");
+    expect(checklist.checks.map((check) => check.id)).toEqual(expect.arrayContaining([
+      "trigger",
+      "goal",
+    ]));
+    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-trigger"))).toBe(false);
+    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-goal"))).toBe(false);
+  });
+
   it("does not create a special publish summary item for configured AI nodes", () => {
     const aiNode: WorkflowNode = {
       data: {

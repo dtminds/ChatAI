@@ -118,7 +118,7 @@ export function buildWorkflowValidationSummaryFromResult(
       title: item.title,
     }));
   const graphIssueChecks: WorkflowPublishCheck[] = validation.graphIssues
-    .filter((issue) => issue.code !== "node-disconnected")
+    .filter((issue) => shouldExposeGraphIssueAsPublishCheck(issue.code))
     .map((issue) => {
       const node = issue.nodeId ? nodeById.get(issue.nodeId) : undefined;
 
@@ -193,6 +193,15 @@ function getBlockingScope(): WorkflowCheckBlockingScope {
     blocksPublish: true,
     blocksRun: true,
   };
+}
+
+function shouldExposeGraphIssueAsPublishCheck(
+  code: WorkflowValidationResult["graphIssues"][number]["code"],
+) {
+  return code !== "node-disconnected"
+    && code !== "missing-trigger"
+    && code !== "missing-goal"
+    && code !== "goal-unreachable";
 }
 
 function getSummaryCheckCategory(

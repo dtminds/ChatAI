@@ -34,11 +34,11 @@ function WorkflowNodeSourceHandles({
   data,
   id,
 }: Pick<NodeProps<WorkflowRenderNode>, "data" | "id">) {
-  if (data.kind === "goal") {
+  const handles = getNodeDefinition(data.kind).getSourceHandles(data);
+
+  if (!handles.length) {
     return null;
   }
-
-  const handles = getNodeDefinition(data.kind).getSourceHandles(data);
 
   return (
     <>

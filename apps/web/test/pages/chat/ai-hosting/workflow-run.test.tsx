@@ -278,6 +278,84 @@ describe("useWorkflowRun", () => {
     expect(result.current.runHistory[0]?.draft.nodes[0]?.data.title).toBe("AI 接待");
   });
 
+  it("normalizes adapter returned workflow drafts before storing run records", async () => {
+    const adapter = {
+      runNode: vi.fn(() => Promise.reject(new Error("node failed"))),
+      runWorkflow: vi.fn(({ snapshot, workflowId }: {
+        snapshot: WorkflowRuntimeSnapshot;
+        workflowId: string;
+      }) => {
+        const node = snapshot.draft.nodes[0]!;
+        const targetNode = createWorkflowNode({
+          id: "target-node",
+          position: { x: 320, y: 0 },
+        });
+
+        return createWorkflowRunRecord(workflowId, {
+          ...snapshot.draft,
+          edges: [
+            {
+              data: {
+                highlightState: "connected",
+                onToggleInsertMenu: vi.fn(),
+              },
+              id: "edge-ai-node-target-node",
+              selected: true,
+              source: "ai-node",
+              target: "target-node",
+              type: WORKFLOW_EDGE_TYPE,
+            },
+          ],
+          nodes: [
+            {
+              ...node,
+              data: {
+                ...node.data,
+                _runtimeStatus: "selected",
+                onDelete: vi.fn(),
+                selected: true,
+              },
+              selected: true,
+              zIndex: 20,
+            },
+            {
+              ...targetNode,
+              data: {
+                ...targetNode.data,
+                _runtimeStatus: "dimmed",
+              },
+              selected: true,
+              zIndex: 10,
+            },
+          ],
+        });
+      }),
+    };
+    const { result } = renderHook(() => useWorkflowRun("workflow-a", adapter));
+
+    act(() => {
+      result.current.runWorkflow(createWorkflowDraft());
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const storedNode = result.current.runHistory[0]?.draft.nodes[0];
+    const storedEdge = result.current.runHistory[0]?.draft.edges[0];
+
+    expect(storedNode).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ title: "AI 接待" }),
+      selected: false,
+    }));
+    expect(storedNode?.zIndex).toBeUndefined();
+    expect(storedNode?.data._runtimeStatus).toBeUndefined();
+    expect(storedNode?.data.onDelete).toBeUndefined();
+    expect(storedEdge?.selected).toBe(false);
+    expect(storedEdge?.data?.highlightState).toBeUndefined();
+    expect(storedEdge?.data?.onToggleInsertMenu).toBeUndefined();
+  });
+
   it("does not pass editor-only draft fields as workflow execution input", () => {
     const adapter = {
       runNode: vi.fn(() => Promise.reject(new Error("node failed"))),

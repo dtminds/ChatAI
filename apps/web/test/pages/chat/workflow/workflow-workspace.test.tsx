@@ -6,11 +6,17 @@ import {
   createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import {
+  createInMemoryWorkflowDraftRepository,
   getWorkflowDocument,
   importWorkflowDraft,
   publishWorkflowDraft,
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import type {
+  WorkflowDraftRepository,
+  WorkflowDraftPublishOptions,
+} from "@/pages/chat/workflow/workflow-draft-service";
+import type { WorkflowDraft } from "@/pages/chat/workflow/types";
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -702,6 +708,64 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.isOpen).toBe(true);
   });
 
+  it("allows viewport navigation while previewing a read-only version", () => {
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("历史版本人群"));
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+    const initialDraftViewport = result.current.document.draft.viewport;
+    const versionId = publishedDocument.currentVersion?.id ?? "";
+
+    act(() => {
+      result.current.versionHistory.onSelectVersion(versionId);
+    });
+
+    expect(result.current.canvas.isReadOnly).toBe(true);
+    expect(result.current.mode).toBe("version-preview");
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 260, y: 180, zoom: 0.68 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 260, y: 180, zoom: 0.68 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+    expect(getWorkflowDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
+  });
+
+  it("allows viewport navigation while publishing without saving a draft change", async () => {
+    const repository = createDeferredPublishRepository();
+    repository.importDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNodeFromRepository(repository));
+    const initialRevision = repository.getDocument("newcomer-conversion").revision;
+    const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
+
+    let publishPromise: Promise<void> | undefined;
+    await act(async () => {
+      publishPromise = result.current.topBar.onPublish();
+    });
+
+    expect(result.current.mode).toBe("publishing");
+    expect(result.current.canvas.isReadOnly).toBe(true);
+
+    act(() => {
+      result.current.canvas.onViewportChangeEnd({ x: 320, y: 220, zoom: 0.74 });
+    });
+
+    expect(result.current.canvas.viewport).toEqual({ x: 320, y: 220, zoom: 0.74 });
+    expect(result.current.document.draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.canvas.canUndo).toBe(false);
+    expect(result.current.topBar.saveState).toBe("saved");
+
+    await act(async () => {
+      repository.resolvePublish(0);
+      await publishPromise;
+    });
+
+    expect(repository.getDocument("newcomer-conversion").revision).toBe(initialRevision);
+    expect(repository.getDocument("newcomer-conversion").draft.viewport).toEqual(initialDraftViewport);
+    expect(result.current.topBar.publishState).toBe("published");
+  });
+
   it("keeps saved graph edits after entering and exiting version preview", async () => {
     vi.useFakeTimers();
 
@@ -916,6 +980,20 @@ function getCanvasPositions(nodes: Array<{ id: string; position: { x: number; y:
 function createWorkflowDraftWithConnectedBranchOutlets() {
   const draft = getWorkflowDocument("newcomer-conversion").draft;
 
+  return connectBranchOutlets(draft);
+}
+
+function createWorkflowDraftWithConnectedAiNode() {
+  return connectAiSupportNode(createWorkflowDraftWithConnectedBranchOutlets());
+}
+
+function createWorkflowDraftWithConnectedAiNodeFromRepository(
+  repository: WorkflowDraftRepository,
+) {
+  return connectAiSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
+}
+
+function connectBranchOutlets(draft: WorkflowDraft) {
   return {
     ...draft,
     edges: [
@@ -953,8 +1031,7 @@ function createWorkflowDraftWithConnectedBranchOutlets() {
   };
 }
 
-function createWorkflowDraftWithConnectedAiNode() {
-  const draft = createWorkflowDraftWithConnectedBranchOutlets();
+function connectAiSupportNode(draft: WorkflowDraft) {
 
   return {
     ...draft,
@@ -970,5 +1047,47 @@ function createWorkflowDraftWithConnectedAiNode() {
         position: { x: 1240, y: -94 },
       },
     ],
+  };
+}
+
+function createDeferredPublishRepository() {
+  const baseRepository = createInMemoryWorkflowDraftRepository();
+  type PublishResult = ReturnType<typeof baseRepository.publishDraft>;
+  const pendingPublishes: Array<{
+    draft: WorkflowDraft;
+    options?: WorkflowDraftPublishOptions;
+    reject: (error: Error) => void;
+    resolve: (document: PublishResult) => void;
+    workflowId: string | undefined;
+  }> = [];
+
+  return {
+    ...baseRepository,
+    pendingPublishes,
+    publishDraft: (workflowId, draft, options) => new Promise((resolve, reject) => {
+      pendingPublishes.push({
+        draft,
+        options,
+        reject,
+        resolve,
+        workflowId,
+      });
+    }),
+    resolvePublish: (index: number) => {
+      const pendingPublish = pendingPublishes[index];
+
+      if (!pendingPublish) {
+        return;
+      }
+
+      pendingPublish.resolve(baseRepository.publishDraft(
+        pendingPublish.workflowId,
+        pendingPublish.draft,
+        pendingPublish.options,
+      ));
+    },
+  } satisfies WorkflowDraftRepository & {
+    pendingPublishes: typeof pendingPublishes;
+    resolvePublish: (index: number) => void;
   };
 }

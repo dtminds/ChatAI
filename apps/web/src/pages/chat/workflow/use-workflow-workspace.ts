@@ -26,6 +26,7 @@ import {
   cloneWorkflowDraftSnapshot,
   useWorkflowDocument,
 } from "./workflow-draft-service";
+import type { WorkflowDraftRepository } from "./workflow-draft-service";
 import { useWorkflowStableCallback } from "./workflow-hooks";
 import { deriveWorkflowMode } from "./workflow-mode";
 import {
@@ -51,7 +52,10 @@ type WorkflowWorkspaceEditOptions = {
   workflowEdited?: boolean;
 };
 
-export function useWorkflowWorkspace(workflowId: string | undefined) {
+export function useWorkflowWorkspace(
+  workflowId: string | undefined,
+  repository?: WorkflowDraftRepository,
+) {
   const {
     document,
     lastSavedAt,
@@ -61,7 +65,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     restoreState,
     restoreVersion,
     saveState,
-  } = useWorkflowDocument(workflowId);
+  } = useWorkflowDocument(workflowId, repository);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
@@ -468,10 +472,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   });
 
   const handleViewportChangeEnd = useWorkflowStableCallback((viewport: Viewport) => {
-    if (!permissions.canEditGraph) {
-      return;
-    }
-
     controller.updateViewport(viewport);
   });
 

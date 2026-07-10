@@ -36,10 +36,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
-import { listAiHostingSettings, updateAiHostingSettings } from "./agent-service";
+import { listAiHostingSettings, updateAiHostingGroupSettings, updateAiHostingSettings } from "./agent-service";
 import {
   GroupChatSettingsDialog,
-  type GroupChatSettingsTargetAccount,
+  type GroupChatSettingsDraft,
 } from "./group-chat-settings-dialog";
 import {
   AgentAssociationField,
@@ -60,42 +60,6 @@ type HostingSettingsDraft = {
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
 const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
-const mockGroupChatAgentByAccountId: Record<
-  string,
-  { fullAutoAuth: boolean; semiAutoAuth: boolean }
-> = {
-  "101": { fullAutoAuth: true, semiAutoAuth: true },
-  "102": { fullAutoAuth: true, semiAutoAuth: false },
-  "103": { fullAutoAuth: false, semiAutoAuth: true },
-};
-
-function getMockGroupChatAgentDisplay(
-  accountId: string,
-  singleChatAgentName: string | null,
-): {
-  agentName: string | null;
-  fullAutoAuth: boolean;
-  semiAutoAuth: boolean;
-} {
-  if (!singleChatAgentName) {
-    return {
-      agentName: null,
-      fullAutoAuth: false,
-      semiAutoAuth: false,
-    };
-  }
-
-  const mockStatus = mockGroupChatAgentByAccountId[accountId] ?? {
-    fullAutoAuth: false,
-    semiAutoAuth: false,
-  };
-
-  return {
-    agentName: singleChatAgentName,
-    ...mockStatus,
-  };
-}
-
 export function SingleChatHostingSettingsTab() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<HostingAgent[]>([]);
@@ -105,8 +69,8 @@ export function SingleChatHostingSettingsTab() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
   const [groupChatSettingsDialogOpen, setGroupChatSettingsDialogOpen] = useState(false);
-  const [groupChatSettingsTargetAccounts, setGroupChatSettingsTargetAccounts] = useState<
-    GroupChatSettingsTargetAccount[]
+  const [groupChatSettingsTargetAccountIds, setGroupChatSettingsTargetAccountIds] = useState<
+    string[]
   >([]);
   const [fullAutoAuthAvailable, setFullAutoAuthAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -200,16 +164,36 @@ export function SingleChatHostingSettingsTab() {
   }
 
   function openGroupChatSettingsDialog(accountIds: string[]) {
-    setGroupChatSettingsTargetAccounts(
-      accounts
-        .filter((account) => accountIds.includes(account.id))
-        .map((account) => ({
-          avatarUrl: account.avatarUrl,
-          id: account.id,
-          name: account.name,
-        })),
-    );
+    setGroupChatSettingsTargetAccountIds(accountIds);
     setGroupChatSettingsDialogOpen(true);
+  }
+
+  async function handleSaveGroupChatSettings(
+    accountIds: string[],
+    draft: GroupChatSettingsDraft,
+  ) {
+    try {
+      const response = await updateAiHostingGroupSettings({
+        agentId: draft.agentId,
+        fullAutoAuth: draft.fullAutoAuth,
+        replyMode: draft.replyMode,
+        semiAutoAuth: draft.semiAutoAuth,
+        userSeatIds: accountIds,
+      });
+
+      setAccounts(response.accounts);
+      setAgents(response.agents);
+      setFullAutoAuthAvailable(response.fullAutoAuthAvailable);
+      setSelectedAccountIds((current) => current.filter((id) => !accountIds.includes(id)));
+      setGroupChatSettingsDialogOpen(false);
+      setErrorMessage("");
+    } catch (error) {
+      throw new Error(isRequestError(error) ? error.message : "群聊设置保存失败");
+    }
+  }
+
+  function handleGoToAddAgentForGroup() {
+    setGroupChatSettingsDialogOpen(false);
   }
 
   async function handleSaveSettings(accountIds: string[], draft: HostingSettingsDraft) {
@@ -318,9 +302,14 @@ export function SingleChatHostingSettingsTab() {
       />
 
       <GroupChatSettingsDialog
+        accounts={accounts}
+        agents={agents}
+        fullAutoAuthAvailable={fullAutoAuthAvailable}
+        onGoToAddAgent={handleGoToAddAgentForGroup}
         onOpenChange={setGroupChatSettingsDialogOpen}
+        onSave={handleSaveGroupChatSettings}
         open={groupChatSettingsDialogOpen}
-        targetAccounts={groupChatSettingsTargetAccounts}
+        targetAccountIds={groupChatSettingsTargetAccountIds}
       />
     </>
   );
@@ -604,10 +593,9 @@ function HostingSettingsTable({
             const singleChatAgentName = account.agentId
               ? agentNameById.get(account.agentId) ?? null
               : null;
-            const groupChatAgentDisplay = getMockGroupChatAgentDisplay(
-              account.id,
-              singleChatAgentName,
-            );
+            const groupChatAgentName = account.groupChat.agentId
+              ? agentNameById.get(account.groupChat.agentId) ?? null
+              : null;
 
             return (
               <TableRow key={account.id}>
@@ -630,9 +618,9 @@ function HostingSettingsTable({
                 </TableCell>
                 <TableCell className="py-4">
                   <HostingAgentCapabilityCell
-                    agentName={groupChatAgentDisplay.agentName}
-                    fullAutoAuth={groupChatAgentDisplay.fullAutoAuth}
-                    semiAutoAuth={groupChatAgentDisplay.semiAutoAuth}
+                    agentName={groupChatAgentName}
+                    fullAutoAuth={account.groupChat.fullAutoAuth}
+                    semiAutoAuth={account.groupChat.semiAutoAuth}
                   />
                 </TableCell>
                 <TableCell className="py-4 text-right">

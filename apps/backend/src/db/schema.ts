@@ -2997,6 +2997,45 @@ export interface XyWapEmbedUserSeatAgent {
   user_seat_id: Generated<number>;
 }
 
+export interface XyWapEmbedUserSeatGroupAgent {
+  /**
+   * 关联agent（xy_wap_embed_agent.id）
+   */
+  agent_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 全自动-全托管权限（默认无）
+   */
+  full_auto_auth: Generated<number>;
+  /**
+   * 全自动-全托管配置信息（全托管权限开启时起效）
+   */
+  full_auto_config: string | null;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 半自动-话术推荐权限（默认无）
+   */
+  semi_auto_auth: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+  /**
+   * 关联成员席位（xy_wap_embed_user_seat.id）
+   */
+  user_seat_id: Generated<number>;
+}
+
 export interface XyWapEmbedUserSeatSubRelation {
   /**
    * 创建时间
@@ -3079,6 +3118,7 @@ export interface DB {
   xy_wap_embed_user_relation: XyWapEmbedUserRelation;
   xy_wap_embed_user_seat: XyWapEmbedUserSeat;
   xy_wap_embed_user_seat_agent: XyWapEmbedUserSeatAgent;
+  xy_wap_embed_user_seat_group_agent: XyWapEmbedUserSeatGroupAgent;
   xy_wap_embed_user_seat_sub_relation: XyWapEmbedUserSeatSubRelation;
 }
 

@@ -56,6 +56,7 @@ const agentServiceMock = vi.hoisted(() => ({
   renameAiHostingAgent: vi.fn(),
   testAiHostingAgent: vi.fn(),
   updateAiHostingSettings: vi.fn(),
+  updateAiHostingGroupSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
 const kbServiceMock = vi.hoisted(() => ({
@@ -194,12 +195,20 @@ const mockAgentDetail = {
   updatedAt: 1_718_006_460_000,
 };
 
+const emptyGroupChat = {
+  agentId: null,
+  fullAutoAuth: false,
+  replyMode: null,
+  semiAutoAuth: false,
+} as const;
+
 const mockHostingSettings: AiHostingSettingsResponse = {
   accounts: [
     {
       agentId: null,
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChat: emptyGroupChat,
       id: "101",
       name: "小助理1",
       semiAutoAuth: false,
@@ -208,6 +217,12 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "301",
       avatarUrl: "https://example.com/avatar-102.png",
       fullAutoAuth: true,
+      groupChat: {
+        agentId: "301",
+        fullAutoAuth: true,
+        replyMode: 1,
+        semiAutoAuth: false,
+      },
       id: "102",
       name: "小助理2",
       semiAutoAuth: true,
@@ -216,6 +231,12 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "303",
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChat: {
+        agentId: "303",
+        fullAutoAuth: false,
+        replyMode: null,
+        semiAutoAuth: true,
+      },
       id: "103",
       name: "小助理3",
       semiAutoAuth: true,
@@ -330,6 +351,22 @@ describe("AI hosting pages", () => {
               agentId: "301",
               fullAutoAuth: true,
               semiAutoAuth: true,
+            }
+          : account,
+      ),
+    });
+    vi.mocked(agentService.updateAiHostingGroupSettings).mockResolvedValue({
+      ...mockHostingSettings,
+      accounts: mockHostingSettings.accounts.map((account) =>
+        account.id === "102"
+          ? {
+              ...account,
+              groupChat: {
+                agentId: "301",
+                fullAutoAuth: true,
+                replyMode: 2,
+                semiAutoAuth: true,
+              },
             }
           : account,
       ),
@@ -1217,12 +1254,38 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByText("小助理2")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("关联Agent")).toBeInTheDocument();
     expect(within(dialog).getByRole("switch", { name: "允许开启 AI回复" })).toBeInTheDocument();
-    expect(within(dialog).queryByRole("group", { name: "回复规则" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("group", { name: "回复规则" })).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("switch", { name: "允许开启 AI回复" }));
 
-    expect(within(dialog).getByRole("group", { name: "回复规则" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("group", { name: "回复规则" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "保存设置" })).toBeInTheDocument();
+  });
+
+  it("saves group chat settings from the dialog", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getByRole("button", { name: "小助理2群聊设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "群聊设置" });
+
+    await user.click(within(dialog).getByRole("switch", { name: "允许话术推荐" }));
+    await user.click(within(dialog).getByText("回复时@客户"));
+    await user.click(within(dialog).getByRole("button", { name: "保存设置" }));
+
+    await waitFor(() => {
+      expect(agentService.updateAiHostingGroupSettings).toHaveBeenCalledWith({
+        agentId: "301",
+        fullAutoAuth: true,
+        replyMode: 2,
+        semiAutoAuth: true,
+        userSeatIds: ["102"],
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: "群聊设置" })).not.toBeInTheDocument();
   });
 
   it("keeps the hosting settings table header visible while loading", async () => {
@@ -1329,7 +1392,7 @@ describe("AI hosting pages", () => {
       });
     });
     expect(screen.queryByRole("dialog", { name: "单聊设置" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("护肤小助理")).toHaveLength(4);
+    expect(screen.getAllByText("护肤小助理")).toHaveLength(3);
   });
 
   it("blocks enabling full-auto auth when it is unavailable but still allows disabling enabled accounts", async () => {

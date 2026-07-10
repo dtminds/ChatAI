@@ -8,6 +8,7 @@ import type {
   AiHostingAgentTestRequest,
   AiHostingAgentTestResponse,
   AiHostingQuotaOverview,
+  AiHostingGroupSettingsUpdateRequest,
   AiHostingSettingsResponse,
   AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
@@ -73,6 +74,15 @@ export async function updateAiHostingSettings(payload: AiHostingSettingsUpdateRe
     ApiSuccessEnvelope<AiHostingSettingsResponse>,
     AiHostingSettingsUpdateRequest
   >("/server/ai-hosting/hosting-settings", payload);
+
+  return response.data;
+}
+
+export async function updateAiHostingGroupSettings(payload: AiHostingGroupSettingsUpdateRequest) {
+  const response = await http.put<
+    ApiSuccessEnvelope<AiHostingSettingsResponse>,
+    AiHostingGroupSettingsUpdateRequest
+  >("/server/ai-hosting/group-hosting-settings", payload);
 
   return response.data;
 }

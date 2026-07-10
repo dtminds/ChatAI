@@ -1,6 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type {
+  AiHostingSettingsAccount,
+  AiHostingSettingsAgentOption,
+} from "@chatai/contracts";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,73 +18,128 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   AgentAssociationField,
   PermissionSettingRow,
+  getErrorMessage,
   getInitial,
 } from "./hosting-settings-shared";
 
-export type GroupChatSettingsTargetAccount = {
-  avatarUrl: string;
-  id: string;
-  name: string;
+export type GroupChatSettingsDraft = {
+  agentId: string;
+  fullAutoAuth: boolean;
+  replyMode: GroupChatReplyMode;
+  semiAutoAuth: boolean;
 };
 
-type GroupChatReplyScope = "all_customers" | "quoted_only";
+type GroupChatReplyMode = 1 | 2;
 
-type GroupChatHostingAgent = {
-  id: string;
-  isPublished: boolean;
-  name: string;
-};
+type HostingAccount = AiHostingSettingsAccount;
+type HostingAgent = AiHostingSettingsAgentOption;
 
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
-
-const mockGroupChatHostingAgents: GroupChatHostingAgent[] = [
-  {
-    id: "301",
-    isPublished: true,
-    name: "群内护肤小助理",
-  },
-];
+const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
 export function GroupChatSettingsDialog({
+  accounts,
+  agents,
+  fullAutoAuthAvailable,
+  onGoToAddAgent,
   onOpenChange,
+  onSave,
   open,
-  targetAccounts,
+  targetAccountIds,
 }: {
+  accounts: HostingAccount[];
+  agents: HostingAgent[];
+  fullAutoAuthAvailable: boolean;
+  onGoToAddAgent: () => void;
   onOpenChange: (open: boolean) => void;
+  onSave: (accountIds: string[], draft: GroupChatSettingsDraft) => void | Promise<void>;
   open: boolean;
-  targetAccounts: GroupChatSettingsTargetAccount[];
+  targetAccountIds: string[];
 }) {
   const navigate = useNavigate();
   const [agentId, setAgentId] = useState<string | undefined>(undefined);
   const [fullAutoAuth, setFullAutoAuth] = useState(false);
-  const [replyScope, setReplyScope] = useState<GroupChatReplyScope>("quoted_only");
+  const [replyMode, setReplyMode] = useState<GroupChatReplyMode>(1);
   const [semiAutoAuth, setSemiAutoAuth] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [validationMessage, setValidationMessage] = useState("");
 
+  const targetAccounts = useMemo(
+    () => accounts.filter((account) => targetAccountIds.includes(account.id)),
+    [accounts, targetAccountIds],
+  );
   const isBatchMode = targetAccounts.length > 1;
   const singleAccount = targetAccounts.length === 1 ? targetAccounts[0] : null;
+  const fullAutoAuthDisabled = !fullAutoAuthAvailable && !fullAutoAuth;
 
   useEffect(() => {
-    if (!open) {
+    if (!open || targetAccounts.length === 0) {
+      return;
+    }
+
+    if (targetAccounts.length === 1) {
+      const account = targetAccounts[0];
+      const matchedAgentId =
+        account.groupChat.agentId &&
+        agents.some((agent) => agent.id === account.groupChat.agentId && agent.isPublished)
+          ? account.groupChat.agentId
+          : undefined;
+
+      setAgentId(matchedAgentId);
+      setFullAutoAuth(account.groupChat.fullAutoAuth);
+      setReplyMode(account.groupChat.replyMode ?? 1);
+      setSemiAutoAuth(account.groupChat.semiAutoAuth);
+      setSaving(false);
+      setValidationMessage("");
       return;
     }
 
     setAgentId(undefined);
     setFullAutoAuth(false);
-    setReplyScope("quoted_only");
+    setReplyMode(1);
     setSemiAutoAuth(false);
-  }, [open]);
+    setSaving(false);
+    setValidationMessage("");
+  }, [agents, open, targetAccounts]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onOpenChange(false);
+
+    if (targetAccountIds.length === 0 || saving) {
+      return;
+    }
+
+    const selectedAgent = agents.find((agent) => agent.id === agentId);
+
+    if (!selectedAgent?.isPublished) {
+      setValidationMessage("请选择已发布 Agent");
+      return;
+    }
+
+    setSaving(true);
+    setValidationMessage("");
+
+    try {
+      await onSave(targetAccountIds, {
+        agentId: selectedAgent.id,
+        fullAutoAuth,
+        replyMode,
+        semiAutoAuth,
+      });
+    } catch (error) {
+      setValidationMessage(getErrorMessage(error, "群聊设置保存失败"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleGoToAddAgent() {
-    onOpenChange(false);
+    onGoToAddAgent();
     navigate("/chat/ai-hosting/agents/new");
   }
 
@@ -116,12 +175,20 @@ export function GroupChatSettingsDialog({
             <Label htmlFor="group-chat-settings-agent">关联Agent</Label>
             <AgentAssociationField
               agentId={agentId}
-              agents={mockGroupChatHostingAgents}
+              agents={agents}
               id="group-chat-settings-agent"
-              onAgentIdChange={setAgentId}
+              onAgentIdChange={(value) => {
+                setAgentId(value);
+                setValidationMessage("");
+              }}
               onGoToAddAgent={handleGoToAddAgent}
               placeholder="请选择使用哪个Agent在群内进行回复"
             />
+            {validationMessage ? (
+              <p className="text-sm text-destructive" role="alert">
+                {validationMessage}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -130,14 +197,16 @@ export function GroupChatSettingsDialog({
               <PermissionSettingRow
                 checked={fullAutoAuth}
                 description="开启后群聊自动进入托管模式，Agent将自动回复群内被@的消息"
+                disabled={fullAutoAuthDisabled}
                 id="group-chat-settings-auto-hosting"
                 onCheckedChange={setFullAutoAuth}
                 title="允许开启 AI回复"
+                tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
               />
               {fullAutoAuth ? (
                 <div className="space-y-2 border-b border-border bg-muted/35 px-4 py-3.5">
                   <p className="text-sm font-medium text-foreground">回复规则</p>
-                  <ReplyScopeSelector onValueChange={setReplyScope} value={replyScope} />
+                  <ReplyRuleSelector onValueChange={setReplyMode} value={replyMode} />
                 </div>
               ) : null}
               <PermissionSettingRow
@@ -156,7 +225,16 @@ export function GroupChatSettingsDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit">保存设置</Button>
+            <Button disabled={saving} type="submit">
+              {saving ? (
+                <>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>保存中</span>
+                </>
+              ) : (
+                "保存设置"
+              )}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -164,34 +242,38 @@ export function GroupChatSettingsDialog({
   );
 }
 
-function ReplyScopeSelector({
+function ReplyRuleSelector({
   onValueChange,
   value,
 }: {
-  onValueChange: (value: GroupChatReplyScope) => void;
-  value: GroupChatReplyScope;
+  onValueChange: (value: GroupChatReplyMode) => void;
+  value: GroupChatReplyMode;
 }) {
   return (
     <SegmentedControl
       aria-label="回复规则"
       className="h-auto w-full flex-wrap gap-2 rounded-none border-0 bg-transparent p-0"
       onValueChange={(nextValue) => {
-        if (nextValue) {
-          onValueChange(nextValue as GroupChatReplyScope);
+        if (nextValue === "1") {
+          onValueChange(1);
+        }
+
+        if (nextValue === "2") {
+          onValueChange(2);
         }
       }}
       type="single"
-      value={value}
+      value={String(value)}
     >
       <SegmentedControlItem
         className="h-10 min-w-0 flex-1 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
-        value="quoted_only"
+        value="1"
       >
         回复时引用消息
       </SegmentedControlItem>
       <SegmentedControlItem
         className="h-10 min-w-0 flex-1 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
-        value="all_customers"
+        value="2"
       >
         回复时@客户
       </SegmentedControlItem>
@@ -199,7 +281,7 @@ function ReplyScopeSelector({
   );
 }
 
-function SelectedAccountsPreview({ accounts }: { accounts: GroupChatSettingsTargetAccount[] }) {
+function SelectedAccountsPreview({ accounts }: { accounts: HostingAccount[] }) {
   const previewAccounts = accounts.slice(0, SELECTED_ACCOUNT_PREVIEW_LIMIT);
   const remainingCount = accounts.length - previewAccounts.length;
 

@@ -101,6 +101,13 @@ describe("workflow DSL", () => {
     expect(parsed.workflow.executionGraph.terminalNodeIds).toEqual(["goal"]);
     expect(parsed.workflow.executionGraph.outgoing.trigger).toEqual(["edge-trigger-wait-2d"]);
     expect(parsed.workflow.executionGraph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
+    expect(parsed.workflow.executionGraph.topologicalNodeIds).toEqual([
+      "trigger",
+      "wait-2d",
+      "branch-intent",
+      "action-message",
+      "goal",
+    ]);
   });
 
   it("round-trips exported workflow DSL text through the import boundary", () => {
@@ -201,6 +208,39 @@ describe("workflow DSL", () => {
     expect(graph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
     expect(graph.outgoing.goal).toEqual([]);
     expect(graph.incoming.trigger).toEqual([]);
+    expect(graph.topologicalNodeIds).toEqual([
+      "trigger",
+      "wait-2d",
+      "branch-intent",
+      "action-message",
+      "goal",
+    ]);
+  });
+
+  it("keeps execution node order stable when the graph has disconnected or cyclic nodes", () => {
+    const draft = createInitialDraft();
+    const detachedNode = createNodeFromKind("action", "detached-action", draft.nodes.length);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("action-message", "wait-2d"),
+      ],
+      nodes: [
+        ...draft.nodes,
+        detachedNode,
+      ],
+    });
+
+    expect(graph.topologicalNodeIds).toEqual([
+      "trigger",
+      "wait-2d",
+      "branch-intent",
+      "action-message",
+      "goal",
+      "detached-action",
+    ]);
+    expect(new Set(graph.topologicalNodeIds)).toEqual(new Set(graph.nodes.map((node) => node.id)));
   });
 
   it("preserves persisted node configuration fields through export and import", () => {

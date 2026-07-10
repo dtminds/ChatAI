@@ -43,6 +43,7 @@ export type WorkflowExecutionGraph = {
   nodes: WorkflowExecutionNode[];
   outgoing: Record<string, string[]>;
   terminalNodeIds: string[];
+  topologicalNodeIds: string[];
 };
 
 export type WorkflowExecutionNode = {
@@ -183,7 +184,85 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
     }),
     outgoing: createWorkflowExecutionEdgeIndex(canonicalDraft.nodes, edges, "source"),
     terminalNodeIds,
+    topologicalNodeIds: createWorkflowExecutionTopologicalOrder(canonicalDraft.nodes, edges, entryNode?.id),
   };
+}
+
+function createWorkflowExecutionTopologicalOrder(
+  nodes: WorkflowNode[],
+  edges: WorkflowExecutionEdge[],
+  entryNodeId: string | undefined,
+) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]));
+  const incomingCountByNodeId = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoingEdgesByNodeId = new Map<string, WorkflowExecutionEdge[]>();
+
+  edges.forEach((edge) => {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      return;
+    }
+
+    incomingCountByNodeId.set(edge.target, (incomingCountByNodeId.get(edge.target) ?? 0) + 1);
+    outgoingEdgesByNodeId.set(edge.source, [...outgoingEdgesByNodeId.get(edge.source) ?? [], edge]);
+  });
+
+  const queue = nodes
+    .filter((node) => incomingCountByNodeId.get(node.id) === 0)
+    .sort((first, second) => getNodeQueuePriority(first.id, entryNodeId, nodeOrder) - getNodeQueuePriority(second.id, entryNodeId, nodeOrder))
+    .map((node) => node.id);
+  const orderedNodeIds: string[] = [];
+  const visitedNodeIds = new Set<string>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+
+    if (visitedNodeIds.has(nodeId)) {
+      continue;
+    }
+
+    visitedNodeIds.add(nodeId);
+    orderedNodeIds.push(nodeId);
+
+    const outgoingEdges = [...outgoingEdgesByNodeId.get(nodeId) ?? []].sort(
+      (first, second) => getEdgeQueuePriority(first, nodeOrder) - getEdgeQueuePriority(second, nodeOrder),
+    );
+
+    outgoingEdges.forEach((edge) => {
+      const nextIncomingCount = (incomingCountByNodeId.get(edge.target) ?? 0) - 1;
+      incomingCountByNodeId.set(edge.target, nextIncomingCount);
+
+      if (nextIncomingCount === 0) {
+        queue.push(edge.target);
+        queue.sort((first, second) => getNodeQueuePriority(first, entryNodeId, nodeOrder) - getNodeQueuePriority(second, entryNodeId, nodeOrder));
+      }
+    });
+  }
+
+  nodes.forEach((node) => {
+    if (!visitedNodeIds.has(node.id)) {
+      orderedNodeIds.push(node.id);
+    }
+  });
+
+  return orderedNodeIds;
+}
+
+function getNodeQueuePriority(
+  nodeId: string,
+  entryNodeId: string | undefined,
+  nodeOrder: Map<string, number>,
+) {
+  const entryPriority = nodeId === entryNodeId ? -100000 : 0;
+
+  return entryPriority + (nodeOrder.get(nodeId) ?? Number.MAX_SAFE_INTEGER);
+}
+
+function getEdgeQueuePriority(
+  edge: WorkflowExecutionEdge,
+  nodeOrder: Map<string, number>,
+) {
+  return nodeOrder.get(edge.target) ?? Number.MAX_SAFE_INTEGER;
 }
 
 function createWorkflowExecutionEdgeIndex(

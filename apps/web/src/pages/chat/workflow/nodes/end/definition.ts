@@ -1,7 +1,6 @@
 import { StopCircleIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
-  createDefaultOutputVariables,
   createDefaultTargetHandles,
   createNoSourceHandles,
   createNodeData,
@@ -30,7 +29,6 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   layout: terminalNodeLayout,
   role: "terminal",
   schemaVersion: 1,
-  getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createNoSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
   sort: 100,

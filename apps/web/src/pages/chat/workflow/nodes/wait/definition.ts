@@ -1,7 +1,6 @@
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
-  createDefaultOutputVariables,
   createDefaultSourceHandles,
   createDefaultTargetHandles,
   createNodeData,
@@ -63,7 +62,6 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   paletteGroup: "flow",
   paletteLabel: "等待",
   schemaVersion: 1,
-  getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
   sort: 10,

@@ -36,6 +36,10 @@ describe("workflow DSL", () => {
                 ...node,
                 data: {
                   ...node.data,
+                  content: [
+                    { type: "text", value: "你好，" },
+                    { selector: ["customer", "name"], type: "variable" },
+                  ],
                   _connectedSourceHandleIds: ["source"],
                   _runtimeStatus: "selected",
                   onDelete: vi.fn(),
@@ -87,7 +91,12 @@ describe("workflow DSL", () => {
       incomingMode: "any",
       kind: "message",
     }));
-    expect(executionNode.config).toEqual({});
+    expect(executionNode.config).toEqual({
+      content: [
+        { type: "text", value: "你好，" },
+        { selector: ["customer", "name"], type: "variable" },
+      ],
+    });
     expect(executionNode.config.kind).toBeUndefined();
     expect(executionNode.config.title).toBeUndefined();
     expect(executionNode.config.status).toBeUndefined();
@@ -338,7 +347,7 @@ describe("workflow DSL", () => {
       branchPaths: expect.any(Array),
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
-    expect(configByKind.get("message")).toEqual({});
+    expect(configByKind.get("message")).toEqual({ content: [] });
     expect(configByKind.get("handoff")).toEqual({});
     expect(configByKind.get("end")).toEqual({});
 

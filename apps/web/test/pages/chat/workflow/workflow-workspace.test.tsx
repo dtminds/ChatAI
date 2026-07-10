@@ -449,13 +449,6 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.checks.isOpen).toBe(true);
     assertCleanCanvasState();
 
-    act(() => {
-      result.current.canvas.onOpenVariables();
-    });
-    expect(result.current.inspector.isOpen).toBe(true);
-    expect(result.current.inspector.activeTab).toBe("variables");
-    expect(result.current.checks.isOpen).toBe(false);
-    assertCleanCanvasState();
   });
 
   it("cancels pending saves when undo returns to the last saved draft", async () => {
@@ -604,7 +597,6 @@ describe("useWorkflowWorkspace", () => {
       result.current.canvas.onPaletteOpenChange(true);
       result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.onToggleInsertMenu?.("message-welcome");
       result.current.topBar.onPublishCheck();
-      result.current.canvas.onOpenVariables();
       result.current.canvas.onPaneClick();
     });
 
@@ -895,29 +887,6 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
-  it("opens variables through canvas controls and clears canvas menus", () => {
-    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-
-    act(() => {
-      result.current.canvas.onSelectNode("message-welcome");
-    });
-
-    act(() => {
-      result.current.canvas.onPaletteOpenChange(true);
-    });
-    expect(result.current.canvas.paletteOpen).toBe(true);
-
-    act(() => {
-      result.current.canvas.onOpenVariables();
-    });
-
-    expect(result.current.inspector.activeTab).toBe("variables");
-    expect(result.current.inspector.isOpen).toBe(true);
-    expect(result.current.canvas.paletteOpen).toBe(false);
-    expect(result.current.inspector.variables?.inputs.map((variable) => variable.name)).toContain(
-      "start.start.result",
-    );
-  });
 });
 
 function createWorkflowDraftWithTriggerAudience(audience: string) {

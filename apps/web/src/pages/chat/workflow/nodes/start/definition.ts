@@ -1,7 +1,6 @@
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
-  createDefaultOutputVariables,
   createDefaultSourceHandles,
   createNoTargetHandles,
   createNodeData,
@@ -72,7 +71,6 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   layout: standardNodeLayout,
   role: "entry",
   schemaVersion: 1,
-  getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createNoTargetHandles,
   sort: 0,

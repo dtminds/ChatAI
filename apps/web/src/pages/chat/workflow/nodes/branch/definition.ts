@@ -10,7 +10,6 @@ import {
   branchNodeLayout,
   createBranchSourceHandles,
   createCatalogIssue,
-  createDefaultOutputVariables,
   createDefaultTargetHandles,
   createNodeData,
   hasText,
@@ -74,7 +73,18 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   paletteGroup: "logic",
   paletteLabel: "条件分支",
   schemaVersion: 1,
-  getOutputVariables: createDefaultOutputVariables,
+  getOutputVariables: () => [
+    {
+      key: "matchedPathId",
+      label: "命中分支ID",
+      type: "string",
+    },
+    {
+      key: "matchedPathLabel",
+      label: "命中分支名称",
+      type: "string",
+    },
+  ],
   sanitizeData: (data) => ({
     ...data,
     branchPaths: normalizeWorkflowBranchPaths(data.branchPaths),

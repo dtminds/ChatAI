@@ -11,7 +11,6 @@ import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
-  InspectorTab,
   WorkflowNodeConfigPatch,
   WorkflowRenderEdge,
   WorkflowRenderNode,
@@ -22,7 +21,6 @@ import { hasNodeSettings } from "./node-definitions";
 import { useWorkflowRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
-import { getNodeVariables } from "./workflow-variables";
 import {
   cloneWorkflowDraftSnapshot,
   useWorkflowDocument,
@@ -67,7 +65,6 @@ export function useWorkflowWorkspace(
     restoreVersion,
     saveState,
   } = useWorkflowDocument(workflowId, repository);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
     undefined,
@@ -397,12 +394,6 @@ export function useWorkflowWorkspace(
     closeCanvasMenus();
   });
 
-  const openVariablesPanel = useWorkflowStableCallback(() => {
-    dispatchViewState({ type: "open-variables" });
-    setInspectorTab("variables");
-    clearEdgeSelection();
-    closeCanvasOverlays();
-  });
 
   const handlePaletteOpenChange = useWorkflowStableCallback((open: boolean) => {
     if (!permissions.canOpenInsertPalette) {
@@ -564,13 +555,6 @@ export function useWorkflowWorkspace(
   });
 
   const checksClose = useCallback(() => dispatchViewState({ type: "close-checks" }), []);
-  const inspectorNodeVariables = useMemo(
-    () => selectedNode
-      ? getNodeVariables(selectedNode, controller.nodes, controller.edges)
-      : undefined,
-    [controller.edges, controller.nodes, selectedNode],
-  );
-
   return {
     canvas: {
       canRedo: permissions.canUseHistory && controller.canRedo,
@@ -591,7 +575,6 @@ export function useWorkflowWorkspace(
       onNodeHoverEnd: handleNodeHoverEnd,
       onNodeHoverStart: handleNodeHoverStart,
       onNodesChange: handleNodesChange,
-      onOpenVariables: openVariablesPanel,
       onPaletteOpenChange: handlePaletteOpenChange,
       onPaneClick: handlePaneClick,
       onViewportChangeEnd: handleViewportChangeEnd,
@@ -616,16 +599,12 @@ export function useWorkflowWorkspace(
     permissions,
     readOnlyReason: workflowMode.readOnlyReason,
     inspector: {
-      activeTab: inspectorTab,
       edges: controller.edges,
       isOpen: viewState.inspectorOpen,
       node: selectedNode,
+      nodes: controller.nodes,
       onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
-      onTabChange: setInspectorTab,
-      variables: selectedNode
-        ? inspectorNodeVariables
-        : undefined,
     },
     topBar: {
       lastSavedAt,

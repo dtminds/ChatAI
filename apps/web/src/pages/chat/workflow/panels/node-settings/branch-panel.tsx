@@ -18,7 +18,7 @@ import { FieldGroup } from "../field-group";
 import { SchemaNodeSettingsPanel } from "./schema-panel";
 import type { NodeSettingsProps } from "../types";
 
-export function BranchConfig({ edges, node, onNodeChange }: NodeSettingsProps<"branch">) {
+export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"branch">) {
   const branchPaths = getWorkflowBranchPaths(node.data);
   const nonDefaultPathCount = branchPaths.filter((branch) => !branch.isDefault).length;
   const connectedCountByHandle = new Map<string, number>();
@@ -40,7 +40,7 @@ export function BranchConfig({ edges, node, onNodeChange }: NodeSettingsProps<"b
 
   return (
     <>
-      <SchemaNodeSettingsPanel includeBase node={node} onNodeChange={onNodeChange} edges={edges} />
+      <SchemaNodeSettingsPanel includeBase node={node} nodes={nodes} onNodeChange={onNodeChange} edges={edges} />
       <FieldGroup title="分支路径">
         <div className="space-y-2">
           {branchPaths.map((branch, index) => {

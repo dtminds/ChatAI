@@ -29,6 +29,7 @@ describe("BranchConfig", () => {
           }),
         ]}
         node={createBranchNode()}
+        nodes={[createBranchNode()]}
         onNodeChange={onNodeChange}
       />,
     );

@@ -1,192 +1,161 @@
+import { getNodeDefinitionCore } from "./node-definition-core";
+import { findWorkflowEntryNode } from "./node-catalog";
 import type {
   WorkflowEdge,
+  WorkflowMessageContentSegment,
   WorkflowNode,
-  WorkflowVariable,
-  WorkflowVariables,
+  WorkflowNodeOutputDefinition,
+  WorkflowVariableDefinition,
+  WorkflowVariableSelector,
 } from "./types";
-import { getNodeDefinitionCore } from "./node-definition-core";
-import { isWorkflowTerminalNode } from "./node-catalog";
+import { getWorkflowVariableSelectorKey } from "./workflow-variable-selector";
+import { workflowContextVariables } from "./workflow-variable-registry";
 
-export type WorkflowVariableContext = {
-  currentNode: WorkflowNode;
-  currentNodeOutputs: WorkflowVariable[];
-  systemVariables: WorkflowVariable[];
-  upstreamNodeOutputs: WorkflowVariable[];
-  upstreamNodes: WorkflowNode[];
-};
+export {
+  getWorkflowVariableDisplayLabel,
+  getWorkflowVariableSelectorKey,
+} from "./workflow-variable-selector";
+export { workflowContextVariables } from "./workflow-variable-registry";
 
-export type WorkflowVariableResolution =
-  | {
-    reason: "empty-selector";
-    status: "empty";
-  }
-  | {
-    selector: string[];
-    selectorKey: string;
-    status: "invalid";
-  }
-  | {
-    selector: string[];
-    selectorKey: string;
-    status: "resolved";
-    variable: WorkflowVariable;
-  };
-
-export function getNodeVariables(
-  node: WorkflowNode,
+export function getAvailableVariablesForNode(
+  nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-): WorkflowVariables {
-  const context = createWorkflowVariableContext(node, nodes, edges);
-
-  return {
-    inputs: [
-      ...context.systemVariables,
-      ...context.upstreamNodeOutputs,
-    ],
-    outputs: context.currentNodeOutputs,
-  };
+): WorkflowVariableDefinition[] {
+  return [
+    ...workflowContextVariables,
+    ...getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap(getNodeOutputVariables),
+  ];
 }
 
-export function resolveWorkflowVariableSelector(
-  variables: WorkflowVariables,
-  selector: string[] | null | undefined,
-): WorkflowVariableResolution {
-  if (!selector?.length) {
-    return {
-      reason: "empty-selector",
-      status: "empty",
-    };
-  }
-
-  const selectorKey = getWorkflowVariableSelectorKey(selector);
-  const variable = [
-    ...variables.inputs,
-    ...variables.outputs,
-  ].find((currentVariable) =>
-    currentVariable.selector
-    && getWorkflowVariableSelectorKey(currentVariable.selector) === selectorKey,
-  );
-
-  if (!variable) {
-    return {
-      selector,
-      selectorKey,
-      status: "invalid",
-    };
-  }
-
-  return {
-    selector,
-    selectorKey,
-    status: "resolved",
-    variable,
-  };
-}
-
-export function getWorkflowVariableSelectorKey(selector: string[]) {
-  return selector.join(".");
-}
-
-export function createWorkflowVariableContext(
-  node: WorkflowNode,
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-): WorkflowVariableContext {
-  const upstreamNodes = getBeforeNodesInSameBranch(node.id, nodes, edges);
-
-  return {
-    currentNode: node,
-    currentNodeOutputs: getNodeOutputVariables(node),
-    systemVariables: createSystemVariables(node),
-    upstreamNodeOutputs: upstreamNodes.flatMap((upstreamNode) =>
-      getNodeOutputVariables(upstreamNode).map((variable) =>
-        createNodeScopedVariable(upstreamNode, variable),
-      ),
-    ),
-    upstreamNodes,
-  };
-}
-
-export function getBeforeNodesInSameBranch(
+export function getGuaranteedUpstreamNodes(
   nodeId: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ) {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const upstreamNodes: WorkflowNode[] = [];
-  const visitedNodeIds = new Set<string>();
+  const entryNode = findWorkflowEntryNode(nodes);
 
-  function visit(currentNodeId: string) {
-    const incomingEdges = edges.filter((edge) => edge.target === currentNodeId);
+  if (!entryNode || !nodes.some((node) => node.id === nodeId)) {
+    return [];
+  }
 
-    for (const edge of incomingEdges) {
-      const sourceNode = nodeById.get(edge.source);
-      if (!sourceNode || visitedNodeIds.has(sourceNode.id)) {
+  const reachableNodeIds = getReachableNodeIds(entryNode.id, edges);
+
+  if (!reachableNodeIds.has(nodeId)) {
+    return [];
+  }
+
+  const reachableNodes = nodes.filter((node) => reachableNodeIds.has(node.id));
+  const allReachableIds = new Set(reachableNodes.map((node) => node.id));
+  const dominators = new Map<string, Set<string>>();
+
+  reachableNodes.forEach((node) => {
+    dominators.set(
+      node.id,
+      node.id === entryNode.id ? new Set([entryNode.id]) : new Set(allReachableIds),
+    );
+  });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const node of reachableNodes) {
+      if (node.id === entryNode.id) {
         continue;
       }
 
-      visitedNodeIds.add(sourceNode.id);
-      visit(sourceNode.id);
-      upstreamNodes.push(sourceNode);
+      const predecessorIds = edges
+        .filter((edge) => edge.target === node.id && reachableNodeIds.has(edge.source))
+        .map((edge) => edge.source);
+      const predecessorDominators = predecessorIds
+        .map((predecessorId) => dominators.get(predecessorId))
+        .filter((value): value is Set<string> => Boolean(value));
+      const next = predecessorDominators.length
+        ? intersectSets(predecessorDominators)
+        : new Set<string>();
+      next.add(node.id);
+
+      if (!setsEqual(next, dominators.get(node.id) ?? new Set())) {
+        dominators.set(node.id, next);
+        changed = true;
+      }
     }
   }
 
-  visit(nodeId);
-  return upstreamNodes;
+  const guaranteedIds = dominators.get(nodeId) ?? new Set<string>();
+  return reachableNodes.filter((node) => node.id !== nodeId && guaranteedIds.has(node.id));
 }
 
-export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariable[] {
-  return (getNodeDefinitionCore(node.data.kind).getOutputVariables?.(node) ?? createFallbackOutputVariables(node))
-    .map((variable) => createNodeScopedVariable(node, variable));
+export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariableDefinition[] {
+  return scopeWorkflowNodeOutputs(
+    node,
+    getNodeDefinitionCore(node.data.kind).getOutputVariables?.(node) ?? [],
+  );
 }
 
-function createNodeScopedVariable(
+export function scopeWorkflowNodeOutputs(
   node: WorkflowNode,
-  variable: WorkflowVariable,
-): WorkflowVariable {
-  return {
-    ...variable,
-    name: variable.scope === "node"
-      ? variable.name
-      : `${node.data.kind}.${node.id}.${variable.name}`,
-    scope: "node",
-    selector: variable.selector ?? [node.id, variable.name],
+  outputs: WorkflowNodeOutputDefinition[],
+): WorkflowVariableDefinition[] {
+  return outputs.map((output) => ({
+    ...output,
+    scope: "node" as const,
+    selector: ["node", node.id, output.key],
     sourceNodeId: node.id,
+    sourceNodeKind: node.data.kind,
     sourceNodeTitle: node.data.title,
-  };
+  }));
 }
 
-function createSystemVariables(node: WorkflowNode): WorkflowVariable[] {
-  return [
-    {
-      name: "customer.profile",
-      scope: "system",
-      selector: ["customer", "profile"],
-      type: "object",
-      value: node.data.kind === "start" ? node.data.audience ?? "上游客户画像" : "上游客户画像",
-    },
-    {
-      name: "journey.currentNode",
-      scope: "system",
-      selector: ["journey", "currentNode"],
-      type: "string",
-      value: node.data.title,
-    },
-  ];
+export function resolveWorkflowVariable(
+  variables: WorkflowVariableDefinition[],
+  selector: WorkflowVariableSelector,
+) {
+  const selectorKey = getWorkflowVariableSelectorKey(selector);
+  return variables.find((variable) =>
+    getWorkflowVariableSelectorKey(variable.selector) === selectorKey,
+  );
 }
 
-function createFallbackOutputVariables(node: WorkflowNode): WorkflowVariable[] {
-  return [
-    {
-      name: "result",
-      type: "object",
-      value: node.data.metric,
-    },
-    {
-      name: "journey.next",
-      type: "string",
-      value: isWorkflowTerminalNode(node) ? "退出旅程" : "进入下一节点",
-    },
-  ];
+export function getInvalidMessageVariableSelectors(
+  segments: WorkflowMessageContentSegment[] | undefined,
+  availableVariables: WorkflowVariableDefinition[],
+) {
+  const availableKeys = new Set(availableVariables.map((variable) =>
+    getWorkflowVariableSelectorKey(variable.selector),
+  ));
+
+  return (segments ?? [])
+    .filter((segment): segment is Extract<WorkflowMessageContentSegment, { type: "variable" }> =>
+      segment.type === "variable")
+    .map((segment) => segment.selector)
+    .filter((selector) => !availableKeys.has(getWorkflowVariableSelectorKey(selector)));
+}
+
+function getReachableNodeIds(entryNodeId: string, edges: WorkflowEdge[]) {
+  const outgoing = new Map<string, string[]>();
+  edges.forEach((edge) => outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target]));
+  const reachable = new Set<string>();
+  const queue = [entryNodeId];
+
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (reachable.has(current)) {
+      continue;
+    }
+    reachable.add(current);
+    queue.push(...outgoing.get(current) ?? []);
+  }
+
+  return reachable;
+}
+
+function intersectSets(sets: Set<string>[]) {
+  const [first, ...rest] = sets;
+  return new Set([...first].filter((value) => rest.every((set) => set.has(value))));
+}
+
+function setsEqual(left: Set<string>, right: Set<string>) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
 }

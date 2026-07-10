@@ -6,7 +6,7 @@ import type {
   WorkflowNodeKind,
   WorkflowNodeValidationContext,
   WorkflowNodeValidationIssue,
-  WorkflowVariable,
+  WorkflowNodeOutputDefinition,
 } from "../types";
 import type {
   WorkflowSourceHandleDefinition,
@@ -64,7 +64,7 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   role?: WorkflowNodeRole;
   sanitizeData?: (data: WorkflowNodeData<TKind>) => WorkflowNodeData<TKind>;
   schemaVersion: number;
-  getOutputVariables?: (node: WorkflowNode<TKind>) => WorkflowVariable[];
+  getOutputVariables?: (node: WorkflowNode<TKind>) => WorkflowNodeOutputDefinition[];
   getSourceHandles: (data: WorkflowNodeData<TKind>) => WorkflowSourceHandleDefinition[];
   getTargetHandles: (data: WorkflowNodeData<TKind>) => WorkflowTargetHandleDefinition[];
   sort: number;

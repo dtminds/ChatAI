@@ -11,6 +11,7 @@ import type {
   WorkflowNodeKind,
   WorkflowNodeValidationIssue,
 } from "../types";
+import { getAvailableVariablesForNode, getInvalidMessageVariableSelectors } from "../workflow-variables";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -77,10 +78,23 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
   const definition = getNodeDefinitionCore(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
   const definitionIssues = definition.validate?.(node, { edges, nodes }) ?? [];
+  const variableIssues: WorkflowNodeValidationIssue[] = node.data.kind === "message"
+    && getInvalidMessageVariableSelectors(
+      node.data.content,
+      getAvailableVariablesForNode(node.id, nodes, edges),
+    ).length
+    ? [{
+        code: "message-variable-invalid",
+        message: "消息内容引用了不可用变量",
+        severity: "warning",
+        source: "config",
+      }]
+    : [];
 
   return [
     ...configIssues,
     ...definitionIssues,
+    ...variableIssues,
   ];
 }
 

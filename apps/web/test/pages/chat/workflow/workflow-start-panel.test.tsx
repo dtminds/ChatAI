@@ -20,6 +20,7 @@ describe("StartConfig", () => {
       <StartConfig
         edges={[]}
         node={createStartNode()}
+        nodes={[createStartNode()]}
         onNodeChange={vi.fn()}
       />,
     );

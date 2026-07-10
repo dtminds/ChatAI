@@ -4,7 +4,6 @@ import type {
   WORKFLOW_NODE_TYPE,
 } from "./constants";
 
-export type InspectorTab = "settings" | "variables";
 export type WorkflowNodeKind =
   | "start"
   | "wait"
@@ -52,7 +51,34 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchRule?: string;
 };
 
-export type MessageNodeData = WorkflowNodeDataBase<"message">;
+export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
+export type WorkflowVariableValueType = "boolean" | "datetime" | "number" | "object" | "string";
+export type WorkflowVariableSelector = string[];
+
+export type WorkflowVariableDefinition = {
+  key: string;
+  label: string;
+  scope: WorkflowVariableScope;
+  selector: WorkflowVariableSelector;
+  sourceNodeId?: string;
+  sourceNodeKind?: WorkflowNodeKind;
+  sourceNodeTitle?: string;
+  type: WorkflowVariableValueType;
+};
+
+export type WorkflowNodeOutputDefinition = {
+  key: string;
+  label: string;
+  type: WorkflowVariableValueType;
+};
+
+export type WorkflowMessageContentSegment =
+  | { type: "text"; value: string }
+  | { selector: WorkflowVariableSelector; type: "variable" };
+
+export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
+  content?: WorkflowMessageContentSegment[];
+};
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff">;
@@ -133,21 +159,6 @@ export type WorkflowDraft = {
 export type QuickInsertTarget = {
   nodeId: string;
   sourceHandle?: string;
-};
-
-export type WorkflowVariable = {
-  name: string;
-  scope?: "node" | "system";
-  selector?: string[];
-  sourceNodeId?: string;
-  sourceNodeTitle?: string;
-  type: string;
-  value: string;
-};
-
-export type WorkflowVariables = {
-  inputs: WorkflowVariable[];
-  outputs: WorkflowVariable[];
 };
 
 export type WorkflowPublishCheck = {

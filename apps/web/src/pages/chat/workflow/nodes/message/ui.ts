@@ -1,4 +1,5 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
+import { MessageConfig } from "./panel";
 
 export const messageNodeUi: WorkflowNodeUiBinding<"message"> = {
   body: {
@@ -8,10 +9,10 @@ export const messageNodeUi: WorkflowNodeUiBinding<"message"> = {
         label: "消息内容",
         value: data.metric.startsWith("待配置")
           ? { kind: "empty" }
-          : { kind: "text", text: data.metric },
+          : { kind: "text", maxLines: 3, text: data.metric },
       },
     ],
     kind: "fields",
   },
-  settings: { kind: "schema", nodeKind: "message" },
+  settings: { component: MessageConfig, kind: "custom" },
 };

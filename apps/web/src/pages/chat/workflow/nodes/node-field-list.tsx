@@ -23,6 +23,7 @@ export type WorkflowNodeFieldValue =
     }
   | {
       kind: "text";
+      maxLines?: number;
       text: string;
     };
 
@@ -81,7 +82,20 @@ function NodeFieldValue({ value }: { value: WorkflowNodeFieldValue }) {
     );
   }
 
-  return <span className="min-w-0 break-words text-foreground">{value.text}</span>;
+  const maxLines = Math.max(1, Math.floor(value.maxLines ?? 1));
+
+  return (
+    <span
+      className="min-w-0 overflow-hidden break-words text-foreground"
+      style={{
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: maxLines,
+        display: "-webkit-box",
+      }}
+    >
+      {value.text}
+    </span>
+  );
 }
 
 function NodeFieldTag({ tag }: { tag: WorkflowNodeFieldTag }) {

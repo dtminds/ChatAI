@@ -212,7 +212,9 @@ Current execution config examples:
     "branchPaths": [],
     "branchRule": "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效"
   },
-  "message": {},
+  "message": {
+    "content": []
+  },
   "tag": {},
   "coupon": {},
   "handoff": {},
@@ -221,6 +223,31 @@ Current execution config examples:
 ```
 
 These values are mock product semantics. The important stable contract is that each node definition owns its own `createExecutionConfig` output.
+
+## Variable Contract
+
+Workflow variables are typed definitions with stable selectors. Display labels and node titles are not part of the persisted reference.
+
+Variable scopes are:
+
+- `system.*`: fixed runtime context such as the current employee
+- `customer.*`: customer context
+- `trigger.*`: data supplied by the event that entered the journey
+- `node.<nodeId>.<outputKey>`: an output declared by a preceding node
+
+Each node kind may declare typed outputs through `getOutputVariables`. No generic `result` or `journey.next` output is synthesized. Kinds without a confirmed business output expose no node output until that contract is defined.
+
+Only outputs from nodes that dominate the current node are selectable. An output produced only on one branch is therefore unavailable after branches merge, until an explicit optional-value contract is introduced.
+
+Variable selection is embedded in configuration fields that support references instead of being exposed through a generic inspector tab. Message content is the first consumer and persists text and variable references as structured segments:
+
+```ts
+type WorkflowMessageContentSegment =
+  | { type: "text"; value: string }
+  | { type: "variable"; selector: string[] };
+```
+
+The Lexical editor is an editing adapter only. Draft and execution config store these segments, never Lexical JSON. Missing or no-longer-reachable selectors are reported as node configuration issues and block publishing.
 
 ## Validation And Publish Gate
 

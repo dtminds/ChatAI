@@ -6,26 +6,18 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { nodeVisuals } from "../node-definitions";
-import type {
-  InspectorTab,
-  WorkflowNode,
-} from "../types";
+import type { WorkflowNode } from "../types";
 
 export function BasePanel({
-  activeTab,
   children,
   node,
   onClose,
-  onTabChange,
 }: {
-  activeTab: InspectorTab;
   children: ReactNode;
   node: WorkflowNode;
   onClose: () => void;
-  onTabChange: (tab: InspectorTab) => void;
 }) {
   return (
     <aside
@@ -33,27 +25,18 @@ export function BasePanel({
       className="workflow-config-panel absolute bottom-1 right-1 top-[5.75rem] z-20 flex w-[26.25rem] min-h-0 flex-col rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-[0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-[10px] max-xl:w-[23.5rem] max-lg:relative max-lg:inset-auto max-lg:min-h-[280px] max-lg:w-full max-lg:rounded-none max-lg:border-x-0"
       role="complementary"
     >
-      <PanelHeader
-        activeTab={activeTab}
-        node={node}
-        onClose={onClose}
-        onTabChange={onTabChange}
-      />
+      <PanelHeader node={node} onClose={onClose} />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">{children}</div>
     </aside>
   );
 }
 
 function PanelHeader({
-  activeTab,
   node,
   onClose,
-  onTabChange,
 }: {
-  activeTab: InspectorTab;
   node: WorkflowNode;
   onClose: () => void;
-  onTabChange: (tab: InspectorTab) => void;
 }) {
   const visual = nodeVisuals[node.data.kind];
 
@@ -92,24 +75,6 @@ function PanelHeader({
           </Button>
         </div>
       </div>
-      <Tabs
-        className="mt-4 gap-0"
-        onValueChange={(value) => {
-          if (value) {
-            onTabChange(value as InspectorTab);
-          }
-        }}
-        value={activeTab}
-      >
-        <TabsList aria-label="节点配置视图" className="h-9 w-full rounded-[10px]">
-          <TabsTrigger className="h-7 flex-1 rounded-[8px] px-3 py-0 text-xs" value="settings">
-            设置
-          </TabsTrigger>
-          <TabsTrigger className="h-7 flex-1 rounded-[8px] px-3 py-0 text-xs" value="variables">
-            变量
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
     </div>
   );
 }

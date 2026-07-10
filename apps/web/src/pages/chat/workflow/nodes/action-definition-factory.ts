@@ -3,7 +3,6 @@ import type { WorkflowNodeKind } from "../types";
 import type { WorkflowNodeData } from "../types";
 import type { WorkflowNodeDefinition, WorkflowNodePaletteGroupId } from "./definition-types";
 import {
-  createDefaultOutputVariables,
   createDefaultSourceHandles,
   createDefaultTargetHandles,
   compactNodeLayout,
@@ -61,7 +60,6 @@ export function createActionNodeDefinition<TKind extends ActionNodeKind>({
     paletteGroup,
     paletteLabel: label,
     schemaVersion: 1,
-    getOutputVariables: createDefaultOutputVariables,
     getSourceHandles: createDefaultSourceHandles,
     getTargetHandles: createDefaultTargetHandles,
     sort,

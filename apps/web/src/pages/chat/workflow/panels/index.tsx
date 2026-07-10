@@ -1,33 +1,20 @@
-import type {
-  InspectorTab,
-  WorkflowEdge,
-  WorkflowNodeConfigPatch,
-  WorkflowNode,
-  WorkflowVariables,
-} from "../types";
+import type { WorkflowEdge, WorkflowNodeConfigPatch, WorkflowNode } from "../types";
 import { BasePanel } from "./base-panel";
-import {
-  NodeVariablesPanel,
-} from "./inspector-tabs";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 
 export function NodeConfigPanel({
-  activeTab,
   edges,
   node,
+  nodes,
   onClose,
   onNodeChange,
-  onTabChange,
-  variables,
 }: {
-  activeTab: InspectorTab;
   edges: WorkflowEdge[];
   node?: WorkflowNode;
+  nodes: WorkflowNode[];
   onClose: () => void;
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
-  onTabChange: (tab: InspectorTab) => void;
-  variables?: WorkflowVariables;
 }) {
   if (!node) {
     return (
@@ -42,26 +29,18 @@ export function NodeConfigPanel({
   }
 
   return (
-    <BasePanel
-      activeTab={activeTab}
-      node={node}
-      onClose={onClose}
-      onTabChange={onTabChange}
-    >
-      {activeTab === "settings" ? (
-        <NodeSettingsForm edges={edges} node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {activeTab === "variables" && variables ? <NodeVariablesPanel variables={variables} /> : null}
+    <BasePanel node={node} onClose={onClose}>
+      <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
     </BasePanel>
   );
 }
 
-function NodeSettingsForm({ edges, node, onNodeChange }: NodeSettingsProps) {
+function NodeSettingsForm({ edges, node, nodes, onNodeChange }: NodeSettingsProps) {
   const SettingsPanel = getNodeDefinition(node.data.kind).settings;
 
   if (!SettingsPanel) {
     return null;
   }
 
-  return <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />;
+  return <SettingsPanel edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />;
 }

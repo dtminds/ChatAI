@@ -163,11 +163,7 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
     expect(definition.settings).toBeTypeOf("function");
   }
   expect(definition.configSections).toEqual(getNodeConfigSections(kind));
-  expect(definition.getOutputVariables?.(node)).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ name: "result" }),
-    ]),
-  );
+  expect(definition.getOutputVariables?.(node) ?? []).toEqual(expect.any(Array));
   expect(definition.validate?.(node, { edges: createInitialEdges(), nodes }) ?? []).toEqual(
     expect.any(Array),
   );
@@ -199,8 +195,8 @@ describe("workflow node catalog", () => {
 
   it("keeps node definitions as the single extension contract", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
-    const schemaNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "message", "tag", "wait"];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "start"];
+    const schemaNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "tag", "wait"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "message", "start"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -350,6 +346,7 @@ describe("workflow node catalog", () => {
           value: { kind: "empty" },
         }),
       ]);
+
   });
 
   it("derives palette nodes from sorted insertable catalog entries", () => {

@@ -171,7 +171,6 @@ function WorkflowWorkspaceContent({
         lastSavedAt={topBar.lastSavedAt}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
-        onOpenVariables={canvas.onOpenVariables}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onRestoreVersion={versionHistory.currentPreviewVersionId
@@ -252,13 +251,11 @@ function WorkflowWorkspaceContent({
 
         {inspector.isOpen && !versionHistory.isPreviewing ? (
           <NodeConfigPanel
-            activeTab={inspector.activeTab}
             edges={inspector.edges}
             node={inspector.node}
+            nodes={inspector.nodes}
             onClose={inspector.onClose}
             onNodeChange={inspector.onNodeChange}
-            onTabChange={inspector.onTabChange}
-            variables={inspector.variables}
           />
         ) : null}
       </div>

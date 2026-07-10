@@ -714,7 +714,7 @@ describe("Agent workflow page", () => {
     expect(within(palette).getByText("未找到匹配节点")).toBeInTheDocument();
   });
 
-  it("opens the variable inspector from the canvas operator", async () => {
+  it("inserts variables from nested context and upstream node menus", async () => {
     const user = setupCanvasUser();
 
     renderWorkflowPage();
@@ -723,10 +723,25 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    await user.click(screen.getByRole("button", { name: "打开变量面板" }));
+    await user.click(within(panel).getByRole("button", { name: "插入变量" }));
+    expect(screen.queryByRole("menuitem", { name: /命中分支名称/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "意向判断" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /命中分支名称/ }));
 
-    expect(panel).toHaveTextContent("输入变量");
-    expect(panel).toHaveTextContent("customer.profile");
+    await waitFor(() => {
+      expect(within(panel).getByText("意向判断.命中分支名称")).toBeInTheDocument();
+    });
+    await user.click(within(panel).getByRole("button", { name: "插入变量" }));
+    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+
+    await waitFor(() => {
+      expect(within(panel).getByText("客户昵称")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toHaveTextContent("{意向判断.命中分支名称} {客户昵称}");
+    });
+    expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });
 
   it("closes and reopens the node config panel from canvas selection", async () => {

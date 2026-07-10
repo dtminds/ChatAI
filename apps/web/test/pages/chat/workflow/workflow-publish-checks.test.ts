@@ -289,6 +289,33 @@ describe("buildPublishChecks", () => {
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
+  it("blocks message content that references an unavailable variable", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const invalidMessageNode: WorkflowNode<"message"> = {
+      ...messageNode,
+      data: {
+        ...messageNode.data,
+        content: [{ selector: ["node", "deleted-node", "result"], type: "variable" }],
+      },
+    };
+
+    expect(validateWorkflowNodeConfig(
+      invalidMessageNode,
+      nodes.map((node) => node.id === invalidMessageNode.id ? invalidMessageNode : node),
+      edges,
+    )).toContainEqual({
+      code: "message-variable-invalid",
+      message: "消息内容引用了不可用变量",
+      severity: "warning",
+      source: "config",
+    });
+  });
+
   it("keeps start summary scoped to start configuration issues", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();

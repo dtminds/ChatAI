@@ -19,7 +19,6 @@ export type WorkflowViewStateAction =
   | { type: "exit-version-preview" }
   | { type: "open-checks" }
   | { type: "open-inspector" }
-  | { type: "open-variables" }
   | { type: "open-version-history" }
   | { type: "select-node"; inspectorOpen: boolean }
   | { type: "select-version-preview"; versionId: string }
@@ -60,12 +59,6 @@ export function reduceWorkflowViewState(
         activePanel: "checks",
       };
     case "open-inspector":
-      return {
-        ...state,
-        activePanel: null,
-        inspectorOpen: true,
-      };
-    case "open-variables":
       return {
         ...state,
         activePanel: null,

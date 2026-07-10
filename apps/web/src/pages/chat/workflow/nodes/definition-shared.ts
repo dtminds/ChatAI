@@ -8,13 +8,11 @@ import {
 } from "../constants";
 import type {
   BranchNodeData,
-  WorkflowNode,
   WorkflowNodeData,
   WorkflowNodeDataMap,
   WorkflowNodeKind,
   WorkflowNodeStatus,
   WorkflowNodeValidationIssue,
-  WorkflowVariable,
 } from "../types";
 import {
   getBranchPathTop,
@@ -132,21 +130,4 @@ export function createDefaultTargetHandles(): WorkflowTargetHandleDefinition[] {
 
 export function createNoTargetHandles(): WorkflowTargetHandleDefinition[] {
   return [];
-}
-
-export function createDefaultOutputVariables<TKind extends WorkflowNodeKind>(
-  node: WorkflowNode<TKind>,
-): WorkflowVariable[] {
-  return [
-    {
-      name: "result",
-      type: "object",
-      value: node.data.metric,
-    },
-    {
-      name: "journey.next",
-      type: "string",
-      value: node.data.kind === "end" ? "退出旅程" : "进入下一节点",
-    },
-  ];
 }

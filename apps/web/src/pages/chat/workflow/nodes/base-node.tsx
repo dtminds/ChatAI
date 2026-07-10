@@ -13,6 +13,7 @@ import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
+  getNodeDefinition,
   nodeVisuals,
 } from "../node-definitions";
 import { getDefaultSourceHandleId } from "../node-handle-definitions";
@@ -33,6 +34,7 @@ function WorkflowBaseNodeComponent({
   targetHandles?: ReactNode;
 }) {
   const visual = nodeVisuals[data.kind];
+  const definition = getNodeDefinition(data.kind);
   const isSelected = Boolean(data.selected);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const nodeCardStyle = {
@@ -49,7 +51,7 @@ function WorkflowBaseNodeComponent({
       <div
         className={cn(
           "workflow-node-card group",
-          data.kind === "branch" && "workflow-node-card-branch",
+          definition.cardClassName,
         )}
         style={nodeCardStyle}
       >

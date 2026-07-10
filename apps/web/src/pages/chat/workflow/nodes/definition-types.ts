@@ -41,6 +41,7 @@ export type WorkflowNodeDefinition = {
   canDelete: boolean;
   canDuplicate: boolean;
   canInsertAfter: boolean;
+  cardClassName?: string;
   configSections: NodeConfigSection[];
   createExecutionConfig: (data: WorkflowNodeData) => Record<string, unknown>;
   createDefaultData: () => WorkflowNodeData;

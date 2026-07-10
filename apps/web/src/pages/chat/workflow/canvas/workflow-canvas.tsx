@@ -42,11 +42,13 @@ import {
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
-import { getInsertableNodeKindsForSource } from "../node-definitions";
+import {
+  getInsertableNodeKindsForSource,
+  nodeVisuals,
+} from "../node-definitions";
 import { WorkflowNodeCard } from "../nodes";
 import type {
   InsertableWorkflowNodeKind,
-  WorkflowNodeData,
   WorkflowRenderEdge,
   WorkflowRenderNode,
 } from "../types";
@@ -276,17 +278,8 @@ function WorkflowMiniMap() {
       className="workflow-minimap"
       maskColor="oklch(from var(--secondary) l c h / 50%)"
       nodeColor={(node) => {
-        const data = node.data as WorkflowNodeData;
-        if (data.kind === "trigger") {
-          return "var(--workflow-minimap-trigger)";
-        }
-        if (data.kind === "ai") {
-          return "var(--workflow-minimap-ai)";
-        }
-        if (data.kind === "goal") {
-          return "var(--workflow-minimap-goal)";
-        }
-        return "var(--workflow-minimap-node)";
+        const kind = (node.data as WorkflowRenderNode["data"]).kind;
+        return `rgb(${nodeVisuals[kind].accentRgb})`;
       }}
       nodeStrokeWidth={3}
       pannable

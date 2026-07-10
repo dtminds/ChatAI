@@ -107,6 +107,7 @@ describe("workflow node catalog", () => {
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.layout).toBe(catalogEntry.layout);
       expect(definition.role).toBe(catalogEntry.role);
+      expect(definition.cardClassName).toBe(catalogEntry.cardClassName);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
       expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
       expect(definition.sanitizeData).toBe(catalogEntry.sanitizeData);
@@ -141,6 +142,52 @@ describe("workflow node catalog", () => {
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
       expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
     }
+  });
+
+  it("keeps node definitions as the single extension contract", () => {
+    const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
+    const schemaNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "wait"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "trigger"];
+
+    expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
+    expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
+    expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
+
+    for (const kind of nodeKinds) {
+      const definition = workflowNodeCatalog[kind];
+      const defaultData = definition.createDefaultData();
+
+      expect(defaultData.kind).toBe(kind);
+      expect(definition.visual.accentClassName).toBeTruthy();
+      expect(definition.visual.accentRgb).toMatch(/^\d+ \d+ \d+$/);
+      expect(definition.visual.icon).toBeTruthy();
+      expect(definition.getSourceHandles(defaultData)).toEqual(expect.any(Array));
+      expect(definition.getTargetHandles(defaultData)).toEqual(expect.any(Array));
+      expect(definition.createExecutionConfig(defaultData)).toEqual(expect.any(Object));
+
+      if (definition.insertable) {
+        expect(definition.paletteGroup).toBeTruthy();
+        expect(definition.paletteLabel).toBeTruthy();
+        expect(insertableNodeKinds).toContain(kind);
+      }
+      else {
+        expect(insertableNodeKinds).not.toContain(kind);
+      }
+    }
+
+    for (const kind of schemaNodeKinds) {
+      expect(workflowNodeUiRegistry[kind].settings).toEqual(expect.objectContaining({
+        kind: "schema",
+        nodeKind: kind,
+      }));
+    }
+
+    for (const kind of customNodeKinds) {
+      expect(workflowNodeUiRegistry[kind].settings.kind).toBe("custom");
+    }
+
+    expect(workflowNodeCatalog.branch.cardClassName).toBe("workflow-node-card-branch");
+    expect(workflowNodeCatalog.action.cardClassName).toBeUndefined();
   });
 
   it("uses registered node kinds at import and clipboard boundaries", () => {

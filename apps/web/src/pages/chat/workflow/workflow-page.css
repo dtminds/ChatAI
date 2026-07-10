@@ -17,10 +17,6 @@
   --workflow-param-bg: #f5f7fb;
   --workflow-text-tertiary: #667085;
   --workflow-blue: #528bff;
-  --workflow-minimap-trigger: #fb7185;
-  --workflow-minimap-ai: #8b5cf6;
-  --workflow-minimap-goal: #10b981;
-  --workflow-minimap-node: #64748b;
 }
 
 .workflow-page .react-flow {

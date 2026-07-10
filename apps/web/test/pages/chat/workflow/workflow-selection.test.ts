@@ -14,8 +14,8 @@ import {
 
 describe("workflow selection", () => {
   it("keeps edge selection exclusive from node selection", () => {
-    expect(selectWorkflowEdge("edge-wait-2d-goal")).toEqual({
-      selectedEdgeId: "edge-wait-2d-goal",
+    expect(selectWorkflowEdge("edge-wait-2d-end")).toEqual({
+      selectedEdgeId: "edge-wait-2d-end",
       selectedNodeIds: [],
     });
     expect(selectWorkflowNodes(["wait-2d", "wait-2d", "branch-intent"])).toEqual({
@@ -23,7 +23,7 @@ describe("workflow selection", () => {
       selectedNodeIds: ["wait-2d", "branch-intent"],
     });
     expect(toggleWorkflowNodeSelection({
-      selectedEdgeId: "edge-wait-2d-goal",
+      selectedEdgeId: "edge-wait-2d-end",
       selectedNodeIds: [],
     }, "wait-2d")).toEqual({
       selectedEdgeId: null,
@@ -34,38 +34,38 @@ describe("workflow selection", () => {
   it("normalizes stale selection against the current graph", () => {
     const nodes = createInitialNodes();
     const edges = [
-      createEdge("trigger", "wait-2d"),
-      createEdge("wait-2d", "goal"),
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
     ];
 
     expect(normalizeWorkflowSelection({
-      defaultNodeId: "action-message",
+      defaultNodeId: "message-welcome",
       edges,
       nodes,
       selection: {
-        selectedEdgeId: "edge-wait-2d-goal",
-        selectedNodeIds: ["trigger"],
+        selectedEdgeId: "edge-wait-2d-end",
+        selectedNodeIds: ["start"],
       },
     })).toEqual({
-      selectedEdgeId: "edge-wait-2d-goal",
+      selectedEdgeId: "edge-wait-2d-end",
       selectedNodeIds: [],
     });
 
     expect(normalizeWorkflowSelection({
-      defaultNodeId: "action-message",
+      defaultNodeId: "message-welcome",
       edges: createInitialEdges(),
-      nodes: nodes.filter((node) => node.id !== "action-message"),
+      nodes: nodes.filter((node) => node.id !== "message-welcome"),
       selection: {
         selectedEdgeId: null,
-        selectedNodeIds: ["action-message"],
+        selectedNodeIds: ["message-welcome"],
       },
     })).toEqual({
       selectedEdgeId: null,
-      selectedNodeIds: ["trigger"],
+      selectedNodeIds: ["start"],
     });
 
     expect(normalizeWorkflowSelection({
-      defaultNodeId: "action-message",
+      defaultNodeId: "message-welcome",
       edges,
       nodes,
       selection: {
@@ -80,10 +80,10 @@ describe("workflow selection", () => {
 
   it("resolves delete target with edge priority", () => {
     expect(resolveWorkflowSelectionDeleteTarget({
-      selectedEdgeId: "edge-wait-2d-goal",
+      selectedEdgeId: "edge-wait-2d-end",
       selectedNodeIds: ["wait-2d"],
     })).toEqual({
-      edgeId: "edge-wait-2d-goal",
+      edgeId: "edge-wait-2d-end",
       type: "edge",
     });
     expect(resolveWorkflowSelectionDeleteTarget({

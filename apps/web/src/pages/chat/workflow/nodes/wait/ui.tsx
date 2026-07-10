@@ -1,4 +1,3 @@
-import { StandardNodeBody } from "../node-bodies";
 import type { WorkflowNodeUiBinding } from "../ui-types";
 
 const waitHelp = () => (
@@ -8,7 +7,23 @@ const waitHelp = () => (
 );
 
 export const waitNodeUi: WorkflowNodeUiBinding<"wait"> = {
-  body: StandardNodeBody,
+  body: {
+    getFields: (data) => [
+      {
+        id: "duration",
+        label: "等待时间",
+        value: data.delayDays === undefined
+          ? { kind: "empty" }
+          : {
+              kind: "text",
+              text: data.delayDays === 0
+                ? "立即执行后续节点"
+                : `${data.delayDays} 天后，执行后续节点`,
+            },
+      },
+    ],
+    kind: "fields",
+  },
   settings: {
     after: waitHelp,
     kind: "schema",

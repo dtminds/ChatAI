@@ -21,6 +21,7 @@ import {
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
   canInsertNodeKind,
+  canRenameNodeKind,
   getNodeDefinitionCore,
 } from "./node-definition-core";
 import {
@@ -657,7 +658,11 @@ export function updateNodeDataOperation(
     return undefined;
   }
 
-  const nextData = createUpdatedNodeData(node.data, sanitizeNodeConfigPatch(patch));
+  const sanitizedPatch = sanitizeNodeConfigPatch(patch);
+  const allowedPatch = canRenameNodeKind(node.data.kind)
+    ? sanitizedPatch
+    : omitNodeTitlePatch(sanitizedPatch);
+  const nextData = createUpdatedNodeData(node.data, allowedPatch);
   const nextDraft = {
     ...draft,
     edges: reconcileSourceHandleEdges(draft.edges, nodeId, nextData),
@@ -678,6 +683,60 @@ export function updateNodeDataOperation(
   return finalizeWorkflowGraphOperation({
     draft: nextDraft,
     event: "node:config-change",
+    meta: {
+      nodeId,
+      nodeTitle: node.data.title,
+    },
+    result: { nodeId },
+  });
+}
+
+function omitNodeTitlePatch<TKind extends WorkflowNodeKind>(
+  patch: WorkflowNodeConfigPatch<TKind>,
+): WorkflowNodeConfigPatch<TKind> {
+  const {
+    title: _ignoredTitle,
+    ...allowedPatch
+  } = patch;
+
+  return allowedPatch as WorkflowNodeConfigPatch<TKind>;
+}
+
+export function renameNodeOperation(
+  draft: WorkflowDraft,
+  nodeId: string,
+  title: string,
+): WorkflowGraphOperation | undefined {
+  const node = draft.nodes.find((currentNode) => currentNode.id === nodeId);
+  const normalizedTitle = title.trim();
+
+  if (
+    !node
+    || !canRenameNodeKind(node.data.kind)
+    || !normalizedTitle
+    || normalizedTitle === node.data.title
+  ) {
+    return undefined;
+  }
+
+  const nextDraft = {
+    ...draft,
+    nodes: draft.nodes.map((currentNode) =>
+      currentNode.id === nodeId
+        ? {
+            ...currentNode,
+            data: {
+              ...currentNode.data,
+              title: normalizedTitle,
+            },
+          }
+        : currentNode,
+    ),
+  };
+
+  return finalizeWorkflowGraphOperation({
+    draft: nextDraft,
+    event: "node:rename",
     meta: {
       nodeId,
       nodeTitle: node.data.title,

@@ -18,6 +18,7 @@ import type {
   WorkflowDraft,
 } from "./types";
 import { useWorkflowController } from "./use-workflow-controller";
+import { hasNodeSettings } from "./node-definitions";
 import { useWorkflowRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
@@ -137,8 +138,9 @@ export function useWorkflowWorkspace(
     }
 
     selectNode(nodeId);
+    const node = controller.nodes.find((candidate) => candidate.id === nodeId);
     dispatchViewState({
-      inspectorOpen: !isPreviewingVersion,
+      inspectorOpen: Boolean(node && hasNodeSettings(node.data.kind) && !isPreviewingVersion),
       type: "select-node",
     });
     closeCanvasOverlays();
@@ -322,6 +324,17 @@ export function useWorkflowWorkspace(
     handleWorkflowEditResult(result);
   });
 
+  const handleRenameNode = useWorkflowStableCallback((nodeId: string, title: string) => {
+    if (!permissions.canEditGraph) {
+      return;
+    }
+
+    const result = controller.renameNode(nodeId, title);
+    commitWorkflowEditResult(result, {
+      closeOverlays: false,
+    });
+  });
+
   const handleDeleteEdge = useWorkflowStableCallback((edgeId: string) => {
     if (!permissions.canEditGraph) {
       return;
@@ -359,6 +372,7 @@ export function useWorkflowWorkspace(
     onDuplicateNode: handleDuplicateNode,
     onInsertNodeAfter: handleInsertNodeAfter,
     onInsertNodeBetween: handleInsertNodeBetween,
+    onRenameNode: handleRenameNode,
     onSelectNode: selectWorkflowNode,
     onToggleNodeSelection: toggleNodeSelection,
     onToggleEdgeInsertMenu: toggleEdgeInsertMenu,

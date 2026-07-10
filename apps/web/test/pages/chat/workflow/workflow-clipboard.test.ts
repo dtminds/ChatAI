@@ -48,8 +48,8 @@ describe("workflow clipboard", () => {
   it("copies copyable nodes with only internal edges and sanitized runtime state", () => {
     const draft = createDraft();
     const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
-    const action = draft.nodes.find((node) => node.id === "action-message")!;
-    const lowAction = createNodeFromKind("action", "action-low", 10);
+    const message = draft.nodes.find((node) => node.id === "message-welcome")!;
+    const lowAction = createNodeFromKind("message", "message-low", 10);
     const branchPaths = [
       { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
       { id: "branch-low", label: "低意向客户", operator: "ELIF", title: "CASE 2" },
@@ -59,13 +59,13 @@ describe("workflow clipboard", () => {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "action-low", "低意向", {
+        createEdge("branch-intent", "message-low", "低意向", {
           sourceHandle: "branch-low",
         }),
       ],
       nodes: [
         ...draft.nodes.map((node) =>
-          node.id === "action-message"
+          node.id === "message-welcome"
             ? {
                 ...node,
                 data: {
@@ -88,25 +88,25 @@ describe("workflow clipboard", () => {
         ),
         lowAction,
       ],
-    }, [branch.id, action.id, lowAction.id]);
+    }, [branch.id, message.id, lowAction.id]);
 
-    expect(clipboardData?.nodes.map((node) => node.id)).toEqual(["branch-intent", "action-message", "action-low"]);
+    expect(clipboardData?.nodes.map((node) => node.id)).toEqual(["branch-intent", "message-welcome", "message-low"]);
     expect(clipboardData?.edges).toHaveLength(2);
-    expect(clipboardData?.nodes.find((node) => node.id === "action-message")?.selected).toBe(false);
-    expect(clipboardData?.nodes.find((node) => node.id === "action-message")?.zIndex).toBeUndefined();
-    expect(clipboardData?.nodes.find((node) => node.id === "action-message")?.data.onDelete).toBeUndefined();
-    expect(createWorkflowClipboardData(draft, ["trigger"])).toBeUndefined();
+    expect(clipboardData?.nodes.find((node) => node.id === "message-welcome")?.selected).toBe(false);
+    expect(clipboardData?.nodes.find((node) => node.id === "message-welcome")?.zIndex).toBeUndefined();
+    expect(clipboardData?.nodes.find((node) => node.id === "message-welcome")?.data.onDelete).toBeUndefined();
+    expect(createWorkflowClipboardData(draft, ["start"])).toBeUndefined();
   });
 
   it("round-trips valid clipboard payloads and filters invalid edges", () => {
-    const clipboardData = createWorkflowClipboardData(createDraft(), ["action-message"])!;
+    const clipboardData = createWorkflowClipboardData(createDraft(), ["message-welcome"])!;
     const text = stringifyWorkflowClipboardData({
       edges: [
         ...clipboardData.edges,
         {
           id: "edge-missing",
           source: "missing",
-          target: "action-message",
+          target: "message-welcome",
           type: "legacy-edge-type" as typeof WORKFLOW_EDGE_TYPE,
         },
       ],
@@ -121,8 +121,8 @@ describe("workflow clipboard", () => {
     expect(parsed?.edges).toHaveLength(0);
     expect(parseWorkflowClipboardText("not-json")).toBeUndefined();
     expect(isClipboardNodeStructurallyValid({
-      data: { kind: "action" },
-      id: "action",
+      data: { kind: "message" },
+      id: "message",
       position: { x: Number.NaN, y: 0 },
       type: "legacy-node-type",
     })).toBe(false);
@@ -130,35 +130,35 @@ describe("workflow clipboard", () => {
 
   it("hydrates clipboard payloads through the draft normalizer", () => {
     const draft = createDraft();
-    const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const message = draft.nodes.find((node) => node.id === "message-welcome")!;
     const hydrated = hydrateWorkflowClipboardData({
       edges: [
         {
-          id: "edge-action-message-action-message",
-          source: "action-message",
-          target: "action-message",
+          id: "edge-message-welcome-message-welcome",
+          source: "message-welcome",
+          target: "message-welcome",
           type: "legacy-edge-type" as typeof WORKFLOW_EDGE_TYPE,
         },
         {
-          id: "edge-action-message-action-message",
-          source: "action-message",
-          target: "action-message",
+          id: "edge-message-welcome-message-welcome",
+          source: "message-welcome",
+          target: "message-welcome",
           type: WORKFLOW_EDGE_TYPE,
         },
         {
           id: "edge-missing",
           source: "missing",
-          target: "action-message",
+          target: "message-welcome",
           type: WORKFLOW_EDGE_TYPE,
         },
       ],
       nodes: [
         {
-          ...action,
+          ...message,
           data: {
-            kind: "action",
+            kind: "message",
             title: "外部动作",
-          } as typeof action.data,
+          } as typeof message.data,
           selected: true,
           type: "legacy-node-type" as typeof WORKFLOW_NODE_TYPE,
           zIndex: 99,
@@ -173,7 +173,7 @@ describe("workflow clipboard", () => {
       zIndex: undefined,
     }));
     expect(hydrated.nodes[0].data).toEqual(expect.objectContaining({
-      kind: "action",
+      kind: "message",
       metric: expect.any(String),
       status: expect.any(String),
       summary: expect.any(String),
@@ -182,47 +182,19 @@ describe("workflow clipboard", () => {
     expect(hydrated.edges).toHaveLength(0);
   });
 
-  it("accepts legacy clipboard kind, node types, and edge types before normalizing data", () => {
-    const draft = createDraft();
-    const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
-    const action = draft.nodes.find((node) => node.id === "action-message")!;
+  it("rejects clipboard payloads from an unsupported product kind", () => {
     const parsed = parseWorkflowClipboardText(JSON.stringify({
-      edges: [
-        {
-          id: "edge-legacy",
-          source: "branch-intent",
-          sourceHandle: "branch-high",
-          target: "action-message",
-          type: "legacy-edge-type",
-        },
-      ],
-      kind: "chatai-marketing-workflow-clipboard",
-      nodes: [
-        {
-          ...branch,
-          type: "legacy-node-type",
-        },
-        {
-          ...action,
-          type: "legacy-node-type",
-        },
-      ],
+      edges: [],
+      kind: "unsupported-workflow-clipboard",
+      nodes: [],
       version: 1,
     }));
 
-    expect(parsed?.nodes.map((node) => node.type)).toEqual([WORKFLOW_NODE_TYPE, WORKFLOW_NODE_TYPE]);
-    expect(parsed?.edges).toEqual([
-      expect.objectContaining({
-        source: "branch-intent",
-        sourceHandle: "branch-high",
-        target: "action-message",
-        type: WORKFLOW_EDGE_TYPE,
-      }),
-    ]);
+    expect(parsed).toBeUndefined();
   });
 
   it("reads and writes workflow data through the system clipboard without leaking permission errors", async () => {
-    const clipboardData = createWorkflowClipboardData(createDraft(), ["action-message"])!;
+    const clipboardData = createWorkflowClipboardData(createDraft(), ["message-welcome"])!;
     const clipboardText = stringifyWorkflowClipboardData(clipboardData);
     const writeText = vi.fn().mockResolvedValue(undefined);
     const readText = vi.fn().mockResolvedValue(clipboardText);
@@ -249,7 +221,7 @@ describe("workflow clipboard", () => {
 
   it("pastes copyable nodes with remapped ids, offset positions, unique titles, and internal edges", () => {
     const draft = createDraft();
-    const clipboardData = createWorkflowClipboardData(draft, ["branch-intent", "action-message"])!;
+    const clipboardData = createWorkflowClipboardData(draft, ["branch-intent", "message-welcome"])!;
     const operation = pasteWorkflowClipboardData(draft, clipboardData, {
       nodeIdFactory: (kind, index) => `${kind}-paste-${index}`,
     });
@@ -258,7 +230,7 @@ describe("workflow clipboard", () => {
     expect(operation?.result).toEqual({ nodeId: "branch-paste-0" });
 
     const pastedBranch = operation?.draft.nodes.find((node) => node.id === "branch-paste-0");
-    const pastedAction = operation?.draft.nodes.find((node) => node.id === "action-paste-1");
+    const pastedAction = operation?.draft.nodes.find((node) => node.id === "message-paste-1");
     const sourceBranch = draft.nodes.find((node) => node.id === "branch-intent")!;
 
     expect(pastedBranch?.position).toEqual({
@@ -271,49 +243,49 @@ describe("workflow clipboard", () => {
       expect.objectContaining({
         source: "branch-paste-0",
         sourceHandle: "branch-high",
-        target: "action-paste-1",
+        target: "message-paste-1",
       }),
     ]));
   });
 
   it("keeps pasted node ids unique when the id factory returns an existing id", () => {
     const draft = createDraft();
-    const clipboardData = createWorkflowClipboardData(draft, ["action-message"])!;
+    const clipboardData = createWorkflowClipboardData(draft, ["message-welcome"])!;
     const operation = pasteWorkflowClipboardData(draft, clipboardData, {
-      nodeIdFactory: () => "action-message",
+      nodeIdFactory: () => "message-welcome",
     });
 
-    expect(operation?.result).toEqual({ nodeId: "action-message-1" });
-    expect(operation?.draft.nodes.some((node) => node.id === "action-message-1")).toBe(true);
+    expect(operation?.result).toEqual({ nodeId: "message-welcome-1" });
+    expect(operation?.draft.nodes.some((node) => node.id === "message-welcome-1")).toBe(true);
   });
 
   it("returns a canonical draft when pasting into a target graph with invalid edges", () => {
     const draft = createDraft();
     const branch = draft.nodes.find((node) => node.id === "branch-intent")!;
-    const action = draft.nodes.find((node) => node.id === "action-message")!;
+    const message = draft.nodes.find((node) => node.id === "message-welcome")!;
     const operation = pasteWorkflowClipboardData({
       ...draft,
       edges: [
         ...draft.edges,
         {
-          ...createEdge("missing-node", "goal"),
-          id: "edge-missing-node-goal",
+          ...createEdge("missing-node", "end"),
+          id: "edge-missing-node-end",
         },
       ],
     }, {
       edges: [
-        createEdge("branch-intent", "action-message", "高意向", {
+        createEdge("branch-intent", "message-welcome", "高意向", {
           sourceHandle: "branch-high",
         }),
       ],
-      nodes: [branch, action],
+      nodes: [branch, message],
     }, {
       nodeIdFactory: (kind, index) => `${kind}-paste-${index}`,
       offset: { x: 0, y: 0 },
     });
 
     expect(operation?.draft.nodes.some((node) => node.id === "branch-paste-0")).toBe(true);
-    expect(operation?.draft.nodes.some((node) => node.id === "action-paste-1")).toBe(true);
-    expect(operation?.draft.edges.some((edge) => edge.id === "edge-missing-node-goal")).toBe(false);
+    expect(operation?.draft.nodes.some((node) => node.id === "message-paste-1")).toBe(true);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-missing-node-end")).toBe(false);
   });
 });

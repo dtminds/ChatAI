@@ -190,6 +190,7 @@ function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
     onSelect: _onSelect,
     onToggleInsertMenu: _onToggleInsertMenu,
     selected: _selected,
+    kind: _kind,
     ...rawPersistableData
   } = data;
   const persistableData = sanitizePersistableDataRecord(rawPersistableData);

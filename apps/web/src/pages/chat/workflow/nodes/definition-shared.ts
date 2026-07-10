@@ -1,8 +1,10 @@
 import {
   WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_BRANCH_NODE_WIDTH,
+  WORKFLOW_COMPACT_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_WIDTH,
+  WORKFLOW_TERMINAL_NODE_ESTIMATED_HEIGHT,
 } from "../constants";
 import type {
   BranchNodeData,
@@ -31,11 +33,37 @@ type NodeDataInput<TKind extends WorkflowNodeKind> = Omit<
   status?: WorkflowNodeStatus;
 };
 
-export const sourceNodeKinds: WorkflowNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
-export const targetNodeKinds: WorkflowNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
+export const sourceNodeKinds: WorkflowNodeKind[] = [
+  "start",
+  "wait",
+  "branch",
+  "message",
+  "tag",
+  "coupon",
+  "handoff",
+];
+export const targetNodeKinds: WorkflowNodeKind[] = [
+  "wait",
+  "branch",
+  "message",
+  "tag",
+  "coupon",
+  "handoff",
+  "end",
+];
 
 export const standardNodeLayout: WorkflowNodeLayoutMetrics = {
   estimatedHeight: WORKFLOW_NODE_ESTIMATED_HEIGHT,
+  width: WORKFLOW_NODE_WIDTH,
+};
+
+export const compactNodeLayout: WorkflowNodeLayoutMetrics = {
+  estimatedHeight: WORKFLOW_COMPACT_NODE_ESTIMATED_HEIGHT,
+  width: WORKFLOW_NODE_WIDTH,
+};
+
+export const terminalNodeLayout: WorkflowNodeLayoutMetrics = {
+  estimatedHeight: WORKFLOW_TERMINAL_NODE_ESTIMATED_HEIGHT,
   width: WORKFLOW_NODE_WIDTH,
 };
 
@@ -99,7 +127,7 @@ export function createBranchSourceHandles(
 }
 
 export function createDefaultTargetHandles(): WorkflowTargetHandleDefinition[] {
-  return [{}];
+  return [{ maxConnections: Number.POSITIVE_INFINITY }];
 }
 
 export function createNoTargetHandles(): WorkflowTargetHandleDefinition[] {
@@ -118,7 +146,7 @@ export function createDefaultOutputVariables<TKind extends WorkflowNodeKind>(
     {
       name: "journey.next",
       type: "string",
-      value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
+      value: node.data.kind === "end" ? "退出旅程" : "进入下一节点",
     },
   ];
 }

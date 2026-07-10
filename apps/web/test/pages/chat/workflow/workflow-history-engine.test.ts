@@ -23,7 +23,7 @@ function createDraft(
 ): WorkflowDraft {
   const node: WorkflowNode = {
     data: {
-      ...createDefaultNodeData("action"),
+      ...createDefaultNodeData("message"),
       insertMenuOpen: true,
       label: "营销动作",
       metric: "已发送",
@@ -37,7 +37,7 @@ function createDraft(
       summary: "发送消息",
       title: `发送消息 ${index}`,
     },
-    id: "action-message",
+    id: "message-welcome",
     position: { x: index, y: 0 },
     selected: true,
     type: WORKFLOW_NODE_TYPE,
@@ -53,8 +53,8 @@ function createDraft(
     },
     id: "edge-1",
     selected: true,
-    source: "action-message",
-    target: "goal",
+    source: "message-welcome",
+    target: "end",
     type: WORKFLOW_EDGE_TYPE,
   };
 
@@ -231,6 +231,7 @@ describe("workflowHistoryReducer", () => {
   it("maps history events to stable user-facing labels", () => {
     expect(getWorkflowHistoryEventLabel("node:move")).toBe("移动节点");
     expect(getWorkflowHistoryEventLabel("node:config-change")).toBe("修改节点配置");
+    expect(getWorkflowHistoryEventLabel("node:rename")).toBe("修改节点名称");
     expect(getWorkflowHistoryEventLabel("edge:connect")).toBe("连接节点");
   });
 });

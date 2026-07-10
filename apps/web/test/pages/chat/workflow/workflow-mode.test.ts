@@ -58,7 +58,7 @@ describe("deriveWorkflowMode", () => {
     expect(readOnlyState.readOnlyReason).toBe("permission-denied");
     expect(readOnlyState.permissions.canEditGraph).toBe(false);
     expect(readOnlyState.permissions.nodesReadOnly).toBe(true);
-    expect(readOnlyState.permissions.canvasReadOnly).toBe(false);
+    expect(readOnlyState.permissions.canvasReadOnly).toBe(true);
   });
 
   it("keeps version snapshots read-only before publishing state", () => {

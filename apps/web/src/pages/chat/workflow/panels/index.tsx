@@ -37,6 +37,10 @@ export function NodeConfigPanel({
     );
   }
 
+  if (!getNodeDefinition(node.data.kind).settings) {
+    return null;
+  }
+
   return (
     <BasePanel
       activeTab={activeTab}
@@ -54,6 +58,10 @@ export function NodeConfigPanel({
 
 function NodeSettingsForm({ edges, node, onNodeChange }: NodeSettingsProps) {
   const SettingsPanel = getNodeDefinition(node.data.kind).settings;
+
+  if (!SettingsPanel) {
+    return null;
+  }
 
   return <SettingsPanel edges={edges} node={node} onNodeChange={onNodeChange} />;
 }

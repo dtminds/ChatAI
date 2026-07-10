@@ -2,24 +2,24 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
-import { TriggerConfig } from "@/pages/chat/workflow/nodes/trigger/panel";
+import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 
-function createTriggerNode(): WorkflowNode<"trigger"> {
+function createStartNode(): WorkflowNode<"start"> {
   return {
-    data: createDefaultNodeData("trigger"),
-    id: "trigger",
+    data: createDefaultNodeData("start"),
+    id: "start",
     position: { x: 0, y: 0 },
     type: WORKFLOW_NODE_TYPE,
   };
 }
 
-describe("TriggerConfig", () => {
+describe("StartConfig", () => {
   it("renders the custom start node settings sections", () => {
     render(
-      <TriggerConfig
+      <StartConfig
         edges={[]}
-        node={createTriggerNode()}
+        node={createStartNode()}
         onNodeChange={vi.fn()}
       />,
     );

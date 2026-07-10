@@ -25,6 +25,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   canDelete: true,
   canDuplicate: true,
   canInsertAfter: true,
+  canRename: true,
   cardClassName: "workflow-node-card-branch",
   configSections: [
     {

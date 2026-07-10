@@ -24,7 +24,7 @@ describe("BranchConfig", () => {
     render(
       <BranchConfig
         edges={[
-          createEdge("branch-intent", "action-message", "高意向客户", {
+          createEdge("branch-intent", "message-welcome", "高意向客户", {
             sourceHandle: "branch-high",
           }),
         ]}

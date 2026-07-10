@@ -2,6 +2,7 @@ import type { Connection } from "@xyflow/react";
 import { getNodeDefinitionCore } from "./node-definition-core";
 import {
   getWorkflowHandleKey,
+  getNodeTargetHandleConnectionCapacity,
   isWorkflowHandleIdEqual,
 } from "./node-handle-definitions";
 import type {
@@ -98,7 +99,7 @@ export function getWorkflowConnectionPolicyViolation(
     return "source-handle-occupied";
   }
 
-  if (hasTargetHandleConnection(edges, target, targetHandle)) {
+  if (hasTargetHandleReachedCapacity(edges, targetNode, targetHandle)) {
     return "target-handle-occupied";
   }
 
@@ -161,17 +162,18 @@ function hasSourceHandleConnection(
   );
 }
 
-function hasTargetHandleConnection(
+function hasTargetHandleReachedCapacity(
   edges: WorkflowEdge[],
-  target: string,
+  targetNode: WorkflowNode,
   targetHandle: string | null | undefined,
 ) {
   const targetHandleKey = getWorkflowHandleKey(targetHandle);
+  const capacity = getNodeTargetHandleConnectionCapacity(targetNode.data, targetHandle);
 
-  return edges.some((edge) =>
-    edge.target === target
-    && getWorkflowHandleKey(edge.targetHandle) === targetHandleKey,
-  );
+  return edges.filter((edge) =>
+    edge.target === targetNode.id
+      && getWorkflowHandleKey(edge.targetHandle) === targetHandleKey,
+  ).length >= capacity;
 }
 
 function hasPathToNode(

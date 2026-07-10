@@ -12,7 +12,7 @@ describe("useWorkflowSelectionState", () => {
     const { rerender, result } = renderHook(
       ({ nodes }) =>
         useWorkflowSelectionState({
-          defaultNodeId: "action-message",
+          defaultNodeId: "message-welcome",
           edges: [],
           nodes,
         }),
@@ -21,66 +21,66 @@ describe("useWorkflowSelectionState", () => {
       },
     );
 
-    expect(result.current.selectedNodeId).toBe("action-message");
+    expect(result.current.selectedNodeId).toBe("message-welcome");
 
-    rerender({ nodes: initialNodes.filter((node) => node.id !== "action-message") });
+    rerender({ nodes: initialNodes.filter((node) => node.id !== "message-welcome") });
 
-    expect(result.current.selectedNodeId).toBe("trigger");
-    expect(result.current.selectedNode?.id).toBe("trigger");
+    expect(result.current.selectedNodeId).toBe("start");
+    expect(result.current.selectedNode?.id).toBe("start");
   });
 
   it("tracks selected edges and hovered connected edges", () => {
     const edges = [
-      createEdge("trigger", "wait-2d"),
-      createEdge("wait-2d", "goal"),
-      createEdge("branch-intent", "goal"),
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
+      createEdge("branch-intent", "end"),
     ];
     const { result } = renderHook(() =>
       useWorkflowSelectionState({
-        defaultNodeId: "action-message",
+        defaultNodeId: "message-welcome",
         edges,
         nodes: createInitialNodes(),
       }),
     );
 
     act(() => {
-      result.current.selectEdge("edge-wait-2d-goal");
+      result.current.selectEdge("edge-wait-2d-end");
       result.current.handleNodeHoverStart("wait-2d");
     });
 
-    expect(result.current.selectedEdgeId).toBe("edge-wait-2d-goal");
+    expect(result.current.selectedEdgeId).toBe("edge-wait-2d-end");
     expect(result.current.selectedNodeId).toBeNull();
     expect(result.current.selectedNode).toBeUndefined();
     expect(result.current.selectionDeleteTarget).toEqual({
-      edgeId: "edge-wait-2d-goal",
+      edgeId: "edge-wait-2d-end",
       type: "edge",
     });
     expect(Array.from(result.current.hoveredEdgeIds ?? [])).toEqual([
-      "edge-trigger-wait-2d",
-      "edge-wait-2d-goal",
+      "edge-start-wait-2d",
+      "edge-wait-2d-end",
     ]);
 
     act(() => {
-      result.current.selectNode("trigger");
+      result.current.selectNode("start");
     });
 
-    expect(result.current.selectedNodeId).toBe("trigger");
+    expect(result.current.selectedNodeId).toBe("start");
     expect(result.current.selectedEdgeId).toBeNull();
     expect(result.current.selectionDeleteTarget).toEqual({
-      nodeIds: ["trigger"],
+      nodeIds: ["start"],
       type: "nodes",
     });
   });
 
   it("clears stale edge selection when the edge no longer exists", () => {
     const initialEdges = [
-      createEdge("trigger", "wait-2d"),
-      createEdge("wait-2d", "goal"),
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
     ];
     const { rerender, result } = renderHook(
       ({ edges }) =>
         useWorkflowSelectionState({
-          defaultNodeId: "action-message",
+          defaultNodeId: "message-welcome",
           edges,
           nodes: createInitialNodes(),
         }),
@@ -90,12 +90,12 @@ describe("useWorkflowSelectionState", () => {
     );
 
     act(() => {
-      result.current.selectEdge("edge-wait-2d-goal");
+      result.current.selectEdge("edge-wait-2d-end");
     });
 
-    expect(result.current.selectedEdgeId).toBe("edge-wait-2d-goal");
+    expect(result.current.selectedEdgeId).toBe("edge-wait-2d-end");
 
-    rerender({ edges: [createEdge("trigger", "wait-2d")] });
+    rerender({ edges: [createEdge("start", "wait-2d")] });
 
     expect(result.current.selectedEdgeId).toBeNull();
     expect(result.current.selectedNodeIds).toEqual([]);
@@ -105,7 +105,7 @@ describe("useWorkflowSelectionState", () => {
   it("tracks multiple selected nodes without exposing a single inspector node", () => {
     const { result } = renderHook(() =>
       useWorkflowSelectionState({
-        defaultNodeId: "action-message",
+        defaultNodeId: "message-welcome",
         edges: [],
         nodes: createInitialNodes(),
       }),
@@ -125,7 +125,7 @@ describe("useWorkflowSelectionState", () => {
   it("toggles individual nodes for modifier-click multi selection", () => {
     const { result } = renderHook(() =>
       useWorkflowSelectionState({
-        defaultNodeId: "action-message",
+        defaultNodeId: "message-welcome",
         edges: [],
         nodes: createInitialNodes(),
       }),
@@ -133,7 +133,7 @@ describe("useWorkflowSelectionState", () => {
 
     act(() => {
       result.current.toggleNodeSelection("wait-2d");
-      result.current.toggleNodeSelection("action-message");
+      result.current.toggleNodeSelection("message-welcome");
     });
 
     expect(result.current.selectedNodeIds).toEqual(["wait-2d"]);

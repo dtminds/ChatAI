@@ -1,4 +1,4 @@
-import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
+import { hydrateWorkflowDraft, sanitizeDraft } from "./workflow-draft-normalizer";
 import {
   createWorkflowNodeExecutionConfig,
   findWorkflowEntryNode,
@@ -13,11 +13,16 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./types";
+import {
+  validateWorkflowGraph,
+  type WorkflowGraphValidationIssue,
+} from "./validation/workflow-graph-validation";
 
 export const WORKFLOW_DSL_KIND = "chatai-workflow";
 export const WORKFLOW_DSL_SCHEMA_VERSION = 1;
-export const SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS = [1] as const;
-const LEGACY_WORKFLOW_DSL_KINDS = ["chatai-marketing-workflow"] as const;
+export const SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS = [WORKFLOW_DSL_SCHEMA_VERSION] as const;
+
+export type WorkflowDslSchemaVersion = (typeof SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS)[number];
 
 export type WorkflowDslDocument = {
   exportedAt: string;
@@ -37,6 +42,7 @@ export type WorkflowDslDocument = {
 };
 
 export type WorkflowExecutionGraph = {
+  diagnostics: WorkflowGraphValidationIssue[];
   edges: WorkflowExecutionEdge[];
   entryNodeId: string | null;
   incoming: Record<string, string[]>;
@@ -49,6 +55,7 @@ export type WorkflowExecutionGraph = {
 export type WorkflowExecutionNode = {
   config: Record<string, unknown>;
   id: string;
+  incomingMode: "any" | "none";
   kind: WorkflowNode["data"]["kind"];
 };
 
@@ -69,21 +76,16 @@ export type WorkflowDslParseIssue = {
     | "invalid-json"
     | "invalid-kind"
     | "invalid-schema-version"
-    | "legacy-graph-format"
     | "missing-draft"
     | "normalized-viewport";
   message: string;
 };
 
-export type WorkflowDslSourceFormat = "draft" | "graph";
-
 export type WorkflowDslParseResult =
   | {
     document: WorkflowDslDocument;
     draft: WorkflowDraft;
-    importedSchemaVersion: number;
     ok: true;
-    sourceFormat: WorkflowDslSourceFormat;
     warnings: WorkflowDslParseIssue[];
   }
   | {
@@ -98,7 +100,6 @@ type UnknownDslDocument = Partial<{
   schemaVersion: unknown;
   workflow: Partial<{
     draft: unknown;
-    graph: unknown;
     id: unknown;
     name: unknown;
     revision: unknown;
@@ -118,7 +119,7 @@ export function createWorkflowDslDocument({
   workflowName: string;
   workflowRevision?: number;
 }): WorkflowDslDocument {
-  const canonicalDraft = canonicalizeWorkflowDraft(draft);
+  const sanitizedDraft = sanitizeDraft(draft);
 
   return {
     exportedAt,
@@ -129,8 +130,8 @@ export function createWorkflowDslDocument({
     },
     schemaVersion: WORKFLOW_DSL_SCHEMA_VERSION,
     workflow: {
-      draft: canonicalDraft,
-      executionGraph: createWorkflowExecutionGraph(canonicalDraft),
+      draft: sanitizedDraft,
+      executionGraph: createWorkflowExecutionGraph(sanitizedDraft),
       id: workflowId,
       name: workflowName,
       revision: workflowRevision,
@@ -139,7 +140,7 @@ export function createWorkflowDslDocument({
 }
 
 export function stringifyWorkflowDslDocument(document: WorkflowDslDocument): string {
-  const draft = canonicalizeWorkflowDraft(document.workflow.draft);
+  const draft = sanitizeDraft(document.workflow.draft);
 
   return JSON.stringify({
     ...document,
@@ -156,13 +157,14 @@ export function exportWorkflowDsl(options: Parameters<typeof createWorkflowDslDo
 }
 
 export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExecutionGraph {
-  const canonicalDraft = canonicalizeWorkflowDraft(draft);
-  const nodeById = new Map(canonicalDraft.nodes.map((node) => [node.id, node]));
-  const entryNode = findWorkflowEntryNode(canonicalDraft.nodes);
-  const terminalNodeIds = canonicalDraft.nodes
+  const sanitizedDraft = sanitizeDraft(draft);
+  const nodeById = new Map(sanitizedDraft.nodes.map((node) => [node.id, node]));
+  const entryNode = findWorkflowEntryNode(sanitizedDraft.nodes);
+  const validation = validateWorkflowGraph(sanitizedDraft.nodes, sanitizedDraft.edges);
+  const terminalNodeIds = sanitizedDraft.nodes
     .filter((node) => getWorkflowNodeRole(node.data.kind) === "terminal")
     .map((node) => node.id);
-  const edges = canonicalDraft.edges.map((edge) => ({
+  const edges = sanitizedDraft.edges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     sourceHandle: edge.sourceHandle ?? null,
@@ -172,19 +174,26 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
   }));
 
   return {
+    diagnostics: validation.graphIssues,
     edges,
     entryNodeId: entryNode?.id ?? null,
-    incoming: createWorkflowExecutionEdgeIndex(canonicalDraft.nodes, edges, "target"),
-    nodes: canonicalDraft.nodes.map((node) => {
+    incoming: createWorkflowExecutionEdgeIndex(sanitizedDraft.nodes, edges, "target"),
+    nodes: sanitizedDraft.nodes.map((node) => {
       return {
         config: createWorkflowNodeExecutionConfig(node.data),
         id: node.id,
+        incomingMode: node.data.kind === "start" ? "none" : "any",
         kind: node.data.kind,
       };
     }),
-    outgoing: createWorkflowExecutionEdgeIndex(canonicalDraft.nodes, edges, "source"),
+    outgoing: createWorkflowExecutionEdgeIndex(sanitizedDraft.nodes, edges, "source"),
     terminalNodeIds,
-    topologicalNodeIds: createWorkflowExecutionTopologicalOrder(canonicalDraft.nodes, edges, entryNode?.id),
+    topologicalNodeIds: createWorkflowExecutionTopologicalOrder(
+      sanitizedDraft.nodes,
+      edges,
+      entryNode?.id,
+      validation.reachableNodeIds,
+    ),
   };
 }
 
@@ -192,6 +201,7 @@ function createWorkflowExecutionTopologicalOrder(
   nodes: WorkflowNode[],
   edges: WorkflowExecutionEdge[],
   entryNodeId: string | undefined,
+  reachableNodeIds: Set<string>,
 ) {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]));
@@ -245,7 +255,10 @@ function createWorkflowExecutionTopologicalOrder(
     }
   });
 
-  return orderedNodeIds;
+  return [
+    ...orderedNodeIds.filter((nodeId) => reachableNodeIds.has(nodeId)),
+    ...orderedNodeIds.filter((nodeId) => !reachableNodeIds.has(nodeId)),
+  ];
 }
 
 function getNodeQueuePriority(
@@ -316,8 +329,7 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
     return createDslParseFailure("missing-draft", "DSL 缺少 Workflow 数据");
   }
 
-  const sourceFormat = isPlainObject(parsed.workflow.draft) ? "draft" : "graph";
-  const rawDraft = parsed.workflow.draft ?? parsed.workflow.graph;
+  const rawDraft = parsed.workflow.draft;
 
   if (!isPlainObject(rawDraft)) {
     return createDslParseFailure("missing-draft", "DSL 缺少画布草稿");
@@ -332,7 +344,6 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
   const warnings = buildWorkflowDslImportWarnings(
     rawDraft as Partial<WorkflowDraft>,
     draft,
-    sourceFormat,
   );
   const document = createWorkflowDslDocument({
     draft,
@@ -349,9 +360,7 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
   return {
     document,
     draft,
-    importedSchemaVersion: parsed.schemaVersion,
     ok: true,
-    sourceFormat,
     warnings,
   };
 }
@@ -359,18 +368,10 @@ export function parseWorkflowDslText(text: string): WorkflowDslParseResult {
 export function buildWorkflowDslImportWarnings(
   rawDraft: Partial<WorkflowDraft>,
   hydratedDraft: WorkflowDraft,
-  sourceFormat: WorkflowDslSourceFormat = "draft",
 ): WorkflowDslParseIssue[] {
   const warnings: WorkflowDslParseIssue[] = [];
   const rawNodes = Array.isArray(rawDraft.nodes) ? rawDraft.nodes as WorkflowNode[] : [];
   const rawEdges = Array.isArray(rawDraft.edges) ? rawDraft.edges as WorkflowEdge[] : [];
-
-  if (sourceFormat === "graph") {
-    warnings.push({
-      code: "legacy-graph-format",
-      message: "已从旧版 graph 格式兼容导入",
-    });
-  }
 
   if (rawNodes.length !== hydratedDraft.nodes.length) {
     warnings.push({
@@ -406,14 +407,13 @@ function createDslParseFailure(
   };
 }
 
-function isSupportedWorkflowDslSchemaVersion(value: unknown): value is typeof WORKFLOW_DSL_SCHEMA_VERSION {
+function isSupportedWorkflowDslSchemaVersion(value: unknown): value is WorkflowDslSchemaVersion {
   return typeof value === "number"
-    && SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS.includes(value as typeof WORKFLOW_DSL_SCHEMA_VERSION);
+    && SUPPORTED_WORKFLOW_DSL_SCHEMA_VERSIONS.includes(value as WorkflowDslSchemaVersion);
 }
 
 function isSupportedWorkflowDslKind(value: unknown) {
-  return value === WORKFLOW_DSL_KIND
-    || LEGACY_WORKFLOW_DSL_KINDS.includes(value as (typeof LEGACY_WORKFLOW_DSL_KINDS)[number]);
+  return value === WORKFLOW_DSL_KIND;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

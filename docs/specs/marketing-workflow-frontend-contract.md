@@ -18,7 +18,7 @@ The current frontend scope covers:
 - draft save/publish/version-preview state over an in-memory repository
 - import/export DSL and backend-facing execution graph projection
 
-The final marketing node catalog and exact node parameter semantics are not fully decided. That should not block backend contract work, because node extension is already centralized by node `kind`.
+The canvas infrastructure and the first marketing node catalog are now represented by production-oriented frontend contracts. Exact business fields are still being defined, so backend payload fields must not be inferred from current placeholder node data.
 
 ## Module Boundary
 
@@ -37,17 +37,36 @@ Primary files:
 
 ## Node Contract
 
-Current node kinds:
+The first product catalog is implemented as:
 
 ```ts
-type WorkflowNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
+type MarketingWorkflowNodeKind =
+  | "start"
+  | "wait"
+  | "branch"
+  | "message"
+  | "tag"
+  | "coupon"
+  | "handoff"
+  | "end";
 ```
 
-Current insertable node kinds exclude entry and terminal nodes:
+Insertable kinds are `wait`, `branch`, `message`, `tag`, `coupon`, and `handoff`. `start` and `end` are structural nodes and are excluded from every insertion surface.
 
-```ts
-type InsertableWorkflowNodeKind = "wait" | "branch" | "action" | "ai";
-```
+Confirmed graph semantics:
+
+- every new canvas starts with exactly one `start` and one `end`
+- `start` and `end` are globally unique, cannot be added, and cannot be deleted
+- `start` has no incoming edge
+- except for `start`, nodes generally support multiple incoming edges
+- multiple incoming edges use OR-merge semantics: arrival from any upstream path activates the node according to runtime entry rules
+- `end` supports multiple incoming edges and has no outgoing edge
+- branch fan-out is represented by branch-specific source handles
+- disconnected, cyclic, or otherwise invalid topology remains representable for diagnostics, but cannot be published
+
+Only the eight current kinds are accepted by draft, DSL, and clipboard boundaries. The module has not been released and has no persisted historical graph data, so unsupported experimental kinds are rejected or dropped instead of being migrated into the product catalog.
+
+Exact business fields, required-field rules, and node-specific parameter schemas remain undecided. Those decisions do not block continued frontend architecture work, but they do block declaring the node contract complete.
 
 Every node kind is registered through `WorkflowNodeDefinition<TKind>` and must provide:
 
@@ -128,7 +147,7 @@ type WorkflowDslDocument = {
 };
 ```
 
-The legacy kind `chatai-marketing-workflow` is accepted only for import compatibility and is normalized back to `chatai-workflow`.
+The import boundary accepts only `chatai-workflow`, schema version `1`, and `workflow.draft`. Unsupported product kinds, schema versions, and payload formats are rejected rather than converted through unreleased compatibility code.
 
 Backend execution should consume `workflow.executionGraph`, not raw React Flow render nodes.
 
@@ -136,6 +155,7 @@ Current execution graph shape:
 
 ```ts
 type WorkflowExecutionGraph = {
+  diagnostics: WorkflowGraphValidationIssue[];
   edges: WorkflowExecutionEdge[];
   entryNodeId: string | null;
   incoming: Record<string, string[]>;
@@ -148,6 +168,7 @@ type WorkflowExecutionGraph = {
 type WorkflowExecutionNode = {
   config: Record<string, unknown>;
   id: string;
+  incomingMode: "any" | "none";
   kind: WorkflowNodeKind;
 };
 
@@ -164,19 +185,23 @@ type WorkflowExecutionEdge = {
 Execution graph guarantees:
 
 - `nodes` contains persisted node ids, kinds, and runtime-facing config only
+- `incomingMode` is `none` for `start` and `any` for other nodes, explicitly encoding OR-merge execution semantics
 - node positions, labels, summaries, metrics, UI status, and callbacks are excluded from `config`
 - `edges` contains source/target ids, handles, and resolved source outlet metadata
 - `entryNodeId` is derived from the registered entry-role node
 - `terminalNodeIds` is derived from registered terminal-role nodes
 - `incoming` and `outgoing` index edge ids by node id for backend traversal
 - `topologicalNodeIds` provides stable node ordering and always contains every execution node id
-- invalid, cyclic, or disconnected graphs are still represented for diagnosis, but publish checks should block them before real backend execution
+- `diagnostics` exposes graph validation issues such as cycles, disconnected nodes, and invalid connections
+- invalid, cyclic, or disconnected topology is preserved in `edges` for diagnosis, but publish checks should block it before real backend execution
+
+Schema v1 is the first public contract and already includes the first marketing kind catalog, execution topology, diagnostics, and explicit incoming merge semantics. Future schema versions should add migrations only after a released or persisted contract creates a real compatibility requirement.
 
 Current execution config examples:
 
 ```json
 {
-  "trigger": {
+  "start": {
     "audience": "近 30 天新入会且未首购客户",
     "repeatEntryEnabled": true
   },
@@ -187,16 +212,11 @@ Current execution config examples:
     "branchPaths": [],
     "branchRule": "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效"
   },
-  "action": {
-    "actionType": "message"
-  },
-  "ai": {
-    "agentName": "护肤小助理",
-    "handoffRule": "客户要求人工、投诉升级、识别到价格异议"
-  },
-  "goal": {
-    "conversion": 18.4
-  }
+  "message": {},
+  "tag": {},
+  "coupon": {},
+  "handoff": {},
+  "end": {}
 }
 ```
 
@@ -204,19 +224,21 @@ These values are mock product semantics. The important stable contract is that e
 
 ## Validation And Publish Gate
 
-Frontend publish checks already validate:
+Frontend publish checks currently validate:
 
-- missing trigger or goal node
-- unreachable goal
+- missing or duplicate start/end nodes
+- unreachable end
 - disconnected nodes
 - graph cycles
 - graph depth limit
 - invalid connection policy
-- multiple incoming/outgoing violations
+- unsupported outgoing cardinality
 - source/target handle occupancy
 - unconnected source handles and branch paths
 - node config schema issues
 - node-definition validation issues
+
+Multiple incoming edges are valid for every node except `start`. The frontend does not treat them as graph errors.
 
 Frontend publish checks are UX gates, not security or consistency boundaries. Backend must revalidate every published workflow with the same or stricter rules before storing or activating execution.
 
@@ -254,22 +276,25 @@ Frontend can be considered ready for backend integration when these are true:
 - workflow graph editing remains covered by the workflow test suite
 - node definitions are kind-aware and centralized
 - node config patches cannot mutate `kind` or `schemaVersion`
-- draft hydration/migration normalizes legacy or external data
+- draft hydration sanitizes external data and drops unsupported kinds
 - runtime-only fields are stripped at save/export/import boundaries
 - publish checks block invalid graphs before publish
 - DSL export exposes `executionGraph` with node config, edge handles, entry/terminal ids, incoming/outgoing indexes, and stable node ordering
 - read-only states still allow viewport navigation but block graph mutation
 - save/publish/version-preview behavior is covered by tests
 - frontend docs describe the backend contract and backend revalidation responsibilities
+- the catalog is `start`, `wait`, `branch`, `message`, `tag`, `coupon`, `handoff`, and `end`
+- every new draft guarantees one non-addable, non-deletable `start` and one non-addable, non-deletable `end`
+- connection policy, validation, hydration, import/export, and execution projection implement multi-input OR-merge semantics
 
-The remaining frontend work before backend should be limited to product decisions:
+The structural catalog implementation is complete. Remaining frontend work depends on product decisions:
 
-- final node catalog
 - exact field semantics for each node kind
-- real account/tag/filter selector components for trigger/start configuration
+- required-field and validation rules for each action kind
+- real account/tag/filter selector components for start configuration
 - real action parameter forms once marketing action types are finalized
 
-These product decisions can proceed in parallel with backend API and execution-engine design because the frontend extension model is already centered on node definitions.
+Backend persistence and execution contracts can bind to the confirmed kind union and graph semantics, but concrete per-kind `config` payloads should wait until business fields are finalized.
 
 ## Verification Commands
 

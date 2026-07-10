@@ -8,6 +8,7 @@ import {
 import {
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
+  getWorkflowNodeRole,
   isWorkflowEntryNode,
 } from "../node-catalog";
 import {
@@ -24,9 +25,11 @@ export type WorkflowGraphValidationIssue = {
     | "edge-cycle"
     | "edge-invalid-connection"
     | "branch-path-unconnected"
-    | "goal-unreachable"
-    | "missing-goal"
-    | "missing-trigger"
+    | "end-unreachable"
+    | "missing-end"
+    | "missing-start"
+    | "multiple-end"
+    | "multiple-start"
     | "node-disconnected"
     | "node-multiple-incoming"
     | "node-multiple-outgoing"
@@ -58,36 +61,54 @@ export function validateWorkflowGraph(
   } = {},
 ): WorkflowGraphValidationResult {
   const maxDepthLimit = options.maxDepth ?? WORKFLOW_MAX_TREE_DEPTH;
-  const triggerNode = findWorkflowEntryNode(nodes);
-  const goalNode = findWorkflowTerminalNode(nodes);
-  const { maxDepth, reachableNodeIds, validNodes } = getValidWorkflowTreeNodes(nodes, edges, triggerNode?.id);
+  const startNode = findWorkflowEntryNode(nodes);
+  const endNode = findWorkflowTerminalNode(nodes);
+  const { maxDepth, reachableNodeIds, validNodes } = getValidWorkflowTreeNodes(nodes, edges, startNode?.id);
   const disconnectedNodeIds = new Set(nodes
     .filter((node) => !reachableNodeIds.has(node.id))
     .map((node) => node.id));
   const graphIssues: WorkflowGraphValidationIssue[] = [];
+  const startNodes = nodes.filter(isWorkflowEntryNode);
+  const endNodes = nodes.filter((node) => getWorkflowNodeRole(node.data.kind) === "terminal");
 
-  if (!triggerNode) {
+  if (!startNode) {
     graphIssues.push({
-      code: "missing-trigger",
-      message: "Workflow 需要一个触发节点",
+      code: "missing-start",
+      message: "Workflow 需要一个开始节点",
+      severity: "warning",
+      source: "graph",
+    });
+  }
+  else if (startNodes.length > 1) {
+    graphIssues.push({
+      code: "multiple-start",
+      message: "Workflow 只能包含一个开始节点",
       severity: "warning",
       source: "graph",
     });
   }
 
-  if (!goalNode) {
+  if (!endNode) {
     graphIssues.push({
-      code: "missing-goal",
-      message: "Workflow 需要一个目标节点",
+      code: "missing-end",
+      message: "Workflow 需要一个结束节点",
       severity: "warning",
       source: "graph",
     });
   }
-  else if (!reachableNodeIds.has(goalNode.id)) {
+  else if (endNodes.length > 1) {
     graphIssues.push({
-      code: "goal-unreachable",
-      message: "目标节点未接入从触发节点开始的主链路",
-      nodeId: goalNode.id,
+      code: "multiple-end",
+      message: "Workflow 只能包含一个结束节点",
+      severity: "warning",
+      source: "graph",
+    });
+  }
+  else if (!reachableNodeIds.has(endNode.id)) {
+    graphIssues.push({
+      code: "end-unreachable",
+      message: "结束节点未接入从开始节点出发的主链路",
+      nodeId: endNode.id,
       severity: "warning",
       source: "graph",
     });
@@ -102,7 +123,7 @@ export function validateWorkflowGraph(
 
     graphIssues.push({
       code: "node-disconnected",
-      message: "节点未接入从触发节点开始的主链路",
+      message: "节点未接入从开始节点出发的主链路",
       nodeId,
       severity: "warning",
       source: "graph",

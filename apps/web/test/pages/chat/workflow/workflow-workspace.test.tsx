@@ -109,19 +109,19 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     act(() => {
-      result.current.canvas.onSelectNode("action-message");
-      result.current.canvas.onSelectEdge("edge-action-message-goal");
+      result.current.canvas.onSelectNode("message-welcome");
+      result.current.canvas.onSelectEdge("edge-message-welcome-end");
     });
     expect(result.current.inspector.node).toBeUndefined();
-    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
-    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
+    expect(result.current.canvas.nodes.some((node) => node.id === "message-welcome")).toBe(true);
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     });
 
-    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
-    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
+    expect(result.current.canvas.nodes.some((node) => node.id === "message-welcome")).toBe(true);
   });
 
   it("persists edge removals from React Flow changes and supports undo", async () => {
@@ -131,17 +131,17 @@ describe("useWorkflowWorkspace", () => {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
-        result.current.canvas.onEdgesChange([{ id: "edge-action-message-goal", type: "remove" }]);
+        result.current.canvas.onEdgesChange([{ id: "edge-message-welcome-end", type: "remove" }]);
       });
 
-      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
       expect(result.current.canvas.canUndo).toBe(true);
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) => edge.id === "edge-action-message-goal"))
+      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) => edge.id === "edge-message-welcome-end"))
         .toBe(false);
       expect(result.current.canvas.canUndo).toBe(true);
 
@@ -149,7 +149,7 @@ describe("useWorkflowWorkspace", () => {
         result.current.canvas.onUndo();
       });
 
-      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
     }
     finally {
       vi.useRealTimers();
@@ -160,7 +160,7 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     act(() => {
-      result.current.canvas.onSelectNode("action-message");
+      result.current.canvas.onSelectNode("message-welcome");
     });
 
     act(() => {
@@ -216,25 +216,25 @@ describe("useWorkflowWorkspace", () => {
     const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDragStop>[0];
     const waitNode = result.current.canvas.nodes.find((node) => node.id === "wait-2d")!;
     const branchNode = result.current.canvas.nodes.find((node) => node.id === "branch-intent")!;
-    const actionNode = result.current.canvas.nodes.find((node) => node.id === "action-message")!;
+    const messageNode = result.current.canvas.nodes.find((node) => node.id === "message-welcome")!;
     const nextWaitNode = { ...waitNode, position: { x: waitNode.position.x + 120, y: waitNode.position.y + 48 } };
     const nextBranchNode = { ...branchNode, position: { x: branchNode.position.x + 120, y: branchNode.position.y + 48 } };
-    const nextActionNode = { ...actionNode, position: { x: actionNode.position.x + 120, y: actionNode.position.y + 48 } };
+    const nextMessageNode = { ...messageNode, position: { x: messageNode.position.x + 120, y: messageNode.position.y + 48 } };
 
     act(() => {
       result.current.canvas.onSelectNode("wait-2d");
       result.current.canvas.onSelectNode("branch-intent", { additive: true });
-      result.current.canvas.onSelectNode("action-message", { additive: true });
-      result.current.canvas.onNodeDragStart(event, actionNode, [waitNode, branchNode, actionNode]);
-      result.current.canvas.onNodeDragStop(event, nextActionNode, [nextWaitNode, nextBranchNode, nextActionNode]);
+      result.current.canvas.onSelectNode("message-welcome", { additive: true });
+      result.current.canvas.onNodeDragStart(event, messageNode, [waitNode, branchNode, messageNode]);
+      result.current.canvas.onNodeDragStop(event, nextMessageNode, [nextWaitNode, nextBranchNode, nextMessageNode]);
     });
 
     expect(result.current.canvas.nodes.find((node) => node.id === "wait-2d")?.position)
       .toEqual(nextWaitNode.position);
     expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
       .toEqual(nextBranchNode.position);
-    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.position)
-      .toEqual(nextActionNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.position)
+      .toEqual(nextMessageNode.position);
 
     act(() => {
       result.current.canvas.onUndo();
@@ -244,8 +244,8 @@ describe("useWorkflowWorkspace", () => {
       .toEqual(waitNode.position);
     expect(result.current.canvas.nodes.find((node) => node.id === "branch-intent")?.position)
       .toEqual(branchNode.position);
-    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.position)
-      .toEqual(actionNode.position);
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.position)
+      .toEqual(messageNode.position);
   });
 
   it("adds palette nodes without auto-connecting them to the current graph", () => {
@@ -253,42 +253,42 @@ describe("useWorkflowWorkspace", () => {
     const initialEdges = result.current.canvas.edges.map((edge) => edge.id);
 
     act(() => {
-      result.current.canvas.onAddNode("ai");
+      result.current.canvas.onAddNode("handoff");
     });
 
-    const aiNode = result.current.canvas.nodes.find((node) =>
-      node.id !== "action-message" && node.data.kind === "ai",
+    const handoffNode = result.current.canvas.nodes.find((node) =>
+      node.id !== "message-welcome" && node.data.kind === "handoff",
     );
 
-    expect(aiNode?.id).toMatch(/^ai-/);
+    expect(handoffNode?.id).toMatch(/^handoff-/);
     expect(result.current.canvas.edges.map((edge) => edge.id)).toEqual(initialEdges);
     expect(result.current.canvas.edges.some((edge) =>
-      edge.source === aiNode?.id || edge.target === aiNode?.id,
+      edge.source === handoffNode?.id || edge.target === handoffNode?.id,
     )).toBe(false);
-    expect(result.current.inspector.node?.id).toBe(aiNode?.id);
+    expect(result.current.inspector.node?.id).toBe(handoffNode?.id);
   });
 
   it("persists manual connections through the workspace boundary and supports undo", async () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithoutEdge("edge-action-message-goal"));
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithoutEdge("edge-message-welcome-end"));
       const initialRevision = getWorkflowDocument("newcomer-conversion").revision;
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
-      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
         .toBe(false);
 
       act(() => {
         result.current.canvas.onConnect({
-          source: "action-message",
+          source: "message-welcome",
           sourceHandle: null,
-          target: "goal",
+          target: "end",
           targetHandle: null,
         });
       });
 
-      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
         .toBe(true);
       expect(result.current.canvas.canUndo).toBe(true);
       expect(result.current.topBar.saveState).toBe("saving");
@@ -297,7 +297,7 @@ describe("useWorkflowWorkspace", () => {
         result.current.canvas.onUndo();
       });
 
-      expect(result.current.canvas.edges.some((edge) => edge.source === "action-message" && edge.target === "goal"))
+      expect(result.current.canvas.edges.some((edge) => edge.source === "message-welcome" && edge.target === "end"))
         .toBe(false);
       expect(result.current.canvas.canRedo).toBe(true);
       expect(result.current.topBar.saveState).toBe("saved");
@@ -308,7 +308,7 @@ describe("useWorkflowWorkspace", () => {
 
       expect(getWorkflowDocument("newcomer-conversion").revision).toBe(initialRevision);
       expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) =>
-        edge.source === "action-message" && edge.target === "goal",
+        edge.source === "message-welcome" && edge.target === "end",
       )).toBe(false);
     }
     finally {
@@ -393,53 +393,53 @@ describe("useWorkflowWorkspace", () => {
     act(() => {
       result.current.canvas.onSelectNode("wait-2d");
       result.current.canvas.onSelectNode("branch-intent", { additive: true });
-      result.current.canvas.onSelectEdge("edge-action-message-goal");
+      result.current.canvas.onSelectEdge("edge-message-welcome-end");
     });
     expect(result.current.inspector.node).toBeUndefined();
     assertCleanCanvasState();
 
     act(() => {
-      result.current.canvas.onNodeHoverStart("action-message");
+      result.current.canvas.onNodeHoverStart("message-welcome");
     });
-    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.highlightState)
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.highlightState)
       .toBe("connected");
     assertCleanCanvasState();
 
     act(() => {
       result.current.canvas.onNodeHoverEnd();
     });
-    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.highlightState)
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.highlightState)
       .toBeUndefined();
     assertCleanCanvasState();
 
     act(() => {
       result.current.canvas.onPaletteOpenChange(true);
-      result.current.canvas.onSearchChange("ai");
+      result.current.canvas.onSearchChange("handoff");
     });
     expect(result.current.canvas.paletteOpen).toBe(true);
-    expect(result.current.canvas.searchValue).toBe("ai");
+    expect(result.current.canvas.searchValue).toBe("handoff");
     assertCleanCanvasState();
 
     act(() => {
-      result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.onToggleInsertMenu?.("action-message");
+      result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.onToggleInsertMenu?.("message-welcome");
     });
-    expect(result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.insertMenuOpen)
+    expect(result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.insertMenuOpen)
       .toBe(true);
     assertCleanCanvasState();
 
     act(() => {
-      result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.onToggleInsertMenu?.(
-        "edge-action-message-goal",
+      result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.onToggleInsertMenu?.(
+        "edge-message-welcome-end",
       );
     });
-    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.insertMenuOpen)
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.insertMenuOpen)
       .toBe(true);
     assertCleanCanvasState();
 
     act(() => {
       result.current.canvas.onPaneClick();
     });
-    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-action-message-goal")?.data?.insertMenuOpen)
+    expect(result.current.canvas.edges.find((edge) => edge.id === "edge-message-welcome-end")?.data?.insertMenuOpen)
       .toBe(false);
     assertCleanCanvasState();
 
@@ -467,7 +467,7 @@ describe("useWorkflowWorkspace", () => {
       const initialNodeIds = result.current.canvas.nodes.map((node) => node.id);
 
       act(() => {
-        result.current.canvas.onAddNode("ai");
+        result.current.canvas.onAddNode("handoff");
       });
 
       expect(result.current.topBar.saveState).toBe("saving");
@@ -509,11 +509,11 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
-        result.current.canvas.onSelectNode("trigger");
+        result.current.canvas.onSelectNode("start");
       });
 
       act(() => {
@@ -530,7 +530,7 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("更新后的发布人群");
     }
     finally {
@@ -542,9 +542,9 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-      const publishedAudience = result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience;
+      const publishedAudience = result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience;
 
       await act(async () => {
         await result.current.topBar.onPublish();
@@ -553,7 +553,7 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
 
       act(() => {
-        result.current.canvas.onSelectNode("trigger");
+        result.current.canvas.onSelectNode("start");
       });
 
       act(() => {
@@ -568,7 +568,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("published");
-      expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe(publishedAudience);
       expect(result.current.canvas.canRedo).toBe(true);
 
@@ -577,9 +577,9 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("idle");
-      expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("发布后的草稿修改");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe(publishedAudience);
     }
     finally {
@@ -588,7 +588,7 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("keeps publish state published across non-draft canvas interactions", async () => {
-    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
@@ -600,9 +600,9 @@ describe("useWorkflowWorkspace", () => {
     act(() => {
       result.current.canvas.onViewportChangeEnd({ x: 180, y: 260, zoom: 0.72 });
       result.current.canvas.onSelectNode("wait-2d");
-      result.current.canvas.onNodeHoverStart("action-message");
+      result.current.canvas.onNodeHoverStart("message-welcome");
       result.current.canvas.onPaletteOpenChange(true);
-      result.current.canvas.nodes.find((node) => node.id === "action-message")?.data.onToggleInsertMenu?.("action-message");
+      result.current.canvas.nodes.find((node) => node.id === "message-welcome")?.data.onToggleInsertMenu?.("message-welcome");
       result.current.topBar.onPublishCheck();
       result.current.canvas.onOpenVariables();
       result.current.canvas.onPaneClick();
@@ -617,7 +617,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNode());
+      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       await act(async () => {
@@ -626,11 +626,11 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
 
       act(() => {
-        result.current.canvas.onAddNode("ai");
+        result.current.canvas.onAddNode("handoff");
       });
       const addedNodeId = result.current.inspector.node?.id ?? "";
 
-      expect(addedNodeId).toMatch(/^ai-/);
+      expect(addedNodeId).toMatch(/^handoff-/);
       expect(result.current.topBar.publishState).toBe("idle");
       expect(result.current.topBar.saveState).toBe("saving");
       expect(result.current.canvas.canUndo).toBe(true);
@@ -684,16 +684,16 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.mode).toBe("version-preview");
     expect(result.current.canvas.isReadOnly).toBe(true);
     expect(result.current.inspector.isOpen).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("历史版本人群");
 
     act(() => {
-      result.current.canvas.onAddNode("ai");
+      result.current.canvas.onAddNode("handoff");
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     });
 
     expect(result.current.canvas.nodes).toHaveLength(publishedDocument.publishedDraft?.nodes.length ?? 0);
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("当前草稿人群");
 
     act(() => {
@@ -703,7 +703,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.versionHistory.isPreviewing).toBe(false);
     expect(result.current.mode).toBe("editing");
     expect(result.current.canvas.isReadOnly).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("当前草稿人群");
     expect(result.current.inspector.isOpen).toBe(true);
   });
@@ -734,7 +734,7 @@ describe("useWorkflowWorkspace", () => {
 
   it("allows viewport navigation while publishing without saving a draft change", async () => {
     const repository = createDeferredPublishRepository();
-    repository.importDraft("newcomer-conversion", createWorkflowDraftWithConnectedAiNodeFromRepository(repository));
+    repository.importDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNodeFromRepository(repository));
     const initialRevision = repository.getDocument("newcomer-conversion").revision;
     const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
@@ -778,7 +778,7 @@ describe("useWorkflowWorkspace", () => {
       const versionId = publishedDocument.currentVersion?.id ?? "";
 
       act(() => {
-        result.current.canvas.onAddNode("ai");
+        result.current.canvas.onAddNode("handoff");
       });
       const addedNodeId = result.current.inspector.node?.id ?? "";
 
@@ -823,10 +823,10 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.versionHistory.isOpen).toBe(false);
     expect(result.current.versionHistory.isPreviewing).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("第一版恢复人群");
     expect(result.current.document.status).toBe("Draft");
-    expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("第二版仍是发布快照");
   });
 
@@ -837,7 +837,7 @@ describe("useWorkflowWorkspace", () => {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
-        result.current.canvas.onSelectNode("action-message");
+        result.current.canvas.onSelectNode("message-welcome");
       });
 
       act(() => {
@@ -848,7 +848,7 @@ describe("useWorkflowWorkspace", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "action-message")?.data.title)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "message-welcome")?.data.title)
         .toBe("保存后的动作节点");
       expect(result.current.topBar.saveState).toBe("saved");
     }
@@ -857,14 +857,14 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
-  it("persists advanced panel controls through the workspace save boundary", async () => {
+  it("persists start and handoff base settings through the workspace save boundary", async () => {
     vi.useFakeTimers();
 
     try {
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
-        result.current.canvas.onSelectNode("trigger");
+        result.current.canvas.onSelectNode("start");
       });
 
       act(() => {
@@ -872,22 +872,22 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.canvas.onAddNode("ai");
+        result.current.canvas.onAddNode("handoff");
       });
-      const aiNodeId = result.current.inspector.node?.id ?? "";
+      const handoffNodeId = result.current.inspector.node?.id ?? "";
 
       act(() => {
-        result.current.inspector.onNodeChange({ handoffRule: "连续两轮未解决时转人工" });
+        result.current.inspector.onNodeChange({ title: "会员运营接管" });
       });
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.repeatEntryEnabled)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.repeatEntryEnabled)
         .toBe(false);
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === aiNodeId)?.data.handoffRule)
-        .toBe("连续两轮未解决时转人工");
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === handoffNodeId)?.data.title)
+        .toBe("会员运营接管");
       expect(result.current.topBar.saveState).toBe("saved");
     }
     finally {
@@ -899,7 +899,7 @@ describe("useWorkflowWorkspace", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     act(() => {
-      result.current.canvas.onSelectNode("action-message");
+      result.current.canvas.onSelectNode("message-welcome");
     });
 
     act(() => {
@@ -915,7 +915,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.isOpen).toBe(true);
     expect(result.current.canvas.paletteOpen).toBe(false);
     expect(result.current.inspector.variables?.inputs.map((variable) => variable.name)).toContain(
-      "trigger.trigger.result",
+      "start.start.result",
     );
   });
 });
@@ -926,7 +926,7 @@ function createWorkflowDraftWithTriggerAudience(audience: string) {
   return {
     ...draft,
     nodes: draft.nodes.map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {
@@ -983,14 +983,14 @@ function createWorkflowDraftWithConnectedBranchOutlets() {
   return connectBranchOutlets(draft);
 }
 
-function createWorkflowDraftWithConnectedAiNode() {
-  return connectAiSupportNode(createWorkflowDraftWithConnectedBranchOutlets());
+function createWorkflowDraftWithConnectedHandoffNode() {
+  return connectHandoffSupportNode(createWorkflowDraftWithConnectedBranchOutlets());
 }
 
-function createWorkflowDraftWithConnectedAiNodeFromRepository(
+function createWorkflowDraftWithConnectedHandoffNodeFromRepository(
   repository: WorkflowDraftRepository,
 ) {
-  return connectAiSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
+  return connectHandoffSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
 }
 
 function connectBranchOutlets(draft: WorkflowDraft) {
@@ -998,52 +998,42 @@ function connectBranchOutlets(draft: WorkflowDraft) {
     ...draft,
     edges: [
       ...draft.edges,
-      createEdge("branch-intent", "action-normal", "普通客户", {
+      createEdge("branch-intent", "message-normal", "普通客户", {
         sourceHandle: "branch-normal",
       }),
-      createEdge("branch-intent", "action-default", "默认路径", {
+      createEdge("branch-intent", "message-default", "默认路径", {
         sourceHandle: "branch-default",
       }),
-      createEdge("action-normal", "goal-normal"),
-      createEdge("action-default", "goal-default"),
+      createEdge("message-normal", "end"),
+      createEdge("message-default", "end"),
     ],
     nodes: [
       ...draft.nodes,
       {
-        ...draft.nodes.find((node) => node.id === "goal")!,
-        id: "goal-normal",
-        position: { x: 1240, y: 94 },
-      },
-      {
-        ...draft.nodes.find((node) => node.id === "goal")!,
-        id: "goal-default",
-        position: { x: 1240, y: 282 },
-      },
-      {
-        ...createNodeFromKind("action", "action-normal", 10),
+        ...createNodeFromKind("message", "message-normal", 10),
         position: { x: 930, y: 94 },
       },
       {
-        ...createNodeFromKind("action", "action-default", 11),
+        ...createNodeFromKind("message", "message-default", 11),
         position: { x: 930, y: 282 },
       },
     ],
   };
 }
 
-function connectAiSupportNode(draft: WorkflowDraft) {
+function connectHandoffSupportNode(draft: WorkflowDraft) {
 
   return {
     ...draft,
     edges: [
-      ...draft.edges.filter((edge) => edge.id !== "edge-action-message-goal"),
-      createEdge("action-message", "ai-support"),
-      createEdge("ai-support", "goal"),
+      ...draft.edges.filter((edge) => edge.id !== "edge-message-welcome-end"),
+      createEdge("message-welcome", "handoff-support"),
+      createEdge("handoff-support", "end"),
     ],
     nodes: [
       ...draft.nodes,
       {
-        ...createNodeFromKind("ai", "ai-support", 12),
+        ...createNodeFromKind("handoff", "handoff-support", 12),
         position: { x: 1240, y: -94 },
       },
     ],

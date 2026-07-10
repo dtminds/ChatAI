@@ -14,6 +14,7 @@ export type WorkflowHistoryEvent =
   | "node:delete"
   | "node:move"
   | "node:paste"
+  | "node:rename"
   | "layout:organize";
 
 export type WorkflowHistoryEventMeta = {
@@ -262,6 +263,8 @@ export function getWorkflowHistoryEventLabel(event: WorkflowHistoryEvent) {
       return "删除节点";
     case "node:move":
       return "移动节点";
+    case "node:rename":
+      return "修改节点名称";
     case "layout:organize":
       return "整理画布";
     case "node:paste":

@@ -19,60 +19,60 @@ describe("workflow variables", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
 
-    expect(getBeforeNodesInSameBranch("action-message", nodes, edges).map((node) => node.id)).toEqual([
-      "trigger",
+    expect(getBeforeNodesInSameBranch("message-welcome", nodes, edges).map((node) => node.id)).toEqual([
+      "start",
       "wait-2d",
       "branch-intent",
     ]);
-    expect(getBeforeNodesInSameBranch("trigger", nodes, edges)).toEqual([]);
+    expect(getBeforeNodesInSameBranch("start", nodes, edges)).toEqual([]);
   });
 
   it("builds node variables from system fields, upstream outputs and current outputs", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
-    const variables = getNodeVariables(actionNode, nodes, edges);
+    const messageNode = nodes.find((node) => node.id === "message-welcome")!;
+    const variables = getNodeVariables(messageNode, nodes, edges);
 
     expect(variables.inputs.map((variable) => variable.name)).toEqual([
       "customer.profile",
       "journey.currentNode",
-      "trigger.trigger.result",
-      "trigger.trigger.journey.next",
+      "start.start.result",
+      "start.start.journey.next",
       "wait.wait-2d.result",
       "wait.wait-2d.journey.next",
       "branch.branch-intent.result",
       "branch.branch-intent.journey.next",
     ]);
     expect(variables.outputs.map((variable) => variable.name)).toEqual([
-      "action.action-message.result",
-      "action.action-message.journey.next",
+      "message.message-welcome.result",
+      "message.message-welcome.journey.next",
     ]);
-    expect(variables.outputs[0]?.selector).toEqual(["action-message", "result"]);
+    expect(variables.outputs[0]?.selector).toEqual(["message-welcome", "result"]);
   });
 
   it("uses the selected node definition as the output variable boundary", () => {
     const nodes = createInitialNodes();
-    const actionNode = nodes.find(
-      (currentNode): currentNode is WorkflowNode<"action"> =>
-        currentNode.id === "action-message" && currentNode.data.kind === "action",
+    const messageNode = nodes.find(
+      (currentNode): currentNode is WorkflowNode<"message"> =>
+        currentNode.id === "message-welcome" && currentNode.data.kind === "message",
     )!;
-    const goalNode = nodes.find(
-      (currentNode): currentNode is WorkflowNode<"goal"> =>
-        currentNode.id === "goal" && currentNode.data.kind === "goal",
+    const endNode = nodes.find(
+      (currentNode): currentNode is WorkflowNode<"end"> =>
+        currentNode.id === "end" && currentNode.data.kind === "end",
     )!;
 
-    expect(getNodeDefinition("action").getOutputVariables?.(actionNode)).toEqual(expect.arrayContaining([
+    expect(getNodeDefinition("message").getOutputVariables?.(messageNode)).toEqual(expect.arrayContaining([
       {
         name: "journey.next",
         type: "string",
         value: "进入下一节点",
       },
     ]));
-    expect(getNodeDefinition("goal").getOutputVariables?.(goalNode)).toEqual([
+    expect(getNodeDefinition("end").getOutputVariables?.(endNode)).toEqual([
       {
         name: "result",
         type: "object",
-        value: "目标 18.4%",
+        value: "退出营销旅程",
       },
       {
         name: "journey.next",
@@ -80,22 +80,22 @@ describe("workflow variables", () => {
         value: "退出旅程",
       },
     ]);
-    expect(getNodeOutputVariables(goalNode)).toEqual([
+    expect(getNodeOutputVariables(endNode)).toEqual([
       {
-        name: "goal.goal.result",
+        name: "end.end.result",
         scope: "node",
-        selector: ["goal", "result"],
-        sourceNodeId: "goal",
-        sourceNodeTitle: "首单转化",
+        selector: ["end", "result"],
+        sourceNodeId: "end",
+        sourceNodeTitle: "结束",
         type: "object",
-        value: "目标 18.4%",
+        value: "退出营销旅程",
       },
       {
-        name: "goal.goal.journey.next",
+        name: "end.end.journey.next",
         scope: "node",
-        selector: ["goal", "journey.next"],
-        sourceNodeId: "goal",
-        sourceNodeTitle: "首单转化",
+        selector: ["end", "journey.next"],
+        sourceNodeId: "end",
+        sourceNodeTitle: "结束",
         type: "string",
         value: "退出旅程",
       },
@@ -105,11 +105,11 @@ describe("workflow variables", () => {
   it("builds a variable context with system variables and scoped upstream outputs", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
-    const context = createWorkflowVariableContext(actionNode, nodes, edges);
+    const messageNode = nodes.find((node) => node.id === "message-welcome")!;
+    const context = createWorkflowVariableContext(messageNode, nodes, edges);
 
     expect(context.upstreamNodes.map((node) => node.id)).toEqual([
-      "trigger",
+      "start",
       "wait-2d",
       "branch-intent",
     ]);
@@ -128,8 +128,8 @@ describe("workflow variables", () => {
   it("resolves variable selectors through the same boundary used by future node configs", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
-    const variables = getNodeVariables(actionNode, nodes, edges);
+    const messageNode = nodes.find((node) => node.id === "message-welcome")!;
+    const variables = getNodeVariables(messageNode, nodes, edges);
 
     expect(getWorkflowVariableSelectorKey(["branch-intent", "result"])).toBe("branch-intent.result");
     expect(resolveWorkflowVariableSelector(variables, ["branch-intent", "result"])).toEqual({
@@ -164,8 +164,8 @@ describe("workflow variables", () => {
   it("marks selectors invalid after their source node leaves the upstream context", () => {
     const nodes = createInitialNodes().filter((node) => node.id !== "branch-intent");
     const edges = createInitialEdges().filter((edge) => edge.source !== "branch-intent" && edge.target !== "branch-intent");
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
-    const variables = getNodeVariables(actionNode, nodes, edges);
+    const messageNode = nodes.find((node) => node.id === "message-welcome")!;
+    const variables = getNodeVariables(messageNode, nodes, edges);
 
     expect(resolveWorkflowVariableSelector(variables, ["branch-intent", "result"])).toEqual({
       selector: ["branch-intent", "result"],

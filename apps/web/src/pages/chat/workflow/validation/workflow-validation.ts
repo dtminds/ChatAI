@@ -29,12 +29,12 @@ export type WorkflowValidationNodeIssue = {
 
 export type WorkflowValidationResult = {
   disconnectedNodes: WorkflowNode[];
-  goalNode?: WorkflowNode;
+  endNode?: WorkflowNode;
   graphIssues: WorkflowGraphValidationIssue[];
   maxDepth: number;
   nodeIssues: WorkflowValidationNodeIssue[];
   reachableNodeIds: Set<string>;
-  triggerNode?: WorkflowNode;
+  startNode?: WorkflowNode;
   validNodes: WorkflowNode[];
 };
 
@@ -42,8 +42,8 @@ export function validateWorkflowDraft(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowValidationResult {
-  const triggerNode = findWorkflowEntryNode(nodes);
-  const goalNode = findWorkflowTerminalNode(nodes);
+  const startNode = findWorkflowEntryNode(nodes);
+  const endNode = findWorkflowTerminalNode(nodes);
   const graphValidation = validateWorkflowGraph(nodes, edges);
   const { reachableNodeIds } = graphValidation;
   const disconnectedNodes = nodes.filter((node) => graphValidation.disconnectedNodeIds.has(node.id));
@@ -51,7 +51,7 @@ export function validateWorkflowDraft(
     .map((node) => ({
       issues: [
         ...validateWorkflowNodeConfig(node, nodes, edges),
-        ...validateWorkflowNodeGraphState(node, disconnectedNodes, triggerNode?.id),
+        ...validateWorkflowNodeGraphState(node, disconnectedNodes, startNode?.id),
       ],
       node,
     }))
@@ -59,12 +59,12 @@ export function validateWorkflowDraft(
 
   return {
     disconnectedNodes,
-    goalNode,
+    endNode,
     graphIssues: graphValidation.graphIssues,
     maxDepth: graphValidation.maxDepth,
     nodeIssues,
     reachableNodeIds,
-    triggerNode,
+    startNode,
     validNodes: graphValidation.validNodes,
   };
 }
@@ -87,16 +87,16 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
 export function validateWorkflowNodeGraphState(
   node: WorkflowNode,
   disconnectedNodes: WorkflowNode[],
-  triggerNodeId: string | undefined,
+  startNodeId: string | undefined,
 ): WorkflowNodeValidationIssue[] {
-  if (node.id === triggerNodeId || !disconnectedNodes.some((item) => item.id === node.id)) {
+  if (node.id === startNodeId || !disconnectedNodes.some((item) => item.id === node.id)) {
     return [];
   }
 
   return [
     {
       code: "node-disconnected",
-      message: "节点未接入从触发节点开始的主链路",
+      message: "节点未接入从开始节点出发的主链路",
       severity: "warning",
       source: "graph",
     },

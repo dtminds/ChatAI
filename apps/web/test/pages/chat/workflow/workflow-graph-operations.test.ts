@@ -12,6 +12,7 @@ import {
   insertNodeBetweenOperation,
   moveNodesOperation,
   pasteClipboardOperation,
+  renameNodeOperation,
   updateNodeDataOperation,
 } from "@/pages/chat/workflow/graph-operations";
 import { createWorkflowClipboardData } from "@/pages/chat/workflow/workflow-clipboard";
@@ -34,6 +35,15 @@ function createDraft(): WorkflowDraft {
 }
 
 describe("workflow graph operations", () => {
+  it("does not add or delete the unique start and end kinds", () => {
+    const draft = createDraft();
+
+    expect(addNodeOperation(draft, "start", "another-start")).toBeUndefined();
+    expect(addNodeOperation(draft, "end", "another-end")).toBeUndefined();
+    expect(deleteNodeOperation(draft, "start")).toBeUndefined();
+    expect(deleteNodeOperation(draft, "end")).toBeUndefined();
+  });
+
   it("inserts a node after a branch handle by replacing the existing branch edge", () => {
     expect(insertNodeAfterOperation(
       createDraft(),
@@ -54,10 +64,10 @@ describe("workflow graph operations", () => {
     expect(operation).toBeDefined();
     expect(operation!.event).toBe("node:insert");
     expect(operation!.result).toEqual({
-      edgeId: "edge-branch-intent-branch-high-action-message",
+      edgeId: "edge-branch-intent-branch-high-message-welcome",
       nodeId: "wait-low",
     });
-    expect(operation!.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+    expect(operation!.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-message-welcome"))
       .toBe(false);
     expect(operation!.draft.edges).toEqual(
       expect.arrayContaining([
@@ -68,15 +78,15 @@ describe("workflow graph operations", () => {
         }),
         expect.objectContaining({
           source: "wait-low",
-          target: "action-message",
+          target: "message-welcome",
         }),
       ]),
     );
-    expect(operation!.draft.nodes.find((node) => node.id === "action-message")?.position.x)
+    expect(operation!.draft.nodes.find((node) => node.id === "message-welcome")?.position.x)
       .toBe(WORKFLOW_LAYOUT_X_GAP * 3 + WORKFLOW_LAYOUT_X_GAP);
   });
 
-  it("inserts after an empty source handle without auto-connecting a downstream goal", () => {
+  it("inserts after an empty source handle without auto-connecting a downstream end", () => {
     const operation = insertNodeAfterOperation(
       createDraft(),
       "branch-intent",
@@ -99,9 +109,9 @@ describe("workflow graph operations", () => {
       }),
     ]));
     expect(operation!.draft.edges.some((edge) =>
-      edge.source === "wait-normal" && edge.target === "goal",
+      edge.source === "wait-normal" && edge.target === "end",
     )).toBe(false);
-    expect(operation!.draft.edges.filter((edge) => edge.target === "goal")).toHaveLength(1);
+    expect(operation!.draft.edges.filter((edge) => edge.target === "end")).toHaveLength(1);
   });
 
   it("replaces default-handle edges when inserting after imported null handles", () => {
@@ -109,24 +119,24 @@ describe("workflow graph operations", () => {
     const operation = insertNodeAfterOperation({
       ...draft,
       edges: draft.edges.map((edge) =>
-        edge.source === "trigger" && edge.target === "wait-2d"
+        edge.source === "start" && edge.target === "wait-2d"
           ? { ...edge, sourceHandle: null, targetHandle: null }
           : edge,
       ),
-    }, "trigger", "ai", "ai-entry");
+    }, "start", "handoff", "handoff-entry");
 
     expect(operation?.event).toBe("node:insert");
     expect(operation?.draft.edges.some((edge) =>
-      edge.source === "trigger" && edge.target === "wait-2d",
+      edge.source === "start" && edge.target === "wait-2d",
     )).toBe(false);
     expect(operation?.draft.edges).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        source: "trigger",
+        source: "start",
         sourceHandle: undefined,
-        target: "ai-entry",
+        target: "handoff-entry",
       }),
       expect.objectContaining({
-        source: "ai-entry",
+        source: "handoff-entry",
         target: "wait-2d",
         targetHandle: undefined,
       }),
@@ -136,39 +146,39 @@ describe("workflow graph operations", () => {
   it("inserts a node between an edge while preserving handle metadata", () => {
     expect(insertNodeBetweenOperation(
       createDraft(),
-      "edge-branch-intent-branch-high-action-message",
+      "edge-branch-intent-branch-high-message-welcome",
       "branch-intent",
-      "action-message",
-      "ai",
+      "message-welcome",
+      "handoff",
       "wait-2d",
     )).toBeUndefined();
 
     const operation = insertNodeBetweenOperation(
       createDraft(),
-      "edge-branch-intent-branch-high-action-message",
+      "edge-branch-intent-branch-high-message-welcome",
       "branch-intent",
-      "action-message",
-      "ai",
-      "ai-high",
+      "message-welcome",
+      "handoff",
+      "handoff-high",
     );
 
     expect(operation).toBeDefined();
     expect(operation!.event).toBe("node:insert");
     expect(operation!.meta).toEqual(expect.objectContaining({
-      edgeId: "edge-branch-intent-branch-high-action-message",
-      nodeId: "ai-high",
+      edgeId: "edge-branch-intent-branch-high-message-welcome",
+      nodeId: "handoff-high",
     }));
     expect(operation!.draft.edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: "branch-intent",
           sourceHandle: "branch-high",
-          target: "ai-high",
+          target: "handoff-high",
           targetHandle: undefined,
         }),
         expect.objectContaining({
-          source: "ai-high",
-          target: "action-message",
+          source: "handoff-high",
+          target: "message-welcome",
           targetHandle: undefined,
         }),
       ]),
@@ -198,17 +208,17 @@ describe("workflow graph operations", () => {
   });
 
   it("adds only insertable node kinds as unconnected floating nodes", () => {
-    expect(addNodeOperation(createDraft(), "trigger", "trigger-copy")).toBeUndefined();
-    expect(addNodeOperation(createDraft(), "ai", "wait-2d")).toBeUndefined();
+    expect(addNodeOperation(createDraft(), "start", "start-copy")).toBeUndefined();
+    expect(addNodeOperation(createDraft(), "handoff", "wait-2d")).toBeUndefined();
 
     const draft = createDraft();
-    const operation = addNodeOperation(draft, "ai", "ai-tail");
+    const operation = addNodeOperation(draft, "handoff", "handoff-tail");
 
     expect(operation?.event).toBe("node:add");
     expect(operation?.draft.edges.map((edge) => edge.id)).toEqual(draft.edges.map((edge) => edge.id));
-    expect(operation?.draft.edges.some((edge) => edge.source === "ai-tail" || edge.target === "ai-tail"))
+    expect(operation?.draft.edges.some((edge) => edge.source === "handoff-tail" || edge.target === "handoff-tail"))
       .toBe(false);
-    expect(operation?.draft.nodes.find((node) => node.id === "ai-tail")?.position)
+    expect(operation?.draft.nodes.find((node) => node.id === "handoff-tail")?.position)
       .toEqual({ x: 395, y: -293 });
   });
 
@@ -217,58 +227,59 @@ describe("workflow graph operations", () => {
     expect(connectNodesOperation(draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "goal",
+      target: "end",
       targetHandle: null,
     })).toBeUndefined();
 
     const reconnectableDraft = {
       ...draft,
       edges: draft.edges.filter((edge) =>
-        edge.source !== "wait-2d" && edge.target !== "action-message",
+        edge.source !== "wait-2d" && edge.target !== "message-welcome",
       ),
     };
     const operation = connectNodesOperation(reconnectableDraft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     });
 
     expect(operation?.event).toBe("edge:connect");
-    expect(operation?.result?.edgeId).toBe("edge-wait-2d-action-message");
+    expect(operation?.result?.edgeId).toBe("edge-wait-2d-message-welcome");
     expect(connectNodesOperation(operation!.draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     })).toBeUndefined();
-    expect(connectNodesOperation(draft, {
+    const endMergeOperation = connectNodesOperation(draft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
-      target: "goal",
+      target: "end",
       targetHandle: null,
-    })).toBeUndefined();
+    });
+    expect(endMergeOperation?.result?.edgeId).toBe("edge-branch-intent-branch-normal-end");
 
     const branchReconnectableDraft = {
       ...draft,
-      edges: draft.edges.filter((edge) => edge.id !== "edge-branch-intent-branch-high-action-message"),
+      edges: draft.edges.filter((edge) => edge.id !== "edge-branch-intent-branch-high-message-welcome"),
       nodes: [
         ...draft.nodes,
-        createNodeFromKind("action", "action-normal", 10),
+        createNodeFromKind("message", "message-normal", 10),
       ],
     };
     const branchOperation = connectNodesOperation(branchReconnectableDraft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
-      target: "action-normal",
+      target: "message-normal",
       targetHandle: null,
     });
 
-    expect(branchOperation?.result?.edgeId).toBe("edge-branch-intent-branch-normal-action-normal");
+    expect(branchOperation?.result?.edgeId).toBe("edge-branch-intent-branch-normal-message-normal");
     expect(connectNodesOperation(branchOperation!.draft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     })).toBeUndefined();
     expect(connectNodesOperation(draft, {
@@ -278,7 +289,7 @@ describe("workflow graph operations", () => {
       targetHandle: null,
     })).toBeUndefined();
     expect(connectNodesOperation(draft, {
-      source: "goal",
+      source: "end",
       sourceHandle: null,
       target: "wait-2d",
       targetHandle: null,
@@ -286,25 +297,25 @@ describe("workflow graph operations", () => {
     expect(connectNodesOperation(draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "trigger",
+      target: "start",
       targetHandle: null,
     })).toBeUndefined();
     expect(connectNodesOperation(draft, {
       source: "branch-intent",
       sourceHandle: "branch-missing",
-      target: "goal",
+      target: "end",
       targetHandle: null,
     })).toBeUndefined();
     expect(connectNodesOperation(draft, {
       source: "wait-2d",
       sourceHandle: "branch-high",
-      target: "goal",
+      target: "end",
       targetHandle: null,
     })).toBeUndefined();
     expect(connectNodesOperation(draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "goal",
+      target: "end",
       targetHandle: "target-custom",
     })).toBeUndefined();
   });
@@ -313,7 +324,7 @@ describe("workflow graph operations", () => {
     const draft = createDraft();
     const operation = deleteEdgesOperation(draft, [
       "edge-wait-2d-branch-intent",
-      "edge-action-message-goal",
+      "edge-message-welcome-end",
     ]);
 
     expect(operation?.event).toBe("edge:delete");
@@ -326,8 +337,8 @@ describe("workflow graph operations", () => {
       nodeId: "wait-2d",
     });
     expect(operation?.draft.edges.some((edge) => edge.id === "edge-wait-2d-branch-intent")).toBe(false);
-    expect(operation?.draft.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
-    expect(operation?.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-message-welcome"))
       .toBe(true);
     expect(deleteEdgesOperation(draft, [
       "edge-wait-2d-branch-intent",
@@ -342,16 +353,16 @@ describe("workflow graph operations", () => {
     expect(insertNodeAfterOperation(
       draft,
       "wait-2d",
-      "goal" as Parameters<typeof insertNodeAfterOperation>[2],
-      "goal-extra",
+      "end" as Parameters<typeof insertNodeAfterOperation>[2],
+      "end-extra",
     )).toBeUndefined();
     expect(insertNodeBetweenOperation(
       draft,
       "edge-wait-2d-branch-intent",
       "wait-2d",
       "branch-intent",
-      "trigger" as Parameters<typeof insertNodeBetweenOperation>[4],
-      "trigger-extra",
+      "start" as Parameters<typeof insertNodeBetweenOperation>[4],
+      "start-extra",
     )).toBeUndefined();
     expect(insertNodeAfterOperation(
       draft,
@@ -361,32 +372,32 @@ describe("workflow graph operations", () => {
     )).toBeUndefined();
     expect(insertNodeAfterOperation(
       draft,
-      "goal",
+      "end",
       "wait",
-      "wait-after-goal",
+      "wait-after-end",
     )).toBeUndefined();
     expect(insertNodeAfterOperation(
       draft,
       "wait-2d",
-      "ai",
-      "ai-extra",
+      "handoff",
+      "handoff-extra",
       "branch-high",
     )).toBeUndefined();
     expect(insertNodeBetweenOperation(
       draft,
       "missing-edge",
       "wait-2d",
-      "goal",
-      "ai",
-      "ai-missing-edge",
+      "end",
+      "handoff",
+      "handoff-missing-edge",
     )).toBeUndefined();
     expect(insertNodeBetweenOperation(
       draft,
       "edge-wait-2d-branch-intent",
-      "trigger",
+      "start",
       "branch-intent",
-      "ai",
-      "ai-mismatch",
+      "handoff",
+      "handoff-mismatch",
     )).toBeUndefined();
   });
 
@@ -428,11 +439,11 @@ describe("workflow graph operations", () => {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("wait-2d", "goal"),
-        createEdge("wait-2d", "goal"),
+        createEdge("wait-2d", "end"),
+        createEdge("wait-2d", "end"),
         {
-          ...createEdge("missing", "goal"),
-          id: "edge-missing-goal",
+          ...createEdge("missing", "end"),
+          id: "edge-missing-end",
         },
       ],
       viewport: {
@@ -445,14 +456,14 @@ describe("workflow graph operations", () => {
     });
 
     expect(operation?.draft.viewport).toEqual({ x: 100, y: 200, zoom: 1.2 });
-    expect(operation?.draft.edges.some((edge) => edge.id === "edge-wait-2d-goal")).toBe(false);
-    expect(operation?.draft.edges.some((edge) => edge.id === "edge-missing-goal")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-wait-2d-end")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.id === "edge-missing-end")).toBe(false);
     expect(operation?.draft.edges.every((edge) => edge.type === WORKFLOW_EDGE_TYPE)).toBe(true);
   });
 
   it("rejects connections that would create cycles", () => {
     expect(connectNodesOperation(createDraft(), {
-      source: "action-message",
+      source: "message-welcome",
       sourceHandle: null,
       target: "wait-2d",
       targetHandle: null,
@@ -460,51 +471,51 @@ describe("workflow graph operations", () => {
   });
 
   it("deletes editable nodes with connected edges and keeps terminal nodes protected", () => {
-    const operation = deleteNodeOperation(createDraft(), "action-message");
+    const operation = deleteNodeOperation(createDraft(), "message-welcome");
 
     expect(operation?.event).toBe("node:delete");
-    expect(operation?.draft.nodes.some((node) => node.id === "action-message")).toBe(false);
-    expect(operation?.draft.edges.some((edge) => edge.source === "action-message" || edge.target === "action-message"))
+    expect(operation?.draft.nodes.some((node) => node.id === "message-welcome")).toBe(false);
+    expect(operation?.draft.edges.some((edge) => edge.source === "message-welcome" || edge.target === "message-welcome"))
       .toBe(false);
-    expect(deleteNodeOperation(createDraft(), "trigger")).toBeUndefined();
-    expect(deleteNodeOperation(createDraft(), "goal")).toBeUndefined();
+    expect(deleteNodeOperation(createDraft(), "start")).toBeUndefined();
+    expect(deleteNodeOperation(createDraft(), "end")).toBeUndefined();
   });
 
   it("deletes multiple editable nodes in one atomic operation", () => {
-    const operation = deleteNodesOperation(createDraft(), ["wait-2d", "action-message"]);
+    const operation = deleteNodesOperation(createDraft(), ["wait-2d", "message-welcome"]);
 
     expect(operation?.event).toBe("node:delete");
-    expect(operation?.result?.nodeIds).toEqual(["wait-2d", "action-message"]);
+    expect(operation?.result?.nodeIds).toEqual(["wait-2d", "message-welcome"]);
     expect(operation?.draft.nodes.map((node) => node.id)).not.toContain("wait-2d");
-    expect(operation?.draft.nodes.map((node) => node.id)).not.toContain("action-message");
+    expect(operation?.draft.nodes.map((node) => node.id)).not.toContain("message-welcome");
     expect(operation?.draft.edges.some((edge) =>
       edge.source === "wait-2d"
       || edge.target === "wait-2d"
-      || edge.source === "action-message"
-      || edge.target === "action-message",
+      || edge.source === "message-welcome"
+      || edge.target === "message-welcome",
     )).toBe(false);
   });
 
   it("rejects batched node deletion when any requested node is missing or protected", () => {
-    expect(deleteNodesOperation(createDraft(), ["trigger", "wait-2d"])).toBeUndefined();
-    expect(deleteNodesOperation(createDraft(), ["goal", "action-message"])).toBeUndefined();
-    expect(deleteNodesOperation(createDraft(), ["missing-node", "action-message"])).toBeUndefined();
+    expect(deleteNodesOperation(createDraft(), ["start", "wait-2d"])).toBeUndefined();
+    expect(deleteNodesOperation(createDraft(), ["end", "message-welcome"])).toBeUndefined();
+    expect(deleteNodesOperation(createDraft(), ["missing-node", "message-welcome"])).toBeUndefined();
   });
 
   it("duplicates nodes with a unique title and without carrying selection runtime state", () => {
     const draft = createDraft();
-    expect(duplicateNodeOperation(draft, "action-message", "wait-2d")).toBeUndefined();
+    expect(duplicateNodeOperation(draft, "message-welcome", "wait-2d")).toBeUndefined();
 
     const operation = duplicateNodeOperation({
       ...draft,
       nodes: draft.nodes.map((node) =>
-        node.id === "action-message"
+        node.id === "message-welcome"
           ? { ...node, selected: true, zIndex: 20 }
           : node,
       ),
-    }, "action-message", "action-copy");
+    }, "message-welcome", "message-copy");
 
-    const duplicatedNode = operation?.draft.nodes.find((node) => node.id === "action-copy");
+    const duplicatedNode = operation?.draft.nodes.find((node) => node.id === "message-copy");
 
     expect(operation?.event).toBe("node:duplicate");
     expect(duplicatedNode?.data.title).toBe("发送欢迎消息 (1)");
@@ -514,15 +525,15 @@ describe("workflow graph operations", () => {
 
   it("pastes clipboard nodes as a graph operation", () => {
     const draft = createDraft();
-    const clipboardData = createWorkflowClipboardData(draft, ["action-message"])!;
+    const clipboardData = createWorkflowClipboardData(draft, ["message-welcome"])!;
     const operation = pasteClipboardOperation(draft, clipboardData, {
       nodeIdFactory: (kind, index) => `${kind}-paste-${index}`,
     });
 
     expect(operation?.event).toBe("node:paste");
-    expect(operation?.result).toEqual({ nodeId: "action-paste-0" });
-    expect(operation?.draft.nodes.some((node) => node.id === "action-paste-0")).toBe(true);
-    expect(operation?.draft.nodes.find((node) => node.id === "action-paste-0")?.data.title)
+    expect(operation?.result).toEqual({ nodeId: "message-paste-0" });
+    expect(operation?.draft.nodes.some((node) => node.id === "message-paste-0")).toBe(true);
+    expect(operation?.draft.nodes.find((node) => node.id === "message-paste-0")?.data.title)
       .toBe("发送欢迎消息 (1)");
   });
 
@@ -541,8 +552,8 @@ describe("workflow graph operations", () => {
     expect(operation?.result).toEqual({ nodeId: "wait-2d" });
     expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({ x: 420, y: 120 });
     expect(operation?.draft.nodes.find((node) => node.id === "branch-intent")?.position).toEqual({ x: 760, y: 180 });
-    expect(operation?.draft.nodes.find((node) => node.id === "trigger")?.position)
-      .toEqual(draft.nodes.find((node) => node.id === "trigger")?.position);
+    expect(operation?.draft.nodes.find((node) => node.id === "start")?.position)
+      .toEqual(draft.nodes.find((node) => node.id === "start")?.position);
   });
 
   it("does not create a move operation when positions are unchanged", () => {
@@ -598,10 +609,31 @@ describe("workflow graph operations", () => {
     })).toBeUndefined();
   });
 
+  it("renames editable nodes and rejects protected or empty names", () => {
+    const draft = createDraft();
+    const operation = renameNodeOperation(draft, "wait-2d", "  等待复购  ");
+
+    expect(operation?.event).toBe("node:rename");
+    expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.title)
+      .toBe("等待复购");
+    expect(renameNodeOperation(draft, "start", "新的开始")).toBeUndefined();
+    expect(renameNodeOperation(draft, "end", "新的结束")).toBeUndefined();
+    expect(renameNodeOperation(draft, "wait-2d", "   ")).toBeUndefined();
+  });
+
+  it("does not rename protected nodes through generic config patches", () => {
+    const draft = createDraft();
+
+    expect(updateNodeDataOperation(draft, "start", { title: "新的开始" }))
+      .toBeUndefined();
+    expect(updateNodeDataOperation(draft, "end", { title: "新的结束" }))
+      .toBeUndefined();
+  });
+
   it("keeps node kind and schema version immutable when applying config patches", () => {
     const draft = createDraft();
     const operation = updateNodeDataOperation(draft, "wait-2d", {
-      kind: "goal",
+      kind: "end",
       schemaVersion: 999,
       title: "仍然是等待节点",
     } as unknown as Parameters<typeof updateNodeDataOperation>[2]);
@@ -623,14 +655,14 @@ describe("workflow graph operations", () => {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "action-message", "低意向", {
+        createEdge("branch-intent", "message-welcome", "低意向", {
           sourceHandle: "branch-low",
         }),
       ],
     }, {
       source: "branch-intent",
       sourceHandle: "branch-low",
-      target: "goal",
+      target: "end",
       targetHandle: null,
     });
 
@@ -639,17 +671,17 @@ describe("workflow graph operations", () => {
 
   it("arranges nodes by graph topology instead of node creation order", () => {
     const draft = createDraft();
-    const insertedNode = createNodeFromKind("ai", "ai-mid", 99);
+    const insertedNode = createNodeFromKind("handoff", "handoff-mid", 99);
     const operation = arrangeNodesOperation({
       ...draft,
       edges: [
-        createEdge("trigger", "wait-2d"),
-        createEdge("wait-2d", "ai-mid"),
-        createEdge("ai-mid", "branch-intent"),
-        createEdge("branch-intent", "action-message", "高意向", {
+        createEdge("start", "wait-2d"),
+        createEdge("wait-2d", "handoff-mid"),
+        createEdge("handoff-mid", "branch-intent"),
+        createEdge("branch-intent", "message-welcome", "高意向", {
           sourceHandle: "branch-high",
         }),
-        createEdge("action-message", "goal"),
+        createEdge("message-welcome", "end"),
       ],
       nodes: [...draft.nodes, insertedNode],
     });
@@ -657,10 +689,10 @@ describe("workflow graph operations", () => {
     const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
     expect(operation?.event).toBe("layout:organize");
-    expect(positionById.get("trigger")?.x).toBeLessThan(positionById.get("wait-2d")?.x ?? 0);
-    expect(positionById.get("wait-2d")?.x).toBeLessThan(positionById.get("ai-mid")?.x ?? 0);
-    expect(positionById.get("ai-mid")?.x).toBeLessThan(positionById.get("branch-intent")?.x ?? 0);
-    expect(positionById.get("branch-intent")?.x).toBeLessThan(positionById.get("action-message")?.x ?? 0);
+    expect(positionById.get("start")?.x).toBeLessThan(positionById.get("wait-2d")?.x ?? 0);
+    expect(positionById.get("wait-2d")?.x).toBeLessThan(positionById.get("handoff-mid")?.x ?? 0);
+    expect(positionById.get("handoff-mid")?.x).toBeLessThan(positionById.get("branch-intent")?.x ?? 0);
+    expect(positionById.get("branch-intent")?.x).toBeLessThan(positionById.get("message-welcome")?.x ?? 0);
   });
 
   it("skips auto arrange operations when the layout is already current", () => {
@@ -673,20 +705,20 @@ describe("workflow graph operations", () => {
 
   it("arranges branch targets by their source handle order", () => {
     const draft = createDraft();
-    const normalNode = createNodeFromKind("action", "action-normal", 10);
-    const defaultNode = createNodeFromKind("action", "action-default", 11);
+    const normalNode = createNodeFromKind("message", "message-normal", 10);
+    const defaultNode = createNodeFromKind("message", "message-default", 11);
     const operation = arrangeNodesOperation({
       ...draft,
       edges: [
-        createEdge("trigger", "wait-2d"),
+        createEdge("start", "wait-2d"),
         createEdge("wait-2d", "branch-intent"),
-        createEdge("branch-intent", "action-default", "默认路径", {
+        createEdge("branch-intent", "message-default", "默认路径", {
           sourceHandle: "branch-default",
         }),
-        createEdge("branch-intent", "action-message", "高意向", {
+        createEdge("branch-intent", "message-welcome", "高意向", {
           sourceHandle: "branch-high",
         }),
-        createEdge("branch-intent", "action-normal", "普通客户", {
+        createEdge("branch-intent", "message-normal", "普通客户", {
           sourceHandle: "branch-normal",
         }),
       ],
@@ -696,17 +728,17 @@ describe("workflow graph operations", () => {
     expect(operation).toBeDefined();
     const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
-    expect(positionById.get("action-message")?.x).toBe(positionById.get("action-normal")?.x);
-    expect(positionById.get("action-normal")?.x).toBe(positionById.get("action-default")?.x);
-    expect(positionById.get("action-message")?.y).toBeLessThan(positionById.get("action-normal")?.y ?? 0);
-    expect(positionById.get("action-normal")?.y).toBeLessThan(positionById.get("action-default")?.y ?? 0);
+    expect(positionById.get("message-welcome")?.x).toBe(positionById.get("message-normal")?.x);
+    expect(positionById.get("message-normal")?.x).toBe(positionById.get("message-default")?.x);
+    expect(positionById.get("message-welcome")?.y).toBeLessThan(positionById.get("message-normal")?.y ?? 0);
+    expect(positionById.get("message-normal")?.y).toBeLessThan(positionById.get("message-default")?.y ?? 0);
   });
 
   it("arranges branch targets by branch path order from node data", () => {
     const draft = createDraft();
-    const firstNode = createNodeFromKind("action", "action-first", 10);
-    const secondNode = createNodeFromKind("action", "action-second", 11);
-    const fallbackNode = createNodeFromKind("action", "action-fallback", 12);
+    const firstNode = createNodeFromKind("message", "message-first", 10);
+    const secondNode = createNodeFromKind("message", "message-second", 11);
+    const fallbackNode = createNodeFromKind("message", "message-fallback", 12);
     const branchPaths: WorkflowBranchPath[] = [
       { id: "branch-first", label: "第一路径", operator: "IF", title: "CASE 1" },
       { id: "branch-second", label: "第二路径", operator: "ELIF", title: "CASE 2" },
@@ -715,15 +747,15 @@ describe("workflow graph operations", () => {
     const operation = arrangeNodesOperation({
       ...draft,
       edges: [
-        createEdge("trigger", "wait-2d"),
+        createEdge("start", "wait-2d"),
         createEdge("wait-2d", "branch-intent"),
-        createEdge("branch-intent", "action-fallback", "兜底", {
+        createEdge("branch-intent", "message-fallback", "兜底", {
           sourceHandle: "branch-fallback",
         }),
-        createEdge("branch-intent", "action-second", "第二路径", {
+        createEdge("branch-intent", "message-second", "第二路径", {
           sourceHandle: "branch-second",
         }),
-        createEdge("branch-intent", "action-first", "第一路径", {
+        createEdge("branch-intent", "message-first", "第一路径", {
           sourceHandle: "branch-first",
         }),
       ],
@@ -748,14 +780,14 @@ describe("workflow graph operations", () => {
     expect(operation).toBeDefined();
     const positionById = new Map(operation!.draft.nodes.map((node) => [node.id, node.position]));
 
-    expect(positionById.get("action-first")?.y).toBeLessThan(positionById.get("action-second")?.y ?? 0);
-    expect(positionById.get("action-second")?.y).toBeLessThan(positionById.get("action-fallback")?.y ?? 0);
+    expect(positionById.get("message-first")?.y).toBeLessThan(positionById.get("message-second")?.y ?? 0);
+    expect(positionById.get("message-second")?.y).toBeLessThan(positionById.get("message-fallback")?.y ?? 0);
   });
 
   it("prioritizes entry nodes by role during layout instead of a fixed node id", () => {
     const draft = createDraft();
     const entryNode = {
-      ...draft.nodes.find((node) => node.id === "trigger")!,
+      ...draft.nodes.find((node) => node.id === "start")!,
       id: "entry-start",
       position: { x: 640, y: 0 },
     };

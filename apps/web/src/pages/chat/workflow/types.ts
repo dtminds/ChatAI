@@ -5,9 +5,17 @@ import type {
 } from "./constants";
 
 export type InspectorTab = "settings" | "variables";
-export type WorkflowNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
+export type WorkflowNodeKind =
+  | "start"
+  | "wait"
+  | "branch"
+  | "message"
+  | "tag"
+  | "coupon"
+  | "handoff"
+  | "end";
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
-export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "trigger" | "goal">;
+export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "start" | "end">;
 
 export type WorkflowBranchPath = {
   id: string;
@@ -27,7 +35,7 @@ type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unkno
   title: string;
 };
 
-export type TriggerNodeData = WorkflowNodeDataBase<"trigger"> & {
+export type StartNodeData = WorkflowNodeDataBase<"start"> & {
   audience?: string;
   entryLimitSummary?: string;
   hostingAccountSummary?: string;
@@ -44,26 +52,20 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchRule?: string;
 };
 
-export type ActionNodeData = WorkflowNodeDataBase<"action"> & {
-  actionType?: "message" | "coupon" | "tag" | "handoff";
-};
-
-export type AiNodeData = WorkflowNodeDataBase<"ai"> & {
-  actionType?: "ai";
-  agentName?: string;
-  handoffRule?: string;
-};
-
-export type GoalNodeData = WorkflowNodeDataBase<"goal"> & {
-  conversion?: number;
-};
+export type MessageNodeData = WorkflowNodeDataBase<"message">;
+export type TagNodeData = WorkflowNodeDataBase<"tag">;
+export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
+export type HandoffNodeData = WorkflowNodeDataBase<"handoff">;
+export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
-  action: ActionNodeData;
-  ai: AiNodeData;
   branch: BranchNodeData;
-  goal: GoalNodeData;
-  trigger: TriggerNodeData;
+  coupon: CouponNodeData;
+  end: EndNodeData;
+  handoff: HandoffNodeData;
+  message: MessageNodeData;
+  start: StartNodeData;
+  tag: TagNodeData;
   wait: WaitNodeData;
 };
 
@@ -89,6 +91,7 @@ export type WorkflowNodeRuntimeData = {
     kind: InsertableWorkflowNodeKind,
     sourceHandle?: string,
   ) => void;
+  onRename?: (nodeId: string, title: string) => void;
   onDelete?: (nodeId: string) => void;
   onToggleInsertMenu?: (nodeId: string, sourceHandle?: string) => void;
   onSelect?: (nodeId: string, options?: { additive?: boolean }) => void;
@@ -149,7 +152,7 @@ export type WorkflowVariables = {
 
 export type WorkflowPublishCheck = {
   blocksPublish: boolean;
-  category: "connectivity" | "config" | "goal" | "trigger";
+  category: "connectivity" | "config" | "end" | "start";
   description: string;
   id: string;
   messages?: string[];
@@ -161,7 +164,7 @@ export type WorkflowPublishCheck = {
 export type WorkflowPublishCheckSummaryItem = {
   blocksPublish: boolean;
   description: string;
-  id: "trigger" | "connectivity" | "config" | "goal";
+  id: "start" | "connectivity" | "config" | "end";
   status: "ready" | "warning";
   title: string;
 };

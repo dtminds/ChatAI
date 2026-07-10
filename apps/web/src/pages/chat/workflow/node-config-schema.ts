@@ -23,13 +23,6 @@ export const baseNodeConfigSections: NodeConfigSection<WorkflowNodeKind>[] = [
   {
     fields: [
       {
-        getValue: (data) => data.title,
-        id: "workflow-node-title",
-        kind: "text",
-        label: "节点名称",
-        toPatch: (value) => ({ title: value }) as WorkflowNodeConfigPatch,
-      },
-      {
         getValue: (data) => data.summary,
         id: "workflow-node-summary",
         kind: "textarea",

@@ -5,9 +5,9 @@ import {
   createDefaultSourceHandles,
   createDefaultTargetHandles,
   createNodeData,
+  compactNodeLayout,
   pickDefinedWorkflowConfig,
   sourceNodeKinds,
-  standardNodeLayout,
   targetNodeKinds,
 } from "../definition-shared";
 
@@ -17,6 +17,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   canDelete: true,
   canDuplicate: true,
   canInsertAfter: true,
+  canRename: true,
   configSections: [
     {
       fields: [
@@ -58,7 +59,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   description: "按天、小时或固定窗口延迟触达",
   insertable: true,
   kind: "wait",
-  layout: standardNodeLayout,
+  layout: compactNodeLayout,
   paletteGroup: "flow",
   paletteLabel: "等待",
   schemaVersion: 1,

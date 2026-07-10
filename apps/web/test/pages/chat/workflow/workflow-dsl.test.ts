@@ -31,7 +31,7 @@ describe("workflow DSL", () => {
       draft: {
         ...draft,
         nodes: draft.nodes.map((node) =>
-          node.id === "action-message"
+          node.id === "message-welcome"
             ? {
                 ...node,
                 data: {
@@ -69,26 +69,25 @@ describe("workflow DSL", () => {
       name: "新人转化旅程",
       revision: 3,
     }));
-    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").selected)
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "message-welcome").selected)
       .toBe(false);
-    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").zIndex)
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "message-welcome").zIndex)
       .toBeUndefined();
-    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data.onDelete)
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "message-welcome").data.onDelete)
       .toBeUndefined();
-    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data._connectedSourceHandleIds)
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "message-welcome").data._connectedSourceHandleIds)
       .toBeUndefined();
-    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "action-message").data._runtimeStatus)
+    expect(parsed.workflow.draft.nodes.find((node: WorkflowNode) => node.id === "message-welcome").data._runtimeStatus)
       .toBeUndefined();
     const executionNode = parsed.workflow.executionGraph.nodes.find(
-      (node: { id: string }) => node.id === "action-message",
+      (node: { id: string }) => node.id === "message-welcome",
     );
     expect(executionNode).toEqual(expect.objectContaining({
-      id: "action-message",
-      kind: "action",
+      id: "message-welcome",
+      incomingMode: "any",
+      kind: "message",
     }));
-    expect(executionNode.config).toEqual({
-      actionType: "message",
-    });
+    expect(executionNode.config).toEqual({});
     expect(executionNode.config.kind).toBeUndefined();
     expect(executionNode.config.title).toBeUndefined();
     expect(executionNode.config.status).toBeUndefined();
@@ -97,16 +96,16 @@ describe("workflow DSL", () => {
     expect(executionNode.config._runtimeStatus).toBeUndefined();
     expect(parsed.workflow.executionGraph).not.toHaveProperty("viewport");
     expect(parsed.workflow.executionGraph.nodes[0]).not.toHaveProperty("position");
-    expect(parsed.workflow.executionGraph.entryNodeId).toBe("trigger");
-    expect(parsed.workflow.executionGraph.terminalNodeIds).toEqual(["goal"]);
-    expect(parsed.workflow.executionGraph.outgoing.trigger).toEqual(["edge-trigger-wait-2d"]);
-    expect(parsed.workflow.executionGraph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
+    expect(parsed.workflow.executionGraph.entryNodeId).toBe("start");
+    expect(parsed.workflow.executionGraph.terminalNodeIds).toEqual(["end"]);
+    expect(parsed.workflow.executionGraph.outgoing.start).toEqual(["edge-start-wait-2d"]);
+    expect(parsed.workflow.executionGraph.incoming["wait-2d"]).toEqual(["edge-start-wait-2d"]);
     expect(parsed.workflow.executionGraph.topologicalNodeIds).toEqual([
-      "trigger",
+      "start",
       "wait-2d",
       "branch-intent",
-      "action-message",
-      "goal",
+      "message-welcome",
+      "end",
     ]);
   });
 
@@ -124,33 +123,35 @@ describe("workflow DSL", () => {
     }
 
     expect(parsed.warnings).toEqual([]);
-    expect(parsed.importedSchemaVersion).toBe(WORKFLOW_DSL_SCHEMA_VERSION);
-    expect(parsed.sourceFormat).toBe("draft");
     expect(parsed.document.workflow.name).toBe("新人转化旅程");
     expect(parsed.document.workflow.executionGraph).toEqual(createWorkflowExecutionGraph(createInitialDraft()));
     expect(parsed.draft.nodes.map((node) => node.id)).toEqual(createInitialDraft().nodes.map((node) => node.id));
     expect(parsed.draft.edges.map((edge) => edge.id)).toEqual(createInitialDraft().edges.map((edge) => edge.id));
   });
 
-  it("imports legacy marketing workflow DSL kind through the compatibility boundary", () => {
-    const document = createWorkflowDslDocument({
-      draft: createInitialDraft(),
+  it("rebuilds execution data from the current draft during import", () => {
+    const draft = createInitialDraft();
+    const parsed = parseWorkflowDslText(JSON.stringify({
       exportedAt: "2026-07-08T00:00:00.000Z",
-      workflowName: "旧版 Workflow",
-    });
-    const text = JSON.stringify({
-      ...document,
-      kind: "chatai-marketing-workflow",
-    });
-    const parsed = parseWorkflowDslText(text);
+      kind: WORKFLOW_DSL_KIND,
+      schemaVersion: 1,
+      workflow: {
+        draft,
+        executionGraph: {
+          edges: [],
+          nodes: [],
+        },
+        name: "导入 Workflow",
+      },
+    }));
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) {
       return;
     }
 
-    expect(parsed.document.kind).toBe(WORKFLOW_DSL_KIND);
-    expect(parsed.draft.nodes.map((node) => node.id)).toEqual(createInitialDraft().nodes.map((node) => node.id));
+    expect(parsed.document.schemaVersion).toBe(WORKFLOW_DSL_SCHEMA_VERSION);
+    expect(parsed.document.workflow.executionGraph).toEqual(createWorkflowExecutionGraph(draft));
   });
 
   it("projects editor drafts into execution graphs without editor-only state", () => {
@@ -169,19 +170,19 @@ describe("workflow DSL", () => {
       viewport: { x: 320, y: 180, zoom: 1.4 },
     });
 
-    expect(graph.nodes.find((node) => node.id === "trigger")).toEqual(expect.objectContaining({
+    expect(graph.nodes.find((node) => node.id === "start")).toEqual(expect.objectContaining({
       config: expect.objectContaining({
         audience: "近 30 天新入会且未首购客户",
         repeatEntryEnabled: true,
       }),
-      id: "trigger",
-      kind: "trigger",
+      id: "start",
+      kind: "start",
     }));
-    expect(graph.nodes.find((node) => node.id === "trigger")?.config.kind).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "trigger")?.config.title).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "trigger")?.config.status).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "trigger")?.config._runtimeStatus).toBeUndefined();
-    expect(graph.nodes.find((node) => node.id === "trigger")?.config.onDelete).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config.kind).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config.title).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config.status).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config._runtimeStatus).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === "start")?.config.onDelete).toBeUndefined();
     expect(graph.edges.find((edge) => edge.source === "branch-intent" && edge.sourceHandle === "branch-high"))
       .toEqual(expect.objectContaining({
         source: "branch-intent",
@@ -191,10 +192,10 @@ describe("workflow DSL", () => {
           kind: "branch-path",
           label: "高意向客户",
         },
-        target: "action-message",
+        target: "message-welcome",
         targetHandle: null,
       }));
-    expect(graph.edges.find((edge) => edge.source === "trigger" && edge.target === "wait-2d"))
+    expect(graph.edges.find((edge) => edge.source === "start" && edge.target === "wait-2d"))
       .toEqual(expect.objectContaining({
         sourceHandle: null,
         sourceOutlet: {
@@ -202,29 +203,30 @@ describe("workflow DSL", () => {
           kind: "default",
         },
       }));
-    expect(graph.entryNodeId).toBe("trigger");
-    expect(graph.terminalNodeIds).toEqual(["goal"]);
-    expect(graph.outgoing.trigger).toEqual(["edge-trigger-wait-2d"]);
-    expect(graph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
-    expect(graph.outgoing.goal).toEqual([]);
-    expect(graph.incoming.trigger).toEqual([]);
+    expect(graph.entryNodeId).toBe("start");
+    expect(graph.terminalNodeIds).toEqual(["end"]);
+    expect(graph.outgoing.start).toEqual(["edge-start-wait-2d"]);
+    expect(graph.incoming["wait-2d"]).toEqual(["edge-start-wait-2d"]);
+    expect(graph.outgoing.end).toEqual([]);
+    expect(graph.incoming.start).toEqual([]);
     expect(graph.topologicalNodeIds).toEqual([
-      "trigger",
+      "start",
       "wait-2d",
       "branch-intent",
-      "action-message",
-      "goal",
+      "message-welcome",
+      "end",
     ]);
   });
 
   it("keeps execution node order stable when the graph has disconnected or cyclic nodes", () => {
     const draft = createInitialDraft();
-    const detachedNode = createNodeFromKind("action", "detached-action", draft.nodes.length);
+    const detachedNode = createNodeFromKind("message", "detached-message", draft.nodes.length);
+    const cycleEdge = createEdge("message-welcome", "wait-2d");
     const graph = createWorkflowExecutionGraph({
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("action-message", "wait-2d"),
+        cycleEdge,
       ],
       nodes: [
         ...draft.nodes,
@@ -233,27 +235,51 @@ describe("workflow DSL", () => {
     });
 
     expect(graph.topologicalNodeIds).toEqual([
-      "trigger",
+      "start",
       "wait-2d",
       "branch-intent",
-      "action-message",
-      "goal",
-      "detached-action",
+      "message-welcome",
+      "end",
+      "detached-message",
     ]);
+    expect(graph.edges).toContainEqual(expect.objectContaining({ id: cycleEdge.id }));
+    expect(graph.diagnostics).toContainEqual(expect.objectContaining({
+      code: "edge-cycle",
+      edgeIds: expect.arrayContaining([cycleEdge.id]),
+    }));
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ id: detachedNode.id }));
     expect(new Set(graph.topologicalNodeIds)).toEqual(new Set(graph.nodes.map((node) => node.id)));
+
+    const document = createWorkflowDslDocument({
+      draft: {
+        ...draft,
+        edges: [...draft.edges, cycleEdge],
+        nodes: [...draft.nodes, detachedNode],
+      },
+      workflowName: "非法拓扑诊断",
+    });
+    const serialized = JSON.parse(stringifyWorkflowDslDocument(document));
+
+    expect(document.workflow.draft.edges).toContainEqual(expect.objectContaining({ id: cycleEdge.id }));
+    expect(serialized.workflow.executionGraph.edges).toContainEqual(expect.objectContaining({
+      id: cycleEdge.id,
+    }));
+    expect(serialized.workflow.executionGraph.diagnostics).toContainEqual(expect.objectContaining({
+      code: "edge-cycle",
+    }));
   });
 
   it("preserves persisted node configuration fields through export and import", () => {
     const draft = createInitialDraft();
-    const aiNode = createNodeFromKind("ai", "ai-reception", draft.nodes.length);
+    const handoffNode = createNodeFromKind("handoff", "handoff-reception", draft.nodes.length);
     const configuredDraft: WorkflowDraft = {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("action-message", "ai-reception"),
+        createEdge("message-welcome", "handoff-reception"),
       ],
       nodes: draft.nodes.map((node) => {
-        if (node.id === "trigger") {
+        if (node.id === "start") {
           return {
             ...node,
             data: {
@@ -265,10 +291,10 @@ describe("workflow DSL", () => {
 
         return node;
       }).concat({
-        ...aiNode,
+        ...handoffNode,
         data: {
-          ...aiNode.data,
-          handoffRule: "客户要求人工",
+          ...handoffNode.data,
+          title: "会员运营接管",
         },
       }),
     };
@@ -283,27 +309,27 @@ describe("workflow DSL", () => {
       return;
     }
 
-    expect(parsed.draft.nodes.find((node) => node.id === "trigger")?.data.repeatEntryEnabled).toBe(false);
-    expect(parsed.draft.nodes.find((node) => node.id === "ai-reception")?.data.handoffRule).toBe("客户要求人工");
+    expect(parsed.draft.nodes.find((node) => node.id === "start")?.data.repeatEntryEnabled).toBe(false);
+    expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.title).toBe("会员运营接管");
   });
 
   it("keeps execution config limited to runtime-facing node parameters", () => {
     const draft = createInitialDraft();
-    const aiNode = createNodeFromKind("ai", "ai-reception", draft.nodes.length);
+    const handoffNode = createNodeFromKind("handoff", "handoff-reception", draft.nodes.length);
     const graph = createWorkflowExecutionGraph({
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("action-message", "ai-reception"),
+        createEdge("message-welcome", "handoff-reception"),
       ],
       nodes: [
         ...draft.nodes,
-        aiNode,
+        handoffNode,
       ],
     });
     const configByKind = new Map(graph.nodes.map((node) => [node.kind, node.config]));
 
-    expect(configByKind.get("trigger")).toEqual({
+    expect(configByKind.get("start")).toEqual({
       audience: "近 30 天新入会且未首购客户",
       repeatEntryEnabled: true,
     });
@@ -312,12 +338,9 @@ describe("workflow DSL", () => {
       branchPaths: expect.any(Array),
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
-    expect(configByKind.get("action")).toEqual({ actionType: "message" });
-    expect(configByKind.get("ai")).toEqual({
-      agentName: "护肤小助理",
-      handoffRule: "客户要求人工、投诉升级、识别到价格异议",
-    });
-    expect(configByKind.get("goal")).toEqual({ conversion: 18.4 });
+    expect(configByKind.get("message")).toEqual({});
+    expect(configByKind.get("handoff")).toEqual({});
+    expect(configByKind.get("end")).toEqual({});
 
     graph.nodes.forEach((node) => {
       expect(node.config).not.toHaveProperty("label");
@@ -359,20 +382,20 @@ describe("workflow DSL", () => {
     });
   });
 
-  it("hydrates legacy graph payloads and reports dropped nodes or edges as warnings", () => {
+  it("hydrates untrusted draft payloads and reports dropped nodes or edges as warnings", () => {
     const draft = createInitialDraft();
-    const validNode = draft.nodes.find((node) => node.id === "action-message")!;
-    const validEdge = draft.edges.find((edge) => edge.target === "action-message")!;
+    const validNode = draft.nodes.find((node) => node.id === "message-welcome")!;
+    const validEdge = draft.edges.find((edge) => edge.target === "message-welcome")!;
     const payload = {
       kind: WORKFLOW_DSL_KIND,
       schemaVersion: WORKFLOW_DSL_SCHEMA_VERSION,
       workflow: {
-        graph: {
+        draft: {
           edges: [
             validEdge,
             {
               id: "edge-missing-target",
-              source: "action-message",
+              source: "message-welcome",
               target: "missing",
               type: WORKFLOW_EDGE_TYPE,
             } satisfies WorkflowEdge,
@@ -381,11 +404,11 @@ describe("workflow DSL", () => {
             {
               ...validNode,
               data: {
-                kind: "action",
-                title: "旧动作节点",
+                kind: "message",
+                title: "外部消息节点",
               },
               selected: true,
-              type: "legacy-node-type",
+              type: "external-node-type",
               zIndex: 99,
             } as unknown as WorkflowNode,
             {
@@ -412,8 +435,6 @@ describe("workflow DSL", () => {
     }
 
     expect(parsed.document.workflow.name).toBe("导入的 Workflow");
-    expect(parsed.importedSchemaVersion).toBe(WORKFLOW_DSL_SCHEMA_VERSION);
-    expect(parsed.sourceFormat).toBe("graph");
     expect(parsed.draft.nodes).toHaveLength(1);
     expect(parsed.draft.nodes[0]).toEqual(expect.objectContaining({
       selected: false,
@@ -421,16 +442,12 @@ describe("workflow DSL", () => {
       zIndex: undefined,
     }));
     expect(parsed.draft.nodes[0].data).toEqual(expect.objectContaining({
-      kind: "action",
+      kind: "message",
       metric: expect.any(String),
-      title: "旧动作节点",
+      title: "外部消息节点",
     }));
     expect(parsed.draft.edges).toHaveLength(0);
     expect(parsed.warnings).toEqual([
-      expect.objectContaining({
-        code: "legacy-graph-format",
-        message: "已从旧版 graph 格式兼容导入",
-      }),
       expect.objectContaining({
         code: "dropped-nodes",
         message: "部分节点不受支持，已在导入时忽略",

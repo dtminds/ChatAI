@@ -4,8 +4,11 @@ import {
   sanitizeDraft,
 } from "./workflow-draft-normalizer";
 import { getUniqueDuplicatedNodeTitle } from "./graph";
+import {
+  canDuplicateNodeKind,
+  canInsertNodeKind,
+} from "./node-definition-core";
 import { isWorkflowNodeKind } from "./node-catalog";
-import { canDuplicateNodeKind, canInsertNodeKind } from "./node-definition-core";
 import type {
   WorkflowNodeKind,
   WorkflowEdge,
@@ -16,7 +19,6 @@ import type {
 export const WORKFLOW_CLIPBOARD_KIND = "chatai-workflow-clipboard";
 export const WORKFLOW_CLIPBOARD_VERSION = 1;
 const PASTE_OFFSET = 48;
-const LEGACY_WORKFLOW_CLIPBOARD_KINDS = ["chatai-marketing-workflow-clipboard"] as const;
 
 export type WorkflowClipboardData = {
   edges: WorkflowEdge[];
@@ -119,8 +121,7 @@ export function parseWorkflowClipboardText(text: string): WorkflowClipboardData 
 }
 
 function isSupportedWorkflowClipboardKind(value: unknown) {
-  return value === WORKFLOW_CLIPBOARD_KIND
-    || LEGACY_WORKFLOW_CLIPBOARD_KINDS.includes(value as (typeof LEGACY_WORKFLOW_CLIPBOARD_KINDS)[number]);
+  return value === WORKFLOW_CLIPBOARD_KIND;
 }
 
 export async function writeWorkflowClipboard(data: WorkflowClipboardData) {

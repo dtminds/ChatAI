@@ -31,14 +31,14 @@ export function createInitialNodes(): WorkflowNode[] {
   return [
     {
       data: {
-        ...createDefaultNodeData("trigger"),
+        ...createDefaultNodeData("start"),
         audience: "近 30 天新入会且未首购客户",
         metric: "预计进入 124.8万人",
         status: "running",
         summary: "客户入会后立即进入新人转化旅程",
         title: "新人入会触发",
       },
-      id: "trigger",
+      id: "start",
       position: { x: 0, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     },
@@ -70,28 +70,22 @@ export function createInitialNodes(): WorkflowNode[] {
     },
     {
       data: {
-        ...createDefaultNodeData("action"),
-        actionType: "message",
+        ...createDefaultNodeData("message"),
         label: "发送消息",
         metric: "欢迎语 + 活动卡片",
         status: "ready",
         summary: "发送欢迎语和活动权益卡片",
         title: "发送欢迎消息",
       },
-      id: "action-message",
+      id: "message-welcome",
       position: { x: WORKFLOW_LAYOUT_X_GAP * 3, y: -94 },
       type: WORKFLOW_NODE_TYPE,
     },
     {
       data: {
-        ...createDefaultNodeData("goal"),
-        conversion: 18.4,
-        metric: "目标 18.4%",
-        status: "ready",
-        summary: "完成首单或领取新人券后退出",
-        title: "首单转化",
+        ...createDefaultNodeData("end"),
       },
-      id: "goal",
+      id: "end",
       position: { x: WORKFLOW_LAYOUT_X_GAP * 4, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     },
@@ -100,12 +94,12 @@ export function createInitialNodes(): WorkflowNode[] {
 
 export function createInitialEdges(): WorkflowEdge[] {
   return [
-    createEdge("trigger", "wait-2d"),
+    createEdge("start", "wait-2d"),
     createEdge("wait-2d", "branch-intent"),
-    createEdge("branch-intent", "action-message", "高意向", {
+    createEdge("branch-intent", "message-welcome", "高意向", {
       sourceHandle: "branch-high",
     }),
-    createEdge("action-message", "goal"),
+    createEdge("message-welcome", "end"),
   ];
 }
 

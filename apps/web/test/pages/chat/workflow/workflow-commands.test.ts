@@ -20,20 +20,20 @@ function createDraft(): WorkflowDraft {
 describe("workflow graph commands", () => {
   it("maps user graph intents to undoable operations with generated ids", () => {
     const addOperation = runWorkflowGraphCommand(createDraft(), {
-      kind: "ai",
+      kind: "handoff",
       type: "add-node",
     });
 
     expect(addOperation?.event).toBe("node:add");
-    expect(addOperation?.result?.nodeId).toMatch(/^ai-/);
+    expect(addOperation?.result?.nodeId).toMatch(/^handoff-/);
 
     const duplicateOperation = runWorkflowGraphCommand(createDraft(), {
-      nodeId: "action-message",
+      nodeId: "message-welcome",
       type: "duplicate-node",
     });
 
     expect(duplicateOperation?.event).toBe("node:duplicate");
-    expect(duplicateOperation?.result?.nodeId).toMatch(/^action-/);
+    expect(duplicateOperation?.result?.nodeId).toMatch(/^message-/);
     expect(duplicateOperation?.draft.nodes.find((node) => node.id === duplicateOperation.result?.nodeId)?.data.title)
       .toBe("发送欢迎消息 (1)");
   });
@@ -45,19 +45,19 @@ describe("workflow graph commands", () => {
     })).toBeUndefined();
 
     expect(runWorkflowGraphCommand(createDraft(), {
-      kind: "trigger" as never,
+      kind: "start" as never,
       type: "add-node",
     })).toBeUndefined();
 
     expect(runWorkflowGraphCommand(createDraft(), {
-      kind: "goal" as never,
+      kind: "end" as never,
       previousNodeId: "wait-2d",
       type: "insert-node-after",
     })).toBeUndefined();
 
     expect(runWorkflowGraphCommand(createDraft(), {
       edgeId: "edge-wait-2d-branch-intent",
-      kind: "trigger" as never,
+      kind: "start" as never,
       sourceNodeId: "wait-2d",
       targetNodeId: "branch-intent",
       type: "insert-node-between",
@@ -84,7 +84,7 @@ describe("workflow graph commands", () => {
     const draft = createDirtyDraftForCommandBoundary();
     const commands: WorkflowGraphCommand[] = [
       {
-        kind: "ai",
+        kind: "handoff",
         type: "add-node",
       },
       {
@@ -94,39 +94,39 @@ describe("workflow graph commands", () => {
         type: "insert-node-after",
       },
       {
-        edgeId: "edge-branch-intent-branch-high-action-message",
-        kind: "ai",
+        edgeId: "edge-branch-intent-branch-high-message-welcome",
+        kind: "handoff",
         sourceNodeId: "branch-intent",
-        targetNodeId: "action-message",
+        targetNodeId: "message-welcome",
         type: "insert-node-between",
       },
       {
         connection: {
           source: "branch-intent",
           sourceHandle: "branch-normal",
-          target: "action-normal",
+          target: "message-normal",
           targetHandle: null,
         },
         type: "connect-nodes",
       },
       {
-        edgeId: "edge-action-message-goal",
+        edgeId: "edge-message-welcome-end",
         type: "delete-edge",
       },
       {
-        edgeIds: ["edge-action-message-goal", "missing-edge"],
+        edgeIds: ["edge-message-welcome-end", "missing-edge"],
         type: "delete-edges",
       },
       {
-        nodeId: "action-message",
+        nodeId: "message-welcome",
         type: "delete-node",
       },
       {
-        nodeIds: ["wait-2d", "action-message"],
+        nodeIds: ["wait-2d", "message-welcome"],
         type: "delete-nodes",
       },
       {
-        nodeId: "action-message",
+        nodeId: "message-welcome",
         type: "duplicate-node",
       },
       {
@@ -152,7 +152,7 @@ describe("workflow graph commands", () => {
       expect(operation, command.type).toBeDefined();
       expect(operation!.draft.viewport).toEqual({ x: 320, y: 180, zoom: 1.4 });
       expect(new Set(operation!.draft.edges.map((edge) => edge.id)).size).toBe(operation!.draft.edges.length);
-      expect(operation!.draft.edges.some((edge) => edge.id === "edge-missing-goal")).toBe(false);
+      expect(operation!.draft.edges.some((edge) => edge.id === "edge-missing-end")).toBe(false);
       expect(operation!.draft.edges.every((edge) => edge.selected === false)).toBe(true);
       expect(operation!.draft.edges.every((edge) => typeof edge.data?.onToggleInsertMenu === "undefined")).toBe(true);
       expect(operation!.draft.nodes.every((node) => node.selected === false)).toBe(true);
@@ -164,14 +164,14 @@ describe("workflow graph commands", () => {
 
   it("pastes clipboard data through the same command boundary with unique node ids", () => {
     const draft = createDraft();
-    const clipboardData = createWorkflowClipboardData(draft, ["action-message"])!;
+    const clipboardData = createWorkflowClipboardData(draft, ["message-welcome"])!;
     const operation = runWorkflowGraphCommand(draft, {
       clipboardData,
       type: "paste-clipboard",
     });
 
     expect(operation?.event).toBe("node:paste");
-    expect(operation?.result?.nodeId).toMatch(/^action-/);
+    expect(operation?.result?.nodeId).toMatch(/^message-/);
     expect(operation?.draft.nodes.some((node) => node.id === operation.result?.nodeId)).toBe(true);
   });
 
@@ -208,7 +208,7 @@ describe("workflow graph commands", () => {
       }),
     ]));
     expect(operation!.draft.edges.some((edge) =>
-      edge.source === insertedNodeId && edge.target === "goal",
+      edge.source === insertedNodeId && edge.target === "end",
     )).toBe(false);
     expect(getGraphPolicyViolations(operation!.draft)).toEqual([]);
   });
@@ -232,7 +232,7 @@ describe("workflow graph commands", () => {
     const configOperation = runWorkflowGraphCommand(createDraft(), {
       nodeId: "wait-2d",
       patch: {
-        kind: "goal",
+        kind: "end",
         title: "等待确认",
       } as unknown as WorkflowNodeConfigPatch,
       type: "update-node-data",
@@ -251,7 +251,7 @@ function createDirtyDraftForCommandBoundary(): WorkflowDraft {
     ...draft,
     edges: [
       ...draft.edges.map((edge) =>
-        edge.id === "edge-action-message-goal"
+        edge.id === "edge-message-welcome-end"
           ? {
               ...edge,
               data: {
@@ -262,15 +262,15 @@ function createDirtyDraftForCommandBoundary(): WorkflowDraft {
             }
           : edge,
       ),
-      createEdge("action-message", "goal"),
+      createEdge("message-welcome", "end"),
       {
-        ...createEdge("missing", "goal"),
-        id: "edge-missing-goal",
+        ...createEdge("missing", "end"),
+        id: "edge-missing-end",
       },
     ],
     nodes: [
       ...draft.nodes.map((node) =>
-        node.id === "action-message"
+        node.id === "message-welcome"
           ? {
               ...node,
               data: {
@@ -282,7 +282,7 @@ function createDirtyDraftForCommandBoundary(): WorkflowDraft {
             }
           : node,
       ),
-      createNodeFromKind("action", "action-normal", 10),
+      createNodeFromKind("message", "message-normal", 10),
     ],
     viewport: {
       x: 320,

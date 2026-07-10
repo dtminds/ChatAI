@@ -39,8 +39,8 @@ export function buildWorkflowValidationSummaryFromResult(
   validation: WorkflowValidationResult,
 ): WorkflowValidationSummary {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const triggerIssue = validation.nodeIssues.find(
-    (item) => item.node.id === validation.triggerNode?.id,
+  const startIssue = validation.nodeIssues.find(
+    (item) => item.node.id === validation.startNode?.id,
   );
   const disconnectedIssues = validation.nodeIssues
     .map(({ issues, node }) => ({
@@ -49,35 +49,35 @@ export function buildWorkflowValidationSummaryFromResult(
     }))
     .filter((item) => item.issues.length > 0);
   const nodeConfigIssues = validation.nodeIssues
-    .filter((item) => item.node.id !== validation.triggerNode?.id)
+    .filter((item) => item.node.id !== validation.startNode?.id)
     .map(({ issues, node }) => ({
       issues: issues.filter((issue) => issue.source !== "graph"),
       node,
     }))
     .filter((item) => item.issues.length > 0);
-  const triggerConfigIssues = triggerIssue?.issues.filter(
+  const startConfigIssues = startIssue?.issues.filter(
     (issue) => issue.source !== "graph",
   ) ?? [];
   const hasDisconnectedNode = validation.disconnectedNodes.length > 0 || disconnectedIssues.length > 0;
   const hasGraphStructureIssue = validation.graphIssues.some((issue) =>
-    issue.code !== "node-disconnected" && issue.code !== "goal-unreachable",
+    issue.code !== "node-disconnected" && issue.code !== "end-unreachable",
   ) || disconnectedIssues.some(({ issues }) =>
     issues.some((issue) => issue.code !== "node-disconnected"),
   );
   const summary: WorkflowPublishCheckSummaryItem[] = [
     {
       ...getBlockingScope(),
-      description: validation.triggerNode && !triggerConfigIssues.length
-        ? `当前人群：${validation.triggerNode.data.audience}`
-        : triggerConfigIssues[0]?.message ?? "缺少触发节点",
-      id: "trigger",
-      status: validation.triggerNode && !triggerConfigIssues.length ? "ready" : "warning",
+      description: validation.startNode && !startConfigIssues.length
+        ? `当前人群：${validation.startNode.data.kind === "start" ? validation.startNode.data.audience : ""}`
+        : startConfigIssues[0]?.message ?? "缺少开始节点",
+      id: "start",
+      status: validation.startNode && !startConfigIssues.length ? "ready" : "warning",
       title: "触发人群",
     },
     {
       ...getBlockingScope(),
       description: hasGraphStructureIssue
-        ? "图结构存在未连接出口、循环、多入口或深度超限"
+        ? "图结构存在未连接出口、循环或深度超限"
         : hasDisconnectedNode
           ? "存在未连接到主链路的节点"
           : "所有节点均接入主链路",
@@ -96,10 +96,10 @@ export function buildWorkflowValidationSummaryFromResult(
     },
     {
       ...getBlockingScope(),
-      description: validation.goalNode ? "已配置退出目标和转化指标" : "缺少目标节点",
-      id: "goal",
-      status: validation.goalNode ? "ready" : "warning",
-      title: "目标退出",
+      description: validation.endNode ? "已配置结束节点" : "缺少结束节点",
+      id: "end",
+      status: validation.endNode ? "ready" : "warning",
+      title: "旅程结束",
     },
   ];
   const globalChecks: WorkflowPublishCheck[] = summary
@@ -188,22 +188,22 @@ function shouldExposeGraphIssueAsPublishCheck(
   code: WorkflowValidationResult["graphIssues"][number]["code"],
 ) {
   return code !== "node-disconnected"
-    && code !== "missing-trigger"
-    && code !== "missing-goal"
-    && code !== "goal-unreachable";
+    && code !== "missing-start"
+    && code !== "missing-end"
+    && code !== "end-unreachable";
 }
 
 function getSummaryCheckCategory(
   id: WorkflowPublishCheckSummaryItem["id"],
 ): WorkflowPublishCheck["category"] {
   switch (id) {
-    case "trigger":
-      return "trigger";
+    case "start":
+      return "start";
     case "connectivity":
       return "connectivity";
     case "config":
       return "config";
-    case "goal":
-      return "goal";
+    case "end":
+      return "end";
   }
 }

@@ -76,6 +76,15 @@ describe("WorkflowCanvas", () => {
     expect(reactFlowProps.latest?.selectionOnDrag).toBe(false);
   });
 
+  it("keeps viewport navigation enabled while graph editing is read-only", () => {
+    renderWorkflowCanvas({ isReadOnly: true });
+
+    expect(reactFlowProps.latest?.nodesConnectable).toBe(false);
+    expect(reactFlowProps.latest?.nodesDraggable).toBe(false);
+    expect(reactFlowProps.latest?.panOnDrag).toBe(true);
+    expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
+  });
+
   it("keeps React Flow node position and selection changes local to the canvas", () => {
     const onNodesChange = vi.fn();
     renderWorkflowCanvas({
@@ -96,7 +105,7 @@ describe("WorkflowCanvas", () => {
           type: "position",
         },
         {
-          id: "action-message",
+          id: "message-welcome",
           selected: true,
           type: "select",
         },

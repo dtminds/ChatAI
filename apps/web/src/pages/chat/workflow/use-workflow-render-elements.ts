@@ -23,6 +23,7 @@ type WorkflowRenderElementHandlers = {
     targetNodeId: string,
     kind: InsertableWorkflowNodeKind,
   ) => void;
+  onRenameNode: (nodeId: string, title: string) => void;
   onSelectNode: (nodeId: string) => void;
   onToggleEdgeInsertMenu: (edgeId: string) => void;
   onToggleNodeInsertMenu: (nodeId: string, sourceHandle?: string) => void;
@@ -51,6 +52,7 @@ type WorkflowRenderNodeCacheEntry = {
   onDeleteNode: WorkflowRenderElementHandlers["onDeleteNode"];
   onDuplicateNode: WorkflowRenderElementHandlers["onDuplicateNode"];
   onInsertNodeAfter: WorkflowRenderElementHandlers["onInsertNodeAfter"];
+  onRenameNode: WorkflowRenderElementHandlers["onRenameNode"];
   onSelectNode: WorkflowRenderElementHandlers["onSelectNode"];
   onToggleNodeInsertMenu: WorkflowRenderElementHandlers["onToggleNodeInsertMenu"];
   onToggleNodeSelection: WorkflowRenderElementHandlers["onToggleNodeSelection"];
@@ -77,6 +79,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.onDeleteNode,
     options.onDuplicateNode,
     options.onInsertNodeAfter,
+    options.onRenameNode,
     options.onSelectNode,
     options.onToggleNodeInsertMenu,
     options.onToggleNodeSelection,
@@ -100,6 +103,7 @@ export function createWorkflowRenderElements({
   onDuplicateNode,
   onInsertNodeAfter,
   onInsertNodeBetween,
+  onRenameNode,
   onSelectNode,
   onToggleEdgeInsertMenu,
   onToggleNodeInsertMenu,
@@ -122,6 +126,7 @@ export function createWorkflowRenderElements({
       onDuplicateNode,
       onInsertNodeAfter,
       onInsertNodeBetween,
+      onRenameNode,
       onSelectNode,
       onToggleEdgeInsertMenu,
       onToggleNodeInsertMenu,
@@ -139,6 +144,7 @@ export function createWorkflowRenderElements({
       onDuplicateNode,
       onInsertNodeAfter,
       onInsertNodeBetween,
+      onRenameNode,
       onSelectNode,
       onToggleEdgeInsertMenu,
       onToggleNodeInsertMenu,
@@ -194,6 +200,7 @@ function createWorkflowRenderNodes({
   onDeleteNode,
   onDuplicateNode,
   onInsertNodeAfter,
+  onRenameNode,
   onSelectNode,
   onToggleNodeInsertMenu,
   onToggleNodeSelection,
@@ -221,6 +228,7 @@ function createWorkflowRenderNodes({
       && cachedNode.onDeleteNode === onDeleteNode
       && cachedNode.onDuplicateNode === onDuplicateNode
       && cachedNode.onInsertNodeAfter === onInsertNodeAfter
+      && cachedNode.onRenameNode === onRenameNode
       && cachedNode.onSelectNode === onSelectNode
       && cachedNode.onToggleNodeInsertMenu === onToggleNodeInsertMenu
       && cachedNode.onToggleNodeSelection === onToggleNodeSelection
@@ -239,6 +247,7 @@ function createWorkflowRenderNodes({
         onDelete: readOnly ? undefined : onDeleteNode,
         onDuplicate: readOnly ? undefined : onDuplicateNode,
         onInsertAfter: readOnly ? undefined : onInsertNodeAfter,
+        onRename: readOnly ? undefined : onRenameNode,
         onSelect: (selectedNodeId, options) => {
           if (!readOnly && options?.additive) {
             onToggleNodeSelection(selectedNodeId);
@@ -258,6 +267,7 @@ function createWorkflowRenderNodes({
       onDeleteNode,
       onDuplicateNode,
       onInsertNodeAfter,
+      onRenameNode,
       onSelectNode,
       onToggleNodeInsertMenu,
       onToggleNodeSelection,

@@ -10,12 +10,13 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const triggerNodeDefinition: WorkflowNodeDefinition<"trigger"> = {
+export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: [],
   canDelete: false,
   canDuplicate: false,
   canInsertAfter: true,
+  canRename: false,
   configSections: [
     {
       fields: [
@@ -31,8 +32,8 @@ export const triggerNodeDefinition: WorkflowNodeDefinition<"trigger"> = {
           }),
           validation: {
             required: {
-              code: "trigger-audience-required",
-              message: "触发节点需要选择进入人群",
+              code: "start-audience-required",
+              message: "开始节点需要选择进入人群",
             },
           },
         },
@@ -45,12 +46,12 @@ export const triggerNodeDefinition: WorkflowNodeDefinition<"trigger"> = {
           toPatch: (value) => ({ repeatEntryEnabled: value }),
         },
       ],
-      id: "trigger",
+      id: "start",
       title: "进入规则",
     },
   ],
   createDefaultData: () =>
-    createNodeData("trigger", 1, {
+    createNodeData("start", 1, {
       audience: "添加标签、添加好友事件、用户输入",
       entryLimitSummary: "同一客户进入此SOP最多2次",
       hostingAccountSummary: "已选 4 个托管账号",
@@ -67,7 +68,7 @@ export const triggerNodeDefinition: WorkflowNodeDefinition<"trigger"> = {
     repeatEntryEnabled: data.repeatEntryEnabled,
   }),
   insertable: false,
-  kind: "trigger",
+  kind: "start",
   layout: standardNodeLayout,
   role: "entry",
   schemaVersion: 1,

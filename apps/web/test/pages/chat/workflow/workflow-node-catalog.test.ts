@@ -20,6 +20,7 @@ import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
   canInsertAfterNodeKind,
+  canRenameNodeKind,
   canInsertNodeKind,
   createDefaultNodeData,
   getNodeDefinition,
@@ -52,12 +53,8 @@ import {
   workflowNodeDefinitions,
 } from "@/pages/chat/workflow/nodes/registry";
 import { workflowNodeUiRegistry } from "@/pages/chat/workflow/nodes/ui-registry";
-import {
-  BranchNodeBody,
-  StandardNodeBody,
-} from "@/pages/chat/workflow/nodes/node-bodies";
-import { TriggerNodeBody } from "@/pages/chat/workflow/nodes/trigger/body";
-import { TriggerConfig } from "@/pages/chat/workflow/nodes/trigger/panel";
+import { BranchNodeBody } from "@/pages/chat/workflow/nodes/branch/body";
+import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
 import { createInitialEdges } from "@/pages/chat/workflow/graph";
 import {
   getWorkflowNodeEstimatedHeight,
@@ -158,8 +155,13 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
   };
   const definition = getNodeDefinition(kind);
 
-  expect(definition.body).toBeTypeOf("function");
-  expect(definition.settings).toBeTypeOf("function");
+  expect(definition.body.kind).toMatch(/custom|fields|none/);
+  if (kind === "end") {
+    expect(definition.settings).toBeNull();
+  }
+  else {
+    expect(definition.settings).toBeTypeOf("function");
+  }
   expect(definition.configSections).toEqual(getNodeConfigSections(kind));
   expect(definition.getOutputVariables?.(node)).toEqual(
     expect.arrayContaining([
@@ -175,30 +177,30 @@ describe("workflow node catalog", () => {
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
+    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
     expect(workflowNodeCatalog).toBe(workflowNodeDefinitions);
     expect(orderedWorkflowNodeCatalog).toBe(orderedWorkflowNodeDefinitions);
     expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
 
     for (const kind of nodeKinds) {
       expect(workflowNodeDefinitions[kind].kind).toBe(kind);
-      expect(workflowNodeUiRegistry[kind].body).toBeTypeOf("function");
-      expect(workflowNodeUiRegistry[kind].settings.kind).toMatch(/custom|schema/);
+      expect(workflowNodeUiRegistry[kind].body.kind).toMatch(/custom|fields|none/);
+      expect(workflowNodeUiRegistry[kind].settings.kind).toMatch(/custom|none|schema/);
     }
   });
 
   it("keeps pure node metadata, UI bindings and config schema in sync", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
+    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
 
     nodeKinds.forEach(assertDefinitionSourcesStayInSync);
   });
 
   it("keeps node definitions as the single extension contract", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
-    const schemaNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "wait"];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "trigger"];
+    const schemaNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "message", "tag", "wait"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "start"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -217,8 +219,11 @@ describe("workflow node catalog", () => {
       expect(workflowNodeUiRegistry[kind].settings.kind).toBe("custom");
     }
 
+    expect(workflowNodeUiRegistry.end.settings).toEqual({ kind: "none" });
+    expect(workflowNodeUiBindings.end.settings).toBeNull();
+
     expect(workflowNodeCatalog.branch.cardClassName).toBe("workflow-node-card-branch");
-    expect(workflowNodeCatalog.action.cardClassName).toBeUndefined();
+    expect(workflowNodeCatalog.message.cardClassName).toBeUndefined();
   });
 
   it("uses registered node kinds at import and clipboard boundaries", () => {
@@ -239,18 +244,21 @@ describe("workflow node catalog", () => {
       edges: [],
       nodes,
     }).nodes.map((node) => node.data.kind)).toEqual(nodeKinds);
-    expect(getWorkflowNodeRole("trigger")).toBe("entry");
-    expect(getWorkflowNodeRole("goal")).toBe("terminal");
-    expect(findWorkflowEntryNode(nodes)?.data.kind).toBe("trigger");
-    expect(findWorkflowTerminalNode(nodes)?.data.kind).toBe("goal");
-    expect(canInsertNodeKind("trigger")).toBe(false);
-    expect(canDeleteNodeKind("trigger")).toBe(false);
-    expect(canDuplicateNodeKind("trigger")).toBe(false);
-    expect(canInsertAfterNodeKind("trigger")).toBe(true);
-    expect(canInsertNodeKind("goal")).toBe(false);
-    expect(canDeleteNodeKind("goal")).toBe(false);
-    expect(canDuplicateNodeKind("goal")).toBe(false);
-    expect(canInsertAfterNodeKind("goal")).toBe(false);
+    expect(getWorkflowNodeRole("start")).toBe("entry");
+    expect(getWorkflowNodeRole("end")).toBe("terminal");
+    expect(findWorkflowEntryNode(nodes)?.data.kind).toBe("start");
+    expect(findWorkflowTerminalNode(nodes)?.data.kind).toBe("end");
+    expect(canInsertNodeKind("start")).toBe(false);
+    expect(canDeleteNodeKind("start")).toBe(false);
+    expect(canDuplicateNodeKind("start")).toBe(false);
+    expect(canInsertAfterNodeKind("start")).toBe(true);
+    expect(canRenameNodeKind("start")).toBe(false);
+    expect(canInsertNodeKind("end")).toBe(false);
+    expect(canDeleteNodeKind("end")).toBe(false);
+    expect(canDuplicateNodeKind("end")).toBe(false);
+    expect(canInsertAfterNodeKind("end")).toBe(false);
+    expect(canRenameNodeKind("end")).toBe(false);
+    expect(canRenameNodeKind("message")).toBe(true);
     expect(isWorkflowNodeKind("toString")).toBe(false);
     expect(isClipboardNodeStructurallyValid({
       data: { kind: "toString" },
@@ -293,18 +301,22 @@ describe("workflow node catalog", () => {
     nodeKinds.forEach((kind, index) => assertDefinitionRuntimeContract(kind, index, nodes));
   });
 
-  it("supports custom UI bindings for specialized nodes", () => {
-    const standardNodeKinds: WorkflowNodeKind[] = ["action", "ai", "goal", "wait"];
+  it("supports field, custom, and empty node body bindings", () => {
+    const fieldNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "message", "start", "tag", "wait"];
 
-    standardNodeKinds.forEach((kind) => {
-      expect(workflowNodeUiBindings[kind].body).toBe(StandardNodeBody);
+    fieldNodeKinds.forEach((kind) => {
+      expect(workflowNodeUiBindings[kind].body.kind).toBe("fields");
     });
-    expect(workflowNodeUiBindings.branch.body).toBe(BranchNodeBody);
-    expect(workflowNodeUiBindings.trigger.body).toBe(TriggerNodeBody);
-    expect(workflowNodeUiBindings.trigger.settings).toBe(TriggerConfig);
-    expect(workflowNodeUiRegistry.trigger.settings.kind).toBe("custom");
-    expect(workflowNodeCatalog.trigger.visual.label).toBe("开始");
-    expect(createDefaultNodeData("trigger")).toEqual(
+    expect(workflowNodeUiBindings.branch.body).toEqual({
+      component: BranchNodeBody,
+      kind: "custom",
+    });
+    expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
+    expect(workflowNodeUiBindings.end.settings).toBeNull();
+    expect(workflowNodeUiBindings.start.settings).toBe(StartConfig);
+    expect(workflowNodeUiRegistry.start.settings.kind).toBe("custom");
+    expect(workflowNodeCatalog.start.visual.label).toBe("开始");
+    expect(createDefaultNodeData("start")).toEqual(
       expect.objectContaining({
         audience: "添加标签、添加好友事件、用户输入",
         entryLimitSummary: "同一客户进入此SOP最多2次",
@@ -314,6 +326,30 @@ describe("workflow node catalog", () => {
         title: "开始",
       }),
     );
+
+    const startBody = workflowNodeUiBindings.start.body;
+    const waitBody = workflowNodeUiBindings.wait.body;
+    const messageBody = workflowNodeUiBindings.message.body;
+
+    expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "hosting-accounts", label: "托管账号" }),
+        expect.objectContaining({ id: "audience", label: "目标人群" }),
+      ]));
+    expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])
+      .toEqual([
+        expect.objectContaining({
+          id: "duration",
+          value: { kind: "text", text: "1 天后，执行后续节点" },
+        }),
+      ]);
+    expect(messageBody.kind === "fields" ? messageBody.getFields(createDefaultNodeData("message")) : [])
+      .toEqual([
+        expect.objectContaining({
+          id: "content",
+          value: { kind: "empty" },
+        }),
+      ]);
   });
 
   it("derives palette nodes from sorted insertable catalog entries", () => {
@@ -329,6 +365,8 @@ describe("workflow node catalog", () => {
     expect(paletteItems.map((item) => item.groupId)).toEqual([
       "flow",
       "logic",
+      "engagement",
+      "engagement",
       "engagement",
       "engagement",
     ]);
@@ -352,16 +390,16 @@ describe("workflow node catalog", () => {
     }))).toEqual([
       { id: "flow", items: ["wait"] },
       { id: "logic", items: ["branch"] },
-      { id: "engagement", items: ["action", "ai"] },
+      { id: "engagement", items: ["message", "tag", "coupon", "handoff"] },
     ]);
-    expect(getWorkflowPaletteItemGroups({ query: "接待" }).map((group) => ({
+    expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "engagement", items: ["ai"] },
+      { id: "engagement", items: ["handoff"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
-      kinds: getInsertableNodeKindsBetween("wait", "action"),
+      kinds: getInsertableNodeKindsBetween("wait", "message"),
       query: "条件",
     }).map((group) => ({
       id: group.id,
@@ -372,15 +410,15 @@ describe("workflow node catalog", () => {
   });
 
   it("derives connection candidates from catalog capabilities", () => {
-    expect(getAvailablePrevNodeKinds("trigger")).toEqual([]);
-    expect(getAvailableNextNodeKinds("goal")).toEqual([]);
-    expect(getAvailableNextNodeKinds("trigger")).toContain("goal");
-    expect(getAvailablePrevNodeKinds("goal")).toContain("wait");
+    expect(getAvailablePrevNodeKinds("start")).toEqual([]);
+    expect(getAvailableNextNodeKinds("end")).toEqual([]);
+    expect(getAvailableNextNodeKinds("start")).toContain("end");
+    expect(getAvailablePrevNodeKinds("end")).toContain("wait");
 
-    expect(getInsertableNodeKindsForSource("goal")).toEqual([]);
-    expect(getInsertableNodeKindsForSource("trigger")).toEqual(insertableNodeKinds);
-    expect(getInsertableNodeKindsBetween("wait", "goal")).toEqual(insertableNodeKinds);
-    expect(getInsertableNodeKindsBetween("goal", "wait")).toEqual([]);
+    expect(getInsertableNodeKindsForSource("end")).toEqual([]);
+    expect(getInsertableNodeKindsForSource("start")).toEqual(insertableNodeKinds);
+    expect(getInsertableNodeKindsBetween("wait", "end")).toEqual(insertableNodeKinds);
+    expect(getInsertableNodeKindsBetween("end", "wait")).toEqual([]);
   });
 
   it("derives node source handles from the node definition boundary", () => {
@@ -408,7 +446,7 @@ describe("workflow node catalog", () => {
       type: WORKFLOW_NODE_TYPE,
     };
 
-    expect(getNodeSourceHandleDefinitions(createDefaultNodeData("goal"))).toEqual([]);
+    expect(getNodeSourceHandleDefinitions(createDefaultNodeData("end"))).toEqual([]);
     expect(branchDefinitionHandles).toEqual(branchHandles);
     expect(getNodeSourceHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{
       outletKind: "default",
@@ -452,12 +490,12 @@ describe("workflow node catalog", () => {
   });
 
   it("derives target handles from the shared handle boundary", () => {
-    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("trigger"))).toEqual([]);
-    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{}]);
-    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("branch"))).toEqual([{}]);
-    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("goal"))).toEqual([{}]);
-    expect(getNodeTargetHandleCapacity(createDefaultNodeData("trigger"))).toBe(0);
-    expect(getNodeTargetHandleCapacity(createDefaultNodeData("wait"))).toBe(1);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("start"))).toEqual([]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("wait"))).toEqual([{ maxConnections: Infinity }]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("branch"))).toEqual([{ maxConnections: Infinity }]);
+    expect(getNodeTargetHandleDefinitions(createDefaultNodeData("end"))).toEqual([{ maxConnections: Infinity }]);
+    expect(getNodeTargetHandleCapacity(createDefaultNodeData("start"))).toBe(0);
+    expect(getNodeTargetHandleCapacity(createDefaultNodeData("wait"))).toBe(Infinity);
   });
 
   it("derives unconnected named source handles from the same handle boundary", () => {
@@ -468,17 +506,17 @@ describe("workflow node catalog", () => {
       type: WORKFLOW_NODE_TYPE,
     };
     const targetNode: WorkflowNode = {
-      data: createDefaultNodeData("action"),
-      id: "action-node",
+      data: createDefaultNodeData("message"),
+      id: "message-node",
       position: { x: 300, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
     const unconnectedHandles = getNodeUnconnectedSourceHandles(branchNode, [
       {
-        id: "edge-branch-node-branch-high-action-node",
+        id: "edge-branch-node-branch-high-message-node",
         source: "branch-node",
         sourceHandle: "branch-high",
-        target: "action-node",
+        target: "message-node",
         type: WORKFLOW_EDGE_TYPE,
       },
       {

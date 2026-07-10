@@ -8,6 +8,7 @@ import {
 import { getNodeDefinition, nodeVisuals } from "../node-definitions";
 import type { WorkflowRenderNode } from "../types";
 import { WorkflowBaseNode } from "./base-node";
+import { NodeFieldList } from "./node-field-list";
 import {
   WorkflowSourceHandle,
   WorkflowTargetHandle,
@@ -15,11 +16,18 @@ import {
 
 function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) {
   const definition = getNodeDefinition(data.kind);
-  const NodeComponent = definition.body;
+  const body = definition.body;
+  const CustomBody = body.kind === "custom" ? body.component : null;
 
   return (
     <WorkflowBaseNode
-      body={<NodeComponent data={data} visual={nodeVisuals[data.kind]} />}
+      body={
+        CustomBody
+          ? <CustomBody data={data} visual={nodeVisuals[data.kind]} />
+          : body.kind === "fields"
+            ? <NodeFieldList fields={body.getFields(data)} />
+            : null
+      }
       data={data}
       id={id}
       sourceHandles={<WorkflowNodeSourceHandles data={data} id={id} />}

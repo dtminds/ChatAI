@@ -164,7 +164,7 @@ function createSystemVariables(node: WorkflowNode): WorkflowVariable[] {
       scope: "system",
       selector: ["customer", "profile"],
       type: "object",
-      value: node.data.kind === "trigger" ? node.data.audience ?? "上游客户画像" : "上游客户画像",
+      value: node.data.kind === "start" ? node.data.audience ?? "上游客户画像" : "上游客户画像",
     },
     {
       name: "journey.currentNode",

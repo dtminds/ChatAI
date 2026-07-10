@@ -26,10 +26,10 @@ describe("buildPublishChecks", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 
     expect(checklist.summary.map((check) => [check.id, check.status])).toEqual([
-      ["trigger", "ready"],
+      ["start", "ready"],
       ["connectivity", "warning"],
       ["config", "ready"],
-      ["goal", "ready"],
+      ["end", "ready"],
     ]);
     expect(checklist.checks.map((check) => [check.id, check.category])).toEqual([
       ["connectivity", "connectivity"],
@@ -46,7 +46,7 @@ describe("buildPublishChecks", () => {
 
   it("does not treat node display status as a publish config issue", () => {
     const nodes = createInitialNodes().map((node) =>
-      node.id === "action-message"
+      node.id === "message-welcome"
         ? {
             ...node,
             data: {
@@ -56,7 +56,7 @@ describe("buildPublishChecks", () => {
           }
         : node,
     );
-    const edges = createInitialEdges().filter((edge) => edge.target !== "action-message");
+    const edges = createInitialEdges().filter((edge) => edge.target !== "message-welcome");
     const checks = buildPublishChecks(nodes, edges);
 
     expect(checks.find((check) => check.id === "connectivity")?.category).toBe("connectivity");
@@ -65,8 +65,8 @@ describe("buildPublishChecks", () => {
       expect.arrayContaining([
         expect.objectContaining({
           blocksPublish: true,
-          id: "node-connectivity-action-message",
-          nodeId: "action-message",
+          id: "node-connectivity-message-welcome",
+          nodeId: "message-welcome",
           status: "warning",
         }),
       ]),
@@ -94,7 +94,7 @@ describe("buildPublishChecks", () => {
         : node,
     );
     const runtimeEdges = edges.map((edge) =>
-      edge.id === "edge-branch-intent-branch-high-action-message"
+      edge.id === "edge-branch-intent-branch-high-message-welcome"
         ? {
             ...edge,
             data: {
@@ -127,7 +127,7 @@ describe("buildPublishChecks", () => {
           }
         : node,
     );
-    const edges = createInitialEdges().filter((edge) => edge.target !== "action-message");
+    const edges = createInitialEdges().filter((edge) => edge.target !== "message-welcome");
     const validation = validateWorkflowDraft(nodes, edges);
 
     expect(validation.nodeIssues.find((item) => item.node.id === "branch-intent")?.issues).toEqual([
@@ -138,10 +138,10 @@ describe("buildPublishChecks", () => {
         source: "config",
       },
     ]);
-    expect(validation.nodeIssues.find((item) => item.node.id === "action-message")?.issues).toEqual([
+    expect(validation.nodeIssues.find((item) => item.node.id === "message-welcome")?.issues).toEqual([
       {
         code: "node-disconnected",
-        message: "节点未接入从触发节点开始的主链路",
+        message: "节点未接入从开始节点出发的主链路",
         severity: "warning",
         source: "graph",
       },
@@ -150,7 +150,7 @@ describe("buildPublishChecks", () => {
 
   it("uses catalog validation rules instead of only node status", () => {
     const nodes = createInitialNodes().map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {
@@ -163,66 +163,38 @@ describe("buildPublishChecks", () => {
     );
     const checks = buildPublishChecks(nodes, createInitialEdges());
 
-    expect(checks.find((check) => check.id === "trigger")?.status).toBe("warning");
-    expect(checks.find((check) => check.id === "trigger")?.blocksPublish).toBe(true);
-    expect(checks.find((check) => check.id === "trigger")?.description).toBe(
-      "触发节点需要选择进入人群",
+    expect(checks.find((check) => check.id === "start")?.status).toBe("warning");
+    expect(checks.find((check) => check.id === "start")?.blocksPublish).toBe(true);
+    expect(checks.find((check) => check.id === "start")?.description).toBe(
+      "开始节点需要选择进入人群",
     );
   });
 
-  it("rejects unsupported node option values and invalid numeric config", () => {
+  it("validates only fields that are part of the current node contract", () => {
     const nodes = createInitialNodes();
-    const actionNode = nodes.find(
-      (node): node is WorkflowNode<"action"> =>
-        node.id === "action-message" && node.data.kind === "action",
-    )!;
-    const aiNode = createNodeFromKind("ai", "ai-invalid-agent", nodes.length);
-    const goalNode = nodes.find(
-      (node): node is WorkflowNode<"goal"> => node.data.kind === "goal",
-    )!;
+    const waitNode = nodes.find((node) => node.id === "wait-2d")!;
 
     expect(validateWorkflowNodeConfig({
-      ...actionNode,
+      ...waitNode,
       data: {
-        ...actionNode.data,
-        actionType: "sms" as "message",
+        ...waitNode.data,
+        delayDays: -1,
       },
     }, nodes, createInitialEdges())).toEqual([
       {
-        code: "action-type-unsupported",
-        message: "营销动作类型不受支持",
-        severity: "warning",
-        source: "catalog",
-      },
-    ]);
-    expect(validateWorkflowNodeConfig({
-      ...aiNode,
-      data: {
-        ...aiNode.data,
-        agentName: "不存在的 Agent",
-      },
-    }, [...nodes, aiNode], createInitialEdges())).toEqual([
-      {
-        code: "ai-agent-unsupported",
-        message: "AI 接待绑定的 Agent 不可用",
-        severity: "warning",
-        source: "catalog",
-      },
-    ]);
-    expect(validateWorkflowNodeConfig({
-      ...goalNode,
-      data: {
-        ...goalNode.data,
-        conversion: Number.NaN,
-      },
-    }, nodes, createInitialEdges())).toEqual([
-      {
-        code: "goal-conversion-required",
-        message: "目标节点需要配置有效转化指标",
+        code: "wait-delay-required",
+        message: "等待节点需要配置等待天数",
         severity: "warning",
         source: "config",
       },
     ]);
+
+    for (const kind of ["message", "tag", "coupon", "handoff", "end"] as const) {
+      const node = kind === "end"
+        ? nodes.find((item) => item.data.kind === "end")!
+        : createNodeFromKind(kind, `${kind}-contract`, nodes.length);
+      expect(validateWorkflowNodeConfig(node, [...nodes, node], createInitialEdges())).toEqual([]);
+    }
   });
 
   it("validates branch path labels separately from the branch expression", () => {
@@ -254,7 +226,7 @@ describe("buildPublishChecks", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
     const branchNode = nodes.find((node) => node.id === "branch-intent")!;
-    const disconnectedNode = nodes.find((node) => node.id === "action-message")!;
+    const disconnectedNode = nodes.find((node) => node.id === "message-welcome")!;
 
     expect(validateWorkflowNodeConfig({
       ...branchNode,
@@ -271,10 +243,10 @@ describe("buildPublishChecks", () => {
       },
     ]);
     expect(validateWorkflowNodeConfig(disconnectedNode, nodes, [])).toEqual([]);
-    expect(validateWorkflowNodeGraphState(disconnectedNode, [disconnectedNode], "trigger")).toEqual([
+    expect(validateWorkflowNodeGraphState(disconnectedNode, [disconnectedNode], "start")).toEqual([
       {
         code: "node-disconnected",
-        message: "节点未接入从触发节点开始的主链路",
+        message: "节点未接入从开始节点出发的主链路",
         severity: "warning",
         source: "graph",
       },
@@ -284,7 +256,7 @@ describe("buildPublishChecks", () => {
   it("routes graph-source node validation issues to connectivity checks", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
+    const messageNode = nodes.find((node) => node.id === "message-welcome")!;
     const validation = validateWorkflowDraft(nodes, edges);
     const summary = buildWorkflowValidationSummaryFromResult(nodes, {
       ...validation,
@@ -299,7 +271,7 @@ describe("buildPublishChecks", () => {
               source: "graph",
             },
           ],
-          node: actionNode,
+          node: messageNode,
         },
       ],
     });
@@ -307,20 +279,20 @@ describe("buildPublishChecks", () => {
     expect(summary.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         category: "connectivity",
-        id: "node-connectivity-action-message",
+        id: "node-connectivity-message-welcome",
         messages: ["节点存在多个上游入口"],
-        nodeId: "action-message",
+        nodeId: "message-welcome",
       }),
     ]));
-    expect(summary.checks.some((check) => check.id === "node-config-action-message")).toBe(false);
+    expect(summary.checks.some((check) => check.id === "node-config-message-welcome")).toBe(false);
     expect(summary.summary.find((check) => check.id === "config")?.status).toBe("ready");
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
-  it("keeps trigger summary scoped to trigger configuration issues", () => {
+  it("keeps start summary scoped to start configuration issues", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();
-    const triggerNode = nodes.find((node) => node.id === "trigger")!;
+    const startNode = nodes.find((node) => node.id === "start")!;
     const validation = validateWorkflowDraft(nodes, edges);
     const summary = buildWorkflowValidationSummaryFromResult(nodes, {
       ...validation,
@@ -330,117 +302,82 @@ describe("buildPublishChecks", () => {
           issues: [
             {
               code: "node-disconnected",
-              message: "触发节点存在图结构问题",
+              message: "开始节点存在图结构问题",
               severity: "warning",
               source: "graph",
             },
           ],
-          node: triggerNode,
+          node: startNode,
         },
       ],
     });
 
-    expect(summary.summary.find((check) => check.id === "trigger")).toEqual(expect.objectContaining({
-      description: `当前人群：${triggerNode.data.audience}`,
+    expect(summary.summary.find((check) => check.id === "start")).toEqual(expect.objectContaining({
+      description: `当前人群：${startNode.data.audience}`,
       status: "ready",
     }));
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
     expect(summary.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         category: "connectivity",
-        id: "node-connectivity-trigger",
-        nodeId: "trigger",
+        id: "node-connectivity-start",
+        nodeId: "start",
       }),
     ]));
   });
 
-  it("keeps AI nodes out of the publish summary when no AI node is present", () => {
+  it("keeps handoff nodes out of the publish summary when none is present", () => {
     const checklist = buildPublishChecklist(createInitialNodes(), createInitialEdges());
 
-    expect(checklist.summary.map((check) => check.id)).toEqual(["trigger", "connectivity", "config", "goal"]);
-    expect(checklist.checks.some((check) => check.category === "config" && check.id.includes("ai"))).toBe(false);
+    expect(checklist.summary.map((check) => check.id)).toEqual(["start", "connectivity", "config", "end"]);
+    expect(checklist.checks.some((check) => check.category === "config" && check.id.includes("handoff"))).toBe(false);
   });
 
-  it("does not duplicate global trigger and goal blockers as graph checks", () => {
+  it("does not duplicate global start and end blockers as graph checks", () => {
     const nodes = createInitialNodes().filter((node) =>
-      node.data.kind !== "trigger" && node.data.kind !== "goal",
+      node.data.kind !== "start" && node.data.kind !== "end",
     );
     const checklist = buildPublishChecklist(nodes, []);
 
-    expect(checklist.summary.find((check) => check.id === "trigger")?.status).toBe("warning");
-    expect(checklist.summary.find((check) => check.id === "goal")?.status).toBe("warning");
+    expect(checklist.summary.find((check) => check.id === "start")?.status).toBe("warning");
+    expect(checklist.summary.find((check) => check.id === "end")?.status).toBe("warning");
     expect(checklist.checks.map((check) => check.id)).toEqual(expect.arrayContaining([
-      "trigger",
-      "goal",
+      "start",
+      "end",
     ]));
-    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-trigger"))).toBe(false);
-    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-goal"))).toBe(false);
+    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-start"))).toBe(false);
+    expect(checklist.checks.some((check) => check.id.startsWith("graph-missing-end"))).toBe(false);
   });
 
-  it("does not create a special publish summary item for configured AI nodes", () => {
-    const aiNode: WorkflowNode<"ai"> = {
+  it("does not create a special publish summary item for configured handoff nodes", () => {
+    const handoffNode: WorkflowNode<"handoff"> = {
       data: {
-        ...createDefaultNodeData("ai"),
-        agentName: "护肤小助理",
+        ...createDefaultNodeData("handoff"),
         metric: "知识库：护肤知识库",
         summary: "护肤小助理",
       },
-      id: "ai-node",
+      id: "handoff-node",
       position: { x: 1200, y: 120 },
       type: WORKFLOW_NODE_TYPE,
     };
     const nodes = [
       ...createInitialNodes(),
-      aiNode,
+      handoffNode,
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("action-message", "ai-node"),
+      createEdge("message-welcome", "handoff-node"),
     ];
     const checklist = buildPublishChecklist(nodes, edges);
 
-    expect(checklist.summary.map((check) => check.id)).toEqual(["trigger", "connectivity", "config", "goal"]);
-    expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
-  });
-
-  it("routes incomplete AI node setup through node config checks", () => {
-    const baseAiNode = createNodeFromKind("ai", "ai-missing-agent", createInitialNodes().length);
-    const aiNode = {
-      ...baseAiNode,
-      data: {
-        ...baseAiNode.data,
-        agentName: "",
-      },
-    };
-    const nodes = [
-      ...createInitialNodes(),
-      aiNode,
-    ];
-    const checklist = buildPublishChecklist(nodes, [
-      ...createInitialEdges(),
-      createEdge("action-message", "ai-missing-agent"),
-    ]);
-
-    expect(checklist.summary.find((check) => check.id === "config")).toEqual(expect.objectContaining({
-      blocksPublish: true,
-      description: "1 个节点仍需补全配置",
-      status: "warning",
-    }));
-    expect(checklist.checks).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        blocksPublish: true,
-        category: "config",
-        id: "node-config-ai-missing-agent",
-        nodeId: "ai-missing-agent",
-      }),
-    ]));
-    expect(checklist.checks.find((check) => check.id === "ai")).toBeUndefined();
+    expect(checklist.summary.map((check) => check.id)).toEqual(["start", "connectivity", "config", "end"]);
+    expect(checklist.checks.find((check) => check.id === "handoff")).toBeUndefined();
   });
 
   it("treats nodes behind a detached chain as disconnected", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges().map((edge) =>
-      edge.source === "trigger"
+      edge.source === "start"
         ? {
             ...edge,
             source: "detached-node",
@@ -455,7 +392,7 @@ describe("buildPublishChecks", () => {
   it("surfaces graph structure issues in publish checks", () => {
     const checks = buildPublishChecks(createInitialNodes(), [
       ...createInitialEdges(),
-      createEdge("action-message", "wait-2d"),
+      createEdge("message-welcome", "wait-2d"),
     ]);
 
     expect(checks).toEqual(expect.arrayContaining([
@@ -464,23 +401,18 @@ describe("buildPublishChecks", () => {
         id: "graph-edge-cycle",
         title: "图结构",
       }),
-      expect.objectContaining({
-        category: "connectivity",
-        id: "graph-node-multiple-incoming-wait-2d",
-        nodeId: "wait-2d",
-        title: "观察期",
-      }),
     ]));
+    expect(checks.some((check) => check.id === "graph-node-multiple-incoming-wait-2d")).toBe(false);
   });
 
   it("keeps publish checks aligned with source handle connection policy", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-high-extra", 10),
+      createNodeFromKind("message", "message-high-extra", 10),
     ];
     const checklist = buildPublishChecklist(nodes, [
       ...createInitialEdges(),
-      createEdge("branch-intent", "action-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
+      createEdge("branch-intent", "message-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
     ]);
     const sourceHandleCheck = checklist.checks.find(
       (check) => check.id === "graph-source-handle-multiple-outgoing-branch-intent",
@@ -496,27 +428,20 @@ describe("buildPublishChecks", () => {
     }));
   });
 
-  it("keeps publish checks aligned with target handle connection policy", () => {
+  it("does not reject multiple upstream paths at the target handle", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-second", 10),
+      createNodeFromKind("message", "message-second", 10),
     ];
     const checklist = buildPublishChecklist(nodes, [
       ...createInitialEdges(),
-      createEdge("action-second", "goal"),
+      createEdge("message-second", "end"),
     ]);
     const targetHandleCheck = checklist.checks.find(
-      (check) => check.id === "graph-target-handle-multiple-incoming-goal",
+      (check) => check.id === "graph-target-handle-multiple-incoming-end",
     );
 
-    expect(checklist.canPublish).toBe(false);
-    expect(targetHandleCheck).toEqual(expect.objectContaining({
-      blocksPublish: true,
-      category: "connectivity",
-      description: "同一个入口只能连接一条上游连线",
-      nodeId: "goal",
-      title: "首单转化",
-    }));
+    expect(targetHandleCheck).toBeUndefined();
   });
 
   it("blocks publish when a branch path has no downstream node", () => {
@@ -535,28 +460,17 @@ describe("buildPublishChecks", () => {
   });
 
   it("marks connectivity ready when every branch path is connected", () => {
-    const goalNode = createInitialNodes().find((node) => node.id === "goal")!;
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-normal", 10),
-      createNodeFromKind("action", "action-default", 11),
-      {
-        ...goalNode,
-        id: "goal-normal",
-        position: { x: 1540, y: 120 },
-      },
-      {
-        ...goalNode,
-        id: "goal-default",
-        position: { x: 1540, y: 240 },
-      },
+      createNodeFromKind("message", "message-normal", 10),
+      createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "action-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "action-default", "默认路径", { sourceHandle: "branch-default" }),
-      createEdge("action-normal", "goal-normal"),
-      createEdge("action-default", "goal-default"),
+      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
+      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("message-normal", "end"),
+      createEdge("message-default", "end"),
     ];
     const checklist = buildPublishChecklist(nodes, edges);
 

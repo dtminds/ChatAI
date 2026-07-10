@@ -1,18 +1,22 @@
 import type { WorkflowNodeKind } from "../types";
-import { actionNodeUi } from "./action/ui";
-import { aiNodeUi } from "./ai/ui";
 import { branchNodeUi } from "./branch/ui";
-import { goalNodeUi } from "./goal/ui";
-import { triggerNodeUi } from "./trigger/ui";
+import { couponNodeUi } from "./coupon/ui";
+import { endNodeUi } from "./end/ui";
+import { handoffNodeUi } from "./handoff/ui";
+import { messageNodeUi } from "./message/ui";
+import { startNodeUi } from "./start/ui";
+import { tagNodeUi } from "./tag/ui";
 import { waitNodeUi } from "./wait/ui";
 import type { WorkflowNodeUiBinding } from "./ui-types";
 
 export const workflowNodeUiRegistry = {
-  action: actionNodeUi,
-  ai: aiNodeUi,
   branch: branchNodeUi,
-  goal: goalNodeUi,
-  trigger: triggerNodeUi,
+  coupon: couponNodeUi,
+  end: endNodeUi,
+  handoff: handoffNodeUi,
+  message: messageNodeUi,
+  start: startNodeUi,
+  tag: tagNodeUi,
   wait: waitNodeUi,
 } satisfies {
   [TKind in WorkflowNodeKind]: WorkflowNodeUiBinding<TKind>;

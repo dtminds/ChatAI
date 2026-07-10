@@ -55,6 +55,10 @@ export function canInsertAfterNodeKind(kind: WorkflowNodeKind) {
   return getNodeDefinitionCore(kind).canInsertAfter;
 }
 
+export function canRenameNodeKind(kind: WorkflowNodeKind) {
+  return getNodeDefinitionCore(kind).canRename;
+}
+
 export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWorkflowNodeKind {
   return getNodeDefinitionCore(kind).insertable;
 }

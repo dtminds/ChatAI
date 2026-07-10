@@ -18,57 +18,57 @@ describe("workflow connection policy", () => {
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "branch-intent",
       sourceHandle: "branch-high",
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     })).toBeUndefined();
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "branch-intent",
       sourceHandle: "branch-missing",
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     })).toBe("invalid-handle");
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "wait-2d",
       sourceHandle: "branch-high",
-      target: "goal",
+      target: "end",
       targetHandle: null,
     })).toBe("invalid-handle");
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "trigger",
+      target: "start",
       targetHandle: null,
     })).toBe("invalid-node-kind");
   });
 
-  it("rejects connections when the source or target handle is already occupied", () => {
+  it("rejects occupied source handles but allows multiple incoming paths", () => {
     const draft = createInitialDraft();
 
     expect(getWorkflowConnectionPolicyViolation(draft, {
       source: "wait-2d",
       sourceHandle: null,
-      target: "goal",
+      target: "end",
       targetHandle: null,
     })).toBe("source-handle-occupied");
     expect(getWorkflowConnectionPolicyViolation(draft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
-      target: "goal",
+      target: "end",
       targetHandle: null,
-    })).toBe("target-handle-occupied");
+    })).toBeUndefined();
 
     const reconnectableDraft = {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "goal", undefined, { sourceHandle: "branch-normal" }),
+        createEdge("branch-intent", "end", undefined, { sourceHandle: "branch-normal" }),
       ],
     };
 
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "branch-intent",
       sourceHandle: "branch-normal",
-      target: "action-message",
+      target: "message-welcome",
       targetHandle: null,
     })).toBe("source-handle-occupied");
   });
@@ -77,14 +77,14 @@ describe("workflow connection policy", () => {
     const draft = createInitialDraft();
 
     expect(getWorkflowConnectionPolicyViolation(draft, {
-      source: "trigger",
+      source: "start",
       sourceHandle: null,
       target: "wait-2d",
       targetHandle: null,
     })).toBe("duplicate-connection");
 
     expect(draft.edges.find((edge) =>
-      edge.source === "trigger" && edge.target === "wait-2d",
+      edge.source === "start" && edge.target === "wait-2d",
     )?.sourceHandle).toBeUndefined();
   });
 });

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { NodeSettingsProps } from "../../panels/types";
 
-export function TriggerConfig({ node }: NodeSettingsProps<"trigger">) {
+export function StartConfig({ node }: NodeSettingsProps<"start">) {
   const sendWindow = typeof node.data.sendWindow === "string"
     ? node.data.sendWindow
     : "09:00:00 - 18:00:00";

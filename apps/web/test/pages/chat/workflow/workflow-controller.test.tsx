@@ -49,7 +49,7 @@ describe("useWorkflowController", () => {
       { initialProps: { draft: initialDraft } },
     );
     const originalPosition = result.current.nodes.find((node) => node.id === "wait-2d")?.position;
-    const originalTriggerNode = result.current.nodes.find((node) => node.id === "trigger");
+    const originalTriggerNode = result.current.nodes.find((node) => node.id === "start");
 
     let dragResult: ReturnType<typeof result.current.updateNodeDrag>;
 
@@ -60,7 +60,7 @@ describe("useWorkflowController", () => {
     rerender({ draft: initialDraft });
 
     expect(dragResult?.transient).toBe(true);
-    expect(result.current.nodes.find((node) => node.id === "trigger")).toBe(originalTriggerNode);
+    expect(result.current.nodes.find((node) => node.id === "start")).toBe(originalTriggerNode);
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({
       x: 420,
       y: 120,
@@ -118,7 +118,7 @@ describe("useWorkflowController", () => {
     act(() => {
       result.current.onEdgesChange([
         {
-          id: "edge-action-message-goal",
+          id: "edge-message-welcome-end",
           selected: true,
           type: "select",
         },
@@ -127,7 +127,7 @@ describe("useWorkflowController", () => {
     rerender({ draft: initialDraft });
 
     expect(result.current.edges).toBe(originalEdges);
-    expect(result.current.edges.find((edge) => edge.id === "edge-action-message-goal")?.selected).toBe(false);
+    expect(result.current.edges.find((edge) => edge.id === "edge-message-welcome-end")?.selected).toBe(false);
     expect(result.current.canUndo).toBe(false);
   });
 
@@ -187,22 +187,22 @@ describe("useWorkflowController", () => {
     expect(result.current.canRedo).toBe(false);
   });
 
-  it("undoes a pending config edit with one action before the debounce commits", () => {
+  it("undoes a pending config edit with one message before the debounce commits", () => {
     const initialDraft = createDraft();
     const { rerender, result } = renderHook(
       ({ draft }) => useWorkflowController(draft),
       { initialProps: { draft: initialDraft } },
     );
-    const originalTitle = result.current.nodes.find((node) => node.id === "action-message")?.data.title;
+    const originalTitle = result.current.nodes.find((node) => node.id === "message-welcome")?.data.title;
 
     act(() => {
-      result.current.updateNodeData("action-message", {
+      result.current.updateNodeData("message-welcome", {
         title: "更新后的动作标题",
       });
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+    expect(result.current.nodes.find((node) => node.id === "message-welcome")?.data.title)
       .toBe("更新后的动作标题");
     expect(result.current.canUndo).toBe(true);
     expect(result.current.nextUndoLabel).toBe("修改节点配置");
@@ -212,7 +212,7 @@ describe("useWorkflowController", () => {
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title).toBe(originalTitle);
+    expect(result.current.nodes.find((node) => node.id === "message-welcome")?.data.title).toBe(originalTitle);
     expect(result.current.canRedo).toBe(true);
     expect(result.current.nextRedoLabel).toBe("修改节点配置");
 
@@ -221,7 +221,7 @@ describe("useWorkflowController", () => {
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+    expect(result.current.nodes.find((node) => node.id === "message-welcome")?.data.title)
       .toBe("更新后的动作标题");
     expect(result.current.canUndo).toBe(true);
   });
@@ -249,14 +249,14 @@ describe("useWorkflowController", () => {
     expect(result.current.canRedo).toBe(true);
 
     act(() => {
-      result.current.updateNodeData("action-message", {
+      result.current.updateNodeData("message-welcome", {
         title: "撤销后新分支标题",
       });
     });
     rerender({ draft: initialDraft });
 
     expect(result.current.canRedo).toBe(false);
-    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+    expect(result.current.nodes.find((node) => node.id === "message-welcome")?.data.title)
       .toBe("撤销后新分支标题");
 
     act(() => {
@@ -264,7 +264,7 @@ describe("useWorkflowController", () => {
     });
     rerender({ draft: initialDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "action-message")?.data.title)
+    expect(result.current.nodes.find((node) => node.id === "message-welcome")?.data.title)
       .not.toBe("撤销后新分支标题");
     expect(result.current.nextRedoLabel).toBe("修改节点配置");
   });
@@ -275,13 +275,13 @@ describe("useWorkflowController", () => {
       ({ draft }) => useWorkflowController(draft),
       { initialProps: { draft: initialDraft } },
     );
-    const actionNode = result.current.nodes.find((node) => node.id === "action-message")!;
+    const messageNode = result.current.nodes.find((node) => node.id === "message-welcome")!;
 
     let updateResult: ReturnType<typeof result.current.updateNodeData>;
 
     act(() => {
-      updateResult = result.current.updateNodeData("action-message", {
-        title: actionNode.data.title,
+      updateResult = result.current.updateNodeData("message-welcome", {
+        title: messageNode.data.title,
       });
     });
     rerender({ draft: initialDraft });
@@ -352,7 +352,7 @@ describe("useWorkflowController", () => {
 
     let addedNodeId = "";
     act(() => {
-      addedNodeId = result.current.addNode("ai")?.nodeId ?? "";
+      addedNodeId = result.current.addNode("handoff")?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("添加节点");
@@ -370,18 +370,18 @@ describe("useWorkflowController", () => {
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("插入节点");
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-message-welcome"))
       .toBe(false);
     expect(result.current.edges.some((edge) =>
       edge.source === "branch-intent" && edge.sourceHandle === "branch-high" && edge.target === insertedAfterNodeId,
     )).toBe(true);
     undo();
     expect(result.current.nodes.some((node) => node.id === insertedAfterNodeId)).toBe(false);
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-message-welcome"))
       .toBe(true);
     redo();
     expect(result.current.nodes.some((node) => node.id === insertedAfterNodeId)).toBe(true);
-    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-action-message"))
+    expect(result.current.edges.some((edge) => edge.id === "edge-branch-intent-branch-high-message-welcome"))
       .toBe(false);
 
     resetController();
@@ -391,7 +391,7 @@ describe("useWorkflowController", () => {
         "edge-wait-2d-branch-intent",
         "wait-2d",
         "branch-intent",
-        "ai",
+        "handoff",
       )?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
@@ -408,7 +408,7 @@ describe("useWorkflowController", () => {
     resetController();
     let connectTargetNodeId = "";
     act(() => {
-      connectTargetNodeId = result.current.addNode("action")?.nodeId ?? "";
+      connectTargetNodeId = result.current.addNode("message")?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     undo();
@@ -435,30 +435,30 @@ describe("useWorkflowController", () => {
 
     resetController();
     act(() => {
-      result.current.onEdgesChange([{ id: "edge-action-message-goal", type: "remove" }]);
+      result.current.onEdgesChange([{ id: "edge-message-welcome-end", type: "remove" }]);
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("删除连线");
-    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
     undo();
-    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
     redo();
-    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(false);
 
     resetController();
     act(() => {
-      result.current.deleteNode("action-message");
+      result.current.deleteNode("message-welcome");
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("删除节点");
-    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(false);
-    expect(result.current.edges.some((edge) => edge.source === "action-message" || edge.target === "action-message"))
+    expect(result.current.nodes.some((node) => node.id === "message-welcome")).toBe(false);
+    expect(result.current.edges.some((edge) => edge.source === "message-welcome" || edge.target === "message-welcome"))
       .toBe(false);
     undo();
-    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(true);
-    expect(result.current.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    expect(result.current.nodes.some((node) => node.id === "message-welcome")).toBe(true);
+    expect(result.current.edges.some((edge) => edge.id === "edge-message-welcome-end")).toBe(true);
     redo();
-    expect(result.current.nodes.some((node) => node.id === "action-message")).toBe(false);
+    expect(result.current.nodes.some((node) => node.id === "message-welcome")).toBe(false);
 
     resetController();
     const initialPositions = new Map(result.current.nodes.map((node) => [node.id, node.position]));
@@ -493,32 +493,32 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("ai");
+      result.current.addNode("handoff");
     });
     rerender({ draft: initialDraft });
 
     const firstNodeId = result.current.nodes.find((node) =>
-      node.data.kind === "ai" && node.id !== "ai",
+      node.data.kind === "handoff" && node.id !== "handoff",
     )?.id;
 
     act(() => {
-      result.current.addNode("ai");
+      result.current.addNode("handoff");
     });
     rerender({ draft: initialDraft });
 
-    const aiNodeIds = result.current.nodes
-      .filter((node) => node.data.kind === "ai")
+    const handoffNodeIds = result.current.nodes
+      .filter((node) => node.data.kind === "handoff")
       .map((node) => node.id);
 
-    expect(firstNodeId).toMatch(/^ai-/);
-    expect(new Set(aiNodeIds).size).toBe(aiNodeIds.length);
-    expect(aiNodeIds).toHaveLength(2);
+    expect(firstNodeId).toMatch(/^handoff-/);
+    expect(new Set(handoffNodeIds).size).toBe(handoffNodeIds.length);
+    expect(handoffNodeIds).toHaveLength(2);
   });
 
   it("resets workflow state when a different draft is loaded", () => {
     const nextDraft = createDraft();
     nextDraft.nodes = nextDraft.nodes.map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {
@@ -534,13 +534,13 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("ai");
+      result.current.addNode("handoff");
     });
     expect(result.current.canUndo).toBe(true);
 
     rerender({ draft: nextDraft });
 
-    expect(result.current.nodes.find((node) => node.id === "trigger")?.data.title).toBe("复购唤醒触发");
+    expect(result.current.nodes.find((node) => node.id === "start")?.data.title).toBe("复购唤醒触发");
     expect(result.current.canUndo).toBe(false);
   });
 });

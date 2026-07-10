@@ -24,7 +24,7 @@ import type {
 function createRuntimeDraft(index = 0): WorkflowDraft {
   const node: WorkflowNode = {
     data: {
-      ...createDefaultNodeData("action"),
+      ...createDefaultNodeData("message"),
       insertMenuOpen: true,
       label: "营销动作",
       metric: "已发送",
@@ -53,7 +53,7 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
       _connectedSourceHandleIds: ["source"],
       _runtimeStatus: "hovered",
     },
-    id: "action-message",
+    id: "message-welcome",
     position: { x: index, y: 0 },
     selected: true,
     type: WORKFLOW_NODE_TYPE,
@@ -76,8 +76,8 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
     },
     id: "edge-1",
     selected: true,
-    source: "action-message",
-    target: "goal",
+    source: "message-welcome",
+    target: "end",
     type: WORKFLOW_EDGE_TYPE,
   };
 
@@ -155,10 +155,10 @@ describe("workflow draft normalizer", () => {
 
     expect(sanitizedNode).toEqual({
       data: expect.objectContaining({
-        kind: "action",
+        kind: "message",
         title: "发送消息 0",
       }),
-      id: "action-message",
+      id: "message-welcome",
       position: { x: 0, y: 0 },
       selected: false,
       type: WORKFLOW_NODE_TYPE,
@@ -175,9 +175,9 @@ describe("workflow draft normalizer", () => {
       }),
       id: "edge-1",
       selected: false,
-      source: "action-message",
+      source: "message-welcome",
       sourceHandle: undefined,
-      target: "goal",
+      target: "end",
       targetHandle: undefined,
       type: WORKFLOW_EDGE_TYPE,
     });
@@ -199,14 +199,14 @@ describe("workflow draft normalizer", () => {
     }).viewport).toEqual(DEFAULT_WORKFLOW_VIEWPORT);
   });
 
-  it("hydrates legacy and untrusted workflow drafts before they enter the canvas", () => {
+  it("hydrates untrusted workflow drafts before they enter the canvas", () => {
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [
         {
           id: "edge-valid",
           selected: true,
           source: "wait-1",
-          target: "action-1",
+          target: "message-1",
         } as WorkflowEdge,
         {
           id: "edge-missing-target",
@@ -220,17 +220,17 @@ describe("workflow draft normalizer", () => {
             delayDays: 7,
             kind: "wait",
             selected: true,
-            title: "旧等待节点",
+            title: "外部等待节点",
           },
           id: "wait-1",
           position: { x: 10, y: 20 },
         },
         {
           data: {
-            kind: "action",
-            title: "旧动作节点",
+            kind: "message",
+            title: "外部消息节点",
           },
-          id: "action-1",
+          id: "message-1",
           position: { x: 300, y: 20 },
         },
         {
@@ -244,7 +244,7 @@ describe("workflow draft normalizer", () => {
     });
 
     expect(hydratedDraft.viewport).toEqual(DEFAULT_WORKFLOW_VIEWPORT);
-    expect(hydratedDraft.nodes.map((node) => node.id)).toEqual(["wait-1", "action-1"]);
+    expect(hydratedDraft.nodes.map((node) => node.id)).toEqual(["wait-1", "message-1"]);
     expect(hydratedDraft.nodes[0]).toEqual(expect.objectContaining({
       selected: false,
       type: WORKFLOW_NODE_TYPE,
@@ -254,7 +254,7 @@ describe("workflow draft normalizer", () => {
       kind: "wait",
       label: "等待",
       schemaVersion: 1,
-      title: "旧等待节点",
+      title: "外部等待节点",
     }));
     expect(hydratedDraft.nodes[0].data.selected).toBeUndefined();
     expect(hydratedDraft.edges).toEqual([
@@ -262,7 +262,7 @@ describe("workflow draft normalizer", () => {
         id: "edge-valid",
         selected: false,
         source: "wait-1",
-        target: "action-1",
+        target: "message-1",
         type: WORKFLOW_EDGE_TYPE,
       }),
     ]);
@@ -274,14 +274,13 @@ describe("workflow draft normalizer", () => {
       nodes: [
         {
           data: {
-            ...createDefaultNodeData("action"),
-            actionType: "coupon",
+            ...createDefaultNodeData("message"),
             futureConfig: {
               channel: "private-domain",
             },
             schemaVersion: 99,
           },
-          id: "future-action",
+          id: "future-message",
           position: { x: 0, y: 0 },
           type: WORKFLOW_NODE_TYPE,
         },
@@ -289,7 +288,6 @@ describe("workflow draft normalizer", () => {
     });
 
     expect(hydratedDraft.nodes[0]?.data).toEqual(expect.objectContaining({
-      actionType: "coupon",
       futureConfig: {
         channel: "private-domain",
       },
@@ -353,7 +351,7 @@ describe("workflow draft normalizer", () => {
         {
           id: "edge-valid",
           source: "wait-1",
-          target: "action-1",
+          target: "message-1",
         } as WorkflowEdge,
       ],
       nodes: [
@@ -375,16 +373,16 @@ describe("workflow draft normalizer", () => {
         } as WorkflowNode,
         {
           data: {
-            kind: "action",
+            kind: "message",
             title: "动作节点",
           },
-          id: "action-1",
+          id: "message-1",
           position: { x: 300, y: 20 },
         } as WorkflowNode,
       ],
     });
 
-    expect(hydratedDraft.nodes.map((node) => node.id)).toEqual(["wait-1", "action-1"]);
+    expect(hydratedDraft.nodes.map((node) => node.id)).toEqual(["wait-1", "message-1"]);
     expect(hydratedDraft.nodes.find((node) => node.id === "wait-1")?.data.title)
       .toBe("保留的等待节点");
     expect(hydratedDraft.edges.map((edge) => edge.id)).toEqual(["edge-valid"]);
@@ -408,12 +406,12 @@ describe("workflow draft normalizer", () => {
         } as WorkflowNode,
         {
           data: {
-            ...createDefaultNodeData("action"),
+            ...createDefaultNodeData("message"),
             branchPaths: [
               { id: "branch-leaked", label: "不应保留", operator: "IF", title: "CASE 1" },
             ],
           },
-          id: "action-1",
+          id: "message-1",
           position: { x: 300, y: 20 },
           type: WORKFLOW_NODE_TYPE,
         } as WorkflowNode,
@@ -425,21 +423,21 @@ describe("workflow draft normalizer", () => {
         { id: "branch-custom", isDefault: undefined, label: "自定义分支", operator: "IF", title: "CASE 1" },
         { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
       ]);
-    expect(hydratedDraft.nodes.find((node) => node.id === "action-1")?.data.branchPaths)
+    expect(hydratedDraft.nodes.find((node) => node.id === "message-1")?.data.branchPaths)
       .toBeUndefined();
   });
 
   it("filters edges that violate the workflow connection policy while hydrating drafts", () => {
-    const triggerNode = {
+    const startNode = {
       data: {
-        kind: "trigger",
+        kind: "start",
         label: "触发",
         metric: "进入 1 人",
         status: "ready",
         summary: "进入流程",
         title: "触发节点",
       },
-      id: "trigger",
+      id: "start",
       position: { x: 0, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
@@ -456,35 +454,34 @@ describe("workflow draft normalizer", () => {
       position: { x: 300, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
-    const actionNode = {
+    const messageNode = {
       data: {
-        actionType: "message",
-        kind: "action",
+        kind: "message",
         label: "发送消息",
         metric: "欢迎语",
         status: "ready",
         summary: "发送欢迎语",
-        title: "动作节点",
+        title: "消息节点",
       },
-      id: "action",
+      id: "message",
       position: { x: 600, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [
-        createEdge("trigger", "wait"),
-        createEdge("wait", "action"),
-        createEdge("action", "wait"),
-        createEdge("wait", "trigger"),
-        createEdge("trigger", "wait"),
+        createEdge("start", "wait"),
+        createEdge("wait", "message"),
+        createEdge("message", "wait"),
+        createEdge("wait", "start"),
+        createEdge("start", "wait"),
       ],
-      nodes: [triggerNode, waitNode, actionNode],
+      nodes: [startNode, waitNode, messageNode],
       viewport: DEFAULT_WORKFLOW_VIEWPORT,
     });
 
     expect(hydratedDraft.edges.map((edge) => edge.id)).toEqual([
-      "edge-trigger-wait",
-      "edge-wait-action",
+      "edge-start-wait",
+      "edge-wait-message",
     ]);
   });
 
@@ -501,31 +498,31 @@ describe("workflow draft normalizer", () => {
       position: { x: 0, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
-    const actionNode: WorkflowNode = {
-      data: createDefaultNodeData("action"),
-      id: "action",
+    const messageNode: WorkflowNode = {
+      data: createDefaultNodeData("message"),
+      id: "message",
       position: { x: 300, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
-    const goalNode: WorkflowNode = {
-      data: createDefaultNodeData("goal"),
-      id: "goal",
+    const endNode: WorkflowNode = {
+      data: createDefaultNodeData("end"),
+      id: "end",
       position: { x: 600, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [
-        createEdge("branch", "action", "高意向客户", { sourceHandle: "branch-high" }),
-        createEdge("branch", "goal", "已删除分支", { sourceHandle: "branch-deleted" }),
-        createEdge("action", "goal", undefined, { sourceHandle: "branch-high" }),
-        createEdge("action", "goal", undefined, { targetHandle: "target-custom" }),
+        createEdge("branch", "message", "高意向客户", { sourceHandle: "branch-high" }),
+        createEdge("branch", "end", "已删除分支", { sourceHandle: "branch-deleted" }),
+        createEdge("message", "end", undefined, { sourceHandle: "branch-high" }),
+        createEdge("message", "end", undefined, { targetHandle: "target-custom" }),
       ],
-      nodes: [branchNode, actionNode, goalNode],
+      nodes: [branchNode, messageNode, endNode],
       viewport: DEFAULT_WORKFLOW_VIEWPORT,
     });
 
     expect(hydratedDraft.edges.map((edge) => edge.id)).toEqual([
-      "edge-branch-branch-high-action",
+      "edge-branch-branch-high-message",
     ]);
   });
 

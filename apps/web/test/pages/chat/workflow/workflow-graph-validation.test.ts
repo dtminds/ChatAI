@@ -15,39 +15,39 @@ import type {
 } from "@/pages/chat/workflow/types";
 
 describe("workflow graph validation", () => {
-  it("returns reachable nodes and max depth from the trigger node", () => {
+  it("returns reachable nodes and max depth from the start node", () => {
     const nodes = [
       ...createInitialNodes(),
       createNodeFromKind("wait", "detached-wait", 20),
     ];
-    const result = getValidWorkflowTreeNodes(nodes, createInitialEdges(), "trigger");
+    const result = getValidWorkflowTreeNodes(nodes, createInitialEdges(), "start");
 
     expect(result.validNodes.map((node) => node.id)).toEqual([
-      "trigger",
+      "start",
       "wait-2d",
       "branch-intent",
-      "action-message",
-      "goal",
+      "message-welcome",
+      "end",
     ]);
     expect(result.reachableNodeIds.has("detached-wait")).toBe(false);
     expect(result.maxDepth).toBe(5);
   });
 
-  it("flags disconnected nodes and unreachable goals", () => {
+  it("flags disconnected nodes and unreachable ends", () => {
     const nodes = createInitialNodes();
-    const edges = createInitialEdges().filter((edge) => edge.target !== "goal");
+    const edges = createInitialEdges().filter((edge) => edge.target !== "end");
     const validation = validateWorkflowGraph(nodes, edges);
 
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: "goal-unreachable",
-        nodeId: "goal",
+        code: "end-unreachable",
+        nodeId: "end",
         severity: "warning",
         source: "graph",
       }),
       expect.objectContaining({
         code: "node-disconnected",
-        nodeId: "goal",
+        nodeId: "end",
         severity: "warning",
         source: "graph",
       }),
@@ -57,7 +57,7 @@ describe("workflow graph validation", () => {
   it("detects cycles without infinite traversal", () => {
     const edges = [
       ...createInitialEdges(),
-      createEdge("action-message", "wait-2d"),
+      createEdge("message-welcome", "wait-2d"),
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
 
@@ -69,38 +69,37 @@ describe("workflow graph validation", () => {
     ]));
   });
 
-  it("flags multiple incoming edges and non-branch multiple outgoing edges", () => {
+  it("allows multiple incoming edges and flags non-branch multiple outgoing edges", () => {
     const nodes = createInitialNodes();
     const edges = [
       ...createInitialEdges(),
-      createEdge("trigger", "action-message"),
-      createEdge("wait-2d", "action-message"),
-      createEdge("wait-2d", "goal"),
+      createEdge("start", "message-welcome"),
+      createEdge("wait-2d", "message-welcome"),
+      createEdge("wait-2d", "end"),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
 
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: "node-multiple-incoming",
-        nodeId: "action-message",
-      }),
-      expect.objectContaining({
         code: "node-multiple-outgoing",
         nodeId: "wait-2d",
       }),
     ]));
+    expect(validation.graphIssues.some((issue) =>
+      issue.code === "node-multiple-incoming" && issue.nodeId === "message-welcome",
+    )).toBe(false);
   });
 
   it("derives incoming capability from target handle definitions", () => {
     const validation = validateWorkflowGraph(createInitialNodes(), [
       ...createInitialEdges(),
-      createEdge("wait-2d", "trigger"),
+      createEdge("wait-2d", "start"),
     ]);
 
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "node-multiple-incoming",
-        nodeId: "trigger",
+        nodeId: "start",
       }),
     ]));
   });
@@ -108,14 +107,14 @@ describe("workflow graph validation", () => {
   it("derives multiple outgoing capability from source handle definitions", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-normal", 10),
-      createNodeFromKind("action", "action-default", 11),
+      createNodeFromKind("message", "message-normal", 10),
+      createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "action-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "action-default", "默认路径", { sourceHandle: "branch-default" }),
-      createEdge("wait-2d", "goal"),
+      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
+      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("wait-2d", "end"),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
 
@@ -133,18 +132,18 @@ describe("workflow graph validation", () => {
   it("flags outgoing edges on nodes without source handles through the same cardinality rule", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-after-goal", 10),
+      createNodeFromKind("message", "message-after-end", 10),
     ];
     const validation = validateWorkflowGraph(nodes, [
       ...createInitialEdges(),
-      createEdge("goal", "action-after-goal"),
-      createEdge("goal", "wait-2d"),
+      createEdge("end", "message-after-end"),
+      createEdge("end", "wait-2d"),
     ]);
 
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "node-multiple-outgoing",
-        nodeId: "goal",
+        nodeId: "end",
       }),
     ]));
   });
@@ -186,7 +185,7 @@ describe("workflow graph validation", () => {
         id: "edge-branch-intent-branch-normal-missing-node",
       },
       {
-        ...createEdge("branch-intent", "goal", "默认路径", { sourceHandle: "branch-default" }),
+        ...createEdge("branch-intent", "end", "默认路径", { sourceHandle: "branch-default" }),
       },
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
@@ -202,13 +201,13 @@ describe("workflow graph validation", () => {
   it("accepts branch nodes only when every branch path has a downstream node", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-normal", 10),
-      createNodeFromKind("action", "action-default", 11),
+      createNodeFromKind("message", "message-normal", 10),
+      createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "action-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "action-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
+      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
 
@@ -218,7 +217,7 @@ describe("workflow graph validation", () => {
   it("flags edges whose handle metadata is rejected by the connection policy", () => {
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "goal", "未知路径", { sourceHandle: "branch-missing" }),
+      createEdge("branch-intent", "end", "未知路径", { sourceHandle: "branch-missing" }),
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
 
@@ -234,7 +233,7 @@ describe("workflow graph validation", () => {
   it("flags single outgoing edges from nodes without source handles", () => {
     const edges = [
       ...createInitialEdges(),
-      createEdge("goal", "action-message"),
+      createEdge("end", "message-welcome"),
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
 
@@ -242,7 +241,7 @@ describe("workflow graph validation", () => {
       expect.objectContaining({
         code: "edge-invalid-connection",
         message: "连线不符合当前节点连接规则",
-        nodeId: "goal",
+        nodeId: "end",
       }),
     ]));
   });
@@ -250,11 +249,11 @@ describe("workflow graph validation", () => {
   it("flags duplicate downstream edges from the same source handle", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-high-extra", 10),
+      createNodeFromKind("message", "message-high-extra", 10),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "action-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
+      createEdge("branch-intent", "message-high-extra", "高意向客户", { sourceHandle: "branch-high" }),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
     const sourceHandleIssues = validation.graphIssues.filter(
@@ -272,31 +271,20 @@ describe("workflow graph validation", () => {
     expect(sourceHandleIssues[0]?.edgeIds).toHaveLength(2);
   });
 
-  it("flags duplicate incoming edges on the same target handle", () => {
+  it("allows multiple upstream paths to merge into the end node", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("action", "action-second", 10),
+      createNodeFromKind("message", "message-second", 10),
     ];
     const validation = validateWorkflowGraph(nodes, [
       ...createInitialEdges(),
-      createEdge("action-second", "goal"),
+      createEdge("message-second", "end"),
     ]);
     const targetHandleIssues = validation.graphIssues.filter(
-      (issue) => issue.code === "target-handle-multiple-incoming" && issue.nodeId === "goal",
+      (issue) => issue.code === "target-handle-multiple-incoming" && issue.nodeId === "end",
     );
 
-    expect(validation.graphIssues).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "target-handle-multiple-incoming",
-        message: "同一个入口只能连接一条上游连线",
-        nodeId: "goal",
-      }),
-    ]));
-    expect(targetHandleIssues).toHaveLength(1);
-    expect(targetHandleIssues[0]?.edgeIds).toEqual(expect.arrayContaining([
-      "edge-action-message-goal",
-      "edge-action-second-goal",
-    ]));
+    expect(targetHandleIssues).toHaveLength(0);
   });
 
   it("groups null and undefined default source handles as one duplicate outlet", () => {
@@ -304,8 +292,8 @@ describe("workflow graph validation", () => {
     const edges: WorkflowEdge[] = [
       ...createInitialEdges(),
       {
-        ...createEdge("wait-2d", "goal"),
-        id: "edge-wait-2d-null-default-goal",
+        ...createEdge("wait-2d", "end"),
+        id: "edge-wait-2d-null-default-end",
         sourceHandle: null,
         targetHandle: null,
       },
@@ -318,25 +306,25 @@ describe("workflow graph validation", () => {
     expect(sourceHandleIssues).toHaveLength(1);
     expect(sourceHandleIssues[0]?.edgeIds).toEqual(expect.arrayContaining([
       "edge-wait-2d-branch-intent",
-      "edge-wait-2d-null-default-goal",
+      "edge-wait-2d-null-default-end",
     ]));
   });
 
   it("flags graph depth over the configured limit", () => {
     const baseNodes = createInitialNodes();
-    const trigger = baseNodes.find((node) => node.id === "trigger")!;
-    const goal = baseNodes.find((node) => node.id === "goal")!;
+    const start = baseNodes.find((node) => node.id === "start")!;
+    const end = baseNodes.find((node) => node.id === "end")!;
     const chainNodes: WorkflowNode[] = Array.from({ length: 4 }, (_, index) => ({
       ...createNodeFromKind("wait", `wait-${index}`, index),
       position: { x: index * 300, y: 0 },
     }));
-    const nodes = [trigger, ...chainNodes, goal];
+    const nodes = [start, ...chainNodes, end];
     const edges: WorkflowEdge[] = [
-      createEdge("trigger", "wait-0"),
+      createEdge("start", "wait-0"),
       createEdge("wait-0", "wait-1"),
       createEdge("wait-1", "wait-2"),
       createEdge("wait-2", "wait-3"),
-      createEdge("wait-3", "goal"),
+      createEdge("wait-3", "end"),
     ];
     const validation = validateWorkflowGraph(nodes, edges, { maxDepth: 4 });
 
@@ -348,14 +336,30 @@ describe("workflow graph validation", () => {
     ]));
   });
 
-  it("requires trigger and goal nodes", () => {
-    const nodes = createInitialNodes().filter((node) => node.data.kind !== "trigger" && node.data.kind !== "goal");
+  it("requires start and end nodes", () => {
+    const nodes = createInitialNodes().filter((node) => node.data.kind !== "start" && node.data.kind !== "end");
     const validation = validateWorkflowGraph(nodes, []);
 
     expect(validation.graphIssues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "missing-trigger" }),
-      expect.objectContaining({ code: "missing-goal" }),
+      expect.objectContaining({ code: "missing-start" }),
+      expect.objectContaining({ code: "missing-end" }),
     ]));
     expect(validation.maxDepth).toBe(0);
+  });
+
+  it("rejects duplicate start and end nodes", () => {
+    const nodes = createInitialNodes();
+    const start = nodes.find((node) => node.data.kind === "start")!;
+    const end = nodes.find((node) => node.data.kind === "end")!;
+    const validation = validateWorkflowGraph([
+      ...nodes,
+      { ...start, id: "start-copy" },
+      { ...end, id: "end-copy" },
+    ], createInitialEdges());
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "multiple-start" }),
+      expect.objectContaining({ code: "multiple-end" }),
+    ]));
   });
 });

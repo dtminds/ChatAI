@@ -62,7 +62,7 @@ export function deriveWorkflowMode({
     isRestoring,
   });
   const nodesReadOnly = readOnlyReason !== "none";
-  const canvasReadOnly = readOnlyReason !== "none" && readOnlyReason !== "permission-denied";
+  const canvasReadOnly = readOnlyReason !== "none";
   const canMutate = canEdit && !nodesReadOnly;
 
   return {

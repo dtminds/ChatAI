@@ -40,7 +40,7 @@ describe("workflow draft service", () => {
 
     expect(document.name).toBe("会员复购唤醒");
     expect(document.draftHash).toBe(createWorkflowDraftHash(document.draft));
-    expect(document.draft.nodes.find((node) => node.id === "trigger")?.data.title).toBe("复购唤醒触发");
+    expect(document.draft.nodes.find((node) => node.id === "start")?.data.title).toBe("复购唤醒触发");
     expect(document.draft.nodes).not.toBe(clonedDocument.draft.nodes);
     expect(listWorkflowDocuments().map((workflow) => workflow.id)).toEqual([
       "newcomer-conversion",
@@ -57,19 +57,19 @@ describe("workflow draft service", () => {
     expect(newDocument.name).toBe("未命名 Workflow");
     expect(listWorkflowDocuments().map((workflow) => workflow.id)).not.toContain("new-workflow-draft");
 
-    saveWorkflowDraft(undefined, createDraftWithTriggerAudience("新建 Workflow 人群"));
+    saveWorkflowDraft(undefined, createDraftWithStartAudience("新建 Workflow 人群"));
 
-    expect(getWorkflowDocument(undefined).draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument(undefined).draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("新建 Workflow 人群");
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("近 30 天新入会且未首购客户");
   });
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {
     expect(() => getWorkflowDocument("missing-workflow")).toThrow("Unknown workflow document");
-    expect(() => saveWorkflowDraft("missing-workflow", createDraftWithTriggerAudience("错误 id 保存的人群")))
+    expect(() => saveWorkflowDraft("missing-workflow", createDraftWithStartAudience("错误 id 保存的人群")))
       .toThrow("Unknown workflow document");
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("近 30 天新入会且未首购客户");
   });
 
@@ -84,7 +84,7 @@ describe("workflow draft service", () => {
       const nextDraft = {
         ...createInitialDraft(),
         nodes: createInitialDraft().nodes.map((node) =>
-          node.id === "trigger"
+          node.id === "start"
             ? {
                 ...node,
                 data: {
@@ -105,7 +105,7 @@ describe("workflow draft service", () => {
         result.current.markDirty({
           ...nextDraft,
           nodes: nextDraft.nodes.map((node) =>
-            node.id === "trigger"
+            node.id === "start"
               ? {
                   ...node,
                   data: {
@@ -126,7 +126,7 @@ describe("workflow draft service", () => {
       expect(result.current.saveState).toBe("saved");
       expect(result.current.lastSavedAt).toBe("刚刚");
       expect(result.current.document.updatedAt).toBe("刚刚");
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("再次修改的人群");
     }
     finally {
@@ -167,7 +167,7 @@ describe("workflow draft service", () => {
       const nextDraft = {
         ...createInitialDraft(),
         nodes: createInitialDraft().nodes.map((node) =>
-          node.id === "trigger"
+          node.id === "start"
             ? {
                 ...node,
                 data: {
@@ -185,7 +185,7 @@ describe("workflow draft service", () => {
 
       unmount();
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("卸载前保存的人群");
     }
     finally {
@@ -204,7 +204,7 @@ describe("workflow draft service", () => {
       const nextDraft = {
         ...createInitialDraft(),
         nodes: createInitialDraft().nodes.map((node) =>
-          node.id === "trigger"
+          node.id === "start"
             ? {
                 ...node,
                 data: {
@@ -223,7 +223,7 @@ describe("workflow draft service", () => {
       rerender({ workflowId: "vip-reactivation" });
 
       expect(result.current.document.id).toBe("vip-reactivation");
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("切换前保存的人群");
     }
     finally {
@@ -236,7 +236,7 @@ describe("workflow draft service", () => {
     const draft = {
       ...createInitialDraft(),
       nodes: createInitialDraft().nodes.map((node) =>
-        node.id === "action-message"
+        node.id === "message-welcome"
           ? {
               ...node,
               data: {
@@ -252,7 +252,7 @@ describe("workflow draft service", () => {
     };
 
     const savedDocument = saveWorkflowDraft("live-follow-up", draft);
-    const savedNode = savedDocument.draft.nodes.find((node) => node.id === "action-message");
+    const savedNode = savedDocument.draft.nodes.find((node) => node.id === "message-welcome");
 
     expect(savedNode?.data.title).toBe("已持久化动作");
     expect(savedNode?.selected).toBe(false);
@@ -260,7 +260,7 @@ describe("workflow draft service", () => {
     expect(savedDocument.revision).toBe(2);
     expect(savedDocument.draftHash).not.toBe(initialDraftHash);
     expect(savedDocument.draftHash).toBe(createWorkflowDraftHash(savedDocument.draft));
-    expect(getWorkflowDocument("live-follow-up").draft.nodes.find((node) => node.id === "action-message")?.data.title)
+    expect(getWorkflowDocument("live-follow-up").draft.nodes.find((node) => node.id === "message-welcome")?.data.title)
       .toBe("已持久化动作");
     expect(getWorkflowDocument("live-follow-up").draftHash).toBe(savedDocument.draftHash);
   });
@@ -294,7 +294,7 @@ describe("workflow draft service", () => {
   });
 
   it("publishes the current draft as a versioned snapshot", () => {
-    const draft = createDraftWithTriggerAudience("发布版本的人群");
+    const draft = createDraftWithStartAudience("发布版本的人群");
     const publishedDocument = publishWorkflowDraft("newcomer-conversion", draft);
 
     expect(publishedDocument.status).toBe("Published");
@@ -305,11 +305,11 @@ describe("workflow draft service", () => {
       revision: 2,
     }));
     expect(publishedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
-    expect(publishedDocument.versionHistory[0]?.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(publishedDocument.versionHistory[0]?.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("发布版本的人群");
-    expect(publishedDocument.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(publishedDocument.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("发布版本的人群");
-    expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("发布版本的人群");
   });
 
@@ -339,32 +339,32 @@ describe("workflow draft service", () => {
   });
 
   it("imports a sanitized draft without overwriting the published snapshot", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithTriggerAudience("已发布的人群"));
-    const importedDocument = importWorkflowDraft("newcomer-conversion", createDraftWithTriggerAudience("导入草稿的人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartAudience("已发布的人群"));
+    const importedDocument = importWorkflowDraft("newcomer-conversion", createDraftWithStartAudience("导入草稿的人群"));
 
-    expect(publishedDocument.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(publishedDocument.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("已发布的人群");
     expect(importedDocument.status).toBe("Draft");
     expect(importedDocument.revision).toBe(3);
-    expect(importedDocument.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(importedDocument.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("导入草稿的人群");
-    expect(importedDocument.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(importedDocument.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("已发布的人群");
     expect(importedDocument.versionHistory.map((version) => version.id)).toEqual(["newcomer-conversion-r2"]);
   });
 
   it("restores a published version into the editable draft without deleting version history", () => {
-    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithTriggerAudience("第一版人群"));
-    const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithTriggerAudience("第二版人群"));
+    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartAudience("第一版人群"));
+    const secondPublishedDocument = publishWorkflowDraft("newcomer-conversion", createDraftWithStartAudience("第二版人群"));
     const restoredDocument = restoreWorkflowVersion("newcomer-conversion", firstPublishedDocument.currentVersion?.id ?? "");
 
     expect(secondPublishedDocument.currentVersion?.id).toBe("newcomer-conversion-r3");
     expect(restoredDocument.status).toBe("Draft");
     expect(restoredDocument.revision).toBe(4);
     expect(restoredDocument.currentVersion?.id).toBe("newcomer-conversion-r2");
-    expect(restoredDocument.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(restoredDocument.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("第一版人群");
-    expect(restoredDocument.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(restoredDocument.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("第二版人群");
     expect(restoredDocument.versionHistory.map((version) => version.id)).toEqual([
       "newcomer-conversion-r3",
@@ -378,7 +378,7 @@ describe("workflow draft service", () => {
     const draft = {
       ...createInitialDraft(),
       nodes: createInitialDraft().nodes.map((node) =>
-        node.id === "trigger"
+        node.id === "start"
           ? {
               ...node,
               data: {
@@ -392,20 +392,20 @@ describe("workflow draft service", () => {
 
     firstRepository.saveDraft("newcomer-conversion", draft);
 
-    expect(firstRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(firstRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("独立仓库保存的人群");
-    expect(secondRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(secondRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("近 30 天新入会且未首购客户");
   });
 
   it("creates the default repository through the replaceable repository factory", () => {
     const repository = createWorkflowDraftRepository();
 
-    repository.saveDraft("newcomer-conversion", createDraftWithTriggerAudience("工厂仓库保存的人群"));
+    repository.saveDraft("newcomer-conversion", createDraftWithStartAudience("工厂仓库保存的人群"));
 
-    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("工厂仓库保存的人群");
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("近 30 天新入会且未首购客户");
   });
 
@@ -420,9 +420,9 @@ describe("workflow draft service", () => {
       "live-follow-up",
     ]);
 
-    writer.saveDraft("newcomer-conversion", createDraftWithTriggerAudience("通过 writer 保存的人群"));
+    writer.saveDraft("newcomer-conversion", createDraftWithStartAudience("通过 writer 保存的人群"));
 
-    expect(reader.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(reader.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("通过 writer 保存的人群");
   });
 
@@ -432,7 +432,7 @@ describe("workflow draft service", () => {
     try {
       const repository = createDeferredWorkflowDraftRepository();
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
-      const nextDraft = createDraftWithTriggerAudience("异步保存的人群");
+      const nextDraft = createDraftWithStartAudience("异步保存的人群");
       const initialDraftHash = result.current.lastSavedDraftHash;
 
       act(() => {
@@ -471,7 +471,7 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
       act(() => {
-        result.current.markDirty(createDraftWithTriggerAudience("保存失败的人群"));
+        result.current.markDirty(createDraftWithStartAudience("保存失败的人群"));
       });
 
       await act(async () => {
@@ -501,7 +501,7 @@ describe("workflow draft service", () => {
       );
 
       act(() => {
-        result.current.markDirty(createDraftWithTriggerAudience("旧工作流保存结果"));
+        result.current.markDirty(createDraftWithStartAudience("旧工作流保存结果"));
       });
 
       rerender({ workflowId: "vip-reactivation" });
@@ -526,7 +526,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      const publishPromise = result.current.publishDraft(createDraftWithTriggerAudience("异步发布的人群"));
+      const publishPromise = result.current.publishDraft(createDraftWithStartAudience("异步发布的人群"));
       await waitFor(() => {
         expect(repository.pendingPublishes).toHaveLength(1);
       });
@@ -537,9 +537,9 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("published");
     expect(result.current.document.status).toBe("Published");
     expect(result.current.document.publishedRevision).toBe(2);
-    expect(result.current.document.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.document.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("异步发布的人群");
-    expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("异步发布的人群");
   });
 
@@ -550,15 +550,15 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
 
       await act(async () => {
-        await result.current.publishDraft(createDraftWithTriggerAudience("已发布的人群"));
+        await result.current.publishDraft(createDraftWithStartAudience("已发布的人群"));
       });
 
       expect(result.current.publishState).toBe("published");
-      expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("已发布的人群");
 
       act(() => {
-        result.current.markDirty(createDraftWithTriggerAudience("发布后的草稿修改"));
+        result.current.markDirty(createDraftWithStartAudience("发布后的草稿修改"));
       });
 
       expect(result.current.publishState).toBe("idle");
@@ -567,13 +567,13 @@ describe("workflow draft service", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("发布后的草稿修改");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("已发布的人群");
 
       act(() => {
-        result.current.markDirty(createDraftWithTriggerAudience("已发布的人群"));
+        result.current.markDirty(createDraftWithStartAudience("已发布的人群"));
       });
 
       expect(result.current.publishState).toBe("published");
@@ -608,7 +608,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithTriggerAudience("发布失败的人群"));
+      void result.current.publishDraft(createDraftWithStartAudience("发布失败的人群"));
     });
 
     await act(async () => {
@@ -628,7 +628,7 @@ describe("workflow draft service", () => {
     );
 
     await act(async () => {
-      void result.current.importDraft(createDraftWithTriggerAudience("旧工作流导入结果"));
+      void result.current.importDraft(createDraftWithStartAudience("旧工作流导入结果"));
     });
 
     await waitFor(() => {
@@ -644,13 +644,13 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("vip-reactivation");
     expect(result.current.document.trigger).toBe("90 天未复购会员");
-    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("旧工作流导入结果");
   });
 
   it("keeps published snapshots cloned behind the repository boundary", () => {
     const repository = createInMemoryWorkflowDraftRepository();
-    const publishedDocument = repository.publishDraft("newcomer-conversion", createDraftWithTriggerAudience("发布克隆的人群")).document;
+    const publishedDocument = repository.publishDraft("newcomer-conversion", createDraftWithStartAudience("发布克隆的人群")).document;
     const fetchedDocument = repository.getDocument("newcomer-conversion");
 
     publishedDocument.publishedDraft?.nodes.splice(0, 1);
@@ -692,13 +692,13 @@ describe("workflow draft service", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const document = repository.getDocument("newcomer-conversion");
 
-    repository.saveDraft("newcomer-conversion", createDraftWithTriggerAudience("并发保存的人群"));
+    repository.saveDraft("newcomer-conversion", createDraftWithStartAudience("并发保存的人群"));
 
     expect(() => repository.publishDraft("newcomer-conversion", document.draft, {
       expectedBaseDraftHash: document.draftHash,
     })).toThrow("Workflow draft has changed since publish started");
     expect(repository.getDocument("newcomer-conversion").publishedDraft).toBeNull();
-    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("并发保存的人群");
   });
 
@@ -710,7 +710,7 @@ describe("workflow draft service", () => {
     );
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithTriggerAudience("旧工作流发布结果"));
+      void result.current.publishDraft(createDraftWithStartAudience("旧工作流发布结果"));
     });
 
     expect(repository.pendingPublishes).toHaveLength(1);
@@ -724,7 +724,7 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("vip-reactivation");
     expect(result.current.document.publishedAt).toBe("昨天 21:04");
-    expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("旧工作流发布结果");
   });
 
@@ -736,14 +736,14 @@ describe("workflow draft service", () => {
       const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
       await act(async () => {
-        void result.current.publishDraft(createDraftWithTriggerAudience("旧发布请求的人群"));
+        void result.current.publishDraft(createDraftWithStartAudience("旧发布请求的人群"));
       });
 
       expect(repository.pendingPublishes).toHaveLength(1);
       expect(result.current.publishState).toBe("publishing");
 
       act(() => {
-        result.current.markDirty(createDraftWithTriggerAudience("发布期间继续编辑的人群"));
+        result.current.markDirty(createDraftWithStartAudience("发布期间继续编辑的人群"));
       });
 
       expect(result.current.publishState).toBe("publishing");
@@ -761,9 +761,9 @@ describe("workflow draft service", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("旧发布请求的人群");
-      expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+      expect(repository.getDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
         .toBe("旧发布请求的人群");
     }
     finally {
@@ -776,7 +776,7 @@ describe("workflow draft service", () => {
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
 
     await act(async () => {
-      void result.current.publishDraft(createDraftWithTriggerAudience("异步发布的人群"));
+      void result.current.publishDraft(createDraftWithStartAudience("异步发布的人群"));
     });
 
     expect(repository.pendingPublishes).toHaveLength(1);
@@ -796,7 +796,7 @@ describe("workflow draft service", () => {
 
     expect(result.current.publishState).toBe("published");
     expect(result.current.document.status).toBe("Published");
-    expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("异步发布的人群");
   });
 
@@ -817,7 +817,7 @@ describe("workflow draft service", () => {
     expect(result.current.restoreState).toBe("restored");
     expect(result.current.saveState).toBe("saved");
     expect(result.current.document.status).toBe("Draft");
-    expect(result.current.document.draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(result.current.document.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("90 天未复购会员");
   });
 
@@ -862,16 +862,16 @@ describe("workflow draft service", () => {
 
     expect(result.current.document.id).toBe("newcomer-conversion");
     expect(result.current.document.trigger).toBe("近 30 天新入会且未首购客户");
-    expect(repository.getDocument("vip-reactivation").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+    expect(repository.getDocument("vip-reactivation").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("90 天未复购会员");
   });
 });
 
-function createDraftWithTriggerAudience(audience: string): WorkflowDraft {
+function createDraftWithStartAudience(audience: string): WorkflowDraft {
   return {
     ...createInitialDraft(),
     nodes: createInitialDraft().nodes.map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {

@@ -12,6 +12,7 @@ import {
   insertNodeBetweenOperation,
   moveNodesOperation,
   pasteClipboardOperation,
+  renameNodeOperation,
   updateNodeDataOperation,
 } from "./graph-operations";
 import type {
@@ -84,6 +85,11 @@ export type WorkflowGraphCommand =
     nodeId: string;
     patch: WorkflowNodeConfigPatch;
     type: "update-node-data";
+  }
+  | {
+    nodeId: string;
+    title: string;
+    type: "rename-node";
   };
 
 export function runWorkflowGraphCommand(
@@ -152,6 +158,9 @@ export function runWorkflowGraphCommand(
 
     case "update-node-data":
       return updateNodeDataOperation(draft, command.nodeId, command.patch);
+
+    case "rename-node":
+      return renameNodeOperation(draft, command.nodeId, command.title);
 
     default:
       return undefined;

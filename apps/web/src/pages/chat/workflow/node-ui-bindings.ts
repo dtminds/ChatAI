@@ -9,7 +9,7 @@ export type { WorkflowNodeUiBinding } from "./nodes/ui-types";
 
 type ResolvedWorkflowNodeUiBinding<TKind extends WorkflowNodeKind> = {
   body: WorkflowNodeUiBinding<TKind>["body"];
-  settings: ComponentType<NodeSettingsProps<TKind>>;
+  settings: ComponentType<NodeSettingsProps<TKind>> | null;
 };
 
 type ResolvedWorkflowNodeUiBindingMap = {
@@ -40,7 +40,11 @@ function resolveWorkflowNodeUiBinding<TKind extends WorkflowNodeKind>(
 
 function resolveWorkflowNodeSettingsBinding<TKind extends WorkflowNodeKind>(
   binding: WorkflowNodeUiBinding<TKind>,
-): ComponentType<NodeSettingsProps<TKind>> {
+): ComponentType<NodeSettingsProps<TKind>> | null {
+  if (binding.settings.kind === "none") {
+    return null;
+  }
+
   if (binding.settings.kind === "custom") {
     return binding.settings.component;
   }

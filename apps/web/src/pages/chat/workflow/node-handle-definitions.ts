@@ -22,6 +22,7 @@ export type WorkflowSourceOutletDefinition = {
 
 export type WorkflowTargetHandleDefinition = {
   id?: string;
+  maxConnections?: number;
 };
 
 export const WORKFLOW_DEFAULT_HANDLE_KEY = "__default__";
@@ -52,7 +53,19 @@ export function getNodeTargetHandleDefinitions(
 export function getNodeTargetHandleCapacity(
   data: WorkflowNodeRenderData,
 ) {
-  return getNodeTargetHandleDefinitions(data).length;
+  return getNodeTargetHandleDefinitions(data).reduce(
+    (capacity, handle) => capacity + (handle.maxConnections ?? 1),
+    0,
+  );
+}
+
+export function getNodeTargetHandleConnectionCapacity(
+  data: WorkflowNodeRenderData,
+  targetHandle?: string | null,
+) {
+  return getNodeTargetHandleDefinitions(data).find((handle) =>
+    isWorkflowHandleIdEqual(handle.id, targetHandle),
+  )?.maxConnections ?? 1;
 }
 
 export function getDefaultSourceHandleId(

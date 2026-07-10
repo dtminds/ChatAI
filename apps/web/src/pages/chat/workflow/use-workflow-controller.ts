@@ -411,6 +411,14 @@ export function useWorkflowController(initialDraft: WorkflowDraft, resetKey = "d
     return commitGraphCommand({ nodeId, type: "duplicate-node" });
   }, [commitGraphCommand, flushConfigHistory]);
 
+  const renameNode = useCallback((
+    nodeId: string,
+    title: string,
+  ): WorkflowControllerActionResult | undefined => {
+    flushConfigHistory();
+    return commitGraphCommand({ nodeId, title, type: "rename-node" });
+  }, [commitGraphCommand, flushConfigHistory]);
+
   const copyNode = useCallback((nodeId: string): WorkflowClipboardData | undefined => {
     flushConfigHistory();
     return createWorkflowClipboardData(currentDraft, [nodeId]);
@@ -501,6 +509,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft, resetKey = "d
     flushPendingConfigHistory,
     nextUndoLabel: pendingConfigHistoryActive ? "修改节点配置" : history.nextUndoLabel,
     pasteClipboardData,
+    renameNode,
     redo,
     undo,
     updateViewport,

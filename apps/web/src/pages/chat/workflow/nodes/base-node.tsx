@@ -1,22 +1,28 @@
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Copy01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  Edit03Icon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
-  canInsertAfterNodeKind,
+  canRenameNodeKind,
   getNodeDefinition,
   nodeVisuals,
 } from "../node-definitions";
-import { getDefaultSourceHandleId } from "../node-handle-definitions";
 import type { NodeVisual } from "../node-definitions";
 import type { WorkflowNodeRenderData } from "../types";
 
@@ -37,6 +43,9 @@ function WorkflowBaseNodeComponent({
   const definition = getNodeDefinition(data.kind);
   const isSelected = Boolean(data.selected);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(data.title);
+  const renameCancelledRef = useRef(false);
   const nodeCardStyle = {
     "--workflow-node-accent-rgb": visual.accentRgb,
   } as CSSProperties;
@@ -51,6 +60,7 @@ function WorkflowBaseNodeComponent({
       <div
         className={cn(
           "workflow-node-card group",
+          definition.body.kind === "none" && "!pb-0",
           definition.cardClassName,
         )}
         style={nodeCardStyle}
@@ -60,6 +70,11 @@ function WorkflowBaseNodeComponent({
           actionMenuOpen={actionMenuOpen}
           data={data}
           id={id}
+          onRename={() => {
+            renameCancelledRef.current = false;
+            setRenameValue(data.title);
+            setIsRenaming(true);
+          }}
           setActionMenuOpen={setActionMenuOpen}
         />
         <div
@@ -82,7 +97,34 @@ function WorkflowBaseNodeComponent({
           role="button"
           tabIndex={0}
         >
-          <NodeHeader data={data} visual={visual} />
+          <NodeHeader
+            data={data}
+            isRenaming={isRenaming}
+            onCancelRename={() => {
+              renameCancelledRef.current = true;
+              setRenameValue(data.title);
+              setIsRenaming(false);
+            }}
+            onCommitRename={() => {
+              if (renameCancelledRef.current) {
+                renameCancelledRef.current = false;
+                return;
+              }
+
+              const title = renameValue.trim();
+              setIsRenaming(false);
+
+              if (title && title !== data.title) {
+                data.onRename?.(id, title);
+              }
+              else {
+                setRenameValue(data.title);
+              }
+            }}
+            onRenameValueChange={setRenameValue}
+            renameValue={renameValue}
+            visual={visual}
+          />
           {body}
         </div>
         {sourceHandles}
@@ -95,25 +137,61 @@ export const WorkflowBaseNode = memo(WorkflowBaseNodeComponent);
 
 function NodeHeader({
   data,
+  isRenaming,
+  onCancelRename,
+  onCommitRename,
+  onRenameValueChange,
+  renameValue,
   visual,
 }: {
   data: WorkflowNodeRenderData;
+  isRenaming: boolean;
+  onCancelRename: () => void;
+  onCommitRename: () => void;
+  onRenameValueChange: (value: string) => void;
+  renameValue: string;
   visual: NodeVisual;
 }) {
   return (
-    <span className="flex items-center rounded-t-2xl px-3 pb-3.5 pr-10 pt-3">
+    <span className="flex items-center rounded-t-2xl py-3 pl-4 pr-10">
       <span
         className={cn(
-          "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg",
+          "mr-1 flex size-5 shrink-0 items-center justify-center rounded-lg",
           visual.accentClassName,
         )}
       >
-        <HugeiconsIcon icon={visual.icon} size={15} strokeWidth={1.8} />
+        <HugeiconsIcon icon={visual.icon} size={14} strokeWidth={1.8} />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[13px] font-semibold text-foreground">{data.title}</span>
-        </span>
+      <span className="flex min-h-7 min-w-0 flex-1 items-center">
+        {isRenaming ? (
+          <Input
+            aria-label="节点名称"
+            autoFocus
+            className="nodrag nopan h-7 rounded px-2.5 text-xs font-normal"
+            onBlur={onCommitRename}
+            onChange={(event) => onRenameValueChange(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onCancelRename();
+              }
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            value={renameValue}
+          />
+        ) : (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-base font-semibold text-foreground">{data.title}</span>
+          </span>
+        )}
       </span>
     </span>
   );
@@ -123,13 +201,23 @@ function NodeActionMenu({
   actionMenuOpen,
   data,
   id,
+  onRename,
   setActionMenuOpen,
 }: {
   actionMenuOpen: boolean;
   data: WorkflowNodeRenderData;
   id: string;
+  onRename: () => void;
   setActionMenuOpen: (open: boolean) => void;
 }) {
+  const canRename = canRenameNodeKind(data.kind) && Boolean(data.onRename);
+  const canDuplicate = canDuplicateNodeKind(data.kind) && Boolean(data.onDuplicate);
+  const canDelete = canDeleteNodeKind(data.kind) && Boolean(data.onDelete);
+
+  if (!canRename && !canDuplicate && !canDelete) {
+    return null;
+  }
+
   return (
     <DropdownMenu modal={false} open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
       <div
@@ -155,26 +243,13 @@ function NodeActionMenu({
           onClick={(event) => event.stopPropagation()}
           sideOffset={4}
         >
-          <DropdownMenuItem
-            onSelect={() => {
-              data.onSelect?.(id);
-            }}
-          >
-            打开配置
-          </DropdownMenuItem>
-          {canInsertAfterNodeKind(data.kind) ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                data.onToggleInsertMenu?.(
-                  id,
-                  getDefaultSourceHandleId(data.kind, data),
-                );
-              }}
-            >
-              添加后续节点
+          {canRename ? (
+            <DropdownMenuItem onSelect={onRename}>
+              <HugeiconsIcon icon={Edit03Icon} size={14} strokeWidth={1.8} />
+              重命名
             </DropdownMenuItem>
           ) : null}
-          {canDuplicateNodeKind(data.kind) ? (
+          {canDuplicate ? (
             <DropdownMenuItem
               onSelect={() => {
                 data.onDuplicate?.(id);
@@ -184,15 +259,19 @@ function NodeActionMenu({
               复制节点
             </DropdownMenuItem>
           ) : null}
-          {canDeleteNodeKind(data.kind) ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                data.onDelete?.(id);
-              }}
-            >
-              <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
-              删除节点
-            </DropdownMenuItem>
+          {canDelete ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive data-[highlighted]:text-destructive"
+                onSelect={() => {
+                  data.onDelete?.(id);
+                }}
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                删除节点
+              </DropdownMenuItem>
+            </>
           ) : null}
         </DropdownMenuContent>
       </div>

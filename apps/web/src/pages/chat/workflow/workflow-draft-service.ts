@@ -748,15 +748,12 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
 
 function getWorkflowTrigger(draft: WorkflowDraft) {
   const entryNode = findWorkflowEntryNode(draft.nodes);
-  return entryNode?.data.kind === "trigger" ? entryNode.data.audience : undefined;
+  return entryNode?.data.kind === "start" ? entryNode.data.audience : undefined;
 }
 
 function getWorkflowConversion(draft: WorkflowDraft) {
   const terminalNode = findWorkflowTerminalNode(draft.nodes);
-  const conversion = terminalNode?.data.kind === "goal"
-    ? terminalNode.data.conversion
-    : undefined;
-  return typeof conversion === "number" ? `${conversion}%` : undefined;
+  return terminalNode ? "-" : undefined;
 }
 
 export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftRepository {
@@ -969,7 +966,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   const vipReactivationDraft: WorkflowDraft = {
     edges: createInitialEdges(),
     nodes: createInitialNodes().map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {
@@ -985,7 +982,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   const liveFollowUpDraft: WorkflowDraft = {
     edges: createInitialEdges(),
     nodes: createInitialNodes().map((node) =>
-      node.id === "trigger"
+      node.id === "start"
         ? {
             ...node,
             data: {

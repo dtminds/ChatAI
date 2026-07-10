@@ -47,6 +47,7 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   canDelete: boolean;
   canDuplicate: boolean;
   canInsertAfter: boolean;
+  canRename: boolean;
   cardClassName?: string;
   configSections: NodeConfigSection<TKind>[];
   createExecutionConfig: (data: WorkflowNodeData<TKind>) => Record<string, unknown>;

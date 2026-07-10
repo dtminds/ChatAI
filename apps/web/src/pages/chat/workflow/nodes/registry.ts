@@ -1,18 +1,22 @@
 import type { WorkflowNodeKind } from "../types";
 import type { WorkflowNodeDefinition } from "./definition-types";
-import { actionNodeDefinition } from "./action/definition";
-import { aiNodeDefinition } from "./ai/definition";
 import { branchNodeDefinition } from "./branch/definition";
-import { goalNodeDefinition } from "./goal/definition";
-import { triggerNodeDefinition } from "./trigger/definition";
+import { couponNodeDefinition } from "./coupon/definition";
+import { endNodeDefinition } from "./end/definition";
+import { handoffNodeDefinition } from "./handoff/definition";
+import { messageNodeDefinition } from "./message/definition";
+import { startNodeDefinition } from "./start/definition";
+import { tagNodeDefinition } from "./tag/definition";
 import { waitNodeDefinition } from "./wait/definition";
 
 export const workflowNodeDefinitions = {
-  action: actionNodeDefinition,
-  ai: aiNodeDefinition,
   branch: branchNodeDefinition,
-  goal: goalNodeDefinition,
-  trigger: triggerNodeDefinition,
+  coupon: couponNodeDefinition,
+  end: endNodeDefinition,
+  handoff: handoffNodeDefinition,
+  message: messageNodeDefinition,
+  start: startNodeDefinition,
+  tag: tagNodeDefinition,
   wait: waitNodeDefinition,
 } satisfies {
   [TKind in WorkflowNodeKind]: WorkflowNodeDefinition<TKind>;

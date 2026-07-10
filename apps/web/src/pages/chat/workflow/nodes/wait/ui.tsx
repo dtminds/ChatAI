@@ -7,7 +7,7 @@ const waitHelp = () => (
   </div>
 );
 
-export const waitNodeUi: WorkflowNodeUiBinding = {
+export const waitNodeUi: WorkflowNodeUiBinding<"wait"> = {
   body: StandardNodeBody,
   settings: {
     after: waitHelp,

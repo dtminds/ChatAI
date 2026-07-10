@@ -19,7 +19,7 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const branchNodeDefinition: WorkflowNodeDefinition = {
+export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: sourceNodeKinds,
   canDelete: true,
@@ -53,7 +53,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("branch", {
+    createNodeData("branch", 1, {
       branchPaths: createDefaultBranchPaths(),
       branchRule: "",
       label: "条件",
@@ -72,6 +72,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition = {
   layout: branchNodeLayout,
   paletteGroup: "logic",
   paletteLabel: "条件分支",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   sanitizeData: (data) => ({
     ...data,
@@ -89,7 +90,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition = {
   },
 };
 
-function validateBranchNode(node: WorkflowNode) {
+function validateBranchNode(node: WorkflowNode<"branch">) {
   const issues = [];
   const branchPaths = getWorkflowBranchPaths(node.data);
 

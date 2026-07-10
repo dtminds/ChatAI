@@ -23,6 +23,12 @@ import type {
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraft } from "@/pages/chat/workflow/types";
 
+function getBranchPaths(draft: WorkflowDraft | null | undefined) {
+  const data = draft?.nodes.find((node) => node.id === "branch-intent")?.data;
+
+  return data?.kind === "branch" ? data.branchPaths ?? [] : [];
+}
+
 describe("workflow draft service", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
@@ -309,18 +315,12 @@ describe("workflow draft service", () => {
 
   it("deep-clones nested node config in published snapshots and version history", () => {
     const draft = createDraftWithBranchPaths();
-    const sourceBranchPaths = draft.nodes.find((node) => node.id === "branch-intent")?.data.branchPaths ?? [];
+    const sourceBranchPaths = getBranchPaths(draft);
     const publishedDocument = publishWorkflowDraft("newcomer-conversion", draft);
     const storedDocument = getWorkflowDocument("newcomer-conversion");
-    const publishedBranchPaths = publishedDocument.publishedDraft?.nodes.find((node) =>
-      node.id === "branch-intent",
-    )?.data.branchPaths;
-    const versionBranchPaths = publishedDocument.versionHistory[0]?.draft.nodes.find((node) =>
-      node.id === "branch-intent",
-    )?.data.branchPaths;
-    const storedBranchPaths = storedDocument.publishedDraft?.nodes.find((node) =>
-      node.id === "branch-intent",
-    )?.data.branchPaths;
+    const publishedBranchPaths = getBranchPaths(publishedDocument.publishedDraft);
+    const versionBranchPaths = getBranchPaths(publishedDocument.versionHistory[0]?.draft);
+    const storedBranchPaths = getBranchPaths(storedDocument.publishedDraft);
 
     expect(publishedBranchPaths).toEqual(sourceBranchPaths);
     expect(versionBranchPaths).toEqual(sourceBranchPaths);

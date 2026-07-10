@@ -17,30 +17,68 @@ export type WorkflowBranchPath = {
   title: string;
 };
 
-export type WorkflowNodeData = Record<string, unknown> & {
-  actionType?: "message" | "coupon" | "tag" | "handoff" | "ai";
-  agentName?: string;
-  audience?: string;
-  branchPaths?: WorkflowBranchPath[];
-  branchRule?: string;
-  conversion?: number;
-  delayDays?: number;
-  entryLimitSummary?: string;
-  handoffRule?: string;
-  hostingAccountSummary?: string;
-  kind: WorkflowNodeKind;
+type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unknown> & {
+  kind: TKind;
   label: string;
   metric: string;
-  repeatEntryEnabled?: boolean;
+  schemaVersion: number;
   status: WorkflowNodeStatus;
   summary: string;
-  sendWindow?: string;
   title: string;
 };
 
-export type WorkflowNodeConfigPatch = Omit<Partial<WorkflowNodeData>, "kind"> & {
-  kind?: never;
+export type TriggerNodeData = WorkflowNodeDataBase<"trigger"> & {
+  audience?: string;
+  entryLimitSummary?: string;
+  hostingAccountSummary?: string;
+  repeatEntryEnabled?: boolean;
+  sendWindow?: string;
 };
+
+export type WaitNodeData = WorkflowNodeDataBase<"wait"> & {
+  delayDays?: number;
+};
+
+export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
+  branchPaths?: WorkflowBranchPath[];
+  branchRule?: string;
+};
+
+export type ActionNodeData = WorkflowNodeDataBase<"action"> & {
+  actionType?: "message" | "coupon" | "tag" | "handoff";
+};
+
+export type AiNodeData = WorkflowNodeDataBase<"ai"> & {
+  actionType?: "ai";
+  agentName?: string;
+  handoffRule?: string;
+};
+
+export type GoalNodeData = WorkflowNodeDataBase<"goal"> & {
+  conversion?: number;
+};
+
+export type WorkflowNodeDataMap = {
+  action: ActionNodeData;
+  ai: AiNodeData;
+  branch: BranchNodeData;
+  goal: GoalNodeData;
+  trigger: TriggerNodeData;
+  wait: WaitNodeData;
+};
+
+export type WorkflowNodeData<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  WorkflowNodeDataMap[TKind];
+
+type WorkflowNodeConfigPatchFor<TData> = TData extends WorkflowNodeData
+  ? Omit<Partial<TData>, "kind" | "schemaVersion"> & {
+      kind?: never;
+      schemaVersion?: never;
+    }
+  : never;
+
+export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  WorkflowNodeConfigPatchFor<WorkflowNodeData<TKind>>;
 
 export type WorkflowNodeRuntimeData = {
   insertMenuOpen?: boolean;
@@ -57,9 +95,12 @@ export type WorkflowNodeRuntimeData = {
   selected?: boolean;
 };
 
-export type WorkflowNodeRenderData = WorkflowNodeData & WorkflowNodeRuntimeData;
-export type WorkflowNode = Node<WorkflowNodeData, typeof WORKFLOW_NODE_TYPE>;
-export type WorkflowRenderNode = Node<WorkflowNodeRenderData, typeof WORKFLOW_NODE_TYPE>;
+export type WorkflowNodeRenderData<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  WorkflowNodeData<TKind> & WorkflowNodeRuntimeData;
+export type WorkflowNode<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  Node<WorkflowNodeData<TKind>, typeof WORKFLOW_NODE_TYPE>;
+export type WorkflowRenderNode<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  Node<WorkflowNodeRenderData<TKind>, typeof WORKFLOW_NODE_TYPE>;
 export type WorkflowEdgeHighlightState = "connected" | "dimmed";
 export type WorkflowEdgeData = Record<string, unknown> & {
   label?: string;

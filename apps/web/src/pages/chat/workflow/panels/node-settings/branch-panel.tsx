@@ -18,7 +18,7 @@ import { FieldGroup } from "../field-group";
 import { SchemaNodeSettingsPanel } from "./schema-panel";
 import type { NodeSettingsProps } from "../types";
 
-export function BranchConfig({ edges, node, onNodeChange }: NodeSettingsProps) {
+export function BranchConfig({ edges, node, onNodeChange }: NodeSettingsProps<"branch">) {
   const branchPaths = getWorkflowBranchPaths(node.data);
   const nonDefaultPathCount = branchPaths.filter((branch) => !branch.isDefault).length;
   const connectedCountByHandle = new Map<string, number>();

@@ -8,6 +8,7 @@ import { getWorkflowNodeConfigSchema } from "../node-config-schema";
 import type {
   WorkflowEdge,
   WorkflowNode,
+  WorkflowNodeKind,
   WorkflowNodeValidationIssue,
 } from "../types";
 import {
@@ -68,8 +69,8 @@ export function validateWorkflowDraft(
   };
 }
 
-export function validateWorkflowNodeConfig(
-  node: WorkflowNode,
+export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
+  node: WorkflowNode<TKind>,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ): WorkflowNodeValidationIssue[] {

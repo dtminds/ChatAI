@@ -1,28 +1,46 @@
+import type { ComponentType } from "react";
 import type { WorkflowNodeKind } from "./types";
 import { createSchemaNodeSettingsPanel } from "./panels/node-settings";
 import { workflowNodeUiRegistry } from "./nodes/ui-registry";
 import type { WorkflowNodeUiBinding } from "./nodes/ui-types";
+import type { NodeSettingsProps } from "./panels/types";
 
 export type { WorkflowNodeUiBinding } from "./nodes/ui-types";
 
-export const workflowNodeUiBindings = Object.fromEntries(
-  Object.entries(workflowNodeUiRegistry).map(([kind, binding]) => [
-    kind,
-    resolveWorkflowNodeUiBinding(binding),
-  ]),
-) as Record<WorkflowNodeKind, {
-  body: WorkflowNodeUiBinding["body"];
-  settings: ReturnType<typeof resolveWorkflowNodeSettingsBinding>;
-}>;
+type ResolvedWorkflowNodeUiBinding<TKind extends WorkflowNodeKind> = {
+  body: WorkflowNodeUiBinding<TKind>["body"];
+  settings: ComponentType<NodeSettingsProps<TKind>>;
+};
 
-function resolveWorkflowNodeUiBinding(binding: WorkflowNodeUiBinding) {
+type ResolvedWorkflowNodeUiBindingMap = {
+  [TKind in WorkflowNodeKind]: ResolvedWorkflowNodeUiBinding<TKind>;
+};
+
+export const workflowNodeUiBindings = Object.fromEntries(
+  (Object.keys(workflowNodeUiRegistry) as WorkflowNodeKind[]).map((kind) => [
+    kind,
+    resolveWorkflowNodeUiBindingForKind(kind),
+  ]),
+) as ResolvedWorkflowNodeUiBindingMap;
+
+function resolveWorkflowNodeUiBindingForKind<TKind extends WorkflowNodeKind>(kind: TKind) {
+  return resolveWorkflowNodeUiBinding(
+    workflowNodeUiRegistry[kind] as unknown as WorkflowNodeUiBinding<TKind>,
+  );
+}
+
+function resolveWorkflowNodeUiBinding<TKind extends WorkflowNodeKind>(
+  binding: WorkflowNodeUiBinding<TKind>,
+): ResolvedWorkflowNodeUiBinding<TKind> {
   return {
     body: binding.body,
     settings: resolveWorkflowNodeSettingsBinding(binding),
   };
 }
 
-function resolveWorkflowNodeSettingsBinding(binding: WorkflowNodeUiBinding) {
+function resolveWorkflowNodeSettingsBinding<TKind extends WorkflowNodeKind>(
+  binding: WorkflowNodeUiBinding<TKind>,
+): ComponentType<NodeSettingsProps<TKind>> {
   if (binding.settings.kind === "custom") {
     return binding.settings.component;
   }

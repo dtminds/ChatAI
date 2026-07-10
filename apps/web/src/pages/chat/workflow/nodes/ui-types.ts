@@ -3,18 +3,18 @@ import type { WorkflowNodeKind } from "../types";
 import type { NodeSettingsProps } from "../panels/types";
 import type { NodeBodyProps } from "./types";
 
-export type WorkflowNodeSettingsBinding =
+export type WorkflowNodeSettingsBinding<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
   | {
       kind: "custom";
-      component: ComponentType<NodeSettingsProps>;
+      component: ComponentType<NodeSettingsProps<TKind>>;
     }
   | {
-      after?: (props: NodeSettingsProps) => ReactNode;
+      after?: (props: NodeSettingsProps<TKind>) => ReactNode;
       kind: "schema";
-      nodeKind: WorkflowNodeKind;
+      nodeKind: TKind;
     };
 
-export type WorkflowNodeUiBinding = {
-  body: ComponentType<NodeBodyProps>;
-  settings: WorkflowNodeSettingsBinding;
+export type WorkflowNodeUiBinding<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
+  body: ComponentType<NodeBodyProps<TKind>>;
+  settings: WorkflowNodeSettingsBinding<TKind>;
 };

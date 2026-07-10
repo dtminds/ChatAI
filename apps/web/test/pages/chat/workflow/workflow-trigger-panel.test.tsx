@@ -5,7 +5,7 @@ import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { TriggerConfig } from "@/pages/chat/workflow/nodes/trigger/panel";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 
-function createTriggerNode(): WorkflowNode {
+function createTriggerNode(): WorkflowNode<"trigger"> {
   return {
     data: createDefaultNodeData("trigger"),
     id: "trigger",

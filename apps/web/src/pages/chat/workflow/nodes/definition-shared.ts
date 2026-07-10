@@ -5,8 +5,10 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "../constants";
 import type {
+  BranchNodeData,
   WorkflowNode,
   WorkflowNodeData,
+  WorkflowNodeDataMap,
   WorkflowNodeKind,
   WorkflowNodeStatus,
   WorkflowNodeValidationIssue,
@@ -22,24 +24,11 @@ import type {
 } from "../node-handle-definitions";
 import type { WorkflowNodeLayoutMetrics } from "./definition-types";
 
-type NodeDataInput = {
-  actionType?: WorkflowNodeData["actionType"];
-  agentName?: string;
-  audience?: string;
-  branchPaths?: WorkflowNodeData["branchPaths"];
-  branchRule?: string;
-  conversion?: number;
-  delayDays?: number;
-  entryLimitSummary?: string;
-  handoffRule?: string;
-  hostingAccountSummary?: string;
-  label: string;
-  metric: string;
-  repeatEntryEnabled?: boolean;
+type NodeDataInput<TKind extends WorkflowNodeKind> = Omit<
+  WorkflowNodeDataMap[TKind],
+  "kind" | "schemaVersion" | "status"
+> & {
   status?: WorkflowNodeStatus;
-  summary: string;
-  sendWindow?: string;
-  title: string;
 };
 
 export const sourceNodeKinds: WorkflowNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
@@ -55,15 +44,17 @@ export const branchNodeLayout: WorkflowNodeLayoutMetrics = {
   width: WORKFLOW_BRANCH_NODE_WIDTH,
 };
 
-export function createNodeData(
-  kind: WorkflowNodeKind,
-  data: NodeDataInput,
-): WorkflowNodeData {
+export function createNodeData<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+  schemaVersion: number,
+  data: NodeDataInput<TKind>,
+): WorkflowNodeData<TKind> {
   return {
     ...data,
     kind,
+    schemaVersion,
     status: data.status ?? "ready",
-  };
+  } as WorkflowNodeData<TKind>;
 }
 
 export function pickDefinedWorkflowConfig(config: Record<string, unknown>) {
@@ -97,7 +88,7 @@ export function createNoSourceHandles(): WorkflowSourceHandleDefinition[] {
 }
 
 export function createBranchSourceHandles(
-  data: WorkflowNodeData,
+  data: BranchNodeData,
 ): WorkflowSourceHandleDefinition[] {
   return getWorkflowBranchPaths(data).map((branch) => ({
     id: branch.id,
@@ -115,7 +106,9 @@ export function createNoTargetHandles(): WorkflowTargetHandleDefinition[] {
   return [];
 }
 
-export function createDefaultOutputVariables(node: WorkflowNode): WorkflowVariable[] {
+export function createDefaultOutputVariables<TKind extends WorkflowNodeKind>(
+  node: WorkflowNode<TKind>,
+): WorkflowVariable[] {
   return [
     {
       name: "result",

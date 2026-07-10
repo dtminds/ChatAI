@@ -9,6 +9,7 @@ import {
   workflowNodeDefinitions,
 } from "./nodes/registry";
 import type {
+  AnyWorkflowNodeDefinition,
   NodeVisual,
   WorkflowNodeDefinition,
   WorkflowNodePaletteGroup,
@@ -54,7 +55,7 @@ export const nodeVisuals = Object.fromEntries(
   ]),
 ) as Record<WorkflowNodeKind, NodeVisual>;
 
-type InsertableWorkflowNodeCatalogEntry = WorkflowNodeDefinition & {
+type InsertableWorkflowNodeCatalogEntry = AnyWorkflowNodeDefinition & {
   kind: InsertableWorkflowNodeKind;
   paletteGroup: WorkflowNodePaletteGroupId;
   paletteLabel: string;
@@ -159,8 +160,10 @@ export function getWorkflowPaletteItemGroups({
     .filter((group) => group.items.length > 0);
 }
 
-export function getWorkflowNodeCatalogEntry(kind: WorkflowNodeKind) {
-  return workflowNodeCatalog[kind];
+export function getWorkflowNodeCatalogEntry<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+): WorkflowNodeDefinition<TKind> {
+  return workflowNodeCatalog[kind] as unknown as WorkflowNodeDefinition<TKind>;
 }
 
 export function getWorkflowNodeRole(kind: WorkflowNodeKind): WorkflowNodeRole | undefined {
@@ -187,12 +190,14 @@ export function isWorkflowNodeKind(value: unknown): value is WorkflowNodeKind {
   return typeof value === "string" && Object.hasOwn(workflowNodeCatalog, value);
 }
 
-export function createWorkflowNodeExecutionConfig(data: WorkflowNodeData) {
+export function createWorkflowNodeExecutionConfig<TKind extends WorkflowNodeKind>(
+  data: WorkflowNodeData<TKind>,
+) {
   return getWorkflowNodeCatalogEntry(data.kind).createExecutionConfig(data);
 }
 
 function isInsertableWorkflowNodeCatalogEntry(
-  definition: WorkflowNodeDefinition,
+  definition: AnyWorkflowNodeDefinition,
 ): definition is InsertableWorkflowNodeCatalogEntry {
   return definition.insertable
     && definition.paletteGroup !== undefined

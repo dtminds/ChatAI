@@ -11,17 +11,18 @@ import type {
 import type {
   WorkflowNodeConfigPatch,
   WorkflowNodeData,
+  WorkflowNodeKind,
 } from "../types";
 import { FieldGroup } from "./field-group";
 
-export function NodeConfigSchemaSections({
+export function NodeConfigSchemaSections<TKind extends WorkflowNodeKind>({
   data,
   onNodeChange,
   sections,
 }: {
-  data: WorkflowNodeData;
-  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
-  sections: NodeConfigSection[];
+  data: WorkflowNodeData<TKind>;
+  onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
+  sections: NodeConfigSection<TKind>[];
 }) {
   return (
     <>
@@ -43,14 +44,14 @@ export function NodeConfigSchemaSections({
   );
 }
 
-function NodeConfigFieldControl({
+function NodeConfigFieldControl<TKind extends WorkflowNodeKind>({
   data,
   field,
   onNodeChange,
 }: {
-  data: WorkflowNodeData;
-  field: NodeConfigField;
-  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
+  data: WorkflowNodeData<TKind>;
+  field: NodeConfigField<TKind>;
+  onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
 }) {
   if (field.kind === "option-cards") {
     const activeValue = field.getValue(data);

@@ -12,6 +12,7 @@ import {
   resolveWorkflowVariableSelector,
 } from "@/pages/chat/workflow/workflow-variables";
 import { getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
+import type { WorkflowNode } from "@/pages/chat/workflow/types";
 
 describe("workflow variables", () => {
   it("derives available upstream nodes from the current graph branch", () => {
@@ -51,8 +52,14 @@ describe("workflow variables", () => {
 
   it("uses the selected node definition as the output variable boundary", () => {
     const nodes = createInitialNodes();
-    const actionNode = nodes.find((currentNode) => currentNode.id === "action-message")!;
-    const goalNode = nodes.find((currentNode) => currentNode.id === "goal")!;
+    const actionNode = nodes.find(
+      (currentNode): currentNode is WorkflowNode<"action"> =>
+        currentNode.id === "action-message" && currentNode.data.kind === "action",
+    )!;
+    const goalNode = nodes.find(
+      (currentNode): currentNode is WorkflowNode<"goal"> =>
+        currentNode.id === "goal" && currentNode.data.kind === "goal",
+    )!;
 
     expect(getNodeDefinition("action").getOutputVariables?.(actionNode)).toEqual(expect.arrayContaining([
       {

@@ -1,5 +1,8 @@
 import { getNodeDefinitionCore } from "./node-definition-core";
-import type { WorkflowNodeKind } from "./types";
+import type {
+  WorkflowNodeConfigPatch,
+  WorkflowNodeKind,
+} from "./types";
 import type {
   NodeConfigField,
   NodeConfigSection,
@@ -16,7 +19,7 @@ export type {
   NodeConfigTextareaField,
 } from "./node-config-types";
 
-export const baseNodeConfigSections = [
+export const baseNodeConfigSections: NodeConfigSection<WorkflowNodeKind>[] = [
   {
     fields: [
       {
@@ -24,7 +27,7 @@ export const baseNodeConfigSections = [
         id: "workflow-node-title",
         kind: "text",
         label: "节点名称",
-        toPatch: (value) => ({ title: value }),
+        toPatch: (value) => ({ title: value }) as WorkflowNodeConfigPatch,
       },
       {
         getValue: (data) => data.summary,
@@ -32,34 +35,37 @@ export const baseNodeConfigSections = [
         kind: "textarea",
         label: "节点说明",
         minRows: 4,
-        toPatch: (value) => ({ summary: value }),
+        toPatch: (value) => ({ summary: value }) as WorkflowNodeConfigPatch,
       },
     ],
     id: "base",
     title: "基础信息",
   },
-] satisfies NodeConfigSection[];
+];
 
-export function getNodeConfigSections(kind: WorkflowNodeKind) {
-  return getNodeDefinitionCore(kind).configSections;
+export function getNodeConfigSections<TKind extends WorkflowNodeKind>(kind: TKind) {
+  return getNodeDefinitionCore(kind).configSections as NodeConfigSection<TKind>[];
 }
 
-export type WorkflowNodeConfigSchema = {
-  baseSections: NodeConfigSection[];
-  fields: NodeConfigField[];
-  nodeSections: NodeConfigSection[];
-  sections: NodeConfigSection[];
+export type WorkflowNodeConfigSchema<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
+  baseSections: NodeConfigSection<TKind>[];
+  fields: NodeConfigField<TKind>[];
+  nodeSections: NodeConfigSection<TKind>[];
+  sections: NodeConfigSection<TKind>[];
 };
 
-export function getWorkflowNodeConfigSchema(kind: WorkflowNodeKind): WorkflowNodeConfigSchema {
+export function getWorkflowNodeConfigSchema<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+): WorkflowNodeConfigSchema<TKind> {
+  const baseSections = baseNodeConfigSections as unknown as NodeConfigSection<TKind>[];
   const nodeSections = getNodeConfigSections(kind);
   const sections = [
-    ...baseNodeConfigSections,
+    ...baseSections,
     ...nodeSections,
   ];
 
   return {
-    baseSections: baseNodeConfigSections,
+    baseSections,
     fields: sections.flatMap((section) => section.fields),
     nodeSections,
     sections,

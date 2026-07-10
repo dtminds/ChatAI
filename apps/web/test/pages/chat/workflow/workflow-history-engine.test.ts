@@ -10,6 +10,7 @@ import {
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/workflow/constants";
 import { DEFAULT_WORKFLOW_VIEWPORT } from "@/pages/chat/workflow/graph";
+import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -22,8 +23,8 @@ function createDraft(
 ): WorkflowDraft {
   const node: WorkflowNode = {
     data: {
+      ...createDefaultNodeData("action"),
       insertMenuOpen: true,
-      kind: "action",
       label: "营销动作",
       metric: "已发送",
       onDelete: vi.fn(),

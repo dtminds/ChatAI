@@ -14,7 +14,9 @@ export const workflowNodeDefinitions = {
   goal: goalNodeDefinition,
   trigger: triggerNodeDefinition,
   wait: waitNodeDefinition,
-} satisfies Record<WorkflowNodeKind, WorkflowNodeDefinition>;
+} satisfies {
+  [TKind in WorkflowNodeKind]: WorkflowNodeDefinition<TKind>;
+};
 
 export const orderedWorkflowNodeDefinitions = Object.values(workflowNodeDefinitions).sort(
   (first, second) => first.sort - second.sort,

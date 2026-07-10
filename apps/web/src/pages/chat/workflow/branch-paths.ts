@@ -1,7 +1,7 @@
 import { WORKFLOW_BRANCH_FIRST_HANDLE_TOP, WORKFLOW_BRANCH_HANDLE_ROW_GAP } from "./constants";
 import type {
+  BranchNodeData,
   WorkflowBranchPath,
-  WorkflowNodeData,
 } from "./types";
 
 let workflowBranchPathIdSequence = 0;
@@ -31,7 +31,7 @@ export function createWorkflowBranchPathId(
 }
 
 export function getWorkflowBranchPaths(
-  data?: Pick<WorkflowNodeData, "branchPaths">,
+  data?: Pick<BranchNodeData, "branchPaths">,
 ): WorkflowBranchPath[] {
   return normalizeWorkflowBranchPaths(data?.branchPaths);
 }
@@ -159,7 +159,7 @@ export function moveWorkflowBranchPath(
 }
 
 export function getBranchPathIndex(
-  data: Pick<WorkflowNodeData, "branchPaths"> | undefined,
+  data: Pick<BranchNodeData, "branchPaths"> | undefined,
   sourceHandle?: string | null,
 ) {
   const paths = getWorkflowBranchPaths(data);
@@ -169,14 +169,14 @@ export function getBranchPathIndex(
 }
 
 export function getBranchPathLabel(
-  data: Pick<WorkflowNodeData, "branchPaths"> | undefined,
+  data: Pick<BranchNodeData, "branchPaths"> | undefined,
   sourceHandle?: string | null,
 ) {
   return getWorkflowBranchPaths(data).find((path) => path.id === sourceHandle)?.label;
 }
 
 export function getBranchPathTop(
-  data: Pick<WorkflowNodeData, "branchPaths"> | undefined,
+  data: Pick<BranchNodeData, "branchPaths"> | undefined,
   sourceHandle?: string,
 ) {
   return WORKFLOW_BRANCH_FIRST_HANDLE_TOP
@@ -184,7 +184,7 @@ export function getBranchPathTop(
 }
 
 export function getDefaultBranchPathId(
-  data?: Pick<WorkflowNodeData, "branchPaths">,
+  data?: Pick<BranchNodeData, "branchPaths">,
 ) {
   return getWorkflowBranchPaths(data)[0]?.id;
 }

@@ -2,10 +2,11 @@ import type {
   WorkflowEdge,
   WorkflowNodeConfigPatch,
   WorkflowNode,
+  WorkflowNodeKind,
 } from "../types";
 
-export type NodeSettingsProps = {
+export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
   edges: WorkflowEdge[];
-  node: WorkflowNode;
-  onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
+  node: WorkflowNode<TKind>;
+  onNodeChange: (patch: WorkflowNodeConfigPatch<TKind>) => void;
 };

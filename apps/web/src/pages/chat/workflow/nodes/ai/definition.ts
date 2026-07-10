@@ -18,7 +18,7 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const aiNodeDefinition: WorkflowNodeDefinition = {
+export const aiNodeDefinition: WorkflowNodeDefinition<"ai"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: sourceNodeKinds,
   canDelete: true,
@@ -73,7 +73,7 @@ export const aiNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("ai", {
+    createNodeData("ai", 1, {
       actionType: "ai",
       agentName: defaultAgentOption.name,
       handoffRule: "客户要求人工、投诉升级、识别到价格异议",
@@ -92,6 +92,7 @@ export const aiNodeDefinition: WorkflowNodeDefinition = {
   layout: standardNodeLayout,
   paletteGroup: "engagement",
   paletteLabel: "AI 接待",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
@@ -105,7 +106,7 @@ export const aiNodeDefinition: WorkflowNodeDefinition = {
   },
 };
 
-function validateAiNode(node: WorkflowNode) {
+function validateAiNode(node: WorkflowNode<"ai">) {
   if (!hasText(node.data.agentName)) {
     return [];
   }

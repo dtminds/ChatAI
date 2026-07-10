@@ -3,6 +3,7 @@ import {
   nodeDefinitionCore,
   orderedNodeDefinitionCore,
 } from "./node-definition-core";
+import type { NodeDefinitionCore } from "./node-definition-core";
 import type { WorkflowNodeKind } from "./types";
 import type { NodeBodyProps } from "./nodes/types";
 import { workflowNodeUiBindings } from "./node-ui-bindings";
@@ -36,9 +37,13 @@ export type {
   WorkflowPaletteItemGroup,
 } from "./node-definition-core";
 
-type NodeDefinition = (typeof nodeDefinitionCore)[WorkflowNodeKind] & {
-  body: ComponentType<NodeBodyProps>;
-  settings: ComponentType<NodeSettingsProps>;
+type NodeDefinition<TKind extends WorkflowNodeKind> = NodeDefinitionCore<TKind> & {
+  body: ComponentType<NodeBodyProps<TKind>>;
+  settings: ComponentType<NodeSettingsProps<TKind>>;
+};
+
+type NodeDefinitionMap = {
+  [TKind in WorkflowNodeKind]: NodeDefinition<TKind>;
 };
 
 export const nodeDefinitions = Object.fromEntries(
@@ -49,12 +54,12 @@ export const nodeDefinitions = Object.fromEntries(
       ...workflowNodeUiBindings[kind as WorkflowNodeKind],
     },
   ]),
-) as Record<WorkflowNodeKind, NodeDefinition>;
+) as NodeDefinitionMap;
 
 export const orderedNodeDefinitions = orderedNodeDefinitionCore.map(
   (definition) => nodeDefinitions[definition.kind],
 );
 
-export function getNodeDefinition(kind: WorkflowNodeKind) {
-  return nodeDefinitions[kind];
+export function getNodeDefinition<TKind extends WorkflowNodeKind>(kind: TKind) {
+  return nodeDefinitions[kind] as unknown as NodeDefinition<TKind>;
 }

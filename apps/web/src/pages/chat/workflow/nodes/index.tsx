@@ -2,6 +2,8 @@ import { memo } from "react";
 import type { NodeProps } from "@xyflow/react";
 import {
   getDefaultSourceHandleId,
+  getNodeSourceHandleDefinitions,
+  getNodeTargetHandleDefinitions,
 } from "../node-handle-definitions";
 import { getNodeDefinition, nodeVisuals } from "../node-definitions";
 import type { WorkflowRenderNode } from "../types";
@@ -34,7 +36,7 @@ function WorkflowNodeSourceHandles({
   data,
   id,
 }: Pick<NodeProps<WorkflowRenderNode>, "data" | "id">) {
-  const handles = getNodeDefinition(data.kind).getSourceHandles(data);
+  const handles = getNodeSourceHandleDefinitions(data);
 
   if (!handles.length) {
     return null;
@@ -66,7 +68,7 @@ function WorkflowNodeSourceHandles({
 function WorkflowNodeTargetHandles({
   data,
 }: Pick<NodeProps<WorkflowRenderNode>, "data">) {
-  const handles = getNodeDefinition(data.kind).getTargetHandles(data);
+  const handles = getNodeTargetHandleDefinitions(data);
 
   if (!handles.length) {
     return null;

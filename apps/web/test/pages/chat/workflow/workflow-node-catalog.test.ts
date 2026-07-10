@@ -74,6 +74,103 @@ import {
 } from "@/pages/chat/workflow/constants";
 import type { WorkflowNode, WorkflowNodeKind } from "@/pages/chat/workflow/types";
 
+function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind: TKind) {
+  const catalogEntry = getWorkflowNodeCatalogEntry(kind);
+  const definition = getNodeDefinition(kind);
+  const defaultData = createDefaultNodeData(kind);
+
+  expect(definition.kind).toBe(catalogEntry.kind);
+  expect(getNodeDefinitionCore(kind)).toBe(nodeDefinitionCore[kind]);
+  expect(getNodeDefinition(kind)).toBe(definition);
+  expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
+  expect(definition.visual).toBe(catalogEntry.visual);
+  expect(definition.layout).toBe(catalogEntry.layout);
+  expect(definition.role).toBe(catalogEntry.role);
+  expect(definition.cardClassName).toBe(catalogEntry.cardClassName);
+  expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
+  expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
+  expect(definition.sanitizeData).toBe(catalogEntry.sanitizeData);
+  expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
+  expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
+  expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
+  expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
+  expect(getWorkflowNodeConfigSchema(kind).nodeSections).toBe(catalogEntry.configSections);
+  expect(definition.getSourceHandles).toBe(catalogEntry.getSourceHandles);
+  expect(definition.getTargetHandles).toBe(catalogEntry.getTargetHandles);
+  expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));
+  expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
+  expect(definition.getTargetHandles(defaultData)).toEqual(getNodeTargetHandleDefinitions(defaultData));
+  expect(defaultData.kind).toBe(kind);
+  expect(defaultData.schemaVersion).toBe(definition.schemaVersion);
+  expect(defaultData.title).toBeTruthy();
+  expect(defaultData.summary).toBeTruthy();
+  expect(defaultData.metric).toBeTruthy();
+  expect(catalogEntry.layout.width).toBeGreaterThan(0);
+  expect(catalogEntry.layout.estimatedHeight).toBeGreaterThan(0);
+  expect(getWorkflowNodeWidth({
+    data: defaultData,
+    id: `node-${kind}`,
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  })).toBe(catalogEntry.layout.width);
+  expect(getWorkflowNodeEstimatedHeight({
+    data: defaultData,
+    id: `node-${kind}`,
+    position: { x: 0, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  })).toBe(catalogEntry.layout.estimatedHeight);
+  expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
+  expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
+}
+
+function assertDefinitionExtensionContract<TKind extends WorkflowNodeKind>(kind: TKind) {
+  const definition = getWorkflowNodeCatalogEntry(kind);
+  const defaultData = definition.createDefaultData();
+
+  expect(defaultData.kind).toBe(kind);
+  expect(definition.visual.accentClassName).toBeTruthy();
+  expect(definition.visual.accentRgb).toMatch(/^\d+ \d+ \d+$/);
+  expect(definition.visual.icon).toBeTruthy();
+  expect(definition.getSourceHandles(defaultData)).toEqual(expect.any(Array));
+  expect(definition.getTargetHandles(defaultData)).toEqual(expect.any(Array));
+  expect(definition.createExecutionConfig(defaultData)).toEqual(expect.any(Object));
+
+  if (definition.insertable) {
+    expect(definition.paletteGroup).toBeTruthy();
+    expect(definition.paletteLabel).toBeTruthy();
+    expect(insertableNodeKinds).toContain(kind);
+  }
+  else {
+    expect(insertableNodeKinds).not.toContain(kind);
+  }
+}
+
+function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+  index: number,
+  nodes: WorkflowNode[],
+) {
+  const node: WorkflowNode<TKind> = {
+    data: createDefaultNodeData(kind),
+    id: `node-${kind}`,
+    position: { x: index * 100, y: 0 },
+    type: WORKFLOW_NODE_TYPE,
+  };
+  const definition = getNodeDefinition(kind);
+
+  expect(definition.body).toBeTypeOf("function");
+  expect(definition.settings).toBeTypeOf("function");
+  expect(definition.configSections).toEqual(getNodeConfigSections(kind));
+  expect(definition.getOutputVariables?.(node)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "result" }),
+    ]),
+  );
+  expect(definition.validate?.(node, { edges: createInitialEdges(), nodes }) ?? []).toEqual(
+    expect.any(Array),
+  );
+}
+
 describe("workflow node catalog", () => {
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
@@ -95,53 +192,7 @@ describe("workflow node catalog", () => {
 
     expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
 
-    for (const kind of nodeKinds) {
-      const catalogEntry = getWorkflowNodeCatalogEntry(kind);
-      const definition = nodeDefinitions[kind];
-      const defaultData = createDefaultNodeData(kind);
-
-      expect(definition.kind).toBe(catalogEntry.kind);
-      expect(getNodeDefinitionCore(kind)).toBe(nodeDefinitionCore[kind]);
-      expect(getNodeDefinition(kind)).toBe(definition);
-      expect(nodeDefinitionCore[kind].visual).toBe(catalogEntry.visual);
-      expect(definition.visual).toBe(catalogEntry.visual);
-      expect(definition.layout).toBe(catalogEntry.layout);
-      expect(definition.role).toBe(catalogEntry.role);
-      expect(definition.cardClassName).toBe(catalogEntry.cardClassName);
-      expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
-      expect(definition.createExecutionConfig).toBe(catalogEntry.createExecutionConfig);
-      expect(definition.sanitizeData).toBe(catalogEntry.sanitizeData);
-      expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
-      expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
-      expect(definition.getOutputVariables).toBe(catalogEntry.getOutputVariables);
-      expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
-      expect(getWorkflowNodeConfigSchema(kind).nodeSections).toBe(catalogEntry.configSections);
-      expect(definition.getSourceHandles).toBe(catalogEntry.getSourceHandles);
-      expect(definition.getTargetHandles).toBe(catalogEntry.getTargetHandles);
-      expect(getNodeSourceHandleDefinitions(defaultData)).toEqual(expect.any(Array));
-      expect(definition.getSourceHandles(defaultData)).toEqual(getNodeSourceHandleDefinitions(defaultData));
-      expect(definition.getTargetHandles(defaultData)).toEqual(getNodeTargetHandleDefinitions(defaultData));
-      expect(defaultData.kind).toBe(kind);
-      expect(defaultData.title).toBeTruthy();
-      expect(defaultData.summary).toBeTruthy();
-      expect(defaultData.metric).toBeTruthy();
-      expect(catalogEntry.layout.width).toBeGreaterThan(0);
-      expect(catalogEntry.layout.estimatedHeight).toBeGreaterThan(0);
-      expect(getWorkflowNodeWidth({
-        data: defaultData,
-        id: `node-${kind}`,
-        position: { x: 0, y: 0 },
-        type: WORKFLOW_NODE_TYPE,
-      })).toBe(catalogEntry.layout.width);
-      expect(getWorkflowNodeEstimatedHeight({
-        data: defaultData,
-        id: `node-${kind}`,
-        position: { x: 0, y: 0 },
-        type: WORKFLOW_NODE_TYPE,
-      })).toBe(catalogEntry.layout.estimatedHeight);
-      expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("title");
-      expect(catalogEntry.createExecutionConfig(defaultData)).not.toHaveProperty("status");
-    }
+    nodeKinds.forEach(assertDefinitionSourcesStayInSync);
   });
 
   it("keeps node definitions as the single extension contract", () => {
@@ -153,27 +204,7 @@ describe("workflow node catalog", () => {
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
 
-    for (const kind of nodeKinds) {
-      const definition = workflowNodeCatalog[kind];
-      const defaultData = definition.createDefaultData();
-
-      expect(defaultData.kind).toBe(kind);
-      expect(definition.visual.accentClassName).toBeTruthy();
-      expect(definition.visual.accentRgb).toMatch(/^\d+ \d+ \d+$/);
-      expect(definition.visual.icon).toBeTruthy();
-      expect(definition.getSourceHandles(defaultData)).toEqual(expect.any(Array));
-      expect(definition.getTargetHandles(defaultData)).toEqual(expect.any(Array));
-      expect(definition.createExecutionConfig(defaultData)).toEqual(expect.any(Object));
-
-      if (definition.insertable) {
-        expect(definition.paletteGroup).toBeTruthy();
-        expect(definition.paletteLabel).toBeTruthy();
-        expect(insertableNodeKinds).toContain(kind);
-      }
-      else {
-        expect(insertableNodeKinds).not.toContain(kind);
-      }
-    }
+    nodeKinds.forEach(assertDefinitionExtensionContract);
 
     for (const kind of schemaNodeKinds) {
       expect(workflowNodeUiRegistry[kind].settings).toEqual(expect.objectContaining({
@@ -259,21 +290,7 @@ describe("workflow node catalog", () => {
       type: WORKFLOW_NODE_TYPE,
     }));
 
-    for (const node of nodes) {
-      const definition = getNodeDefinition(node.data.kind);
-
-      expect(definition.body).toBeTypeOf("function");
-      expect(definition.settings).toBeTypeOf("function");
-      expect(definition.configSections).toEqual(getNodeConfigSections(node.data.kind));
-      expect(definition.getOutputVariables?.(node)).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: "result" }),
-        ]),
-      );
-      expect(definition.validate?.(node, { edges: createInitialEdges(), nodes }) ?? []).toEqual(
-        expect.any(Array),
-      );
-    }
+    nodeKinds.forEach((kind, index) => assertDefinitionRuntimeContract(kind, index, nodes));
   });
 
   it("supports custom UI bindings for specialized nodes", () => {

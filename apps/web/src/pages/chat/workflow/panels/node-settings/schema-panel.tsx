@@ -7,20 +7,20 @@ import {
 import { NodeConfigSchemaSections } from "../schema-fields";
 import type { NodeSettingsProps } from "../types";
 
-type SchemaNodeSettingsPanelProps = NodeSettingsProps & {
+type SchemaNodeSettingsPanelProps<TKind extends WorkflowNodeKind> = NodeSettingsProps<TKind> & {
   children?: ReactNode;
   includeBase?: boolean;
-  kind?: WorkflowNodeKind;
+  kind?: TKind;
 };
 
-export function SchemaNodeSettingsPanel({
+export function SchemaNodeSettingsPanel<TKind extends WorkflowNodeKind>({
   children,
   includeBase = false,
   kind,
   node,
   onNodeChange,
-}: SchemaNodeSettingsPanelProps) {
-  const nodeKind = kind ?? node.data.kind;
+}: SchemaNodeSettingsPanelProps<TKind>) {
+  const nodeKind = (kind ?? node.data.kind) as TKind;
   const sections = includeBase
     ? getWorkflowNodeConfigSchema(nodeKind).sections
     : getNodeConfigSections(nodeKind);
@@ -37,11 +37,11 @@ export function SchemaNodeSettingsPanel({
   );
 }
 
-export function createSchemaNodeSettingsPanel(
-  kind: WorkflowNodeKind,
-  renderAfterSchema?: (props: NodeSettingsProps) => ReactNode,
+export function createSchemaNodeSettingsPanel<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+  renderAfterSchema?: (props: NodeSettingsProps<TKind>) => ReactNode,
 ) {
-  const SchemaSettingsPanel = (props: NodeSettingsProps) => (
+  const SchemaSettingsPanel = (props: NodeSettingsProps<TKind>) => (
     <SchemaNodeSettingsPanel includeBase kind={kind} {...props}>
       {renderAfterSchema?.(props)}
     </SchemaNodeSettingsPanel>

@@ -12,6 +12,7 @@ import {
   createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
+import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 import {
   validateWorkflowDraft,
@@ -171,9 +172,14 @@ describe("buildPublishChecks", () => {
 
   it("rejects unsupported node option values and invalid numeric config", () => {
     const nodes = createInitialNodes();
-    const actionNode = nodes.find((node) => node.id === "action-message")!;
+    const actionNode = nodes.find(
+      (node): node is WorkflowNode<"action"> =>
+        node.id === "action-message" && node.data.kind === "action",
+    )!;
     const aiNode = createNodeFromKind("ai", "ai-invalid-agent", nodes.length);
-    const goalNode = nodes.find((node) => node.data.kind === "goal")!;
+    const goalNode = nodes.find(
+      (node): node is WorkflowNode<"goal"> => node.data.kind === "goal",
+    )!;
 
     expect(validateWorkflowNodeConfig({
       ...actionNode,
@@ -372,16 +378,12 @@ describe("buildPublishChecks", () => {
   });
 
   it("does not create a special publish summary item for configured AI nodes", () => {
-    const aiNode: WorkflowNode = {
+    const aiNode: WorkflowNode<"ai"> = {
       data: {
-        actionType: "ai",
+        ...createDefaultNodeData("ai"),
         agentName: "护肤小助理",
-        kind: "ai",
-        label: "AI 接待",
         metric: "知识库：护肤知识库",
-        status: "ready",
         summary: "护肤小助理",
-        title: "AI 接待",
       },
       id: "ai-node",
       position: { x: 1200, y: 120 },

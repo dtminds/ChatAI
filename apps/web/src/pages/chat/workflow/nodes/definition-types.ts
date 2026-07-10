@@ -35,31 +35,45 @@ export type WorkflowNodeLayoutMetrics = {
   width: number;
 };
 
-export type WorkflowNodeDefinition = {
+export type WorkflowNodeMigrationContext<TKind extends WorkflowNodeKind> = {
+  data: Partial<WorkflowNodeData<TKind>> & Pick<WorkflowNodeData<TKind>, "kind">;
+  fromVersion: number;
+  toVersion: number;
+};
+
+export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
   availableNextKinds: WorkflowNodeKind[];
   availablePrevKinds: WorkflowNodeKind[];
   canDelete: boolean;
   canDuplicate: boolean;
   canInsertAfter: boolean;
   cardClassName?: string;
-  configSections: NodeConfigSection[];
-  createExecutionConfig: (data: WorkflowNodeData) => Record<string, unknown>;
-  createDefaultData: () => WorkflowNodeData;
+  configSections: NodeConfigSection<TKind>[];
+  createExecutionConfig: (data: WorkflowNodeData<TKind>) => Record<string, unknown>;
+  createDefaultData: () => WorkflowNodeData<TKind>;
   description?: string;
   insertable: boolean;
-  kind: WorkflowNodeKind;
+  kind: TKind;
   layout: WorkflowNodeLayoutMetrics;
+  migrateData?: (
+    context: WorkflowNodeMigrationContext<TKind>,
+  ) => Partial<WorkflowNodeData<TKind>>;
   paletteLabel?: string;
   paletteGroup?: WorkflowNodePaletteGroupId;
   role?: WorkflowNodeRole;
-  sanitizeData?: (data: WorkflowNodeData) => WorkflowNodeData;
-  getOutputVariables?: (node: WorkflowNode) => WorkflowVariable[];
-  getSourceHandles: (data: WorkflowNodeData) => WorkflowSourceHandleDefinition[];
-  getTargetHandles: (data: WorkflowNodeData) => WorkflowTargetHandleDefinition[];
+  sanitizeData?: (data: WorkflowNodeData<TKind>) => WorkflowNodeData<TKind>;
+  schemaVersion: number;
+  getOutputVariables?: (node: WorkflowNode<TKind>) => WorkflowVariable[];
+  getSourceHandles: (data: WorkflowNodeData<TKind>) => WorkflowSourceHandleDefinition[];
+  getTargetHandles: (data: WorkflowNodeData<TKind>) => WorkflowTargetHandleDefinition[];
   sort: number;
   validate?: (
-    node: WorkflowNode,
+    node: WorkflowNode<TKind>,
     context: WorkflowNodeValidationContext,
   ) => WorkflowNodeValidationIssue[];
   visual: NodeVisual;
 };
+
+export type AnyWorkflowNodeDefinition = {
+  [TKind in WorkflowNodeKind]: WorkflowNodeDefinition<TKind>;
+}[WorkflowNodeKind];

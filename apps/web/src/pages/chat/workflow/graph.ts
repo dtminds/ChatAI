@@ -109,11 +109,11 @@ export function createInitialEdges(): WorkflowEdge[] {
   ];
 }
 
-export function createNodeFromKind(
-  kind: InsertableWorkflowNodeKind,
+export function createNodeFromKind<TKind extends InsertableWorkflowNodeKind>(
+  kind: TKind,
   id: string,
   index: number,
-): WorkflowNode {
+): WorkflowNode<TKind> {
   const commonPosition = {
     x: 300 + index * WORKFLOW_LAYOUT_X_GAP,
     y: index % 2 === 0 ? -94 : 94,

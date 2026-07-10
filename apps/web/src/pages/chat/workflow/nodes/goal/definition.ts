@@ -10,7 +10,7 @@ import {
   standardNodeLayout,
 } from "../definition-shared";
 
-export const goalNodeDefinition: WorkflowNodeDefinition = {
+export const goalNodeDefinition: WorkflowNodeDefinition<"goal"> = {
   availableNextKinds: [],
   availablePrevKinds: sourceNodeKinds,
   canDelete: false,
@@ -43,7 +43,7 @@ export const goalNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("goal", {
+    createNodeData("goal", 1, {
       conversion: 18.4,
       label: "目标",
       metric: "目标 18.4%",
@@ -57,6 +57,7 @@ export const goalNodeDefinition: WorkflowNodeDefinition = {
   kind: "goal",
   layout: standardNodeLayout,
   role: "terminal",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createNoSourceHandles,
   getTargetHandles: createDefaultTargetHandles,

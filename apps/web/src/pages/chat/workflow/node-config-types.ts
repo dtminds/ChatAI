@@ -2,10 +2,11 @@ import type { IconSvgElement } from "@hugeicons/react";
 import type {
   WorkflowNodeConfigPatch,
   WorkflowNodeData,
+  WorkflowNodeKind,
 } from "./types";
 
-type NodeConfigFieldBase = {
-  getValidationValue?: (data: WorkflowNodeData) => unknown;
+type NodeConfigFieldBase<TKind extends WorkflowNodeKind> = {
+  getValidationValue?: (data: WorkflowNodeData<TKind>) => unknown;
   id: string;
   label: string;
   validation?: {
@@ -19,32 +20,36 @@ export type NodeConfigValidationIssue = {
   message: string;
 };
 
-export type NodeConfigTextField = NodeConfigFieldBase & {
+export type NodeConfigTextField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  NodeConfigFieldBase<TKind> & {
   kind: "text";
-  getValue: (data: WorkflowNodeData) => string;
-  toPatch: (value: string, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
+  getValue: (data: WorkflowNodeData<TKind>) => string;
+  toPatch: (value: string, data: WorkflowNodeData<TKind>) => WorkflowNodeConfigPatch<TKind>;
 };
 
-export type NodeConfigTextareaField = NodeConfigFieldBase & {
+export type NodeConfigTextareaField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  NodeConfigFieldBase<TKind> & {
   kind: "textarea";
-  getValue: (data: WorkflowNodeData) => string;
+  getValue: (data: WorkflowNodeData<TKind>) => string;
   minRows?: number;
-  toPatch: (value: string, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
+  toPatch: (value: string, data: WorkflowNodeData<TKind>) => WorkflowNodeConfigPatch<TKind>;
 };
 
-export type NodeConfigNumberField = NodeConfigFieldBase & {
+export type NodeConfigNumberField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  NodeConfigFieldBase<TKind> & {
   kind: "number";
-  getValue: (data: WorkflowNodeData) => number;
+  getValue: (data: WorkflowNodeData<TKind>) => number;
   min?: number;
   suffix?: string;
-  toPatch: (value: number, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
+  toPatch: (value: number, data: WorkflowNodeData<TKind>) => WorkflowNodeConfigPatch<TKind>;
 };
 
-export type NodeConfigSwitchField = NodeConfigFieldBase & {
+export type NodeConfigSwitchField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  NodeConfigFieldBase<TKind> & {
   description?: string;
-  getValue: (data: WorkflowNodeData) => boolean;
+  getValue: (data: WorkflowNodeData<TKind>) => boolean;
   kind: "switch";
-  toPatch: (value: boolean, data: WorkflowNodeData) => WorkflowNodeConfigPatch;
+  toPatch: (value: boolean, data: WorkflowNodeData<TKind>) => WorkflowNodeConfigPatch<TKind>;
 };
 
 export type NodeConfigOptionCard = {
@@ -54,27 +59,28 @@ export type NodeConfigOptionCard = {
   value: string;
 };
 
-export type NodeConfigOptionCardsField = NodeConfigFieldBase & {
+export type NodeConfigOptionCardsField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  NodeConfigFieldBase<TKind> & {
   columns?: 1 | 2;
-  getOptions: (data: WorkflowNodeData) => NodeConfigOptionCard[];
-  getValue: (data: WorkflowNodeData) => string;
+  getOptions: (data: WorkflowNodeData<TKind>) => NodeConfigOptionCard[];
+  getValue: (data: WorkflowNodeData<TKind>) => string;
   kind: "option-cards";
   toPatch: (
     value: string,
-    data: WorkflowNodeData,
+    data: WorkflowNodeData<TKind>,
     option: NodeConfigOptionCard,
-  ) => WorkflowNodeConfigPatch;
+  ) => WorkflowNodeConfigPatch<TKind>;
 };
 
-export type NodeConfigField =
-  | NodeConfigNumberField
-  | NodeConfigOptionCardsField
-  | NodeConfigSwitchField
-  | NodeConfigTextField
-  | NodeConfigTextareaField;
+export type NodeConfigField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  | NodeConfigNumberField<TKind>
+  | NodeConfigOptionCardsField<TKind>
+  | NodeConfigSwitchField<TKind>
+  | NodeConfigTextField<TKind>
+  | NodeConfigTextareaField<TKind>;
 
-export type NodeConfigSection = {
-  fields: NodeConfigField[];
+export type NodeConfigSection<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
+  fields: NodeConfigField<TKind>[];
   id: string;
   title: string;
 };

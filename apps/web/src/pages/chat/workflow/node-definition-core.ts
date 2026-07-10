@@ -4,13 +4,10 @@ import {
 } from "./node-catalog";
 import type {
   InsertableWorkflowNodeKind,
+  WorkflowNodeData,
   WorkflowNodeKind,
-  WorkflowNodeRenderData,
 } from "./types";
-import type {
-  WorkflowSourceHandleDefinition,
-  WorkflowTargetHandleDefinition,
-} from "./node-handle-definitions";
+import type { WorkflowNodeDefinition } from "./nodes/definition-types";
 
 export {
   getInsertableNodeKindsBetween,
@@ -31,28 +28,19 @@ export type {
   WorkflowPaletteItemGroup,
 } from "./node-catalog";
 
-export type NodeDefinitionCore = (typeof workflowNodeCatalog)[WorkflowNodeKind] & {
-  getSourceHandles: (data: WorkflowNodeRenderData) => WorkflowSourceHandleDefinition[];
-  getTargetHandles: (data: WorkflowNodeRenderData) => WorkflowTargetHandleDefinition[];
-};
+export type NodeDefinitionCore<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
+  WorkflowNodeDefinition<TKind>;
 
-export const nodeDefinitionCore = Object.fromEntries(
-  Object.entries(workflowNodeCatalog).map(([kind, catalogEntry]) => [
-    kind,
-    {
-      ...catalogEntry,
-      getSourceHandles: catalogEntry.getSourceHandles,
-      getTargetHandles: catalogEntry.getTargetHandles,
-    },
-  ]),
-) as Record<WorkflowNodeKind, NodeDefinitionCore>;
+export const nodeDefinitionCore = workflowNodeCatalog;
 
 export const orderedNodeDefinitionCore = orderedWorkflowNodeCatalog.map(
   (definition) => nodeDefinitionCore[definition.kind],
 );
 
-export function getNodeDefinitionCore(kind: WorkflowNodeKind) {
-  return nodeDefinitionCore[kind];
+export function getNodeDefinitionCore<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+): NodeDefinitionCore<TKind> {
+  return nodeDefinitionCore[kind] as unknown as WorkflowNodeDefinition<TKind>;
 }
 
 export function canDeleteNodeKind(kind: WorkflowNodeKind) {
@@ -71,6 +59,8 @@ export function canInsertNodeKind(kind: WorkflowNodeKind): kind is InsertableWor
   return getNodeDefinitionCore(kind).insertable;
 }
 
-export function createDefaultNodeData(kind: WorkflowNodeKind) {
+export function createDefaultNodeData<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+): WorkflowNodeData<TKind> {
   return getNodeDefinitionCore(kind).createDefaultData();
 }

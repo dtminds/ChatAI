@@ -11,7 +11,10 @@ import {
 } from "@/pages/chat/workflow/workflow-draft-normalizer";
 import { DEFAULT_WORKFLOW_VIEWPORT } from "@/pages/chat/workflow/graph";
 import { createEdge } from "@/pages/chat/workflow/graph";
-import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
+import {
+  createDefaultNodeData,
+  getNodeDefinitionCore,
+} from "@/pages/chat/workflow/node-definitions";
 import type {
   WorkflowDraft,
   WorkflowEdge,
@@ -21,8 +24,8 @@ import type {
 function createRuntimeDraft(index = 0): WorkflowDraft {
   const node: WorkflowNode = {
     data: {
+      ...createDefaultNodeData("action"),
       insertMenuOpen: true,
-      kind: "action",
       label: "营销动作",
       metric: "已发送",
       onRuntimeInspect: vi.fn(),
@@ -214,12 +217,14 @@ describe("workflow draft normalizer", () => {
       nodes: [
         {
           data: {
+            delayDays: 7,
             kind: "wait",
+            selected: true,
             title: "旧等待节点",
           },
           id: "wait-1",
           position: { x: 10, y: 20 },
-        } as WorkflowNode,
+        },
         {
           data: {
             kind: "action",
@@ -227,14 +232,14 @@ describe("workflow draft normalizer", () => {
           },
           id: "action-1",
           position: { x: 300, y: 20 },
-        } as WorkflowNode,
+        },
         {
           data: {
             kind: "unknown",
           },
           id: "unknown",
           position: { x: 0, y: 0 },
-        } as unknown as WorkflowNode,
+        },
       ],
     });
 
@@ -245,11 +250,13 @@ describe("workflow draft normalizer", () => {
       type: WORKFLOW_NODE_TYPE,
     }));
     expect(hydratedDraft.nodes[0].data).toEqual(expect.objectContaining({
-      delayDays: 1,
+      delayDays: 7,
       kind: "wait",
       label: "等待",
+      schemaVersion: 1,
       title: "旧等待节点",
     }));
+    expect(hydratedDraft.nodes[0].data.selected).toBeUndefined();
     expect(hydratedDraft.edges).toEqual([
       expect.objectContaining({
         id: "edge-valid",
@@ -259,6 +266,85 @@ describe("workflow draft normalizer", () => {
         type: WORKFLOW_EDGE_TYPE,
       }),
     ]);
+  });
+
+  it("does not downgrade node data created by a newer schema", () => {
+    const hydratedDraft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [
+        {
+          data: {
+            ...createDefaultNodeData("action"),
+            actionType: "coupon",
+            futureConfig: {
+              channel: "private-domain",
+            },
+            schemaVersion: 99,
+          },
+          id: "future-action",
+          position: { x: 0, y: 0 },
+          type: WORKFLOW_NODE_TYPE,
+        },
+      ],
+    });
+
+    expect(hydratedDraft.nodes[0]?.data).toEqual(expect.objectContaining({
+      actionType: "coupon",
+      futureConfig: {
+        channel: "private-domain",
+      },
+      schemaVersion: 99,
+    }));
+  });
+
+  it("runs the registered node data migration before applying the current schema", () => {
+    const definition = getNodeDefinitionCore("wait");
+    const originalMigration = definition.migrateData;
+    const migrateData = vi.fn(({ data }) => ({
+      ...data,
+      delayDays: 9,
+    }));
+    definition.migrateData = migrateData;
+
+    try {
+      const hydratedDraft = hydrateWorkflowDraft({
+        edges: [],
+        nodes: [
+          {
+            data: {
+              delayDays: 2,
+              kind: "wait",
+              title: "待迁移节点",
+            },
+            id: "migrated-wait",
+            position: { x: 0, y: 0 },
+          },
+        ],
+      });
+
+      expect(migrateData).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          delayDays: 2,
+          kind: "wait",
+          title: "待迁移节点",
+        }),
+        fromVersion: 0,
+        toVersion: 1,
+      });
+      expect(hydratedDraft.nodes[0]?.data).toEqual(expect.objectContaining({
+        delayDays: 9,
+        schemaVersion: 1,
+        title: "待迁移节点",
+      }));
+    }
+    finally {
+      if (originalMigration) {
+        definition.migrateData = originalMigration;
+      }
+      else {
+        delete definition.migrateData;
+      }
+    }
   });
 
   it("drops duplicate node ids before hydrating edges", () => {
@@ -344,7 +430,7 @@ describe("workflow draft normalizer", () => {
   });
 
   it("filters edges that violate the workflow connection policy while hydrating drafts", () => {
-    const triggerNode: WorkflowNode = {
+    const triggerNode = {
       data: {
         kind: "trigger",
         label: "触发",
@@ -357,7 +443,7 @@ describe("workflow draft normalizer", () => {
       position: { x: 0, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
-    const waitNode: WorkflowNode = {
+    const waitNode = {
       data: {
         kind: "wait",
         label: "等待",
@@ -370,7 +456,7 @@ describe("workflow draft normalizer", () => {
       position: { x: 300, y: 0 },
       type: WORKFLOW_NODE_TYPE,
     };
-    const actionNode: WorkflowNode = {
+    const actionNode = {
       data: {
         actionType: "message",
         kind: "action",

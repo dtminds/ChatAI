@@ -5,21 +5,22 @@ import type {
 import type {
   WorkflowNode,
   WorkflowNodeData,
+  WorkflowNodeKind,
   WorkflowNodeValidationIssue,
 } from "./types";
 
-export function validateNodeConfigSections(
-  node: WorkflowNode,
-  sections: NodeConfigSection[],
+export function validateNodeConfigSections<TKind extends WorkflowNodeKind>(
+  node: WorkflowNode<TKind>,
+  sections: NodeConfigSection<TKind>[],
 ): WorkflowNodeValidationIssue[] {
   return sections.flatMap((section) =>
     section.fields.flatMap((field) => validateNodeConfigField(node.data, field)),
   );
 }
 
-function validateNodeConfigField(
-  data: WorkflowNodeData,
-  field: NodeConfigField,
+function validateNodeConfigField<TKind extends WorkflowNodeKind>(
+  data: WorkflowNodeData<TKind>,
+  field: NodeConfigField<TKind>,
 ): WorkflowNodeValidationIssue[] {
   const validationValue = getNodeConfigFieldValidationValue(data, field);
   const issues: WorkflowNodeValidationIssue[] = [];
@@ -41,9 +42,9 @@ function validateNodeConfigField(
   return issues;
 }
 
-function getNodeConfigFieldValidationValue(
-  data: WorkflowNodeData,
-  field: NodeConfigField,
+function getNodeConfigFieldValidationValue<TKind extends WorkflowNodeKind>(
+  data: WorkflowNodeData<TKind>,
+  field: NodeConfigField<TKind>,
 ) {
   return field.getValidationValue
     ? field.getValidationValue(data)

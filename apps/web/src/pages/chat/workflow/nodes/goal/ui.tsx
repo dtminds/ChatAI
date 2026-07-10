@@ -3,7 +3,7 @@ import type { NodeSettingsProps } from "../../panels/types";
 import { StandardNodeBody } from "../node-bodies";
 import type { WorkflowNodeUiBinding } from "../ui-types";
 
-const goalProgress = ({ node }: NodeSettingsProps) => {
+const goalProgress = ({ node }: NodeSettingsProps<"goal">) => {
   const conversion = node.data.conversion ?? 18.4;
 
   return (
@@ -15,7 +15,7 @@ const goalProgress = ({ node }: NodeSettingsProps) => {
   );
 };
 
-export const goalNodeUi: WorkflowNodeUiBinding = {
+export const goalNodeUi: WorkflowNodeUiBinding<"goal"> = {
   body: StandardNodeBody,
   settings: {
     after: goalProgress,

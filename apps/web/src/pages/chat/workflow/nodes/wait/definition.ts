@@ -11,7 +11,7 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const waitNodeDefinition: WorkflowNodeDefinition = {
+export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: sourceNodeKinds,
   canDelete: true,
@@ -45,7 +45,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("wait", {
+    createNodeData("wait", 1, {
       delayDays: 1,
       label: "等待",
       metric: "1 天后唤醒",
@@ -61,6 +61,7 @@ export const waitNodeDefinition: WorkflowNodeDefinition = {
   layout: standardNodeLayout,
   paletteGroup: "flow",
   paletteLabel: "等待",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createDefaultTargetHandles,

@@ -12,9 +12,20 @@ import type {
   WorkflowDraft,
   WorkflowNode,
   WorkflowNodeData,
+  WorkflowNodeKind,
 } from "./types";
 
-type UnknownDraft = Partial<WorkflowDraft> | undefined;
+type UnknownDraft = {
+  edges?: unknown;
+  nodes?: unknown;
+  viewport?: unknown;
+} | undefined;
+
+type HydratableWorkflowNode = Omit<WorkflowNode, "data"> & {
+  data: Record<string, unknown> & {
+    kind: WorkflowNodeKind;
+  };
+};
 
 export function hydrateWorkflowDraft(draft: UnknownDraft): WorkflowDraft {
   const nodes = Array.isArray(draft?.nodes)
@@ -96,7 +107,7 @@ function isFinitePosition(value: unknown): value is { x: number; y: number } {
     && Number.isFinite(value.y);
 }
 
-function isHydratableWorkflowNode(value: unknown): value is WorkflowNode {
+function isHydratableWorkflowNode(value: unknown): value is HydratableWorkflowNode {
   if (!isPlainObject(value) || typeof value.id !== "string") {
     return false;
   }
@@ -124,14 +135,10 @@ function hydrateWorkflowNodes(rawNodes: unknown[]): WorkflowNode[] {
   return nodes;
 }
 
-function hydrateWorkflowNode(node: WorkflowNode): WorkflowNode {
+function hydrateWorkflowNode(node: HydratableWorkflowNode): WorkflowNode {
   return {
     ...node,
-    data: {
-      ...createDefaultNodeData(node.data.kind),
-      ...sanitizeNodeData(node.data),
-      kind: node.data.kind,
-    },
+    data: hydrateWorkflowNodeData(node.data.kind, node.data),
     position: { ...node.position },
     type: WORKFLOW_NODE_TYPE,
   };
@@ -170,9 +177,11 @@ function dedupeWorkflowEdges(edges: WorkflowEdge[]): WorkflowEdge[] {
   });
 }
 
-function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
+function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
+  kind: TKind,
+  data: Record<string, unknown>,
+): WorkflowNodeData<TKind> {
   const {
-    branchPaths,
     insertMenuOpen: _insertMenuOpen,
     insertMenuSourceHandle: _insertMenuSourceHandle,
     onDelete: _onDelete,
@@ -184,12 +193,46 @@ function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
     ...rawPersistableData
   } = data;
   const persistableData = sanitizePersistableDataRecord(rawPersistableData);
-  const definition = getNodeDefinitionCore(persistableData.kind);
+  const {
+    branchPaths: _foreignBranchPaths,
+    ...nonBranchPersistableData
+  } = persistableData;
+  const kindPersistableData = kind === "branch"
+    ? persistableData
+    : nonBranchPersistableData;
+  const definition = getNodeDefinitionCore(kind);
+  const fromVersion = getNodeSchemaVersion(kindPersistableData.schemaVersion);
+  const migrationInput = {
+    ...kindPersistableData,
+    kind,
+  } as unknown as Partial<WorkflowNodeData<TKind>> & Pick<WorkflowNodeData<TKind>, "kind">;
+  const migratedData = fromVersion < definition.schemaVersion
+    ? definition.migrateData?.({
+        data: migrationInput,
+        fromVersion,
+        toVersion: definition.schemaVersion,
+      }) ?? migrationInput
+    : migrationInput;
+  const nextData = {
+    ...createDefaultNodeData(kind),
+    ...migratedData,
+    kind,
+    schemaVersion: Math.max(fromVersion, definition.schemaVersion),
+  } as WorkflowNodeData<TKind>;
 
-  return definition.sanitizeData?.({
-    ...persistableData,
-    branchPaths,
-  }) ?? persistableData;
+  return definition.sanitizeData?.(nextData) ?? nextData;
+}
+
+function sanitizeNodeData<TKind extends WorkflowNodeKind>(
+  data: WorkflowNodeData<TKind>,
+): WorkflowNodeData<TKind> {
+  return hydrateWorkflowNodeData<TKind>(data.kind as TKind, data);
+}
+
+function getNodeSchemaVersion(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
 }
 
 function sanitizeNodeForDraft(node: WorkflowNode): WorkflowNode {
@@ -285,14 +328,16 @@ function sanitizeEdgeForDraft(edge: WorkflowEdge): WorkflowEdge {
   };
 }
 
-function sanitizeViewport(viewport: WorkflowDraft["viewport"] | undefined): WorkflowDraft["viewport"] {
+function sanitizeViewport(viewport: unknown): WorkflowDraft["viewport"] {
+  const rawViewport = isPlainObject(viewport) ? viewport : undefined;
+
   return {
-    x: normalizeViewportNumber(viewport?.x, DEFAULT_WORKFLOW_VIEWPORT.x),
-    y: normalizeViewportNumber(viewport?.y, DEFAULT_WORKFLOW_VIEWPORT.y),
-    zoom: normalizeViewportNumber(viewport?.zoom, DEFAULT_WORKFLOW_VIEWPORT.zoom),
+    x: normalizeViewportNumber(rawViewport?.x, DEFAULT_WORKFLOW_VIEWPORT.x),
+    y: normalizeViewportNumber(rawViewport?.y, DEFAULT_WORKFLOW_VIEWPORT.y),
+    zoom: normalizeViewportNumber(rawViewport?.zoom, DEFAULT_WORKFLOW_VIEWPORT.zoom),
   };
 }
 
-function normalizeViewportNumber(value: number | undefined, fallback: number): number {
+function normalizeViewportNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }

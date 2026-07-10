@@ -686,28 +686,32 @@ export function updateNodeDataOperation(
   });
 }
 
-function createUpdatedNodeData(
-  currentData: WorkflowNodeData,
-  patch: WorkflowNodeConfigPatch,
-): WorkflowNodeData {
+function createUpdatedNodeData<TKind extends WorkflowNodeKind>(
+  currentData: WorkflowNodeData<TKind>,
+  patch: WorkflowNodeConfigPatch<TKind>,
+): WorkflowNodeData<TKind> {
   const nextData = {
     ...currentData,
     ...patch,
-  };
-  const definition = getNodeDefinitionCore(nextData.kind);
+  } as WorkflowNodeData<TKind>;
+  const definition = getNodeDefinitionCore(currentData.kind as TKind);
 
   return definition.sanitizeData?.(nextData) ?? nextData;
 }
 
-function sanitizeNodeConfigPatch(
-  patch: WorkflowNodeConfigPatch,
-): WorkflowNodeConfigPatch {
+function sanitizeNodeConfigPatch<TKind extends WorkflowNodeKind>(
+  patch: WorkflowNodeConfigPatch<TKind>,
+): WorkflowNodeConfigPatch<TKind> {
   const {
     kind: _ignoredKind,
+    schemaVersion: _ignoredSchemaVersion,
     ...configPatch
-  } = patch as WorkflowNodeConfigPatch & { kind?: WorkflowNodeKind };
+  } = patch as WorkflowNodeConfigPatch<TKind> & {
+    kind?: WorkflowNodeKind;
+    schemaVersion?: number;
+  };
 
-  return configPatch;
+  return configPatch as WorkflowNodeConfigPatch<TKind>;
 }
 
 function reconcileSourceHandleEdges(

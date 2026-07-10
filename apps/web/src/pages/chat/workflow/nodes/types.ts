@@ -1,7 +1,10 @@
 import type { NodeVisual } from "../node-catalog";
-import type { WorkflowNodeRenderData } from "../types";
+import type {
+  WorkflowNodeKind,
+  WorkflowNodeRenderData,
+} from "../types";
 
-export type NodeBodyProps = {
-  data: WorkflowNodeRenderData;
+export type NodeBodyProps<TKind extends WorkflowNodeKind = WorkflowNodeKind> = {
+  data: WorkflowNodeRenderData<TKind>;
   visual: NodeVisual;
 };

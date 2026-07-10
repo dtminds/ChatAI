@@ -3,7 +3,10 @@ import { getWorkflowBranchPaths } from "../branch-paths";
 import type { WorkflowNodeRenderData } from "../types";
 import type { NodeBodyProps } from "./types";
 
-export function StandardNodeBody({ data, visual }: NodeBodyProps) {
+export function StandardNodeBody<TKind extends WorkflowNodeRenderData["kind"]>({
+  data,
+  visual,
+}: NodeBodyProps<TKind>) {
   return (
     <span className="workflow-node-section mx-3 mb-2 block overflow-hidden rounded-[10px] bg-[var(--workflow-param-bg)] p-2">
       <span className="workflow-node-section-title mb-1.5 block text-[11px] font-semibold uppercase leading-4 text-[var(--workflow-text-tertiary)]">{visual.label}</span>
@@ -20,7 +23,7 @@ export function StandardNodeBody({ data, visual }: NodeBodyProps) {
   );
 }
 
-export function BranchNodeBody({ data, visual }: NodeBodyProps) {
+export function BranchNodeBody({ data, visual }: NodeBodyProps<"branch">) {
   return (
     <>
       <span className="workflow-node-section workflow-branch-overview mx-3 mb-1 block overflow-hidden rounded-[10px] bg-[var(--workflow-param-bg)] p-2">
@@ -48,7 +51,11 @@ export function BranchNodeBody({ data, visual }: NodeBodyProps) {
   );
 }
 
-function NodeStatusRow({ data }: { data: WorkflowNodeRenderData }) {
+function NodeStatusRow<TKind extends WorkflowNodeRenderData["kind"]>({
+  data,
+}: {
+  data: WorkflowNodeRenderData<TKind>;
+}) {
   const isWarning = data.status === "warning";
   const isRunning = data.status === "running";
 

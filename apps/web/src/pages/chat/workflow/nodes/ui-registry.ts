@@ -14,4 +14,6 @@ export const workflowNodeUiRegistry = {
   goal: goalNodeUi,
   trigger: triggerNodeUi,
   wait: waitNodeUi,
-} satisfies Record<WorkflowNodeKind, WorkflowNodeUiBinding>;
+} satisfies {
+  [TKind in WorkflowNodeKind]: WorkflowNodeUiBinding<TKind>;
+};

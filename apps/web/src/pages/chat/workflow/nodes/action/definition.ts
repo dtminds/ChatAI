@@ -1,5 +1,5 @@
 import { Message01Icon } from "@hugeicons/core-free-icons";
-import type { WorkflowNodeData, WorkflowNode } from "../../types";
+import type { ActionNodeData, WorkflowNode } from "../../types";
 import {
   actionOptions,
   defaultActionOption,
@@ -18,7 +18,7 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const actionNodeDefinition: WorkflowNodeDefinition = {
+export const actionNodeDefinition: WorkflowNodeDefinition<"action"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: sourceNodeKinds,
   canDelete: true,
@@ -42,7 +42,7 @@ export const actionNodeDefinition: WorkflowNodeDefinition = {
           kind: "option-cards",
           label: "动作类型",
           toPatch: (value, _data, option) => ({
-            actionType: value as WorkflowNodeData["actionType"],
+            actionType: value as ActionNodeData["actionType"],
             label: option.label,
             metric: option.description ?? "",
             status: "ready",
@@ -62,7 +62,7 @@ export const actionNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("action", {
+    createNodeData("action", 1, {
       actionType: defaultActionOption.type,
       label: "营销动作",
       metric: defaultActionOption.summary,
@@ -78,6 +78,7 @@ export const actionNodeDefinition: WorkflowNodeDefinition = {
   layout: standardNodeLayout,
   paletteGroup: "engagement",
   paletteLabel: "营销动作",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
@@ -91,7 +92,7 @@ export const actionNodeDefinition: WorkflowNodeDefinition = {
   },
 };
 
-function validateActionNode(node: WorkflowNode) {
+function validateActionNode(node: WorkflowNode<"action">) {
   if (!hasText(node.data.actionType)) {
     return [];
   }

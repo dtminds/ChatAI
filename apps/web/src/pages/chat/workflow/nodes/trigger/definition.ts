@@ -10,7 +10,7 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
-export const triggerNodeDefinition: WorkflowNodeDefinition = {
+export const triggerNodeDefinition: WorkflowNodeDefinition<"trigger"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: [],
   canDelete: false,
@@ -50,7 +50,7 @@ export const triggerNodeDefinition: WorkflowNodeDefinition = {
     },
   ],
   createDefaultData: () =>
-    createNodeData("trigger", {
+    createNodeData("trigger", 1, {
       audience: "添加标签、添加好友事件、用户输入",
       entryLimitSummary: "同一客户进入此SOP最多2次",
       hostingAccountSummary: "已选 4 个托管账号",
@@ -70,6 +70,7 @@ export const triggerNodeDefinition: WorkflowNodeDefinition = {
   kind: "trigger",
   layout: standardNodeLayout,
   role: "entry",
+  schemaVersion: 1,
   getOutputVariables: createDefaultOutputVariables,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createNoTargetHandles,

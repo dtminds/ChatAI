@@ -7,7 +7,7 @@ import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { BranchConfig } from "@/pages/chat/workflow/panels/node-settings/branch-panel";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
 
-function createBranchNode(): WorkflowNode {
+function createBranchNode(): WorkflowNode<"branch"> {
   return {
     data: createDefaultNodeData("branch"),
     id: "branch-intent",

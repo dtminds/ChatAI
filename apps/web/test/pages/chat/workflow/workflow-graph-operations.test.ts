@@ -598,16 +598,18 @@ describe("workflow graph operations", () => {
     })).toBeUndefined();
   });
 
-  it("keeps node kind immutable when applying config patches", () => {
+  it("keeps node kind and schema version immutable when applying config patches", () => {
     const draft = createDraft();
     const operation = updateNodeDataOperation(draft, "wait-2d", {
       kind: "goal",
+      schemaVersion: 999,
       title: "仍然是等待节点",
     } as unknown as Parameters<typeof updateNodeDataOperation>[2]);
 
     const updatedNode = operation?.draft.nodes.find((node) => node.id === "wait-2d");
 
     expect(updatedNode?.data.kind).toBe("wait");
+    expect(updatedNode?.data.schemaVersion).toBe(1);
     expect(updatedNode?.data.title).toBe("仍然是等待节点");
     expect(operation?.draft.edges).toEqual(draft.edges.map((edge) => ({
       ...edge,

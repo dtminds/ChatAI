@@ -747,11 +747,15 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
 }
 
 function getWorkflowTrigger(draft: WorkflowDraft) {
-  return findWorkflowEntryNode(draft.nodes)?.data.audience;
+  const entryNode = findWorkflowEntryNode(draft.nodes);
+  return entryNode?.data.kind === "trigger" ? entryNode.data.audience : undefined;
 }
 
 function getWorkflowConversion(draft: WorkflowDraft) {
-  const conversion = findWorkflowTerminalNode(draft.nodes)?.data.conversion;
+  const terminalNode = findWorkflowTerminalNode(draft.nodes);
+  const conversion = terminalNode?.data.kind === "goal"
+    ? terminalNode.data.conversion
+    : undefined;
   return typeof conversion === "number" ? `${conversion}%` : undefined;
 }
 

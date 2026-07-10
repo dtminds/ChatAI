@@ -1,6 +1,6 @@
 import type { NodeBodyProps } from "../types";
 
-export function TriggerNodeBody({ data }: NodeBodyProps) {
+export function TriggerNodeBody({ data }: NodeBodyProps<"trigger">) {
   return (
     <span className="mx-3 mb-3.5 block px-2 pb-0.5">
       <span className="grid gap-2">

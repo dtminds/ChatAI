@@ -13,6 +13,7 @@ import {
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type {
+  SyncWorkflowDraftRepository,
   WorkflowDraftRepository,
   WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
@@ -52,6 +53,23 @@ vi.mock("@xyflow/react", async () => {
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
+  });
+
+  it("derives canvas and publish capabilities from document permissions", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const editableDocument = repository.getDocument("newcomer-conversion");
+    editableDocument.permissions = {
+      canEdit: true,
+      canPublish: false,
+    };
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      editableDocument.id,
+      repository,
+      editableDocument,
+    ));
+
+    expect(result.current.canvas.isReadOnly).toBe(false);
+    expect(result.current.topBar.canPublish).toBe(false);
   });
 
   it("selects nodes and opens the inspector while closing checks", () => {
@@ -414,10 +432,8 @@ describe("useWorkflowWorkspace", () => {
 
     act(() => {
       result.current.canvas.onPaletteOpenChange(true);
-      result.current.canvas.onSearchChange("handoff");
     });
     expect(result.current.canvas.paletteOpen).toBe(true);
-    expect(result.current.canvas.searchValue).toBe("handoff");
     assertCleanCanvasState();
 
     act(() => {
@@ -957,7 +973,7 @@ function createWorkflowDraftWithConnectedHandoffNode() {
 }
 
 function createWorkflowDraftWithConnectedHandoffNodeFromRepository(
-  repository: WorkflowDraftRepository,
+  repository: Pick<SyncWorkflowDraftRepository, "getDocument">,
 ) {
   return connectHandoffSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
 }
@@ -1017,7 +1033,7 @@ function createDeferredPublishRepository() {
     options?: WorkflowDraftPublishOptions;
     reject: (error: Error) => void;
     resolve: (document: PublishResult) => void;
-    workflowId: string | undefined;
+    workflowId: string;
   }> = [];
 
   return {

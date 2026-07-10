@@ -21,6 +21,7 @@ import {
 import type { WorkflowNodeKind } from "@/pages/chat/workflow/types";
 import {
   getWorkflowDocument,
+  getWorkflowDraftRepository,
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -314,19 +315,19 @@ function mockSession() {
   });
 }
 
-function renderWorkflowPage(initialEntry = "/chat/ai-hosting/workflows/new") {
+function renderWorkflowPage(initialEntry = "/chat/workflows/new") {
   const router = createMemoryRouter(
     [
       {
-        path: "/chat/ai-hosting/workflows",
+        path: "/chat/workflows",
         element: <WorkflowPage />,
       },
       {
-        path: "/chat/ai-hosting/workflows/new",
+        path: "/chat/workflows/new",
         element: <WorkflowEditorPage />,
       },
       {
-        path: "/chat/ai-hosting/workflows/:workflowId",
+        path: "/chat/workflows/:workflowId",
         element: <WorkflowEditorPage />,
       },
     ],
@@ -433,19 +434,19 @@ describe("Agent workflow page", () => {
   });
 
   it("opens the Workflow menu on the list page instead of the canvas editor", async () => {
-    renderWorkflowPage("/chat/ai-hosting/workflows");
+    renderWorkflowPage("/chat/workflows");
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Workflow" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Workflow" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/workflows",
+      "/chat/workflows",
     );
     expect(screen.getByRole("textbox", { name: "搜索 Workflow" })).toBeInTheDocument();
     const createLink = screen.getByRole("link", { name: "新建 Workflow" });
 
-    expect(createLink).toHaveAttribute("href", "/chat/ai-hosting/workflows/new");
+    expect(createLink).toHaveAttribute("href", "/chat/workflows/new");
     expect(createLink).toHaveAttribute("target", "_blank");
     expect(createLink).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
@@ -453,9 +454,12 @@ describe("Agent workflow page", () => {
   });
 
   it("renders the direct editor route as a fullscreen canvas without a list back link", async () => {
-    renderWorkflowPage("/chat/ai-hosting/workflows/new");
+    const createDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "createDocument");
+    const { router } = renderWorkflowPage("/chat/workflows/new");
 
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
+    expect(createDocumentSpy).toHaveBeenCalledTimes(1);
+    expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1");
     expect(screen.queryByRole("region", { name: "节点库" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
@@ -463,18 +467,80 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
   });
 
+  it("renders a not-found state for unknown workflow ids", async () => {
+    renderWorkflowPage("/chat/workflows/missing-workflow");
+
+    expect(await screen.findByText("Workflow 不存在")).toBeInTheDocument();
+    expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute("href", "/chat/workflows");
+  });
+
+  it("confirms internal navigation while the draft is not saved", async () => {
+    const user = setupCanvasUser();
+    const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion");
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    await user.click(within(screen.getByRole("region", { name: "节点库" })).getByRole("button", { name: "添加 转人工节点" }));
+
+    void router.navigate("/chat/workflows");
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(router.state.location.pathname).toBe("/chat/workflows/newcomer-conversion");
+
+    void router.navigate("/chat/workflows");
+    await user.click(await screen.findByRole("button", { name: "仍然离开" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
+  });
+
   it("opens workflow row edit actions in a new window", async () => {
-    renderWorkflowPage("/chat/ai-hosting/workflows");
+    renderWorkflowPage("/chat/workflows");
 
     const editLink = (await screen.findAllByRole("link", { name: "编辑" }))[0];
 
-    expect(editLink).toHaveAttribute("href", "/chat/ai-hosting/workflows/newcomer-conversion");
+    expect(editLink).toHaveAttribute("href", "/chat/workflows/newcomer-conversion");
     expect(editLink).toHaveAttribute("target", "_blank");
     expect(editLink).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("filters workflow rows and supports renaming from the row menu", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("新人转化旅程");
+    await user.type(screen.getByRole("textbox", { name: "搜索 Workflow" }), "会员");
+
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+    expect(screen.getByText("会员复购唤醒")).toBeInTheDocument();
+
+    await user.clear(screen.getByRole("textbox", { name: "搜索 Workflow" }));
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "新客首购旅程");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("新客首购旅程")).toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+  });
+
+  it("deletes a workflow from the row menu and refreshes the list", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("直播后跟进");
+    await user.click(screen.getByRole("button", { name: "操作 直播后跟进" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
+    });
+  });
+
   it("renders a named workflow editor route with the floating canvas header", async () => {
-    renderWorkflowPage("/chat/ai-hosting/workflows/newcomer-conversion");
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
 
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
     expect(screen.getByText("已保存")).toBeInTheDocument();
@@ -695,7 +761,7 @@ describe("Agent workflow page", () => {
     });
   });
 
-  it("filters the node palette from the search input", async () => {
+  it("shows all insertable nodes without a search control", async () => {
     const user = setupCanvasUser();
 
     renderWorkflowPage();
@@ -703,15 +769,10 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
-    await user.type(within(palette).getByRole("textbox", { name: "搜索节点" }), "人工");
 
     expect(within(palette).getByRole("button", { name: "添加 转人工节点" })).toBeInTheDocument();
-    expect(within(palette).queryByRole("button", { name: "添加 发放优惠券节点" })).not.toBeInTheDocument();
-
-    await user.clear(within(palette).getByRole("textbox", { name: "搜索节点" }));
-    await user.type(within(palette).getByRole("textbox", { name: "搜索节点" }), "不存在");
-
-    expect(within(palette).getByText("未找到匹配节点")).toBeInTheDocument();
+    expect(within(palette).getByRole("button", { name: "添加 发放优惠券节点" })).toBeInTheDocument();
+    expect(within(palette).queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("inserts variables from nested context and upstream node menus", async () => {
@@ -820,8 +881,9 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
 
-    const searchInput = within(palette).getByRole("textbox", { name: "搜索节点" });
-    fireEvent.keyDown(searchInput, { key: "z", metaKey: true });
+    await user.click(within(canvas).getByRole("button", { name: /^转人工 / }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    fireEvent.keyDown(within(panel).getByLabelText("节点说明"), { key: "z", metaKey: true });
 
     expect(within(canvas).getByRole("button", { name: /^转人工 / })).toBeInTheDocument();
   });
@@ -1233,9 +1295,8 @@ describe("Agent workflow page", () => {
     expect(getUndoButton(canvas)).toBeDisabled();
 
     await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
-    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
-    const palette = await screen.findByRole("region", { name: "节点库" });
-    fireEvent.keyDown(within(palette).getByRole("textbox", { name: "搜索节点" }), { key: "Backspace" });
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    fireEvent.keyDown(within(panel).getByLabelText("节点说明"), { key: "Backspace" });
 
     expect(within(canvas).getByRole("button", { name: /^观察期 / })).toBeInTheDocument();
   });

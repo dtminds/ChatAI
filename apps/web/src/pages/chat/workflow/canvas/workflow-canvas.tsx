@@ -44,7 +44,6 @@ import {
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
 import {
   getInsertableNodeKindsForSource,
-  nodeVisuals,
 } from "../node-definitions";
 import { WorkflowNodeCard } from "../nodes";
 import type {
@@ -92,11 +91,9 @@ export function WorkflowCanvas({
   onNodeHoverStart,
   onSelectEdge,
   onSelectNode,
-  onSearchChange,
   onUndo,
   onViewportChangeEnd,
   paletteOpen,
-  searchValue,
   viewport,
 }: {
   canRedo: boolean;
@@ -122,11 +119,9 @@ export function WorkflowCanvas({
   onNodeHoverStart: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
   onSelectNode: (nodeId: string, options?: { additive?: boolean }) => void;
-  onSearchChange: (value: string) => void;
   onUndo: () => void;
   onViewportChangeEnd: (viewport: Viewport) => void;
   paletteOpen: boolean;
-  searchValue: string;
   viewport: Viewport;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
@@ -255,11 +250,9 @@ export function WorkflowCanvas({
           onArrange={onArrange}
           onPaletteOpenChange={onPaletteOpenChange}
           onRedo={onRedo}
-          onSearchChange={onSearchChange}
           onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
           onUndo={onUndo}
           paletteOpen={paletteOpen}
-          searchValue={searchValue}
           showMiniMap={showMiniMap}
           zoom={zoom}
           zoomIn={zoomIn}
@@ -277,10 +270,7 @@ function WorkflowMiniMap() {
       bgColor="var(--background)"
       className="workflow-minimap"
       maskColor="oklch(from var(--secondary) l c h / 50%)"
-      nodeColor={(node) => {
-        const kind = (node.data as WorkflowRenderNode["data"]).kind;
-        return `rgb(${nodeVisuals[kind].accentRgb})`;
-      }}
+      nodeColor="var(--primary)"
       nodeStrokeWidth={3}
       pannable
       position="bottom-right"
@@ -337,7 +327,6 @@ function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
   const { x, y, zoom } = useViewport();
   const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;
   const menuTop = getInsertMenuTop(node, sourceHandle) * zoom + y;
-  const [searchValue, setSearchValue] = useState("");
   const candidateKinds = getInsertableNodeKindsForSource(node.data.kind);
 
   return (
@@ -347,9 +336,7 @@ function WorkflowCandidateMenuOverlay({ node }: { node: WorkflowRenderNode }) {
       onAddNode={(kind) => {
         node.data.onInsertAfter?.(node.id, kind, sourceHandle);
       }}
-      onSearchChange={setSearchValue}
       role="menu"
-      searchValue={searchValue}
       style={{
         left: menuLeft,
         top: menuTop,
@@ -369,11 +356,9 @@ function WorkflowBottomToolbar({
   onArrange,
   onPaletteOpenChange,
   onRedo,
-  onSearchChange,
   onToggleMiniMap,
   onUndo,
   paletteOpen,
-  searchValue,
   showMiniMap,
   zoom,
   zoomIn,
@@ -390,11 +375,9 @@ function WorkflowBottomToolbar({
   onArrange: () => void;
   onPaletteOpenChange: (open: boolean) => void;
   onRedo: () => void;
-  onSearchChange: (value: string) => void;
   onToggleMiniMap: () => void;
   onUndo: () => void;
   paletteOpen: boolean;
-  searchValue: string;
   showMiniMap: boolean;
   zoom: number;
   zoomIn: () => void;
@@ -420,7 +403,7 @@ function WorkflowBottomToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         aria-label="画布工具"
-        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-slate-950/10 bg-white/95 py-[5px] pl-2.5 pr-[7px] text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.08),0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-xl max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
+        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground shadow-[0_1px_2px_var(--shadow-soft),0_18px_44px_var(--shadow-medium)] backdrop-blur-xl max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
         onClick={(event) => event.stopPropagation()}
         ref={menuRef}
       >
@@ -578,8 +561,6 @@ function WorkflowBottomToolbar({
                 onAddNode(kind);
                 onPaletteOpenChange(false);
               }}
-              onSearchChange={onSearchChange}
-              searchValue={searchValue}
             />
           ) : null}
           <Button

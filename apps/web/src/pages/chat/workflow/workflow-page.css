@@ -23,6 +23,10 @@
   background: var(--workflow-canvas-bg);
 }
 
+.workflow-variable-source-icon {
+  color: rgb(var(--workflow-variable-icon-rgb));
+}
+
 .agent-workflow-canvas .react-flow__pane {
   cursor: grab;
 }

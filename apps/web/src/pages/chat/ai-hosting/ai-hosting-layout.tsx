@@ -33,7 +33,7 @@ const aiHostingNavItems = [
   {
     icon: WorkflowSquare01Icon,
     label: "Workflow",
-    to: "/chat/ai-hosting/workflows",
+    to: "/chat/workflows",
   },
   {
     icon: AiBookIcon,

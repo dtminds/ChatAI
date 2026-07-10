@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Search01Icon,
   Settings03Icon,
@@ -128,7 +128,7 @@ function VariableOptions({ variables, onSelect }: {
         return (
           <VariableGroupSubMenu
             icon={visual?.icon}
-            iconColor={visual ? `rgb(${visual.accentRgb})` : undefined}
+            iconAccentRgb={visual?.accentRgb}
             key={group.sourceNodeId}
             label={group.sourceNodeTitle}
             onSelect={onSelect}
@@ -142,13 +142,13 @@ function VariableOptions({ variables, onSelect }: {
 
 function VariableGroupSubMenu({
   icon,
-  iconColor,
+  iconAccentRgb,
   label,
   onSelect,
   variables,
 }: {
   icon?: typeof Settings03Icon;
-  iconColor?: string;
+  iconAccentRgb?: string;
   label: string;
   onSelect: (variable: WorkflowVariableDefinition) => void;
   variables: WorkflowVariableDefinition[];
@@ -162,11 +162,15 @@ function VariableGroupSubMenu({
           <span
             className={cn(
               "flex size-5 shrink-0 items-center justify-center text-muted-foreground",
-              !iconColor && "rounded-md",
+              iconAccentRgb && "workflow-variable-source-icon",
+              !iconAccentRgb && "rounded-md",
             )}
+            style={iconAccentRgb
+              ? { "--workflow-variable-icon-rgb": iconAccentRgb } as CSSProperties
+              : undefined}
           >
             <HugeiconsIcon
-              color={iconColor ?? "currentColor"}
+              color="currentColor"
               icon={icon}
               size={13}
               strokeWidth={1.8}

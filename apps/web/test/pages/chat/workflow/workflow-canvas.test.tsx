@@ -51,13 +51,11 @@ function renderWorkflowCanvas(overrides: Partial<ComponentProps<typeof WorkflowC
     onPaletteOpenChange: vi.fn(),
     onPaneClick: vi.fn(),
     onRedo: vi.fn(),
-    onSearchChange: vi.fn(),
     onSelectEdge: vi.fn(),
     onSelectNode: vi.fn(),
     onUndo: vi.fn(),
     onViewportChangeEnd: vi.fn(),
     paletteOpen: false,
-    searchValue: "",
     viewport: { x: 0, y: 0, zoom: 1 },
     ...overrides,
   };

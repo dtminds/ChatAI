@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import type {
   Connection,
   EdgeChange,
@@ -26,6 +26,7 @@ import {
   useWorkflowDocument,
 } from "./workflow-draft-service";
 import type { WorkflowDraftRepository } from "./workflow-draft-service";
+import type { WorkflowDocument } from "./workflow-draft-service";
 import { useWorkflowStableCallback } from "./workflow-hooks";
 import { deriveWorkflowMode } from "./workflow-mode";
 import {
@@ -52,19 +53,23 @@ type WorkflowWorkspaceEditOptions = {
 };
 
 export function useWorkflowWorkspace(
-  workflowId: string | undefined,
+  workflowId: string,
   repository?: WorkflowDraftRepository,
+  initialDocument?: WorkflowDocument,
 ) {
   const {
     document,
     lastSavedAt,
     markDirty,
     publishDraft,
+    publishError,
     publishState,
+    retrySave,
     restoreState,
     restoreVersion,
+    saveError,
     saveState,
-  } = useWorkflowDocument(workflowId, repository);
+  } = useWorkflowDocument(workflowId, repository, initialDocument);
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
     undefined,
@@ -80,6 +85,8 @@ export function useWorkflowWorkspace(
   );
   const isPreviewingVersion = Boolean(previewVersion);
   const workflowMode = deriveWorkflowMode({
+    canEdit: document.permissions.canEdit,
+    canPublish: document.permissions.canPublish,
     isPreviewingVersion,
     publishState,
     restoreState,
@@ -97,15 +104,27 @@ export function useWorkflowWorkspace(
   });
   const publishChecks = useWorkflowPublishChecks(controller.nodes, controller.edges);
 
+  useEffect(() => {
+    if (saveState === "saved") {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [saveState]);
+
   const {
     activeEdgeInsertMenuId,
     closeCanvasMenus,
     closeCanvasOverlays,
     paletteOpen,
-    paletteQuery,
     quickInsertTarget,
     setPaletteOpen,
-    setPaletteQuery,
     toggleEdgeInsertMenu,
     toggleNodeInsertMenu,
   } = transient;
@@ -579,12 +598,10 @@ export function useWorkflowWorkspace(
       onPaneClick: handlePaneClick,
       onViewportChangeEnd: handleViewportChangeEnd,
       onRedo: redoWorkflowChange,
-      onSearchChange: setPaletteQuery,
       onSelectEdge: selectWorkflowEdge,
       onSelectNode: selectWorkflowNode,
       onUndo: undoWorkflowChange,
       paletteOpen,
-      searchValue: paletteQuery,
       viewport: controller.currentViewport,
     },
     checks: {
@@ -607,11 +624,15 @@ export function useWorkflowWorkspace(
       onNodeChange: updateSelectedNode,
     },
     topBar: {
+      canPublish: permissions.canPublish,
+      canRetrySave: Boolean(saveError),
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
+      onRetrySave: retrySave,
       publishedAt: document.publishedAt,
+      publishError,
       publishState,
       publishReady: publishChecks.publishReady,
       readyChecks: publishChecks.readyChecks,

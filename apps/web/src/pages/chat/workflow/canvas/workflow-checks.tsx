@@ -20,7 +20,7 @@ export function WorkflowChecks({
   return (
     <section
       aria-label="发布检查"
-      className="workflow-checks-panel absolute right-4 top-[72px] z-[16] max-h-[calc(100%-88px)] w-[min(460px,calc(100%-32px))] overflow-y-auto rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] p-3 shadow-[0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-28 max-lg:max-h-[calc(100%-124px)] max-lg:w-auto"
+      className="workflow-checks-panel absolute right-4 top-[72px] z-[16] max-h-[calc(100%-88px)] w-[min(460px,calc(100%-32px))] overflow-y-auto rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] p-3 shadow-[0_18px_44px_var(--shadow-medium)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-28 max-lg:max-h-[calc(100%-124px)] max-lg:w-auto"
     >
       <div className="space-y-4">
         <div

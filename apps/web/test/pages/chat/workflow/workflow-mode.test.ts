@@ -14,6 +14,18 @@ describe("deriveWorkflowMode", () => {
     expect(state.permissions.nodesReadOnly).toBe(false);
   });
 
+  it("keeps editing available when publish permission is missing", () => {
+    const state = deriveWorkflowMode({
+      canEdit: true,
+      canPublish: false,
+      isPreviewingVersion: false,
+    });
+
+    expect(state.permissions.canEditGraph).toBe(true);
+    expect(state.permissions.canEditNodeSettings).toBe(true);
+    expect(state.permissions.canPublish).toBe(false);
+  });
+
   it("locks all draft mutations while publishing", () => {
     const state = deriveWorkflowMode({
       isPreviewingVersion: false,

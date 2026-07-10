@@ -13,6 +13,7 @@ import {
   restoreWorkflowVersion,
   saveWorkflowDraft,
   useWorkflowDocument,
+  WorkflowRepositoryError,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { createInitialDraft } from "@/pages/chat/workflow/graph";
 import type {
@@ -20,6 +21,7 @@ import type {
   WorkflowDraftPublishOptions,
   WorkflowDraftReader,
   WorkflowDraftWriter,
+  SyncWorkflowDraftRepository,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraft } from "@/pages/chat/workflow/types";
 
@@ -50,19 +52,39 @@ describe("workflow draft service", () => {
     expect(() => getWorkflowName("missing-workflow")).toThrow("Unknown workflow document");
   });
 
-  it("keeps the new workflow draft isolated from existing documents", () => {
-    const newDocument = getWorkflowDocument(undefined);
+  it("creates independent workflow documents with idempotent request keys", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const newDocument = repository.createDocument({ clientRequestId: "create-request-1" });
+    const repeatedResult = repository.createDocument({ clientRequestId: "create-request-1" });
 
-    expect(newDocument.id).toBe("new-workflow-draft");
+    expect(newDocument.id).toBe("workflow-1");
     expect(newDocument.name).toBe("未命名 Workflow");
-    expect(listWorkflowDocuments().map((workflow) => workflow.id)).not.toContain("new-workflow-draft");
+    expect(newDocument.draft.nodes.map((node) => node.data.kind)).toEqual(["start", "wait", "branch", "message", "end"]);
+    expect(repeatedResult.id).toBe(newDocument.id);
+    expect(repository.listDocuments().map((workflow) => workflow.id)).toEqual([
+      "workflow-1",
+      "newcomer-conversion",
+      "vip-reactivation",
+      "live-follow-up",
+    ]);
 
-    saveWorkflowDraft(undefined, createDraftWithStartAudience("新建 Workflow 人群"));
+    repository.saveDraft(newDocument.id, createDraftWithStartAudience("新建 Workflow 人群"));
 
-    expect(getWorkflowDocument(undefined).draft.nodes.find((node) => node.id === "start")?.data.audience)
+    expect(repository.getDocument(newDocument.id).draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("新建 Workflow 人群");
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
+    expect(repository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("近 30 天新入会且未首购客户");
+  });
+
+  it("renames and deletes workflow documents through the repository boundary", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const createdDocument = repository.createDocument();
+
+    expect(repository.renameDocument(createdDocument.id, "活动召回").name).toBe("活动召回");
+    repository.deleteDocument(createdDocument.id);
+
+    expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
+    expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
   });
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {
@@ -409,12 +431,12 @@ describe("workflow draft service", () => {
       .toBe("近 30 天新入会且未首购客户");
   });
 
-  it("treats the draft repository as a replaceable reader and writer contract", () => {
+  it("treats the draft repository as a replaceable reader and writer contract", async () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const reader: WorkflowDraftReader = repository;
     const writer: WorkflowDraftWriter = repository;
 
-    expect(reader.listDocuments().map((workflow) => workflow.id)).toEqual([
+    expect((await Promise.resolve(reader.listDocuments())).map((workflow) => workflow.id)).toEqual([
       "newcomer-conversion",
       "vip-reactivation",
       "live-follow-up",
@@ -422,7 +444,7 @@ describe("workflow draft service", () => {
 
     writer.saveDraft("newcomer-conversion", createDraftWithStartAudience("通过 writer 保存的人群"));
 
-    expect(reader.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
+    expect((await Promise.resolve(reader.getDocument("newcomer-conversion"))).draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("通过 writer 保存的人群");
   });
 
@@ -484,6 +506,18 @@ describe("workflow draft service", () => {
       });
 
       expect(result.current.saveState).toBe("error");
+      expect(result.current.saveError?.code).toBe("server");
+
+      await act(async () => {
+        const retryPromise = result.current.retrySave();
+        expect(repository.pendingSaves).toHaveLength(2);
+        repository.resolveSave(1);
+        await retryPromise;
+      });
+
+      expect(result.current.saveState).toBe("saved");
+      expect(result.current.saveError).toBeNull();
+      expect(result.current.document.trigger).toBe("保存失败的人群");
     }
     finally {
       vi.useRealTimers();
@@ -617,7 +651,26 @@ describe("workflow draft service", () => {
     });
 
     expect(result.current.publishState).toBe("error");
+    expect(result.current.publishError?.code).toBe("server");
     expect(result.current.document.status).toBe("Draft");
+  });
+
+  it("exposes publish conflicts separately from retryable publish failures", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      publishDraft: () => {
+        throw new WorkflowRepositoryError("conflict", "stale draft");
+      },
+    };
+    const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+
+    await act(async () => {
+      await result.current.publishDraft(result.current.document.draft);
+    });
+
+    expect(result.current.publishState).toBe("error");
+    expect(result.current.publishError?.code).toBe("conflict");
   });
 
   it("imports through an async repository and ignores stale import results after switching workflows", async () => {
@@ -915,29 +968,31 @@ function createDeferredWorkflowDraftRepository() {
     draft: WorkflowDraft;
     reject: (error: Error) => void;
     resolve: (document: ImportResult) => void;
-    workflowId: string | undefined;
+    workflowId: string;
   }> = [];
   const pendingPublishes: Array<{
     draft: WorkflowDraft;
     options?: WorkflowDraftPublishOptions;
     reject: (error: Error) => void;
     resolve: (document: PublishResult) => void;
-    workflowId: string | undefined;
+    workflowId: string;
   }> = [];
   const pendingSaves: Array<{
     draft: WorkflowDraft;
     reject: (error: Error) => void;
     resolve: (document: SaveResult) => void;
-    workflowId: string | undefined;
+    workflowId: string;
   }> = [];
   const pendingRestores: Array<{
     reject: (error: Error) => void;
     resolve: (document: RestoreResult) => void;
     versionId: string;
-    workflowId: string | undefined;
+    workflowId: string;
   }> = [];
 
-  const repository: WorkflowDraftRepository & {
+  const repository: Omit<WorkflowDraftRepository, "getDocument" | "listDocuments">
+    & Pick<SyncWorkflowDraftRepository, "getDocument" | "listDocuments">
+    & {
     pendingImports: typeof pendingImports;
     pendingPublishes: typeof pendingPublishes;
     pendingRestores: typeof pendingRestores;
@@ -951,6 +1006,8 @@ function createDeferredWorkflowDraftRepository() {
     resolveRestore: (index: number) => void;
     resolveSave: (index: number) => void;
   } = {
+    createDocument: baseRepository.createDocument,
+    deleteDocument: baseRepository.deleteDocument,
     getDocument: baseRepository.getDocument,
     importDraft: (workflowId, draft) => new Promise((resolve, reject) => {
       pendingImports.push({
@@ -986,7 +1043,7 @@ function createDeferredWorkflowDraftRepository() {
     rejectSave: (index) => {
       pendingSaves[index]?.reject(new Error("save failed"));
     },
-    reset: baseRepository.reset,
+    renameDocument: baseRepository.renameDocument,
     resolveImport: (index) => {
       const pendingImport = pendingImports[index];
 

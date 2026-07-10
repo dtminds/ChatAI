@@ -18,6 +18,7 @@ export type WorkflowReadOnlyReason =
 
 export type WorkflowModeState = {
   canEdit?: boolean;
+  canPublish?: boolean;
   isPreviewingVersion: boolean;
   publishState?: WorkflowDraftPublishStatus;
   restoreState?: WorkflowDraftRestoreStatus;
@@ -43,6 +44,7 @@ export type WorkflowModeStateResult = {
 
 export function deriveWorkflowMode({
   canEdit = true,
+  canPublish = true,
   isPreviewingVersion,
   publishState,
   restoreState,
@@ -72,7 +74,7 @@ export function deriveWorkflowMode({
       canEditGraph: canMutate,
       canEditNodeSettings: canMutate,
       canOpenInsertPalette: canMutate,
-      canPublish: canMutate,
+      canPublish: canMutate && canPublish,
       canUseClipboard: canMutate,
       canUseHistory: canMutate,
       canvasReadOnly,

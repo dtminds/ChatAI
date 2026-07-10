@@ -30,7 +30,7 @@ export function WorkflowVersionHistoryPanel({
   return (
     <aside
       aria-label="版本历史"
-      className="workflow-version-panel absolute right-4 top-[72px] z-[16] flex max-h-[calc(100%-88px)] w-[268px] flex-col overflow-hidden rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-[0_18px_44px_rgba(15,23,42,0.14)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-28 max-lg:max-h-[calc(100%-124px)] max-lg:w-auto"
+      className="workflow-version-panel absolute right-4 top-[72px] z-[16] flex max-h-[calc(100%-88px)] w-[268px] flex-col overflow-hidden rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-[0_18px_44px_var(--shadow-medium)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-28 max-lg:max-h-[calc(100%-124px)] max-lg:w-auto"
     >
       <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
@@ -60,8 +60,8 @@ export function WorkflowVersionHistoryPanel({
             <button
               aria-current={isSelected ? "true" : undefined}
               className={cn(
-                "workflow-version-item relative flex w-full min-w-0 gap-2 rounded-[10px] border-0 bg-transparent p-2 text-left text-inherit hover:bg-slate-950/5",
-                isSelected && "workflow-version-item-selected bg-[rgba(82,139,255,0.12)]",
+                "workflow-version-item relative flex w-full min-w-0 gap-2 rounded-[10px] border-0 bg-transparent p-2 text-left text-inherit hover:bg-muted",
+                isSelected && "workflow-version-item-selected bg-primary/10",
               )}
               key={version.id}
               onClick={() => onSelectVersion(version.id)}
@@ -72,7 +72,7 @@ export function WorkflowVersionHistoryPanel({
               ) : null}
               <span
                 className={cn(
-                  "workflow-version-dot z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-[#98a2b3] bg-[var(--workflow-panel-bg)]",
+                  "workflow-version-dot z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-muted-foreground bg-[var(--workflow-panel-bg)]",
                   isSelected && "border-[var(--workflow-blue)]",
                 )}
               />
@@ -80,7 +80,7 @@ export function WorkflowVersionHistoryPanel({
                 <span className="workflow-version-name-row flex min-w-0 items-center gap-1.5">
                   <span className="workflow-version-name min-w-0 truncate text-[13px] font-bold leading-[18px] text-foreground">{version.name}</span>
                   {isLatest ? (
-                    <span className="workflow-version-badge shrink-0 rounded-md border-[0.5px] border-[rgba(82,139,255,0.28)] bg-[rgba(82,139,255,0.1)] px-[5px] py-px text-[10px] font-bold leading-[14px] text-[var(--workflow-blue)]">
+                    <span className="workflow-version-badge shrink-0 rounded-md border-[0.5px] border-primary/30 bg-primary/10 px-[5px] py-px text-[10px] font-bold leading-[14px] text-primary">
                       Latest
                     </span>
                   ) : null}

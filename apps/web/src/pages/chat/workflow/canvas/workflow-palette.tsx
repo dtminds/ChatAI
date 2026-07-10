@@ -1,7 +1,5 @@
 import type React from "react";
-import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -20,26 +18,22 @@ export function WorkflowNodePicker({
   className,
   kinds,
   onAddNode,
-  onSearchChange,
   role = "region",
-  searchValue,
   style,
 }: {
   className?: string;
   kinds?: InsertableWorkflowNodeKind[];
   onAddNode: (kind: InsertableWorkflowNodeKind) => void;
-  onSearchChange: (value: string) => void;
   role?: "menu" | "region";
-  searchValue: string;
   style?: React.CSSProperties;
 }) {
-  const paletteGroups = getWorkflowPaletteItemGroups({ kinds, query: searchValue });
+  const paletteGroups = getWorkflowPaletteItemGroups({ kinds });
 
   return (
     <section
       aria-label={role === "menu" ? "选择要添加的节点" : "节点库"}
       className={cn(
-        "workflow-node-picker nodrag nopan z-[18] flex min-h-0 flex-col overflow-hidden rounded-[10px] border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] shadow-[0_12px_28px_rgba(15,23,42,0.12)] pointer-events-auto",
+        "workflow-node-picker nodrag nopan z-[18] flex min-h-0 flex-col overflow-hidden rounded-[10px] border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] shadow-[0_12px_28px_var(--shadow-soft)] pointer-events-auto",
         className,
       )}
       onClick={(event) => event.stopPropagation()}
@@ -47,21 +41,6 @@ export function WorkflowNodePicker({
       style={style}
     >
       <TooltipProvider delayDuration={300}>
-        <div className="workflow-node-picker-search relative shrink-0 p-2.5">
-          <HugeiconsIcon
-            className="workflow-node-picker-search-icon pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-muted-foreground"
-            icon={Search01Icon}
-            size={16}
-            strokeWidth={1.8}
-          />
-          <Input
-            aria-label="搜索节点"
-            className="workflow-node-picker-search-input h-[30px] rounded-lg border-[var(--workflow-border)] bg-transparent pl-[30px] text-xs shadow-none"
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="搜索节点"
-            value={searchValue}
-          />
-        </div>
         <WorkflowNodePickerGroups
           groups={paletteGroups}
           itemRole={role === "menu" ? "menuitem" : undefined}
@@ -81,16 +60,8 @@ function WorkflowNodePickerGroups({
   itemRole?: "menuitem";
   onAddNode: (kind: InsertableWorkflowNodeKind) => void;
 }) {
-  if (groups.length === 0) {
-    return (
-      <div className="workflow-node-picker-empty mx-2.5 mb-2.5 rounded-[10px] border border-dashed border-[var(--workflow-border)] px-2.5 py-5 text-center text-xs text-muted-foreground">
-        未找到匹配节点
-      </div>
-    );
-  }
-
   return (
-    <div className="workflow-node-picker-groups min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5">
+    <div className="workflow-node-picker-groups min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5">
       {groups.map((group) => (
         <div className="workflow-node-picker-group mt-2.5 first:mt-0" key={group.id}>
           <div className="workflow-node-picker-group-title mb-1 text-[11px] font-semibold leading-4 text-[var(--workflow-text-tertiary)]">{group.label}</div>

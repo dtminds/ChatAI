@@ -4,7 +4,6 @@ import type { QuickInsertTarget } from "./types";
 export function useWorkflowTransientState() {
   const [activeEdgeInsertMenuId, setActiveEdgeInsertMenuId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
   const [quickInsertTarget, setQuickInsertTarget] = useState<QuickInsertTarget | null>(null);
 
   const closeCanvasMenus = useCallback(() => {
@@ -39,10 +38,8 @@ export function useWorkflowTransientState() {
     closeCanvasMenus,
     closeCanvasOverlays,
     paletteOpen,
-    paletteQuery,
     quickInsertTarget,
     setPaletteOpen,
-    setPaletteQuery,
     toggleEdgeInsertMenu,
     toggleNodeInsertMenu,
   };

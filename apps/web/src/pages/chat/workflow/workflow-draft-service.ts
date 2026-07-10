@@ -1,138 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createInitialDraft,
-  createInitialEdges,
-  createInitialNodes,
-} from "./graph";
-import {
-  canonicalizeWorkflowDraft,
-  hydrateWorkflowDraft,
-  isWorkflowGraphEqual,
-} from "./workflow-draft-normalizer";
-import {
-  findWorkflowEntryNode,
-  findWorkflowTerminalNode,
-} from "./node-catalog";
+  cloneWorkflowDraft,
+  cloneWorkflowVersionHistory,
+  createWorkflowDraftHash,
+  createWorkflowPublishedDraftHash,
+  getWorkflowPublishStateForDraft,
+  getWorkflowPublishStateFromHashes,
+  normalizeWorkflowDraftImportResult,
+  normalizeWorkflowDraftPublishResult,
+  normalizeWorkflowDraftRestoreResult,
+  normalizeWorkflowDraftSaveResult,
+} from "./workflow-draft-persistence";
+import { createInMemoryWorkflowDraftRepository } from "./workflow-in-memory-repository";
+import { WorkflowRepositoryError } from "./workflow-repository-types";
+import type {
+  SyncWorkflowDraftRepository,
+  WorkflowDocument,
+  WorkflowDraftImportStatus,
+  WorkflowDraftPublishStatus,
+  WorkflowDraftRepository,
+  WorkflowDraftRestoreStatus,
+  WorkflowDraftSaveResult,
+  WorkflowDraftSaveStatus,
+  WorkflowListItem,
+} from "./workflow-repository-types";
 import type { WorkflowDraft } from "./types";
 
-export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused";
-
-export type WorkflowListItem = {
-  conversion: string;
-  entered: string;
-  id: string;
-  name: string;
-  nodes: number;
-  owner: string;
-  status: WorkflowDocumentStatus;
-  trigger: string;
-  updatedAt: string;
-};
-
-export type WorkflowPublishedVersion = {
-  id: string;
-  name: string;
-  publishedAt: string;
-  revision: number;
-};
-
-export type WorkflowVersionHistoryItem = WorkflowPublishedVersion & {
-  draft: WorkflowDraft;
-  restoredFromVersionId?: string;
-};
-
-export type WorkflowDocument = WorkflowListItem & {
-  currentVersion: WorkflowPublishedVersion | null;
-  draft: WorkflowDraft;
-  draftHash: string;
-  publishedAt: string | null;
-  publishedDraft: WorkflowDraft | null;
-  publishedRevision: number | null;
-  revision: number;
-  savedAt: string;
-  versionHistory: WorkflowVersionHistoryItem[];
-};
-
-export type WorkflowDraftSaveStatus = "dirty" | "error" | "saved" | "saving";
-export type WorkflowDraftPublishStatus = "error" | "idle" | "published" | "publishing";
-export type WorkflowDraftImportStatus = "error" | "idle" | "imported" | "importing";
-export type WorkflowDraftRestoreStatus = "error" | "idle" | "restored" | "restoring";
-
-export type WorkflowDraftSaveResult = {
-  document: WorkflowDocument;
-  draft: WorkflowDraft;
-  draftHash: string;
-  revision: number;
-  savedAt: string;
-  updatedAt: string;
-};
-
-export type WorkflowDraftImportResult = WorkflowDraftSaveResult & {
-  importedAt: string;
-};
-
-export type WorkflowDraftPublishResult = {
-  document: WorkflowDocument;
-  draft: WorkflowDraft;
-  draftHash: string;
-  publishedAt: string;
-  publishedRevision: number;
-  revision: number;
-  updatedAt: string;
-  version: WorkflowPublishedVersion;
-};
-
-export type WorkflowDraftPublishOptions = {
-  expectedBaseDraftHash?: string;
-};
-
-export type WorkflowDraftRestoreResult = WorkflowDraftSaveResult & {
-  restoredAt: string;
-  restoredVersion: WorkflowVersionHistoryItem;
-};
-
-export type WorkflowDraftReader = {
-  getDocument: (workflowId: string | undefined) => WorkflowDocument;
-  listDocuments: () => WorkflowListItem[];
-};
-
-export type WorkflowDraftWriter = {
-  importDraft: (
-    workflowId: string | undefined,
-    draft: WorkflowDraft,
-  ) => Promise<WorkflowDraftImportResult | WorkflowDocument> | WorkflowDraftImportResult | WorkflowDocument;
-  publishDraft: (
-    workflowId: string | undefined,
-    draft: WorkflowDraft,
-    options?: WorkflowDraftPublishOptions,
-  ) => Promise<WorkflowDraftPublishResult | WorkflowDocument> | WorkflowDraftPublishResult | WorkflowDocument;
-  reset: () => void;
-  restoreVersion: (
-    workflowId: string | undefined,
-    versionId: string,
-  ) => Promise<WorkflowDraftRestoreResult | WorkflowDocument> | WorkflowDraftRestoreResult | WorkflowDocument;
-  saveDraft: (
-    workflowId: string | undefined,
-    draft: WorkflowDraft,
-  ) => Promise<WorkflowDraftSaveResult | WorkflowDocument> | WorkflowDraftSaveResult | WorkflowDocument;
-};
-
-export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
-
-export type SyncWorkflowDraftRepository = Omit<WorkflowDraftRepository, "importDraft" | "publishDraft" | "restoreVersion" | "saveDraft"> & {
-  importDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDraftImportResult;
-  publishDraft: (
-    workflowId: string | undefined,
-    draft: WorkflowDraft,
-    options?: WorkflowDraftPublishOptions,
-  ) => WorkflowDraftPublishResult;
-  restoreVersion: (workflowId: string | undefined, versionId: string) => WorkflowDraftRestoreResult;
-  saveDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDraftSaveResult;
-};
+export * from "./workflow-repository-types";
+export { createWorkflowDraftHash } from "./workflow-draft-persistence";
+export { createInMemoryWorkflowDraftRepository } from "./workflow-in-memory-repository";
 
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
-const NEW_WORKFLOW_DOCUMENT_ID = "new-workflow-draft";
-
 const workflowDraftRepository = createWorkflowDraftRepository();
 
 export function createWorkflowDraftRepository(): SyncWorkflowDraftRepository {
@@ -143,37 +41,37 @@ export function listWorkflowDocuments(): WorkflowListItem[] {
   return workflowDraftRepository.listDocuments();
 }
 
-export function getWorkflowDocument(workflowId: string | undefined): WorkflowDocument {
+export function getWorkflowDocument(workflowId: string): WorkflowDocument {
   return workflowDraftRepository.getDocument(workflowId);
 }
 
-export function getWorkflowName(workflowId: string | undefined) {
+export function getWorkflowName(workflowId: string) {
   return getWorkflowDocument(workflowId).name;
 }
 
 export function saveWorkflowDraft(
-  workflowId: string | undefined,
+  workflowId: string,
   draft: WorkflowDraft,
 ): WorkflowDocument {
   return workflowDraftRepository.saveDraft(workflowId, draft).document;
 }
 
 export function publishWorkflowDraft(
-  workflowId: string | undefined,
+  workflowId: string,
   draft: WorkflowDraft,
 ): WorkflowDocument {
   return workflowDraftRepository.publishDraft(workflowId, draft).document;
 }
 
 export function importWorkflowDraft(
-  workflowId: string | undefined,
+  workflowId: string,
   draft: WorkflowDraft,
 ): WorkflowDocument {
   return workflowDraftRepository.importDraft(workflowId, draft).document;
 }
 
 export function restoreWorkflowVersion(
-  workflowId: string | undefined,
+  workflowId: string,
   versionId: string,
 ): WorkflowDocument {
   return workflowDraftRepository.restoreVersion(workflowId, versionId).document;
@@ -187,15 +85,35 @@ export function resetWorkflowDocumentsForTest() {
   workflowDraftRepository.reset();
 }
 
-export function useWorkflowDocument(
-  workflowId: string | undefined,
-  repository: WorkflowDraftRepository = workflowDraftRepository,
+export function getWorkflowDraftRepository(): WorkflowDraftRepository {
+  return workflowDraftRepository;
+}
+
+function getSynchronousWorkflowDocument(
+  repository: WorkflowDraftRepository,
+  workflowId: string,
 ) {
-  const [document, setDocument] = useState(() => repository.getDocument(workflowId));
+  const document = repository.getDocument(workflowId);
+
+  if (document instanceof Promise) {
+    throw new Error("Async workflow repositories require a preloaded document");
+  }
+
+  return document;
+}
+
+export function useWorkflowDocument(
+  workflowId: string,
+  repository: WorkflowDraftRepository = workflowDraftRepository,
+  initialDocument?: WorkflowDocument,
+) {
+  const [document, setDocument] = useState(() => initialDocument ?? getSynchronousWorkflowDocument(repository, workflowId));
   const [importState, setImportState] = useState<WorkflowDraftImportStatus>("idle");
   const [publishState, setPublishState] = useState<WorkflowDraftPublishStatus>("idle");
+  const [publishError, setPublishError] = useState<WorkflowRepositoryError | null>(null);
   const [restoreState, setRestoreState] = useState<WorkflowDraftRestoreStatus>("idle");
   const [saveState, setSaveState] = useState<WorkflowDraftSaveStatus>("saved");
+  const [saveError, setSaveError] = useState<WorkflowRepositoryError | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState(() => document.savedAt);
   const [lastSavedDraftHash, setLastSavedDraftHash] = useState(() => document.draftHash);
   const [lastPublishedDraftHash, setLastPublishedDraftHash] = useState(() => createWorkflowPublishedDraftHash(document));
@@ -207,6 +125,10 @@ export function useWorkflowDocument(
   const pendingSaveRef = useRef<{
     draft: WorkflowDraft;
     requestId: number;
+    workflowId: string;
+  } | null>(null);
+  const failedSaveRef = useRef<{
+    draft: WorkflowDraft;
     workflowId: string;
   } | null>(null);
   const workflowIdRef = useRef(document.id);
@@ -234,6 +156,11 @@ export function useWorkflowDocument(
     }
     catch (error) {
       if (updateState && saveRequestRef.current === pendingSave.requestId) {
+        failedSaveRef.current = {
+          draft: pendingSave.draft,
+          workflowId: pendingSave.workflowId,
+        };
+        setSaveError(normalizeWorkflowRepositoryError(error));
         setSaveState("error");
       }
 
@@ -253,6 +180,8 @@ export function useWorkflowDocument(
       }
 
       setSaveState("saved");
+      failedSaveRef.current = null;
+      setSaveError(null);
       setLastSavedAt(normalizedSaveResult.savedAt);
       setLastSavedDraftHash(normalizedSaveResult.draftHash);
       setDocument((currentDocument) => ({
@@ -276,6 +205,11 @@ export function useWorkflowDocument(
         && saveRequestRef.current === pendingSave.requestId
         && workflowIdRef.current === pendingSave.workflowId
       ) {
+        failedSaveRef.current = {
+          draft: pendingSave.draft,
+          workflowId: pendingSave.workflowId,
+        };
+        setSaveError(normalizeWorkflowRepositoryError(error));
         setSaveState("error");
       }
 
@@ -288,14 +222,17 @@ export function useWorkflowDocument(
   useEffect(() => {
     flushPendingSave({ updateState: false });
 
-    const nextDocument = repository.getDocument(workflowId);
+    const nextDocument = initialDocument ?? getSynchronousWorkflowDocument(repository, workflowId);
     workflowIdRef.current = nextDocument.id;
     publishingRef.current = false;
     setDocument(nextDocument);
     setImportState("idle");
     setPublishState(getWorkflowPublishStateForDraft(nextDocument.draft, nextDocument));
+    setPublishError(null);
     setRestoreState("idle");
     setSaveState("saved");
+    setSaveError(null);
+    failedSaveRef.current = null;
     setLastSavedAt(nextDocument.savedAt);
     setLastSavedDraftHash(nextDocument.draftHash);
     setLastPublishedDraftHash(createWorkflowPublishedDraftHash(nextDocument));
@@ -304,7 +241,7 @@ export function useWorkflowDocument(
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-  }, [flushPendingSave, repository, workflowId]);
+  }, [flushPendingSave, initialDocument, repository, workflowId]);
 
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
@@ -315,6 +252,7 @@ export function useWorkflowDocument(
     }
 
     setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
+    setPublishError(null);
 
     if (nextDraftHash === lastSavedDraftHash) {
       saveRequestRef.current += 1;
@@ -326,6 +264,8 @@ export function useWorkflowDocument(
       }
 
       setSaveState("saved");
+      setSaveError(null);
+      failedSaveRef.current = null;
       return;
     }
 
@@ -337,6 +277,8 @@ export function useWorkflowDocument(
       requestId: saveRequestId,
       workflowId: workflowIdRef.current,
     };
+    failedSaveRef.current = null;
+    setSaveError(null);
     setSaveState(saveTimerRef.current ? "dirty" : "saving");
 
     if (saveTimerRef.current) {
@@ -347,6 +289,26 @@ export function useWorkflowDocument(
       flushPendingSave();
     }, WORKFLOW_SAVE_DEBOUNCE_MS);
   }, [flushPendingSave, lastPublishedDraftHash, lastSavedDraftHash]);
+
+  const retrySave = useCallback(() => {
+    const failedSave = failedSaveRef.current;
+
+    if (!failedSave || failedSave.workflowId !== workflowIdRef.current) {
+      return undefined;
+    }
+
+    const requestId = saveRequestRef.current + 1;
+    saveRequestRef.current = requestId;
+    pendingSaveRef.current = {
+      draft: cloneWorkflowDraft(failedSave.draft),
+      requestId,
+      workflowId: failedSave.workflowId,
+    };
+    failedSaveRef.current = null;
+    setSaveError(null);
+    setSaveState("saving");
+    return flushPendingSave();
+  }, [flushPendingSave]);
 
   const importDraft = useCallback(async (draft: WorkflowDraft) => {
     const saveRequestId = saveRequestRef.current + 1;
@@ -380,6 +342,8 @@ export function useWorkflowDocument(
 
       setImportState("imported");
       setSaveState("saved");
+      setSaveError(null);
+      failedSaveRef.current = null;
       setLastSavedAt(normalizedImportResult.savedAt);
       setLastSavedDraftHash(normalizedImportResult.draftHash);
       setLastPublishedDraftHash(createWorkflowPublishedDraftHash(importedDocument));
@@ -409,6 +373,7 @@ export function useWorkflowDocument(
 
     publishingRef.current = true;
     setPublishState("publishing");
+    setPublishError(null);
 
     try {
       const flushedSaveResult = await flushPendingSave();
@@ -430,7 +395,10 @@ export function useWorkflowDocument(
 
       publishingRef.current = false;
       setPublishState("published");
+      setPublishError(null);
       setSaveState("saved");
+      setSaveError(null);
+      failedSaveRef.current = null;
       setLastSavedAt(publishedDocument.savedAt);
       setLastSavedDraftHash(normalizedPublishResult.draftHash);
       setLastPublishedDraftHash(normalizedPublishResult.draftHash);
@@ -460,6 +428,7 @@ export function useWorkflowDocument(
         && workflowIdRef.current === workflowIdToPublish
       ) {
         publishingRef.current = false;
+        setPublishError(normalizeWorkflowRepositoryError(error));
         setPublishState("error");
       }
 
@@ -501,6 +470,8 @@ export function useWorkflowDocument(
 
       setRestoreState("restored");
       setSaveState("saved");
+      setSaveError(null);
+      failedSaveRef.current = null;
       setLastSavedAt(normalizedRestoreResult.savedAt);
       setLastSavedDraftHash(normalizedRestoreResult.draftHash);
       setLastPublishedDraftHash(createWorkflowPublishedDraftHash(restoredDocument));
@@ -535,549 +506,28 @@ export function useWorkflowDocument(
     lastSavedDraftHash,
     markDirty,
     publishDraft,
+    publishError,
     publishState,
     restoreState,
     restoreVersion,
+    retrySave,
+    saveError,
     saveState,
-  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishState, restoreState, restoreVersion, saveState]);
+  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState]);
 }
 
-function createWorkflowPublishedDraftHash(
-  document: WorkflowDocument,
-) {
-  return document.publishedDraft ? createWorkflowDraftHash(document.publishedDraft) : undefined;
-}
-
-function getWorkflowPublishStateForDraft(
-  draft: WorkflowDraft,
-  document: WorkflowDocument,
-): WorkflowDraftPublishStatus {
-  return getWorkflowPublishStateFromHashes(
-    createWorkflowDraftHash(draft),
-    createWorkflowPublishedDraftHash(document),
-  );
-}
-
-function getWorkflowPublishStateFromHashes(
-  draftHash: string,
-  publishedDraftHash: string | undefined,
-): WorkflowDraftPublishStatus {
-  return publishedDraftHash && draftHash === publishedDraftHash ? "published" : "idle";
-}
-
-function cloneWorkflowDocument(document: WorkflowDocument): WorkflowDocument {
-  const draft = cloneWorkflowDraft(document.draft);
-
-  return {
-    ...document,
-    currentVersion: document.currentVersion ? { ...document.currentVersion } : null,
-    draft,
-    draftHash: document.draftHash ?? createWorkflowDraftHash(draft),
-    publishedDraft: document.publishedDraft ? cloneWorkflowDraft(document.publishedDraft) : null,
-    versionHistory: cloneWorkflowVersionHistory(document.versionHistory),
-  };
-}
-
-function normalizeWorkflowDraftSaveResult(
-  saveResult: WorkflowDraftSaveResult | WorkflowDocument,
-): WorkflowDraftSaveResult {
-  if ("document" in saveResult) {
-    return {
-      ...saveResult,
-      document: cloneWorkflowDocument(saveResult.document),
-      draft: cloneWorkflowDraft(saveResult.draft),
-      draftHash: saveResult.draftHash ?? saveResult.document.draftHash ?? createWorkflowDraftHash(saveResult.draft),
-    };
+export function normalizeWorkflowRepositoryError(error: unknown) {
+  if (error instanceof WorkflowRepositoryError) {
+    return error;
   }
 
-  const document = cloneWorkflowDocument(saveResult);
-
-  return {
-    document,
-    draft: cloneWorkflowDraft(document.draft),
-    draftHash: document.draftHash,
-    revision: document.revision,
-    savedAt: document.savedAt,
-    updatedAt: document.updatedAt,
-  };
-}
-
-function normalizeWorkflowDraftImportResult(
-  importResult: WorkflowDraftImportResult | WorkflowDocument,
-): WorkflowDraftImportResult {
-  if ("importedAt" in importResult) {
-    return {
-      ...importResult,
-      document: cloneWorkflowDocument(importResult.document),
-      draft: cloneWorkflowDraft(importResult.draft),
-    };
+  if (error instanceof TypeError) {
+    return new WorkflowRepositoryError("network", error.message, { cause: error });
   }
 
-  const saveResult = normalizeWorkflowDraftSaveResult(importResult);
-
-  return {
-    ...saveResult,
-    importedAt: saveResult.savedAt,
-  };
-}
-
-function normalizeWorkflowDraftPublishResult(
-  publishResult: WorkflowDraftPublishResult | WorkflowDocument,
-): WorkflowDraftPublishResult {
-  if ("version" in publishResult) {
-    return {
-      ...publishResult,
-      document: cloneWorkflowDocument(publishResult.document),
-      draft: cloneWorkflowDraft(publishResult.draft),
-      draftHash: publishResult.draftHash ?? publishResult.document.draftHash ?? createWorkflowDraftHash(publishResult.draft),
-    };
+  if (error instanceof Error) {
+    return new WorkflowRepositoryError("server", error.message, { cause: error });
   }
 
-  const document = cloneWorkflowDocument(publishResult);
-  const publishedAt = document.publishedAt ?? document.updatedAt;
-  const publishedRevision = document.publishedRevision ?? document.revision;
-  const version = document.currentVersion ?? createWorkflowPublishedVersion(
-    document.id,
-    publishedRevision,
-    publishedAt,
-  );
-  const draft = document.publishedDraft ? cloneWorkflowDraft(document.publishedDraft) : cloneWorkflowDraft(document.draft);
-
-  return {
-    document,
-    draft,
-    draftHash: document.draftHash,
-    publishedAt,
-    publishedRevision,
-    revision: document.revision,
-    updatedAt: document.updatedAt,
-    version,
-  };
-}
-
-function normalizeWorkflowDraftRestoreResult(
-  restoreResult: WorkflowDraftRestoreResult | WorkflowDocument,
-): WorkflowDraftRestoreResult {
-  if ("restoredVersion" in restoreResult) {
-    return {
-      ...restoreResult,
-      document: cloneWorkflowDocument(restoreResult.document),
-      draft: cloneWorkflowDraft(restoreResult.draft),
-      restoredVersion: cloneWorkflowVersionHistoryItem(restoreResult.restoredVersion),
-    };
-  }
-
-  const saveResult = normalizeWorkflowDraftSaveResult(restoreResult);
-  const restoredVersion = saveResult.document.versionHistory.find(
-    (version) => version.id === saveResult.document.currentVersion?.id,
-  ) ?? createWorkflowVersionHistoryItem(
-    saveResult.document.id,
-    saveResult.document.revision,
-    saveResult.savedAt,
-    saveResult.draft,
-  );
-
-  return {
-    ...saveResult,
-    restoredAt: saveResult.savedAt,
-    restoredVersion,
-  };
-}
-
-function cloneWorkflowVersionHistory(versionHistory: WorkflowVersionHistoryItem[]) {
-  return versionHistory.map(cloneWorkflowVersionHistoryItem);
-}
-
-function cloneWorkflowVersionHistoryItem(version: WorkflowVersionHistoryItem): WorkflowVersionHistoryItem {
-  return {
-    ...version,
-    draft: cloneWorkflowDraft(version.draft),
-  };
-}
-
-function cloneWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
-  const sanitizedDraft = hydrateWorkflowDraft(draft);
-
-  return {
-    edges: sanitizedDraft.edges.map((edge) => ({
-      ...edge,
-      data: edge.data ? clonePersistableWorkflowData(edge.data) : edge.data,
-    })),
-    nodes: sanitizedDraft.nodes.map((node) => ({
-      ...node,
-      data: clonePersistableWorkflowData(node.data),
-      position: { ...node.position },
-    })),
-    viewport: { ...sanitizedDraft.viewport },
-  };
-}
-
-function clonePersistableWorkflowData<TData extends Record<string, unknown>>(data: TData): TData {
-  return Object.fromEntries(
-    Object.entries(data).map(([key, value]) => [key, clonePersistableWorkflowValue(value)]),
-  ) as TData;
-}
-
-function clonePersistableWorkflowValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(clonePersistableWorkflowValue);
-  }
-
-  if (value && typeof value === "object") {
-    return clonePersistableWorkflowData(value as Record<string, unknown>);
-  }
-
-  return value;
-}
-
-export function createWorkflowDraftHash(draft: WorkflowDraft): string {
-  const canonicalDraft = canonicalizeWorkflowDraft(draft);
-  const serializedDraft = JSON.stringify({
-    edges: canonicalDraft.edges,
-    nodes: canonicalDraft.nodes,
-  });
-  let hash = 2166136261;
-
-  for (let index = 0; index < serializedDraft.length; index += 1) {
-    hash ^= serializedDraft.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return `draft_${(hash >>> 0).toString(36)}_${serializedDraft.length.toString(36)}`;
-}
-
-function getWorkflowTrigger(draft: WorkflowDraft) {
-  const entryNode = findWorkflowEntryNode(draft.nodes);
-  return entryNode?.data.kind === "start" ? entryNode.data.audience : undefined;
-}
-
-function getWorkflowConversion(draft: WorkflowDraft) {
-  const terminalNode = findWorkflowTerminalNode(draft.nodes);
-  return terminalNode ? "-" : undefined;
-}
-
-export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftRepository {
-  let workflowDocuments = createWorkflowDocuments();
-
-  function getWorkflowDocumentIndex(workflowId: string | undefined) {
-    const resolvedWorkflowId = workflowId ?? NEW_WORKFLOW_DOCUMENT_ID;
-    const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === resolvedWorkflowId);
-
-    if (documentIndex < 0) {
-      throw new Error(`Unknown workflow document: ${resolvedWorkflowId}`);
-    }
-
-    return documentIndex;
-  }
-
-  return {
-    getDocument: (workflowId) => cloneWorkflowDocument(
-      workflowDocuments[getWorkflowDocumentIndex(workflowId)],
-    ),
-    importDraft: (workflowId, draft) => {
-      const documentIndex = getWorkflowDocumentIndex(workflowId);
-      const currentDocument = workflowDocuments[documentIndex];
-      const nextDraft = cloneWorkflowDraft(draft);
-      const importedAt = "刚刚";
-      const nextDraftHash = createWorkflowDraftHash(nextDraft);
-      const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        draft: nextDraft,
-        draftHash: nextDraftHash,
-        nodes: nextDraft.nodes.length,
-        revision: currentDocument.revision + 1,
-        savedAt: importedAt,
-        status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt: importedAt,
-      };
-
-      workflowDocuments[documentIndex] = nextDocument;
-      return {
-        document: cloneWorkflowDocument(nextDocument),
-        draft: cloneWorkflowDraft(nextDraft),
-        draftHash: nextDraftHash,
-        importedAt,
-        revision: nextDocument.revision,
-        savedAt: importedAt,
-        updatedAt: importedAt,
-      };
-    },
-    listDocuments: () => workflowDocuments.filter((workflow) => workflow.id !== NEW_WORKFLOW_DOCUMENT_ID).map(({
-      currentVersion: _currentVersion,
-      draft: _draft,
-      draftHash: _draftHash,
-      publishedAt: _publishedAt,
-      publishedDraft: _publishedDraft,
-      publishedRevision: _publishedRevision,
-      revision: _revision,
-      savedAt: _savedAt,
-      versionHistory: _versionHistory,
-      ...workflow
-    }) => workflow),
-    publishDraft: (workflowId, draft, options) => {
-      const documentIndex = getWorkflowDocumentIndex(workflowId);
-      const currentDocument = workflowDocuments[documentIndex];
-
-      if (
-        options?.expectedBaseDraftHash
-        && currentDocument.draftHash !== options.expectedBaseDraftHash
-      ) {
-        throw new Error("Workflow draft has changed since publish started");
-      }
-
-      const nextDraft = cloneWorkflowDraft(draft);
-      const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
-      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
-      const nextRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
-      const publishedAt = "刚刚";
-      const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, persistedDraft);
-      const nextDraftHash = shouldCreateDraftRevision
-        ? createWorkflowDraftHash(nextDraft)
-        : currentDocument.draftHash;
-      const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        currentVersion: version,
-        draft: persistedDraft,
-        draftHash: nextDraftHash,
-        nodes: persistedDraft.nodes.length,
-        publishedAt,
-        publishedDraft: cloneWorkflowDraft(persistedDraft),
-        publishedRevision: nextRevision,
-        revision: nextRevision,
-        savedAt: publishedAt,
-        status: "Published",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt: publishedAt,
-        versionHistory: [
-          version,
-          ...currentDocument.versionHistory.filter((historyVersion) => historyVersion.id !== version.id),
-        ],
-      };
-
-      workflowDocuments[documentIndex] = nextDocument;
-      return normalizeWorkflowDraftPublishResult(nextDocument);
-    },
-    reset: () => {
-      workflowDocuments = createWorkflowDocuments();
-    },
-    restoreVersion: (workflowId, versionId) => {
-      const documentIndex = getWorkflowDocumentIndex(workflowId);
-      const currentDocument = workflowDocuments[documentIndex];
-      const restoredVersion = currentDocument.versionHistory.find((version) => version.id === versionId);
-
-      if (!restoredVersion) {
-        throw new Error(`Unknown workflow version: ${versionId}`);
-      }
-
-      const nextDraft = cloneWorkflowDraft(restoredVersion.draft);
-      const restoredAt = "刚刚";
-      const nextDraftHash = createWorkflowDraftHash(nextDraft);
-      const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        currentVersion: {
-          id: restoredVersion.id,
-          name: restoredVersion.name,
-          publishedAt: restoredVersion.publishedAt,
-          revision: restoredVersion.revision,
-        },
-        draft: nextDraft,
-        draftHash: nextDraftHash,
-        nodes: nextDraft.nodes.length,
-        revision: currentDocument.revision + 1,
-        savedAt: restoredAt,
-        status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt: restoredAt,
-      };
-
-      workflowDocuments[documentIndex] = nextDocument;
-      return {
-        document: cloneWorkflowDocument(nextDocument),
-        draft: cloneWorkflowDraft(nextDraft),
-        draftHash: nextDraftHash,
-        restoredAt,
-        restoredVersion: cloneWorkflowVersionHistoryItem(restoredVersion),
-        revision: nextDocument.revision,
-        savedAt: restoredAt,
-        updatedAt: restoredAt,
-      };
-    },
-    saveDraft: (workflowId, draft) => {
-      const documentIndex = getWorkflowDocumentIndex(workflowId);
-      const currentDocument = workflowDocuments[documentIndex];
-      const nextDraft = cloneWorkflowDraft(draft);
-      const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
-      const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
-      const savedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.savedAt;
-      const updatedAt = shouldCreateDraftRevision ? "刚刚" : currentDocument.updatedAt;
-      const nextDraftHash = shouldCreateDraftRevision
-        ? createWorkflowDraftHash(nextDraft)
-        : currentDocument.draftHash;
-      const nextDocument: WorkflowDocument = {
-        ...currentDocument,
-        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        draft: persistedDraft,
-        draftHash: nextDraftHash,
-        nodes: persistedDraft.nodes.length,
-        revision: shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision,
-        savedAt,
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt,
-      };
-
-      workflowDocuments[documentIndex] = nextDocument;
-      return normalizeWorkflowDraftSaveResult(nextDocument);
-    },
-  };
-}
-
-function createWorkflowPublishedVersion(
-  workflowId: string,
-  revision: number,
-  publishedAt: string,
-): WorkflowPublishedVersion {
-  return {
-    id: `${workflowId}-r${revision}`,
-    name: `版本 ${revision}`,
-    publishedAt,
-    revision,
-  };
-}
-
-function createWorkflowVersionHistoryItem(
-  workflowId: string,
-  revision: number,
-  publishedAt: string,
-  draft: WorkflowDraft,
-): WorkflowVersionHistoryItem {
-  return {
-    ...createWorkflowPublishedVersion(workflowId, revision, publishedAt),
-    draft: cloneWorkflowDraft(draft),
-  };
-}
-
-function createWorkflowDocuments(): WorkflowDocument[] {
-  const newWorkflowDraft = createInitialDraft();
-  const newcomerConversionDraft = createInitialDraft();
-  const vipReactivationDraft: WorkflowDraft = {
-    edges: createInitialEdges(),
-    nodes: createInitialNodes().map((node) =>
-      node.id === "start"
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audience: "90 天未复购会员",
-              title: "复购唤醒触发",
-            },
-          }
-        : node,
-    ),
-    viewport: createInitialDraft().viewport,
-  };
-  const liveFollowUpDraft: WorkflowDraft = {
-    edges: createInitialEdges(),
-    nodes: createInitialNodes().map((node) =>
-      node.id === "start"
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audience: "直播间互动但未下单客户",
-              title: "直播互动触发",
-            },
-          }
-        : node,
-    ),
-    viewport: createInitialDraft().viewport,
-  };
-
-  return [
-    {
-      conversion: "0%",
-      currentVersion: null,
-      draft: newWorkflowDraft,
-      draftHash: createWorkflowDraftHash(newWorkflowDraft),
-      entered: "0",
-      id: NEW_WORKFLOW_DOCUMENT_ID,
-      name: "未命名 Workflow",
-      nodes: newWorkflowDraft.nodes.length,
-      owner: "运营主管",
-      publishedAt: null,
-      publishedDraft: null,
-      publishedRevision: null,
-      revision: 1,
-      savedAt: "刚刚",
-      status: "Draft",
-      trigger: "待配置进入条件",
-      updatedAt: "刚刚",
-      versionHistory: [],
-    },
-    {
-      conversion: "18.4%",
-      currentVersion: null,
-      draft: newcomerConversionDraft,
-      draftHash: createWorkflowDraftHash(newcomerConversionDraft),
-      entered: "124.8万",
-      id: "newcomer-conversion",
-      name: "新人转化旅程",
-      nodes: 8,
-      owner: "运营主管",
-      publishedAt: null,
-      publishedDraft: null,
-      publishedRevision: null,
-      revision: 1,
-      savedAt: "18:20",
-      status: "Draft",
-      trigger: "近 30 天新入会且未首购客户",
-      updatedAt: "今天 18:20",
-      versionHistory: [],
-    },
-    {
-      conversion: "23.1%",
-      currentVersion: createWorkflowPublishedVersion("vip-reactivation", 1, "昨天 21:04"),
-      draft: vipReactivationDraft,
-      draftHash: createWorkflowDraftHash(vipReactivationDraft),
-      entered: "86.3万",
-      id: "vip-reactivation",
-      name: "会员复购唤醒",
-      nodes: 12,
-      owner: "增长运营",
-      publishedAt: "昨天 21:04",
-      publishedDraft: vipReactivationDraft,
-      publishedRevision: 1,
-      revision: 1,
-      savedAt: "昨天 21:04",
-      status: "Published",
-      trigger: "90 天未复购会员",
-      updatedAt: "昨天 21:04",
-      versionHistory: [
-        createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
-      ],
-    },
-    {
-      conversion: "9.7%",
-      currentVersion: null,
-      draft: liveFollowUpDraft,
-      draftHash: createWorkflowDraftHash(liveFollowUpDraft),
-      entered: "42.6万",
-      id: "live-follow-up",
-      name: "直播后跟进",
-      nodes: 6,
-      owner: "直播运营",
-      publishedAt: null,
-      publishedDraft: null,
-      publishedRevision: null,
-      revision: 1,
-      savedAt: "7月4日 16:12",
-      status: "Paused",
-      trigger: "直播间互动但未下单客户",
-      updatedAt: "7月4日 16:12",
-      versionHistory: [],
-    },
-  ];
+  return new WorkflowRepositoryError("server", "Unknown workflow repository error");
 }

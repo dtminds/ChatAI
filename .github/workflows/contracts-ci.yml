@@ -29,7 +29,7 @@ jobs:
       contracts: ${{ steps.filter.outputs.contracts }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Detect changed areas
         id: filter
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Enable pnpm
         run: corepack enable

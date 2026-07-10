@@ -97,6 +97,10 @@ describe("workflow DSL", () => {
     expect(executionNode.config._runtimeStatus).toBeUndefined();
     expect(parsed.workflow.executionGraph).not.toHaveProperty("viewport");
     expect(parsed.workflow.executionGraph.nodes[0]).not.toHaveProperty("position");
+    expect(parsed.workflow.executionGraph.entryNodeId).toBe("trigger");
+    expect(parsed.workflow.executionGraph.terminalNodeIds).toEqual(["goal"]);
+    expect(parsed.workflow.executionGraph.outgoing.trigger).toEqual(["edge-trigger-wait-2d"]);
+    expect(parsed.workflow.executionGraph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
   });
 
   it("round-trips exported workflow DSL text through the import boundary", () => {
@@ -191,6 +195,12 @@ describe("workflow DSL", () => {
           kind: "default",
         },
       }));
+    expect(graph.entryNodeId).toBe("trigger");
+    expect(graph.terminalNodeIds).toEqual(["goal"]);
+    expect(graph.outgoing.trigger).toEqual(["edge-trigger-wait-2d"]);
+    expect(graph.incoming["wait-2d"]).toEqual(["edge-trigger-wait-2d"]);
+    expect(graph.outgoing.goal).toEqual([]);
+    expect(graph.incoming.trigger).toEqual([]);
   });
 
   it("preserves persisted node configuration fields through export and import", () => {

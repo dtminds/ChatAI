@@ -1,5 +1,9 @@
 import { canonicalizeWorkflowDraft, hydrateWorkflowDraft } from "./workflow-draft-normalizer";
-import { createWorkflowNodeExecutionConfig } from "./node-catalog";
+import {
+  createWorkflowNodeExecutionConfig,
+  findWorkflowEntryNode,
+  getWorkflowNodeRole,
+} from "./node-catalog";
 import {
   getNodeSourceOutletDefinition,
   type WorkflowSourceOutletDefinition,
@@ -34,7 +38,11 @@ export type WorkflowDslDocument = {
 
 export type WorkflowExecutionGraph = {
   edges: WorkflowExecutionEdge[];
+  entryNodeId: string | null;
+  incoming: Record<string, string[]>;
   nodes: WorkflowExecutionNode[];
+  outgoing: Record<string, string[]>;
+  terminalNodeIds: string[];
 };
 
 export type WorkflowExecutionNode = {
@@ -149,16 +157,23 @@ export function exportWorkflowDsl(options: Parameters<typeof createWorkflowDslDo
 export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExecutionGraph {
   const canonicalDraft = canonicalizeWorkflowDraft(draft);
   const nodeById = new Map(canonicalDraft.nodes.map((node) => [node.id, node]));
+  const entryNode = findWorkflowEntryNode(canonicalDraft.nodes);
+  const terminalNodeIds = canonicalDraft.nodes
+    .filter((node) => getWorkflowNodeRole(node.data.kind) === "terminal")
+    .map((node) => node.id);
+  const edges = canonicalDraft.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle ?? null,
+    sourceOutlet: createWorkflowExecutionEdgeOutlet(edge, nodeById.get(edge.source)),
+    target: edge.target,
+    targetHandle: edge.targetHandle ?? null,
+  }));
 
   return {
-    edges: canonicalDraft.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      sourceHandle: edge.sourceHandle ?? null,
-      sourceOutlet: createWorkflowExecutionEdgeOutlet(edge, nodeById.get(edge.source)),
-      target: edge.target,
-      targetHandle: edge.targetHandle ?? null,
-    })),
+    edges,
+    entryNodeId: entryNode?.id ?? null,
+    incoming: createWorkflowExecutionEdgeIndex(canonicalDraft.nodes, edges, "target"),
     nodes: canonicalDraft.nodes.map((node) => {
       return {
         config: createWorkflowNodeExecutionConfig(node.data),
@@ -166,7 +181,23 @@ export function createWorkflowExecutionGraph(draft: WorkflowDraft): WorkflowExec
         kind: node.data.kind,
       };
     }),
+    outgoing: createWorkflowExecutionEdgeIndex(canonicalDraft.nodes, edges, "source"),
+    terminalNodeIds,
   };
+}
+
+function createWorkflowExecutionEdgeIndex(
+  nodes: WorkflowNode[],
+  edges: WorkflowExecutionEdge[],
+  direction: "source" | "target",
+) {
+  const index = Object.fromEntries(nodes.map((node) => [node.id, [] as string[]]));
+
+  edges.forEach((edge) => {
+    index[edge[direction]]?.push(edge.id);
+  });
+
+  return index;
 }
 
 function createWorkflowExecutionEdgeOutlet(

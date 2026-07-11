@@ -50,17 +50,17 @@ const ALL_ROLES: WorkflowWorkerRole[] = [...DEFAULT_ROLES];
 export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkflowWorkerConfig {
   const databaseUrl = requireValue(env, "DATABASE_URL");
   const environment = parseEnvironment(env.WORKFLOW_ENVIRONMENT);
-  const broker = env.WORKFLOW_BROKER === "fake" ? "fake" : "pulsar";
+  const broker = parseBroker(env.WORKFLOW_BROKER);
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
   if (broker === "pulsar" && (!pulsarServiceUrl || !pulsarToken)) {
     throw new Error("Missing required Workflow Pulsar configuration");
   }
 
-  const subscriptionPrefix = optionalValue(env.WORKFLOW_SUBSCRIPTION_PREFIX)
+  const subscription = optionalValue(env.WORKFLOW_SUBSCRIPTION)
     ?? `consumer-chatai-worker-env-${environment}`;
-  const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? `${subscriptionPrefix}-entry`;
-  const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? `${subscriptionPrefix}-task`;
+  const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? subscription;
+  const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? subscription;
   return {
     broker,
     databaseUrl,
@@ -117,6 +117,11 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       task: optionalValue(env.WORKFLOW_TASK_TOPIC) ?? `topic-workflow-task-${environment}`,
     },
   };
+}
+
+function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] {
+  if (value === "fake" || value === "pulsar") return value;
+  throw new Error("WORKFLOW_BROKER must be fake or pulsar");
 }
 
 function parseEnvironment(value: string | undefined): WorkflowEnvironment {

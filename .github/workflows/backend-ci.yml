@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - dev
+      - codex/marketing-workflow-demo
       - "feat/**"
       - "feature/**"
   workflow_dispatch:
@@ -41,9 +42,12 @@ jobs:
               - ".github/workflows/backend-ci.yml"
               - ".github/workflows/ci.yml"
               - "apps/backend/**"
+              - "apps/workflow-worker/**"
+              - "deploy/workflow-worker.Dockerfile"
               - "package.json"
               - "packages/contracts/**"
               - "packages/workflow-engine/**"
+              - "packages/workflow-runtime/**"
               - "pnpm-lock.yaml"
               - "pnpm-workspace.yaml"
               - "tsconfig*.json"
@@ -73,11 +77,37 @@ jobs:
       - name: Typecheck backend
         run: pnpm backend:typecheck
 
+      - name: Test contracts
+        run: pnpm --filter @chatai/contracts test
+
       - name: Test workflow engine
         run: pnpm --filter @chatai/workflow-engine test
 
+      - name: Test workflow runtime
+        run: pnpm --filter @chatai/workflow-runtime test
+
+      - name: Test workflow worker
+        env:
+          WORKFLOW_BROKER: fake
+        run: pnpm --filter @chatai/workflow-worker test
+
       - name: Test backend
         run: pnpm backend:test
+
+      - name: Build contracts
+        run: pnpm --filter @chatai/contracts build
+
+      - name: Build workflow engine
+        run: pnpm --filter @chatai/workflow-engine build
+
+      - name: Build workflow runtime
+        run: pnpm --filter @chatai/workflow-runtime build
+
+      - name: Build workflow worker
+        run: pnpm --filter @chatai/workflow-worker build
+
+      - name: Build workflow worker image
+        run: docker build -f deploy/workflow-worker.Dockerfile -t chatai-workflow-worker:ci .
 
       - name: Build backend
         run: pnpm backend:build

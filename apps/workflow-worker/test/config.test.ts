@@ -9,10 +9,26 @@ describe("workflow worker config", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: environment }));
 
     expect(config.topics).toEqual({ entry: entryTopic, task: taskTopic });
-    expect(config.subscriptions.entry).not.toBe(config.subscriptions.task);
+    expect(config.subscriptions).toEqual({
+      entry: `consumer-chatai-worker-env-${environment}`,
+      task: `consumer-chatai-worker-env-${environment}`,
+    });
     expect(config.subscriptionType).toBe("Shared");
-    expect(config.deadLetterTopics.entry).toBe(`${config.subscriptions.entry}-DLQ`);
-    expect(config.deadLetterTopics.task).toBe(`${config.subscriptions.task}-DLQ`);
+    expect(config.deadLetterTopics.entry).toBe(`consumer-chatai-worker-env-${environment}-DLQ`);
+    expect(config.deadLetterTopics.task).toBe(`consumer-chatai-worker-env-${environment}-DLQ`);
+  });
+
+  it("allows entry and task subscriptions to be overridden independently", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ENTRY_SUBSCRIPTION: "entry-subscription",
+      WORKFLOW_SUBSCRIPTION: "shared-subscription",
+      WORKFLOW_TASK_SUBSCRIPTION: "task-subscription",
+    }));
+
+    expect(config.subscriptions).toEqual({
+      entry: "entry-subscription",
+      task: "task-subscription",
+    });
   });
 
   it("requires real broker credentials without exposing secret values", () => {
@@ -23,6 +39,11 @@ describe("workflow worker config", () => {
       WORKFLOW_PULSAR_SERVICE_URL: "",
       WORKFLOW_PULSAR_TOKEN: token,
     }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
+  });
+
+  it("rejects unknown broker modes instead of falling through to Pulsar", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
+      .toThrow("WORKFLOW_BROKER must be fake or pulsar");
   });
 
   it("starts every Phase 3 role by default with bounded runtime settings", () => {

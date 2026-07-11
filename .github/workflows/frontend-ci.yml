@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - dev
+      - codex/marketing-workflow-demo
       - "feat/**"
       - "feature/**"
   workflow_dispatch:

@@ -2,13 +2,24 @@ import {
   AlertCircleIcon,
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
+  CloudSavingDone01Icon,
   Edit02Icon,
+  InformationCircleIcon,
   MoreHorizontalIcon,
   Time02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +27,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
   WorkflowDraftPublishStatus,
@@ -28,43 +46,47 @@ export function WorkflowTopBar({
   canPublish = true,
   canRename = false,
   canRetrySave = false,
+  description = "",
+  hasUnpublishedChanges = false,
   isPreviewingVersion,
   lastSavedAt,
+  metadataUpdating = false,
   onBack,
   onExitPreview,
   onOpenVersionHistory,
   onPublish,
   onPublishCheck,
   onReloadDocument,
-  onRename,
+  onUpdateMetadata,
   onRetrySave,
   onRestoreVersion,
   previewVersionLabel,
   previewVersionMeta,
-  publishedAt,
   publishErrorCode,
   publishState,
   publishReady,
   readyChecks,
-  renaming = false,
   restoreState,
+  runtimeStatus = "inactive",
   saveState,
   totalChecks,
-  validatedForActivation = false,
   workflowName,
 }: {
   canPublish?: boolean;
   canRename?: boolean;
   canRetrySave?: boolean;
+  description?: string;
+  hasUnpublishedChanges?: boolean;
   isPreviewingVersion?: boolean;
   lastSavedAt: string;
+  metadataUpdating?: boolean;
   onBack?: () => void;
   onExitPreview?: () => void;
   onOpenVersionHistory: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
   onReloadDocument?: () => void;
-  onRename?: (name: string) => Promise<boolean>;
+  onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
   onRetrySave?: () => void;
   onRestoreVersion?: () => void;
   previewVersionLabel?: string;
@@ -74,49 +96,49 @@ export function WorkflowTopBar({
   publishState: WorkflowDraftPublishStatus;
   publishReady: boolean;
   readyChecks: number;
-  renaming?: boolean;
   restoreState?: WorkflowDraftRestoreStatus;
+  runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
   saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
   validatedForActivation?: boolean;
   workflowName: string;
 }) {
-  const [editingName, setEditingName] = useState(false);
+  const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [nameValue, setNameValue] = useState(workflowName);
+  const [descriptionValue, setDescriptionValue] = useState(description);
   const published = publishState === "published";
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
   const readOnlyMode = Boolean(isPreviewingVersion);
 
   useEffect(() => {
-    if (!editingName) {
+    if (!metadataDialogOpen) {
       setNameValue(workflowName);
+      setDescriptionValue(description);
     }
-  }, [editingName, workflowName]);
+  }, [description, metadataDialogOpen, workflowName]);
 
-  const cancelRename = () => {
-    if (renaming) return;
-    setNameValue(workflowName);
-    setEditingName(false);
-  };
-
-  const submitRename = async () => {
+  const submitMetadata = async () => {
     const normalizedName = nameValue.trim();
+    const normalizedDescription = descriptionValue.trim();
 
     if (!normalizedName) return;
-    if (normalizedName === workflowName) {
-      setEditingName(false);
+    if (normalizedName === workflowName && normalizedDescription === description) {
+      setMetadataDialogOpen(false);
       return;
     }
 
-    if (onRename && await onRename(normalizedName)) {
-      setEditingName(false);
+    if (onUpdateMetadata && await onUpdateMetadata({
+      description: normalizedDescription,
+      name: normalizedName,
+    })) {
+      setMetadataDialogOpen(false);
     }
   };
 
   return (
-    <header className="workflow-canvas-topbar z-[12] flex min-h-16 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 py-2 max-sm:flex-wrap max-sm:px-3">
-      <div className="flex min-w-0 items-center gap-3 max-sm:w-full">
+    <header className="workflow-canvas-topbar z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
+      <div className="flex min-w-0 items-center gap-2.5 max-sm:w-full">
         <Button
           aria-label="返回 Workflow 列表"
           className="size-9 shrink-0 rounded-lg text-muted-foreground"
@@ -143,38 +165,39 @@ export function WorkflowTopBar({
           </div>
         ) : (
           <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1">
-              {editingName ? (
-                <Input
-                  aria-label="Workflow 名称"
-                  autoFocus
-                  className="h-8 w-[min(20rem,50vw)] rounded-md px-2 text-sm font-semibold"
-                  maxLength={80}
-                  onBlur={cancelRename}
-                  onChange={(event) => setNameValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void submitRename();
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      cancelRename();
-                    }
-                  }}
-                  readOnly={renaming}
-                  value={nameValue}
-                />
-              ) : (
-                <h1 className="truncate text-base font-semibold">{workflowName}</h1>
-              )}
-              {canRename && !editingName ? (
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Badge className={getRuntimeStatusClassName(runtimeStatus)} variant="outline">
+                {getRuntimeStatusLabel(runtimeStatus)}
+              </Badge>
+              <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+              <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
+              {description ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        aria-label="查看 Workflow 描述"
+                        className="size-6 shrink-0 rounded-md text-muted-foreground"
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon icon={InformationCircleIcon} size={15} strokeWidth={1.8} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-80 whitespace-pre-wrap break-words" side="bottom" sideOffset={6}>
+                      {description}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
+              {canRename ? (
                 <Button
-                  aria-label="重命名 Workflow"
-                  className="size-7 shrink-0 rounded-md text-muted-foreground"
-                  onClick={() => setEditingName(true)}
+                  aria-label="编辑 Workflow 信息"
+                  className="size-6 shrink-0 rounded-md text-muted-foreground"
+                  onClick={() => setMetadataDialogOpen(true)}
                   size="icon"
-                  title="重命名 Workflow"
+                  title="编辑 Workflow 信息"
                   type="button"
                   variant="ghost"
                 >
@@ -183,6 +206,7 @@ export function WorkflowTopBar({
               ) : null}
             </div>
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <HugeiconsIcon className="shrink-0" icon={CloudSavingDone01Icon} size={14} strokeWidth={1.8} />
               {saveState === "error" && canRetrySave && onRetrySave ? (
                 <button
                   className="rounded px-1 py-0.5 text-destructive hover:bg-destructive/10"
@@ -196,10 +220,12 @@ export function WorkflowTopBar({
                   {getSaveStateLabel(saveState, lastSavedAt)}
                 </span>
               )}
-              <span aria-hidden="true">·</span>
-              <span className={cn("truncate", publishErrorCode && "text-destructive")}>
-                {getPublishStateLabel({ publishedAt, publishErrorCode, validatedForActivation })}
-              </span>
+              {hasUnpublishedChanges ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="shrink-0 text-amber-600">有尚未发布的修改</span>
+                </>
+              ) : null}
             </div>
           </div>
         )}
@@ -274,7 +300,81 @@ export function WorkflowTopBar({
           </>
         )}
       </div>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!metadataUpdating) setMetadataDialogOpen(open);
+        }}
+        open={metadataDialogOpen}
+      >
+        <DialogContent closeButtonDisabled={metadataUpdating}>
+          <DialogHeader>
+            <DialogTitle>编辑 Workflow 信息</DialogTitle>
+            <DialogDescription>名称用于识别 Workflow，描述会展示在标题旁的信息提示中</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitMetadata();
+            }}
+          >
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="workflow-metadata-name">Workflow 名称</label>
+              <Input
+                autoFocus
+                id="workflow-metadata-name"
+                maxLength={80}
+                onChange={(event) => setNameValue(event.target.value)}
+                readOnly={metadataUpdating}
+                value={nameValue}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium" htmlFor="workflow-metadata-description">Workflow 描述</label>
+                <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
+              </div>
+              <Textarea
+                id="workflow-metadata-description"
+                maxLength={1000}
+                onChange={(event) => setDescriptionValue(event.target.value)}
+                placeholder="填写 Workflow 的用途或目标"
+                readOnly={metadataUpdating}
+                value={descriptionValue}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={!nameValue.trim() || metadataUpdating}
+                type="submit"
+              >
+                {metadataUpdating ? "保存中" : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </header>
+  );
+}
+
+function getRuntimeStatusLabel(status: "active" | "inactive" | "paused" | "stopped") {
+  return {
+    active: "执行中",
+    inactive: "草稿",
+    paused: "已暂停",
+    stopped: "已停止",
+  }[status];
+}
+
+function getRuntimeStatusClassName(status: "active" | "inactive" | "paused" | "stopped") {
+  return cn(
+    "shrink-0 rounded-md px-1.5 py-0.5",
+    status === "active" && "border-emerald-200 bg-emerald-50 text-emerald-700",
+    status === "inactive" && "border-border bg-muted/60 text-muted-foreground",
+    status === "paused" && "border-amber-200 bg-amber-50 text-amber-700",
+    status === "stopped" && "border-border bg-muted/60 text-muted-foreground",
   );
 }
 
@@ -282,19 +382,4 @@ function getSaveStateLabel(saveState: WorkflowDraftSaveStatus, lastSavedAt: stri
   if (saveState === "error") return "保存失败";
   if (saveState === "dirty" || saveState === "saving") return "正在保存";
   return `已自动保存 ${lastSavedAt}`;
-}
-
-function getPublishStateLabel({
-  publishedAt,
-  publishErrorCode,
-  validatedForActivation,
-}: {
-  publishedAt: string | null;
-  publishErrorCode?: WorkflowRepositoryErrorCode;
-  validatedForActivation: boolean;
-}) {
-  if (publishErrorCode) return publishErrorCode === "conflict" ? "发布冲突" : "发布失败";
-  if (publishedAt) return `已发布 ${publishedAt}`;
-  if (validatedForActivation) return "已发布，待启用";
-  return "未发布";
 }

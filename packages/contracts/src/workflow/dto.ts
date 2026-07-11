@@ -76,6 +76,7 @@ export const WorkflowPermissionsSchema = Type.Object({
 
 export const WorkflowDefinitionSchema = Type.Object({
   createdAt: Type.String(),
+  description: Type.String({ maxLength: 1000 }),
   draft: WorkflowDraftSchema,
   draftVersion: Type.Integer({ minimum: 1 }),
   id: WorkflowIdSchema,
@@ -111,6 +112,11 @@ export const WorkflowRenameRequestSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 100 }),
 });
 
+export const WorkflowMetadataUpdateRequestSchema = Type.Object({
+  description: Type.String({ maxLength: 1000 }),
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+});
+
 export const WorkflowPublishRequestSchema = Type.Object({
   expectedDraftVersion: Type.Integer({ minimum: 1 }),
 });
@@ -137,6 +143,7 @@ export type WorkflowRevision = Static<typeof WorkflowRevisionSchema>;
 export type WorkflowCreateRequest = Static<typeof WorkflowCreateRequestSchema>;
 export type WorkflowSaveDraftRequest = Static<typeof WorkflowSaveDraftRequestSchema>;
 export type WorkflowRenameRequest = Static<typeof WorkflowRenameRequestSchema>;
+export type WorkflowMetadataUpdateRequest = Static<typeof WorkflowMetadataUpdateRequestSchema>;
 export type WorkflowPublishRequest = Static<typeof WorkflowPublishRequestSchema>;
 export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>;
 export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;

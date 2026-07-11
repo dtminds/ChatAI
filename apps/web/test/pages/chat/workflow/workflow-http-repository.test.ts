@@ -9,6 +9,23 @@ import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
 describe("HTTP workflow draft repository", () => {
+  it("updates workflow metadata through the metadata endpoint", async () => {
+    const definition = createDefinition({ description: "引导新客完成首购" });
+    const client = createClient({ definition, revisions: [] });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    await repository.getDocument("42");
+    await repository.updateDocumentMetadata("42", {
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+
+    expect(client.patch).toHaveBeenCalledWith("/server/workflows/42/metadata", {
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+  });
+
   it("formats API timestamps for workflow views in Asia/Shanghai", async () => {
     const definition = createDefinition({
       publishedRevision: 1,
@@ -234,6 +251,7 @@ function envelope<T>(data: T): ApiSuccessEnvelope<T> {
 function createDefinition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
     createdAt: "2026-07-10T00:00:00.000Z",
+    description: "",
     draft: {
       edges: [{ id: "edge-start-end", source: "start", target: "end" }],
       nodes: [createNode("start"), createNode("end")],

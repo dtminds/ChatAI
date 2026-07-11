@@ -176,17 +176,22 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowIdSequence = 0;
       createdDocumentIdsByRequest.clear();
     },
-    renameDocument: (workflowId, name) => {
-      const normalizedName = name.trim();
+    updateDocumentMetadata: (workflowId, metadata) => {
+      const normalizedName = metadata.name.trim();
+      const normalizedDescription = metadata.description.trim();
 
       if (!normalizedName) {
         throw new WorkflowRepositoryError("validation", "Workflow name is required");
+      }
+      if (normalizedDescription.length > 1000) {
+        throw new WorkflowRepositoryError("validation", "Workflow description is too long");
       }
 
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       const nextDocument = {
         ...currentDocument,
+        description: normalizedDescription,
         name: normalizedName,
         updatedAt: "刚刚",
       };
@@ -337,6 +342,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "18.4%",
       currentVersion: null,
+      description: "引导新客户完成首次购买",
       draft: newcomerConversionDraft,
       draftHash: createWorkflowDraftHash(newcomerConversionDraft),
       entered: "124.8万",
@@ -362,6 +368,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "23.1%",
       currentVersion: createWorkflowPublishedVersion("vip-reactivation", 1, "昨天 21:04"),
+      description: "唤醒长期未复购的会员客户",
       draft: vipReactivationDraft,
       draftHash: createWorkflowDraftHash(vipReactivationDraft),
       entered: "86.3万",
@@ -389,6 +396,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "9.7%",
       currentVersion: null,
+      description: "直播结束后继续跟进高意向客户",
       draft: liveFollowUpDraft,
       draftHash: createWorkflowDraftHash(liveFollowUpDraft),
       entered: "42.6万",
@@ -420,6 +428,7 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
     canOperate: true,
     conversion: "0%",
     currentVersion: null,
+    description: "",
     draft,
     draftHash: createWorkflowDraftHash(draft),
     entered: "0",

@@ -179,11 +179,11 @@ export function createHttpWorkflowDraftRepository(
       }
     },
 
-    async renameDocument(workflowId, name) {
+    async updateDocumentMetadata(workflowId, metadata) {
       try {
         const definition = unwrap<ApiWorkflowDefinition>(await client.patch(
-          `/server/workflows/${workflowId}/name`,
-          { name },
+          `/server/workflows/${workflowId}/metadata`,
+          metadata,
         ));
         definitions.set(workflowId, definition);
         return toDocument(definition, revisions.get(workflowId) ?? []);
@@ -298,6 +298,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
       && definition.validatedDraftVersion === definition.draftVersion,
     canOperate: definition.permissions.canOperate,
     conversion: getWorkflowConversion(draft) ?? "-",
+    description: definition.description,
     entered: "-",
     id: definition.id,
     name: definition.name,

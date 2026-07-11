@@ -167,15 +167,18 @@ function WorkflowWorkspaceContent({
         canPublish={topBar.canPublish}
         canRename={topBar.canRename}
         canRetrySave={topBar.canRetrySave}
+        description={topBar.description}
+        hasUnpublishedChanges={topBar.hasUnpublishedChanges}
         isPreviewingVersion={versionHistory.isPreviewing}
         lastSavedAt={topBar.lastSavedAt}
+        metadataUpdating={topBar.metadataUpdating}
         onBack={() => navigate("/chat/workflows")}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
-        onRename={topBar.onRename}
+        onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
         onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
           ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
@@ -189,8 +192,8 @@ function WorkflowWorkspaceContent({
         publishState={topBar.publishState}
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}
-        renaming={topBar.renaming}
         restoreState={versionHistory.restoreState}
+        runtimeStatus={topBar.runtimeStatus}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
         validatedForActivation={topBar.validatedForActivation}

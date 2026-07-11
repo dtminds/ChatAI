@@ -62,16 +62,16 @@ export function useWorkflowWorkspace(
     document,
     lastSavedAt,
     markDirty,
+    metadataUpdateState,
     publishDraft,
     publishError,
     publishState,
-    renameDocument,
-    renameState,
     retrySave,
     restoreState,
     restoreVersion,
     saveError,
     saveState,
+    updateMetadata,
   } = useWorkflowDocument(workflowId, repository, initialDocument);
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
@@ -463,12 +463,12 @@ export function useWorkflowWorkspace(
     if (result) toast.success("发布成功");
   });
 
-  const renameWorkflow = useWorkflowStableCallback(async (name: string) => {
+  const updateWorkflowMetadata = useWorkflowStableCallback(async (metadata: { description: string; name: string }) => {
     try {
-      return await renameDocument(name);
+      return await updateMetadata(metadata);
     }
     catch {
-      toast.error("重命名失败，请重试");
+      toast.error("保存失败，请重试");
       return false;
     }
   });
@@ -641,18 +641,21 @@ export function useWorkflowWorkspace(
       canPublish: permissions.canPublish,
       canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),
+      description: document.description,
+      hasUnpublishedChanges: document.publishedRevision !== null && publishState === "idle",
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
-      onRename: renameWorkflow,
+      onUpdateMetadata: updateWorkflowMetadata,
       onRetrySave: retrySave,
       publishedAt: document.publishedAt,
       publishError,
       publishState,
       publishReady: publishChecks.publishReady,
       readyChecks: publishChecks.readyChecks,
-      renaming: renameState === "renaming",
+      metadataUpdating: metadataUpdateState === "updating",
+      runtimeStatus: document.runtimeStatus,
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
       validatedForActivation: document.runtimeStatus === "inactive"

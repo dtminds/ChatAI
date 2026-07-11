@@ -79,42 +79,53 @@ describe("workflow draft service", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const createdDocument = repository.createDocument();
 
-    expect(repository.renameDocument(createdDocument.id, "活动召回").name).toBe("活动召回");
+    expect(repository.updateDocumentMetadata(createdDocument.id, {
+      description: "召回沉默客户",
+      name: "活动召回",
+    })).toMatchObject({ description: "召回沉默客户", name: "活动召回" });
     repository.deleteDocument(createdDocument.id);
 
     expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
     expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
   });
 
-  it("renames the active workflow document without reloading its draft", async () => {
+  it("updates active workflow metadata without reloading its draft", async () => {
     const baseRepository = createInMemoryWorkflowDraftRepository();
     const initialDocument = baseRepository.getDocument("newcomer-conversion");
-    let resolveRename!: (document: WorkflowDocument) => void;
-    const renameDocument = vi.fn(() => new Promise<WorkflowDocument>((resolve) => {
-      resolveRename = resolve;
+    let resolveUpdate!: (document: WorkflowDocument) => void;
+    const updateDocumentMetadata = vi.fn(() => new Promise<WorkflowDocument>((resolve) => {
+      resolveUpdate = resolve;
     }));
-    const repository = { ...baseRepository, renameDocument };
+    const repository = { ...baseRepository, updateDocumentMetadata };
     const { result } = renderHook(() => useWorkflowDocument(
       initialDocument.id,
       repository,
       initialDocument,
     ));
 
-    let firstRename!: Promise<boolean>;
+    let firstUpdate!: Promise<boolean>;
     await act(async () => {
-      firstRename = result.current.renameDocument("新客首购旅程");
-      expect(await result.current.renameDocument("重复提交")).toBe(false);
+      firstUpdate = result.current.updateMetadata({
+        description: "引导新客完成首购",
+        name: "新客首购旅程",
+      });
+      expect(await result.current.updateMetadata({ description: "重复提交", name: "重复提交" })).toBe(false);
     });
 
     await act(async () => {
-      resolveRename({ ...initialDocument, name: "新客首购旅程" });
-      expect(await firstRename).toBe(true);
+      resolveUpdate({
+        ...initialDocument,
+        description: "引导新客完成首购",
+        name: "新客首购旅程",
+      });
+      expect(await firstUpdate).toBe(true);
     });
 
-    expect(renameDocument).toHaveBeenCalledOnce();
+    expect(updateDocumentMetadata).toHaveBeenCalledOnce();
+    expect(result.current.document.description).toBe("引导新客完成首购");
     expect(result.current.document.name).toBe("新客首购旅程");
     expect(result.current.document.draft).toEqual(initialDocument.draft);
-    expect(result.current.renameState).toBe("idle");
+    expect(result.current.metadataUpdateState).toBe("idle");
   });
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {
@@ -1253,7 +1264,7 @@ function createDeferredWorkflowDraftRepository() {
     rejectSave: (index) => {
       pendingSaves[index]?.reject(new Error("save failed"));
     },
-    renameDocument: baseRepository.renameDocument,
+    updateDocumentMetadata: baseRepository.updateDocumentMetadata,
     resolveImport: (index) => {
       const pendingImport = pendingImports[index];
 

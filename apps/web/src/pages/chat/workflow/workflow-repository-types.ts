@@ -6,6 +6,7 @@ export type WorkflowListItem = {
   activationReady: boolean;
   canOperate: boolean;
   conversion: string;
+  description: string;
   entered: string;
   id: string;
   name: string;
@@ -148,7 +149,10 @@ export type WorkflowDraftWriter = {
     workflowId: string,
     draft: WorkflowDraft,
   ) => Promise<WorkflowDraftSaveResult | WorkflowDocument> | WorkflowDraftSaveResult | WorkflowDocument;
-  renameDocument: (workflowId: string, name: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  updateDocumentMetadata: (
+    workflowId: string,
+    metadata: { description: string; name: string },
+  ) => Promise<WorkflowDocument> | WorkflowDocument;
   enableDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
   pauseDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
   resumeDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
@@ -170,7 +174,10 @@ export type SyncWorkflowDraftRepository = {
     draft: WorkflowDraft,
     options?: WorkflowDraftPublishOptions,
   ) => WorkflowDraftPublishResult;
-  renameDocument: (workflowId: string, name: string) => WorkflowDocument;
+  updateDocumentMetadata: (
+    workflowId: string,
+    metadata: { description: string; name: string },
+  ) => WorkflowDocument;
   reset: () => void;
   resumeDocument: (workflowId: string) => WorkflowDocument;
   restoreVersion: (workflowId: string, versionId: string) => WorkflowDraftRestoreResult;

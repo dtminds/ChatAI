@@ -572,17 +572,22 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
   });
 
-  it("renames a workflow from the canvas header", async () => {
+  it("updates workflow metadata from the canvas header", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows/newcomer-conversion");
 
-    await user.click(await screen.findByRole("button", { name: "重命名 Workflow" }));
-    const input = screen.getByRole("textbox", { name: "Workflow 名称" });
-    await user.clear(input);
-    await user.type(input, "新客首购旅程{Enter}");
+    await user.click(await screen.findByRole("button", { name: "编辑 Workflow 信息" }));
+    const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
+    const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "新客首购旅程");
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, "引导新客完成首购");
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText("新客首购旅程")).toBeInTheDocument();
     expect(getWorkflowDocument("newcomer-conversion").name).toBe("新客首购旅程");
+    expect(getWorkflowDocument("newcomer-conversion").description).toBe("引导新客完成首购");
   });
 
   it("groups canvas actions in a single bottom toolbar", async () => {

@@ -7,6 +7,22 @@ import {
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
+  it("updates trimmed workflow metadata without changing the draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+
+    const updated = await service.updateMetadata(operator, created.id, {
+      description: "  引导新客完成首购  ",
+      name: "  新客首购旅程  ",
+    });
+
+    expect(updated).toMatchObject({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+    expect(updated.draft).toEqual(created.draft);
+  });
+
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 

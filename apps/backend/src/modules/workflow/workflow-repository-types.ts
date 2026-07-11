@@ -8,6 +8,7 @@ import type { WorkflowTriggerBindingSpec } from "@chatai/workflow-engine";
 export type WorkflowDefinitionRecord = {
   bizStatus: 0 | 1;
   createdAt: Date;
+  description: string;
   draft: WorkflowDraft;
   draftSchemaVersion: number;
   draftVersion: number;
@@ -43,6 +44,7 @@ export type WorkflowMutationResult<T> =
 export type WorkflowRepository = {
   createDefinition(input: {
     clientRequestId?: string;
+    description: string;
     draft: WorkflowDraft;
     name: string;
     opSubUserId: string;
@@ -90,8 +92,9 @@ export type WorkflowRepository = {
     definition: WorkflowDefinitionRecord;
     revision: WorkflowRevisionRecord;
   }>>;
-  renameDefinition(input: {
-    name: string;
+  updateDefinitionMetadata(input: {
+    description?: string;
+    name?: string;
     opSubUserId: string;
     uid: number;
     workflowId: string;

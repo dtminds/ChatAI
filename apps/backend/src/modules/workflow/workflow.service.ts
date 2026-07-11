@@ -3,6 +3,7 @@ import type {
   WorkflowCreateRequest,
   WorkflowDefinition,
   WorkflowDraft,
+  WorkflowMetadataUpdateRequest,
   WorkflowPublishRequest,
   WorkflowPublishResult,
   WorkflowRestoreRequest,
@@ -44,6 +45,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     return toDefinition(await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
+      description: "",
       draft: createInitialWorkflowDraft(),
       name: input.name?.trim() || "未命名 Workflow",
       opSubUserId: scope.subUserId,
@@ -66,8 +68,29 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     const normalizedName = name.trim();
     if (!normalizedName) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
-    return toDefinition(this.unwrapMutation(await this.repository.renameDefinition({
+    return toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
       name: normalizedName,
+      opSubUserId: scope.subUserId,
+      uid: scope.uid,
+      workflowId,
+    })));
+  }
+
+  async updateMetadata(
+    scope: WorkflowOperatorScope,
+    workflowId: string,
+    metadata: WorkflowMetadataUpdateRequest,
+  ) {
+    assertWorkflowAccess(scope);
+    const name = metadata.name.trim();
+    const description = metadata.description.trim();
+    if (!name) throw new BadRequestError("WORKFLOW_NAME_REQUIRED", "Workflow 名称不能为空");
+    if (description.length > 1000) {
+      throw new BadRequestError("WORKFLOW_DESCRIPTION_TOO_LONG", "Workflow 描述不能超过 1000 字");
+    }
+    return toDefinition(this.unwrapMutation(await this.repository.updateDefinitionMetadata({
+      description,
+      name,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
       workflowId,
@@ -233,6 +256,7 @@ export class WorkflowService {
 function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
   return {
     createdAt: record.createdAt.toISOString(),
+    description: record.description,
     draft: structuredClone(record.draft),
     draftVersion: record.draftVersion,
     id: record.id,

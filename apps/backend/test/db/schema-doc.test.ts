@@ -60,6 +60,9 @@ describe("database schema document", () => {
 
     expect(definitionTable).toContain("runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive'");
     expect(definitionTable).toContain("biz_status TINYINT NOT NULL DEFAULT 1");
+    expect(definitionTable).toContain(
+      "description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述'",
+    );
   });
 });
 

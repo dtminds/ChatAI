@@ -1,6 +1,6 @@
 import type { WorkflowDraft } from "./types";
 
-export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused";
+export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
 
 export type WorkflowListItem = {
   conversion: string;
@@ -42,6 +42,9 @@ export type WorkflowDocument = WorkflowListItem & {
   revision: number;
   savedAt: string;
   versionHistory: WorkflowVersionHistoryItem[];
+  draftVersion?: number;
+  runtimeStatus?: "active" | "inactive" | "paused" | "stopped";
+  validatedDraftVersion?: number | null;
 };
 
 export type WorkflowRepositoryErrorCode =
@@ -81,16 +84,28 @@ export type WorkflowDraftImportResult = WorkflowDraftSaveResult & {
   importedAt: string;
 };
 
-export type WorkflowDraftPublishResult = {
+type WorkflowDraftPublishResultBase = {
   document: WorkflowDocument;
   draft: WorkflowDraft;
   draftHash: string;
-  publishedAt: string;
-  publishedRevision: number;
   revision: number;
   updatedAt: string;
-  version: WorkflowPublishedVersion;
 };
+
+export type WorkflowDraftPublishResult = WorkflowDraftPublishResultBase & (
+  | {
+      publishedAt: null;
+      publishedRevision: null;
+      validatedOnly: true;
+      version: null;
+    }
+  | {
+      publishedAt: string;
+      publishedRevision: number;
+      validatedOnly?: false;
+      version: WorkflowPublishedVersion;
+    }
+);
 
 export type WorkflowDraftPublishOptions = {
   expectedBaseDraftHash?: string;
@@ -130,6 +145,10 @@ export type WorkflowDraftWriter = {
     draft: WorkflowDraft,
   ) => Promise<WorkflowDraftSaveResult | WorkflowDocument> | WorkflowDraftSaveResult | WorkflowDocument;
   renameDocument: (workflowId: string, name: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  enableDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  pauseDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  resumeDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
+  stopDocument?: (workflowId: string) => Promise<WorkflowDocument> | WorkflowDocument;
 };
 
 export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;

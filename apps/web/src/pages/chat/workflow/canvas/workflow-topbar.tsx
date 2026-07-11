@@ -10,11 +10,13 @@ import type {
 } from "../workflow-draft-service";
 
 export function WorkflowTopBar({
+  activationReady = false,
   canPublish = true,
   canRetrySave = false,
   isPreviewingVersion,
   lastSavedAt,
   onExitPreview,
+  onEnable,
   onOpenVersionHistory,
   onPublish,
   onPublishCheck,
@@ -33,11 +35,13 @@ export function WorkflowTopBar({
   totalChecks,
   workflowName,
 }: {
+  activationReady?: boolean;
   canPublish?: boolean;
   canRetrySave?: boolean;
   isPreviewingVersion?: boolean;
   lastSavedAt: string;
   onExitPreview?: () => void;
+  onEnable?: () => void;
   onOpenVersionHistory: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
@@ -58,6 +62,7 @@ export function WorkflowTopBar({
 }) {
   const saveStateLabel = getSaveStateLabel(saveState);
   const publishing = publishState === "publishing";
+  const primaryAction = activationReady ? onEnable : onPublish;
   const restoring = restoreState === "restoring";
   const readOnlyMode = Boolean(isPreviewingVersion);
   const previewLabel = previewVersionLabel ?? "历史版本";
@@ -172,8 +177,8 @@ export function WorkflowTopBar({
             </Button>
             <Button
               className={cn(topbarButtonClassName, "workflow-topbar-publish border-transparent")}
-              disabled={!canPublish || !publishReady || publishing || saveState === "error" || publishErrorCode === "conflict"}
-              onClick={onPublish}
+              disabled={!canPublish || !publishReady || publishing || saveState === "error" || publishErrorCode === "conflict" || (activationReady && !onEnable)}
+              onClick={primaryAction}
               type="button"
               variant={publishReady ? "default" : "secondary"}
             >
@@ -183,7 +188,9 @@ export function WorkflowTopBar({
                 strokeWidth={1.8}
               />
               <span>
-                {publishing ? "发布中" : publishErrorCode ? "重新发布" : "发布"}
+                {publishing
+                  ? activationReady ? "启用中" : "发布中"
+                  : activationReady ? "启用" : publishErrorCode ? "重新发布" : "发布"}
               </span>
             </Button>
           </>

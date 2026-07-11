@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createInMemoryWorkflowDraftRepository,
   createWorkflowDraftHash,
-  createWorkflowDraftRepository,
   getWorkflowDocument,
   getWorkflowName,
   importWorkflowDraft,
@@ -420,8 +419,8 @@ describe("workflow draft service", () => {
       .toBe("近 30 天新入会且未首购客户");
   });
 
-  it("creates the default repository through the replaceable repository factory", () => {
-    const repository = createWorkflowDraftRepository();
+  it("keeps the in-memory repository available as an explicit test fixture", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
 
     repository.saveDraft("newcomer-conversion", createDraftWithStartAudience("工厂仓库保存的人群"));
 

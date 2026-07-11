@@ -493,14 +493,14 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
   });
 
-  it("opens workflow row edit actions in a new window", async () => {
+  it("opens workflow row edit actions in the current tab", async () => {
     renderWorkflowPage("/chat/workflows");
 
     const editLink = (await screen.findAllByRole("link", { name: "编辑" }))[0];
 
     expect(editLink).toHaveAttribute("href", "/chat/workflows/newcomer-conversion");
-    expect(editLink).toHaveAttribute("target", "_blank");
-    expect(editLink).toHaveAttribute("rel", "noopener noreferrer");
+    expect(editLink).not.toHaveAttribute("target");
+    expect(editLink).not.toHaveAttribute("rel");
   });
 
   it("offers activation from the inactive workflow row menu", async () => {

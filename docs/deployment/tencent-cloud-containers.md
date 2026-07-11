@@ -100,7 +100,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
 - `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
 - `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
-- `deploy/workflow-worker.Dockerfile`：使用 Debian glibc 镜像构建并运行独立 Workflow Worker，以兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。
+- `deploy/workflow-worker.Dockerfile`：使用 Debian glibc 镜像构建并运行独立 Workflow Worker，以兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：

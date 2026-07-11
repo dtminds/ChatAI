@@ -9,7 +9,7 @@ RUN apt-get update \
   && corepack enable \
   && corepack prepare pnpm@10.34.3 --activate
 
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY apps/workflow-worker/package.json ./apps/workflow-worker/
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/workflow-engine/package.json ./packages/workflow-engine/

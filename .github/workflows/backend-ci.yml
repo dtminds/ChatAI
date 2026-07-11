@@ -109,5 +109,8 @@ jobs:
       - name: Build workflow worker image
         run: docker build -f deploy/workflow-worker.Dockerfile -t chatai-workflow-worker:ci .
 
+      - name: Verify workflow worker Pulsar binding
+        run: docker run --rm chatai-workflow-worker:ci node --input-type=module -e "await import('pulsar-client')"
+
       - name: Build backend
         run: pnpm backend:build

@@ -739,9 +739,10 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    const picker = within(canvas).getByRole("menu", { name: "选择要添加的节点" });
     await user.click(
-      within(canvas).getByRole("menuitem", {
-        name: /转人工/,
+      within(picker).getByRole("menuitem", {
+        name: "添加 转人工节点",
       }),
     );
 
@@ -764,14 +765,14 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    expect(within(canvas).getByRole("menu", { name: "从连线添加节点" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
-    expect(within(canvas).queryByRole("menu", { name: "从连线添加节点" })).not.toBeInTheDocument();
+    expect(within(canvas).queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
-    expect(within(canvas).queryByRole("menu", { name: "从连线添加节点" })).not.toBeInTheDocument();
+    expect(within(canvas).queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
   });
 
   it("keeps only one edge insertion menu open at a time", async () => {
@@ -781,11 +782,11 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    expect(within(canvas).getAllByRole("menu", { name: "从连线添加节点" })).toHaveLength(1);
+    expect(within(canvas).getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
 
     const edgeInsertButtons = within(canvas).getAllByRole("button", { name: /连线上添加节点/ });
     await user.click(edgeInsertButtons[1]!);
-    expect(within(canvas).getAllByRole("menu", { name: "从连线添加节点" })).toHaveLength(1);
+    expect(within(canvas).getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
   });
 
   it("renders a source handle for each branch path on branch nodes", async () => {

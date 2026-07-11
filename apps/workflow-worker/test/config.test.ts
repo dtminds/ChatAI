@@ -11,6 +11,8 @@ describe("workflow worker config", () => {
     expect(config.topics).toEqual({ entry: entryTopic, task: taskTopic });
     expect(config.subscriptions.entry).not.toBe(config.subscriptions.task);
     expect(config.subscriptionType).toBe("Shared");
+    expect(config.deadLetterTopics.entry).toBe(`${config.subscriptions.entry}-DLQ`);
+    expect(config.deadLetterTopics.task).toBe(`${config.subscriptions.task}-DLQ`);
   });
 
   it("requires real broker credentials without exposing secret values", () => {

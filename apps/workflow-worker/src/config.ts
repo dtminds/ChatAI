@@ -7,6 +7,7 @@ export type WorkflowWorkerConfig = {
   environment: WorkflowEnvironment;
   healthPort: number;
   logLevel: string;
+  maxRedeliverCount: number;
   pulsar: {
     serviceUrl: string | null;
     token: string | null;
@@ -17,15 +18,23 @@ export type WorkflowWorkerConfig = {
     entry: string;
     task: string;
   };
+  deadLetterTopics: {
+    entry: string | null;
+    task: string | null;
+  };
   topics: {
     entry: string;
     task: string;
   };
 };
 
-const ALL_ROLES: WorkflowWorkerRole[] = [
+const DEFAULT_ROLES: WorkflowWorkerRole[] = [
   "entry-consumer",
   "task-consumer",
+];
+
+const ALL_ROLES: WorkflowWorkerRole[] = [
+  ...DEFAULT_ROLES,
   "scheduler",
   "outbox",
   "reconciler",
@@ -43,18 +52,29 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
 
   const subscriptionPrefix = optionalValue(env.WORKFLOW_SUBSCRIPTION_PREFIX)
     ?? `consumer-chatai-worker-env-${environment}`;
+  const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? `${subscriptionPrefix}-entry`;
+  const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? `${subscriptionPrefix}-task`;
   return {
     broker,
     databaseUrl,
     environment,
     healthPort: parsePositiveInteger(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
     logLevel: optionalValue(env.LOG_LEVEL) ?? "info",
+    maxRedeliverCount: parsePositiveInteger(
+      env.WORKFLOW_MAX_REDELIVER_COUNT,
+      5,
+      "WORKFLOW_MAX_REDELIVER_COUNT",
+    ),
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
     subscriptionType: "Shared",
     subscriptions: {
-      entry: optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? `${subscriptionPrefix}-entry`,
-      task: optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? `${subscriptionPrefix}-task`,
+      entry: entrySubscription,
+      task: taskSubscription,
+    },
+    deadLetterTopics: {
+      entry: optionalValue(env.WORKFLOW_ENTRY_DLQ_TOPIC) ?? `${entrySubscription}-DLQ`,
+      task: optionalValue(env.WORKFLOW_TASK_DLQ_TOPIC) ?? `${taskSubscription}-DLQ`,
     },
     topics: {
       entry: optionalValue(env.WORKFLOW_ENTRY_TOPIC) ?? `topic-workflow-entry-${environment}`,
@@ -69,7 +89,7 @@ function parseEnvironment(value: string | undefined): WorkflowEnvironment {
 }
 
 function parseRoles(value: string | undefined) {
-  if (!optionalValue(value)) return new Set(ALL_ROLES);
+  if (!optionalValue(value)) return new Set(DEFAULT_ROLES);
   const roles = value!.split(",").map(item => item.trim()).filter(Boolean);
   const invalid = roles.filter(role => !ALL_ROLES.includes(role as WorkflowWorkerRole));
   if (invalid.length > 0) throw new Error(`Unknown Workflow Worker role: ${invalid.join(", ")}`);

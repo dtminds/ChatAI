@@ -514,7 +514,7 @@ function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
     shardId: row.shard_id,
     status: parseRunStatus(row.status),
     subjectId: row.subject_id,
-    uid: row.uid,
+    uid: normalizeTenantId(row.uid),
     workflowId: normalizeId(row.workflow_id),
   };
 }
@@ -587,7 +587,7 @@ function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {
     status: parseTaskStatus(row.status),
     taskType: row.task_type,
     taskVersion: row.task_version,
-    uid: row.uid,
+    uid: normalizeTenantId(row.uid),
     workflowId: normalizeId(row.workflow_id),
   };
 }
@@ -600,7 +600,7 @@ function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBinding
     id: normalizeId(row.id),
     revision: Number(row.revision),
     status: Number(row.status) === 1 ? 1 : 0,
-    uid: Number(row.uid),
+    uid: normalizeTenantId(row.uid),
     updatedAt: toDate(row.update_time),
     workflowId: normalizeId(row.workflow_id),
   };
@@ -656,6 +656,11 @@ function normalizeId(value: unknown) {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
   if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return value;
   throw new Error("Database returned an invalid BIGINT identifier");
+}
+function normalizeTenantId(value: unknown) {
+  const normalized = typeof value === "string" ? Number(value) : value;
+  if (typeof normalized === "number" && Number.isSafeInteger(normalized) && normalized > 0) return normalized;
+  throw new Error("Database returned an invalid tenant identifier");
 }
 function toDate(value: unknown) {
   if (value instanceof Date) return value;

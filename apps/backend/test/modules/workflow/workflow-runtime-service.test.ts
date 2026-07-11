@@ -20,6 +20,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-1",
       trigger: { source: "member-created" },
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
     const duplicate = await service.startRun({
@@ -27,6 +28,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-1",
       trigger: { source: "member-created" },
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -63,6 +65,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-2",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
     const start = await service.executeTask({
@@ -100,6 +103,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-3",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -143,6 +147,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-deleted",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -157,6 +162,23 @@ describe("WorkflowRuntimeService", () => {
 
     await expect(runtime.findTask(owner.uid, started.task.id))
       .resolves.toMatchObject({ status: "cancelled", taskVersion: 2 });
+  });
+
+  it("rejects an entry matched against a stale trigger binding revision", async () => {
+    const control = new InMemoryWorkflowRepository();
+    const runtime = createRuntimeRepository(control);
+    const definition = await createEnabledWorkflow(control, createDraft());
+    const service = new WorkflowRuntimeService(control, runtime);
+
+    await expect(service.startRun({
+      entryEventId: "event-stale-binding",
+      expectedRevision: 2,
+      subjectId: "customer-stale",
+      trigger: {},
+      uid: owner.uid,
+      workflowId: definition.id,
+    })).rejects.toMatchObject({ code: "WORKFLOW_DEFINITION_STALE" });
+    expect(runtime.runs).toHaveLength(0);
   });
 });
 

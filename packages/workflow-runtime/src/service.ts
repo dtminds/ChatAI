@@ -32,6 +32,7 @@ export class WorkflowRuntimeService {
 
   async startRun(input: {
     entryEventId: string;
+    expectedRevision: number;
     subjectId: string;
     trigger: Record<string, unknown>;
     uid: number;
@@ -42,6 +43,7 @@ export class WorkflowRuntimeService {
     if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
       throw runtimeStatusError(definition.runtimeStatus);
     }
+    if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
     const revision = await this.controlRepository.findRevision(
       input.uid,
       input.workflowId,

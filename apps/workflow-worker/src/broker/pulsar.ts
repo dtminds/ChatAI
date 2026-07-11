@@ -1,11 +1,11 @@
 import Pulsar from "pulsar-client";
 import type {
   WorkflowBroker,
-  WorkflowBrokerMessage,
   WorkflowBrokerPublishInput,
   WorkflowBrokerSubscribeInput,
   WorkflowBrokerSubscription,
 } from "./types.js";
+import { createPulsarBrokerMessage } from "./pulsar-message.js";
 
 export class PulsarWorkflowBroker implements WorkflowBroker {
   private readonly client: Pulsar.Client;
@@ -39,7 +39,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
         maxRedeliverCount: input.maxRedeliverCount,
       } : undefined,
       listener: (message, source) => {
-        const wrapped = createMessage(message, source);
+        const wrapped = createPulsarBrokerMessage(message, source);
         void Promise.resolve(input.handler(wrapped)).catch(() => wrapped.negativeAck());
       },
       subscription: input.subscription,
@@ -85,26 +85,4 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
   private assertOpen() {
     if (this.closed) throw new Error("Workflow broker is closed");
   }
-}
-
-function createMessage(message: Pulsar.Message, consumer: Pulsar.Consumer): WorkflowBrokerMessage {
-  let settled = false;
-  return {
-    ack: async () => {
-      if (settled) return;
-      settled = true;
-      await consumer.acknowledge(message);
-    },
-    data: message.getData(),
-    id: message.getMessageId().toString(),
-    key: message.getPartitionKey() || null,
-    negativeAck: () => {
-      if (settled) return;
-      settled = true;
-      consumer.negativeAcknowledge(message);
-    },
-    properties: Object.freeze({ ...message.getProperties() }),
-    redeliveryCount: message.getRedeliveryCount(),
-    topic: message.getTopicName(),
-  };
 }

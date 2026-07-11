@@ -89,6 +89,15 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     ]));
   });
 
+  it("normalizes string BIGINT tenant ids at the runtime boundary", async () => {
+    const db = createTriggerBindingDbMock({ uid: "8" });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const [binding] = await repository.listActiveTriggerBindings(8, "contact.friend_added");
+
+    expect(binding?.uid).toBe(8);
+  });
+
   it.each([
     { action: "defer", expectedStatus: "pending", runtimeStatus: "paused" },
     { action: "cancel", expectedStatus: "cancelled", runtimeStatus: "stopped" },
@@ -330,7 +339,7 @@ function createClaimDbMock(runtimeStatus = "active") {
   return db;
 }
 
-function createTriggerBindingDbMock() {
+function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
   const now = new Date("2026-07-10T00:00:00.000Z");
   const db = {
     joinReferences: [] as unknown[][],
@@ -355,7 +364,7 @@ function createTriggerBindingDbMock() {
             id: "9",
             revision: 2,
             status: 1,
-            uid: 8,
+            uid: options.uid ?? 8,
             update_time: now,
             workflow_id: "42",
           }];

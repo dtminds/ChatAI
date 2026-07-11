@@ -1,12 +1,15 @@
-import type {
+import {
   WorkflowEntryEventType,
   WorkflowExecutionSpec,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
   WorkflowStartConfig,
+  WorkflowTaskMessageSchema,
   WorkflowTaskStatus,
+  type WorkflowTaskMessage,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import {
   getWorkflowExecutionBoundaryDecision,
@@ -21,6 +24,7 @@ import type {
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowOutboxRecord,
   WorkflowRunRecord,
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
@@ -248,6 +252,12 @@ export class MysqlWorkflowRuntimeRepository implements
         task_version: task.taskVersion + 1,
       }).where("uid", "=", input.uid).where("id", "=", input.taskId)
         .where("task_version", "=", input.expectedTaskVersion).executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        status: "running",
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.runId)
+        .where("status", "in", ["queued", "waiting"])
+        .executeTakeFirst();
       return {
         kind: "success" as const,
         task: {
@@ -259,6 +269,138 @@ export class MysqlWorkflowRuntimeRepository implements
         },
       };
     });
+  }
+
+  async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
+    if (input.limit <= 0 || input.shardIds?.length === 0) {
+      return { cancelled: 0, deferred: 0, dispatched: 0 };
+    }
+    return this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom(`${TASK_TABLE} as task`)
+        .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
+          .onRef("definition.uid", "=", "task.uid")
+          .onRef("definition.id", "=", "task.workflow_id"))
+        .selectAll("task")
+        .where("task.status", "=", "pending")
+        .where("task.bucket_time", "<=", floorToMinute(input.now))
+        .where("task.due_at", "<=", input.now)
+        .where(eb => eb.or([
+          eb("definition.id", "is", null),
+          eb("definition.biz_status", "=", 0),
+          eb("definition.runtime_status", "!=", "paused"),
+        ]))
+        .orderBy("task.bucket_time", "asc")
+        .orderBy("task.due_at", "asc")
+        .orderBy("task.id", "asc")
+        .limit(input.limit)
+        .forUpdate()
+        .skipLocked();
+      if (input.shardIds) query = query.where("task.shard_id", "in", input.shardIds);
+      const rows = await query.execute();
+      const result = { cancelled: 0, deferred: 0, dispatched: 0 };
+      for (const row of rows) {
+        const task = mapTask(row);
+        const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+          .select(["biz_status", "runtime_status"])
+          .where("uid", "=", task.uid)
+          .where("id", "=", task.workflowId)
+          .forShare()
+          .executeTakeFirst();
+        const decision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (decision === "defer") {
+          result.deferred += 1;
+          continue;
+        }
+        const taskVersion = task.taskVersion + 1;
+        if (decision === "cancel") {
+          await trx.updateTable(TASK_TABLE).set({
+            lease_expires_at: null,
+            lease_owner: null,
+            status: "cancelled",
+            task_version: taskVersion,
+          }).where("id", "=", task.id)
+            .where("status", "=", "pending")
+            .where("task_version", "=", task.taskVersion)
+            .executeTakeFirstOrThrow();
+          result.cancelled += 1;
+          continue;
+        }
+        transitionTask(transitionTask(task.status, "leased"), "dispatched");
+        await trx.updateTable(TASK_TABLE).set({
+          status: "dispatched",
+          task_version: taskVersion,
+        }).where("id", "=", task.id)
+          .where("status", "=", "pending")
+          .where("task_version", "=", task.taskVersion)
+          .executeTakeFirstOrThrow();
+        await insertTaskOutbox(trx, { ...task, status: "dispatched", taskVersion }, input.now);
+        result.dispatched += 1;
+      }
+      return result;
+    });
+  }
+
+  async claimOutboxBatch(input: Parameters<WorkflowRuntimeRepository["claimOutboxBatch"]>[0]) {
+    if (input.limit <= 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(OUTBOX_TABLE).selectAll()
+        .where("status", "=", "pending")
+        .where("next_attempt_at", "<=", input.now)
+        .orderBy("next_attempt_at", "asc")
+        .orderBy("id", "asc")
+        .limit(input.limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return [];
+      await trx.updateTable(OUTBOX_TABLE).set({
+        attempt: sql<number>`attempt + 1`,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }).where("id", "in", ids)
+        .where("status", "=", "pending")
+        .executeTakeFirstOrThrow();
+      return rows.map(row => mapOutbox({
+        ...row,
+        attempt: row.attempt + 1,
+        lease_expires_at: input.leaseExpiresAt,
+        lease_owner: input.leaseOwner,
+        status: "leased",
+      }));
+    });
+  }
+
+  async markOutboxFailed(input: Parameters<WorkflowRuntimeRepository["markOutboxFailed"]>[0]) {
+    const result = await this.db.updateTable(OUTBOX_TABLE).set({
+      lease_expires_at: null,
+      lease_owner: null,
+      next_attempt_at: input.nextAttemptAt,
+      status: "pending",
+    }).where("id", "=", input.id)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  async markOutboxSent(input: Parameters<WorkflowRuntimeRepository["markOutboxSent"]>[0]) {
+    const result = await this.db.updateTable(OUTBOX_TABLE).set({
+      lease_expires_at: null,
+      lease_owner: null,
+      sent_at: input.sentAt,
+      status: "sent",
+    }).where("id", "=", input.id)
+      .where("status", "=", "leased")
+      .where("lease_owner", "=", input.leaseOwner)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
   }
 
   commitNodeResult(input: WorkflowCommitNodeResultInput) {
@@ -364,19 +506,52 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async recoverExpiredLeases(input: Parameters<WorkflowRuntimeRepository["recoverExpiredLeases"]>[0]) {
-    const rows = await this.db.selectFrom(TASK_TABLE).select("id")
-      .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
-      .orderBy("lease_expires_at", "asc").orderBy("id", "asc").limit(input.limit).execute();
-    const taskIds = rows.map((row) => row.id);
-    if (taskIds.length === 0) return 0;
-    const update = await this.db.updateTable(TASK_TABLE).set({
-      lease_expires_at: null,
-      lease_owner: null,
-      status: "pending",
-      task_version: sql<number>`task_version + 1`,
-    }).where("id", "in", taskIds).where("status", "=", "running")
-      .where("lease_expires_at", "<=", input.now).executeTakeFirst();
-    return Number(update.numUpdatedRows);
+    if (input.limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(TASK_TABLE).select("id")
+        .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc").orderBy("id", "asc").limit(input.limit)
+        .forUpdate().skipLocked().execute();
+      const taskIds = rows.map((row) => row.id);
+      if (taskIds.length === 0) return 0;
+      const update = await trx.updateTable(TASK_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "pending",
+        task_version: sql<number>`task_version + 1`,
+      }).where("id", "in", taskIds).where("status", "=", "running")
+        .where("lease_expires_at", "<=", input.now).executeTakeFirst();
+      return Number(update.numUpdatedRows);
+    });
+  }
+
+  async recoverExpiredOutboxLeases(
+    input: Parameters<WorkflowRuntimeRepository["recoverExpiredOutboxLeases"]>[0],
+  ) {
+    if (input.limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(OUTBOX_TABLE).select("id")
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc")
+        .orderBy("id", "asc")
+        .limit(input.limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return 0;
+      const update = await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        next_attempt_at: input.now,
+        status: "pending",
+      }).where("id", "in", ids)
+        .where("status", "=", "leased")
+        .where("lease_expires_at", "<=", input.now)
+        .executeTakeFirst();
+      return Number(update.numUpdatedRows);
+    });
   }
 
   async cancelWorkflowBatch(input: Parameters<WorkflowRuntimeRepository["cancelWorkflowBatch"]>[0]) {
@@ -409,6 +584,57 @@ export class MysqlWorkflowRuntimeRepository implements
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
         hasMore: rows.length > selectedRows.length,
+        lastRunId: normalizeId(runIds.at(-1)),
+      };
+    });
+  }
+
+  async cancelUnavailableWorkflowRuns(
+    input: Parameters<WorkflowRuntimeRepository["cancelUnavailableWorkflowRuns"]>[0],
+  ) {
+    if (input.limit <= 0) return { cancelled: 0, hasMore: false, lastRunId: null };
+    return this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom(`${RUN_TABLE} as run`)
+        .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
+          .onRef("definition.uid", "=", "run.uid")
+          .onRef("definition.id", "=", "run.workflow_id"))
+        .select("run.id")
+        .where("run.status", "in", ["queued", "running", "waiting"])
+        .where(eb => eb.or([
+          eb("definition.id", "is", null),
+          eb("definition.biz_status", "=", 0),
+          eb("definition.runtime_status", "in", ["inactive", "stopped"]),
+        ]))
+        .orderBy("run.id", "asc")
+        .limit(input.limit + 1)
+        .forUpdate()
+        .skipLocked();
+      if (input.afterRunId) query = query.where("run.id", ">", input.afterRunId);
+      const rows = await query.execute();
+      const selected = rows.slice(0, input.limit);
+      const runIds = selected.map(row => row.id);
+      if (runIds.length === 0) return { cancelled: 0, hasMore: false, lastRunId: null };
+      const now = new Date();
+      const runUpdate = await trx.updateTable(RUN_TABLE).set({
+        completed_at: now,
+        lock_version: sql<number>`lock_version + 1`,
+        next_execute_at: null,
+        status: "cancelled",
+        terminal_reason: "workflow_stopped",
+      }).where("id", "in", runIds)
+        .where("status", "in", ["queued", "running", "waiting"])
+        .executeTakeFirst();
+      await trx.updateTable(TASK_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      }).where("run_id", "in", runIds)
+        .where("status", "in", ["pending", "leased", "dispatched", "running"])
+        .executeTakeFirst();
+      return {
+        cancelled: Number(runUpdate.numUpdatedRows),
+        hasMore: rows.length > selected.length,
         lastRunId: normalizeId(runIds.at(-1)),
       };
     });
@@ -468,17 +694,58 @@ async function insertTask(
 }
 
 function insertTaskOutbox(trx: RuntimeTransaction, task: WorkflowTaskRecord, now: Date) {
+  const payload = createTaskMessage(task, now);
   return trx.insertInto(OUTBOX_TABLE).values({
     aggregate_id: task.id,
     aggregate_type: "workflow_task",
     attempt: 0,
     event_type: "workflow.task.ready",
+    lease_expires_at: null,
+    lease_owner: null,
     next_attempt_at: now,
-    payload_json: stringifyJson({ taskId: task.id, taskVersion: task.taskVersion, uid: String(task.uid) }),
+    payload_json: stringifyJson(payload),
     sent_at: null,
     status: "pending",
     uid: task.uid,
   }).executeTakeFirstOrThrow();
+}
+
+function createTaskMessage(task: WorkflowTaskRecord, now: Date): WorkflowTaskMessage {
+  return {
+    messageId: `workflow-task:${task.id}:v${task.taskVersion}`,
+    occurredAt: now.toISOString(),
+    runId: task.runId,
+    shardId: task.shardId,
+    taskId: task.id,
+    taskVersion: task.taskVersion,
+    uid: String(task.uid),
+  };
+}
+
+function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {
+  const status = row.status;
+  if (status !== "pending" && status !== "leased" && status !== "sent") {
+    throw new Error(`Unknown workflow outbox status: ${status}`);
+  }
+  if (row.event_type !== "workflow.task.ready") {
+    throw new Error(`Unknown workflow outbox event type: ${row.event_type}`);
+  }
+  const payload = parseJson(row.payload_json);
+  if (!Value.Check(WorkflowTaskMessageSchema, payload)) {
+    throw new Error("Workflow Outbox contains an invalid task message");
+  }
+  return {
+    attempt: row.attempt,
+    eventType: "workflow.task.ready",
+    id: normalizeId(row.id),
+    leaseExpiresAt: row.lease_expires_at ? toDate(row.lease_expires_at) : null,
+    leaseOwner: row.lease_owner,
+    nextAttemptAt: toDate(row.next_attempt_at),
+    payload: structuredClone(payload) as WorkflowTaskMessage,
+    sentAt: row.sent_at ? toDate(row.sent_at) : null,
+    status,
+    uid: normalizeTenantId(row.uid),
+  };
 }
 
 function createRunRecord(id: string, input: WorkflowCreateRunInput, admittedAt: Date): WorkflowRunRecord {

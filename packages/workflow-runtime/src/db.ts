@@ -129,6 +129,8 @@ export interface WorkflowOutboxTable {
   create_time: GeneratedDate;
   event_type: string;
   id: Generated<DatabaseId>;
+  lease_expires_at: NullableDate;
+  lease_owner: string | null;
   next_attempt_at: DatabaseDate;
   payload_json: JsonText;
   sent_at: NullableDate;

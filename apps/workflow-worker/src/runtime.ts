@@ -4,9 +4,17 @@ import type { WorkflowWorkerConfig } from "./config.js";
 import type { startEntryConsumer } from "./entry-consumer.js";
 import type { WorkflowReadiness } from "./health.js";
 import type { startTaskConsumer } from "./task-consumer.js";
+import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
+import type { reconcileWorkflowRuntime } from "./reconciler.js";
+import type { startRoleLoop } from "./role-loop.js";
+import type { scheduleWorkflowTasks } from "./scheduler.js";
 
 type WorkerRuntimeService = Parameters<typeof startEntryConsumer>[0]["runtimeService"]
   & Parameters<typeof startTaskConsumer>[0]["runtimeService"];
+type WorkerLogger = {
+  error(value: unknown, message?: string): void;
+  info(value: unknown, message?: string): void;
+};
 
 export async function startWorkflowWorker(input: {
   config: WorkflowWorkerConfig;
@@ -50,12 +58,21 @@ export async function startWorkflowWorkerRuntime(input: {
   database: { destroy(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   pingDatabase(): Promise<void>;
+  logger: WorkerLogger;
+  outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
+  outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
+  reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
+  reconcilerService: Parameters<typeof reconcileWorkflowRuntime>[0]["reconciler"];
+  roleLoop: typeof startRoleLoop;
   runtimeService: WorkerRuntimeService;
+  scheduler(input: Parameters<typeof scheduleWorkflowTasks>[0]): ReturnType<typeof scheduleWorkflowTasks>;
+  schedulerRepository: Parameters<typeof scheduleWorkflowTasks>[0]["repository"];
   taskConsumer: typeof startTaskConsumer;
   triggerBindingReader: WorkflowTriggerBindingReader;
   workerId: string;
 }) {
   const subscriptions: WorkflowBrokerSubscription[] = [];
+  const loops: Array<{ close(): Promise<void> }> = [];
   const readiness: WorkflowReadiness = {
     broker: true,
     database: false,
@@ -90,6 +107,40 @@ export async function startWorkflowWorkerRuntime(input: {
       }));
       readiness.roles["task-consumer"] = true;
     }
+    if (input.config.roles.has("scheduler")) {
+      loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>
+        input.scheduler({
+          limit: input.config.runtime.batchSize,
+          now: new Date(),
+          repository: input.schedulerRepository,
+          shardIds: input.config.runtime.shardIds,
+        })));
+    }
+    if (input.config.roles.has("outbox")) {
+      loops.push(startBackgroundRole("outbox", input.config.runtime.outboxIntervalMs, () =>
+        input.outboxPublisher({
+          broker: input.broker,
+          leaseDurationMs: input.config.runtime.leaseDurationMs,
+          leaseOwner: input.workerId,
+          limit: input.config.runtime.batchSize,
+          repository: input.outboxRepository,
+          retryDelayMs: input.config.runtime.retryDelayMs,
+          topic: input.config.topics.task,
+        })));
+    }
+    if (input.config.roles.has("reconciler")) {
+      let afterRunId: string | undefined;
+      loops.push(startBackgroundRole("reconciler", input.config.runtime.reconcileIntervalMs, async () => {
+        const result = await input.reconciler({
+          afterRunId,
+          limit: input.config.runtime.batchSize,
+          now: new Date(),
+          reconciler: input.reconcilerService,
+        });
+        afterRunId = result.nextCursor ?? undefined;
+        return result;
+      }));
+    }
   } catch (error) {
     await closeResources();
     throw error;
@@ -106,7 +157,28 @@ export async function startWorkflowWorkerRuntime(input: {
     for (const role of Object.keys(readiness.roles)) readiness.roles[role] = false;
     readiness.broker = false;
     readiness.database = false;
+    await Promise.allSettled(loops.map(loop => loop.close()));
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
     await Promise.allSettled([input.broker.close(), input.database.destroy()]);
+  }
+
+  function startBackgroundRole(
+    role: "outbox" | "reconciler" | "scheduler",
+    intervalMs: number,
+    run: () => Promise<unknown>,
+  ) {
+    return input.roleLoop({
+      intervalMs,
+      onError: error => {
+        readiness.roles[role] = false;
+        input.logger.error({ error, role }, "workflow worker role iteration failed");
+      },
+      onHeartbeat: heartbeat => {
+        readiness.roles[role] = true;
+        input.logger.info({ ...heartbeat, role }, "workflow worker role iteration completed");
+      },
+      role,
+      run,
+    });
   }
 }

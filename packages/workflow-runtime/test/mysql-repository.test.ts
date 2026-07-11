@@ -63,6 +63,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.definitionReadShareLocked).toBe(true);
+    expect(db.runUpdate).toMatchObject({ status: "running" });
   });
 
   it("reads only active current-revision trigger bindings through the definition join", async () => {
@@ -298,6 +299,7 @@ function createClaimDbMock(runtimeStatus = "active") {
   };
   const db = {
     definitionReadShareLocked: false,
+    runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
@@ -328,9 +330,11 @@ function createClaimDbMock(runtimeStatus = "active") {
       const builder = {
         set(values: Record<string, unknown>) {
           if (table === "xy_wap_embed_workflow_task") db.taskUpdate = values;
+          if (table === "xy_wap_embed_workflow_run") db.runUpdate = values;
           return builder;
         },
         where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;

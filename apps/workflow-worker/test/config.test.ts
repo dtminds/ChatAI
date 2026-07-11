@@ -24,6 +24,27 @@ describe("workflow worker config", () => {
       WORKFLOW_PULSAR_TOKEN: token,
     }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
   });
+
+  it("starts every Phase 3 role by default with bounded runtime settings", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv());
+
+    expect([...config.roles].sort()).toEqual([
+      "entry-consumer",
+      "outbox",
+      "reconciler",
+      "scheduler",
+      "task-consumer",
+    ]);
+    expect(config.runtime).toMatchObject({
+      batchSize: 100,
+      leaseDurationMs: 60_000,
+      outboxIntervalMs: 1_000,
+      reconcileIntervalMs: 30_000,
+      retryDelayMs: 5_000,
+      schedulerIntervalMs: 1_000,
+    });
+    expect(config.runtime.shardIds).toHaveLength(256);
+  });
 });
 
 function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {

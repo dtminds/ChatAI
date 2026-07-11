@@ -1,6 +1,7 @@
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowOutboxRecord,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
@@ -27,7 +28,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly tasks: WorkflowTaskRecord[] = [];
   readonly nodeExecutions: NodeExecutionRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
-  private outbox: Array<{ eventType: string; id: string; taskId: string; uid: number }> = [];
+  private outbox: WorkflowOutboxRecord[] = [];
   private nextId = 1n;
 
   constructor(
@@ -91,7 +92,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     });
     this.runs.push(run);
     this.tasks.push(task);
-    this.outbox.push({ eventType: "workflow.task.ready", id: this.createId(), taskId: task.id, uid: input.uid });
+    this.outbox.push(createOutbox(this.createId(), task, admittedAt));
     return { deduplicated: false, kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
@@ -117,6 +118,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.taskVersion += 1;
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
+    const run = this.runs.find(item => item.id === task.runId && item.uid === task.uid);
+    if (run?.status === "queued") run.status = transitionRun(run.status, "running");
     return { kind: "success" as const, task: clone(task) };
   }
 
@@ -145,6 +148,42 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return {
       cancelled: selected.length,
       hasMore: candidates.length > selected.length,
+      lastRunId: selected.at(-1)?.id ?? null,
+    };
+  }
+
+  async cancelUnavailableWorkflowRuns(
+    input: Parameters<WorkflowRuntimeRepository["cancelUnavailableWorkflowRuns"]>[0],
+  ) {
+    const unavailable: WorkflowRunRecord[] = [];
+    for (const run of this.runs) {
+      if (run.status !== "queued" && run.status !== "running" && run.status !== "waiting") continue;
+      if (input.afterRunId && BigInt(run.id) <= BigInt(input.afterRunId)) continue;
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid: run.uid, workflowId: run.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") unavailable.push(run);
+    }
+    unavailable.sort((first, second) => BigInt(first.id) < BigInt(second.id) ? -1 : 1);
+    const selected = unavailable.slice(0, Math.max(0, input.limit));
+    const selectedIds = new Set(selected.map(run => run.id));
+    for (const run of selected) {
+      run.status = "cancelled";
+      run.lockVersion += 1;
+      run.nextExecuteAt = null;
+    }
+    for (const task of this.tasks) {
+      if (selectedIds.has(task.runId)
+        && (task.status === "pending" || task.status === "leased" || task.status === "dispatched" || task.status === "running")) {
+        task.status = "cancelled";
+        task.taskVersion += 1;
+        task.leaseOwner = null;
+        task.leaseExpiresAt = null;
+      }
+    }
+    return {
+      cancelled: selected.length,
+      hasMore: unavailable.length > selected.length,
       lastRunId: selected.at(-1)?.id ?? null,
     };
   }
@@ -204,7 +243,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       nextTask = createTask(this.createId(), run, input.nextTask);
       this.tasks.push(nextTask);
       if (nextTask.status === "dispatched") {
-        this.outbox.push({ eventType: "workflow.task.ready", id: this.createId(), taskId: nextTask.id, uid: input.uid });
+        this.outbox.push(createOutbox(this.createId(), nextTask, this.now()));
       }
     } else {
       run.status = nextRunStatus;
@@ -226,6 +265,102 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       task.taskVersion += 1;
       task.leaseOwner = null;
       task.leaseExpiresAt = null;
+    }
+    return recoverable.length;
+  }
+
+  async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
+    const shardIds = input.shardIds ? new Set(input.shardIds) : null;
+    const candidates = this.tasks
+      .filter(task => task.status === "pending"
+        && task.dueAt <= input.now
+        && (!shardIds || shardIds.has(task.shardId)))
+      .sort((first, second) => compareDateAndId(
+        first.dueAt,
+        first.id,
+        second.dueAt,
+        second.id,
+      ));
+    const result = { cancelled: 0, deferred: 0, dispatched: 0 };
+    for (const task of candidates) {
+      if (result.cancelled + result.dispatched >= Math.max(0, input.limit)) break;
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      const decision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+      if (decision === "defer") {
+        result.deferred += 1;
+        continue;
+      }
+      task.taskVersion += 1;
+      if (decision === "cancel") {
+        task.status = "cancelled";
+        result.cancelled += 1;
+        continue;
+      }
+      task.status = "dispatched";
+      this.outbox.push(createOutbox(this.createId(), task, input.now));
+      result.dispatched += 1;
+    }
+    return result;
+  }
+
+  async claimOutboxBatch(input: Parameters<WorkflowRuntimeRepository["claimOutboxBatch"]>[0]) {
+    const candidates = this.outbox
+      .filter(item => item.status === "pending" && item.nextAttemptAt <= input.now)
+      .sort((first, second) => compareDateAndId(
+        first.nextAttemptAt,
+        first.id,
+        second.nextAttemptAt,
+        second.id,
+      ))
+      .slice(0, Math.max(0, input.limit));
+    for (const item of candidates) {
+      item.status = "leased";
+      item.attempt += 1;
+      item.leaseOwner = input.leaseOwner;
+      item.leaseExpiresAt = input.leaseExpiresAt;
+    }
+    return clone(candidates);
+  }
+
+  async markOutboxFailed(input: Parameters<WorkflowRuntimeRepository["markOutboxFailed"]>[0]) {
+    const item = this.outbox.find(candidate => candidate.id === input.id
+      && candidate.status === "leased"
+      && candidate.leaseOwner === input.leaseOwner);
+    if (!item) return false;
+    item.status = "pending";
+    item.nextAttemptAt = input.nextAttemptAt;
+    item.leaseOwner = null;
+    item.leaseExpiresAt = null;
+    return true;
+  }
+
+  async markOutboxSent(input: Parameters<WorkflowRuntimeRepository["markOutboxSent"]>[0]) {
+    const item = this.outbox.find(candidate => candidate.id === input.id
+      && candidate.status === "leased"
+      && candidate.leaseOwner === input.leaseOwner);
+    if (!item) return false;
+    item.status = "sent";
+    item.sentAt = input.sentAt;
+    item.leaseOwner = null;
+    item.leaseExpiresAt = null;
+    return true;
+  }
+
+  async recoverExpiredOutboxLeases(
+    input: Parameters<WorkflowRuntimeRepository["recoverExpiredOutboxLeases"]>[0],
+  ) {
+    const recoverable = this.outbox
+      .filter(item => item.status === "leased"
+        && item.leaseExpiresAt
+        && item.leaseExpiresAt <= input.now)
+      .slice(0, Math.max(0, input.limit));
+    for (const item of recoverable) {
+      item.status = "pending";
+      item.leaseOwner = null;
+      item.leaseExpiresAt = null;
+      item.nextAttemptAt = input.now;
     }
     return recoverable.length;
   }
@@ -283,7 +418,35 @@ function createTask(
   };
 }
 
+function createOutbox(id: string, task: WorkflowTaskRecord, now: Date): WorkflowOutboxRecord {
+  return {
+    attempt: 0,
+    eventType: "workflow.task.ready",
+    id,
+    leaseExpiresAt: null,
+    leaseOwner: null,
+    nextAttemptAt: now,
+    payload: {
+      messageId: `workflow-task:${task.id}:v${task.taskVersion}`,
+      occurredAt: now.toISOString(),
+      runId: task.runId,
+      shardId: task.shardId,
+      taskId: task.id,
+      taskVersion: task.taskVersion,
+      uid: String(task.uid),
+    },
+    sentAt: null,
+    status: "pending",
+    uid: task.uid,
+  };
+}
+
 function clone<T>(value: T): T { return structuredClone(value); }
+function compareDateAndId(firstDate: Date, firstId: string, secondDate: Date, secondId: string) {
+  const dateOrder = firstDate.getTime() - secondDate.getTime();
+  if (dateOrder !== 0) return dateOrder;
+  return BigInt(firstId) < BigInt(secondId) ? -1 : BigInt(firstId) > BigInt(secondId) ? 1 : 0;
+}
 function conflict() { return { kind: "conflict" as const }; }
 function notFound() { return { kind: "not-found" as const }; }
 function alreadyProcessed() { return { kind: "already-processed" as const }; }

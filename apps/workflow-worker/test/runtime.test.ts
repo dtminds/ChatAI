@@ -49,6 +49,32 @@ describe("workflow worker runtime", () => {
     expect(resources.database.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("starts selected background roles and closes every loop", async () => {
+    const resources = createResources();
+    const backgroundConfig = {
+      ...config(),
+      roles: new Set(["scheduler", "outbox", "reconciler"] as const),
+    };
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: backgroundConfig,
+    });
+
+    await vi.waitFor(() => {
+      expect(runtime.getReadiness().roles).toEqual({
+        outbox: true,
+        reconciler: true,
+        scheduler: true,
+      });
+    });
+    expect(resources.scheduler).toHaveBeenCalled();
+    expect(resources.outboxPublisher).toHaveBeenCalled();
+    expect(resources.reconciler).toHaveBeenCalled();
+
+    await runtime.close();
+    expect(resources.loopClose).toHaveBeenCalledTimes(3);
+  });
+
   it("closes runtime resources when the health server cannot start", async () => {
     const runtimeClose = vi.fn(async () => {});
 
@@ -64,6 +90,7 @@ describe("workflow worker runtime", () => {
 
     expect(runtimeClose).toHaveBeenCalledTimes(1);
   });
+
 });
 
 function createResources() {
@@ -77,6 +104,15 @@ function createResources() {
   const database = {
     destroy: vi.fn(async () => {}),
   };
+  const loopClose = vi.fn(async () => {});
+  const scheduler = vi.fn(async () => ({ cancelled: 0, deferred: 0, dispatched: 0 }));
+  const outboxPublisher = vi.fn(async () => ({ claimed: 0, failed: 0, sent: 0 }));
+  const reconciler = vi.fn(async () => ({
+    cancelled: 0,
+    nextCursor: null,
+    outboxLeasesRecovered: 0,
+    taskLeasesRecovered: 0,
+  }));
   return {
     broker,
     database,
@@ -90,7 +126,22 @@ function createResources() {
         type: "Shared",
       })),
       pingDatabase: vi.fn(async () => {}),
+      logger: { error: vi.fn(), info: vi.fn() },
+      outboxPublisher,
+      outboxRepository: {} as never,
+      reconciler,
+      reconcilerService: {} as never,
+      roleLoop: vi.fn(input => {
+        void input.run().then(result => input.onHeartbeat?.({
+          completedAt: new Date(),
+          durationMs: 1,
+          result,
+        }));
+        return { close: loopClose };
+      }),
       runtimeService: { executeTask: vi.fn(), startRun: vi.fn() },
+      scheduler,
+      schedulerRepository: {} as never,
       taskConsumer: vi.fn(async input => input.broker.subscribe({
         handler: async () => {},
         subscription: input.subscription,
@@ -100,11 +151,15 @@ function createResources() {
       triggerBindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       workerId: "worker-1",
     },
+    loopClose,
+    outboxPublisher,
+    reconciler,
+    scheduler,
     subscriptionClose,
   };
 }
 
-function config() {
+function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
   return {
     broker: "fake" as const,
     databaseUrl: "mysql://localhost/workflow",
@@ -114,7 +169,16 @@ function config() {
     logLevel: "info",
     maxRedeliverCount: 5,
     pulsar: { serviceUrl: null, token: null },
-    roles: new Set(["entry-consumer", "task-consumer"] as const),
+    roles,
+    runtime: {
+      batchSize: 100,
+      leaseDurationMs: 60_000,
+      outboxIntervalMs: 1_000,
+      reconcileIntervalMs: 30_000,
+      retryDelayMs: 5_000,
+      schedulerIntervalMs: 1_000,
+      shardIds: Array.from({ length: 256 }, (_, index) => index),
+    },
     subscriptionType: "Shared" as const,
     subscriptions: { entry: "entry-sub", task: "task-sub" },
     topics: { entry: "entry-topic", task: "task-topic" },

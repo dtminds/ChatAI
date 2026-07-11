@@ -696,12 +696,15 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   payload_json JSON NOT NULL COMMENT '消息载荷',
   status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '投递状态',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '投递尝试次数',
+  lease_owner VARCHAR(128) NULL COMMENT '投递租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '投递租约过期时间',
   next_attempt_at DATETIME NOT NULL COMMENT '下次投递时间',
   sent_at DATETIME NULL COMMENT '成功投递时间',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_workflow_outbox_dispatch (status, next_attempt_at, id),
+  KEY idx_workflow_outbox_lease (status, lease_expires_at, id),
   KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id)
 ) COMMENT='营销Workflow事务Outbox表';
 

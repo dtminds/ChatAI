@@ -7,6 +7,7 @@ import type {
   WorkflowRunStatus,
   WorkflowStartConfig,
   WorkflowTaskStatus,
+  WorkflowTaskMessage,
 } from "@chatai/contracts";
 
 export type WorkflowRuntimeDefinitionRecord = {
@@ -80,6 +81,47 @@ export type WorkflowTaskRecord = {
   workflowId: string;
 };
 
+export type WorkflowOutboxRecord = {
+  attempt: number;
+  eventType: "workflow.task.ready";
+  id: string;
+  leaseExpiresAt: Date | null;
+  leaseOwner: string | null;
+  nextAttemptAt: Date;
+  payload: WorkflowTaskMessage;
+  sentAt: Date | null;
+  status: "leased" | "pending" | "sent";
+  uid: number;
+};
+
+export type WorkflowSchedulerRepository = {
+  dispatchDueTasks(input: {
+    limit: number;
+    now: Date;
+    shardIds?: number[];
+  }): Promise<{ cancelled: number; deferred: number; dispatched: number }>;
+};
+
+export type WorkflowOutboxRepository = {
+  claimOutboxBatch(input: {
+    leaseExpiresAt: Date;
+    leaseOwner: string;
+    limit: number;
+    now: Date;
+  }): Promise<WorkflowOutboxRecord[]>;
+  markOutboxFailed(input: {
+    id: string;
+    leaseOwner: string;
+    nextAttemptAt: Date;
+  }): Promise<boolean>;
+  markOutboxSent(input: {
+    id: string;
+    leaseOwner: string;
+    sentAt: Date;
+  }): Promise<boolean>;
+  recoverExpiredOutboxLeases(input: { limit: number; now: Date }): Promise<number>;
+};
+
 export type WorkflowCreateRunInput = {
   context: Record<string, unknown>;
   entryEventId: string;
@@ -135,7 +177,11 @@ type WorkflowRuntimeFailure =
   | { kind: "entry-policy-rejected" }
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
-export type WorkflowRuntimeRepository = {
+export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSchedulerRepository & {
+  cancelUnavailableWorkflowRuns(input: {
+    afterRunId?: string;
+    limit: number;
+  }): Promise<{ cancelled: number; hasMore: boolean; lastRunId: string | null }>;
   cancelWorkflowBatch(input: {
     afterRunId?: string;
     limit: number;

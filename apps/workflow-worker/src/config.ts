@@ -13,6 +13,15 @@ export type WorkflowWorkerConfig = {
     token: string | null;
   };
   roles: ReadonlySet<WorkflowWorkerRole>;
+  runtime: {
+    batchSize: number;
+    leaseDurationMs: number;
+    outboxIntervalMs: number;
+    reconcileIntervalMs: number;
+    retryDelayMs: number;
+    schedulerIntervalMs: number;
+    shardIds: number[];
+  };
   subscriptionType: "Shared";
   subscriptions: {
     entry: string;
@@ -30,15 +39,13 @@ export type WorkflowWorkerConfig = {
 
 const DEFAULT_ROLES: WorkflowWorkerRole[] = [
   "entry-consumer",
+  "outbox",
+  "reconciler",
+  "scheduler",
   "task-consumer",
 ];
 
-const ALL_ROLES: WorkflowWorkerRole[] = [
-  ...DEFAULT_ROLES,
-  "scheduler",
-  "outbox",
-  "reconciler",
-];
+const ALL_ROLES: WorkflowWorkerRole[] = [...DEFAULT_ROLES];
 
 export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkflowWorkerConfig {
   const databaseUrl = requireValue(env, "DATABASE_URL");
@@ -67,6 +74,35 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     ),
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
+    runtime: {
+      batchSize: parsePositiveInteger(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
+      leaseDurationMs: parsePositiveInteger(
+        env.WORKFLOW_LEASE_DURATION_MS,
+        60_000,
+        "WORKFLOW_LEASE_DURATION_MS",
+      ),
+      outboxIntervalMs: parsePositiveInteger(
+        env.WORKFLOW_OUTBOX_INTERVAL_MS,
+        1_000,
+        "WORKFLOW_OUTBOX_INTERVAL_MS",
+      ),
+      reconcileIntervalMs: parsePositiveInteger(
+        env.WORKFLOW_RECONCILE_INTERVAL_MS,
+        30_000,
+        "WORKFLOW_RECONCILE_INTERVAL_MS",
+      ),
+      retryDelayMs: parsePositiveInteger(
+        env.WORKFLOW_OUTBOX_RETRY_DELAY_MS,
+        5_000,
+        "WORKFLOW_OUTBOX_RETRY_DELAY_MS",
+      ),
+      schedulerIntervalMs: parsePositiveInteger(
+        env.WORKFLOW_SCHEDULER_INTERVAL_MS,
+        1_000,
+        "WORKFLOW_SCHEDULER_INTERVAL_MS",
+      ),
+      shardIds: parseShardIds(env.WORKFLOW_SHARD_IDS),
+    },
     subscriptionType: "Shared",
     subscriptions: {
       entry: entrySubscription,
@@ -103,6 +139,16 @@ function parsePositiveInteger(value: string | undefined, fallback: number, name:
     throw new Error(`${name} must be a positive integer`);
   }
   return parsed;
+}
+
+function parseShardIds(value: string | undefined) {
+  const normalized = optionalValue(value);
+  if (!normalized) return Array.from({ length: 256 }, (_, index) => index);
+  const shardIds = [...new Set(normalized.split(",").map(item => Number(item.trim())))];
+  if (shardIds.length === 0 || shardIds.some(id => !Number.isInteger(id) || id < 0 || id > 255)) {
+    throw new Error("WORKFLOW_SHARD_IDS must contain comma-separated integers from 0 to 255");
+  }
+  return shardIds.sort((first, second) => first - second);
 }
 
 function requireValue(env: NodeJS.ProcessEnv, name: string) {

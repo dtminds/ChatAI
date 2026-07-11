@@ -157,6 +157,7 @@ function WorkflowWorkspaceContent({
   onReloadDocument?: () => void;
   repository: WorkflowDraftRepository;
 }) {
+  const navigate = useNavigate();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
 
@@ -164,14 +165,17 @@ function WorkflowWorkspaceContent({
     <>
       <WorkflowTopBar
         canPublish={topBar.canPublish}
+        canRename={topBar.canRename}
         canRetrySave={topBar.canRetrySave}
         isPreviewingVersion={versionHistory.isPreviewing}
         lastSavedAt={topBar.lastSavedAt}
+        onBack={() => navigate("/chat/workflows")}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
+        onRename={topBar.onRename}
         onRetrySave={topBar.onRetrySave}
         onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
           ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
@@ -185,6 +189,7 @@ function WorkflowWorkspaceContent({
         publishState={topBar.publishState}
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}
+        renaming={topBar.renaming}
         restoreState={versionHistory.restoreState}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}

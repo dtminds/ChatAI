@@ -1,6 +1,21 @@
-import { AlertCircleIcon, CheckmarkCircle02Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import {
+  AlertCircleIcon,
+  ArrowLeft01Icon,
+  CheckmarkCircle02Icon,
+  Edit02Icon,
+  MoreHorizontalIcon,
+  Time02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type {
   WorkflowDraftPublishStatus,
@@ -11,14 +26,17 @@ import type {
 
 export function WorkflowTopBar({
   canPublish = true,
+  canRename = false,
   canRetrySave = false,
   isPreviewingVersion,
   lastSavedAt,
+  onBack,
   onExitPreview,
   onOpenVersionHistory,
   onPublish,
   onPublishCheck,
   onReloadDocument,
+  onRename,
   onRetrySave,
   onRestoreVersion,
   previewVersionLabel,
@@ -28,6 +46,7 @@ export function WorkflowTopBar({
   publishState,
   publishReady,
   readyChecks,
+  renaming = false,
   restoreState,
   saveState,
   totalChecks,
@@ -35,14 +54,17 @@ export function WorkflowTopBar({
   workflowName,
 }: {
   canPublish?: boolean;
+  canRename?: boolean;
   canRetrySave?: boolean;
   isPreviewingVersion?: boolean;
   lastSavedAt: string;
+  onBack?: () => void;
   onExitPreview?: () => void;
   onOpenVersionHistory: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
   onReloadDocument?: () => void;
+  onRename?: (name: string) => Promise<boolean>;
   onRetrySave?: () => void;
   onRestoreVersion?: () => void;
   previewVersionLabel?: string;
@@ -52,150 +74,203 @@ export function WorkflowTopBar({
   publishState: WorkflowDraftPublishStatus;
   publishReady: boolean;
   readyChecks: number;
+  renaming?: boolean;
   restoreState?: WorkflowDraftRestoreStatus;
   saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
   validatedForActivation?: boolean;
   workflowName: string;
 }) {
-  const saveStateLabel = getSaveStateLabel(saveState);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(workflowName);
   const published = publishState === "published";
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
   const readOnlyMode = Boolean(isPreviewingVersion);
-  const previewLabel = previewVersionLabel ?? "历史版本";
-  const previewMeta = previewVersionMeta;
-  const topbarButtonClassName = "workflow-topbar-button pointer-events-auto h-10 gap-1.5 rounded-xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] px-3.5 text-[13px] font-semibold shadow-[0_10px_28px_var(--shadow-soft)] backdrop-blur-[10px]";
+
+  useEffect(() => {
+    if (!editingName) {
+      setNameValue(workflowName);
+    }
+  }, [editingName, workflowName]);
+
+  const cancelRename = () => {
+    if (renaming) return;
+    setNameValue(workflowName);
+    setEditingName(false);
+  };
+
+  const submitRename = async () => {
+    const normalizedName = nameValue.trim();
+
+    if (!normalizedName) return;
+    if (normalizedName === workflowName) {
+      setEditingName(false);
+      return;
+    }
+
+    if (onRename && await onRename(normalizedName)) {
+      setEditingName(false);
+    }
+  };
 
   return (
-    <header className="workflow-canvas-topbar pointer-events-none absolute left-0 right-0 top-3.5 z-[12] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3 px-3 max-lg:grid-cols-[minmax(0,1fr)] max-lg:gap-2 max-lg:px-2.5">
-      {readOnlyMode ? (
-        <div className="workflow-canvas-status workflow-canvas-status-restoring pointer-events-none flex min-w-0 max-w-[520px] items-center gap-2 text-[13px] font-semibold leading-[18px] text-[var(--workflow-text-tertiary)]">
-          <span className="workflow-version-preview-name min-w-0 truncate text-foreground">{previewLabel}</span>
-          <span className="workflow-view-only-badge shrink-0 rounded-md border-[0.5px] border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-[14px] text-primary">View only</span>
-          {previewMeta ? (
-            <>
-              <span className="workflow-canvas-status-separator size-[3px] shrink-0 rounded-full bg-current opacity-70" />
-              <span className="truncate">{previewMeta}</span>
-            </>
-          ) : null}
-        </div>
-      ) : (
-        <div className="workflow-canvas-status pointer-events-none flex min-w-0 max-w-[420px] items-center gap-2 text-[13px] font-semibold leading-9 text-[var(--workflow-text-tertiary)] max-lg:max-w-none max-lg:leading-5">
-          {saveState === "error" && canRetrySave && onRetrySave ? (
-            <button
-              className="pointer-events-auto rounded px-1 py-0.5 text-destructive hover:bg-destructive/10"
-              onClick={onRetrySave}
-              type="button"
-            >
-              保存失败，重试
-            </button>
-          ) : (
-            <span title={saveState === "saved" ? `上次保存：${lastSavedAt}` : undefined}>
-              {saveStateLabel}
-            </span>
-          )}
-          <span className="workflow-canvas-status-separator size-[3px] shrink-0 rounded-full bg-current opacity-70" />
-          <span title={publishedAt ? `发布时间：${publishedAt}` : undefined}>
-            {publishedAt
-              ? `已发布 ${publishedAt}`
-              : validatedForActivation
-                ? "已发布，待启用"
-                : "未发布"}
-          </span>
-          {publishErrorCode ? (
-            <>
-              <span className="workflow-canvas-status-separator size-[3px] shrink-0 rounded-full bg-current opacity-70" />
-              {publishErrorCode === "conflict" && onReloadDocument ? (
+    <header className="workflow-canvas-topbar z-[12] flex min-h-20 shrink-0 items-center justify-between gap-4 border-b bg-background px-5 py-3 max-sm:flex-wrap max-sm:px-3">
+      <div className="flex min-w-0 items-center gap-3 max-sm:w-full">
+        <Button
+          aria-label="返回 Workflow 列表"
+          className="size-9 shrink-0 rounded-lg text-muted-foreground"
+          onClick={onBack}
+          size="icon"
+          title="返回 Workflow 列表"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={19} strokeWidth={1.8} />
+        </Button>
+
+        {readOnlyMode ? (
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-sm font-semibold">{previewVersionLabel ?? "历史版本"}</h1>
+              <span className="shrink-0 rounded-md border border-primary/20 bg-primary/8 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                只读
+              </span>
+            </div>
+            {previewVersionMeta ? (
+              <p className="mt-1 truncate text-xs text-muted-foreground">{previewVersionMeta}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1">
+              {editingName ? (
+                <Input
+                  aria-label="Workflow 名称"
+                  autoFocus
+                  className="h-8 w-[min(20rem,50vw)] rounded-md px-2 text-sm font-semibold"
+                  maxLength={80}
+                  onBlur={cancelRename}
+                  onChange={(event) => setNameValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void submitRename();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  readOnly={renaming}
+                  value={nameValue}
+                />
+              ) : (
+                <h1 className="truncate text-base font-semibold">{workflowName}</h1>
+              )}
+              {canRename && !editingName ? (
+                <Button
+                  aria-label="重命名 Workflow"
+                  className="size-7 shrink-0 rounded-md text-muted-foreground"
+                  onClick={() => setEditingName(true)}
+                  size="icon"
+                  title="重命名 Workflow"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {saveState === "error" && canRetrySave && onRetrySave ? (
                 <button
-                  className="pointer-events-auto rounded px-1 py-0.5 text-destructive hover:bg-destructive/10"
-                  onClick={onReloadDocument}
+                  className="rounded px-1 py-0.5 text-destructive hover:bg-destructive/10"
+                  onClick={onRetrySave}
                   type="button"
                 >
-                  发布冲突，重新加载
+                  保存失败，重试
                 </button>
               ) : (
-                <span className="text-destructive">发布失败</span>
+                <span className="truncate" title={saveState === "saved" ? `上次保存：${lastSavedAt}` : undefined}>
+                  {getSaveStateLabel(saveState, lastSavedAt)}
+                </span>
               )}
-            </>
-          ) : null}
-          <span className="workflow-canvas-status-separator size-[3px] shrink-0 rounded-full bg-current opacity-70" />
-          <span className="truncate">{workflowName}</span>
-        </div>
-      )}
+              <span aria-hidden="true">·</span>
+              <span className={cn("truncate", publishErrorCode && "text-destructive")}>
+                {getPublishStateLabel({ publishedAt, publishErrorCode, validatedForActivation })}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <div />
-
-      <div className="workflow-canvas-actions pointer-events-none flex min-w-0 justify-end gap-2.5 max-lg:justify-start max-lg:overflow-x-auto max-lg:pb-0.5" aria-label="Workflow 操作">
+      <div className="flex shrink-0 items-center gap-2" aria-label="Workflow 操作">
         {readOnlyMode ? (
           <>
-            {isPreviewingVersion ? (
-              <Button
-                className={topbarButtonClassName}
-                onClick={onRestoreVersion}
-                disabled={!onRestoreVersion || restoring}
-                type="button"
-                variant="default"
-              >
-                <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
-                <span>{restoring ? "恢复中" : "恢复"}</span>
-              </Button>
-            ) : null}
             <Button
-              className={topbarButtonClassName}
-              onClick={onExitPreview}
+              disabled={!onRestoreVersion || restoring}
+              onClick={onRestoreVersion}
+              size="sm"
               type="button"
-              variant="secondary"
             >
+              {restoring ? "恢复中" : "恢复"}
+            </Button>
+            <Button onClick={onExitPreview} size="sm" type="button" variant="secondary">
               退出版本
             </Button>
           </>
         ) : (
           <>
             <Button
-              className={topbarButtonClassName}
+              aria-label="版本历史"
+              className="size-9 rounded-lg text-muted-foreground"
               onClick={onOpenVersionHistory}
+              size="icon"
+              title="版本历史"
               type="button"
-              variant="secondary"
+              variant="ghost"
             >
-              <HugeiconsIcon icon={WorkflowSquare01Icon} size={16} strokeWidth={1.8} />
-              <span>版本历史</span>
+              <HugeiconsIcon icon={Time02Icon} size={19} strokeWidth={1.8} />
             </Button>
             <Button
-              className={topbarButtonClassName}
-              disabled={!canPublish}
-              onClick={onPublishCheck}
-              type="button"
-              variant="secondary"
-            >
-              <HugeiconsIcon
-                icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-              <span>
-                发布检查 {readyChecks}/{totalChecks}
-              </span>
-            </Button>
-            <Button
-              className={cn(
-                topbarButtonClassName,
-                "workflow-topbar-publish border-transparent bg-primary text-primary-foreground hover:bg-primary/92",
-              )}
+              className="h-9 rounded-lg px-5 text-sm font-semibold"
               disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
               onClick={onPublish}
               type="button"
-              variant="default"
             >
-              <HugeiconsIcon
-                icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-              <span>
-                {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
-              </span>
+              {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="更多操作"
+                  className="size-9 rounded-lg bg-muted text-muted-foreground"
+                  size="icon"
+                  title="更多操作"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={MoreHorizontalIcon} size={19} strokeWidth={1.8} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem disabled={!canPublish} onSelect={onPublishCheck}>
+                  <HugeiconsIcon
+                    icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                  发布检查 {readyChecks}/{totalChecks}
+                </DropdownMenuItem>
+                {publishErrorCode === "conflict" && onReloadDocument ? (
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onReloadDocument}>
+                    <HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />
+                    重新加载
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </div>
@@ -203,14 +278,23 @@ export function WorkflowTopBar({
   );
 }
 
-function getSaveStateLabel(saveState: WorkflowDraftSaveStatus) {
-  if (saveState === "error") {
-    return "保存失败";
-  }
+function getSaveStateLabel(saveState: WorkflowDraftSaveStatus, lastSavedAt: string) {
+  if (saveState === "error") return "保存失败";
+  if (saveState === "dirty" || saveState === "saving") return "正在保存";
+  return `已自动保存 ${lastSavedAt}`;
+}
 
-  if (saveState === "dirty" || saveState === "saving") {
-    return "正在保存";
-  }
-
-  return "已保存";
+function getPublishStateLabel({
+  publishedAt,
+  publishErrorCode,
+  validatedForActivation,
+}: {
+  publishedAt: string | null;
+  publishErrorCode?: WorkflowRepositoryErrorCode;
+  validatedForActivation: boolean;
+}) {
+  if (publishErrorCode) return publishErrorCode === "conflict" ? "发布冲突" : "发布失败";
+  if (publishedAt) return `已发布 ${publishedAt}`;
+  if (validatedForActivation) return "已发布，待启用";
+  return "未发布";
 }

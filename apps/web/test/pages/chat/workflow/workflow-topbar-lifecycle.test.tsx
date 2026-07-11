@@ -48,4 +48,93 @@ describe("WorkflowTopBar lifecycle", () => {
 
     expect(screen.getByText("已发布，待启用")).toBeInTheDocument();
   });
+
+  it("opens version history directly and publish checks from the overflow menu", async () => {
+    const user = userEvent.setup();
+    const onOpenVersionHistory = vi.fn();
+    const onPublishCheck = vi.fn();
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        onBack={vi.fn()}
+        onOpenVersionHistory={onOpenVersionHistory}
+        onPublish={vi.fn()}
+        onPublishCheck={onPublishCheck}
+        publishedAt={null}
+        publishReady
+        publishState="idle"
+        readyChecks={4}
+        saveState="saved"
+        totalChecks={4}
+        workflowName="新客培育"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    expect(onOpenVersionHistory).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: /发布检查/ }));
+    expect(onPublishCheck).toHaveBeenCalledOnce();
+  });
+
+  it("submits a trimmed workflow name from the inline editor", async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn().mockResolvedValue(true);
+    render(
+      <WorkflowTopBar
+        canRename
+        lastSavedAt="刚刚"
+        onBack={vi.fn()}
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        onRename={onRename}
+        publishedAt={null}
+        publishReady
+        publishState="idle"
+        readyChecks={4}
+        saveState="saved"
+        totalChecks={4}
+        workflowName="新客培育"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重命名 Workflow" }));
+    const input = screen.getByRole("textbox", { name: "Workflow 名称" });
+    await user.clear(input);
+    await user.type(input, "  新客首购旅程{Enter}");
+
+    expect(onRename).toHaveBeenCalledWith("新客首购旅程");
+    expect(screen.queryByRole("textbox", { name: "Workflow 名称" })).not.toBeInTheDocument();
+  });
+
+  it("cancels inline rename with Escape", async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn();
+    render(
+      <WorkflowTopBar
+        canRename
+        lastSavedAt="刚刚"
+        onBack={vi.fn()}
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        onRename={onRename}
+        publishedAt={null}
+        publishReady
+        publishState="idle"
+        readyChecks={4}
+        saveState="saved"
+        totalChecks={4}
+        workflowName="新客培育"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重命名 Workflow" }));
+    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "修改{Escape}");
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "重命名 Workflow" })).toBeInTheDocument();
+  });
 });

@@ -552,14 +552,37 @@ describe("Agent workflow page", () => {
     });
   });
 
-  it("renders a named workflow editor route with the floating canvas header", async () => {
+  it("renders a named workflow editor route with the dedicated canvas header", async () => {
     renderWorkflowPage("/chat/workflows/newcomer-conversion");
 
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
-    expect(screen.getByText("已保存")).toBeInTheDocument();
-    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "新人转化旅程" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回 Workflow 列表" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回列表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
+  });
+
+  it("returns to the workflow list from the canvas header", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion");
+
+    await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(screen.getByRole("button", { name: "返回 Workflow 列表" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
+  });
+
+  it("renames a workflow from the canvas header", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
+
+    await user.click(await screen.findByRole("button", { name: "重命名 Workflow" }));
+    const input = screen.getByRole("textbox", { name: "Workflow 名称" });
+    await user.clear(input);
+    await user.type(input, "新客首购旅程{Enter}");
+
+    expect(await screen.findByText("新客首购旅程")).toBeInTheDocument();
+    expect(getWorkflowDocument("newcomer-conversion").name).toBe("新客首购旅程");
   });
 
   it("groups canvas actions in a single bottom toolbar", async () => {
@@ -591,7 +614,8 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("tab", { name: "检查" })).not.toBeInTheDocument();
     expect(screen.queryByText("客户路径模拟")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /发布检查/ }));
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: /发布检查/ }));
 
     expect(screen.getByRole("region", { name: "发布检查" })).toBeInTheDocument();
     expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();

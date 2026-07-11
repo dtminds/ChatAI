@@ -65,6 +65,8 @@ export function useWorkflowWorkspace(
     publishDraft,
     publishError,
     publishState,
+    renameDocument,
+    renameState,
     retrySave,
     restoreState,
     restoreVersion,
@@ -461,6 +463,16 @@ export function useWorkflowWorkspace(
     if (result) toast.success("发布成功");
   });
 
+  const renameWorkflow = useWorkflowStableCallback(async (name: string) => {
+    try {
+      return await renameDocument(name);
+    }
+    catch {
+      toast.error("重命名失败，请重试");
+      return false;
+    }
+  });
+
   const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
     if (!permissions.canEditGraph) {
       return;
@@ -627,17 +639,20 @@ export function useWorkflowWorkspace(
     },
     topBar: {
       canPublish: permissions.canPublish,
+      canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
+      onRename: renameWorkflow,
       onRetrySave: retrySave,
       publishedAt: document.publishedAt,
       publishError,
       publishState,
       publishReady: publishChecks.publishReady,
       readyChecks: publishChecks.readyChecks,
+      renaming: renameState === "renaming",
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
       validatedForActivation: document.runtimeStatus === "inactive"

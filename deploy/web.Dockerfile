@@ -3,6 +3,9 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+ARG VITE_WORKFLOW_FIXTURES_ENABLED=false
+ENV VITE_WORKFLOW_FIXTURES_ENABLED=${VITE_WORKFLOW_FIXTURES_ENABLED}
+
 # 安装 pnpm
 RUN corepack enable && corepack prepare pnpm@10 --activate
 

@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import { StartConfig } from "@/pages/chat/workflow/nodes/start/panel";
+import {
+  areWorkflowStartFixturesEnabled,
+  getWorkflowStartFixtureAccounts,
+  getWorkflowStartFixtureTags,
+} from "@/pages/chat/workflow/nodes/start/fixture-options";
 import type { StartNodeData, WorkflowNode } from "@/pages/chat/workflow/types";
 
 function createStartNode(data: StartNodeData = createDefaultNodeData("start")): WorkflowNode<"start"> {
@@ -16,6 +21,15 @@ function createStartNode(data: StartNodeData = createDefaultNodeData("start")): 
 }
 
 describe("workflow start configuration", () => {
+  it("exposes fixture options only through the explicit environment switch", () => {
+    expect(areWorkflowStartFixturesEnabled("true")).toBe(true);
+    expect(areWorkflowStartFixturesEnabled("false")).toBe(false);
+    expect(getWorkflowStartFixtureAccounts(true)).not.toHaveLength(0);
+    expect(getWorkflowStartFixtureTags(true)).not.toHaveLength(0);
+    expect(getWorkflowStartFixtureAccounts(false)).toEqual([]);
+    expect(getWorkflowStartFixtureTags(false)).toEqual([]);
+  });
+
   it("creates the formal execution contract with a default lifetime limit of two", () => {
     const definition = getNodeDefinition("start");
     const data = definition.createDefaultData();
@@ -79,7 +93,6 @@ describe("workflow start configuration", () => {
   });
 
   it("normalizes entry limits to positive contract integers", async () => {
-    const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const node = createStartNode({
       ...createDefaultNodeData("start"),

@@ -15,10 +15,20 @@ const fixtureTags: WorkflowStartOption[] = [
   { id: "tag-repurchase", label: "待复购" },
 ];
 
-export function getWorkflowStartFixtureAccounts() {
-  return import.meta.env.PROD ? [] : fixtureAccounts;
+export function getWorkflowStartFixtureAccounts(
+  enabled = areWorkflowStartFixturesEnabled(),
+) {
+  return enabled ? fixtureAccounts : [];
 }
 
-export function getWorkflowStartFixtureTags() {
-  return import.meta.env.PROD ? [] : fixtureTags;
+export function getWorkflowStartFixtureTags(
+  enabled = areWorkflowStartFixturesEnabled(),
+) {
+  return enabled ? fixtureTags : [];
+}
+
+export function areWorkflowStartFixturesEnabled(
+  value = import.meta.env.VITE_WORKFLOW_FIXTURES_ENABLED,
+) {
+  return value === "true";
 }

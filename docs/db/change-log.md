@@ -7,6 +7,7 @@ Manual database changes for the backend should be recorded here.
 - Added the Workflow entry guard and Run entry-window index for subject-level re-entry limits.
 - Made trigger binding filters required.
 - Added lease ownership and expiry fields to the Workflow Outbox so concurrent publishers can safely claim rows and the Reconciler can recover expired leases.
+- Added the Task version to Workflow Outbox rows so the Reconciler can safely recover dispatched tasks whose published message was never consumed.
 
 Manual migration for databases created from the initial 2026-07-10 Workflow schema:
 
@@ -32,7 +33,16 @@ ALTER TABLE xy_wap_embed_workflow_run
 ALTER TABLE xy_wap_embed_workflow_outbox
   ADD COLUMN lease_owner VARCHAR(128) NULL COMMENT '投递租约持有者' AFTER attempt,
   ADD COLUMN lease_expires_at DATETIME NULL COMMENT '投递租约过期时间' AFTER lease_owner,
+  ADD COLUMN task_version INT UNSIGNED NULL COMMENT 'Task版本' AFTER aggregate_id,
   ADD KEY idx_workflow_outbox_lease (status, lease_expires_at, id);
+
+UPDATE xy_wap_embed_workflow_outbox
+SET task_version = CAST(JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.taskVersion')) AS UNSIGNED)
+WHERE task_version IS NULL;
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  MODIFY COLUMN task_version INT UNSIGNED NOT NULL COMMENT 'Task版本',
+  ADD KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id);
 ```
 
 ## 2026-07-10

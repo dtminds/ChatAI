@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRepository,
   InMemoryWorkflowRuntimeRepository,
@@ -9,6 +9,36 @@ import {
 const owner = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowRuntimeService", () => {
+  it("uses the configured execution lease duration when claiming a task", async () => {
+    const control = new InMemoryWorkflowRepository();
+    const runtime = createRuntimeRepository(control);
+    const claimTask = vi.spyOn(runtime, "claimTask");
+    const definition = await createEnabledWorkflow(control, createDraft());
+    const service = new WorkflowRuntimeService(control, runtime, undefined, {
+      taskLeaseDurationMs: 120_000,
+    });
+    const started = await service.startRun({
+      entryEventId: "event-lease",
+      expectedRevision: 1,
+      subjectId: "customer-lease",
+      trigger: {},
+      uid: owner.uid,
+      workflowId: definition.id,
+    });
+
+    await service.executeTask({
+      now: new Date("2026-07-10T00:00:00.000Z"),
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: owner.uid,
+      workerId: "worker-1",
+    });
+
+    expect(claimTask).toHaveBeenCalledWith(expect.objectContaining({
+      leaseExpiresAt: new Date("2026-07-10T00:02:00.000Z"),
+    }));
+  });
+
   it("deduplicates entry and advances one token through start and end", async () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);

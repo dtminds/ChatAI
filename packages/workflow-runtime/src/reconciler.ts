@@ -3,8 +3,16 @@ import type { WorkflowRuntimeRepository } from "./types.js";
 export class WorkflowRuntimeReconciler {
   constructor(private readonly repository: WorkflowRuntimeRepository) {}
 
-  recoverExpiredLeases(input: { limit: number; now: Date }) {
+  recoverExpiredLeases(input: { limit: number; maxAttempts: number; now: Date }) {
     return this.repository.recoverExpiredLeases(input);
+  }
+
+  republishStalledDispatchedTasks(input: { dispatchedBefore: Date; limit: number; now: Date }) {
+    return this.repository.republishStalledDispatchedTasks(input);
+  }
+
+  cleanupExpiredInbox(input: { limit: number; now: Date }) {
+    return this.repository.cleanupExpiredInbox(input);
   }
 
   recoverExpiredOutboxLeases(input: { limit: number; now: Date }) {

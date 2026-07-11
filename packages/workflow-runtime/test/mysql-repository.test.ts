@@ -63,6 +63,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.definitionReadShareLocked).toBe(true);
+    expect(db.taskUpdate).toMatchObject({ attempt: 1 });
     expect(db.runUpdate).toMatchObject({ status: "running" });
   });
 

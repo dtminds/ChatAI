@@ -246,6 +246,7 @@ export class MysqlWorkflowRuntimeRepository implements
       }
 
       await trx.updateTable(TASK_TABLE).set({
+        attempt: task.attempt + 1,
         lease_expires_at: input.leaseExpiresAt,
         lease_owner: input.leaseOwner,
         status: "running",
@@ -262,6 +263,7 @@ export class MysqlWorkflowRuntimeRepository implements
         kind: "success" as const,
         task: {
           ...task,
+          attempt: task.attempt + 1,
           leaseExpiresAt: input.leaseExpiresAt,
           leaseOwner: input.leaseOwner,
           status: "running" as const,
@@ -390,6 +392,27 @@ export class MysqlWorkflowRuntimeRepository implements
     return Number(result.numUpdatedRows) === 1;
   }
 
+  async markOutboxDead(input: Parameters<WorkflowRuntimeRepository["markOutboxDead"]>[0]) {
+    return this.db.transaction().execute(async (trx) => {
+      const outboxRow = await trx.selectFrom(OUTBOX_TABLE).selectAll()
+        .where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!outboxRow) return false;
+      await trx.updateTable(OUTBOX_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirstOrThrow();
+      return true;
+    });
+  }
+
   async markOutboxSent(input: Parameters<WorkflowRuntimeRepository["markOutboxSent"]>[0]) {
     const result = await this.db.updateTable(OUTBOX_TABLE).set({
       lease_expires_at: null,
@@ -506,22 +529,95 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async recoverExpiredLeases(input: Parameters<WorkflowRuntimeRepository["recoverExpiredLeases"]>[0]) {
-    if (input.limit <= 0) return 0;
+    if (input.limit <= 0) return { dead: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
-      const rows = await trx.selectFrom(TASK_TABLE).select("id")
+      const rows = await trx.selectFrom(TASK_TABLE).select(["attempt", "id", "run_id"])
         .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
         .orderBy("lease_expires_at", "asc").orderBy("id", "asc").limit(input.limit)
         .forUpdate().skipLocked().execute();
-      const taskIds = rows.map((row) => row.id);
-      if (taskIds.length === 0) return 0;
-      const update = await trx.updateTable(TASK_TABLE).set({
+      if (rows.length === 0) return { dead: 0, recovered: 0 };
+      const deadRows = rows.filter(row => row.attempt >= input.maxAttempts);
+      const recoverableRows = rows.filter(row => row.attempt < input.maxAttempts);
+      const recoverableIds = recoverableRows.map(row => row.id);
+      if (recoverableIds.length > 0) await trx.updateTable(TASK_TABLE).set({
         lease_expires_at: null,
         lease_owner: null,
         status: "pending",
         task_version: sql<number>`task_version + 1`,
-      }).where("id", "in", taskIds).where("status", "=", "running")
-        .where("lease_expires_at", "<=", input.now).executeTakeFirst();
-      return Number(update.numUpdatedRows);
+      }).where("id", "in", recoverableIds).where("status", "=", "running")
+        .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
+      const deadIds = deadRows.map(row => row.id);
+      if (deadIds.length > 0) {
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "dead",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", deadIds).where("status", "=", "running")
+          .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
+        const runIds = [...new Set(deadRows.map(row => row.run_id))];
+        await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
+        }).where("id", "in", runIds)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .executeTakeFirstOrThrow();
+      }
+      return { dead: deadIds.length, recovered: recoverableIds.length };
+    });
+  }
+
+  async republishStalledDispatchedTasks(
+    input: Parameters<WorkflowRuntimeRepository["republishStalledDispatchedTasks"]>[0],
+  ) {
+    if (input.limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
+        .innerJoin(`${OUTBOX_TABLE} as outbox`, join => join
+          .onRef("outbox.aggregate_id", "=", "task.id")
+          .onRef("outbox.task_version", "=", "task.task_version"))
+        .selectAll("task")
+        .select("outbox.id as outbox_id")
+        .where("task.status", "=", "dispatched")
+        .where("outbox.aggregate_type", "=", "workflow_task")
+        .where("outbox.status", "=", "sent")
+        .where("outbox.sent_at", "<=", input.dispatchedBefore)
+        .orderBy("outbox.sent_at", "asc")
+        .orderBy("task.id", "asc")
+        .limit(input.limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      for (const row of rows) {
+        await trx.updateTable(OUTBOX_TABLE).set({ status: "republished" })
+          .where("id", "=", row.outbox_id)
+          .where("status", "=", "sent")
+          .executeTakeFirstOrThrow();
+        await insertTaskOutbox(trx, mapTask(row), input.now);
+      }
+      return rows.length;
+    });
+  }
+
+  async cleanupExpiredInbox(input: Parameters<WorkflowRuntimeRepository["cleanupExpiredInbox"]>[0]) {
+    if (input.limit <= 0) return 0;
+    return this.db.transaction().execute(async (trx) => {
+      const rows = await trx.selectFrom(INBOX_TABLE).select("id")
+        .where("expires_at", "<=", input.now)
+        .orderBy("expires_at", "asc")
+        .orderBy("id", "asc")
+        .limit(input.limit)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const ids = rows.map(row => row.id);
+      if (ids.length === 0) return 0;
+      const result = await trx.deleteFrom(INBOX_TABLE).where("id", "in", ids).executeTakeFirst();
+      return Number(result.numDeletedRows);
     });
   }
 
@@ -577,7 +673,12 @@ export class MysqlWorkflowRuntimeRepository implements
       }).where("uid", "=", input.uid).where("id", "in", runIds)
         .where("status", "in", ["queued", "running", "waiting"])
         .executeTakeFirst();
-      await trx.updateTable(TASK_TABLE).set({ status: "cancelled", task_version: sql<number>`task_version + 1` })
+      await trx.updateTable(TASK_TABLE).set({
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      })
         .where("uid", "=", input.uid).where("run_id", "in", runIds)
         .where("status", "in", ["pending", "leased", "dispatched", "running"])
         .executeTakeFirst();
@@ -706,6 +807,7 @@ function insertTaskOutbox(trx: RuntimeTransaction, task: WorkflowTaskRecord, now
     payload_json: stringifyJson(payload),
     sent_at: null,
     status: "pending",
+    task_version: task.taskVersion,
     uid: task.uid,
   }).executeTakeFirstOrThrow();
 }
@@ -724,7 +826,11 @@ function createTaskMessage(task: WorkflowTaskRecord, now: Date): WorkflowTaskMes
 
 function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {
   const status = row.status;
-  if (status !== "pending" && status !== "leased" && status !== "sent") {
+  if (status !== "pending"
+    && status !== "leased"
+    && status !== "sent"
+    && status !== "dead"
+    && status !== "republished") {
     throw new Error(`Unknown workflow outbox status: ${status}`);
   }
   if (row.event_type !== "workflow.task.ready") {
@@ -744,6 +850,7 @@ function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): Work
     payload: structuredClone(payload) as WorkflowTaskMessage,
     sentAt: row.sent_at ? toDate(row.sent_at) : null,
     status,
+    taskVersion: row.task_version,
     uid: normalizeTenantId(row.uid),
   };
 }

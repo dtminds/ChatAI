@@ -23,12 +23,16 @@ type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAc
 
 export class WorkflowRuntimeService {
   private readonly executors = createCoreNodeExecutorRegistry();
+  private readonly taskLeaseDurationMs: number;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
     private readonly runtimeRepository: WorkflowRuntimeRepository,
     private readonly executeAction?: WorkflowActionAdapter,
-  ) {}
+    options: { taskLeaseDurationMs?: number } = {},
+  ) {
+    this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
+  }
 
   async startRun(input: {
     entryEventId: string;
@@ -93,7 +97,7 @@ export class WorkflowRuntimeService {
 
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
-      leaseExpiresAt: new Date(input.now.getTime() + 60_000),
+      leaseExpiresAt: new Date(input.now.getTime() + this.taskLeaseDurationMs),
       leaseOwner: input.workerId,
       taskId: task.id,
       uid: input.uid,

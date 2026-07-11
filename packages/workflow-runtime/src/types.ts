@@ -90,7 +90,8 @@ export type WorkflowOutboxRecord = {
   nextAttemptAt: Date;
   payload: WorkflowTaskMessage;
   sentAt: Date | null;
-  status: "leased" | "pending" | "sent";
+  status: "dead" | "leased" | "pending" | "republished" | "sent";
+  taskVersion: number;
   uid: number;
 };
 
@@ -113,6 +114,10 @@ export type WorkflowOutboxRepository = {
     id: string;
     leaseOwner: string;
     nextAttemptAt: Date;
+  }): Promise<boolean>;
+  markOutboxDead(input: {
+    id: string;
+    leaseOwner: string;
   }): Promise<boolean>;
   markOutboxSent(input: {
     id: string;
@@ -178,6 +183,7 @@ type WorkflowRuntimeFailure =
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
 export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSchedulerRepository & {
+  cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
   cancelUnavailableWorkflowRuns(input: {
     afterRunId?: string;
     limit: number;
@@ -210,5 +216,14 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
   >;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
-  recoverExpiredLeases(input: { limit: number; now: Date }): Promise<number>;
+  recoverExpiredLeases(input: {
+    limit: number;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<{ dead: number; recovered: number }>;
+  republishStalledDispatchedTasks(input: {
+    dispatchedBefore: Date;
+    limit: number;
+    now: Date;
+  }): Promise<number>;
 };

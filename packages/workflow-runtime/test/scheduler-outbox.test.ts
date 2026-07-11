@@ -91,6 +91,47 @@ describe("workflow scheduler repository", () => {
 });
 
 describe("workflow outbox repository", () => {
+  it("republishes a dispatched task with the same version after the delivery timeout", async () => {
+    const repository = createRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const [claimedOutbox] = await repository.claimOutboxBatch({
+      leaseExpiresAt,
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now,
+    });
+    await repository.markOutboxSent({
+      id: claimedOutbox!.id,
+      leaseOwner: "publisher-1",
+      sentAt: now,
+    });
+
+    await expect(repository.republishStalledDispatchedTasks({
+      dispatchedBefore: new Date("2026-07-11T00:05:00.000Z"),
+      limit: 10,
+      now: new Date("2026-07-11T00:10:00.000Z"),
+    })).resolves.toBe(1);
+    expect(repository.snapshot().tasks[0]).toMatchObject({
+      status: "dispatched",
+      taskVersion: 1,
+    });
+    expect(repository.snapshot().outbox).toHaveLength(2);
+    expect(repository.snapshot().outbox.at(-1)?.payload.taskVersion).toBe(1);
+    await expect(repository.republishStalledDispatchedTasks({
+      dispatchedBefore: new Date("2026-07-11T00:05:00.000Z"),
+      limit: 10,
+      now: new Date("2026-07-11T00:10:30.000Z"),
+    })).resolves.toBe(0);
+    expect(repository.snapshot().outbox).toHaveLength(2);
+    await expect(repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt,
+      leaseOwner: "consumer",
+      taskId: created.task.id,
+      uid: 9,
+    })).resolves.toMatchObject({ kind: "success" });
+  });
+
   it("leases one outbox row to only one concurrent publisher", async () => {
     const repository = createRepository();
     await repository.createRunWithInitialTask(createRunInput());
@@ -181,6 +222,49 @@ describe("workflow outbox repository", () => {
       leaseOwner: "publisher-1",
       nextAttemptAt: dueAt,
     })).resolves.toBe(true);
+  });
+
+  it("marks an exhausted outbox row dead without failing the business run", async () => {
+    const repository = createRepository();
+    await repository.createRunWithInitialTask(createRunInput());
+    const [claimed] = await repository.claimOutboxBatch({
+      leaseExpiresAt,
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now,
+    });
+
+    await expect(repository.markOutboxDead({
+      id: claimed!.id,
+      leaseOwner: "publisher-1",
+    })).resolves.toBe(true);
+    expect(repository.snapshot().outbox[0]).toMatchObject({ status: "dead" });
+    expect(repository.snapshot().tasks[0]).toMatchObject({ status: "dispatched", taskVersion: 1 });
+    expect(repository.snapshot().runs[0]).toMatchObject({ status: "queued" });
+  });
+
+  it("marks an exhausted outbox row dead after its task was already cancelled", async () => {
+    const repository = createRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const [claimed] = await repository.claimOutboxBatch({
+      leaseExpiresAt,
+      leaseOwner: "publisher-1",
+      limit: 10,
+      now,
+    });
+    await repository.cancelWorkflowBatch({
+      limit: 10,
+      uid: 9,
+      workflowId: created.run.workflowId,
+    });
+
+    await expect(repository.markOutboxDead({
+      id: claimed!.id,
+      leaseOwner: "publisher-1",
+    })).resolves.toBe(true);
+    expect(repository.snapshot().outbox[0]).toMatchObject({ status: "dead" });
+    expect(repository.snapshot().tasks[0]).toMatchObject({ status: "cancelled" });
+    expect(repository.snapshot().runs[0]).toMatchObject({ status: "cancelled" });
   });
 });
 

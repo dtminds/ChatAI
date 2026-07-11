@@ -135,6 +135,7 @@ export interface WorkflowOutboxTable {
   payload_json: JsonText;
   sent_at: NullableDate;
   status: string;
+  task_version: number;
   uid: number;
   update_time: GeneratedDate;
 }

@@ -128,11 +128,73 @@ describe("workflow runtime repository", () => {
 
     const recovered = await repository.recoverExpiredLeases({
       limit: 100,
+      maxAttempts: 5,
       now: new Date("2026-07-10T00:02:00.000Z"),
     });
 
-    expect(recovered).toBe(1);
-    expect(repository.snapshot().tasks[0]).toMatchObject({ status: "pending", taskVersion: 3 });
+    expect(recovered).toEqual({ dead: 0, recovered: 1 });
+    expect(repository.snapshot().tasks[0]).toMatchObject({ attempt: 1, status: "pending", taskVersion: 3 });
+  });
+
+  it("marks the task dead and fails its run when execution attempts are exhausted", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+
+    const result = await repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 1,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    });
+
+    expect(result).toEqual({ dead: 1, recovered: 0 });
+    expect(repository.snapshot().tasks[0]).toMatchObject({
+      attempt: 1,
+      status: "dead",
+      taskVersion: 3,
+    });
+    expect(repository.snapshot().runs[0]).toMatchObject({
+      nextExecuteAt: null,
+      status: "failed",
+    });
+  });
+
+  it("removes expired inbox records in bounded batches", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    await repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-07-11T00:00:00.000Z"),
+        messageId: "expired-message",
+      },
+      nodeExecution: { idempotencyKey: "expired", input: {}, output: {} },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    });
+
+    await expect(repository.cleanupExpiredInbox({
+      limit: 1,
+      now: new Date("2026-07-12T00:00:00.000Z"),
+    })).resolves.toBe(1);
+    expect(repository.snapshot().inbox).toHaveLength(0);
   });
 
   it("cancels stopped workflow runs in cursor-based batches", async () => {

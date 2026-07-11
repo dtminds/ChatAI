@@ -692,6 +692,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   aggregate_type VARCHAR(64) NOT NULL COMMENT '聚合类型',
   aggregate_id BIGINT UNSIGNED NOT NULL COMMENT '聚合ID',
+  task_version INT UNSIGNED NOT NULL COMMENT 'Task版本',
   event_type VARCHAR(128) NOT NULL COMMENT '事件类型',
   payload_json JSON NOT NULL COMMENT '消息载荷',
   status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '投递状态',
@@ -705,6 +706,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   PRIMARY KEY (id),
   KEY idx_workflow_outbox_dispatch (status, next_attempt_at, id),
   KEY idx_workflow_outbox_lease (status, lease_expires_at, id),
+  KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id),
   KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id)
 ) COMMENT='营销Workflow事务Outbox表';
 

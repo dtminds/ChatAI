@@ -9,6 +9,35 @@ import { RequestNormalizedError } from "@/lib/request";
 import { createHttpWorkflowDraftRepository } from "@/pages/chat/workflow/workflow-http-repository";
 
 describe("HTTP workflow draft repository", () => {
+  it("formats API timestamps for workflow views in Asia/Shanghai", async () => {
+    const definition = createDefinition({
+      publishedRevision: 1,
+      updatedAt: "2026-07-11T11:21:55.000Z",
+    });
+    const client = createClient({
+      definition,
+      revisions: [{
+        draft: definition.draft,
+        id: "revision-1",
+        publishedAt: "2026-07-11T07:12:06.000Z",
+        revision: 1,
+        workflowId: "42",
+      }],
+    });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    const document = await repository.getDocument("42");
+    const [listItem] = await repository.listDocuments();
+
+    expect(document).toMatchObject({
+      publishedAt: "07-11 15:12:06",
+      savedAt: "07-11 19:21:55",
+      updatedAt: "07-11 19:21:55",
+      versionHistory: [{ publishedAt: "07-11 15:12:06" }],
+    });
+    expect(listItem?.updatedAt).toBe("07-11 19:21:55");
+  });
+
   it("maps definitions and revision history without inventing an unpublished revision", async () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     const repository = createHttpWorkflowDraftRepository(client);

@@ -544,3 +544,182 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   PRIMARY KEY (`id`),
   KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  name VARCHAR(100) NOT NULL COMMENT 'Workflow名称',
+  runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive' COMMENT '运行状态：inactive、active、paused、stopped',
+  biz_status TINYINT NOT NULL DEFAULT 1 COMMENT '业务状态：1正常，0已删除',
+  draft_schema_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿DSL Schema版本',
+  draft_json JSON NOT NULL COMMENT '画布草稿JSON',
+  draft_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿乐观锁版本',
+  validated_draft_version INT UNSIGNED NULL COMMENT '最近一次发布校验通过的草稿版本',
+  published_revision INT UNSIGNED NULL COMMENT '当前发布Revision，首次启用前为空',
+  client_request_id VARCHAR(128) NULL COMMENT '创建请求幂等ID',
+  op_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '最近操作子账号ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_definition_uid_request (uid, client_request_id),
+  KEY idx_workflow_definition_uid_status_update (uid, biz_status, update_time, id)
+) COMMENT='营销Workflow定义表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  revision INT UNSIGNED NOT NULL COMMENT '发布Revision',
+  dsl_schema_version INT UNSIGNED NOT NULL COMMENT 'DSL Schema版本',
+  draft_json JSON NOT NULL COMMENT '发布时画布草稿快照',
+  execution_spec_json JSON NOT NULL COMMENT '后端编译后的执行定义',
+  spec_hash CHAR(64) NOT NULL COMMENT '执行定义SHA-256',
+  publish_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '发布子账号ID',
+  publish_time DATETIME NOT NULL COMMENT '发布时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_revision_uid_workflow_revision (uid, workflow_id, revision),
+  KEY idx_workflow_revision_uid_workflow_time (uid, workflow_id, publish_time, id)
+) COMMENT='营销Workflow不可变Revision表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  event_type VARCHAR(128) NOT NULL COMMENT '标准化触发事件类型',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT '绑定Revision',
+  filter_spec_json JSON NULL COMMENT '结构化触发筛选规则',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1生效，0失效',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, event_type),
+  KEY idx_workflow_trigger_binding_match (uid, event_type, status, workflow_id)
+) COMMENT='营销Workflow触发绑定表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
+  entry_event_id VARCHAR(128) NOT NULL COMMENT '入口事件幂等ID',
+  shard_id SMALLINT UNSIGNED NOT NULL COMMENT '逻辑分片ID，0至255',
+  status VARCHAR(32) NOT NULL COMMENT 'Run状态',
+  current_node_id VARCHAR(128) NOT NULL COMMENT '当前节点ID',
+  sequence INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前执行序号',
+  context_json JSON NOT NULL COMMENT '受控运行上下文',
+  next_execute_at DATETIME NULL COMMENT '下一次执行时间',
+  lock_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Run乐观锁版本',
+  terminal_reason VARCHAR(255) NULL COMMENT '终止原因',
+  completed_at DATETIME NULL COMMENT '完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
+  KEY idx_workflow_run_workflow_status_time (uid, workflow_id, revision, status, create_time, id),
+  KEY idx_workflow_run_subject_status_time (uid, subject_id, status, create_time, id),
+  KEY idx_workflow_run_schedule (shard_id, status, next_execute_at, id)
+) COMMENT='营销Workflow运行实例表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点ID',
+  node_kind VARCHAR(32) NOT NULL COMMENT '节点类型',
+  sequence INT UNSIGNED NOT NULL COMMENT 'Run内执行序号',
+  task_type VARCHAR(32) NOT NULL COMMENT '任务类型',
+  shard_id SMALLINT UNSIGNED NOT NULL COMMENT '逻辑分片ID，0至255',
+  bucket_time DATETIME NOT NULL COMMENT '分钟时间桶',
+  due_at DATETIME NOT NULL COMMENT '计划执行时间',
+  status VARCHAR(32) NOT NULL COMMENT 'Task状态',
+  task_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'Task单调版本',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '业务尝试次数',
+  lease_owner VARCHAR(128) NULL COMMENT '租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '租约过期时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_task_run_sequence (uid, run_id, sequence),
+  KEY idx_workflow_task_schedule (shard_id, status, bucket_time, due_at, id),
+  KEY idx_workflow_task_run_status_sequence (run_id, status, sequence, id),
+  KEY idx_workflow_task_lease (lease_expires_at, status, id)
+) COMMENT='营销Workflow执行任务表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点ID',
+  node_kind VARCHAR(32) NOT NULL COMMENT '节点类型',
+  sequence INT UNSIGNED NOT NULL COMMENT 'Run内执行序号',
+  status VARCHAR(32) NOT NULL COMMENT '节点执行状态',
+  idempotency_key VARCHAR(512) NOT NULL COMMENT '稳定业务幂等键',
+  input_snapshot_json JSON NULL COMMENT '受控输入快照',
+  output_json JSON NULL COMMENT '节点输出',
+  error_code VARCHAR(128) NULL COMMENT '业务错误码',
+  error_message VARCHAR(512) NULL COMMENT '脱敏错误信息',
+  started_at DATETIME NULL COMMENT '开始执行时间',
+  completed_at DATETIME NULL COMMENT '完成时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_node_execution_run_sequence (uid, run_id, sequence),
+  UNIQUE KEY uk_workflow_node_execution_idempotency (uid, idempotency_key),
+  KEY idx_workflow_node_execution_run_time (uid, run_id, create_time, id)
+) COMMENT='营销Workflow节点执行账本表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  aggregate_type VARCHAR(64) NOT NULL COMMENT '聚合类型',
+  aggregate_id BIGINT UNSIGNED NOT NULL COMMENT '聚合ID',
+  event_type VARCHAR(128) NOT NULL COMMENT '事件类型',
+  payload_json JSON NOT NULL COMMENT '消息载荷',
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '投递状态',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '投递尝试次数',
+  next_attempt_at DATETIME NOT NULL COMMENT '下次投递时间',
+  sent_at DATETIME NULL COMMENT '成功投递时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_workflow_outbox_dispatch (status, next_attempt_at, id),
+  KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id)
+) COMMENT='营销Workflow事务Outbox表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inbox (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  consumer VARCHAR(128) NOT NULL COMMENT '消费者名称',
+  message_id VARCHAR(256) NOT NULL COMMENT '消息ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  processed_at DATETIME NOT NULL COMMENT '处理完成时间',
+  expires_at DATETIME NOT NULL COMMENT '去重记录过期时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_inbox_consumer_message (consumer, message_id),
+  KEY idx_workflow_inbox_expiry (expires_at, id),
+  KEY idx_workflow_inbox_uid_time (uid, processed_at, id)
+) COMMENT='营销Workflow消费Inbox表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_daily_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  revision INT UNSIGNED NOT NULL COMMENT 'Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点ID，空字符串表示Workflow级',
+  metric_date DATE NOT NULL COMMENT '统计日期',
+  entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '进入数量',
+  completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '完成数量',
+  failed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败数量',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_daily_metric_dimension (uid, workflow_id, revision, node_id, metric_date),
+  KEY idx_workflow_daily_metric_query (uid, metric_date, workflow_id, revision)
+) COMMENT='营销Workflow每日指标表';

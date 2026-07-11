@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+import {
+  InMemoryWorkflowRepository,
+  WorkflowService,
+} from "../../../src/modules/workflow/index.js";
+
+const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
+
+describe("WorkflowService", () => {
+  it("allows only owners and admins to access workflows", async () => {
+    const service = createService();
+
+    await expect(service.list({ roles: ["operator"], subUserId: "18", uid: 9 }))
+      .rejects.toMatchObject({ code: "WORKFLOW_FORBIDDEN", statusCode: 403 });
+    await expect(service.create({ roles: ["admin"], subUserId: "19", uid: 9 }, {}))
+      .resolves.toMatchObject({ runtimeStatus: "inactive" });
+  });
+
+  it("validates before first enable and creates revision 1 on enable", async () => {
+    const service = createService();
+    const created = await service.create(operator, { name: "新客培育" });
+
+    const validated = await service.publish(operator, created.id, {
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    expect(validated.validatedOnly).toBe(true);
+    expect(validated.revision).toBeNull();
+    expect(validated.definition.validatedDraftVersion).toBe(1);
+
+    const enabled = await service.enable(operator, created.id);
+
+    expect(enabled.runtimeStatus).toBe("active");
+    expect(enabled.publishedRevision).toBe(1);
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+  });
+
+  it("publishes immutable revisions after first enable without changing pause state", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    await service.enable(operator, created.id);
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: { ...created.draft, viewport: { x: 50, y: 25, zoom: 1 } },
+      expectedDraftVersion: 1,
+    });
+    await service.pause(operator, created.id);
+
+    const published = await service.publish(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+
+    expect(published.validatedOnly).toBe(false);
+    expect(published.revision?.revision).toBe(2);
+    expect(published.definition.runtimeStatus).toBe("paused");
+  });
+
+  it("uses draft versions as optimistic locks", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+
+    await service.saveDraft(operator, created.id, {
+      draft: created.draft,
+      expectedDraftVersion: 1,
+    });
+
+    await expect(service.saveDraft(operator, created.id, {
+      draft: created.draft,
+      expectedDraftVersion: 1,
+    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_CONFLICT", statusCode: 409 });
+  });
+
+  it("allows resume from paused but never from stopped", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    await service.enable(operator, created.id);
+    await service.pause(operator, created.id);
+
+    await expect(service.resume(operator, created.id)).resolves.toMatchObject({ runtimeStatus: "active" });
+    await service.stop(operator, created.id);
+    await expect(service.resume(operator, created.id)).rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
+    await expect(service.publish(operator, created.id, { expectedDraftVersion: 1 }))
+      .rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
+  });
+
+  it("logically deletes definitions and hides them from reads", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+
+    await service.delete(operator, created.id);
+
+    await expect(service.get(operator, created.id)).rejects.toMatchObject({
+      code: "WORKFLOW_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(await service.list(operator)).toEqual([]);
+  });
+
+  it("restores an immutable revision into a new draft version", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    await service.enable(operator, created.id);
+
+    const restored = await service.restoreRevision(operator, created.id, 1, {
+      expectedDraftVersion: 1,
+    });
+
+    expect(restored.draftVersion).toBe(2);
+    expect(restored.validatedDraftVersion).toBeNull();
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+  });
+});
+
+function createService() {
+  return new WorkflowService(new InMemoryWorkflowRepository());
+}

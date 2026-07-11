@@ -2,6 +2,15 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-10
+
+- Added the marketing Workflow control-plane tables for mutable definitions and immutable revisions.
+- Added runtime Run, Task, Node Execution, transactional Outbox, consumer Inbox, trigger binding, and daily metric tables.
+- Workflow definitions use `biz_status = 0` for logical deletion; `runtime_status = stopped` remains visible and auditable.
+- All Workflow tables use meaningless auto-increment primary keys and include `create_time` and `update_time`.
+
+Apply the `xy_wap_embed_workflow_*` `CREATE TABLE` statements from `docs/db/schema.sql` before enabling the Workflow HTTP repository.
+
 ## 2026-07-05
 
 - Cleared the old system-generated title for video material collections. New unnamed video collections store an empty title, so title search and edit dialogs do not treat the default `视频` label as user input.

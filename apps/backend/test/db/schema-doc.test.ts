@@ -31,6 +31,36 @@ describe("database schema document", () => {
 
     expect(analysisPolicyTable).toMatch(/\n  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1\b/);
   });
+
+  it("defines workflow control and runtime tables with the shared primary key and timestamp convention", () => {
+    const tableNames = [
+      "xy_wap_embed_workflow_definition",
+      "xy_wap_embed_workflow_revision",
+      "xy_wap_embed_workflow_trigger_binding",
+      "xy_wap_embed_workflow_run",
+      "xy_wap_embed_workflow_task",
+      "xy_wap_embed_workflow_node_execution",
+      "xy_wap_embed_workflow_outbox",
+      "xy_wap_embed_workflow_inbox",
+      "xy_wap_embed_workflow_daily_metric",
+    ];
+
+    for (const tableName of tableNames) {
+      const table = extractCreateTable(schemaSql, tableName);
+
+      expect(table).toContain("id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
+      expect(table).toContain("create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+      expect(table).toContain("update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+      expect(table).toContain("PRIMARY KEY (id)");
+    }
+  });
+
+  it("keeps workflow deletion separate from its runtime status", () => {
+    const definitionTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_definition");
+
+    expect(definitionTable).toContain("runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive'");
+    expect(definitionTable).toContain("biz_status TINYINT NOT NULL DEFAULT 1");
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

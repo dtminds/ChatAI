@@ -8,18 +8,19 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && tsc -p tsconfig.json",
     "db:codegen": "node scripts/codegen-db-schema.mjs",
-    "dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/server.ts",
+    "dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
     "worker": "node dist/worker.js",
-    "worker:dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/worker.ts",
+    "worker:dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && NODE_ENV=development tsx watch src/worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm --filter @chatai/contracts build && tsc --noEmit"
+    "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && tsc --noEmit"
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",
+    "@chatai/workflow-engine": "workspace:*",
     "@fastify/cookie": "^11.0.2",
     "@fastify/env": "^7.0.0",
     "@fastify/jwt": "^10.0.0",

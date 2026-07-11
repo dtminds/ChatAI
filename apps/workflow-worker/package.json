@@ -12,6 +12,7 @@
   "scripts": {
     "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc -p tsconfig.json",
     "dev": "pnpm build && NODE_ENV=development node --enable-source-maps dist/index.js",
+    "smoke:entry": "pnpm build && node --enable-source-maps dist/smoke-entry.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/workflow-engine build && pnpm --filter @chatai/workflow-runtime build && tsc --noEmit"

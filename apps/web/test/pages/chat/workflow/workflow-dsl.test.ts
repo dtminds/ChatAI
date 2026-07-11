@@ -181,8 +181,9 @@ describe("workflow DSL", () => {
 
     expect(graph.nodes.find((node) => node.id === "start")).toEqual(expect.objectContaining({
       config: expect.objectContaining({
-        audience: "近 30 天新入会且未首购客户",
-        repeatEntryEnabled: true,
+        accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
+        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+        triggers: expect.arrayContaining([{ type: "contact.friend_added" }]),
       }),
       id: "start",
       kind: "start",
@@ -293,7 +294,7 @@ describe("workflow DSL", () => {
             ...node,
             data: {
               ...node.data,
-              repeatEntryEnabled: false,
+              entryPolicy: { mode: "never" as const },
             },
           };
         }
@@ -318,7 +319,7 @@ describe("workflow DSL", () => {
       return;
     }
 
-    expect(parsed.draft.nodes.find((node) => node.id === "start")?.data.repeatEntryEnabled).toBe(false);
+    expect(parsed.draft.nodes.find((node) => node.id === "start")?.data.entryPolicy).toEqual({ mode: "never" });
     expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.title).toBe("会员运营接管");
   });
 
@@ -339,10 +340,14 @@ describe("workflow DSL", () => {
     const configByKind = new Map(graph.nodes.map((node) => [node.kind, node.config]));
 
     expect(configByKind.get("start")).toEqual({
-      audience: "近 30 天新入会且未首购客户",
-      repeatEntryEnabled: true,
+      accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [
+        { type: "contact.friend_added" },
+        { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
+      ],
     });
-    expect(configByKind.get("wait")).toEqual({ delayDays: 2 });
+    expect(configByKind.get("wait")).toEqual({ duration: 2, unit: "day" });
     expect(configByKind.get("branch")).toEqual({
       branchPaths: expect.any(Array),
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",

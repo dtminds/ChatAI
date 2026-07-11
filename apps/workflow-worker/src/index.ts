@@ -82,4 +82,5 @@ export * from "./reconciler.js";
 export * from "./role-loop.js";
 export * from "./runtime.js";
 export * from "./scheduler.js";
+export * from "./smoke-entry.js";
 export * from "./task-consumer.js";

@@ -30,7 +30,7 @@ describe("workflow entry consumer", () => {
 
   it("ACKs nonmatching bindings and entry-policy rejection", async () => {
     const startRun = vi.fn(async () => ({ kind: "entry-policy-rejected" as const }));
-    const message = createBrokerMessage(command({ thirdUserId: "account-b" }));
+    const message = createBrokerMessage(command({ accountId: "account-b" }));
     const handler = createEntryConsumerHandler({
       bindingReader: {
         listActiveTriggerBindings: vi.fn(async () => [
@@ -101,11 +101,12 @@ describe("workflow entry consumer", () => {
 
 function command(overrides: Partial<WorkflowEntryCommand> = {}): WorkflowEntryCommand {
   return {
+    accountId: "account-a",
     eventId: "event-1",
     eventType: "contact.friend_added",
     occurredAt: "2026-07-11T00:00:00.000Z",
     subjectId: "external-user-1",
-    thirdUserId: "account-a",
+    thirdUserId: "external-user-1",
     triggerPayload: {},
     uid: "9",
     ...overrides,

@@ -31,8 +31,9 @@ describe("workflow trigger matching", () => {
       triggerPayload: { messageId: "message-1", messageType: "text", text: "A vip OFFER" },
     }))).toBe(true);
     expect(matchWorkflowTrigger(startConfig, command({
+      accountId: "account-c",
       eventType: "message.received",
-      thirdUserId: "account-c",
+      thirdUserId: "external-user-2",
       triggerPayload: { messageId: "message-2", messageType: "text", text: "VIP" },
     }))).toBe(false);
   });
@@ -61,11 +62,12 @@ describe("workflow trigger matching", () => {
 
 function command(overrides: Record<string, unknown>) {
   return {
+    accountId: "account-a",
     eventId: "event-1",
     eventType: "contact.friend_added" as const,
     occurredAt: "2026-07-11T00:00:00.000Z",
     subjectId: "external-user-1",
-    thirdUserId: "account-a",
+    thirdUserId: "external-user-1",
     triggerPayload: {},
     uid: "9",
     ...overrides,

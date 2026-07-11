@@ -59,7 +59,10 @@ function NodeConfigFieldControl<TKind extends WorkflowNodeKind>({
     return (
       <div className="space-y-2">
         <Label>{field.label}</Label>
-        <div className={cn("grid gap-2", field.columns === 2 ? "grid-cols-2" : "grid-cols-1")}>
+        <div className={cn(
+          "grid gap-2",
+          field.columns === 3 ? "grid-cols-3" : field.columns === 2 ? "grid-cols-2" : "grid-cols-1",
+        )}>
           {field.getOptions(data).map((option) => {
             const isActive = activeValue === option.value;
 
@@ -138,9 +141,11 @@ function NodeConfigFieldControl<TKind extends WorkflowNodeKind>({
             min={field.min}
             onChange={(event) => {
               const numericValue = Number(event.target.value);
-              const nextValue = Math.max(numericValue, field.min ?? Number.NEGATIVE_INFINITY);
+              const normalizedValue = field.integer ? Math.trunc(numericValue) : numericValue;
+              const nextValue = Math.max(normalizedValue, field.min ?? Number.NEGATIVE_INFINITY);
               onNodeChange(field.toPatch(nextValue, data));
             }}
+            step={field.integer ? 1 : undefined}
             type="number"
             value={field.getValue(data)}
           />

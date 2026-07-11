@@ -35,7 +35,7 @@ export function matchWorkflowTrigger(
   command: WorkflowEntryCommand,
 ) {
   const normalized = normalizeWorkflowStartConfig(config);
-  if (!normalized.accountIds.includes(command.thirdUserId)) return false;
+  if (!normalized.accountIds.includes(command.accountId)) return false;
   return normalized.triggers.some(trigger => matchTrigger(trigger, command));
 }
 

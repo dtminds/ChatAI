@@ -314,12 +314,11 @@ describe("workflow node catalog", () => {
     expect(workflowNodeCatalog.start.visual.label).toBe("开始");
     expect(createDefaultNodeData("start")).toEqual(
       expect.objectContaining({
-        audience: "添加标签、添加好友事件、用户输入",
-        entryLimitSummary: "同一客户进入此SOP最多2次",
-        hostingAccountSummary: "已选 4 个托管账号",
+        accountIds: [],
+        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
         label: "开始",
-        sendWindow: "09:00:00 - 18:00:00",
         title: "开始",
+        triggers: [],
       }),
     );
 
@@ -330,7 +329,7 @@ describe("workflow node catalog", () => {
     expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ id: "hosting-accounts", label: "托管账号" }),
-        expect.objectContaining({ id: "audience", label: "目标人群" }),
+        expect.objectContaining({ id: "triggers", label: "触发条件" }),
       ]));
     expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])
       .toEqual([

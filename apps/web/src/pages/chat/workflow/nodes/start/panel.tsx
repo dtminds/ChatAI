@@ -1,163 +1,351 @@
-import {
-  Clock01Icon,
-  Delete02Icon,
-  HelpCircleIcon,
-  InformationCircleIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import type {
+  WorkflowEntryPolicy,
+  WorkflowStartTrigger,
+} from "@chatai/contracts";
+import type { ReactNode } from "react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { NodeSettingsProps } from "../../panels/types";
+import {
+  getWorkflowStartFixtureAccounts,
+  getWorkflowStartFixtureTags,
+} from "./fixture-options";
 
-export function StartConfig({ node }: NodeSettingsProps<"start">) {
-  const sendWindow = typeof node.data.sendWindow === "string"
-    ? node.data.sendWindow
-    : "09:00:00 - 18:00:00";
-  const [sendStartTime, sendEndTime] = sendWindow.split(" - ");
+const accounts = getWorkflowStartFixtureAccounts();
+const tags = getWorkflowStartFixtureTags();
 
+export function StartConfig({ node, onNodeChange }: NodeSettingsProps<"start">) {
+  const { accountIds, entryPolicy, triggers } = node.data;
+  const updateStartConfig = (patch: {
+    accountIds?: string[];
+    entryPolicy?: WorkflowEntryPolicy;
+    triggers?: WorkflowStartTrigger[];
+  }) => {
+    const nextAccountIds = patch.accountIds ?? accountIds;
+    const nextTriggers = patch.triggers ?? triggers;
+    const configured = nextAccountIds.length > 0 && nextTriggers.length > 0;
+    onNodeChange({
+      ...patch,
+      metric: configured
+        ? `${nextAccountIds.length} 个账号 · ${nextTriggers.length} 个触发条件`
+        : "待配置触发条件",
+      status: configured ? "ready" : "warning",
+      summary: configured
+        ? formatTriggerSummary(nextTriggers)
+        : "配置客户进入营销旅程的触发条件",
+    });
+  };
   return (
     <Accordion
       className="-mx-1 -mt-1"
-      defaultValue={["hosting", "audience", "limit", "send-window"]}
+      defaultValue={["accounts", "triggers", "entry-policy"]}
       type="multiple"
     >
-      <AccordionItem className="border-b-0" value="hosting">
-        <AccordionTrigger className="items-center rounded-[10px] px-1 py-3 text-[15px] font-semibold text-foreground">
-          <span className="flex min-w-0 items-center gap-2">
-            托管账号
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-destructive">
-              <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={2} />
-              消息发送时，必须保持托管账号在线
-            </span>
-          </span>
+      <AccordionItem className="border-b-0" value="accounts">
+        <AccordionTrigger className="items-center px-1 py-3 text-[15px] font-semibold text-foreground">
+          托管账号
         </AccordionTrigger>
         <AccordionContent className="pb-3">
-          <Button className="w-full justify-start rounded-[10px] text-primary" type="button" variant="outline">
-            选择托管账号
-          </Button>
+          <div className="space-y-2 rounded-[8px] border bg-card p-3">
+            {accounts.map(account => (
+              <CheckboxRow
+                checked={accountIds.includes(account.id)}
+                key={account.id}
+                label={account.label}
+                onCheckedChange={(checked) => updateStartConfig({
+                  accountIds: toggleValue(accountIds, account.id, checked),
+                })}
+              />
+            ))}
+          </div>
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem className="border-b-0" value="audience">
-        <AccordionTrigger className="items-center rounded-[10px] px-1 py-3 text-[15px] font-semibold text-foreground">目标人群</AccordionTrigger>
-        <AccordionContent className="pb-3">
-          <div className="rounded-[10px] border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] p-3">
-            <p className="mb-2.5 text-[13px] font-medium text-muted-foreground">筛选方式</p>
-            <RadioGroup
-              className="mb-[18px] flex flex-row gap-5"
-              defaultValue="event"
+      <AccordionItem className="border-b-0" value="triggers">
+        <AccordionTrigger className="items-center px-1 py-3 text-[15px] font-semibold text-foreground">
+          触发条件
+        </AccordionTrigger>
+        <AccordionContent className="space-y-3 pb-3">
+          <div className="space-y-3 rounded-[8px] border bg-card p-3">
+            <TriggerCheckbox
+              checked={hasTrigger(triggers, "contact.friend_added")}
+              label="添加好友"
+              onCheckedChange={(checked) => updateStartConfig({
+                triggers: toggleTrigger(triggers, "contact.friend_added", checked),
+              })}
+            />
+            <TriggerCheckbox
+              checked={hasTrigger(triggers, "customer.tag_added")}
+              label="添加标签"
+              onCheckedChange={(checked) => updateStartConfig({
+                triggers: toggleTrigger(triggers, "customer.tag_added", checked),
+              })}
             >
-              <label className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-                <RadioGroupItem value="event" />
-                <span>按事件筛选</span>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-                <RadioGroupItem value="customer" />
-                <span>按指定客户筛选</span>
-              </label>
-            </RadioGroup>
-
-            <div className="rounded-[10px] bg-[var(--workflow-panel-section)] p-3">
-              <p className="mb-2.5 text-[13px] font-medium text-muted-foreground">
-                <span className="text-destructive">*</span>
-                事件
-              </p>
-              <StartEventOption label="添加标签" withSelector />
-              <StartEventOption label="添加好友" />
-              <StartEventOption label="用户输入" />
-              <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
-                <span>1</span>
-                <Input
-                  aria-label="用户输入关键词"
-                  placeholder="输入后按下Enter或添加按钮"
-                  readOnly
-                  value=""
-                />
-                <span className="text-xs text-muted-foreground">0 / 20</span>
-                <Button aria-label="删除关键词" size="icon" type="button" variant="ghost">
-                  <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
-                </Button>
+              <div className="ml-6 space-y-2">
+                {tags.map(tag => (
+                  <CheckboxRow
+                    checked={getTagIds(triggers).includes(tag.id)}
+                    key={tag.id}
+                    label={tag.label}
+                    onCheckedChange={(checked) => updateStartConfig({
+                      triggers: updateTagTrigger(triggers, tag.id, checked),
+                    })}
+                  />
+                ))}
               </div>
-              <Button className="mt-3 w-full" type="button" variant="outline">
-                + 添加项(0/10)
-              </Button>
-            </div>
+            </TriggerCheckbox>
+            <TriggerCheckbox
+              checked={hasMessageTrigger(triggers, "any")}
+              label="用户发送消息"
+              onCheckedChange={(checked) => updateStartConfig({
+                triggers: toggleMessageTrigger(triggers, "any", checked),
+              })}
+            />
+            <TriggerCheckbox
+              checked={hasMessageTrigger(triggers, "keywords")}
+              label="消息包含关键词"
+              onCheckedChange={(checked) => updateStartConfig({
+                triggers: toggleMessageTrigger(triggers, "keywords", checked),
+              })}
+            >
+              <Input
+                aria-label="消息关键词"
+                className="ml-6 w-[calc(100%-1.5rem)]"
+                onChange={(event) => updateStartConfig({
+                  triggers: updateKeywords(triggers, event.target.value),
+                })}
+                placeholder="多个关键词用逗号分隔"
+                value={getKeywords(triggers).join(", ")}
+              />
+            </TriggerCheckbox>
           </div>
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem className="border-b-0" value="limit">
-        <AccordionTrigger className="items-center rounded-[10px] px-1 py-3 text-[15px] font-semibold text-foreground">
-          <span className="flex min-w-0 items-center gap-2">
-            限制次数
-            <HugeiconsIcon className="text-muted-foreground" icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-          </span>
+      <AccordionItem className="border-b-0" value="entry-policy">
+        <AccordionTrigger className="items-center px-1 py-3 text-[15px] font-semibold text-foreground">
+          进入限制
         </AccordionTrigger>
         <AccordionContent className="pb-3">
-          <div className="rounded-[10px] border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] p-3">
-            <RadioGroup className="gap-3.5" defaultValue="limited">
-              <label className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-                <RadioGroupItem value="unlimited" />
-                <span>不限次数</span>
-              </label>
-              <label className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] leading-5 text-foreground">
-                <RadioGroupItem value="limited" />
-                <span>同一客户进入此SOP最多</span>
-                <Input
-                  aria-label="进入次数限制"
-                  className="h-8 w-[82px]"
-                  readOnly
-                  value="2"
+          <RadioGroup
+            className="rounded-[8px] border bg-card p-3"
+            onValueChange={(mode) => updateStartConfig({ entryPolicy: createEntryPolicy(mode) })}
+            value={entryPolicy.mode}
+          >
+            <RadioRow label="不允许重复进入" value="never" />
+            <RadioRow label="最多进入 M 次" value="lifetime_limit">
+              {entryPolicy.mode === "lifetime_limit" ? (
+                <NumberInput
+                  ariaLabel="最多进入次数"
+                  max={1_000}
+                  onChange={(maxEntries) => updateStartConfig({
+                    entryPolicy: { maxEntries, mode: "lifetime_limit" },
+                  })}
+                  value={entryPolicy.maxEntries}
                 />
-                <span>次</span>
-              </label>
-            </RadioGroup>
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-
-      <AccordionItem className="border-b-0" value="send-window">
-        <AccordionTrigger className="items-center rounded-[10px] px-1 py-3 text-[15px] font-semibold text-foreground">消息发送时段</AccordionTrigger>
-        <AccordionContent className="pb-3">
-          <div className="inline-flex items-center gap-3.5 rounded-lg border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] px-3 py-2 text-[13px]">
-            <span>{sendStartTime}</span>
-            <span>→</span>
-            <span>{sendEndTime}</span>
-            <HugeiconsIcon className="text-muted-foreground" icon={Clock01Icon} size={16} strokeWidth={1.8} />
-          </div>
+              ) : null}
+            </RadioRow>
+            <RadioRow label="时间范围内限制" value="rolling_window">
+              {entryPolicy.mode === "rolling_window" ? (
+                <div className="ml-6 grid grid-cols-[70px_1fr_70px] items-center gap-2">
+                  <NumberInput
+                    ariaLabel="时间范围"
+                    max={365}
+                    onChange={(windowSize) => updateStartConfig({
+                      entryPolicy: { ...entryPolicy, windowSize },
+                    })}
+                    value={entryPolicy.windowSize}
+                  />
+                  <Select
+                    onValueChange={(windowUnit: "hour" | "day") => updateStartConfig({
+                      entryPolicy: { ...entryPolicy, windowUnit },
+                    })}
+                    value={entryPolicy.windowUnit}
+                  >
+                    <SelectTrigger aria-label="时间单位" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hour">小时</SelectItem>
+                      <SelectItem value="day">天</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <NumberInput
+                    ariaLabel="时间范围内最多进入次数"
+                    max={1_000}
+                    onChange={(maxEntries) => updateStartConfig({
+                      entryPolicy: { ...entryPolicy, maxEntries },
+                    })}
+                    value={entryPolicy.maxEntries}
+                  />
+                </div>
+              ) : null}
+            </RadioRow>
+          </RadioGroup>
         </AccordionContent>
       </AccordionItem>
     </Accordion>
   );
 }
 
-function StartEventOption({
-  label,
-  withSelector,
-}: {
+function CheckboxRow({ checked, label, onCheckedChange }: {
+  checked: boolean;
   label: string;
-  withSelector?: boolean;
+  onCheckedChange(checked: boolean): void;
 }) {
   return (
-    <div className="mt-3 min-w-0 first:mt-0">
-      <div className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-        <Checkbox checked onCheckedChange={() => undefined} />
-        <span>{label}</span>
-        <HugeiconsIcon className="text-muted-foreground" icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-      </div>
-      {withSelector ? (
-        <Button className="mt-3 h-10 w-full justify-start rounded-[10px] bg-[var(--workflow-panel-bg)] px-3 text-primary hover:bg-[var(--workflow-panel-bg)] hover:text-primary" type="button" variant="ghost">
-          选择标签
-        </Button>
-      ) : null}
+    <label className="flex items-center gap-2 text-[13px] text-foreground">
+      <Checkbox
+        aria-label={label}
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(value === true)}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function TriggerCheckbox({ checked, children, label, onCheckedChange }: {
+  checked: boolean;
+  children?: ReactNode;
+  label: string;
+  onCheckedChange(checked: boolean): void;
+}) {
+  return (
+    <div className="space-y-2">
+      <CheckboxRow checked={checked} label={label} onCheckedChange={onCheckedChange} />
+      {checked ? children : null}
     </div>
   );
+}
+
+function RadioRow({ children, label, value }: {
+  children?: ReactNode;
+  label: string;
+  value: WorkflowEntryPolicy["mode"];
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2 text-[13px] text-foreground">
+        <RadioGroupItem value={value} />
+        <span>{label}</span>
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function NumberInput({ ariaLabel, max, onChange, value }: {
+  ariaLabel: string;
+  max: number;
+  onChange(value: number): void;
+  value: number;
+}) {
+  return (
+    <Input
+      aria-label={ariaLabel}
+      className="h-9 px-2.5"
+      max={max}
+      min={1}
+      onChange={(event) => {
+        const nextValue = Math.trunc(Number(event.target.value)) || 1;
+        onChange(Math.min(max, Math.max(1, nextValue)));
+      }}
+      step={1}
+      type="number"
+      value={value}
+    />
+  );
+}
+
+function createEntryPolicy(mode: string): WorkflowEntryPolicy {
+  if (mode === "never") return { mode: "never" };
+  if (mode === "rolling_window") {
+    return { maxEntries: 2, mode: "rolling_window", windowSize: 7, windowUnit: "day" };
+  }
+  return { maxEntries: 2, mode: "lifetime_limit" };
+}
+
+function toggleValue(values: string[], value: string, checked: boolean) {
+  return checked ? [...new Set([...values, value])] : values.filter(item => item !== value);
+}
+
+function hasTrigger(triggers: WorkflowStartTrigger[], type: WorkflowStartTrigger["type"]) {
+  return triggers.some(trigger => trigger.type === type);
+}
+
+function toggleTrigger(
+  triggers: WorkflowStartTrigger[],
+  type: "contact.friend_added" | "customer.tag_added",
+  checked: boolean,
+) {
+  const remaining = triggers.filter(trigger => trigger.type !== type);
+  if (!checked) return remaining;
+  return type === "contact.friend_added"
+    ? [...remaining, { type }]
+    : [...remaining, { tagIds: [], type }];
+}
+
+function getTagIds(triggers: WorkflowStartTrigger[]) {
+  return triggers.find(trigger => trigger.type === "customer.tag_added")?.tagIds ?? [];
+}
+
+function updateTagTrigger(triggers: WorkflowStartTrigger[], tagId: string, checked: boolean) {
+  const tagIds = toggleValue(getTagIds(triggers), tagId, checked);
+  const remaining = triggers.filter(trigger => trigger.type !== "customer.tag_added");
+  return tagIds.length ? [...remaining, { tagIds, type: "customer.tag_added" as const }] : remaining;
+}
+
+function hasMessageTrigger(triggers: WorkflowStartTrigger[], match: "any" | "keywords") {
+  return triggers.some(trigger => trigger.type === "message.received" && trigger.match === match);
+}
+
+function toggleMessageTrigger(
+  triggers: WorkflowStartTrigger[],
+  match: "any" | "keywords",
+  checked: boolean,
+) {
+  const remaining = triggers.filter(trigger =>
+    trigger.type !== "message.received" || trigger.match !== match,
+  );
+  if (!checked) return remaining;
+  return match === "any"
+    ? [...remaining, { match, type: "message.received" as const }]
+    : [...remaining, { keywords: [], match, type: "message.received" as const }];
+}
+
+function getKeywords(triggers: WorkflowStartTrigger[]) {
+  const trigger = triggers.find(item => item.type === "message.received" && item.match === "keywords");
+  return trigger?.match === "keywords" ? trigger.keywords : [];
+}
+
+function updateKeywords(triggers: WorkflowStartTrigger[], value: string) {
+  const keywords = [...new Set(value.split(/[,，]/).map(item => item.trim()).filter(Boolean))];
+  const remaining = triggers.filter(trigger =>
+    trigger.type !== "message.received" || trigger.match !== "keywords",
+  );
+  return [...remaining, { keywords, match: "keywords" as const, type: "message.received" as const }];
+}
+
+function formatTriggerSummary(triggers: WorkflowStartTrigger[]) {
+  const labels = triggers.map(trigger => {
+    if (trigger.type === "contact.friend_added") return "添加好友";
+    if (trigger.type === "customer.tag_added") return "添加标签";
+    return trigger.match === "keywords" ? "消息关键词" : "用户消息";
+  });
+  return [...new Set(labels)].join("、");
 }

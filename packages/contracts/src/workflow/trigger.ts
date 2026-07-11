@@ -66,6 +66,7 @@ export const WorkflowWaitConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 const WorkflowEntryCommandBaseSchema = Type.Object({
+  accountId: Type.String({ minLength: 1, maxLength: 128 }),
   eventId: Type.String({ minLength: 1, maxLength: 128 }),
   occurredAt: Type.String({ minLength: 1, maxLength: 64 }),
   subjectId: Type.String({ minLength: 1, maxLength: 256 }),

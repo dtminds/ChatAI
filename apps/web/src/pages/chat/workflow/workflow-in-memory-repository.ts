@@ -266,7 +266,10 @@ function createWorkflowDocuments(): WorkflowDocument[] {
             ...node,
             data: {
               ...node.data,
-              audience: "90 天未复购会员",
+              triggers: [{
+                tagIds: ["tag-repurchase"],
+                type: "customer.tag_added" as const,
+              }],
               title: "复购唤醒触发",
             },
           }
@@ -282,7 +285,11 @@ function createWorkflowDocuments(): WorkflowDocument[] {
             ...node,
             data: {
               ...node.data,
-              audience: "直播间互动但未下单客户",
+              triggers: [{
+                keywords: ["直播", "活动"],
+                match: "keywords" as const,
+                type: "message.received" as const,
+              }],
               title: "直播互动触发",
             },
           }

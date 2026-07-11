@@ -85,6 +85,7 @@ async function admitWorkflow(
     expectedRevision: binding.revision,
     subjectId: command.subjectId,
     trigger: {
+      accountId: command.accountId,
       eventType: command.eventType,
       occurredAt: command.occurredAt,
       thirdUserId: command.thirdUserId,

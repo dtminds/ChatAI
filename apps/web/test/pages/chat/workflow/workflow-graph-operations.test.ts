@@ -588,7 +588,7 @@ describe("workflow graph operations", () => {
   it("updates node config without changing unrelated nodes or edges", () => {
     const draft = createDraft();
     const operation = updateNodeDataOperation(draft, "wait-2d", {
-      delayDays: 5,
+      duration: 5,
       title: "等待 5 天",
     });
 
@@ -602,10 +602,10 @@ describe("workflow graph operations", () => {
       ...edge,
       selected: false,
     })));
-    expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.delayDays).toBe(5);
+    expect(operation?.draft.nodes.find((node) => node.id === "wait-2d")?.data.duration).toBe(5);
     expect(updateNodeDataOperation(draft, "missing", { title: "missing" })).toBeUndefined();
     expect(updateNodeDataOperation(draft, "wait-2d", {
-      delayDays: draft.nodes.find((node) => node.id === "wait-2d")?.data.delayDays,
+      duration: draft.nodes.find((node) => node.id === "wait-2d")?.data.duration,
     })).toBeUndefined();
   });
 

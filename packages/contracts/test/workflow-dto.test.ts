@@ -69,6 +69,7 @@ describe("workflow contracts", () => {
 
   it("validates standard entry commands by event payload", () => {
     const base = {
+      accountId: "account-a",
       eventId: "event-1",
       occurredAt: "2026-07-11T00:00:00.000Z",
       subjectId: "external-user-1",
@@ -80,6 +81,12 @@ describe("workflow contracts", () => {
       eventType: "customer.tag_added",
       triggerPayload: { tagId: "tag-vip" },
     })).toBe(true);
+    expect(Value.Check(WorkflowEntryCommandSchema, {
+      ...base,
+      accountId: undefined,
+      eventType: "contact.friend_added",
+      triggerPayload: {},
+    })).toBe(false);
     expect(Value.Check(WorkflowEntryCommandSchema, {
       ...base,
       eventType: "customer.tag_added",

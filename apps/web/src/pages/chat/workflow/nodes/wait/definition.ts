@@ -10,6 +10,12 @@ import {
   targetNodeKinds,
 } from "../definition-shared";
 
+const waitUnitLabels = {
+  day: "天",
+  hour: "小时",
+  minute: "分钟",
+} as const;
+
 export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   availableNextKinds: targetNodeKinds,
   availablePrevKinds: sourceNodeKinds,
@@ -21,22 +27,42 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
     {
       fields: [
         {
-          getValue: (data) => data.delayDays ?? 2,
-          id: "workflow-delay-days",
+          getValue: (data) => data.duration,
+          id: "workflow-wait-duration",
+          integer: true,
           kind: "number",
-          label: "等待天数",
-          min: 0,
-          suffix: "天",
-          toPatch: (value) => ({
-            delayDays: value,
-            metric: `${value} 天后唤醒`,
-            summary: `等待 ${value} 天后继续触达`,
+          label: "时长",
+          min: 1,
+          toPatch: (value, data) => ({
+            duration: value,
+            metric: `${value} ${waitUnitLabels[data.unit]}后唤醒`,
+            summary: `等待 ${value} ${waitUnitLabels[data.unit]}后继续触达`,
           }),
           validation: {
             number: {
               code: "wait-delay-required",
-              message: "等待节点需要配置等待天数",
+              message: "等待节点需要配置正整数时长",
             },
+          },
+        },
+        {
+          columns: 3,
+          getOptions: () => [
+            { label: "分钟", value: "minute" },
+            { label: "小时", value: "hour" },
+            { label: "天", value: "day" },
+          ],
+          getValue: (data) => data.unit,
+          id: "workflow-wait-unit",
+          kind: "option-cards",
+          label: "单位",
+          toPatch: (value, data) => {
+            const unit = value as keyof typeof waitUnitLabels;
+            return {
+              metric: `${data.duration} ${waitUnitLabels[unit]}后唤醒`,
+              summary: `等待 ${data.duration} ${waitUnitLabels[unit]}后继续触达`,
+              unit,
+            };
           },
         },
       ],
@@ -46,14 +72,16 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   ],
   createDefaultData: () =>
     createNodeData("wait", 1, {
-      delayDays: 1,
+      duration: 1,
       label: "等待",
       metric: "1 天后唤醒",
       summary: "等待 1 天后继续触达",
       title: "等待",
+      unit: "day",
     }),
   createExecutionConfig: (data) => pickDefinedWorkflowConfig({
-    delayDays: data.delayDays,
+    duration: data.duration,
+    unit: data.unit,
   }),
   description: "按天、小时或固定窗口延迟触达",
   insertable: true,

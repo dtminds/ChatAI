@@ -65,6 +65,30 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.definitionReadShareLocked).toBe(true);
   });
 
+  it("reads only active current-revision trigger bindings through the definition join", async () => {
+    const db = createTriggerBindingDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.listActiveTriggerBindings(8, "contact.friend_added");
+
+    expect(result).toMatchObject([{
+      eventType: "contact.friend_added",
+      filter: { accountIds: ["account-a"] },
+      revision: 2,
+      workflowId: "42",
+    }]);
+    expect(db.joinReferences).toEqual(expect.arrayContaining([
+      ["definition.published_revision", "=", "binding.revision"],
+    ]));
+    expect(db.wheres).toEqual(expect.arrayContaining([
+      ["binding.uid", "=", 8],
+      ["binding.event_type", "=", "contact.friend_added"],
+      ["binding.status", "=", 1],
+      ["definition.biz_status", "=", 1],
+      ["definition.runtime_status", "=", "active"],
+    ]));
+  });
+
   it.each([
     { action: "defer", expectedStatus: "pending", runtimeStatus: "paused" },
     { action: "cancel", expectedStatus: "cancelled", runtimeStatus: "stopped" },
@@ -299,6 +323,46 @@ function createClaimDbMock(runtimeStatus = "active") {
         },
         where() { return builder; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createTriggerBindingDbMock() {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const db = {
+    joinReferences: [] as unknown[][],
+    wheres: [] as unknown[][],
+    selectFrom() {
+      const builder = {
+        innerJoin(_table: string, callback: (join: typeof joinBuilder) => unknown) {
+          callback(joinBuilder);
+          return builder;
+        },
+        select() { return builder; },
+        where(...args: unknown[]) { db.wheres.push(args); return builder; },
+        async execute() {
+          return [{
+            create_time: now,
+            event_type: "contact.friend_added",
+            filter_spec_json: JSON.stringify({
+              accountIds: ["account-a"],
+              entryPolicy: { mode: "never" },
+              triggers: [{ type: "contact.friend_added" }],
+            }),
+            id: "9",
+            revision: 2,
+            status: 1,
+            uid: 8,
+            update_time: now,
+            workflow_id: "42",
+          }];
+        },
+      };
+      const joinBuilder = {
+        onRef(...args: unknown[]) { db.joinReferences.push(args); return joinBuilder; },
       };
       return builder;
     },

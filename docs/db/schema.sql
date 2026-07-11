@@ -589,7 +589,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   event_type VARCHAR(128) NOT NULL COMMENT '标准化触发事件类型',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   revision INT UNSIGNED NOT NULL COMMENT '绑定Revision',
-  filter_spec_json JSON NULL COMMENT '结构化触发筛选规则',
+  filter_spec_json JSON NOT NULL COMMENT '结构化触发筛选规则',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1生效，0失效',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

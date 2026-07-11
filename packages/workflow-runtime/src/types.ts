@@ -1,9 +1,11 @@
 import type {
   WorkflowEntryPolicy,
+  WorkflowEntryEventType,
   WorkflowExecutionSpec,
   WorkflowNodeKind,
   WorkflowRuntimeStatus,
   WorkflowRunStatus,
+  WorkflowStartConfig,
   WorkflowTaskStatus,
 } from "@chatai/contracts";
 
@@ -21,6 +23,25 @@ export type WorkflowRuntimeRevisionRecord = {
 export type WorkflowRuntimeControlReader = {
   findDefinition(uid: number, workflowId: string): Promise<WorkflowRuntimeDefinitionRecord | null>;
   findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRuntimeRevisionRecord | null>;
+};
+
+export type WorkflowTriggerBindingRecord = {
+  createdAt: Date;
+  eventType: WorkflowEntryEventType;
+  filter: WorkflowStartConfig;
+  id: string;
+  revision: number;
+  status: 0 | 1;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
+export type WorkflowTriggerBindingReader = {
+  listActiveTriggerBindings(
+    uid: number,
+    eventType: WorkflowEntryEventType,
+  ): Promise<WorkflowTriggerBindingRecord[]>;
 };
 
 export type WorkflowRunRecord = {

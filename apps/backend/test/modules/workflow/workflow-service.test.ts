@@ -55,6 +55,61 @@ describe("WorkflowService", () => {
     expect(published.definition.runtimeStatus).toBe("paused");
   });
 
+  it("publishes only the current revision trigger bindings after enable", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = new WorkflowService(repository);
+    const created = await createConfigured(service);
+
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+
+    await service.enable(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toMatchObject([{ revision: 1, workflowId: created.id }]);
+
+    const changed = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        accountIds: ["account-b"],
+        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+        triggers: [{ tagIds: ["tag-vip"], type: "customer.tag_added" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.publish(operator, created.id, { expectedDraftVersion: changed.draftVersion });
+
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "customer.tag_added"))
+      .resolves.toMatchObject([{
+        filter: { accountIds: ["account-b"] },
+        revision: 2,
+        workflowId: created.id,
+      }]);
+  });
+
+  it("retains trigger bindings across pause and hides them after stop or deletion", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = new WorkflowService(repository);
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    await service.enable(operator, created.id);
+
+    await service.pause(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await service.resume(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toHaveLength(1);
+
+    await service.stop(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await service.delete(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+  });
+
   it("uses draft versions as optimistic locks", async () => {
     const service = createService();
     const created = await service.create(operator, {});
@@ -132,22 +187,25 @@ async function createConfigured(
   input: { name?: string } = {},
 ) {
   const created = await service.create(operator, input);
-  const draft = {
-    ...created.draft,
-    nodes: created.draft.nodes.map(node => node.id === "start"
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            accountIds: ["account-a"],
-            entryPolicy: { mode: "never" },
-            triggers: [{ type: "contact.friend_added" }],
-          },
-        }
-      : node),
-  };
+  const draft = withStartConfig(created.draft, {
+    accountIds: ["account-a"],
+    entryPolicy: { mode: "never" },
+    triggers: [{ type: "contact.friend_added" }],
+  });
   return service.saveDraft(operator, created.id, {
     draft,
     expectedDraftVersion: created.draftVersion,
   });
+}
+
+function withStartConfig(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: Record<string, unknown>,
+) {
+  return {
+    ...draft,
+    nodes: draft.nodes.map(node => node.id === "start"
+      ? { ...node, data: { ...node.data, ...config } }
+      : node),
+  };
 }

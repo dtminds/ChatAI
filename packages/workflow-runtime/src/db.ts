@@ -38,6 +38,18 @@ export interface WorkflowRevisionTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowTriggerBindingTable {
+  create_time: GeneratedDate;
+  event_type: string;
+  filter_spec_json: JsonText;
+  id: Generated<DatabaseId>;
+  revision: number;
+  status: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowRunTable {
   completed_at: NullableDate;
   context_json: JsonText;
@@ -145,4 +157,5 @@ export interface WorkflowDatabase {
   xy_wap_embed_workflow_revision: WorkflowRevisionTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;
   xy_wap_embed_workflow_task: WorkflowTaskTable;
+  xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
 }

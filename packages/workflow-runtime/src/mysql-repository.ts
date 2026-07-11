@@ -1,6 +1,10 @@
 import type {
+  WorkflowEntryEventType,
+  WorkflowExecutionSpec,
   WorkflowNodeKind,
+  WorkflowRuntimeStatus,
   WorkflowRunStatus,
+  WorkflowStartConfig,
   WorkflowTaskStatus,
 } from "@chatai/contracts";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
@@ -18,8 +22,11 @@ import type {
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
   WorkflowRunRecord,
+  WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
+  WorkflowTriggerBindingReader,
+  WorkflowTriggerBindingRecord,
 } from "./types.js";
 
 const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
@@ -28,10 +35,67 @@ const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
 const INBOX_TABLE = "xy_wap_embed_workflow_inbox" as const;
+const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
+const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;
 
-export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository {
+export class MysqlWorkflowRuntimeRepository implements
+  WorkflowRuntimeControlReader,
+  WorkflowRuntimeRepository,
+  WorkflowTriggerBindingReader {
   constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+
+  async findDefinition(uid: number, workflowId: string) {
+    const row = await this.db.selectFrom("xy_wap_embed_workflow_definition")
+      .select(["biz_status", "published_revision", "runtime_status"])
+      .where("uid", "=", uid)
+      .where("id", "=", workflowId)
+      .executeTakeFirst();
+    return row ? {
+      bizStatus: row.biz_status === 1 ? 1 as const : 0 as const,
+      publishedRevision: row.published_revision,
+      runtimeStatus: parseRuntimeStatus(row.runtime_status),
+    } : null;
+  }
+
+  async findRevision(uid: number, workflowId: string, revision: number) {
+    const row = await this.db.selectFrom(REVISION_TABLE)
+      .select(["execution_spec_json", "revision"])
+      .where("uid", "=", uid)
+      .where("workflow_id", "=", workflowId)
+      .where("revision", "=", revision)
+      .executeTakeFirst();
+    return row ? {
+      executionSpec: parseJson(row.execution_spec_json) as WorkflowExecutionSpec,
+      revision: row.revision,
+    } : null;
+  }
+
+  async listActiveTriggerBindings(uid: number, eventType: WorkflowEntryEventType) {
+    const rows = await this.db.selectFrom(`${TRIGGER_BINDING_TABLE} as binding`)
+      .innerJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "binding.uid")
+        .onRef("definition.id", "=", "binding.workflow_id")
+        .onRef("definition.published_revision", "=", "binding.revision"))
+      .select([
+        "binding.create_time",
+        "binding.event_type",
+        "binding.filter_spec_json",
+        "binding.id",
+        "binding.revision",
+        "binding.status",
+        "binding.uid",
+        "binding.update_time",
+        "binding.workflow_id",
+      ])
+      .where("binding.uid", "=", uid)
+      .where("binding.event_type", "=", eventType)
+      .where("binding.status", "=", 1)
+      .where("definition.biz_status", "=", 1)
+      .where("definition.runtime_status", "=", "active")
+      .execute();
+    return rows.map(mapTriggerBinding);
+  }
 
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
     try {
@@ -528,6 +592,20 @@ function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {
   };
 }
 
+function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBindingRecord {
+  return {
+    createdAt: toDate(row.create_time),
+    eventType: parseEntryEventType(row.event_type),
+    filter: parseJson(row.filter_spec_json) as WorkflowStartConfig,
+    id: normalizeId(row.id),
+    revision: Number(row.revision),
+    status: Number(row.status) === 1 ? 1 : 0,
+    uid: Number(row.uid),
+    updatedAt: toDate(row.update_time),
+    workflowId: normalizeId(row.workflow_id),
+  };
+}
+
 function parseNodeKind(value: string): WorkflowNodeKind {
   if (["start", "wait", "branch", "message", "tag", "coupon", "handoff", "end"].includes(value)) {
     return value as WorkflowNodeKind;
@@ -549,11 +627,18 @@ function parseTaskStatus(value: string): WorkflowTaskStatus {
   throw new Error(`Unknown workflow task status: ${value}`);
 }
 
-function parseRuntimeStatus(value: string) {
+function parseRuntimeStatus(value: string): WorkflowRuntimeStatus {
   if (value === "inactive" || value === "active" || value === "paused" || value === "stopped") {
     return value;
   }
   throw new Error(`Unknown workflow runtime status: ${value}`);
+}
+
+function parseEntryEventType(value: unknown): WorkflowEntryEventType {
+  if (value === "contact.friend_added" || value === "customer.tag_added" || value === "message.received") {
+    return value;
+  }
+  throw new Error(`Unknown workflow entry event type: ${String(value)}`);
 }
 
 function floorToMinute(value: Date) {
@@ -562,13 +647,21 @@ function floorToMinute(value: Date) {
   return result;
 }
 
-function parseJson(value: string) { return JSON.parse(value) as Record<string, unknown>; }
+function parseJson(value: unknown) {
+  return (typeof value === "string" ? JSON.parse(value) : structuredClone(value)) as Record<string, unknown>;
+}
 function stringifyJson(value: unknown) { return JSON.stringify(value); }
 function normalizeId(value: unknown) {
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
   if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return value;
   throw new Error("Database returned an invalid BIGINT identifier");
+}
+function toDate(value: unknown) {
+  if (value instanceof Date) return value;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) throw new Error("Database returned an invalid DATETIME value");
+  return date;
 }
 function isDuplicateEntryError(error: unknown) {
   return !!error && typeof error === "object" && "code" in error && error.code === "ER_DUP_ENTRY";

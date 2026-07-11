@@ -50,6 +50,48 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(result).toEqual({ kind: "invalid-status", status: "inactive" });
   });
+
+  it("replaces trigger bindings in the revision publication transaction", async () => {
+    const db = createPublicationDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    const result = await repository.enable({
+      draft: createDraft(),
+      executionSpec: {
+        edges: [{ id: "edge-start-end", source: "start", sourceOutletId: "default", target: "end" }],
+        entryNodeId: "start",
+        nodes: [
+          { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
+          { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+        ],
+        revision: 1,
+        schemaVersion: 1,
+        terminalNodeId: "end",
+        workflowId: "42",
+      },
+      expectedDraftVersion: 4,
+      opSubUserId: "19",
+      specHash: "a".repeat(64),
+      triggerBindings: [
+        { eventType: "contact.friend_added", filter: startConfig() },
+        {
+          eventType: "message.received",
+          filter: { ...startConfig(), triggers: [{ match: "any", type: "message.received" }] },
+        },
+      ],
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.transactionCount).toBe(1);
+    expect(db.triggerBindingStatusUpdate).toMatchObject({ status: 0 });
+    expect(db.triggerBindingInsert).toEqual([
+      expect.objectContaining({ event_type: "contact.friend_added", revision: 1, status: 1 }),
+      expect.objectContaining({ event_type: "message.received", revision: 1, status: 1 }),
+    ]);
+    expect(db.definitionUpdate).toMatchObject({ published_revision: 1, runtime_status: "active" });
+  });
 });
 
 function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
@@ -112,6 +154,72 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
   return db;
 }
 
+function createPublicationDbMock() {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const definition = {
+    biz_status: 1,
+    create_time: now,
+    draft_json: JSON.stringify(createDraft()),
+    draft_schema_version: 1,
+    draft_version: 4,
+    id: 42,
+    name: "新客培育",
+    op_sub_uid: 19,
+    published_revision: null,
+    runtime_status: "inactive",
+    uid: 8,
+    update_time: now,
+    validated_draft_version: 4,
+  };
+  const db = {
+    definitionUpdate: {} as Record<string, unknown>,
+    transactionCount: 0,
+    triggerBindingInsert: [] as Array<Record<string, unknown>>,
+    triggerBindingStatusUpdate: {} as Record<string, unknown>,
+    insertInto(table: string) {
+      const builder = {
+        values(values: Record<string, unknown> | Array<Record<string, unknown>>) {
+          if (table === "xy_wap_embed_workflow_trigger_binding") {
+            db.triggerBindingInsert = values as Array<Record<string, unknown>>;
+          }
+          return builder;
+        },
+        async executeTakeFirstOrThrow() {
+          return { insertId: table === "xy_wap_embed_workflow_revision" ? "11" : "12" };
+        },
+      };
+      return builder;
+    },
+    selectFrom() {
+      const builder = {
+        forUpdate() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() { return definition; },
+      };
+      return builder;
+    },
+    transaction() {
+      db.transactionCount += 1;
+      return { execute: (operation: (transaction: typeof db) => unknown) => operation(db) };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_definition") db.definitionUpdate = values;
+          if (table === "xy_wap_embed_workflow_trigger_binding") db.triggerBindingStatusUpdate = values;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
 function createDraft() {
   return {
     edges: [{ id: "edge-start-end", source: "start", target: "end" }],
@@ -120,6 +228,14 @@ function createDraft() {
       createNode("end"),
     ],
     viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
+function startConfig() {
+  return {
+    accountIds: ["account-a"],
+    entryPolicy: { mode: "never" as const },
+    triggers: [{ type: "contact.friend_added" as const }],
   };
 }
 

@@ -547,9 +547,6 @@ export function useWorkflowWorkspace(
 
   const closeVersionHistory = useWorkflowStableCallback(() => {
     dispatchViewState({ type: "close-version-history" });
-    clearEdgeSelection();
-    clearNodeSelection();
-    closeCanvasOverlays();
   });
 
   const openVersionHistory = useWorkflowStableCallback(() => {

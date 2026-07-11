@@ -9,7 +9,7 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -51,6 +52,7 @@ export function WorkflowTopBar({
   lastSavedAt,
   metadataUpdating = false,
   onBack,
+  onCloseVersionHistory,
   onExitPreview,
   onOpenVersionHistory,
   onPublish,
@@ -69,6 +71,8 @@ export function WorkflowTopBar({
   runtimeStatus = "inactive",
   saveState,
   totalChecks,
+  versionHistoryContent,
+  versionHistoryOpen = false,
   workflowName,
 }: {
   canPublish?: boolean;
@@ -80,6 +84,7 @@ export function WorkflowTopBar({
   lastSavedAt: string;
   metadataUpdating?: boolean;
   onBack?: () => void;
+  onCloseVersionHistory?: () => void;
   onExitPreview?: () => void;
   onOpenVersionHistory: () => void;
   onPublish: () => void;
@@ -100,6 +105,8 @@ export function WorkflowTopBar({
   saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
   validatedForActivation?: boolean;
+  versionHistoryContent?: ReactNode;
+  versionHistoryOpen?: boolean;
   workflowName: string;
 }) {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
@@ -204,7 +211,7 @@ export function WorkflowTopBar({
                 </Button>
               ) : null}
             </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
               <HugeiconsIcon className="shrink-0" icon={CloudSavingDone01Icon} size={14} strokeWidth={1.8} />
               {saveState === "error" && canRetrySave && onRetrySave ? (
                 <button
@@ -220,7 +227,7 @@ export function WorkflowTopBar({
                 </span>
               )}
               {hasUnpublishedChanges ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-600">
+                <span className="inline-flex shrink-0 items-center gap-1 !rounded-[2px] bg-amber-50 px-1.5 py-0.5 text-amber-600">
                   <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={2} />
                   有尚未发布的修改
                 </span>
@@ -247,16 +254,34 @@ export function WorkflowTopBar({
           </>
         ) : (
           <>
-            <Button
-              className="h-9 rounded-lg px-3 text-muted-foreground"
-              onClick={onOpenVersionHistory}
-              size="sm"
-              type="button"
-              variant="secondary"
+            <Popover
+              onOpenChange={(open) => {
+                if (open) onOpenVersionHistory();
+                else onCloseVersionHistory?.();
+              }}
+              open={versionHistoryOpen}
             >
-              <HugeiconsIcon icon={HistoryIcon} size={17} strokeWidth={1.8} />
-              版本历史
-            </Button>
+              <PopoverTrigger asChild>
+                <Button
+                  className="h-9 rounded-lg px-3 text-muted-foreground"
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <HugeiconsIcon icon={HistoryIcon} size={17} strokeWidth={1.8} />
+                  版本历史
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                aria-label="版本历史面板"
+                className="z-[80] max-h-[min(36rem,calc(100vh-5rem))] w-[268px] overflow-hidden rounded-xl p-0"
+                role="dialog"
+                sideOffset={8}
+              >
+                {versionHistoryContent}
+              </PopoverContent>
+            </Popover>
             <Button
               className="h-9 rounded-lg px-5 text-sm font-semibold"
               disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}

@@ -28,10 +28,7 @@ export function WorkflowVersionHistoryPanel({
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
 
   return (
-    <aside
-      aria-label="版本历史"
-      className="workflow-version-panel absolute right-4 top-4 z-[16] flex max-h-[calc(100%-32px)] w-[268px] flex-col overflow-hidden rounded-2xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-[0_18px_44px_var(--shadow-medium)] backdrop-blur-[10px] max-lg:left-2.5 max-lg:right-2.5 max-lg:top-2.5 max-lg:max-h-[calc(100%-20px)] max-lg:w-auto"
-    >
+    <div className="workflow-version-panel flex max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-[var(--workflow-panel-bg-blur)] backdrop-blur-[10px]">
       <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">版本历史</h2>
@@ -132,6 +129,6 @@ export function WorkflowVersionHistoryPanel({
           </div>
         </div>
       ) : null}
-    </aside>
+    </div>
   );
 }

@@ -173,6 +173,7 @@ function WorkflowWorkspaceContent({
         lastSavedAt={topBar.lastSavedAt}
         metadataUpdating={topBar.metadataUpdating}
         onBack={() => navigate("/chat/workflows")}
+        onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
@@ -197,13 +198,24 @@ function WorkflowWorkspaceContent({
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
         validatedForActivation={topBar.validatedForActivation}
+        versionHistoryContent={(
+          <WorkflowVersionHistoryPanel
+            currentPreviewVersionId={versionHistory.currentPreviewVersionId}
+            onClose={versionHistory.onClose}
+            onExitPreview={versionHistory.onExitPreview}
+            onRestoreVersion={versionHistory.onRestoreVersion}
+            onSelectVersion={versionHistory.onSelectVersion}
+            restoreState={versionHistory.restoreState}
+            versions={versionHistory.versions}
+          />
+        )}
+        versionHistoryOpen={versionHistory.isOpen}
         workflowName={currentDocument.name}
       />
 
       <div
         className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
-        data-version-panel-open={versionHistory.isOpen ? "true" : undefined}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           <WorkflowCanvas
@@ -242,17 +254,6 @@ function WorkflowWorkspaceContent({
               onNavigateToNode={checks.onNavigateToNode}
               publishAttempted={checks.publishAttempted}
               publishReady={checks.publishReady}
-            />
-          ) : null}
-          {versionHistory.isOpen ? (
-            <WorkflowVersionHistoryPanel
-              currentPreviewVersionId={versionHistory.currentPreviewVersionId}
-              onClose={versionHistory.onClose}
-              onExitPreview={versionHistory.onExitPreview}
-              onRestoreVersion={versionHistory.onRestoreVersion}
-              onSelectVersion={versionHistory.onSelectVersion}
-              restoreState={versionHistory.restoreState}
-              versions={versionHistory.versions}
             />
           ) : null}
         </section>

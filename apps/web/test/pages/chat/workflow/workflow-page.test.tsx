@@ -590,6 +590,21 @@ describe("Agent workflow page", () => {
     expect(getWorkflowDocument("newcomer-conversion").description).toBe("引导新客完成首购");
   });
 
+  it("opens version history as a header popover outside the canvas", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+    const settings = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+
+    const history = screen.getByRole("dialog", { name: "版本历史面板" });
+    expect(history).toBeInTheDocument();
+    expect(canvas).not.toContainElement(history);
+    expect(settings).toBeInTheDocument();
+  });
+
   it("groups canvas actions in a single bottom toolbar", async () => {
     renderWorkflowPage();
 

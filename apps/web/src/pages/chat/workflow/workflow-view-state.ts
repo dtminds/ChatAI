@@ -39,7 +39,6 @@ export function reduceWorkflowViewState(
       return {
         ...state,
         activePanel: state.activePanel === "version-history" ? null : state.activePanel,
-        inspectorOpen: true,
         previewVersionId: null,
       };
     case "close-inspector":
@@ -78,7 +77,7 @@ export function reduceWorkflowViewState(
     case "select-version-preview":
       return {
         ...state,
-        activePanel: "version-history",
+        activePanel: null,
         inspectorOpen: false,
         previewVersionId: action.versionId,
       };

@@ -342,11 +342,14 @@ export function WorkflowTopBar({
             }}
           >
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="workflow-metadata-name">Workflow 名称</label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium" htmlFor="workflow-metadata-name">Workflow 名称</label>
+                <span className="text-xs text-muted-foreground">{nameValue.length}/100</span>
+              </div>
               <Input
                 autoFocus
                 id="workflow-metadata-name"
-                maxLength={80}
+                maxLength={100}
                 onChange={(event) => setNameValue(event.target.value)}
                 readOnly={metadataUpdating}
                 value={nameValue}

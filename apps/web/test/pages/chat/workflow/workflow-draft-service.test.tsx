@@ -52,6 +52,22 @@ describe("workflow draft service", () => {
     expect(() => getWorkflowName("missing-workflow")).toThrow("Unknown workflow document");
   });
 
+  it("initializes publish equality from an already-published document", () => {
+    const publishedDocument = publishWorkflowDraft(
+      "newcomer-conversion",
+      getWorkflowDocument("newcomer-conversion").draft,
+    );
+
+    const { result } = renderHook(() => useWorkflowDocument(
+      publishedDocument.id,
+      undefined,
+      publishedDocument,
+    ));
+
+    expect(result.current.publishState).toBe("published");
+    expect(result.current.hasUnpublishedChanges).toBe(false);
+  });
+
   it("creates independent workflow documents with idempotent request keys", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const newDocument = repository.createDocument({ clientRequestId: "create-request-1" });
@@ -787,6 +803,37 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("error");
     expect(result.current.publishError?.code).toBe("server");
     expect(result.current.document.status).toBe("Draft");
+  });
+
+  it("keeps unpublished changes visible after publishing a changed draft fails", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    baseRepository.publishDraft(
+      "newcomer-conversion",
+      baseRepository.getDocument("newcomer-conversion").draft,
+    );
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      publishDraft: () => {
+        throw new WorkflowRepositoryError("server", "publish failed");
+      },
+    };
+    const publishedDocument = baseRepository.getDocument("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowDocument(
+      publishedDocument.id,
+      repository,
+      publishedDocument,
+    ));
+    const changedDraft = createDraftWithStartKeyword("发布失败后仍未发布");
+
+    act(() => {
+      result.current.markDirty(changedDraft);
+    });
+    await act(async () => {
+      await result.current.publishDraft(changedDraft);
+    });
+
+    expect(result.current.publishState).toBe("error");
+    expect(result.current.hasUnpublishedChanges).toBe(true);
   });
 
   it("exposes publish conflicts separately from retryable publish failures", async () => {

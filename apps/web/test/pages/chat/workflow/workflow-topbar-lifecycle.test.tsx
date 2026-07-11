@@ -132,6 +132,8 @@ describe("WorkflowTopBar lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "编辑 Workflow 信息" }));
     const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
     const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
+    expect(nameInput).toHaveAttribute("maxlength", "100");
+    expect(screen.getByText("4/100")).toBeInTheDocument();
     expect(descriptionInput).toHaveAttribute("maxlength", "1000");
     await user.clear(nameInput);
     await user.type(nameInput, "  新客首购旅程  ");

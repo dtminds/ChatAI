@@ -530,6 +530,7 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
     await user.click(screen.getByRole("menuitem", { name: "重命名" }));
     const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
+    expect(nameInput).toHaveAttribute("maxlength", "100");
     await user.clear(nameInput);
     await user.type(nameInput, "新客首购旅程");
     await user.click(screen.getByRole("button", { name: "保存" }));

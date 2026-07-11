@@ -185,7 +185,7 @@ export function WorkflowRenameDialog({
         <Input
           aria-label="Workflow 名称"
           autoFocus
-          maxLength={80}
+          maxLength={100}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {

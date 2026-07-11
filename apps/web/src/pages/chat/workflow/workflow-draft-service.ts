@@ -114,7 +114,9 @@ export function useWorkflowDocument(
 ) {
   const [document, setDocument] = useState(() => initialDocument ?? getSynchronousWorkflowDocument(repository, workflowId));
   const [importState, setImportState] = useState<WorkflowDraftImportStatus>("idle");
-  const [publishState, setPublishState] = useState<WorkflowDraftPublishStatus>("idle");
+  const [publishState, setPublishState] = useState<WorkflowDraftPublishStatus>(
+    () => getWorkflowPublishStateForDraft(document.draft, document),
+  );
   const [publishError, setPublishError] = useState<WorkflowRepositoryError | null>(null);
   const [metadataUpdateState, setMetadataUpdateState] = useState<"idle" | "updating">("idle");
   const [restoreState, setRestoreState] = useState<WorkflowDraftRestoreStatus>("idle");
@@ -123,6 +125,7 @@ export function useWorkflowDocument(
   const [lastSavedAt, setLastSavedAt] = useState(() => document.savedAt);
   const [lastSavedDraftHash, setLastSavedDraftHash] = useState(() => document.draftHash);
   const [lastPublishedDraftHash, setLastPublishedDraftHash] = useState(() => createWorkflowPublishedDraftHash(document));
+  const [currentDraftHash, setCurrentDraftHash] = useState(() => document.draftHash);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightSaveRef = useRef<Promise<WorkflowDraftSaveResult | undefined> | null>(null);
   const publishRequestRef = useRef(0);
@@ -202,6 +205,7 @@ export function useWorkflowDocument(
       setSaveError(null);
       setLastSavedAt(normalizedSaveResult.savedAt);
       setLastSavedDraftHash(normalizedSaveResult.draftHash);
+      setCurrentDraftHash(normalizedSaveResult.draftHash);
       setDocument((currentDocument) => ({
         ...currentDocument,
         conversion: savedDocument.conversion,
@@ -275,6 +279,7 @@ export function useWorkflowDocument(
     setLastSavedAt(nextDocument.savedAt);
     setLastSavedDraftHash(nextDocument.draftHash);
     setLastPublishedDraftHash(createWorkflowPublishedDraftHash(nextDocument));
+    setCurrentDraftHash(nextDocument.draftHash);
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -290,6 +295,7 @@ export function useWorkflowDocument(
       return;
     }
 
+    setCurrentDraftHash(nextDraftHash);
     setPublishState(getWorkflowPublishStateFromHashes(nextDraftHash, lastPublishedDraftHash));
     setPublishError(null);
 
@@ -396,6 +402,7 @@ export function useWorkflowDocument(
       setLastSavedAt(normalizedImportResult.savedAt);
       setLastSavedDraftHash(normalizedImportResult.draftHash);
       setLastPublishedDraftHash(createWorkflowPublishedDraftHash(importedDocument));
+      setCurrentDraftHash(normalizedImportResult.draftHash);
       setPublishState(getWorkflowPublishStateForDraft(normalizedImportResult.draft, importedDocument));
       setDocument(importedDocument);
 
@@ -450,6 +457,7 @@ export function useWorkflowDocument(
       failedSaveRef.current = null;
       setLastSavedAt(publishedDocument.savedAt);
       setLastSavedDraftHash(normalizedPublishResult.draftHash);
+      setCurrentDraftHash(normalizedPublishResult.draftHash);
       if (!normalizedPublishResult.validatedOnly) {
         setLastPublishedDraftHash(normalizedPublishResult.draftHash);
       }
@@ -534,6 +542,7 @@ export function useWorkflowDocument(
       setLastSavedAt(normalizedRestoreResult.savedAt);
       setLastSavedDraftHash(normalizedRestoreResult.draftHash);
       setLastPublishedDraftHash(createWorkflowPublishedDraftHash(restoredDocument));
+      setCurrentDraftHash(normalizedRestoreResult.draftHash);
       setPublishState(getWorkflowPublishStateForDraft(normalizedRestoreResult.draft, restoredDocument));
       setDocument(restoredDocument);
 
@@ -590,6 +599,8 @@ export function useWorkflowDocument(
 
   return useMemo(() => ({
     document,
+    hasUnpublishedChanges: document.publishedRevision !== null
+      && currentDraftHash !== lastPublishedDraftHash,
     importDraft,
     importState,
     lastSavedAt,
@@ -605,7 +616,7 @@ export function useWorkflowDocument(
     retrySave,
     saveError,
     saveState,
-  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, metadataUpdateState, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState, updateMetadata]);
+  }), [currentDraftHash, document, importDraft, importState, lastPublishedDraftHash, lastSavedAt, lastSavedDraftHash, markDirty, metadataUpdateState, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState, updateMetadata]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

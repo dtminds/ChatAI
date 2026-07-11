@@ -60,6 +60,7 @@ export function useWorkflowWorkspace(
 ) {
   const {
     document,
+    hasUnpublishedChanges,
     lastSavedAt,
     markDirty,
     metadataUpdateState,
@@ -639,7 +640,7 @@ export function useWorkflowWorkspace(
       canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),
       description: document.description,
-      hasUnpublishedChanges: document.publishedRevision !== null && publishState === "idle",
+      hasUnpublishedChanges,
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,

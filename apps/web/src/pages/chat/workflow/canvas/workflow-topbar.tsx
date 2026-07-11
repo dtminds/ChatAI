@@ -4,9 +4,9 @@ import {
   CheckmarkCircle02Icon,
   CloudSavingDone01Icon,
   Edit02Icon,
+  HistoryIcon,
   InformationCircleIcon,
   MoreHorizontalIcon,
-  Time02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
@@ -249,15 +249,14 @@ export function WorkflowTopBar({
         ) : (
           <>
             <Button
-              aria-label="版本历史"
-              className="size-9 rounded-lg text-muted-foreground"
+              className="h-9 rounded-lg px-3 text-muted-foreground"
               onClick={onOpenVersionHistory}
-              size="icon"
-              title="版本历史"
+              size="sm"
               type="button"
-              variant="ghost"
+              variant="secondary"
             >
-              <HugeiconsIcon icon={Time02Icon} size={19} strokeWidth={1.8} />
+              <HugeiconsIcon icon={HistoryIcon} size={17} strokeWidth={1.8} />
+              版本历史
             </Button>
             <Button
               className="h-9 rounded-lg px-5 text-sm font-semibold"

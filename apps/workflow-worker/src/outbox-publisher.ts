@@ -41,6 +41,7 @@ export async function publishWorkflowOutboxBatch(input: {
       const failedAt = input.now?.() ?? new Date();
       if (record.attempt >= input.maxAttempts) {
         if (!await input.repository.markOutboxDead({
+          failedAt,
           id: record.id,
           leaseOwner: input.leaseOwner,
         })) throw new Error("Workflow Outbox lease was lost while marking delivery dead");

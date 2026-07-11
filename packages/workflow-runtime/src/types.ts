@@ -116,6 +116,7 @@ export type WorkflowOutboxRepository = {
     nextAttemptAt: Date;
   }): Promise<boolean>;
   markOutboxDead(input: {
+    failedAt: Date;
     id: string;
     leaseOwner: string;
   }): Promise<boolean>;

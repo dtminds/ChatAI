@@ -100,6 +100,7 @@ describe("workflow outbox publisher", () => {
       topic: "task-topic",
     })).resolves.toEqual({ claimed: 1, dead: 1, failed: 0, sent: 0 });
     expect(repository.markOutboxDead).toHaveBeenCalledWith({
+      failedAt: new Date("2026-07-11T00:00:00.000Z"),
       id: "outbox-1",
       leaseOwner: "publisher-1",
     });

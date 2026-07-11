@@ -224,7 +224,7 @@ describe("workflow outbox repository", () => {
     })).resolves.toBe(true);
   });
 
-  it("marks an exhausted outbox row dead without failing the business run", async () => {
+  it("fails a still-dispatched task when its outbox delivery attempts are exhausted", async () => {
     const repository = createRepository();
     await repository.createRunWithInitialTask(createRunInput());
     const [claimed] = await repository.claimOutboxBatch({
@@ -235,12 +235,16 @@ describe("workflow outbox repository", () => {
     });
 
     await expect(repository.markOutboxDead({
+      failedAt: now,
       id: claimed!.id,
       leaseOwner: "publisher-1",
     })).resolves.toBe(true);
     expect(repository.snapshot().outbox[0]).toMatchObject({ status: "dead" });
-    expect(repository.snapshot().tasks[0]).toMatchObject({ status: "dispatched", taskVersion: 1 });
-    expect(repository.snapshot().runs[0]).toMatchObject({ status: "queued" });
+    expect(repository.snapshot().tasks[0]).toMatchObject({
+      status: "dead",
+      taskVersion: 2,
+    });
+    expect(repository.snapshot().runs[0]).toMatchObject({ status: "failed" });
   });
 
   it("marks an exhausted outbox row dead after its task was already cancelled", async () => {
@@ -259,6 +263,7 @@ describe("workflow outbox repository", () => {
     });
 
     await expect(repository.markOutboxDead({
+      failedAt: now,
       id: claimed!.id,
       leaseOwner: "publisher-1",
     })).resolves.toBe(true);

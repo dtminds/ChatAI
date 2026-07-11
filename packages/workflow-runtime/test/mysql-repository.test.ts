@@ -140,6 +140,30 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       ["queued", "running", "waiting"],
     ]);
   });
+
+  it("fails the matching dispatched task when its outbox attempts are exhausted", async () => {
+    const db = createOutboxDeadDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+    const failedAt = new Date("2026-07-11T00:00:00.000Z");
+
+    await expect(repository.markOutboxDead({
+      failedAt,
+      id: "11",
+      leaseOwner: "publisher-1",
+    })).resolves.toBe(true);
+
+    expect(db.outboxUpdate).toMatchObject({ status: "dead" });
+    expect(db.taskUpdate).toMatchObject({
+      last_error_code: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+      status: "dead",
+      task_version: 3,
+    });
+    expect(db.runUpdate).toMatchObject({
+      completed_at: failedAt,
+      status: "failed",
+      terminal_reason: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+    });
+  });
 });
 
 function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
@@ -413,6 +437,63 @@ function createRuntimeDbMock() {
         async executeTakeFirst() {
           return { numUpdatedRows: table === "xy_wap_embed_workflow_run" ? 0n : 0n };
         },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createOutboxDeadDbMock() {
+  const outbox = {
+    aggregate_id: "7",
+    aggregate_type: "workflow_task",
+    attempt: 5,
+    create_time: new Date("2026-07-11T00:00:00.000Z"),
+    event_type: "workflow.task.ready",
+    id: "11",
+    lease_expires_at: new Date("2026-07-11T00:01:00.000Z"),
+    lease_owner: "publisher-1",
+    next_attempt_at: new Date("2026-07-11T00:00:00.000Z"),
+    payload_json: "{}",
+    sent_at: null,
+    status: "leased",
+    task_version: 2,
+    uid: 8,
+    update_time: new Date("2026-07-11T00:00:00.000Z"),
+  };
+  const task = { id: "7", run_id: "5", task_version: 2 };
+  const db = {
+    outboxUpdate: {} as Record<string, unknown>,
+    runUpdate: {} as Record<string, unknown>,
+    taskUpdate: {} as Record<string, unknown>,
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() {
+          return table === "xy_wap_embed_workflow_outbox" ? outbox : task;
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_outbox") db.outboxUpdate = values;
+          if (table === "xy_wap_embed_workflow_task") db.taskUpdate = values;
+          if (table === "xy_wap_embed_workflow_run") db.runUpdate = values;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;
     },

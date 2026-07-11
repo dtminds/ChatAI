@@ -17,6 +17,11 @@ function createStartNode(): WorkflowNode<"start"> {
   };
 }
 
+function createStartNodeWithoutTagTrigger(): WorkflowNode<"start"> {
+  const node = createStartNode();
+  return { ...node, data: { ...node.data, triggers: [] } };
+}
+
 describe("StartConfig", () => {
   it("renders the formal start node settings sections", async () => {
     render(
@@ -40,5 +45,21 @@ describe("StartConfig", () => {
     expect(screen.getByRole("checkbox", { name: "消息包含关键词" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入限制" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "最多进入 M 次" })).toBeChecked();
+  });
+
+  it("does not allow enabling a tag trigger when no tags are available", () => {
+    const node = createStartNodeWithoutTagTrigger();
+    render(
+      <StartConfig
+        accounts={[]}
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={vi.fn()}
+        tags={[]}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "添加标签" })).toBeDisabled();
   });
 });

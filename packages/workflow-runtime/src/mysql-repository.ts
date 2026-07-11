@@ -398,9 +398,22 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("id", "=", input.id)
         .where("status", "=", "leased")
         .where("lease_owner", "=", input.leaseOwner)
-        .forUpdate()
         .executeTakeFirst();
       if (!outboxRow) return false;
+      const taskRow = await trx.selectFrom(TASK_TABLE).select(["id", "run_id", "task_version"])
+        .where("uid", "=", outboxRow.uid)
+        .where("id", "=", outboxRow.aggregate_id)
+        .where("status", "=", "dispatched")
+        .where("task_version", "=", outboxRow.task_version)
+        .forUpdate()
+        .executeTakeFirst();
+      const lockedOutbox = await trx.selectFrom(OUTBOX_TABLE).select("id")
+        .where("id", "=", input.id)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!lockedOutbox) return false;
       await trx.updateTable(OUTBOX_TABLE).set({
         lease_expires_at: null,
         lease_owner: null,
@@ -409,6 +422,26 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("status", "=", "leased")
         .where("lease_owner", "=", input.leaseOwner)
         .executeTakeFirstOrThrow();
+      if (taskRow) {
+        await trx.updateTable(TASK_TABLE).set({
+          last_error_code: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+          status: "dead",
+          task_version: taskRow.task_version + 1,
+        }).where("id", "=", taskRow.id)
+          .where("status", "=", "dispatched")
+          .where("task_version", "=", taskRow.task_version)
+          .executeTakeFirstOrThrow();
+        await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.failedAt,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
+        }).where("uid", "=", outboxRow.uid)
+          .where("id", "=", taskRow.run_id)
+          .where("status", "in", ["queued", "running", "waiting"])
+          .executeTakeFirstOrThrow();
+      }
       return true;
     });
   }

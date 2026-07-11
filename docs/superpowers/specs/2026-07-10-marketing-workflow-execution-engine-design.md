@@ -386,7 +386,7 @@ running -> dead       达到最大重试次数或不可恢复失败
 
 Consumer 的执行租约与 Scheduler 的调度租约使用同一组 `lease_owner / lease_expires_at` 字段，但处于不同 Task 状态。`running` 租约过期后，Reconciler 将任务恢复为可再次派发状态；旧 Worker 即使随后恢复，也会因 `task_version` 已变化而无法提交结果。
 
-Reconciler 同时对长期停留在 `dispatched` 且当前版本 Outbox 已发送的任务补写同版本 Outbox。该操作不提升 `task_version`，避免正常 MQ 积压中的消息被持续作废。Task 执行有最大尝试次数，耗尽后 Task 与 Run 进入失败终态；Outbox 达到投递告警阈值时只停止自动投递并保留业务 Task，等待运维重放，不直接判定业务执行失败。
+Reconciler 同时对长期停留在 `dispatched` 且当前版本 Outbox 已发送的任务补写同版本 Outbox。该操作不提升 `task_version`，避免正常 MQ 积压中的消息被持续作废。Task 执行有最大尝试次数，耗尽后 Task 与 Run 进入失败终态；Outbox 达到最大投递次数时，如果对应 Task 仍处于同版本 `dispatched` 状态，则原子地将 Task 与 Run 标记为失败。若 Task 已被 Consumer 认领、完成或取消，则只终止该旧 Outbox，不回滚业务状态。
 
 ## 9. 数据模型
 

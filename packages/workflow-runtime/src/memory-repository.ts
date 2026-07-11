@@ -396,6 +396,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     item.status = "dead";
     item.leaseOwner = null;
     item.leaseExpiresAt = null;
+    const task = this.tasks.find(candidate => candidate.id === item.payload.taskId
+      && candidate.uid === item.uid
+      && candidate.status === "dispatched"
+      && candidate.taskVersion === item.taskVersion);
+    if (task) {
+      task.status = "dead";
+      task.taskVersion += 1;
+      const run = this.runs.find(candidate => candidate.id === task.runId && candidate.uid === task.uid);
+      if (run && (run.status === "queued" || run.status === "running" || run.status === "waiting")) {
+        run.status = "failed";
+        run.lockVersion += 1;
+        run.nextExecuteAt = null;
+      }
+    }
     return true;
   }
 

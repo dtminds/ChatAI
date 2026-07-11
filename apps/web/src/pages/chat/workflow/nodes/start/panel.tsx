@@ -97,6 +97,7 @@ export function StartConfig({
             />
             <TriggerCheckbox
               checked={hasTrigger(triggers, "customer.tag_added")}
+              disabled={tags.length === 0 && !hasTrigger(triggers, "customer.tag_added")}
               label="添加标签"
               onCheckedChange={(checked) => updateStartConfig({
                 triggers: toggleTrigger(triggers, "customer.tag_added", checked),
@@ -212,8 +213,9 @@ export function StartConfig({
   );
 }
 
-function CheckboxRow({ checked, label, onCheckedChange }: {
+function CheckboxRow({ checked, disabled = false, label, onCheckedChange }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
   onCheckedChange(checked: boolean): void;
 }) {
@@ -222,6 +224,7 @@ function CheckboxRow({ checked, label, onCheckedChange }: {
       <Checkbox
         aria-label={label}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={value => onCheckedChange(value === true)}
       />
       <span>{label}</span>
@@ -229,15 +232,21 @@ function CheckboxRow({ checked, label, onCheckedChange }: {
   );
 }
 
-function TriggerCheckbox({ checked, children, label, onCheckedChange }: {
+function TriggerCheckbox({ checked, children, disabled = false, label, onCheckedChange }: {
   checked: boolean;
   children?: ReactNode;
+  disabled?: boolean;
   label: string;
   onCheckedChange(checked: boolean): void;
 }) {
   return (
     <div className="space-y-2">
-      <CheckboxRow checked={checked} label={label} onCheckedChange={onCheckedChange} />
+      <CheckboxRow
+        checked={checked}
+        disabled={disabled}
+        label={label}
+        onCheckedChange={onCheckedChange}
+      />
       {checked ? children : null}
     </div>
   );

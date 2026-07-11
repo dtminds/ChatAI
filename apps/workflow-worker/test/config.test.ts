@@ -1,0 +1,34 @@
+import { describe, expect, it } from "vitest";
+import { loadWorkflowWorkerConfig } from "../src/config.js";
+
+describe("workflow worker config", () => {
+  it.each([
+    ["dev", "topic-workflow-entry-dev", "topic-workflow-task-dev"],
+    ["test01", "topic-workflow-entry-test01", "topic-workflow-task-test01"],
+  ] as const)("maps %s to isolated workflow topics", (environment, entryTopic, taskTopic) => {
+    const config = loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_ENVIRONMENT: environment }));
+
+    expect(config.topics).toEqual({ entry: entryTopic, task: taskTopic });
+    expect(config.subscriptions.entry).not.toBe(config.subscriptions.task);
+    expect(config.subscriptionType).toBe("Shared");
+  });
+
+  it("requires real broker credentials without exposing secret values", () => {
+    const token = "secret-token-must-not-leak";
+
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BROKER: "pulsar",
+      WORKFLOW_PULSAR_SERVICE_URL: "",
+      WORKFLOW_PULSAR_TOKEN: token,
+    }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
+  });
+});
+
+function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    DATABASE_URL: "mysql://user:password@localhost/workflow",
+    WORKFLOW_BROKER: "fake",
+    WORKFLOW_ENVIRONMENT: "dev",
+    ...overrides,
+  };
+}

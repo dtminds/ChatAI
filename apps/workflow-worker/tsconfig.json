@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@chatai/contracts": ["../../packages/contracts/src/index.ts"],
+      "@chatai/workflow-engine": ["../../packages/workflow-engine/src/index.ts"],
+      "@chatai/workflow-runtime": ["../../packages/workflow-runtime/src/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/workflow-engine" },
+    { "path": "../../packages/workflow-runtime" }
+  ]
+}

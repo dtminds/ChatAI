@@ -5,6 +5,19 @@ import {
 } from "../../../src/modules/workflow/index.js";
 
 describe("workflow runtime repository", () => {
+  it("rejects run creation when the workflow boundary is unavailable", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
+      bizStatus: 1,
+      runtimeStatus: "stopped",
+    }));
+
+    await expect(repository.createRunWithInitialTask(createRunInput())).resolves.toEqual({
+      action: "cancel",
+      kind: "workflow-unavailable",
+    });
+    expect(repository.snapshot().runs).toHaveLength(0);
+  });
+
   it("deduplicates entry events and creates one initial task", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     const input = createRunInput();
@@ -76,6 +89,30 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().nodeExecutions).toHaveLength(1);
     expect(repository.snapshot().inbox).toHaveLength(1);
     expect(repository.snapshot().tasks).toHaveLength(2);
+  });
+
+  it("rejects a commit whose next run state violates the runtime state machine", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    repository.runs[0]!.status = "completed";
+
+    await expect(repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: { consumer: "workflow-task", expiresAt: new Date("2026-08-10T00:00:00.000Z"), messageId: "invalid-state" },
+      nodeExecution: { idempotencyKey: "invalid", input: {}, output: {} },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    })).rejects.toThrow("Invalid workflow run transition");
   });
 
   it("recovers expired running task leases without per-task writes", async () => {

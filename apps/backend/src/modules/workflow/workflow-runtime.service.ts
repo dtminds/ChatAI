@@ -80,9 +80,6 @@ export class WorkflowRuntimeService {
     if (!task) throw new NotFoundError("WORKFLOW_TASK_NOT_FOUND", "Workflow Task 不存在");
     const run = await this.runtimeRepository.findRun(input.uid, task.runId);
     if (!run) throw new NotFoundError("WORKFLOW_RUN_NOT_FOUND", "Workflow Run 不存在");
-    const definition = await this.controlRepository.findDefinition(input.uid, run.workflowId);
-    if (!definition) throw workflowUnavailable();
-    if (definition.runtimeStatus !== "active") throw runtimeStatusError(definition.runtimeStatus);
     const revision = await this.controlRepository.findRevision(input.uid, run.workflowId, run.revision);
     if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
 

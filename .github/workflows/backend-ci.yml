@@ -43,6 +43,7 @@ jobs:
               - "apps/backend/**"
               - "package.json"
               - "packages/contracts/**"
+              - "packages/workflow-engine/**"
               - "pnpm-lock.yaml"
               - "pnpm-workspace.yaml"
               - "tsconfig*.json"

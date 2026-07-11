@@ -10,8 +10,8 @@ const runTransitions: Record<WorkflowRunStatus, readonly WorkflowRunStatus[]> = 
   completed: [],
   failed: [],
   queued: ["running", "cancelled", "failed"],
-  running: ["waiting", "completed", "failed", "cancelled"],
-  waiting: ["running", "failed", "cancelled"],
+  running: ["running", "waiting", "completed", "failed", "cancelled"],
+  waiting: ["running", "completed", "failed", "cancelled"],
 };
 
 const taskTransitions: Record<WorkflowTaskStatus, readonly WorkflowTaskStatus[]> = {
@@ -20,7 +20,7 @@ const taskTransitions: Record<WorkflowTaskStatus, readonly WorkflowTaskStatus[]>
   dead: [],
   dispatched: ["running", "pending", "cancelled", "dead"],
   leased: ["dispatched", "pending", "cancelled", "dead"],
-  pending: ["leased", "cancelled", "dead"],
+  pending: ["leased", "running", "cancelled", "dead"],
   running: ["completed", "pending", "cancelled", "dead"],
 };
 

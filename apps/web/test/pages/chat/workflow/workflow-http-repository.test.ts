@@ -39,6 +39,52 @@ describe("HTTP workflow draft repository", () => {
     );
   });
 
+  it("serializes saves so each request uses the version returned by the previous save", async () => {
+    const client = createDeferredSaveClient(createDefinition());
+    const repository = createHttpWorkflowDraftRepository(client);
+    const document = await repository.getDocument("42");
+
+    const firstSave = repository.saveDraft("42", document.draft);
+    const secondSave = repository.saveDraft("42", document.draft);
+
+    await vi.waitFor(() => expect(client.put).toHaveBeenCalled());
+    expect(client.put).toHaveBeenCalledTimes(1);
+    expect(client.put).toHaveBeenNthCalledWith(
+      1,
+      "/server/workflows/42/draft",
+      expect.objectContaining({ expectedDraftVersion: 1 }),
+    );
+
+    client.resolveSave(0, createDefinition({ draftVersion: 2 }));
+    await firstSave;
+    await vi.waitFor(() => expect(client.put).toHaveBeenCalledTimes(2));
+    expect(client.put).toHaveBeenNthCalledWith(
+      2,
+      "/server/workflows/42/draft",
+      expect.objectContaining({ expectedDraftVersion: 2 }),
+    );
+
+    client.resolveSave(1, createDefinition({ draftVersion: 3 }));
+    await expect(secondSave).resolves.toMatchObject({ document: { draftVersion: 3 } });
+  });
+
+  it("continues the save queue after an earlier request fails", async () => {
+    const client = createDeferredSaveClient(createDefinition());
+    const repository = createHttpWorkflowDraftRepository(client);
+    const document = await repository.getDocument("42");
+
+    const failedSave = repository.saveDraft("42", document.draft);
+    const nextSave = repository.saveDraft("42", document.draft);
+    await vi.waitFor(() => expect(client.put).toHaveBeenCalledTimes(1));
+
+    client.rejectSave(0, new RequestNormalizedError({ message: "network", status: 503 }));
+    await expect(failedSave).rejects.toMatchObject({ code: "server" });
+    await vi.waitFor(() => expect(client.put).toHaveBeenCalledTimes(2));
+
+    client.resolveSave(1, createDefinition({ draftVersion: 2 }));
+    await expect(nextSave).resolves.toMatchObject({ document: { draftVersion: 2 } });
+  });
+
   it("represents first publish as validation only and does not synthesize revision one", async () => {
     const definition = createDefinition({ validatedDraftVersion: 1 });
     const client = createClient({
@@ -129,6 +175,26 @@ function createClient({
       return envelope(definition);
     }),
     put: vi.fn(async () => envelope({ ...definition, draftVersion: definition.draftVersion + 1 })),
+  };
+}
+
+function createDeferredSaveClient(definition: WorkflowDefinition) {
+  const pendingSaves: Array<{
+    reject: (error: unknown) => void;
+    resolve: (value: ApiSuccessEnvelope<WorkflowDefinition>) => void;
+  }> = [];
+  const client = createClient({ definition, revisions: [] });
+  client.put.mockImplementation(() => new Promise((resolve, reject) => {
+    pendingSaves.push({ reject, resolve });
+  }));
+  return {
+    ...client,
+    rejectSave(index: number, error: unknown) {
+      pendingSaves[index]?.reject(error);
+    },
+    resolveSave(index: number, nextDefinition: WorkflowDefinition) {
+      pendingSaves[index]?.resolve(envelope(nextDefinition));
+    },
   };
 }
 

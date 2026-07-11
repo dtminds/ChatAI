@@ -9,7 +9,10 @@ import {
 
 describe("workflow state machine", () => {
   it("allows recoverable run transitions and rejects terminal transitions", () => {
+    expect(transitionRun("queued", "running")).toBe("running");
+    expect(transitionRun("running", "running")).toBe("running");
     expect(transitionRun("waiting", "running")).toBe("running");
+    expect(transitionRun("waiting", "completed")).toBe("completed");
     expect(transitionRun("running", "completed")).toBe("completed");
     expect(() => transitionRun("completed", "running")).toThrow(WorkflowStateTransitionError);
     expect(() => transitionRun("cancelled", "queued")).toThrow(WorkflowStateTransitionError);
@@ -17,6 +20,7 @@ describe("workflow state machine", () => {
 
   it("fences stale task state transitions", () => {
     expect(transitionTask("pending", "leased")).toBe("leased");
+    expect(transitionTask("pending", "running")).toBe("running");
     expect(transitionTask("running", "pending")).toBe("pending");
     expect(() => transitionTask("completed", "running")).toThrow(WorkflowStateTransitionError);
   });

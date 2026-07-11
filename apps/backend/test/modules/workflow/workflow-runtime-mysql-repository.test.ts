@@ -40,6 +40,29 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.definitionReadLocked).toBe(true);
   });
 
+  it.each([
+    { action: "defer", expectedStatus: "pending", runtimeStatus: "paused" },
+    { action: "cancel", expectedStatus: "cancelled", runtimeStatus: "stopped" },
+  ] as const)("persists $action at the task claim boundary", async ({
+    action,
+    expectedStatus,
+    runtimeStatus,
+  }) => {
+    const db = createClaimDbMock(runtimeStatus);
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: "7",
+      uid: 8,
+    });
+
+    expect(result).toEqual({ action, kind: "workflow-unavailable" });
+    expect(db.taskUpdate).toMatchObject({ status: expectedStatus, task_version: 2 });
+  });
+
   it("does not overwrite or count runs that become terminal before stop reconciliation", async () => {
     const db = createRuntimeDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -90,7 +113,7 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   return db;
 }
 
-function createClaimDbMock() {
+function createClaimDbMock(runtimeStatus = "active") {
   const task = {
     attempt: 0,
     bucket_time: new Date("2026-07-10T00:00:00.000Z"),
@@ -115,6 +138,7 @@ function createClaimDbMock() {
   };
   const db = {
     definitionReadLocked: false,
+    taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
         forUpdate() {
@@ -127,7 +151,7 @@ function createClaimDbMock() {
         async executeTakeFirst() {
           return table === "xy_wap_embed_workflow_task"
             ? task
-            : { biz_status: 1, runtime_status: "active" };
+            : { biz_status: 1, runtime_status: runtimeStatus };
         },
       };
       return builder;
@@ -137,9 +161,12 @@ function createClaimDbMock() {
         execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
       };
     },
-    updateTable() {
+    updateTable(table: string) {
       const builder = {
-        set() { return builder; },
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_task") db.taskUpdate = values;
+          return builder;
+        },
         where() { return builder; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };

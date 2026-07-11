@@ -11,7 +11,7 @@ const owner = { roles: ["owner"], subUserId: "17", uid: 9 };
 describe("WorkflowRuntimeService", () => {
   it("deduplicates entry and advances one token through start, branch, and end", async () => {
     const control = new InMemoryWorkflowRepository();
-    const runtime = new InMemoryWorkflowRuntimeRepository();
+    const runtime = createRuntimeRepository(control);
     const definition = await createEnabledBranchWorkflow(control);
     const service = new WorkflowRuntimeService(control, runtime);
 
@@ -64,7 +64,7 @@ describe("WorkflowRuntimeService", () => {
 
   it("persists wait as a pending due task instead of an in-process timer", async () => {
     const control = new InMemoryWorkflowRepository();
-    const runtime = new InMemoryWorkflowRuntimeRepository();
+    const runtime = createRuntimeRepository(control);
     const definition = await createEnabledWaitWorkflow(control);
     const service = new WorkflowRuntimeService(control, runtime);
     const started = await service.startRun({
@@ -100,7 +100,7 @@ describe("WorkflowRuntimeService", () => {
 
   it("rejects stale task versions and execution while paused", async () => {
     const control = new InMemoryWorkflowRepository();
-    const runtime = new InMemoryWorkflowRuntimeRepository();
+    const runtime = createRuntimeRepository(control);
     const definition = await createEnabledBranchWorkflow(control);
     const workflow = new WorkflowService(control);
     const service = new WorkflowRuntimeService(control, runtime);
@@ -121,11 +121,14 @@ describe("WorkflowRuntimeService", () => {
       workerId: "worker-1",
     })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_PAUSED" });
 
+    const deferredTask = await runtime.findTask(owner.uid, started.task.id);
+    expect(deferredTask).toMatchObject({ status: "pending", taskVersion: 2 });
+
     await workflow.resume(owner, definition.id);
     await service.executeTask({
       now: new Date(),
       taskId: started.task.id,
-      taskVersion: started.task.taskVersion,
+      taskVersion: deferredTask!.taskVersion,
       uid: owner.uid,
       workerId: "worker-1",
     });
@@ -137,7 +140,43 @@ describe("WorkflowRuntimeService", () => {
       workerId: "worker-2",
     })).rejects.toMatchObject({ code: "WORKFLOW_TASK_STALE" });
   });
+
+  it("cancels a dispatched task at the execution boundary after logical deletion", async () => {
+    const control = new InMemoryWorkflowRepository();
+    const runtime = createRuntimeRepository(control);
+    const definition = await createEnabledBranchWorkflow(control);
+    const workflow = new WorkflowService(control);
+    const service = new WorkflowRuntimeService(control, runtime);
+    const started = await service.startRun({
+      entryEventId: "event-delete",
+      subjectId: "customer-deleted",
+      trigger: {},
+      uid: owner.uid,
+      workflowId: definition.id,
+    });
+
+    await workflow.delete(owner, definition.id);
+    await expect(service.executeTask({
+      now: new Date(),
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: owner.uid,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({ code: "WORKFLOW_RUNTIME_UNAVAILABLE" });
+
+    await expect(runtime.findTask(owner.uid, started.task.id))
+      .resolves.toMatchObject({ status: "cancelled", taskVersion: 2 });
+  });
 });
+
+function createRuntimeRepository(control: InMemoryWorkflowRepository) {
+  return new InMemoryWorkflowRuntimeRepository(async ({ uid, workflowId }) => {
+    const definition = await control.findDefinition(uid, workflowId);
+    return definition
+      ? { bizStatus: definition.bizStatus, runtimeStatus: definition.runtimeStatus }
+      : null;
+  });
+}
 
 async function createEnabledBranchWorkflow(repository: InMemoryWorkflowRepository) {
   return createEnabledWorkflow(repository, {

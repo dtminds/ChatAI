@@ -97,6 +97,16 @@ describe("WorkflowService", () => {
     expect(await service.list(operator)).toEqual([]);
   });
 
+  it("allows a deleted create request id to create a new definition", async () => {
+    const service = createService();
+    const first = await service.create(operator, { clientRequestId: "request-1" });
+
+    await service.delete(operator, first.id);
+    const recreated = await service.create(operator, { clientRequestId: "request-1" });
+
+    expect(recreated.id).not.toBe(first.id);
+  });
+
   it("restores an immutable revision into a new draft version", async () => {
     const service = createService();
     const created = await service.create(operator, {});

@@ -33,7 +33,7 @@ describe("MysqlWorkflowRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.deleteFromCalls).toBe(0);
-    expect(db.updateBuilders[0].sets).toMatchObject({ biz_status: 0 });
+    expect(db.updateBuilders[0].sets).toMatchObject({ biz_status: 0, client_request_id: null });
   });
 
   it("reports the current lifecycle status when a status transition is rejected", async () => {

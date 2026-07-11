@@ -4,7 +4,11 @@ import type {
   WorkflowTaskStatus,
 } from "@chatai/contracts";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
-import { getWorkflowExecutionBoundaryDecision } from "@chatai/workflow-engine";
+import {
+  getWorkflowExecutionBoundaryDecision,
+  transitionRun,
+  transitionTask,
+} from "@chatai/workflow-engine";
 import type {
   WorkflowDatabase,
   WorkflowRunTable,
@@ -195,7 +199,7 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
       await trx.updateTable(TASK_TABLE).set({
         lease_expires_at: null,
         lease_owner: null,
-        status: "completed",
+        status: transitionTask(task.status, "completed"),
         task_version: task.taskVersion + 1,
       }).where("uid", "=", input.uid).where("id", "=", task.id)
         .where("task_version", "=", task.taskVersion).where("status", "=", "running")
@@ -229,9 +233,12 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
         lockVersion: run.lockVersion + 1,
         nextExecuteAt: input.nextTask?.dueAt ?? null,
         sequence: input.nextTask ? nextSequence : run.sequence,
-        status: input.nextTask
-          ? input.nextTask.taskType === "wait" ? "waiting" : "running"
-          : "completed",
+        status: transitionRun(
+          run.status,
+          input.nextTask
+            ? input.nextTask.taskType === "wait" ? "waiting" : "running"
+            : "completed",
+        ),
       };
       await trx.updateTable(RUN_TABLE).set({
         completed_at: nextRun.status === "completed" ? now : null,

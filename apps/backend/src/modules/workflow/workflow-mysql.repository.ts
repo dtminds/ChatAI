@@ -131,6 +131,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       if (!row) return notFound();
       await transaction.updateTable(DEFINITION_TABLE).set({
         biz_status: 0,
+        client_request_id: null,
         op_sub_uid: input.opSubUserId,
       }).where("uid", "=", input.uid)
         .where("id", "=", input.workflowId)

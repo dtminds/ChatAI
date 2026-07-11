@@ -38,6 +38,7 @@ export function createHttpWorkflowDraftRepository(
 ): WorkflowDraftRepository {
   const definitions = new Map<string, ApiWorkflowDefinition>();
   const revisions = new Map<string, ApiWorkflowRevision[]>();
+  const writeQueues = new Map<string, Promise<void>>();
 
   const repository: WorkflowDraftRepository = {
     async listDocuments() {
@@ -86,17 +87,19 @@ export function createHttpWorkflowDraftRepository(
     },
 
     async saveDraft(workflowId, draft) {
-      try {
-        const current = await requireCachedDefinition(client, definitions, workflowId);
-        const definition = unwrap<ApiWorkflowDefinition>(await client.put(
-          `/server/workflows/${workflowId}/draft`,
-          { draft, expectedDraftVersion: current.draftVersion },
-        ));
-        definitions.set(workflowId, definition);
-        return toSaveResult(toDocument(definition, revisions.get(workflowId) ?? []));
-      } catch (error) {
-        throw normalizeHttpError(error);
-      }
+      return enqueueWorkflowWrite(writeQueues, workflowId, async () => {
+        try {
+          const current = await requireCachedDefinition(client, definitions, workflowId);
+          const definition = unwrap<ApiWorkflowDefinition>(await client.put(
+            `/server/workflows/${workflowId}/draft`,
+            { draft, expectedDraftVersion: current.draftVersion },
+          ));
+          definitions.set(workflowId, definition);
+          return toSaveResult(toDocument(definition, revisions.get(workflowId) ?? []));
+        } catch (error) {
+          throw normalizeHttpError(error);
+        }
+      });
     },
 
     async importDraft(workflowId, draft) {
@@ -196,6 +199,21 @@ export function createHttpWorkflowDraftRepository(
   };
 
   return repository;
+}
+
+function enqueueWorkflowWrite<T>(
+  queues: Map<string, Promise<void>>,
+  workflowId: string,
+  operation: () => Promise<T>,
+) {
+  const previous = queues.get(workflowId) ?? Promise.resolve();
+  const result = previous.then(operation, operation);
+  const settled = result.then(() => undefined, () => undefined);
+  queues.set(workflowId, settled);
+  void settled.finally(() => {
+    if (queues.get(workflowId) === settled) queues.delete(workflowId);
+  });
+  return result;
 }
 
 async function operateDocument(

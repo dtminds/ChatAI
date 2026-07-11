@@ -5,6 +5,16 @@ import type {
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
 } from "./workflow-runtime-types.js";
+import {
+  getWorkflowExecutionBoundaryDecision,
+  transitionRun,
+  transitionTask,
+} from "@chatai/workflow-engine";
+
+type WorkflowBoundaryResolver = (input: {
+  uid: number;
+  workflowId: string;
+}) => Promise<{ bizStatus: 0 | 1; runtimeStatus: "active" | "inactive" | "paused" | "stopped" } | null>;
 
 type NodeExecutionRecord = WorkflowCommitNodeResultInput["nodeExecution"] & {
   runId: string;
@@ -20,7 +30,19 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private outbox: Array<{ eventType: string; id: string; taskId: string; uid: number }> = [];
   private nextId = 1n;
 
+  constructor(private readonly resolveWorkflowBoundary?: WorkflowBoundaryResolver) {}
+
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: input.workflowId });
+      const decision = boundary
+        ? getWorkflowExecutionBoundaryDecision(boundary)
+        : "cancel";
+      if (decision !== "execute") {
+        return { action: decision, kind: "workflow-unavailable" as const };
+      }
+    }
+
     const existingRun = this.runs.find((run) =>
       run.uid === input.uid
       && run.workflowId === input.workflowId
@@ -64,7 +86,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (!task) return notFound();
     if ((task.status !== "dispatched" && task.status !== "pending")
       || task.taskVersion !== input.expectedTaskVersion) return conflict();
-    task.status = "running";
+    if (this.resolveWorkflowBoundary) {
+      const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: task.workflowId });
+      const decision = boundary
+        ? getWorkflowExecutionBoundaryDecision(boundary)
+        : "cancel";
+      if (decision !== "execute") {
+        task.status = decision === "defer" ? "pending" : "cancelled";
+        task.taskVersion += 1;
+        task.leaseOwner = null;
+        task.leaseExpiresAt = null;
+        return { action: decision, kind: "workflow-unavailable" as const };
+      }
+    }
+    task.status = transitionTask(task.status, "running");
     task.taskVersion += 1;
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
@@ -123,6 +158,13 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.status !== "running") return conflict();
 
     const nextSequence = run.sequence + 1;
+    const nextTaskStatus = transitionTask(task.status, "completed");
+    const nextRunStatus = transitionRun(
+      run.status,
+      input.nextTask
+        ? input.nextTask.taskType === "wait" ? "waiting" : "running"
+        : "completed",
+    );
     this.nodeExecutions.push({
       ...clone(input.nodeExecution),
       runId: run.id,
@@ -130,7 +172,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       uid: input.uid,
     });
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
-    task.status = "completed";
+    task.status = nextTaskStatus;
     task.taskVersion += 1;
     task.leaseOwner = null;
     task.leaseExpiresAt = null;
@@ -143,7 +185,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (input.nextTask) {
       run.currentNodeId = input.nextTask.nodeId;
       run.sequence = nextSequence;
-      run.status = input.nextTask.taskType === "wait" ? "waiting" : "running";
+      run.status = nextRunStatus;
       run.nextExecuteAt = input.nextTask.dueAt;
       nextTask = createTask(this.createId(), run, input.nextTask);
       this.tasks.push(nextTask);
@@ -151,7 +193,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         this.outbox.push({ eventType: "workflow.task.ready", id: this.createId(), taskId: nextTask.id, uid: input.uid });
       }
     } else {
-      run.status = "completed";
+      run.status = nextRunStatus;
       run.nextExecuteAt = null;
     }
     return {

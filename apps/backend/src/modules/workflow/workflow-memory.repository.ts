@@ -15,7 +15,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
 
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     const existing = input.clientRequestId
-      ? this.definitions.find((item) => item.uid === input.uid && item.clientRequestId === input.clientRequestId)
+      ? this.definitions.find((item) =>
+          item.uid === input.uid
+          && item.bizStatus === 1
+          && item.clientRequestId === input.clientRequestId,
+        )
       : undefined;
     if (existing) return clone(existing);
 
@@ -96,6 +100,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
   async markDeleted(input: Parameters<WorkflowRepository["markDeleted"]>[0]) {
     return this.mutate(input.uid, input.workflowId, (definition) => {
       definition.bizStatus = 0;
+      definition.clientRequestId = undefined;
       touch(definition, input.opSubUserId);
       return success(definition);
     });

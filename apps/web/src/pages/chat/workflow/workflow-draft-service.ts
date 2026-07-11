@@ -123,6 +123,7 @@ export function useWorkflowDocument(
   const [lastSavedDraftHash, setLastSavedDraftHash] = useState(() => document.draftHash);
   const [lastPublishedDraftHash, setLastPublishedDraftHash] = useState(() => createWorkflowPublishedDraftHash(document));
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightSaveRef = useRef<Promise<WorkflowDraftSaveResult | undefined> | null>(null);
   const publishRequestRef = useRef(0);
   const publishingRef = useRef(false);
   const restoreRequestRef = useRef(0);
@@ -137,8 +138,18 @@ export function useWorkflowDocument(
     workflowId: string;
   } | null>(null);
   const workflowIdRef = useRef(document.id);
-  const flushPendingSave = useCallback((options: { updateState?: boolean } = {}) => {
+  const flushPendingSave = useCallback(function flushPendingSave(
+    options: { updateState?: boolean } = {},
+  ): Promise<WorkflowDraftSaveResult | undefined> | undefined {
     const { updateState = true } = options;
+    const inFlightSave = inFlightSaveRef.current;
+
+    if (inFlightSave) {
+      return pendingSaveRef.current
+        ? inFlightSave.then(() => flushPendingSave(options))
+        : inFlightSave;
+    }
+
     const pendingSave = pendingSaveRef.current;
 
     if (!pendingSave) {
@@ -169,7 +180,7 @@ export function useWorkflowDocument(
         setSaveState("error");
       }
 
-      return undefined;
+      return Promise.reject(error);
     }
 
     const handleSavedDocument = (saveResult: WorkflowDraftSaveResult | WorkflowDocument) => {
@@ -194,11 +205,14 @@ export function useWorkflowDocument(
         conversion: savedDocument.conversion,
         draft: cloneWorkflowDraft(normalizedSaveResult.draft),
         draftHash: normalizedSaveResult.draftHash,
+        draftVersion: savedDocument.draftVersion,
         nodes: savedDocument.nodes,
         revision: savedDocument.revision,
+        runtimeStatus: savedDocument.runtimeStatus,
         savedAt: normalizedSaveResult.savedAt,
         trigger: savedDocument.trigger,
         updatedAt: normalizedSaveResult.updatedAt,
+        validatedDraftVersion: savedDocument.validatedDraftVersion,
       }));
 
       return normalizedSaveResult;
@@ -218,14 +232,32 @@ export function useWorkflowDocument(
         setSaveState("error");
       }
 
-      return undefined;
+      throw error;
     };
 
-    return Promise.resolve(saveResult).then(handleSavedDocument, handleSaveError);
+    const savePromise = Promise.resolve(saveResult).then(
+      (result) => {
+        inFlightSaveRef.current = null;
+        const normalizedResult = handleSavedDocument(result);
+        if (pendingSaveRef.current) {
+          void flushPendingSave(options)?.catch(() => undefined);
+        }
+        return normalizedResult;
+      },
+      (error) => {
+        inFlightSaveRef.current = null;
+        if (pendingSaveRef.current) {
+          void flushPendingSave(options)?.catch(() => undefined);
+        }
+        return handleSaveError(error);
+      },
+    );
+    inFlightSaveRef.current = savePromise;
+    return savePromise;
   }, [repository]);
 
   useEffect(() => {
-    flushPendingSave({ updateState: false });
+    void flushPendingSave({ updateState: false })?.catch(() => undefined);
 
     const nextDocument = initialDocument ?? getSynchronousWorkflowDocument(repository, workflowId);
     workflowIdRef.current = nextDocument.id;
@@ -261,16 +293,26 @@ export function useWorkflowDocument(
 
     if (nextDraftHash === lastSavedDraftHash) {
       saveRequestRef.current += 1;
-      pendingSaveRef.current = null;
+      const inFlightSave = inFlightSaveRef.current;
+      pendingSaveRef.current = inFlightSave
+        ? {
+            draft: draftToSave,
+            requestId: saveRequestRef.current,
+            workflowId: workflowIdRef.current,
+          }
+        : null;
 
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
 
-      setSaveState("saved");
+      setSaveState(inFlightSave ? "saving" : "saved");
       setSaveError(null);
       failedSaveRef.current = null;
+      if (inFlightSave) {
+        void flushPendingSave()?.catch(() => undefined);
+      }
       return;
     }
 
@@ -291,7 +333,7 @@ export function useWorkflowDocument(
     }
 
     saveTimerRef.current = setTimeout(() => {
-      flushPendingSave();
+      void flushPendingSave()?.catch(() => undefined);
     }, WORKFLOW_SAVE_DEBOUNCE_MS);
   }, [flushPendingSave, lastPublishedDraftHash, lastSavedDraftHash]);
 
@@ -312,7 +354,7 @@ export function useWorkflowDocument(
     failedSaveRef.current = null;
     setSaveError(null);
     setSaveState("saving");
-    return flushPendingSave();
+    return flushPendingSave()?.catch(() => undefined);
   }, [flushPendingSave]);
 
   const importDraft = useCallback(async (draft: WorkflowDraft) => {
@@ -498,21 +540,24 @@ export function useWorkflowDocument(
   const restoreVersion = useCallback(async (versionId: string) => {
     const restoreRequestId = restoreRequestRef.current + 1;
     restoreRequestRef.current = restoreRequestId;
-    const saveRequestId = saveRequestRef.current + 1;
-    saveRequestRef.current = saveRequestId;
     publishRequestRef.current += 1;
     publishingRef.current = false;
     const workflowIdToRestore = workflowIdRef.current;
 
     setRestoreState("restoring");
-    pendingSaveRef.current = null;
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
 
     try {
+      await flushPendingSave();
+
+      if (
+        restoreRequestRef.current !== restoreRequestId
+        || workflowIdRef.current !== workflowIdToRestore
+      ) {
+        return undefined;
+      }
+
+      const saveRequestId = saveRequestRef.current + 1;
+      saveRequestRef.current = saveRequestId;
       const restoreResult = await Promise.resolve(
         repository.restoreVersion(workflowIdToRestore, versionId),
       );
@@ -542,7 +587,6 @@ export function useWorkflowDocument(
     catch (error) {
       if (
         restoreRequestRef.current === restoreRequestId
-        && saveRequestRef.current === saveRequestId
         && workflowIdRef.current === workflowIdToRestore
       ) {
         setRestoreState("error");
@@ -551,10 +595,10 @@ export function useWorkflowDocument(
 
       return undefined;
     }
-  }, [repository]);
+  }, [flushPendingSave, repository]);
 
   useEffect(() => () => {
-    flushPendingSave({ updateState: false });
+    void flushPendingSave({ updateState: false })?.catch(() => undefined);
   }, [flushPendingSave]);
 
   return useMemo(() => ({

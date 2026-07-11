@@ -484,6 +484,54 @@ describe("workflow draft service", () => {
     }
   });
 
+  it("synchronizes lifecycle versions from a successful save response", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const baseRepository = createInMemoryWorkflowDraftRepository();
+      const initialDocument = baseRepository.getDocument("newcomer-conversion");
+      initialDocument.draftVersion = 7;
+      initialDocument.runtimeStatus = "inactive";
+      initialDocument.validatedDraftVersion = 7;
+      const repository: WorkflowDraftRepository = {
+        ...baseRepository,
+        saveDraft: (workflowId, draft) => {
+          const saved = baseRepository.saveDraft(workflowId, draft);
+          return {
+            ...saved,
+            document: {
+              ...saved.document,
+              draftVersion: 8,
+              runtimeStatus: "inactive",
+              validatedDraftVersion: null,
+            },
+          };
+        },
+      };
+      const { result } = renderHook(() => useWorkflowDocument(
+        initialDocument.id,
+        repository,
+        initialDocument,
+      ));
+
+      act(() => {
+        result.current.markDirty(createDraftWithStartAudience("发布检查后的新修改"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(result.current.document).toMatchObject({
+        draftVersion: 8,
+        runtimeStatus: "inactive",
+        validatedDraftVersion: null,
+      });
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("marks the current draft save as failed when an async repository save rejects", async () => {
     vi.useFakeTimers();
 
@@ -574,6 +622,132 @@ describe("workflow draft service", () => {
       .toBe("异步发布的人群");
     expect(result.current.document.publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("异步发布的人群");
+  });
+
+  it("waits for an in-flight save before publishing", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+      const nextDraft = createDraftWithStartAudience("保存完成后发布");
+
+      act(() => {
+        result.current.markDirty(nextDraft);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(repository.pendingSaves).toHaveLength(1);
+
+      let publishPromise: ReturnType<typeof result.current.publishDraft>;
+      act(() => {
+        publishPromise = result.current.publishDraft(nextDraft);
+      });
+      expect(repository.pendingPublishes).toHaveLength(0);
+
+      await act(async () => {
+        repository.resolveSave(0);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(repository.pendingPublishes).toHaveLength(1);
+
+      await act(async () => {
+        repository.resolvePublish(0);
+        await publishPromise!;
+      });
+      expect(result.current.publishState).toBe("published");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not publish when the save required by publishing fails", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
+      const nextDraft = createDraftWithStartAudience("保存失败时禁止发布");
+
+      act(() => {
+        result.current.markDirty(nextDraft);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(repository.pendingSaves).toHaveLength(1);
+
+      let publishPromise: ReturnType<typeof result.current.publishDraft>;
+      act(() => {
+        publishPromise = result.current.publishDraft(nextDraft);
+      });
+
+      await act(async () => {
+        repository.rejectSave(0);
+        await Promise.resolve();
+        await Promise.resolve();
+        if (repository.pendingPublishes.length > 0) {
+          repository.resolvePublish(0);
+        }
+        await publishPromise!;
+      });
+
+      expect(repository.pendingPublishes).toHaveLength(0);
+      expect(result.current.saveState).toBe("error");
+      expect(result.current.saveError?.code).toBe("server");
+      expect(result.current.publishState).toBe("error");
+      expect(result.current.publishError?.code).toBe("server");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists an undo that happens while an earlier save is in flight", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const initialDocument = repository.getDocument("newcomer-conversion");
+      const { result } = renderHook(() => useWorkflowDocument(
+        initialDocument.id,
+        repository,
+        initialDocument,
+      ));
+
+      act(() => {
+        result.current.markDirty(createDraftWithStartAudience("即将撤销的修改"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(repository.pendingSaves).toHaveLength(1);
+
+      act(() => {
+        result.current.markDirty(initialDocument.draft);
+      });
+      expect(result.current.saveState).not.toBe("saved");
+
+      await act(async () => {
+        repository.resolveSave(0);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(repository.pendingSaves).toHaveLength(2);
+
+      await act(async () => {
+        repository.resolveSave(1);
+        await Promise.resolve();
+      });
+      expect(repository.getDocument(initialDocument.id).draftHash).toBe(initialDocument.draftHash);
+      expect(result.current.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps publish state aligned with the editable draft and published snapshot", async () => {
@@ -871,6 +1045,81 @@ describe("workflow draft service", () => {
     expect(result.current.document.status).toBe("Draft");
     expect(result.current.document.draft.nodes.find((node) => node.id === "start")?.data.audience)
       .toBe("90 天未复购会员");
+  });
+
+  it("waits for an in-flight save before restoring a version", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const publishedDocument = repository.getDocument("vip-reactivation");
+      const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
+
+      act(() => {
+        result.current.markDirty(createDraftWithStartAudience("恢复前正在保存的修改"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(repository.pendingSaves).toHaveLength(1);
+
+      let restorePromise: ReturnType<typeof result.current.restoreVersion>;
+      act(() => {
+        restorePromise = result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+      });
+      expect(repository.pendingRestores).toHaveLength(0);
+
+      await act(async () => {
+        repository.resolveSave(0);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(repository.pendingRestores).toHaveLength(1);
+
+      await act(async () => {
+        repository.resolveRestore(0);
+        await restorePromise!;
+      });
+      expect(result.current.restoreState).toBe("restored");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not restore when the save required by restoring fails", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const repository = createDeferredWorkflowDraftRepository();
+      const publishedDocument = repository.getDocument("vip-reactivation");
+      const { result } = renderHook(() => useWorkflowDocument("vip-reactivation", repository));
+
+      act(() => {
+        result.current.markDirty(createDraftWithStartAudience("保存失败时禁止恢复"));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      let restorePromise: ReturnType<typeof result.current.restoreVersion>;
+      act(() => {
+        restorePromise = result.current.restoreVersion(publishedDocument.currentVersion?.id ?? "");
+      });
+
+      await act(async () => {
+        repository.rejectSave(0);
+        await restorePromise!;
+      });
+
+      expect(repository.pendingRestores).toHaveLength(0);
+      expect(result.current.saveState).toBe("error");
+      expect(result.current.saveError?.code).toBe("server");
+      expect(result.current.restoreState).toBe("error");
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks restore as failed when the async repository restore rejects", async () => {

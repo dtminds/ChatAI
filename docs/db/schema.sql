@@ -573,7 +573,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision (
   dsl_schema_version INT UNSIGNED NOT NULL COMMENT 'DSL Schema版本',
   draft_json JSON NOT NULL COMMENT '发布时画布草稿快照',
   execution_spec_json JSON NOT NULL COMMENT '后端编译后的执行定义',
-  spec_hash CHAR(64) NOT NULL COMMENT '执行定义SHA-256',
+  spec_hash VARCHAR(64) NOT NULL COMMENT '执行定义SHA-256',
   publish_sub_uid BIGINT UNSIGNED NOT NULL COMMENT '发布子账号ID',
   publish_time DATETIME NOT NULL COMMENT '发布时间',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

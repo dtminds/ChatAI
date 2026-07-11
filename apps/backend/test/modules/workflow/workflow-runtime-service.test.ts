@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRepository,
   InMemoryWorkflowRuntimeRepository,
@@ -9,10 +9,40 @@ import {
 const owner = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowRuntimeService", () => {
-  it("deduplicates entry and advances one token through start, branch, and end", async () => {
+  it("uses the configured execution lease duration when claiming a task", async () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
-    const definition = await createEnabledBranchWorkflow(control);
+    const claimTask = vi.spyOn(runtime, "claimTask");
+    const definition = await createEnabledWorkflow(control, createDraft());
+    const service = new WorkflowRuntimeService(control, runtime, undefined, {
+      taskLeaseDurationMs: 120_000,
+    });
+    const started = await service.startRun({
+      entryEventId: "event-lease",
+      expectedRevision: 1,
+      subjectId: "customer-lease",
+      trigger: {},
+      uid: owner.uid,
+      workflowId: definition.id,
+    });
+
+    await service.executeTask({
+      now: new Date("2026-07-10T00:00:00.000Z"),
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: owner.uid,
+      workerId: "worker-1",
+    });
+
+    expect(claimTask).toHaveBeenCalledWith(expect.objectContaining({
+      leaseExpiresAt: new Date("2026-07-10T00:02:00.000Z"),
+    }));
+  });
+
+  it("deduplicates entry and advances one token through start and end", async () => {
+    const control = new InMemoryWorkflowRepository();
+    const runtime = createRuntimeRepository(control);
+    const definition = await createEnabledWorkflow(control, createDraft());
     const service = new WorkflowRuntimeService(control, runtime);
 
     const first = await service.startRun({
@@ -20,6 +50,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-1",
       trigger: { source: "member-created" },
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
     const duplicate = await service.startRun({
@@ -27,6 +58,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-1",
       trigger: { source: "member-created" },
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -40,26 +72,17 @@ describe("WorkflowRuntimeService", () => {
       uid: owner.uid,
       workerId: "worker-1",
     });
-    expect(start.nextTask?.nodeId).toBe("branch");
+    expect(start.nextTask?.nodeId).toBe("end");
 
-    const branch = await service.executeTask({
-      now: new Date("2026-07-10T00:00:01.000Z"),
+    const end = await service.executeTask({
+      now: new Date("2026-07-10T00:00:02.000Z"),
       taskId: start.nextTask!.id,
       taskVersion: start.nextTask!.taskVersion,
       uid: owner.uid,
       workerId: "worker-1",
     });
-    expect(branch.nextTask?.nodeId).toBe("end");
-
-    const end = await service.executeTask({
-      now: new Date("2026-07-10T00:00:02.000Z"),
-      taskId: branch.nextTask!.id,
-      taskVersion: branch.nextTask!.taskVersion,
-      uid: owner.uid,
-      workerId: "worker-1",
-    });
     expect(end.run.status).toBe("completed");
-    expect(runtime.nodeExecutions).toHaveLength(3);
+    expect(runtime.nodeExecutions).toHaveLength(2);
   });
 
   it("persists wait as a pending due task instead of an in-process timer", async () => {
@@ -72,6 +95,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-2",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
     const start = await service.executeTask({
@@ -101,7 +125,7 @@ describe("WorkflowRuntimeService", () => {
   it("rejects stale task versions and execution while paused", async () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
-    const definition = await createEnabledBranchWorkflow(control);
+    const definition = await createEnabledWorkflow(control, createDraft());
     const workflow = new WorkflowService(control);
     const service = new WorkflowRuntimeService(control, runtime);
     const started = await service.startRun({
@@ -109,6 +133,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-3",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -144,7 +169,7 @@ describe("WorkflowRuntimeService", () => {
   it("cancels a dispatched task at the execution boundary after logical deletion", async () => {
     const control = new InMemoryWorkflowRepository();
     const runtime = createRuntimeRepository(control);
-    const definition = await createEnabledBranchWorkflow(control);
+    const definition = await createEnabledWorkflow(control, createDraft());
     const workflow = new WorkflowService(control);
     const service = new WorkflowRuntimeService(control, runtime);
     const started = await service.startRun({
@@ -152,6 +177,7 @@ describe("WorkflowRuntimeService", () => {
       subjectId: "customer-deleted",
       trigger: {},
       uid: owner.uid,
+      expectedRevision: 1,
       workflowId: definition.id,
     });
 
@@ -167,6 +193,23 @@ describe("WorkflowRuntimeService", () => {
     await expect(runtime.findTask(owner.uid, started.task.id))
       .resolves.toMatchObject({ status: "cancelled", taskVersion: 2 });
   });
+
+  it("rejects an entry matched against a stale trigger binding revision", async () => {
+    const control = new InMemoryWorkflowRepository();
+    const runtime = createRuntimeRepository(control);
+    const definition = await createEnabledWorkflow(control, createDraft());
+    const service = new WorkflowRuntimeService(control, runtime);
+
+    await expect(service.startRun({
+      entryEventId: "event-stale-binding",
+      expectedRevision: 2,
+      subjectId: "customer-stale",
+      trigger: {},
+      uid: owner.uid,
+      workflowId: definition.id,
+    })).rejects.toMatchObject({ code: "WORKFLOW_DEFINITION_STALE" });
+    expect(runtime.runs).toHaveLength(0);
+  });
 });
 
 function createRuntimeRepository(control: InMemoryWorkflowRepository) {
@@ -178,27 +221,10 @@ function createRuntimeRepository(control: InMemoryWorkflowRepository) {
   });
 }
 
-async function createEnabledBranchWorkflow(repository: InMemoryWorkflowRepository) {
-  return createEnabledWorkflow(repository, {
-    edges: [
-      edge("start", "branch"),
-      edge("branch", "end", "else"),
-    ],
-    nodes: [
-      node("start", "start"),
-      node("branch", "branch", {
-        branchPaths: [{ id: "else", isDefault: true, label: "否则" }],
-      }),
-      node("end", "end"),
-    ],
-    viewport: { x: 0, y: 0, zoom: 1 },
-  });
-}
-
 async function createEnabledWaitWorkflow(repository: InMemoryWorkflowRepository) {
   return createEnabledWorkflow(repository, {
     edges: [edge("start", "wait"), edge("wait", "end")],
-    nodes: [node("start", "start"), node("wait", "wait", { delayDays: 2 }), node("end", "end")],
+    nodes: [node("start", "start"), node("wait", "wait", { duration: 2, unit: "day" }), node("end", "end")],
     viewport: { x: 0, y: 0, zoom: 1 },
   });
 }
@@ -233,6 +259,7 @@ function node(
 ) {
   return {
     data: {
+      ...(kind === "start" ? startConfig() : {}),
       ...config,
       kind,
       label: kind,
@@ -244,5 +271,13 @@ function node(
     },
     id,
     position: { x: 0, y: 0 },
+  };
+}
+
+function startConfig() {
+  return {
+    accountIds: ["account-a"],
+    entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
+    triggers: [{ type: "contact.friend_added" as const }],
   };
 }

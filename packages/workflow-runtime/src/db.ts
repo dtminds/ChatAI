@@ -38,6 +38,18 @@ export interface WorkflowRevisionTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowTriggerBindingTable {
+  create_time: GeneratedDate;
+  event_type: string;
+  filter_spec_json: JsonText;
+  id: Generated<DatabaseId>;
+  revision: number;
+  status: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowRunTable {
   completed_at: NullableDate;
   context_json: JsonText;
@@ -53,6 +65,16 @@ export interface WorkflowRunTable {
   status: string;
   subject_id: string;
   terminal_reason: string | null;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
+export interface WorkflowEntryGuardTable {
+  create_time: GeneratedDate;
+  id: Generated<DatabaseId>;
+  subject_id: string;
+  total_entries: number;
   uid: number;
   update_time: GeneratedDate;
   workflow_id: DatabaseId;
@@ -107,10 +129,13 @@ export interface WorkflowOutboxTable {
   create_time: GeneratedDate;
   event_type: string;
   id: Generated<DatabaseId>;
+  lease_expires_at: NullableDate;
+  lease_owner: string | null;
   next_attempt_at: DatabaseDate;
   payload_json: JsonText;
   sent_at: NullableDate;
   status: string;
+  task_version: number;
   uid: number;
   update_time: GeneratedDate;
 }
@@ -128,10 +153,12 @@ export interface WorkflowInboxTable {
 
 export interface WorkflowDatabase {
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
+  xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
   xy_wap_embed_workflow_outbox: WorkflowOutboxTable;
   xy_wap_embed_workflow_revision: WorkflowRevisionTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;
   xy_wap_embed_workflow_task: WorkflowTaskTable;
+  xy_wap_embed_workflow_trigger_binding: WorkflowTriggerBindingTable;
 }

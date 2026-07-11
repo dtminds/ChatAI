@@ -18,7 +18,7 @@ describe("WorkflowService", () => {
 
   it("validates before first enable and creates revision 1 on enable", async () => {
     const service = createService();
-    const created = await service.create(operator, { name: "新客培育" });
+    const created = await createConfigured(service, { name: "新客培育" });
 
     const validated = await service.publish(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
@@ -26,7 +26,7 @@ describe("WorkflowService", () => {
 
     expect(validated.validatedOnly).toBe(true);
     expect(validated.revision).toBeNull();
-    expect(validated.definition.validatedDraftVersion).toBe(1);
+    expect(validated.definition.validatedDraftVersion).toBe(created.draftVersion);
 
     const enabled = await service.enable(operator, created.id);
 
@@ -37,12 +37,12 @@ describe("WorkflowService", () => {
 
   it("publishes immutable revisions after first enable without changing pause state", async () => {
     const service = createService();
-    const created = await service.create(operator, {});
-    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await service.enable(operator, created.id);
     const saved = await service.saveDraft(operator, created.id, {
       draft: { ...created.draft, viewport: { x: 50, y: 25, zoom: 1 } },
-      expectedDraftVersion: 1,
+      expectedDraftVersion: created.draftVersion,
     });
     await service.pause(operator, created.id);
 
@@ -53,6 +53,61 @@ describe("WorkflowService", () => {
     expect(published.validatedOnly).toBe(false);
     expect(published.revision?.revision).toBe(2);
     expect(published.definition.runtimeStatus).toBe("paused");
+  });
+
+  it("publishes only the current revision trigger bindings after enable", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = new WorkflowService(repository);
+    const created = await createConfigured(service);
+
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+
+    await service.enable(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toMatchObject([{ revision: 1, workflowId: created.id }]);
+
+    const changed = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        accountIds: ["account-b"],
+        entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+        triggers: [{ tagIds: ["tag-vip"], type: "customer.tag_added" }],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.publish(operator, created.id, { expectedDraftVersion: changed.draftVersion });
+
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "customer.tag_added"))
+      .resolves.toMatchObject([{
+        filter: { accountIds: ["account-b"] },
+        revision: 2,
+        workflowId: created.id,
+      }]);
+  });
+
+  it("retains trigger bindings across pause and hides them after stop or deletion", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = new WorkflowService(repository);
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    await service.enable(operator, created.id);
+
+    await service.pause(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await service.resume(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toHaveLength(1);
+
+    await service.stop(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
+    await service.delete(operator, created.id);
+    await expect(repository.listActiveTriggerBindings(operator.uid, "contact.friend_added"))
+      .resolves.toEqual([]);
   });
 
   it("uses draft versions as optimistic locks", async () => {
@@ -72,15 +127,15 @@ describe("WorkflowService", () => {
 
   it("allows resume from paused but never from stopped", async () => {
     const service = createService();
-    const created = await service.create(operator, {});
-    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await service.enable(operator, created.id);
     await service.pause(operator, created.id);
 
     await expect(service.resume(operator, created.id)).resolves.toMatchObject({ runtimeStatus: "active" });
     await service.stop(operator, created.id);
     await expect(service.resume(operator, created.id)).rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
-    await expect(service.publish(operator, created.id, { expectedDraftVersion: 1 }))
+    await expect(service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion }))
       .rejects.toMatchObject({ code: "WORKFLOW_STOPPED" });
   });
 
@@ -109,15 +164,15 @@ describe("WorkflowService", () => {
 
   it("restores an immutable revision into a new draft version", async () => {
     const service = createService();
-    const created = await service.create(operator, {});
-    await service.publish(operator, created.id, { expectedDraftVersion: 1 });
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await service.enable(operator, created.id);
 
     const restored = await service.restoreRevision(operator, created.id, 1, {
-      expectedDraftVersion: 1,
+      expectedDraftVersion: created.draftVersion,
     });
 
-    expect(restored.draftVersion).toBe(2);
+    expect(restored.draftVersion).toBe(created.draftVersion + 1);
     expect(restored.validatedDraftVersion).toBeNull();
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
@@ -125,4 +180,32 @@ describe("WorkflowService", () => {
 
 function createService() {
   return new WorkflowService(new InMemoryWorkflowRepository());
+}
+
+async function createConfigured(
+  service: WorkflowService,
+  input: { name?: string } = {},
+) {
+  const created = await service.create(operator, input);
+  const draft = withStartConfig(created.draft, {
+    accountIds: ["account-a"],
+    entryPolicy: { mode: "never" },
+    triggers: [{ type: "contact.friend_added" }],
+  });
+  return service.saveDraft(operator, created.id, {
+    draft,
+    expectedDraftVersion: created.draftVersion,
+  });
+}
+
+function withStartConfig(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: Record<string, unknown>,
+) {
+  return {
+    ...draft,
+    nodes: draft.nodes.map(node => node.id === "start"
+      ? { ...node, data: { ...node.data, ...config } }
+      : node),
+  };
 }

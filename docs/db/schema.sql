@@ -589,7 +589,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   event_type VARCHAR(128) NOT NULL COMMENT '标准化触发事件类型',
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   revision INT UNSIGNED NOT NULL COMMENT '绑定Revision',
-  filter_spec_json JSON NULL COMMENT '结构化触发筛选规则',
+  filter_spec_json JSON NOT NULL COMMENT '结构化触发筛选规则',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1生效，0失效',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -597,6 +597,18 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   UNIQUE KEY uk_workflow_trigger_binding_revision (uid, workflow_id, revision, event_type),
   KEY idx_workflow_trigger_binding_match (uid, event_type, status, workflow_id)
 ) COMMENT='营销Workflow触发绑定表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
+  total_entries INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '历史累计成功进入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_id)
+) COMMENT='营销Workflow客户进入串行化守卫表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -620,6 +632,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
   KEY idx_workflow_run_workflow_status_time (uid, workflow_id, revision, status, create_time, id),
   KEY idx_workflow_run_subject_status_time (uid, subject_id, status, create_time, id),
+  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),
   KEY idx_workflow_run_schedule (shard_id, status, next_execute_at, id)
 ) COMMENT='营销Workflow运行实例表';
 
@@ -679,16 +692,21 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   aggregate_type VARCHAR(64) NOT NULL COMMENT '聚合类型',
   aggregate_id BIGINT UNSIGNED NOT NULL COMMENT '聚合ID',
+  task_version INT UNSIGNED NOT NULL COMMENT 'Task版本',
   event_type VARCHAR(128) NOT NULL COMMENT '事件类型',
   payload_json JSON NOT NULL COMMENT '消息载荷',
   status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '投递状态',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '投递尝试次数',
+  lease_owner VARCHAR(128) NULL COMMENT '投递租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '投递租约过期时间',
   next_attempt_at DATETIME NOT NULL COMMENT '下次投递时间',
   sent_at DATETIME NULL COMMENT '成功投递时间',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_workflow_outbox_dispatch (status, next_attempt_at, id),
+  KEY idx_workflow_outbox_lease (status, lease_expires_at, id),
+  KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id),
   KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id)
 ) COMMENT='营销Workflow事务Outbox表';
 

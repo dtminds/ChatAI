@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/workflow/use-workflow-workspace";
 import {
@@ -18,6 +19,12 @@ import type {
   WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraft } from "@/pages/chat/workflow/types";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+  },
+}));
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -53,6 +60,7 @@ vi.mock("@xyflow/react", async () => {
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
+    vi.mocked(toast.success).mockClear();
   });
 
   it("derives canvas and publish capabilities from document permissions", () => {
@@ -60,6 +68,7 @@ describe("useWorkflowWorkspace", () => {
     const editableDocument = repository.getDocument("newcomer-conversion");
     editableDocument.permissions = {
       canEdit: true,
+      canOperate: true,
       canPublish: false,
     };
     const { result } = renderHook(() => useWorkflowWorkspace(
@@ -192,31 +201,6 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.topBar.saveState).toBe("saving");
-  });
-
-  it("withdraws activation readiness as soon as a validated draft becomes dirty", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
-    document.draftVersion = 3;
-    document.runtimeStatus = "inactive";
-    document.validatedDraftVersion = 3;
-    const { result } = renderHook(() => useWorkflowWorkspace(
-      document.id,
-      repository,
-      document,
-    ));
-
-    expect(result.current.topBar.activationReady).toBe(true);
-
-    act(() => {
-      result.current.canvas.onSelectNode("message-welcome");
-    });
-    act(() => {
-      result.current.inspector.onNodeChange({ title: "修改后的节点" });
-    });
-
-    expect(result.current.topBar.saveState).toBe("saving");
-    expect(result.current.topBar.activationReady).toBe(false);
   });
 
   it("keeps node dragging transient and unsaved until the drag finishes", () => {
@@ -551,7 +535,9 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.inspector.onNodeChange({ audience: "更新后的发布人群" });
+        result.current.inspector.onNodeChange({
+          triggers: [{ keywords: ["更新后的发布人群"], match: "keywords", type: "message.received" }],
+        });
       });
       expect(result.current.topBar.publishReady).toBe(true);
 
@@ -564,8 +550,8 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
-        .toBe("更新后的发布人群");
+      expect(toast.success).toHaveBeenCalledWith("发布成功");
+      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
     }
     finally {
       vi.useRealTimers();
@@ -578,7 +564,7 @@ describe("useWorkflowWorkspace", () => {
     try {
       importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
-      const publishedAudience = result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience;
+      const publishedKeyword = getCanvasStartKeyword(result.current.canvas);
 
       await act(async () => {
         await result.current.topBar.onPublish();
@@ -591,7 +577,9 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.inspector.onNodeChange({ audience: "发布后的草稿修改" });
+        result.current.inspector.onNodeChange({
+          triggers: [{ keywords: ["发布后的草稿修改"], match: "keywords", type: "message.received" }],
+        });
       });
 
       expect(result.current.topBar.publishState).toBe("idle");
@@ -602,8 +590,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("published");
-      expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
-        .toBe(publishedAudience);
+      expect(getCanvasStartKeyword(result.current.canvas)).toBe(publishedKeyword);
       expect(result.current.canvas.canRedo).toBe(true);
 
       act(() => {
@@ -611,10 +598,8 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("idle");
-      expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
-        .toBe("发布后的草稿修改");
-      expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
-        .toBe(publishedAudience);
+      expect(getCanvasStartKeyword(result.current.canvas)).toBe("发布后的草稿修改");
+      expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe(publishedKeyword);
     }
     finally {
       vi.useRealTimers();
@@ -698,8 +683,8 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("previews a version history snapshot as read-only and exits back to the draft", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("历史版本人群"));
-    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("当前草稿人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("历史版本人群"));
+    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("当前草稿人群"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = publishedDocument.currentVersion?.id ?? "";
 
@@ -717,8 +702,7 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.mode).toBe("version-preview");
     expect(result.current.canvas.isReadOnly).toBe(true);
     expect(result.current.inspector.isOpen).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
-      .toBe("历史版本人群");
+    expect(getCanvasStartKeyword(result.current.canvas)).toBe("历史版本人群");
 
     act(() => {
       result.current.canvas.onAddNode("handoff");
@@ -726,8 +710,7 @@ describe("useWorkflowWorkspace", () => {
     });
 
     expect(result.current.canvas.nodes).toHaveLength(publishedDocument.publishedDraft?.nodes.length ?? 0);
-    expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.audience)
-      .toBe("当前草稿人群");
+    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").draft)).toBe("当前草稿人群");
 
     act(() => {
       result.current.versionHistory.onExitPreview();
@@ -736,13 +719,12 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.versionHistory.isPreviewing).toBe(false);
     expect(result.current.mode).toBe("editing");
     expect(result.current.canvas.isReadOnly).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
-      .toBe("当前草稿人群");
+    expect(getCanvasStartKeyword(result.current.canvas)).toBe("当前草稿人群");
     expect(result.current.inspector.isOpen).toBe(true);
   });
 
   it("allows viewport navigation while previewing a read-only version", () => {
-    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("历史版本人群"));
+    const publishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("历史版本人群"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialDraftViewport = result.current.document.draft.viewport;
     const versionId = publishedDocument.currentVersion?.id ?? "";
@@ -805,7 +787,7 @@ describe("useWorkflowWorkspace", () => {
     try {
       const publishedDocument = publishWorkflowDraft(
         "newcomer-conversion",
-        createWorkflowDraftWithTriggerAudience("历史版本人群"),
+        createWorkflowDraftWithStartKeyword("历史版本人群"),
       );
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const versionId = publishedDocument.currentVersion?.id ?? "";
@@ -841,8 +823,8 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("restores the selected version history snapshot into the editable draft", async () => {
-    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("第一版恢复人群"));
-    publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithTriggerAudience("第二版仍是发布快照"));
+    const firstPublishedDocument = publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("第一版恢复人群"));
+    publishWorkflowDraft("newcomer-conversion", createWorkflowDraftWithStartKeyword("第二版仍是发布快照"));
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const versionId = firstPublishedDocument.currentVersion?.id ?? "";
 
@@ -856,11 +838,9 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.versionHistory.isOpen).toBe(false);
     expect(result.current.versionHistory.isPreviewing).toBe(false);
-    expect(result.current.canvas.nodes.find((node) => node.id === "start")?.data.audience)
-      .toBe("第一版恢复人群");
+    expect(getCanvasStartKeyword(result.current.canvas)).toBe("第一版恢复人群");
     expect(result.current.document.status).toBe("Draft");
-    expect(getWorkflowDocument("newcomer-conversion").publishedDraft?.nodes.find((node) => node.id === "start")?.data.audience)
-      .toBe("第二版仍是发布快照");
+    expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("第二版仍是发布快照");
   });
 
   it("persists node config drafts through the workspace save boundary", async () => {
@@ -901,7 +881,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.inspector.onNodeChange({ repeatEntryEnabled: false });
+        result.current.inspector.onNodeChange({ entryPolicy: { mode: "never" } });
       });
 
       act(() => {
@@ -917,8 +897,8 @@ describe("useWorkflowWorkspace", () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
-      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.repeatEntryEnabled)
-        .toBe(false);
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "start")?.data.entryPolicy)
+        .toEqual({ mode: "never" });
       expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === handoffNodeId)?.data.title)
         .toBe("会员运营接管");
       expect(result.current.topBar.saveState).toBe("saved");
@@ -930,7 +910,7 @@ describe("useWorkflowWorkspace", () => {
 
 });
 
-function createWorkflowDraftWithTriggerAudience(audience: string) {
+function createWorkflowDraftWithStartKeyword(keyword: string): WorkflowDraft {
   const draft = getWorkflowDocument("newcomer-conversion").draft;
 
   return {
@@ -941,12 +921,31 @@ function createWorkflowDraftWithTriggerAudience(audience: string) {
             ...node,
             data: {
               ...node.data,
-              audience,
+              triggers: [{
+                keywords: [keyword],
+                match: "keywords" as const,
+                type: "message.received" as const,
+              }],
             },
           }
         : node,
     ),
   };
+}
+
+function getStartKeyword(draft: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] } | null | undefined) {
+  const start = draft?.nodes.find(node => node.data.kind === "start");
+  if (start?.data.kind !== "start") return null;
+  const trigger = start.data.triggers.find(item =>
+    item.type === "message.received" && item.match === "keywords",
+  );
+  return trigger?.type === "message.received" && trigger.match === "keywords"
+    ? trigger.keywords[0] ?? null
+    : null;
+}
+
+function getCanvasStartKeyword(canvas: { nodes: ReturnType<typeof getWorkflowDocument>["draft"]["nodes"] }) {
+  return getStartKeyword(canvas);
 }
 
 function createWorkflowDraftWithoutEdge(edgeId: string) {

@@ -1,6 +1,10 @@
-import type { WorkflowDraft, WorkflowExecutionSpec, WorkflowRuntimeStatus } from "@chatai/contracts";
+import type {
+  WorkflowDraft,
+  WorkflowExecutionSpec,
+  WorkflowRuntimeStatus,
+} from "@chatai/contracts";
+import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Kysely, Transaction } from "kysely";
-import type { WorkflowDatabase } from "./workflow-db.js";
 import type {
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
@@ -10,6 +14,7 @@ import type {
 
 const DEFINITION_TABLE = "xy_wap_embed_workflow_definition" as const;
 const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
+const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 
 type WorkflowDbExecutor = Kysely<WorkflowDatabase> | Transaction<WorkflowDatabase>;
 type PublishedWriteResult = {
@@ -215,6 +220,22 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
         uid: input.uid,
         workflow_id: input.workflowId,
       }).executeTakeFirstOrThrow();
+
+      await transaction.updateTable(TRIGGER_BINDING_TABLE).set({ status: 0 })
+        .where("uid", "=", input.uid)
+        .where("workflow_id", "=", input.workflowId)
+        .where("status", "=", 1)
+        .executeTakeFirst();
+      if (input.triggerBindings.length > 0) {
+        await transaction.insertInto(TRIGGER_BINDING_TABLE).values(input.triggerBindings.map(binding => ({
+          event_type: binding.eventType,
+          filter_spec_json: stringifyJson(binding.filter),
+          revision: input.executionSpec.revision,
+          status: 1,
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }))).executeTakeFirstOrThrow();
+      }
 
       await transaction.updateTable(DEFINITION_TABLE).set({
         op_sub_uid: input.opSubUserId,

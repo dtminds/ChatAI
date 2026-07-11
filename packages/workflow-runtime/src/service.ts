@@ -2,33 +2,41 @@ import type {
   WorkflowExecutionNode,
   WorkflowExecutionSpec,
   WorkflowNodeKind,
+  WorkflowStartConfig,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
+import { WorkflowStartConfigSchema } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
   createWorkflowActionIdempotencyKey,
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
-import { AppError, NotFoundError } from "../../shared/errors.js";
-import type { WorkflowRepository } from "./workflow-repository-types.js";
+import { WorkflowRuntimeError } from "./errors.js";
 import type {
   WorkflowCommitNodeResultInput,
+  WorkflowRuntimeControlReader,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
-} from "./workflow-runtime-types.js";
+} from "./types.js";
 
 type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAction"]>;
 
 export class WorkflowRuntimeService {
   private readonly executors = createCoreNodeExecutorRegistry();
+  private readonly taskLeaseDurationMs: number;
 
   constructor(
-    private readonly controlRepository: WorkflowRepository,
+    private readonly controlRepository: WorkflowRuntimeControlReader,
     private readonly runtimeRepository: WorkflowRuntimeRepository,
     private readonly executeAction?: WorkflowActionAdapter,
-  ) {}
+    options: { taskLeaseDurationMs?: number } = {},
+  ) {
+    this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
+  }
 
   async startRun(input: {
     entryEventId: string;
+    expectedRevision: number;
     subjectId: string;
     trigger: Record<string, unknown>;
     uid: number;
@@ -39,20 +47,23 @@ export class WorkflowRuntimeService {
     if (definition.runtimeStatus !== "active" || definition.publishedRevision === null) {
       throw runtimeStatusError(definition.runtimeStatus);
     }
+    if (definition.publishedRevision !== input.expectedRevision) throw staleDefinitionError();
     const revision = await this.controlRepository.findRevision(
       input.uid,
       input.workflowId,
       definition.publishedRevision,
     );
-    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
+    const startConfig = requireStartConfig(entryNode);
 
     const created = await this.runtimeRepository.createRunWithInitialTask({
       context: { outputs: {}, trigger: structuredClone(input.trigger) },
       entryEventId: input.entryEventId,
+      entryPolicy: startConfig.entryPolicy,
       initialNodeId: entryNode.id,
       initialNodeKind: entryNode.kind,
-      occurredAt: new Date(),
+      occurredAt: parseOccurredAt(input.trigger),
       revision: revision.revision,
       shardId: getWorkflowShardId(input.uid, input.subjectId),
       subjectId: input.subjectId,
@@ -64,6 +75,7 @@ export class WorkflowRuntimeService {
         ? runtimeStatusError("paused")
         : workflowUnavailable();
     }
+    if (created.kind === "entry-policy-rejected") return created;
     if (created.kind !== "success") throw staleDefinitionError();
     return created;
   }
@@ -77,15 +89,15 @@ export class WorkflowRuntimeService {
     workerId: string;
   }) {
     const task = await this.runtimeRepository.findTask(input.uid, input.taskId);
-    if (!task) throw new NotFoundError("WORKFLOW_TASK_NOT_FOUND", "Workflow Task 不存在");
+    if (!task) throw new WorkflowRuntimeError("WORKFLOW_TASK_NOT_FOUND", "Workflow Task 不存在", 404);
     const run = await this.runtimeRepository.findRun(input.uid, task.runId);
-    if (!run) throw new NotFoundError("WORKFLOW_RUN_NOT_FOUND", "Workflow Run 不存在");
+    if (!run) throw new WorkflowRuntimeError("WORKFLOW_RUN_NOT_FOUND", "Workflow Run 不存在", 404);
     const revision = await this.controlRepository.findRevision(input.uid, run.workflowId, run.revision);
-    if (!revision) throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
+    if (!revision) throw new WorkflowRuntimeError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在", 404);
 
     const claimed = await this.runtimeRepository.claimTask({
       expectedTaskVersion: input.taskVersion,
-      leaseExpiresAt: new Date(input.now.getTime() + 60_000),
+      leaseExpiresAt: new Date(input.now.getTime() + this.taskLeaseDurationMs),
       leaseOwner: input.workerId,
       taskId: task.id,
       uid: input.uid,
@@ -175,7 +187,7 @@ function createNextTask(
   const edge = spec.edges.find((item) =>
     item.source === node.id && item.sourceOutletId === sourceOutletId,
   );
-  if (!edge) throw new AppError("WORKFLOW_EDGE_NOT_FOUND", "Workflow 执行出口不存在", 500);
+  if (!edge) throw new WorkflowRuntimeError("WORKFLOW_EDGE_NOT_FOUND", "Workflow 执行出口不存在", 500);
   const target = requireExecutionNode(spec, edge.target);
   return {
     dispatchImmediately: result.type !== "wait",
@@ -210,8 +222,21 @@ function createNodeInputSnapshot(run: WorkflowRunRecord) {
 
 function requireExecutionNode(spec: WorkflowExecutionSpec, nodeId: string) {
   const node = spec.nodes.find((item) => item.id === nodeId);
-  if (!node) throw new AppError("WORKFLOW_NODE_NOT_FOUND", "Workflow 执行节点不存在", 500);
+  if (!node) throw new WorkflowRuntimeError("WORKFLOW_NODE_NOT_FOUND", "Workflow 执行节点不存在", 500);
   return node;
+}
+
+function requireStartConfig(node: WorkflowExecutionNode): WorkflowStartConfig {
+  if (node.kind !== "start" || !Value.Check(WorkflowStartConfigSchema, node.config)) {
+    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+  }
+  return structuredClone(node.config) as WorkflowStartConfig;
+}
+
+function parseOccurredAt(trigger: Record<string, unknown>) {
+  const value = trigger.occurredAt;
+  const parsed = typeof value === "string" ? new Date(value) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 function getWorkflowShardId(uid: number, subjectId: string) {
@@ -229,23 +254,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function runtimeStatusError(status: "active" | "inactive" | "paused" | "stopped") {
-  if (status === "paused") return new AppError("WORKFLOW_RUNTIME_PAUSED", "Workflow 已暂停", 409);
-  if (status === "stopped") return new AppError("WORKFLOW_RUNTIME_STOPPED", "Workflow 已停止", 409);
-  return new AppError("WORKFLOW_RUNTIME_INACTIVE", "Workflow 尚未启用", 409);
+  if (status === "paused") return new WorkflowRuntimeError("WORKFLOW_RUNTIME_PAUSED", "Workflow 已暂停");
+  if (status === "stopped") return new WorkflowRuntimeError("WORKFLOW_RUNTIME_STOPPED", "Workflow 已停止");
+  return new WorkflowRuntimeError("WORKFLOW_RUNTIME_INACTIVE", "Workflow 尚未启用");
 }
 
 function workflowUnavailable() {
-  return new AppError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行", 409);
+  return new WorkflowRuntimeError("WORKFLOW_RUNTIME_UNAVAILABLE", "Workflow 不可执行");
 }
 
 function staleTaskError() {
-  return new AppError("WORKFLOW_TASK_STALE", "Workflow Task 已过期", 409);
+  return new WorkflowRuntimeError("WORKFLOW_TASK_STALE", "Workflow Task 已过期");
 }
 
 function alreadyProcessedError() {
-  return new AppError("WORKFLOW_TASK_ALREADY_PROCESSED", "Workflow Task 已处理", 409);
+  return new WorkflowRuntimeError("WORKFLOW_TASK_ALREADY_PROCESSED", "Workflow Task 已处理");
 }
 
 function staleDefinitionError() {
-  return new AppError("WORKFLOW_DEFINITION_STALE", "Workflow 已更新，请重新进入", 409);
+  return new WorkflowRuntimeError("WORKFLOW_DEFINITION_STALE", "Workflow 已更新，请重新进入");
 }

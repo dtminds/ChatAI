@@ -68,11 +68,11 @@ export function buildWorkflowValidationSummaryFromResult(
     {
       ...getBlockingScope(),
       description: validation.startNode && !startConfigIssues.length
-        ? `当前人群：${validation.startNode.data.kind === "start" ? validation.startNode.data.audience : ""}`
+        ? `已配置 ${validation.startNode.data.kind === "start" ? validation.startNode.data.triggers.length : 0} 个触发条件`
         : startConfigIssues[0]?.message ?? "缺少开始节点",
       id: "start",
       status: validation.startNode && !startConfigIssues.length ? "ready" : "warning",
-      title: "触发人群",
+      title: "触发条件",
     },
     {
       ...getBlockingScope(),

@@ -3,6 +3,9 @@ import {
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
+  StopCircleIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -44,13 +47,19 @@ import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
 
+export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
+
 export function WorkflowListRow({
   onDelete,
+  onLifecycleAction,
   onRename,
+  operationPending = false,
   workflow,
 }: {
   onDelete: () => void;
+  onLifecycleAction: (action: WorkflowLifecycleAction) => void;
   onRename: () => void;
+  operationPending?: boolean;
   workflow: WorkflowListItem;
 }) {
   return (
@@ -93,11 +102,49 @@ export function WorkflowListRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {workflow.runtimeStatus === "inactive" ? (
+                <DropdownMenuItem
+                  disabled={!workflow.canOperate || operationPending}
+                  onSelect={() => onLifecycleAction("enable")}
+                >
+                  <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+                  启用
+                </DropdownMenuItem>
+              ) : null}
+              {workflow.runtimeStatus === "active" ? (
+                <DropdownMenuItem
+                  disabled={!workflow.canOperate || operationPending}
+                  onSelect={() => onLifecycleAction("pause")}
+                >
+                  <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
+                  暂停
+                </DropdownMenuItem>
+              ) : null}
+              {workflow.runtimeStatus === "paused" ? (
+                <DropdownMenuItem
+                  disabled={!workflow.canOperate || operationPending}
+                  onSelect={() => onLifecycleAction("resume")}
+                >
+                  <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+                  恢复
+                </DropdownMenuItem>
+              ) : null}
+              {workflow.runtimeStatus !== "stopped" ? <DropdownMenuSeparator /> : null}
               <DropdownMenuItem onSelect={onRename}>
                 <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
                 重命名
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  disabled={!workflow.canOperate || operationPending}
+                  onSelect={() => onLifecycleAction("stop")}
+                >
+                  <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
+                  停止
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
                 <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
                 删除

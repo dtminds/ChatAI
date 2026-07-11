@@ -3,12 +3,15 @@ import type { WorkflowDraft } from "./types";
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused" | "Stopped";
 
 export type WorkflowListItem = {
+  activationReady: boolean;
+  canOperate: boolean;
   conversion: string;
   entered: string;
   id: string;
   name: string;
   nodes: number;
   owner: string;
+  runtimeStatus: "active" | "inactive" | "paused" | "stopped";
   status: WorkflowDocumentStatus;
   trigger: string;
   updatedAt: string;
@@ -28,6 +31,7 @@ export type WorkflowVersionHistoryItem = WorkflowPublishedVersion & {
 
 export type WorkflowDocumentPermissions = {
   canEdit: boolean;
+  canOperate: boolean;
   canPublish: boolean;
 };
 
@@ -159,6 +163,8 @@ export type SyncWorkflowDraftRepository = {
   getDocument: (workflowId: string) => WorkflowDocument;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;
   listDocuments: () => WorkflowListItem[];
+  enableDocument: (workflowId: string) => WorkflowDocument;
+  pauseDocument: (workflowId: string) => WorkflowDocument;
   publishDraft: (
     workflowId: string,
     draft: WorkflowDraft,
@@ -166,6 +172,8 @@ export type SyncWorkflowDraftRepository = {
   ) => WorkflowDraftPublishResult;
   renameDocument: (workflowId: string, name: string) => WorkflowDocument;
   reset: () => void;
+  resumeDocument: (workflowId: string) => WorkflowDocument;
   restoreVersion: (workflowId: string, versionId: string) => WorkflowDraftRestoreResult;
   saveDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftSaveResult;
+  stopDocument: (workflowId: string) => WorkflowDocument;
 };

@@ -1,5 +1,10 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkflowEntryPolicy,
+  WorkflowStartTrigger,
+  WorkflowWaitConfig,
+} from "@chatai/contracts";
+import type {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
 } from "./constants";
@@ -35,16 +40,12 @@ type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unkno
 };
 
 export type StartNodeData = WorkflowNodeDataBase<"start"> & {
-  audience?: string;
-  entryLimitSummary?: string;
-  hostingAccountSummary?: string;
-  repeatEntryEnabled?: boolean;
-  sendWindow?: string;
+  accountIds: string[];
+  entryPolicy: WorkflowEntryPolicy;
+  triggers: WorkflowStartTrigger[];
 };
 
-export type WaitNodeData = WorkflowNodeDataBase<"wait"> & {
-  delayDays?: number;
-};
+export type WaitNodeData = WorkflowNodeDataBase<"wait"> & WorkflowWaitConfig;
 
 export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchPaths?: WorkflowBranchPath[];

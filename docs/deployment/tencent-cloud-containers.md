@@ -1,9 +1,11 @@
 # 腾讯云容器部署指南
 
-本文档面向测试环境和生产环境部署。当前项目建议拆成两个容器：
+本文档面向测试环境和生产环境部署。当前项目建议拆成四个独立容器：
 
 - `chatai-web`：Vite 构建后的静态前端，由 Nginx 或等价静态服务承载。
 - `chatai-backend`：Fastify Node 服务，暴露 `/api/*` 和健康检查接口。
+- `chatai-backend-worker`：会话洞察等后端异步任务。
+- `chatai-workflow-worker`：营销 Workflow 的 Entry/Task Consumer、Scheduler、Outbox Publisher 和 Reconciler。
 
 浏览器只访问同一个 HTTPS 域名。前端请求同源 `/api`，由 TKE Ingress 或网关把 `/api/*` 转发到 backend。
 
@@ -17,10 +19,11 @@ client
 
 ## 推荐云资源
 
-- TCR：保存 `chatai-web` 和 `chatai-backend` 镜像。
+- TCR：保存 web、backend 和两个 worker 镜像。
 - TKE：运行测试环境和生产环境工作负载。
 - CLB / Ingress：统一暴露 HTTPS 域名，并按路径路由。
 - TencentDB for MySQL 或已有 MySQL：提供 `DATABASE_URL` 指向的数据库。
+- TDMQ Pulsar：承载标准化 Workflow Entry 和 Task 消息。
 - Secret Manager 或 TKE Secret：保存数据库连接串、JWT key、Java 内部接口 token。
 
 腾讯云相关文档：
@@ -68,6 +71,7 @@ pnpm backend:build
 deploy/web.Dockerfile
 deploy/backend.Dockerfile
 deploy/backend-worker.Dockerfile
+deploy/workflow-worker.Dockerfile
 deploy/nginx.conf
 ```
 
@@ -77,6 +81,7 @@ deploy/nginx.conf
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
 docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag> .
 docker build -f deploy/backend-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag> .
+docker build -f deploy/workflow-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag> .
 ```
 
 推送到 TCR：
@@ -85,6 +90,7 @@ docker build -f deploy/backend-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag>
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag>
+docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-workflow-worker:<tag>
 ```
 
 `<tag>` 建议使用 Git commit SHA，例如 `20260512-abcdef0`，不要只使用 `latest` 发布生产。
@@ -94,13 +100,14 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag>
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
 - `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
 - `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
+- `deploy/workflow-worker.Dockerfile`：使用 Debian glibc 镜像构建并运行独立 Workflow Worker，以兼容 `pulsar-client` 原生扩展；镜像暴露 3002 健康检查端口。CI 构建后会在镜像内实际加载一次 `pulsar-client`，防止原生安装脚本被跳过。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：
 
 - Web 和 backend 镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml`、根 `package.json`、`apps/*` 和 `packages/contracts`，不要在子目录内单独执行上述 `docker build`。
 - 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
-- `deploy/web.Dockerfile` 没有声明 `ARG`，也没有复制根目录 `.env.*` 文件。Docker 构建不会自动读取宿主机环境变量；如需自定义 `VITE_*` 构建变量，需要显式调整 Dockerfile，例如复制目标环境文件，或增加 `ARG` 并在构建时通过 `--build-arg` 传入。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
+- `deploy/web.Dockerfile` 不复制根目录 `.env.*` 文件。Workflow 临时账号/标签 fixture 仅通过 `VITE_WORKFLOW_FIXTURES_ENABLED` build arg 控制；其它自定义 `VITE_*` 变量仍需按需增加 `ARG`。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
 
 ## Web 容器要求
 
@@ -109,9 +116,10 @@ Web 构建时需要：
 ```text
 VITE_API_BASE_URL=/api
 VITE_WECHAT_EMOJI_BASE_URL=
+VITE_WORKFLOW_FIXTURES_ENABLED=false
 ```
 
-`VITE_*` 是构建时变量。只要测试和生产都使用同源 `/api`，且其它 `VITE_*` 配置一致，同一个 web 镜像可以在两个环境复用。
+`VITE_*` 是构建时变量。test01 尚未接入真实托管账号和标签数据源，构建时必须传入 `--build-arg VITE_WORKFLOW_FIXTURES_ENABLED=true`；production 必须保持默认 `false`。因此 Phase 3 的 test01 与 production Web 镜像不能复用同一构建产物。
 
 静态服务需要支持 React Router fallback：
 
@@ -148,7 +156,7 @@ GET /healthz
 GET /readyz
 ```
 
-`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。未配置数据库时 backend 会在启动阶段失败，不会进入可服务状态。
+`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，并在首次检查时验证 MySQL 会话的实际时区偏移为 UTC+8。Workflow Worker 启动时执行同一项校验。未配置数据库或时区不符合约束时，服务不会进入可服务状态。
 
 ## Backend Worker 容器要求
 
@@ -185,6 +193,111 @@ INSIGHTS_WORKER_START_LOOKBACK_DAYS=3
 ```
 
 如需启用模型分析，再配置火山方舟相关变量并将 `INSIGHTS_WORKER_MODEL_ENABLED` 改为 `true`。
+
+## Marketing Workflow Worker 容器要求
+
+Workflow Worker 是独立进程，不复用 API Server 或 Backend Worker。Phase 3 初始可部署一个副本并启用全部角色；后续扩容时可通过角色开关拆分 Consumer、Scheduler、Outbox 和 Reconciler。
+
+启动命令：
+
+```bash
+node apps/workflow-worker/dist/index.js
+```
+
+健康检查：
+
+```text
+GET :3002/healthz
+GET :3002/readyz
+```
+
+`/healthz` 只表示进程存活。`/readyz` 会周期检查数据库、Broker Topic lookup 和 Consumer 连接状态，并要求所有已启用角色均就绪。TKE 建议使用：
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 3002
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 3002
+```
+
+非敏感配置放入 ConfigMap：
+
+```text
+NODE_ENV=production
+LOG_LEVEL=info
+WORKFLOW_ENVIRONMENT=dev
+WORKFLOW_BROKER=pulsar
+WORKFLOW_PULSAR_CLUSTER_ID=<tdmq-cluster-id>
+WORKFLOW_PULSAR_NAMESPACE=chatai-workflow
+WORKFLOW_ENTRY_TOPIC=topic-workflow-entry-dev
+WORKFLOW_TASK_TOPIC=topic-workflow-task-dev
+WORKFLOW_SUBSCRIPTION=consumer-chatai-worker-env-dev
+WORKFLOW_ENTRY_DLQ_TOPIC=consumer-chatai-worker-env-dev-DLQ
+WORKFLOW_TASK_DLQ_TOPIC=consumer-chatai-worker-env-dev-DLQ
+WORKFLOW_WORKER_ROLES=entry-consumer,task-consumer,scheduler,outbox,reconciler
+WORKFLOW_HEALTH_PORT=3002
+WORKFLOW_MAX_REDELIVER_COUNT=5
+WORKFLOW_BATCH_SIZE=100
+WORKFLOW_LEASE_DURATION_MS=60000
+WORKFLOW_MAX_TASK_ATTEMPTS=5
+WORKFLOW_MAX_OUTBOX_ATTEMPTS=100
+WORKFLOW_MAX_OUTBOX_RETRY_DELAY_MS=300000
+WORKFLOW_DISPATCH_TIMEOUT_MS=300000
+WORKFLOW_INBOX_CLEANUP_BATCH_SIZE=1000
+WORKFLOW_SCHEDULER_INTERVAL_MS=1000
+WORKFLOW_OUTBOX_INTERVAL_MS=1000
+WORKFLOW_OUTBOX_RETRY_DELAY_MS=5000
+WORKFLOW_RECONCILE_INTERVAL_MS=30000
+WORKFLOW_READINESS_INTERVAL_MS=30000
+WORKFLOW_SHARD_IDS=
+```
+
+敏感配置放入 Secret：
+
+```text
+DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
+WORKFLOW_PULSAR_SERVICE_URL=<tdmq-pulsar-http-service-url>
+WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
+```
+
+环境映射：
+
+| 环境 | Entry Topic | Task Topic | Subscription |
+| --- | --- | --- | --- |
+| dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` | `consumer-chatai-worker-env-dev` |
+| test01 | `topic-workflow-entry-test01` | `topic-workflow-task-test01` | `consumer-chatai-worker-env-test01` |
+
+Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称。TDMQ 会为每个环境消费组维护系统 `-RETRY` 和 `-DLQ` Topic，不需要在应用中创建额外业务 Topic。测试与开发不得交叉使用 Topic 或 Subscription。
+
+Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` 将上述短 Topic 名规范化为 `persistent://<cluster-id>/<namespace>/<topic>`。也可以直接为 Topic 配置完整的 `persistent://` 地址；完整地址不会被重复拼接。真实 Pulsar 模式缺少集群 ID 或 namespace 时 Worker 会拒绝启动，避免消息误投到默认 namespace。
+
+角色说明：
+
+- `entry-consumer`：消费标准化入口事件并执行触发匹配和重复进入控制。
+- `task-consumer`：消费已派发 Task，并在数据库事务完成后 ACK。
+- `scheduler`：扫描到期 Wait Task。多副本时必须用 `WORKFLOW_SHARD_IDS` 分配互不重叠的逻辑分片。
+- `outbox`：认领并发布数据库 Outbox。
+- `reconciler`：恢复过期租约并收敛停止或删除的 Run。
+
+进程收到 `SIGTERM` 或 `SIGINT` 后会停止角色循环、关闭 Consumer/Producer、数据库连接和健康检查服务。TKE 应提供足够的 `terminationGracePeriodSeconds`，首发建议 60 秒。
+
+### Entry Smoke
+
+Smoke 只读取已启用 Workflow 的 Trigger Binding 并投递一条标准 Entry 事件，不创建 Run、不修改 Workflow 配置，也不在消息中携带 `workflowId`。先在产品中创建并启用一个只包含 `start -> wait -> end` 的 Workflow，然后执行：
+
+```bash
+corepack pnpm --filter @chatai/workflow-worker smoke:entry -- \
+  --workflow-id <workflow-id> \
+  --subject-id <test-subject-id>
+```
+
+命令输出仅包含 `eventId`、`messageId` 和 `workflowId`。`subjectId` 会进入测试消息但不会打印。Smoke 必须由人工在已配置真实 Secret 的受控环境执行，普通 CI 只能使用 Fake Broker。
+
+GitHub Actions 的 Workflow Worker 测试步骤固定设置 `WORKFLOW_BROKER=fake`，且不注入 Pulsar 地址或 Token。CI 会构建 Debian Worker 镜像，但不运行 Worker 进程或 Entry Smoke，因此不会访问 TDMQ。
 
 ## Backend 环境变量
 
@@ -292,10 +405,10 @@ TKE / CLS 侧配置建议：
 
 ## 测试环境发布
 
-1. 构建并推送 `chatai-web:<tag>` 和 `chatai-backend:<tag>`。
+1. 构建并推送 web、backend、backend worker 和 Workflow Worker 镜像。
 2. 更新 `chatai-test` namespace 下的 Deployment 镜像。
 3. 配置测试库 `DATABASE_URL` 和测试 Java 内部接口。
-4. 等待 backend `/readyz` 返回 `status=ready`。
+4. 等待 backend 和 Workflow Worker 的 `/readyz` 返回 `status=ready`。
 5. 访问测试域名：
 
 ```text
@@ -310,7 +423,7 @@ https://chat-test.example.com/chat
 
 1. 将测试通过的镜像 tag 提升为生产发布 tag，或直接在生产 Deployment 使用同一个 immutable tag。
 2. 更新 `chatai-prod` namespace 的 ConfigMap / Secret。
-3. 滚动更新 backend，确认 `/healthz` 和 `/readyz`。
+3. 滚动更新 backend 和两个 worker，确认相关健康检查。
 4. 滚动更新 web。
 5. 验证生产域名：
 
@@ -326,6 +439,7 @@ https://chat.example.com/chat
 
 ```bash
 kubectl -n chatai-prod rollout undo deployment/chatai-backend
+kubectl -n chatai-prod rollout undo deployment/chatai-workflow-worker
 kubectl -n chatai-prod rollout undo deployment/chatai-web
 ```
 
@@ -342,6 +456,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 
 - 已执行 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm backend:build`。
 - 已使用 `deploy/web.Dockerfile` 和 `deploy/backend.Dockerfile` 从仓库根目录构建镜像。
+- 已使用 `deploy/workflow-worker.Dockerfile` 构建 Debian/glibc Workflow Worker 镜像。
 - 镜像 tag 使用不可变版本号或 commit SHA。
 - Web 构建变量为 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
 - Web 镜像内的 `deploy/nginx.conf` 支持前端路由 fallback，且不会把 `/api/*` 回退到 `index.html`。
@@ -349,6 +464,9 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`JAVA_INTERNAL_API_BASE_URL`、`ALTCHA_HMAC_SECRET`。
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。
 - `/healthz` 和 `/readyz` 正常。
+- Workflow Worker 的数据库、Broker 和已启用角色均通过 `/readyz`。
+- dev/test01 使用各自的 Topic 和 Subscription，Pulsar Token 仅存在于 Secret。
+- Entry Smoke 仅在受控环境人工执行，CI 未连接真实 TDMQ。
 - `/chat` 刷新不 404。
 - 登录、刷新 token、退出登录可用。
 - `/api/server/me`、`/api/server/seats`、`/api/server/conversations` 可用。

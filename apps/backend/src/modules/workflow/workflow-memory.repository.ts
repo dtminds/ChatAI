@@ -1,17 +1,22 @@
+import type { WorkflowEntryEventType } from "@chatai/contracts";
+import type { WorkflowTriggerBindingSpec } from "@chatai/workflow-engine";
 import type {
   WorkflowDefinitionRecord,
   WorkflowMutationResult,
   WorkflowRepository,
   WorkflowRevisionRecord,
 } from "./workflow-repository-types.js";
+import type { WorkflowTriggerBindingReader, WorkflowTriggerBindingRecord } from "@chatai/workflow-runtime";
 
 type MemoryDefinition = WorkflowDefinitionRecord & { clientRequestId?: string };
 
-export class InMemoryWorkflowRepository implements WorkflowRepository {
+export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowTriggerBindingReader {
   private definitions: MemoryDefinition[] = [];
   private revisions: WorkflowRevisionRecord[] = [];
+  private triggerBindings: WorkflowTriggerBindingRecord[] = [];
   private nextDefinitionId = 1n;
   private nextRevisionId = 1n;
+  private nextTriggerBindingId = 1n;
 
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     const existing = input.clientRequestId
@@ -72,6 +77,18 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       .map(clone);
   }
 
+  async listActiveTriggerBindings(
+    uid: number,
+    eventType: WorkflowEntryEventType,
+  ) {
+    return this.triggerBindings.filter((binding) => {
+      if (binding.uid !== uid || binding.eventType !== eventType || binding.status !== 1) return false;
+      const definition = this.findActive(uid, binding.workflowId);
+      return definition?.runtimeStatus === "active"
+        && definition.publishedRevision === binding.revision;
+    }).map(clone);
+  }
+
   async saveDraft(input: Parameters<WorkflowRepository["saveDraft"]>[0]) {
     return this.mutate(input.uid, input.workflowId, (definition) => {
       if (definition.draftVersion !== input.expectedDraftVersion) return conflict();
@@ -125,6 +142,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       return invalidStatus<never>(definition.runtimeStatus);
     }
     const revision = this.createRevision(definition, input);
+    this.replaceTriggerBindings(definition, revision.revision, input.triggerBindings);
     definition.publishedRevision = revision.revision;
     definition.validatedDraftVersion = definition.draftVersion;
     touch(definition, input.opSubUserId);
@@ -140,6 +158,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
       return invalidStatus<never>(definition.runtimeStatus);
     }
     const revision = this.createRevision(definition, input);
+    this.replaceTriggerBindings(definition, revision.revision, input.triggerBindings);
     definition.publishedRevision = 1;
     definition.runtimeStatus = "active";
     touch(definition, input.opSubUserId);
@@ -196,6 +215,33 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     };
     this.revisions.push(revision);
     return revision;
+  }
+
+  private replaceTriggerBindings(
+    definition: WorkflowDefinitionRecord,
+    revision: number,
+    specs: WorkflowTriggerBindingSpec[],
+  ) {
+    for (const binding of this.triggerBindings) {
+      if (binding.uid === definition.uid && binding.workflowId === definition.id && binding.status === 1) {
+        binding.status = 0;
+        binding.updatedAt = new Date();
+      }
+    }
+    const now = new Date();
+    for (const spec of specs) {
+      this.triggerBindings.push({
+        createdAt: now,
+        eventType: spec.eventType,
+        filter: clone(spec.filter),
+        id: String(this.nextTriggerBindingId++),
+        revision,
+        status: 1,
+        uid: definition.uid,
+        updatedAt: now,
+        workflowId: definition.id,
+      });
+    }
   }
 }
 

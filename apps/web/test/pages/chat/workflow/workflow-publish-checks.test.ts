@@ -155,7 +155,7 @@ describe("buildPublishChecks", () => {
             ...node,
             data: {
               ...node.data,
-              audience: "",
+              accountIds: [],
               status: "running" as const,
             },
           }
@@ -166,7 +166,7 @@ describe("buildPublishChecks", () => {
     expect(checks.find((check) => check.id === "start")?.status).toBe("warning");
     expect(checks.find((check) => check.id === "start")?.blocksPublish).toBe(true);
     expect(checks.find((check) => check.id === "start")?.description).toBe(
-      "开始节点需要选择进入人群",
+      "开始节点需要选择托管账号",
     );
   });
 
@@ -178,12 +178,12 @@ describe("buildPublishChecks", () => {
       ...waitNode,
       data: {
         ...waitNode.data,
-        delayDays: -1,
+        duration: -1,
       },
     }, nodes, createInitialEdges())).toEqual([
       {
         code: "wait-delay-required",
-        message: "等待节点需要配置等待天数",
+        message: "等待节点需要配置正整数时长",
         severity: "warning",
         source: "config",
       },
@@ -340,7 +340,7 @@ describe("buildPublishChecks", () => {
     });
 
     expect(summary.summary.find((check) => check.id === "start")).toEqual(expect.objectContaining({
-      description: `当前人群：${startNode.data.audience}`,
+      description: "已配置 2 个触发条件",
       status: "ready",
     }));
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");

@@ -14,7 +14,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Kysely } from "kysely";
-import type { WorkflowDatabase } from "./workflow-db.js";
+import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import { MysqlWorkflowRepository } from "./workflow-mysql.repository.js";
 import { WorkflowService } from "./workflow.service.js";
 

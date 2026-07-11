@@ -241,7 +241,13 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
 
 export function getWorkflowTrigger(draft: WorkflowDraft) {
   const entryNode = findWorkflowEntryNode(draft.nodes);
-  return entryNode?.data.kind === "start" ? entryNode.data.audience : undefined;
+  if (entryNode?.data.kind !== "start") return undefined;
+  const triggerLabels = entryNode.data.triggers.map(trigger => {
+    if (trigger.type === "contact.friend_added") return "添加好友";
+    if (trigger.type === "customer.tag_added") return "添加标签";
+    return trigger.match === "keywords" ? "消息关键词" : "用户消息";
+  });
+  return [...new Set(triggerLabels)].join("、") || undefined;
 }
 
 export function getWorkflowConversion(draft: WorkflowDraft) {

@@ -22,7 +22,10 @@
     "preview": "pnpm --filter @chatai/web preview",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "test:watch": "pnpm --filter @chatai/web test:watch"
+    "test:watch": "pnpm --filter @chatai/web test:watch",
+    "workflow-worker:build": "pnpm --filter @chatai/workflow-worker build",
+    "workflow-worker:dev": "pnpm --filter @chatai/workflow-worker dev",
+    "workflow-worker:test": "pnpm --filter @chatai/workflow-worker test"
   },
   "packageManager": "pnpm@10.34.3"
 }

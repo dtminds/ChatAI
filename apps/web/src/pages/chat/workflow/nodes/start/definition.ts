@@ -1,10 +1,10 @@
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
+  createCatalogIssue,
   createDefaultSourceHandles,
   createNoTargetHandles,
   createNodeData,
-  pickDefinedWorkflowConfig,
   standardNodeLayout,
   targetNodeKinds,
 } from "../definition-shared";
@@ -16,55 +16,22 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   canDuplicate: false,
   canInsertAfter: true,
   canRename: false,
-  configSections: [
-    {
-      fields: [
-        {
-          getValue: (data) => data.audience ?? "",
-          id: "workflow-audience",
-          kind: "text",
-          label: "触发人群",
-          toPatch: (value) => ({
-            audience: value,
-            metric: value ? "预计进入 124.8万人" : "未配置人群",
-            status: value ? "running" : "warning",
-          }),
-          validation: {
-            required: {
-              code: "start-audience-required",
-              message: "开始节点需要选择进入人群",
-            },
-          },
-        },
-        {
-          description: "同一客户 7 天内最多进入一次",
-          getValue: (data) => data.repeatEntryEnabled ?? true,
-          id: "workflow-repeat-entry",
-          kind: "switch",
-          label: "允许重复进入",
-          toPatch: (value) => ({ repeatEntryEnabled: value }),
-        },
-      ],
-      id: "start",
-      title: "进入规则",
-    },
-  ],
+  configSections: [],
   createDefaultData: () =>
     createNodeData("start", 1, {
-      audience: "添加标签、添加好友事件、用户输入",
-      entryLimitSummary: "同一客户进入此SOP最多2次",
-      hostingAccountSummary: "已选 4 个托管账号",
+      accountIds: [],
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
       label: "开始",
-      metric: "已选 4 个托管账号",
-      repeatEntryEnabled: true,
-      sendWindow: "09:00:00 - 18:00:00",
-      status: "running",
-      summary: "添加标签、添加好友事件、用户输入",
+      metric: "待配置触发条件",
+      status: "warning",
+      summary: "配置客户进入营销旅程的触发条件",
       title: "开始",
+      triggers: [],
     }),
-  createExecutionConfig: (data) => pickDefinedWorkflowConfig({
-    audience: data.audience,
-    repeatEntryEnabled: data.repeatEntryEnabled,
+  createExecutionConfig: (data) => ({
+    accountIds: [...data.accountIds],
+    entryPolicy: structuredClone(data.entryPolicy),
+    triggers: structuredClone(data.triggers),
   }),
   insertable: false,
   kind: "start",
@@ -74,6 +41,28 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createNoTargetHandles,
   sort: 0,
+  validate: (node) => {
+    const issues = [];
+    if (node.data.accountIds.length === 0) {
+      issues.push(createCatalogIssue("start-account-required", "开始节点需要选择托管账号"));
+    }
+    if (node.data.triggers.length === 0) {
+      issues.push(createCatalogIssue("start-trigger-required", "开始节点需要选择触发条件"));
+    }
+    if (node.data.triggers.some(trigger =>
+      trigger.type === "customer.tag_added" && trigger.tagIds.length === 0,
+    )) {
+      issues.push(createCatalogIssue("start-tag-required", "标签触发需要选择至少一个标签"));
+    }
+    if (node.data.triggers.some(trigger =>
+      trigger.type === "message.received"
+      && trigger.match === "keywords"
+      && trigger.keywords.length === 0,
+    )) {
+      issues.push(createCatalogIssue("start-keyword-required", "关键词触发需要填写至少一个关键词"));
+    }
+    return issues;
+  },
   visual: {
     accentClassName: "bg-blue-600 text-white ring-blue-600/20",
     accentRgb: "37 99 235",

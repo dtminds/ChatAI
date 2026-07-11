@@ -10,13 +10,11 @@ import type {
 } from "../workflow-draft-service";
 
 export function WorkflowTopBar({
-  activationReady = false,
   canPublish = true,
   canRetrySave = false,
   isPreviewingVersion,
   lastSavedAt,
   onExitPreview,
-  onEnable,
   onOpenVersionHistory,
   onPublish,
   onPublishCheck,
@@ -33,15 +31,14 @@ export function WorkflowTopBar({
   restoreState,
   saveState,
   totalChecks,
+  validatedForActivation = false,
   workflowName,
 }: {
-  activationReady?: boolean;
   canPublish?: boolean;
   canRetrySave?: boolean;
   isPreviewingVersion?: boolean;
   lastSavedAt: string;
   onExitPreview?: () => void;
-  onEnable?: () => void;
   onOpenVersionHistory: () => void;
   onPublish: () => void;
   onPublishCheck: () => void;
@@ -58,11 +55,12 @@ export function WorkflowTopBar({
   restoreState?: WorkflowDraftRestoreStatus;
   saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
+  validatedForActivation?: boolean;
   workflowName: string;
 }) {
   const saveStateLabel = getSaveStateLabel(saveState);
+  const published = publishState === "published";
   const publishing = publishState === "publishing";
-  const primaryAction = activationReady ? onEnable : onPublish;
   const restoring = restoreState === "restoring";
   const readOnlyMode = Boolean(isPreviewingVersion);
   const previewLabel = previewVersionLabel ?? "历史版本";
@@ -99,7 +97,11 @@ export function WorkflowTopBar({
           )}
           <span className="workflow-canvas-status-separator size-[3px] shrink-0 rounded-full bg-current opacity-70" />
           <span title={publishedAt ? `发布时间：${publishedAt}` : undefined}>
-            {publishedAt ? `已发布 ${publishedAt}` : "未发布"}
+            {publishedAt
+              ? `已发布 ${publishedAt}`
+              : validatedForActivation
+                ? "已发布，待启用"
+                : "未发布"}
           </span>
           {publishErrorCode ? (
             <>
@@ -176,11 +178,14 @@ export function WorkflowTopBar({
               </span>
             </Button>
             <Button
-              className={cn(topbarButtonClassName, "workflow-topbar-publish border-transparent")}
-              disabled={!canPublish || !publishReady || publishing || saveState === "error" || publishErrorCode === "conflict" || (activationReady && !onEnable)}
-              onClick={primaryAction}
+              className={cn(
+                topbarButtonClassName,
+                "workflow-topbar-publish border-transparent bg-primary text-primary-foreground hover:bg-primary/92",
+              )}
+              disabled={!canPublish || !publishReady || published || publishing || saveState === "error" || publishErrorCode === "conflict"}
+              onClick={onPublish}
               type="button"
-              variant={publishReady ? "default" : "secondary"}
+              variant="default"
             >
               <HugeiconsIcon
                 icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
@@ -188,9 +193,7 @@ export function WorkflowTopBar({
                 strokeWidth={1.8}
               />
               <span>
-                {publishing
-                  ? activationReady ? "启用中" : "发布中"
-                  : activationReady ? "启用" : publishErrorCode ? "重新发布" : "发布"}
+                {publishing ? "发布中" : published ? "已发布" : publishErrorCode ? "重新发布" : "发布"}
               </span>
             </Button>
           </>

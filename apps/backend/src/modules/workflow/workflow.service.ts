@@ -8,8 +8,15 @@ import type {
   WorkflowRestoreRequest,
   WorkflowRevision,
   WorkflowSaveDraftRequest,
+  WorkflowStartConfig,
 } from "@chatai/contracts";
-import { compileWorkflowDraft, WorkflowCompilationError } from "@chatai/workflow-engine";
+import { Value } from "@sinclair/typebox/value";
+import { WorkflowStartConfigSchema } from "@chatai/contracts";
+import {
+  compileWorkflowDraft,
+  getWorkflowTriggerBindings,
+  WorkflowCompilationError,
+} from "@chatai/workflow-engine";
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import type {
   WorkflowDefinitionRecord,
@@ -102,6 +109,7 @@ export class WorkflowService {
       expectedPublishedRevision: definition.publishedRevision,
       opSubUserId: scope.subUserId,
       specHash: hashExecutionSpec(executionSpec),
+      triggerBindings: createTriggerBindings(executionSpec),
       uid: scope.uid,
       workflowId,
     }));
@@ -128,6 +136,7 @@ export class WorkflowService {
       expectedDraftVersion: definition.draftVersion,
       opSubUserId: scope.subUserId,
       specHash: hashExecutionSpec(executionSpec),
+      triggerBindings: createTriggerBindings(executionSpec),
       uid: scope.uid,
       workflowId,
     }));
@@ -275,6 +284,14 @@ function createInitialNode(kind: "end" | "start", title: string, position: { x: 
 
 function hashExecutionSpec(spec: object) {
   return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
+}
+
+function createTriggerBindings(spec: ReturnType<typeof compileWorkflowDraft>) {
+  const entryNode = spec.nodes.find(node => node.id === spec.entryNodeId);
+  if (!entryNode || entryNode.kind !== "start" || !Value.Check(WorkflowStartConfigSchema, entryNode.config)) {
+    throw new Error("Compiled Workflow has an invalid Start configuration");
+  }
+  return getWorkflowTriggerBindings(entryNode.config as WorkflowStartConfig);
 }
 
 function workflowNotFound() {

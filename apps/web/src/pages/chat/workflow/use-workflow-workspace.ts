@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { toast } from "sonner";
 import type {
   Connection,
   EdgeChange,
@@ -59,7 +60,6 @@ export function useWorkflowWorkspace(
 ) {
   const {
     document,
-    enableDocument,
     lastSavedAt,
     markDirty,
     publishDraft,
@@ -457,14 +457,8 @@ export function useWorkflowWorkspace(
 
     dispatchViewState({ type: "close-checks" });
     closeCanvasOverlays();
-    await publishDraft(controller.currentDraft);
-  });
-
-  const enableCurrentWorkflow = useWorkflowStableCallback(async () => {
-    if (!permissions.canPublish) {
-      return;
-    }
-    await enableDocument();
+    const result = await publishDraft(controller.currentDraft);
+    if (result) toast.success("发布成功");
   });
 
   const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
@@ -632,15 +626,10 @@ export function useWorkflowWorkspace(
       onNodeChange: updateSelectedNode,
     },
     topBar: {
-      activationReady: document.runtimeStatus === "inactive"
-        && document.draftVersion !== undefined
-        && document.validatedDraftVersion === document.draftVersion
-        && saveState === "saved",
       canPublish: permissions.canPublish,
       canRetrySave: Boolean(saveError),
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
-      onEnable: enableCurrentWorkflow,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
       onRetrySave: retrySave,
@@ -651,6 +640,9 @@ export function useWorkflowWorkspace(
       readyChecks: publishChecks.readyChecks,
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
+      validatedForActivation: document.runtimeStatus === "inactive"
+        && document.draftVersion !== undefined
+        && document.validatedDraftVersion === document.draftVersion,
     },
     versionHistory: {
       currentPreviewVersionId: previewVersion?.id,

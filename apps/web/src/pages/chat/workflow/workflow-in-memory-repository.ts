@@ -69,6 +69,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       workflowDocuments.splice(documentIndex, 1);
     },
+    enableDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
     getDocument: (workflowId) => cloneWorkflowDocument(
       workflowDocuments[getWorkflowDocumentIndex(workflowId)],
     ),
@@ -112,9 +113,17 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       publishedRevision: _publishedRevision,
       revision: _revision,
       savedAt: _savedAt,
+      validatedDraftVersion: _validatedDraftVersion,
       versionHistory: _versionHistory,
       ...workflow
-    }) => workflow),
+    }) => ({
+      ...workflow,
+      activationReady: workflow.runtimeStatus === "inactive"
+        && _validatedDraftVersion !== undefined
+        && _validatedDraftVersion === _revision,
+      canOperate: _permissions.canOperate,
+    })),
+    pauseDocument: (workflowId) => updateRuntimeStatus(workflowId, "paused"),
     publishDraft: (workflowId, draft, options) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
@@ -184,6 +193,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowDocuments[documentIndex] = nextDocument;
       return cloneWorkflowDocument(nextDocument);
     },
+    resumeDocument: (workflowId) => updateRuntimeStatus(workflowId, "active"),
     restoreVersion: (workflowId, versionId) => {
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
@@ -253,7 +263,30 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowDocuments[documentIndex] = nextDocument;
       return normalizeWorkflowDraftSaveResult(nextDocument);
     },
+    stopDocument: (workflowId) => updateRuntimeStatus(workflowId, "stopped"),
   };
+
+  function updateRuntimeStatus(
+    workflowId: string,
+    runtimeStatus: NonNullable<WorkflowDocument["runtimeStatus"]>,
+  ) {
+    const documentIndex = getWorkflowDocumentIndex(workflowId);
+    const currentDocument = workflowDocuments[documentIndex];
+    const nextDocument: WorkflowDocument = {
+      ...currentDocument,
+      runtimeStatus,
+      status: runtimeStatus === "active"
+        ? "Published"
+        : runtimeStatus === "paused"
+          ? "Paused"
+          : runtimeStatus === "stopped"
+            ? "Stopped"
+            : "Draft",
+      updatedAt: "刚刚",
+    };
+    workflowDocuments[documentIndex] = nextDocument;
+    return cloneWorkflowDocument(nextDocument);
+  }
 }
 
 function createWorkflowDocuments(): WorkflowDocument[] {
@@ -266,7 +299,10 @@ function createWorkflowDocuments(): WorkflowDocument[] {
             ...node,
             data: {
               ...node.data,
-              audience: "90 天未复购会员",
+              triggers: [{
+                tagIds: ["tag-repurchase"],
+                type: "customer.tag_added" as const,
+              }],
               title: "复购唤醒触发",
             },
           }
@@ -282,7 +318,11 @@ function createWorkflowDocuments(): WorkflowDocument[] {
             ...node,
             data: {
               ...node.data,
-              audience: "直播间互动但未下单客户",
+              triggers: [{
+                keywords: ["直播", "活动"],
+                match: "keywords" as const,
+                type: "message.received" as const,
+              }],
               title: "直播互动触发",
             },
           }
@@ -293,6 +333,8 @@ function createWorkflowDocuments(): WorkflowDocument[] {
 
   return [
     {
+      activationReady: true,
+      canOperate: true,
       conversion: "18.4%",
       currentVersion: null,
       draft: newcomerConversionDraft,
@@ -307,13 +349,17 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedDraft: null,
       publishedRevision: null,
       revision: 1,
+      runtimeStatus: "inactive",
       savedAt: "18:20",
       status: "Draft",
       trigger: "近 30 天新入会且未首购客户",
       updatedAt: "今天 18:20",
+      validatedDraftVersion: 1,
       versionHistory: [],
     },
     {
+      activationReady: false,
+      canOperate: true,
       conversion: "23.1%",
       currentVersion: createWorkflowPublishedVersion("vip-reactivation", 1, "昨天 21:04"),
       draft: vipReactivationDraft,
@@ -328,15 +374,19 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedDraft: vipReactivationDraft,
       publishedRevision: 1,
       revision: 1,
+      runtimeStatus: "active",
       savedAt: "昨天 21:04",
       status: "Published",
       trigger: "90 天未复购会员",
       updatedAt: "昨天 21:04",
+      validatedDraftVersion: 1,
       versionHistory: [
         createWorkflowVersionHistoryItem("vip-reactivation", 1, "昨天 21:04", vipReactivationDraft),
       ],
     },
     {
+      activationReady: false,
+      canOperate: true,
       conversion: "9.7%",
       currentVersion: null,
       draft: liveFollowUpDraft,
@@ -351,10 +401,12 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       publishedDraft: null,
       publishedRevision: null,
       revision: 1,
+      runtimeStatus: "paused",
       savedAt: "7月4日 16:12",
       status: "Paused",
       trigger: "直播间互动但未下单客户",
       updatedAt: "7月4日 16:12",
+      validatedDraftVersion: 1,
       versionHistory: [],
     },
   ];
@@ -364,6 +416,8 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
   const draft = createInitialDraft();
 
   return {
+    activationReady: false,
+    canOperate: true,
     conversion: "0%",
     currentVersion: null,
     draft,
@@ -378,10 +432,12 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
     publishedDraft: null,
     publishedRevision: null,
     revision: 1,
+    runtimeStatus: "inactive",
     savedAt: "刚刚",
     status: "Draft",
     trigger: "待配置进入条件",
     updatedAt: "刚刚",
+    validatedDraftVersion: null,
     versionHistory: [],
   };
 }
@@ -389,6 +445,7 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
 function createDefaultWorkflowPermissions(): WorkflowDocumentPermissions {
   return {
     canEdit: true,
+    canOperate: true,
     canPublish: true,
   };
 }

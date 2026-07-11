@@ -32,11 +32,15 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("start"),
-        audience: "近 30 天新入会且未首购客户",
-        metric: "预计进入 124.8万人",
+        accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
+        metric: "2 个账号 · 2 个触发条件",
         status: "running",
-        summary: "客户入会后立即进入新人转化旅程",
+        summary: "添加好友或添加标签时进入",
         title: "新人入会触发",
+        triggers: [
+          { type: "contact.friend_added" },
+          { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
+        ],
       },
       id: "start",
       position: { x: 0, y: 0 },
@@ -45,7 +49,7 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("wait"),
-        delayDays: 2,
+        duration: 2,
         metric: "2 天后唤醒",
         status: "ready",
         summary: "等待 2 天后继续触达",

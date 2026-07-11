@@ -1,12 +1,18 @@
-import type {
+import {
+  WorkflowStartConfigSchema,
+  WorkflowWaitConfigSchema,
+  type WorkflowStartConfig,
+  type WorkflowWaitConfig,
   WorkflowDraft,
   WorkflowDraftEdge,
   WorkflowDraftNode,
 } from "@chatai/contracts";
+import { Value } from "@sinclair/typebox/value";
 import type { WorkflowCompilationIssue } from "./errors.js";
 
 const MAX_GRAPH_DEPTH = 20;
 const DEFAULT_OUTLET_ID = "default";
+const PHASE_3_NODE_KINDS = new Set(["start", "wait", "end"]);
 
 export type ValidatedWorkflowGraph = {
   entryNode: WorkflowDraftNode;
@@ -99,31 +105,52 @@ function validateNodeConfig(
   node: WorkflowDraftNode,
   issues: WorkflowCompilationIssue[],
 ) {
-  if (node.data.kind === "wait") {
-    const delayDays = (node.data as Record<string, unknown>).delayDays;
-    if (typeof delayDays !== "number" || !Number.isFinite(delayDays) || delayDays < 0) {
+  if (!PHASE_3_NODE_KINDS.has(node.data.kind)) {
+    issues.push({
+      code: "unsupported-runtime-node",
+      message: `Node kind is not available in Phase 3: ${node.data.kind}`,
+      nodeId: node.id,
+    });
+    return;
+  }
+
+  if (node.data.kind === "start") {
+    if (!isWorkflowStartConfig(node.data)) {
       issues.push({
         code: "invalid-node-config",
-        message: "Wait node requires a non-negative delayDays",
+        message: "Start node requires accounts, triggers, and an entry policy",
         nodeId: node.id,
       });
     }
     return;
   }
 
-  if (node.data.kind !== "branch") return;
-  const branchPaths = parseBranchPaths((node.data as Record<string, unknown>).branchPaths);
-  const outletIds = branchPaths.map((path) => path.id);
-  const defaultPathCount = branchPaths.filter((path) => path.isDefault).length;
-  if (branchPaths.length === 0
-    || new Set(outletIds).size !== outletIds.length
-    || defaultPathCount !== 1) {
-    issues.push({
-      code: "invalid-node-config",
-      message: "Branch node requires unique outlet ids and exactly one default path",
-      nodeId: node.id,
-    });
+  if (node.data.kind === "wait") {
+    if (!isWorkflowWaitConfig(node.data)) {
+      issues.push({
+        code: "invalid-node-config",
+        message: "Wait node requires a positive duration and a supported unit",
+        nodeId: node.id,
+      });
+    }
+    return;
   }
+
+}
+
+function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowStartConfig {
+  return Value.Check(WorkflowStartConfigSchema, {
+    accountIds: value.accountIds,
+    entryPolicy: value.entryPolicy,
+    triggers: value.triggers,
+  });
+}
+
+function isWorkflowWaitConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowWaitConfig {
+  return Value.Check(WorkflowWaitConfigSchema, {
+    duration: value.duration,
+    unit: value.unit,
+  });
 }
 
 export function getWorkflowSourceOutletId(edge: WorkflowDraftEdge) {

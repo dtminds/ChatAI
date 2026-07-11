@@ -1,16 +1,6 @@
-import type { WorkflowDraft, WorkflowExecutionSpec } from "@chatai/contracts";
+import type { WorkflowDraft, WorkflowExecutionSpec, WorkflowNodeKind } from "@chatai/contracts";
 import { WorkflowCompilationError } from "./errors.js";
 import { getWorkflowSourceOutletId, validateWorkflowGraph } from "./graph.js";
-
-const UI_NODE_DATA_KEYS = new Set([
-  "kind",
-  "label",
-  "metric",
-  "schemaVersion",
-  "status",
-  "summary",
-  "title",
-]);
 
 export function compileWorkflowDraft({
   draft,
@@ -37,7 +27,7 @@ export function compileWorkflowDraft({
     nodes: validation.topologicalNodeIds.map((nodeId) => {
       const node = draft.nodes.find((item) => item.id === nodeId)!;
       return {
-        config: createExecutionConfig(node.data),
+        config: createExecutionConfig(node.data.kind, node.data),
         id: node.id,
         kind: node.data.kind,
         nodeSchemaVersion: node.data.schemaVersion,
@@ -50,12 +40,19 @@ export function compileWorkflowDraft({
   };
 }
 
-function createExecutionConfig(data: Record<string, unknown>) {
-  return Object.fromEntries(
-    Object.entries(data)
-      .filter(([key, value]) => !UI_NODE_DATA_KEYS.has(key) && typeof value !== "function")
-      .map(([key, value]) => [key, cloneJsonValue(value)]),
-  );
+function createExecutionConfig(kind: WorkflowNodeKind, data: Record<string, unknown>) {
+  if (kind === "start") {
+    return cloneJsonValue({
+      accountIds: data.accountIds,
+      entryPolicy: data.entryPolicy,
+      triggers: data.triggers,
+    }) as Record<string, unknown>;
+  }
+  if (kind === "wait") {
+    return cloneJsonValue({ duration: data.duration, unit: data.unit }) as Record<string, unknown>;
+  }
+  if (kind === "end") return {};
+  return {};
 }
 
 function cloneJsonValue(value: unknown): unknown {

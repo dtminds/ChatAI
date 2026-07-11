@@ -490,53 +490,6 @@ export function useWorkflowDocument(
     }
   }, [flushPendingSave, lastSavedDraftHash, repository]);
 
-  const enableDocument = useCallback(async () => {
-    if (!repository.enableDocument) {
-      return undefined;
-    }
-
-    const publishRequestId = publishRequestRef.current + 1;
-    publishRequestRef.current = publishRequestId;
-    const workflowIdToEnable = workflowIdRef.current;
-    publishingRef.current = true;
-    setPublishState("publishing");
-    setPublishError(null);
-
-    try {
-      await flushPendingSave();
-      const enabledDocument = await Promise.resolve(repository.enableDocument(workflowIdToEnable));
-
-      if (
-        publishRequestRef.current !== publishRequestId
-        || workflowIdRef.current !== workflowIdToEnable
-      ) {
-        return enabledDocument;
-      }
-
-      const draftHash = createWorkflowDraftHash(enabledDocument.draft);
-      publishingRef.current = false;
-      setPublishState("published");
-      setSaveState("saved");
-      setSaveError(null);
-      setLastSavedAt(enabledDocument.savedAt);
-      setLastSavedDraftHash(draftHash);
-      setLastPublishedDraftHash(createWorkflowPublishedDraftHash(enabledDocument));
-      setDocument(enabledDocument);
-      return enabledDocument;
-    }
-    catch (error) {
-      if (
-        publishRequestRef.current === publishRequestId
-        && workflowIdRef.current === workflowIdToEnable
-      ) {
-        publishingRef.current = false;
-        setPublishError(normalizeWorkflowRepositoryError(error));
-        setPublishState("error");
-      }
-      return undefined;
-    }
-  }, [flushPendingSave, repository]);
-
   const restoreVersion = useCallback(async (versionId: string) => {
     const restoreRequestId = restoreRequestRef.current + 1;
     restoreRequestRef.current = restoreRequestId;
@@ -603,7 +556,6 @@ export function useWorkflowDocument(
 
   return useMemo(() => ({
     document,
-    enableDocument,
     importDraft,
     importState,
     lastSavedAt,
@@ -617,7 +569,7 @@ export function useWorkflowDocument(
     retrySave,
     saveError,
     saveState,
-  }), [document, enableDocument, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState]);
+  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

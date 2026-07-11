@@ -22,7 +22,8 @@
     "typecheck": "pnpm --filter @chatai/contracts build && tsc --noEmit"
   },
   "dependencies": {
-    "@chatai/contracts": "workspace:*"
+    "@chatai/contracts": "workspace:*",
+    "@sinclair/typebox": "^0.34.41"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

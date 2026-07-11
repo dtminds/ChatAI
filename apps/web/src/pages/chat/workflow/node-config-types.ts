@@ -39,6 +39,7 @@ export type NodeConfigNumberField<TKind extends WorkflowNodeKind = WorkflowNodeK
   NodeConfigFieldBase<TKind> & {
   kind: "number";
   getValue: (data: WorkflowNodeData<TKind>) => number;
+  integer?: boolean;
   min?: number;
   suffix?: string;
   toPatch: (value: number, data: WorkflowNodeData<TKind>) => WorkflowNodeConfigPatch<TKind>;
@@ -61,7 +62,7 @@ export type NodeConfigOptionCard = {
 
 export type NodeConfigOptionCardsField<TKind extends WorkflowNodeKind = WorkflowNodeKind> =
   NodeConfigFieldBase<TKind> & {
-  columns?: 1 | 2;
+  columns?: 1 | 2 | 3;
   getOptions: (data: WorkflowNodeData<TKind>) => NodeConfigOptionCard[];
   getValue: (data: WorkflowNodeData<TKind>) => string;
   kind: "option-cards";

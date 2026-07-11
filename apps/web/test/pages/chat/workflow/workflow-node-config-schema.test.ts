@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   NodeConfigNumberField,
-  NodeConfigSwitchField,
-  NodeConfigTextField,
+  NodeConfigOptionCardsField,
   NodeConfigTextareaField,
 } from "@/pages/chat/workflow/node-config-schema";
 import {
@@ -42,26 +41,25 @@ describe("workflow node config schema", () => {
   it("maps the confirmed start, wait, and branch settings", () => {
     const waitField = getNodeConfigSections("wait")[0]!.fields[0] as NodeConfigNumberField;
     const branchField = getNodeConfigSections("branch")[0]!.fields[0] as NodeConfigTextareaField;
-    const startField = getNodeConfigSections("start")[0]!.fields[0] as NodeConfigTextField;
-    const startRepeatField = getNodeConfigSections("start")[0]!.fields[1] as NodeConfigSwitchField;
+    const waitUnitField = getNodeConfigSections("wait")[0]!.fields[1] as NodeConfigOptionCardsField;
 
     expect(waitField.toPatch(3, createDefaultNodeData("wait"))).toEqual({
-      delayDays: 3,
+      duration: 3,
       metric: "3 天后唤醒",
       summary: "等待 3 天后继续触达",
+    });
+    expect(waitUnitField.toPatch("hour", createDefaultNodeData("wait"), {
+      label: "小时",
+      value: "hour",
+    })).toEqual({
+      metric: "1 小时后唤醒",
+      summary: "等待 1 小时后继续触达",
+      unit: "hour",
     });
     expect(branchField.toPatch("", createDefaultNodeData("branch"))).toEqual({
       branchRule: "",
       metric: "未配置分支",
       status: "warning",
-    });
-    expect(startField.toPatch("会员", createDefaultNodeData("start"))).toEqual({
-      audience: "会员",
-      metric: "预计进入 124.8万人",
-      status: "running",
-    });
-    expect(startRepeatField.toPatch(false, createDefaultNodeData("start"))).toEqual({
-      repeatEntryEnabled: false,
     });
   });
 
@@ -71,7 +69,7 @@ describe("workflow node config schema", () => {
     expect(validateNodeConfigSections({
       data: {
         ...waitData,
-        delayDays: -1,
+        duration: -1,
       },
       id: "wait",
       position: { x: 0, y: 0 },
@@ -79,7 +77,7 @@ describe("workflow node config schema", () => {
     }, getNodeConfigSections("wait"))).toEqual([
       {
         code: "wait-delay-required",
-        message: "等待节点需要配置等待天数",
+        message: "等待节点需要配置正整数时长",
         severity: "warning",
         source: "config",
       },

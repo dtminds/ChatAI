@@ -16,10 +16,15 @@ describe("compileWorkflowDraft", () => {
       workflowId: "42",
     });
     expect(spec.nodes.find((node) => node.id === "wait")).toEqual({
-      config: { delayDays: 2 },
+      config: { duration: 2, unit: "day" },
       id: "wait",
       kind: "wait",
       nodeSchemaVersion: 1,
+    });
+    expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
+      accountIds: ["account-a"],
+      entryPolicy: { mode: "never" },
+      triggers: [{ type: "contact.friend_added" }],
     });
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
@@ -80,7 +85,7 @@ describe("compileWorkflowDraft", () => {
 
   it("rejects node configurations that would fail only at execution time", () => {
     const invalidWait = createDraft();
-    invalidWait.nodes.find((item) => item.id === "wait")!.data.delayDays = -1;
+    invalidWait.nodes.find((item) => item.id === "wait")!.data.duration = -1;
 
     expectCompilationIssues(invalidWait, ["invalid-node-config"]);
 
@@ -103,6 +108,17 @@ describe("compileWorkflowDraft", () => {
     };
 
     expectCompilationIssues(invalidBranch, ["invalid-node-config"]);
+  });
+
+  it("rejects node kinds that Phase 3 cannot execute", () => {
+    const draft = createDraft();
+    draft.nodes.splice(2, 0, node("message", "message"));
+    draft.edges.splice(1, 1,
+      { id: "wait-message", source: "wait", target: "message" },
+      { id: "message-end", source: "message", target: "end" },
+    );
+
+    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 });
 
@@ -127,11 +143,20 @@ function createDraft() {
       { id: "wait-end", source: "wait", target: "end" },
     ],
     nodes: [
-      node("start", "start"),
-      node("wait", "wait", { delayDays: 2 }),
+      node("start", "start", startConfig()),
+      node("wait", "wait", { duration: 2, unit: "day" }),
       node("end", "end"),
     ],
     viewport: { x: 100, y: 50, zoom: 1 },
+  };
+}
+
+function startConfig() {
+  return {
+    accountIds: ["account-a"],
+    entryPolicy: { mode: "never" },
+    panelState: { section: "triggers" },
+    triggers: [{ type: "contact.friend_added" }],
   };
 }
 

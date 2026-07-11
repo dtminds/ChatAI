@@ -3,6 +3,7 @@ import type {
   WorkflowExecutionSpec,
   WorkflowRuntimeStatus,
 } from "@chatai/contracts";
+import type { WorkflowTriggerBindingSpec } from "@chatai/workflow-engine";
 
 export type WorkflowDefinitionRecord = {
   bizStatus: 0 | 1;
@@ -69,6 +70,7 @@ export type WorkflowRepository = {
     expectedPublishedRevision: number;
     opSubUserId: string;
     specHash: string;
+    triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
   }): Promise<WorkflowMutationResult<{
@@ -81,6 +83,7 @@ export type WorkflowRepository = {
     expectedDraftVersion: number;
     opSubUserId: string;
     specHash: string;
+    triggerBindings: WorkflowTriggerBindingSpec[];
     uid: number;
     workflowId: string;
   }): Promise<WorkflowMutationResult<{

@@ -28,7 +28,7 @@ describe("workflow routes", () => {
     const saved = await app.inject({
       method: "PUT",
       payload: {
-        draft: { ...definition.draft, viewport: { x: 10, y: 20, zoom: 1 } },
+        draft: configuredDraft(definition.draft),
         expectedDraftVersion: 1,
       },
       url: `/api/server/workflows/${definition.id}/draft`,
@@ -90,5 +90,23 @@ describe("workflow routes", () => {
       service: new WorkflowService(new InMemoryWorkflowRepository()),
     });
     return app;
+  }
+
+  function configuredDraft(draft: { nodes: Array<{ data: Record<string, unknown>; id: string }>; viewport: unknown }) {
+    return {
+      ...draft,
+      nodes: draft.nodes.map(node => node.id === "start"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              accountIds: ["account-a"],
+              entryPolicy: { mode: "never" },
+              triggers: [{ type: "contact.friend_added" }],
+            },
+          }
+        : node),
+      viewport: { x: 10, y: 20, zoom: 1 },
+    };
   }
 });

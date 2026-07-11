@@ -1,0 +1,142 @@
+import { Type, type Static } from "@sinclair/typebox";
+
+export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
+
+export const WorkflowNodeKindSchema = Type.Union([
+  Type.Literal("start"),
+  Type.Literal("wait"),
+  Type.Literal("branch"),
+  Type.Literal("message"),
+  Type.Literal("tag"),
+  Type.Literal("coupon"),
+  Type.Literal("handoff"),
+  Type.Literal("end"),
+]);
+
+export const WorkflowRuntimeStatusSchema = Type.Union([
+  Type.Literal("inactive"),
+  Type.Literal("active"),
+  Type.Literal("paused"),
+  Type.Literal("stopped"),
+]);
+
+export const WorkflowDraftNodeDataSchema = Type.Object({
+  kind: WorkflowNodeKindSchema,
+  label: Type.String(),
+  metric: Type.String(),
+  schemaVersion: Type.Integer({ minimum: 1 }),
+  status: Type.Union([
+    Type.Literal("ready"),
+    Type.Literal("running"),
+    Type.Literal("warning"),
+  ]),
+  summary: Type.String(),
+  title: Type.String(),
+}, { additionalProperties: true });
+
+export const WorkflowDraftNodeSchema = Type.Object({
+  data: WorkflowDraftNodeDataSchema,
+  id: Type.String({ minLength: 1, maxLength: 128 }),
+  position: Type.Object({
+    x: Type.Number(),
+    y: Type.Number(),
+  }),
+  selected: Type.Optional(Type.Boolean()),
+  type: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+export const WorkflowDraftEdgeSchema = Type.Object({
+  data: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  id: Type.String({ minLength: 1, maxLength: 256 }),
+  selected: Type.Optional(Type.Boolean()),
+  source: Type.String({ minLength: 1, maxLength: 128 }),
+  sourceHandle: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  target: Type.String({ minLength: 1, maxLength: 128 }),
+  targetHandle: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  type: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+export const WorkflowDraftSchema = Type.Object({
+  edges: Type.Array(WorkflowDraftEdgeSchema, { maxItems: 500 }),
+  nodes: Type.Array(WorkflowDraftNodeSchema, { maxItems: 200 }),
+  viewport: Type.Object({
+    x: Type.Number(),
+    y: Type.Number(),
+    zoom: Type.Number({ exclusiveMinimum: 0 }),
+  }),
+});
+
+export const WorkflowPermissionsSchema = Type.Object({
+  canDelete: Type.Boolean(),
+  canEdit: Type.Boolean(),
+  canOperate: Type.Boolean(),
+  canPublish: Type.Boolean(),
+  canView: Type.Boolean(),
+});
+
+export const WorkflowDefinitionSchema = Type.Object({
+  createdAt: Type.String(),
+  draft: WorkflowDraftSchema,
+  draftVersion: Type.Integer({ minimum: 1 }),
+  id: WorkflowIdSchema,
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+  permissions: WorkflowPermissionsSchema,
+  publishedRevision: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  runtimeStatus: WorkflowRuntimeStatusSchema,
+  updatedAt: Type.String(),
+  validatedDraftVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+});
+
+export const WorkflowDefinitionSummarySchema = Type.Omit(WorkflowDefinitionSchema, ["draft"]);
+
+export const WorkflowRevisionSchema = Type.Object({
+  draft: WorkflowDraftSchema,
+  id: WorkflowIdSchema,
+  publishedAt: Type.String(),
+  revision: Type.Integer({ minimum: 1 }),
+  workflowId: WorkflowIdSchema,
+});
+
+export const WorkflowCreateRequestSchema = Type.Object({
+  clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+  name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+});
+
+export const WorkflowSaveDraftRequestSchema = Type.Object({
+  draft: WorkflowDraftSchema,
+  expectedDraftVersion: Type.Integer({ minimum: 1 }),
+});
+
+export const WorkflowRenameRequestSchema = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+});
+
+export const WorkflowPublishRequestSchema = Type.Object({
+  expectedDraftVersion: Type.Integer({ minimum: 1 }),
+});
+
+export const WorkflowRestoreRequestSchema = Type.Object({
+  expectedDraftVersion: Type.Integer({ minimum: 1 }),
+});
+
+export const WorkflowPublishResultSchema = Type.Object({
+  definition: WorkflowDefinitionSchema,
+  revision: Type.Union([WorkflowRevisionSchema, Type.Null()]),
+  validatedOnly: Type.Boolean(),
+});
+
+export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
+export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
+export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;
+export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;
+export type WorkflowDraftEdge = Static<typeof WorkflowDraftEdgeSchema>;
+export type WorkflowPermissions = Static<typeof WorkflowPermissionsSchema>;
+export type WorkflowDefinition = Static<typeof WorkflowDefinitionSchema>;
+export type WorkflowDefinitionSummary = Static<typeof WorkflowDefinitionSummarySchema>;
+export type WorkflowRevision = Static<typeof WorkflowRevisionSchema>;
+export type WorkflowCreateRequest = Static<typeof WorkflowCreateRequestSchema>;
+export type WorkflowSaveDraftRequest = Static<typeof WorkflowSaveDraftRequestSchema>;
+export type WorkflowRenameRequest = Static<typeof WorkflowRenameRequestSchema>;
+export type WorkflowPublishRequest = Static<typeof WorkflowPublishRequestSchema>;
+export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>;
+export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;

@@ -1,0 +1,154 @@
+import { describe, expect, it } from "vitest";
+import { compileWorkflowDraft, WorkflowCompilationError } from "../src/index.js";
+
+describe("compileWorkflowDraft", () => {
+  it("validates and strips canvas-only node data", () => {
+    const spec = compileWorkflowDraft({
+      draft: createDraft(),
+      revision: 3,
+      workflowId: "42",
+    });
+
+    expect(spec).toMatchObject({
+      entryNodeId: "start",
+      revision: 3,
+      terminalNodeId: "end",
+      workflowId: "42",
+    });
+    expect(spec.nodes.find((node) => node.id === "wait")).toEqual({
+      config: { delayDays: 2 },
+      id: "wait",
+      kind: "wait",
+      nodeSchemaVersion: 1,
+    });
+    expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
+  });
+
+  it("rejects unreachable nodes, cycles, and missing branch outlets", () => {
+    const draft = createDraft();
+    draft.nodes.splice(2, 0, node("orphan", "message"));
+    draft.edges.splice(1, 0, {
+      id: "cycle",
+      source: "wait",
+      target: "start",
+    });
+
+    expect(() => compileWorkflowDraft({ draft, revision: 1, workflowId: "42" }))
+      .toThrowError(WorkflowCompilationError);
+
+    try {
+      compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+    } catch (error) {
+      expect((error as WorkflowCompilationError).issues.map((issue) => issue.code))
+        .toEqual(expect.arrayContaining(["cycle", "unreachable-node"]));
+    }
+  });
+
+  it("propagates the longest depth through merged paths", () => {
+    const longPath = Array.from({ length: 17 }, (_, index) => `long-${index + 1}`);
+    const draft = {
+      edges: [
+        { id: "start-branch", source: "start", target: "branch" },
+        { id: "branch-short-merge", source: "branch", sourceHandle: "short", target: "merge" },
+        { id: "branch-long-first", source: "branch", sourceHandle: "long", target: longPath[0] },
+        ...longPath.slice(0, -1).map((source, index) => ({
+          id: `${source}-${longPath[index + 1]}`,
+          source,
+          target: longPath[index + 1],
+        })),
+        { id: "long-merge", source: longPath.at(-1)!, target: "merge" },
+        { id: "merge-end", source: "merge", target: "end" },
+      ],
+      nodes: [
+        node("start", "start"),
+        node("branch", "branch", {
+          branchPaths: [
+            { id: "short", isDefault: true },
+            { id: "long" },
+          ],
+        }),
+        ...longPath.map((id) => node(id, "message")),
+        node("merge", "message"),
+        node("end", "end"),
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    expect(() => compileWorkflowDraft({ draft, revision: 1, workflowId: "42" }))
+      .toThrowError(WorkflowCompilationError);
+  });
+
+  it("rejects node configurations that would fail only at execution time", () => {
+    const invalidWait = createDraft();
+    invalidWait.nodes.find((item) => item.id === "wait")!.data.delayDays = -1;
+
+    expectCompilationIssues(invalidWait, ["invalid-node-config"]);
+
+    const invalidBranch = {
+      edges: [
+        { id: "start-branch", source: "start", target: "branch" },
+        { id: "branch-first-end", source: "branch", sourceHandle: "first", target: "end" },
+      ],
+      nodes: [
+        node("start", "start"),
+        node("branch", "branch", {
+          branchPaths: [
+            { id: "first", isDefault: false },
+            { id: "first", isDefault: true },
+          ],
+        }),
+        node("end", "end"),
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    expectCompilationIssues(invalidBranch, ["invalid-node-config"]);
+  });
+});
+
+function expectCompilationIssues(
+  draft: Parameters<typeof compileWorkflowDraft>[0]["draft"],
+  expectedCodes: string[],
+) {
+  try {
+    compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+    throw new Error("Expected workflow compilation to fail");
+  } catch (error) {
+    expect(error).toBeInstanceOf(WorkflowCompilationError);
+    expect((error as WorkflowCompilationError).issues.map((issue) => issue.code))
+      .toEqual(expect.arrayContaining(expectedCodes));
+  }
+}
+
+function createDraft() {
+  return {
+    edges: [
+      { id: "start-wait", source: "start", target: "wait" },
+      { id: "wait-end", source: "wait", target: "end" },
+    ],
+    nodes: [
+      node("start", "start"),
+      node("wait", "wait", { delayDays: 2 }),
+      node("end", "end"),
+    ],
+    viewport: { x: 100, y: 50, zoom: 1 },
+  };
+}
+
+function node(id: string, kind: string, config: Record<string, unknown> = {}) {
+  return {
+    data: {
+      ...config,
+      kind,
+      label: kind,
+      metric: "canvas metric",
+      schemaVersion: 1,
+      status: "ready",
+      summary: "canvas summary",
+      title: kind,
+    },
+    id,
+    position: { x: 0, y: 0 },
+    type: "workflowNode",
+  };
+}

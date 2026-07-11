@@ -59,6 +59,7 @@ export function useWorkflowWorkspace(
 ) {
   const {
     document,
+    enableDocument,
     lastSavedAt,
     markDirty,
     publishDraft,
@@ -459,6 +460,13 @@ export function useWorkflowWorkspace(
     await publishDraft(controller.currentDraft);
   });
 
+  const enableCurrentWorkflow = useWorkflowStableCallback(async () => {
+    if (!permissions.canPublish) {
+      return;
+    }
+    await enableDocument();
+  });
+
   const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
     if (!permissions.canEditGraph) {
       return;
@@ -624,10 +632,15 @@ export function useWorkflowWorkspace(
       onNodeChange: updateSelectedNode,
     },
     topBar: {
+      activationReady: document.runtimeStatus === "inactive"
+        && document.draftVersion !== undefined
+        && document.validatedDraftVersion === document.draftVersion
+        && saveState === "saved",
       canPublish: permissions.canPublish,
       canRetrySave: Boolean(saveError),
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
+      onEnable: enableCurrentWorkflow,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
       onRetrySave: retrySave,

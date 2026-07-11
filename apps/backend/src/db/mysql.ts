@@ -5,8 +5,10 @@ import type { Database } from "./schema.js";
 export function createDatabase(databaseUrl: string) {
   const pool = mysql.createPool({
     uri: databaseUrl,
+    bigNumberStrings: false,
     // MySQL DATETIME values are stored and read as Asia/Shanghai wall-clock time.
     timezone: "+08:00",
+    supportBigNumbers: true,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 200,

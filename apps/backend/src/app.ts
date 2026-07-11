@@ -9,6 +9,7 @@ import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
+import { registerWorkflowRoutes } from "./modules/workflow/workflow.routes.js";
 import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
 import { dbPlugin } from "./plugins/db.js";
@@ -49,6 +50,7 @@ export async function buildApp() {
   await registerChatRoutes(app);
   await registerInsightsRoutes(app);
   await registerSettingsRoutes(app);
+  await registerWorkflowRoutes(app);
 
   return app;
 }

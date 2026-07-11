@@ -43,6 +43,15 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_session_tag",
   "xy_wap_embed_sessionization_config",
   "xy_wap_embed_sider_bar_config",
+  "xy_wap_embed_workflow_daily_metric",
+  "xy_wap_embed_workflow_definition",
+  "xy_wap_embed_workflow_inbox",
+  "xy_wap_embed_workflow_node_execution",
+  "xy_wap_embed_workflow_outbox",
+  "xy_wap_embed_workflow_revision",
+  "xy_wap_embed_workflow_run",
+  "xy_wap_embed_workflow_task",
+  "xy_wap_embed_workflow_trigger_binding",
 ] as const;
 
 export type WritableTable = (typeof WRITABLE_TABLES)[number];

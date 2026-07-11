@@ -194,6 +194,31 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.saveState).toBe("saving");
   });
 
+  it("withdraws activation readiness as soon as a validated draft becomes dirty", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    document.draftVersion = 3;
+    document.runtimeStatus = "inactive";
+    document.validatedDraftVersion = 3;
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    expect(result.current.topBar.activationReady).toBe(true);
+
+    act(() => {
+      result.current.canvas.onSelectNode("message-welcome");
+    });
+    act(() => {
+      result.current.inspector.onNodeChange({ title: "修改后的节点" });
+    });
+
+    expect(result.current.topBar.saveState).toBe("saving");
+    expect(result.current.topBar.activationReady).toBe(false);
+  });
+
   it("keeps node dragging transient and unsaved until the drag finishes", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const event = { stopPropagation: vi.fn() } as unknown as Parameters<typeof result.current.canvas.onNodeDrag>[0];

@@ -109,8 +109,21 @@ export function normalizeWorkflowDraftPublishResult(
   }
 
   const document = cloneWorkflowDocument(publishResult);
+  if (document.publishedRevision === null) {
+    return {
+      document,
+      draft: cloneWorkflowDraft(document.draft),
+      draftHash: document.draftHash,
+      publishedAt: null,
+      publishedRevision: null,
+      revision: document.revision,
+      updatedAt: document.updatedAt,
+      validatedOnly: true,
+      version: null,
+    };
+  }
   const publishedAt = document.publishedAt ?? document.updatedAt;
-  const publishedRevision = document.publishedRevision ?? document.revision;
+  const publishedRevision = document.publishedRevision;
   const version = document.currentVersion ?? createWorkflowPublishedVersion(
     document.id,
     publishedRevision,
@@ -128,6 +141,7 @@ export function normalizeWorkflowDraftPublishResult(
     publishedRevision,
     revision: document.revision,
     updatedAt: document.updatedAt,
+    validatedOnly: false,
     version,
   };
 }

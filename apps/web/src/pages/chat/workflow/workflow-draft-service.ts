@@ -116,6 +116,7 @@ export function useWorkflowDocument(
   const [importState, setImportState] = useState<WorkflowDraftImportStatus>("idle");
   const [publishState, setPublishState] = useState<WorkflowDraftPublishStatus>("idle");
   const [publishError, setPublishError] = useState<WorkflowRepositoryError | null>(null);
+  const [renameState, setRenameState] = useState<"idle" | "renaming">("idle");
   const [restoreState, setRestoreState] = useState<WorkflowDraftRestoreStatus>("idle");
   const [saveState, setSaveState] = useState<WorkflowDraftSaveStatus>("saved");
   const [saveError, setSaveError] = useState<WorkflowRepositoryError | null>(null);
@@ -126,6 +127,7 @@ export function useWorkflowDocument(
   const inFlightSaveRef = useRef<Promise<WorkflowDraftSaveResult | undefined> | null>(null);
   const publishRequestRef = useRef(0);
   const publishingRef = useRef(false);
+  const renamingRef = useRef(false);
   const restoreRequestRef = useRef(0);
   const saveRequestRef = useRef(0);
   const pendingSaveRef = useRef<{
@@ -550,6 +552,33 @@ export function useWorkflowDocument(
     }
   }, [flushPendingSave, repository]);
 
+  const renameDocument = useCallback(async (name: string) => {
+    const normalizedName = name.trim();
+
+    if (!normalizedName || renamingRef.current || normalizedName === document.name) {
+      return false;
+    }
+
+    renamingRef.current = true;
+    setRenameState("renaming");
+
+    try {
+      const renamedDocument = await Promise.resolve(
+        repository.renameDocument(workflowIdRef.current, normalizedName),
+      );
+      setDocument((currentDocument) => ({
+        ...currentDocument,
+        name: renamedDocument.name,
+        updatedAt: renamedDocument.updatedAt,
+      }));
+      return true;
+    }
+    finally {
+      renamingRef.current = false;
+      setRenameState("idle");
+    }
+  }, [document.name, repository]);
+
   useEffect(() => () => {
     void flushPendingSave({ updateState: false })?.catch(() => undefined);
   }, [flushPendingSave]);
@@ -564,12 +593,14 @@ export function useWorkflowDocument(
     publishDraft,
     publishError,
     publishState,
+    renameDocument,
+    renameState,
     restoreState,
     restoreVersion,
     retrySave,
     saveError,
     saveState,
-  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishError, publishState, restoreState, restoreVersion, retrySave, saveError, saveState]);
+  }), [document, importDraft, importState, lastSavedAt, lastSavedDraftHash, markDirty, publishDraft, publishError, publishState, renameDocument, renameState, restoreState, restoreVersion, retrySave, saveError, saveState]);
 }
 
 export function normalizeWorkflowRepositoryError(error: unknown) {

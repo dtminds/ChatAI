@@ -16,6 +16,7 @@ import {
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { createInitialDraft } from "@/pages/chat/workflow/graph";
 import type {
+  WorkflowDocument,
   WorkflowDraftRepository,
   WorkflowDraftPublishOptions,
   WorkflowDraftReader,
@@ -83,6 +84,37 @@ describe("workflow draft service", () => {
 
     expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
     expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
+  });
+
+  it("renames the active workflow document without reloading its draft", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initialDocument = baseRepository.getDocument("newcomer-conversion");
+    let resolveRename!: (document: WorkflowDocument) => void;
+    const renameDocument = vi.fn(() => new Promise<WorkflowDocument>((resolve) => {
+      resolveRename = resolve;
+    }));
+    const repository = { ...baseRepository, renameDocument };
+    const { result } = renderHook(() => useWorkflowDocument(
+      initialDocument.id,
+      repository,
+      initialDocument,
+    ));
+
+    let firstRename!: Promise<boolean>;
+    await act(async () => {
+      firstRename = result.current.renameDocument("新客首购旅程");
+      expect(await result.current.renameDocument("重复提交")).toBe(false);
+    });
+
+    await act(async () => {
+      resolveRename({ ...initialDocument, name: "新客首购旅程" });
+      expect(await firstRename).toBe(true);
+    });
+
+    expect(renameDocument).toHaveBeenCalledOnce();
+    expect(result.current.document.name).toBe("新客首购旅程");
+    expect(result.current.document.draft).toEqual(initialDocument.draft);
+    expect(result.current.renameState).toBe("idle");
   });
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {

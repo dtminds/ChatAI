@@ -58,6 +58,16 @@ export interface WorkflowRunTable {
   workflow_id: DatabaseId;
 }
 
+export interface WorkflowEntryGuardTable {
+  create_time: GeneratedDate;
+  id: Generated<DatabaseId>;
+  subject_id: string;
+  total_entries: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowTaskTable {
   attempt: number;
   bucket_time: DatabaseDate;
@@ -128,6 +138,7 @@ export interface WorkflowInboxTable {
 
 export interface WorkflowDatabase {
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
+  xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
   xy_wap_embed_workflow_outbox: WorkflowOutboxTable;

@@ -1,6 +1,6 @@
 import type { WorkflowDraft, WorkflowExecutionSpec, WorkflowRuntimeStatus } from "@chatai/contracts";
+import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Kysely, Transaction } from "kysely";
-import type { WorkflowDatabase } from "./workflow-db.js";
 import type {
   WorkflowDefinitionRecord,
   WorkflowMutationResult,

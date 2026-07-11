@@ -598,6 +598,18 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_trigger_binding (
   KEY idx_workflow_trigger_binding_match (uid, event_type, status, workflow_id)
 ) COMMENT='营销Workflow触发绑定表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
+  total_entries INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '历史累计成功进入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_id)
+) COMMENT='营销Workflow客户进入串行化守卫表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -620,6 +632,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
   KEY idx_workflow_run_workflow_status_time (uid, workflow_id, revision, status, create_time, id),
   KEY idx_workflow_run_subject_status_time (uid, subject_id, status, create_time, id),
+  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),
   KEY idx_workflow_run_schedule (shard_id, status, next_execute_at, id)
 ) COMMENT='营销Workflow运行实例表';
 

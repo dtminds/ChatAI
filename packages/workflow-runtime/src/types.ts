@@ -1,10 +1,30 @@
 import type {
+  WorkflowEntryPolicy,
+  WorkflowExecutionSpec,
   WorkflowNodeKind,
+  WorkflowRuntimeStatus,
   WorkflowRunStatus,
   WorkflowTaskStatus,
 } from "@chatai/contracts";
 
+export type WorkflowRuntimeDefinitionRecord = {
+  bizStatus: 0 | 1;
+  publishedRevision: number | null;
+  runtimeStatus: WorkflowRuntimeStatus;
+};
+
+export type WorkflowRuntimeRevisionRecord = {
+  executionSpec: WorkflowExecutionSpec;
+  revision: number;
+};
+
+export type WorkflowRuntimeControlReader = {
+  findDefinition(uid: number, workflowId: string): Promise<WorkflowRuntimeDefinitionRecord | null>;
+  findRevision(uid: number, workflowId: string, revision: number): Promise<WorkflowRuntimeRevisionRecord | null>;
+};
+
 export type WorkflowRunRecord = {
+  createdAt: Date;
   context: Record<string, unknown>;
   currentNodeId: string;
   entryEventId: string;
@@ -42,6 +62,7 @@ export type WorkflowTaskRecord = {
 export type WorkflowCreateRunInput = {
   context: Record<string, unknown>;
   entryEventId: string;
+  entryPolicy: WorkflowEntryPolicy;
   initialNodeId: string;
   initialNodeKind: WorkflowNodeKind;
   occurredAt: Date;
@@ -90,6 +111,7 @@ type WorkflowRuntimeFailure =
   | { kind: "already-processed" }
   | { kind: "conflict" }
   | { kind: "not-found" }
+  | { kind: "entry-policy-rejected" }
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
 export type WorkflowRuntimeRepository = {

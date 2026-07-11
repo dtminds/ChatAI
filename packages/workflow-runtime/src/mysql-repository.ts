@@ -13,16 +13,17 @@ import type {
   WorkflowDatabase,
   WorkflowRunTable,
   WorkflowTaskTable,
-} from "./workflow-db.js";
+} from "./db.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
-} from "./workflow-runtime-types.js";
+} from "./types.js";
 
 const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
+const ENTRY_GUARD_TABLE = "xy_wap_embed_workflow_entry_guard" as const;
 const TASK_TABLE = "xy_wap_embed_workflow_task" as const;
 const EXECUTION_TABLE = "xy_wap_embed_workflow_node_execution" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
@@ -52,13 +53,53 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
           return { kind: "conflict" as const };
         }
 
+        const existing = await findRunAndInitialTaskByEntryEvent(
+          trx,
+          input.uid,
+          input.workflowId,
+          input.entryEventId,
+        );
+        if (existing) {
+          return { deduplicated: true, kind: "success" as const, ...existing };
+        }
+
+        const admittedAt = await getDatabaseNow(trx);
+        await trx.insertInto(ENTRY_GUARD_TABLE).values({
+          subject_id: input.subjectId,
+          total_entries: 0,
+          uid: input.uid,
+          workflow_id: input.workflowId,
+        }).onDuplicateKeyUpdate({
+          total_entries: sql<number>`total_entries`,
+        }).executeTakeFirstOrThrow();
+        const guard = await trx.selectFrom(ENTRY_GUARD_TABLE)
+          .select(["id", "total_entries"])
+          .where("uid", "=", input.uid)
+          .where("workflow_id", "=", input.workflowId)
+          .where("subject_id", "=", input.subjectId)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+        const concurrentDuplicate = await findRunAndInitialTaskByEntryEvent(
+          trx,
+          input.uid,
+          input.workflowId,
+          input.entryEventId,
+        );
+        if (concurrentDuplicate) {
+          return { deduplicated: true, kind: "success" as const, ...concurrentDuplicate };
+        }
+        if (!await canEnterWorkflow(trx, input, guard.total_entries, admittedAt)) {
+          return { kind: "entry-policy-rejected" as const };
+        }
+
         const runInsert = await trx.insertInto(RUN_TABLE).values({
           completed_at: null,
           context_json: stringifyJson(input.context),
           current_node_id: input.initialNodeId,
           entry_event_id: input.entryEventId,
           lock_version: 1,
-          next_execute_at: input.occurredAt,
+          create_time: admittedAt,
+          next_execute_at: admittedAt,
           revision: input.revision,
           sequence: 1,
           shard_id: input.shardId,
@@ -66,11 +107,12 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
           subject_id: input.subjectId,
           terminal_reason: null,
           uid: input.uid,
+          update_time: admittedAt,
           workflow_id: input.workflowId,
         }).executeTakeFirstOrThrow();
         const runId = normalizeId(runInsert.insertId);
         const task = await insertTask(trx, {
-          dueAt: input.occurredAt,
+          dueAt: admittedAt,
           nodeId: input.initialNodeId,
           nodeKind: input.initialNodeKind,
           runId,
@@ -82,11 +124,14 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
           workflowId: input.workflowId,
           revision: input.revision,
         });
-        await insertTaskOutbox(trx, task, input.occurredAt);
+        await insertTaskOutbox(trx, task, admittedAt);
+        await trx.updateTable(ENTRY_GUARD_TABLE).set({
+          total_entries: guard.total_entries + 1,
+        }).where("id", "=", guard.id).executeTakeFirstOrThrow();
         return {
           deduplicated: false,
           kind: "success" as const,
-          run: createRunRecord(runId, input),
+          run: createRunRecord(runId, input, admittedAt),
           task,
         };
       });
@@ -372,14 +417,15 @@ function insertTaskOutbox(trx: RuntimeTransaction, task: WorkflowTaskRecord, now
   }).executeTakeFirstOrThrow();
 }
 
-function createRunRecord(id: string, input: WorkflowCreateRunInput): WorkflowRunRecord {
+function createRunRecord(id: string, input: WorkflowCreateRunInput, admittedAt: Date): WorkflowRunRecord {
   return {
     context: structuredClone(input.context),
+    createdAt: admittedAt,
     currentNodeId: input.initialNodeId,
     entryEventId: input.entryEventId,
     id,
     lockVersion: 1,
-    nextExecuteAt: input.occurredAt,
+    nextExecuteAt: admittedAt,
     revision: input.revision,
     sequence: 1,
     shardId: input.shardId,
@@ -393,6 +439,7 @@ function createRunRecord(id: string, input: WorkflowCreateRunInput): WorkflowRun
 function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
   return {
     context: parseJson(row.context_json),
+    createdAt: row.create_time,
     currentNodeId: row.current_node_id,
     entryEventId: row.entry_event_id,
     id: normalizeId(row.id),
@@ -406,6 +453,58 @@ function mapRun(row: Selectable<WorkflowRunTable>): WorkflowRunRecord {
     uid: row.uid,
     workflowId: normalizeId(row.workflow_id),
   };
+}
+
+async function getDatabaseNow(trx: RuntimeTransaction) {
+  const row = await trx.selectNoFrom(sql<Date>`CURRENT_TIMESTAMP`.as("now"))
+    .executeTakeFirstOrThrow();
+  return row.now instanceof Date ? row.now : new Date(row.now);
+}
+
+async function canEnterWorkflow(
+  trx: RuntimeTransaction,
+  input: WorkflowCreateRunInput,
+  totalEntries: number,
+  admittedAt: Date,
+) {
+  if (input.entryPolicy.mode === "never") return totalEntries === 0;
+  if (input.entryPolicy.mode === "lifetime_limit") {
+    return totalEntries < input.entryPolicy.maxEntries;
+  }
+  const windowMilliseconds = input.entryPolicy.windowSize
+    * (input.entryPolicy.windowUnit === "hour" ? 3_600_000 : 86_400_000);
+  const cutoff = new Date(admittedAt.getTime() - windowMilliseconds);
+  const row = await trx.selectFrom(RUN_TABLE)
+    .select(({ fn }) => fn.countAll<number>().as("entry_count"))
+    .where("uid", "=", input.uid)
+    .where("workflow_id", "=", input.workflowId)
+    .where("subject_id", "=", input.subjectId)
+    .where("create_time", ">=", cutoff)
+    .executeTakeFirstOrThrow();
+  return Number(row.entry_count) < input.entryPolicy.maxEntries;
+}
+
+async function findRunAndInitialTaskByEntryEvent(
+  trx: RuntimeTransaction,
+  uid: number,
+  workflowId: string,
+  entryEventId: string,
+) {
+  const runRow = await trx.selectFrom(RUN_TABLE).selectAll()
+    .where("uid", "=", uid)
+    .where("workflow_id", "=", workflowId)
+    .where("entry_event_id", "=", entryEventId)
+    .executeTakeFirst();
+  if (!runRow) return null;
+  const run = mapRun(runRow);
+  const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
+    .where("uid", "=", uid)
+    .where("run_id", "=", run.id)
+    .orderBy("sequence", "asc")
+    .limit(1)
+    .executeTakeFirst();
+  if (!taskRow) throw new Error("Deduplicated workflow run has no initial task");
+  return { run, task: mapTask(taskRow) };
 }
 
 function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {

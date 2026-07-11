@@ -8,7 +8,8 @@
     "types": ["node"],
     "paths": {
       "@chatai/contracts": ["../../packages/contracts/src/index.ts"],
-      "@chatai/workflow-engine": ["../../packages/workflow-engine/src/index.ts"]
+      "@chatai/workflow-engine": ["../../packages/workflow-engine/src/index.ts"],
+      "@chatai/workflow-runtime": ["../../packages/workflow-runtime/src/index.ts"]
     }
   },
   "include": ["src"],
@@ -18,6 +19,9 @@
     },
     {
       "path": "../../packages/workflow-engine"
+    },
+    {
+      "path": "../../packages/workflow-runtime"
     }
   ]
 }

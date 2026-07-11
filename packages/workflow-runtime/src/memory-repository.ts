@@ -4,7 +4,7 @@ import type {
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
-} from "./workflow-runtime-types.js";
+} from "./types.js";
 import {
   getWorkflowExecutionBoundaryDecision,
   transitionRun,
@@ -30,7 +30,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private outbox: Array<{ eventType: string; id: string; taskId: string; uid: number }> = [];
   private nextId = 1n;
 
-  constructor(private readonly resolveWorkflowBoundary?: WorkflowBoundaryResolver) {}
+  constructor(
+    private readonly resolveWorkflowBoundary?: WorkflowBoundaryResolver,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async createRunWithInitialTask(input: WorkflowCreateRunInput) {
     if (this.resolveWorkflowBoundary) {
@@ -53,13 +56,24 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       return { deduplicated: true, kind: "success" as const, run: clone(existingRun), task: clone(task) };
     }
 
+    const admittedAt = this.now();
+    const previousRuns = this.runs.filter(run =>
+      run.uid === input.uid
+      && run.workflowId === input.workflowId
+      && run.subjectId === input.subjectId,
+    );
+    if (!canEnterWorkflow(input.entryPolicy, previousRuns, admittedAt)) {
+      return { kind: "entry-policy-rejected" as const };
+    }
+
     const run: WorkflowRunRecord = {
       context: clone(input.context),
+      createdAt: admittedAt,
       currentNodeId: input.initialNodeId,
       entryEventId: input.entryEventId,
       id: this.createId(),
       lockVersion: 1,
-      nextExecuteAt: input.occurredAt,
+      nextExecuteAt: admittedAt,
       revision: input.revision,
       sequence: 1,
       shardId: input.shardId,
@@ -70,7 +84,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     };
     const task = createTask(this.createId(), run, {
       dispatchImmediately: true,
-      dueAt: input.occurredAt,
+      dueAt: admittedAt,
       nodeId: input.initialNodeId,
       nodeKind: input.initialNodeKind,
       taskType: "execute",
@@ -229,6 +243,19 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   private createId() {
     return String(this.nextId++);
   }
+}
+
+function canEnterWorkflow(
+  policy: WorkflowCreateRunInput["entryPolicy"],
+  runs: WorkflowRunRecord[],
+  now: Date,
+) {
+  if (policy.mode === "never") return runs.length === 0;
+  if (policy.mode === "lifetime_limit") return runs.length < policy.maxEntries;
+  const windowMilliseconds = policy.windowSize
+    * (policy.windowUnit === "hour" ? 3_600_000 : 86_400_000);
+  const cutoff = now.getTime() - windowMilliseconds;
+  return runs.filter(run => run.createdAt.getTime() >= cutoff).length < policy.maxEntries;
 }
 
 function createTask(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeReconciler,
-} from "../../../src/modules/workflow/index.js";
+} from "../src/index.js";
 
 describe("workflow runtime repository", () => {
   it("rejects run creation when the workflow boundary is unavailable", async () => {
@@ -159,6 +159,7 @@ function createRunInput() {
   return {
     context: { trigger: { eventType: "customer.created" } },
     entryEventId: "event-1",
+    entryPolicy: { maxEntries: 10, mode: "lifetime_limit" as const },
     initialNodeId: "start",
     initialNodeKind: "start" as const,
     occurredAt: new Date("2026-07-10T00:00:00.000Z"),

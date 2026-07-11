@@ -1,4 +1,4 @@
-import type { WorkflowRuntimeRepository } from "./workflow-runtime-types.js";
+import type { WorkflowRuntimeRepository } from "./types.js";
 
 export class WorkflowRuntimeReconciler {
   constructor(private readonly repository: WorkflowRuntimeRepository) {}

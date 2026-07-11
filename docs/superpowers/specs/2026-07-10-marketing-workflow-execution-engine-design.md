@@ -122,6 +122,55 @@ Node.js 24 LTS + TypeScript
 
 `branch` 当前前端仍使用演示性质的字符串字段。正式后端不得直接执行该字符串，也不得使用 `eval` / `new Function`。业务字段确定后应发布结构化条件 AST 或受控表达式 DSL，并由 `packages/contracts` 校验。
 
+### 4.4 Phase 3 已确认业务契约
+
+Phase 3 只开放 `start`、`wait` 和 `end`。包含 `branch`、`message`、`tag`、`coupon` 或 `handoff` 的草稿可以继续编辑，但发布检查必须返回运行能力错误，且不能启用。Phase 4 每接通一种正式节点契约和下游 Adapter，再将该节点加入后端运行能力列表。
+
+Start 支持以下标准事件：
+
+```text
+contact.friend_added
+customer.tag_added
+message.received
+```
+
+“消息包含关键词”是 `message.received` 的结构化筛选条件，不新增事件类型。一个 Start 可以同时配置多种触发方式，触发方式之间为 OR；多个托管账号、标签和关键词内部也均为 OR。同一条事件可以命中多个 active Workflow，并为每个命中的 Workflow 独立创建 Run。同一事件在同一 Workflow 内通过 `eventId` 去重。
+
+Start 必须选择至少一个托管账号，不支持 all。所选账号统一作用于该 Start 的全部触发方式。入口事件携带 `thirdUserId` 用于账号范围匹配。当前 Entry Adapter 使用平台字段 `third_external_userid` 生成不透明 `subjectId`；引擎不理解该字段来源，也不按托管账号隔离营销对象。同一客户通过不同托管账号触发同一 Workflow 时，共享进入次数限制。
+
+关键词规则为：多个关键词命中任意一个；使用普通子字符串匹配；去除关键词首尾空格；英文字母忽略大小写；只匹配文本消息；不执行正则、语音转写、图片识别或文件识别；空关键词禁止发布。
+
+重复进入策略为：
+
+```ts
+type WorkflowEntryPolicy =
+  | { mode: "never" }
+  | { mode: "lifetime_limit"; maxEntries: number }
+  | {
+      mode: "rolling_window";
+      maxEntries: number;
+      windowSize: number;
+      windowUnit: "hour" | "day";
+    };
+```
+
+`maxEntries` 包含首次进入，UI 默认值为 2。Run 成功创建即计入，所有终态和非终态 Run 均计入，跨 Revision、暂停和恢复均不重置。滚动窗口基于 Run 的数据库 `create_time`，不使用事件 `occurredAt`。进入检查必须在数据库事务内按 `uid + workflowId + subjectId` 串行化，不能以先查询后插入的应用层逻辑实现。
+
+Wait 在 Phase 3 支持相对等待 `N 分钟 / N 小时 / N 天`，N 为正整数。`dueAt` 以进入 Wait 节点时的执行时间计算，Scheduler 使用分钟时间桶，不承诺秒级调度。固定日期、工作日、自然周期和营销发送时段不在 Phase 3 范围内。
+
+Phase 3 不接真实好友、标签和消息数据源。开发和 test01 通过标准入口事件 Smoke Producer 验证完整链路，真实数据源后续通过 `EntrySourceAdapter` 归一化，不修改 Entry Consumer 和执行引擎。Smoke Producer 可以根据传入 `workflowId` 只读数据库中的已启用 Trigger Binding，构造匹配事件并投递，但标准 MQ 消息不得携带 `workflowId` 或绕过 Trigger Binding。
+
+dev 与 test01 使用独立 Topic 和 Subscription：
+
+| 环境 | Entry Topic | Task Topic |
+| --- | --- | --- |
+| dev | `topic-workflow-entry-dev` | `topic-workflow-task-dev` |
+| test01 | `topic-workflow-entry-test01` | `topic-workflow-task-test01` |
+
+Entry 和 Task 使用不同 Subscription，Subscription 类型为 Shared。普通 CI 只使用 Fake Broker，不连接腾讯云；真实 TDMQ 只运行手动 Smoke。Pulsar 地址、Token、Namespace、Topic 和 Subscription 全部通过环境变量注入，禁止写入仓库。
+
+Workflow Worker 作为独立 `apps/workflow-worker` 进程和镜像部署，不复用 API Server 或现有 Insights Worker。初期单实例启用 Entry Consumer、Task Consumer、Scheduler、Outbox Publisher 和 Reconciler，后续可通过角色开关独立扩容。Phase 3 可观测性使用结构化日志和独立健康检查，不引入 Prometheus 或 OpenTelemetry 依赖。
+
 ## 5. 总体架构
 
 ```mermaid
@@ -1005,6 +1054,8 @@ idempotencyKey
 - 实现独立 Worker、Scheduler、Outbox Publisher 和 Reconciler。
 - 接入 Pulsar Subscription、重投、死信和监控。
 - 接入 Start 触发与 Wait 调度。
+- 只允许启用 `start`、`wait`、`end`，通过开发 Fixture 配置 Start 资源选项。
+- 提供只读 Workflow 配置并投递标准事件的 Smoke Producer，不提供公开测试触发 API。
 
 ### Phase 4：业务动作
 
@@ -1035,13 +1086,10 @@ idempotencyKey
 
 以下项目不阻塞基础引擎建设，但会阻塞对应节点正式发布：
 
-- Start 支持的触发类型、筛选条件和重复进入规则。
-- Wait 是否支持小时、固定时间、工作日和发送窗口。
 - Branch 条件 AST、运算符、空值和类型转换语义。
 - Message、Tag、Coupon、Handoff 的具体配置和 Java API。
 - 各动作节点的重试分类和最大重试策略。
 - 下游业务接口的幂等协议。
-- Workflow 暂停后恢复时对过期任务的产品语义。
 - Run 和 Node Execution 的产品查询保留期。
 - 1.0 实际目标日进入量、峰值倍数和最长运行周期。
 

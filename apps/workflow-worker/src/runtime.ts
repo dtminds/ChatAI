@@ -123,6 +123,8 @@ export async function startWorkflowWorkerRuntime(input: {
           leaseDurationMs: input.config.runtime.leaseDurationMs,
           leaseOwner: input.workerId,
           limit: input.config.runtime.batchSize,
+          maxAttempts: input.config.runtime.maxOutboxAttempts,
+          maxRetryDelayMs: input.config.runtime.maxOutboxRetryDelayMs,
           repository: input.outboxRepository,
           retryDelayMs: input.config.runtime.retryDelayMs,
           topic: input.config.topics.task,
@@ -133,7 +135,10 @@ export async function startWorkflowWorkerRuntime(input: {
       loops.push(startBackgroundRole("reconciler", input.config.runtime.reconcileIntervalMs, async () => {
         const result = await input.reconciler({
           afterRunId,
+          dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
+          inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
           limit: input.config.runtime.batchSize,
+          maxTaskAttempts: input.config.runtime.maxTaskAttempts,
           now: new Date(),
           reconciler: input.reconcilerService,
         });
@@ -141,6 +146,33 @@ export async function startWorkflowWorkerRuntime(input: {
         return result;
       }));
     }
+    loops.push(input.roleLoop({
+      intervalMs: input.config.runtime.readinessIntervalMs,
+      onError: error => input.logger.error({ error, role: "readiness" }, "workflow worker readiness probe failed"),
+      onHeartbeat: heartbeat => input.logger.info({ ...heartbeat, role: "readiness" }, "workflow worker readiness checked"),
+      role: "readiness",
+      run: async () => {
+        const healthTopics = new Set<string>();
+        if (input.config.roles.has("entry-consumer")) healthTopics.add(input.config.topics.entry);
+        if (input.config.roles.has("task-consumer") || input.config.roles.has("outbox")) {
+          healthTopics.add(input.config.topics.task);
+        }
+        const [database, broker] = await Promise.allSettled([
+          input.pingDatabase(),
+          input.broker.checkHealth([...healthTopics]),
+        ]);
+        readiness.database = database.status === "fulfilled";
+        readiness.broker = broker.status === "fulfilled";
+        if (input.config.roles.has("entry-consumer")) {
+          readiness.roles["entry-consumer"] = subscriptions[0]?.isConnected() ?? false;
+        }
+        if (input.config.roles.has("task-consumer")) {
+          const taskIndex = input.config.roles.has("entry-consumer") ? 1 : 0;
+          readiness.roles["task-consumer"] = subscriptions[taskIndex]?.isConnected() ?? false;
+        }
+        return structuredClone(readiness);
+      },
+    }));
   } catch (error) {
     await closeResources();
     throw error;

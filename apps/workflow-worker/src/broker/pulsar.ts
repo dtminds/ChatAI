@@ -20,6 +20,11 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
     });
   }
 
+  async checkHealth(topics: string[]) {
+    this.assertOpen();
+    await Promise.all(topics.map(topic => this.client.getPartitionsForTopic(topic)));
+  }
+
   async publish(input: WorkflowBrokerPublishInput) {
     this.assertOpen();
     const producer = await this.getProducer(input.topic);
@@ -53,6 +58,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
         if (!this.consumers.delete(consumer)) return;
         await consumer.close();
       },
+      isConnected: () => !this.closed && this.consumers.has(consumer) && consumer.isConnected(),
     };
   }
 

@@ -22,11 +22,13 @@ describe("workflow outbox publisher", () => {
       leaseDurationMs: 60_000,
       leaseOwner: "publisher-1",
       limit: 10,
+      maxAttempts: 100,
+      maxRetryDelayMs: 300_000,
       now: () => new Date("2026-07-11T00:00:00.000Z"),
       repository,
       retryDelayMs: 1_000,
       topic: "task-topic",
-    })).resolves.toEqual({ claimed: 1, failed: 0, sent: 1 });
+    })).resolves.toEqual({ claimed: 1, dead: 0, failed: 0, sent: 1 });
     expect(calls).toEqual(["published", "sent"]);
   });
 
@@ -43,6 +45,8 @@ describe("workflow outbox publisher", () => {
       leaseDurationMs: 60_000,
       leaseOwner: "publisher-1",
       limit: 10,
+      maxAttempts: 100,
+      maxRetryDelayMs: 300_000,
       now: () => new Date("2026-07-11T00:00:00.000Z"),
       repository,
       retryDelayMs: 1_000,
@@ -50,11 +54,62 @@ describe("workflow outbox publisher", () => {
     })).rejects.toThrow("database unavailable");
     expect(repository.markOutboxFailed).not.toHaveBeenCalled();
   });
+
+  it("fails the batch when the outbox lease is lost while scheduling a retry", async () => {
+    const repository = {
+      claimOutboxBatch: vi.fn(async () => [outboxRecord({ attempt: 1 })]),
+      markOutboxDead: vi.fn(),
+      markOutboxFailed: vi.fn(async () => false),
+      markOutboxSent: vi.fn(),
+    };
+    const broker = { publish: vi.fn(async () => { throw new Error("broker unavailable"); }) };
+
+    await expect(publishWorkflowOutboxBatch({
+      broker,
+      leaseDurationMs: 60_000,
+      leaseOwner: "publisher-1",
+      limit: 10,
+      maxAttempts: 100,
+      maxRetryDelayMs: 300_000,
+      now: () => new Date("2026-07-11T00:00:00.000Z"),
+      repository,
+      retryDelayMs: 1_000,
+      topic: "task-topic",
+    })).rejects.toThrow("Workflow Outbox lease was lost while scheduling retry");
+  });
+
+  it("marks an outbox row dead instead of retrying after the attempt limit", async () => {
+    const repository = {
+      claimOutboxBatch: vi.fn(async () => [outboxRecord({ attempt: 5 })]),
+      markOutboxDead: vi.fn(async () => true),
+      markOutboxFailed: vi.fn(),
+      markOutboxSent: vi.fn(),
+    };
+    const broker = { publish: vi.fn(async () => { throw new Error("broker unavailable"); }) };
+
+    await expect(publishWorkflowOutboxBatch({
+      broker,
+      leaseDurationMs: 60_000,
+      leaseOwner: "publisher-1",
+      limit: 10,
+      maxAttempts: 5,
+      maxRetryDelayMs: 300_000,
+      now: () => new Date("2026-07-11T00:00:00.000Z"),
+      repository,
+      retryDelayMs: 1_000,
+      topic: "task-topic",
+    })).resolves.toEqual({ claimed: 1, dead: 1, failed: 0, sent: 0 });
+    expect(repository.markOutboxDead).toHaveBeenCalledWith({
+      id: "outbox-1",
+      leaseOwner: "publisher-1",
+    });
+    expect(repository.markOutboxFailed).not.toHaveBeenCalled();
+  });
 });
 
-function outboxRecord() {
+function outboxRecord(overrides: { attempt?: number } = {}) {
   return {
-    attempt: 0,
+    attempt: overrides.attempt ?? 0,
     eventType: "workflow.task.ready",
     id: "outbox-1",
     leaseExpiresAt: new Date("2026-07-11T00:01:00.000Z"),
@@ -71,6 +126,7 @@ function outboxRecord() {
     },
     sentAt: null,
     status: "leased" as const,
+    taskVersion: 1,
     uid: 9,
   };
 }

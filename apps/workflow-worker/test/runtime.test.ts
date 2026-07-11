@@ -72,7 +72,40 @@ describe("workflow worker runtime", () => {
     expect(resources.reconciler).toHaveBeenCalled();
 
     await runtime.close();
-    expect(resources.loopClose).toHaveBeenCalledTimes(3);
+    expect(resources.loopClose).toHaveBeenCalledTimes(4);
+  });
+
+  it("updates readiness when a consumer or dependency becomes unavailable", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+    });
+
+    resources.subscriptionConnected = false;
+    resources.brokerReady = false;
+    resources.databaseReady = false;
+    await resources.runReadinessProbe();
+
+    expect(runtime.getReadiness()).toEqual({
+      broker: false,
+      database: false,
+      roles: { "entry-consumer": false, "task-consumer": false },
+    });
+    await runtime.close();
+  });
+
+  it("checks only the topics used by the enabled roles", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["entry-consumer"] as const)),
+    });
+
+    await resources.runReadinessProbe();
+
+    expect(resources.broker.checkHealth).toHaveBeenLastCalledWith(["entry-topic"]);
+    await runtime.close();
   });
 
   it("closes runtime resources when the health server cannot start", async () => {
@@ -94,9 +127,19 @@ describe("workflow worker runtime", () => {
 });
 
 function createResources() {
+  let brokerReady = true;
+  let databaseReady = true;
+  let subscriptionConnected = true;
+  let readinessProbe: (() => Promise<unknown>) | undefined;
   const subscriptionClose = vi.fn(async () => {});
-  const subscription: WorkflowBrokerSubscription = { close: subscriptionClose };
+  const subscription: WorkflowBrokerSubscription = {
+    close: subscriptionClose,
+    isConnected: () => subscriptionConnected,
+  };
   const broker = {
+    checkHealth: vi.fn(async () => {
+      if (!brokerReady) throw new Error("broker unavailable");
+    }),
     close: vi.fn(async () => {}),
     publish: vi.fn(),
     subscribe: vi.fn(async () => subscription),
@@ -109,8 +152,11 @@ function createResources() {
   const outboxPublisher = vi.fn(async () => ({ claimed: 0, failed: 0, sent: 0 }));
   const reconciler = vi.fn(async () => ({
     cancelled: 0,
+    inboxDeleted: 0,
     nextCursor: null,
+    stalledTasksRepublished: 0,
     outboxLeasesRecovered: 0,
+    taskLeasesDead: 0,
     taskLeasesRecovered: 0,
   }));
   return {
@@ -125,13 +171,16 @@ function createResources() {
         topic: input.topic,
         type: "Shared",
       })),
-      pingDatabase: vi.fn(async () => {}),
+      pingDatabase: vi.fn(async () => {
+        if (!databaseReady) throw new Error("database unavailable");
+      }),
       logger: { error: vi.fn(), info: vi.fn() },
       outboxPublisher,
       outboxRepository: {} as never,
       reconciler,
       reconcilerService: {} as never,
       roleLoop: vi.fn(input => {
+        if (input.role === "readiness") readinessProbe = input.run;
         void input.run().then(result => input.onHeartbeat?.({
           completedAt: new Date(),
           durationMs: 1,
@@ -154,8 +203,18 @@ function createResources() {
     loopClose,
     outboxPublisher,
     reconciler,
+    get brokerReady() { return brokerReady; },
+    set brokerReady(value: boolean) { brokerReady = value; },
+    get databaseReady() { return databaseReady; },
+    set databaseReady(value: boolean) { databaseReady = value; },
+    runReadinessProbe: async () => {
+      if (!readinessProbe) throw new Error("readiness probe not started");
+      return readinessProbe();
+    },
     scheduler,
     subscriptionClose,
+    get subscriptionConnected() { return subscriptionConnected; },
+    set subscriptionConnected(value: boolean) { subscriptionConnected = value; },
   };
 }
 
@@ -172,9 +231,15 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     roles,
     runtime: {
       batchSize: 100,
+      dispatchTimeoutMs: 300_000,
+      inboxCleanupBatchSize: 1_000,
       leaseDurationMs: 60_000,
+      maxOutboxAttempts: 100,
+      maxOutboxRetryDelayMs: 300_000,
+      maxTaskAttempts: 5,
       outboxIntervalMs: 1_000,
       reconcileIntervalMs: 30_000,
+      readinessIntervalMs: 30_000,
       retryDelayMs: 5_000,
       schedulerIntervalMs: 1_000,
       shardIds: Array.from({ length: 256 }, (_, index) => index),

@@ -99,13 +99,35 @@ describe("workflow worker config", () => {
     ]);
     expect(config.runtime).toMatchObject({
       batchSize: 100,
+      dispatchTimeoutMs: 300_000,
+      inboxCleanupBatchSize: 1_000,
       leaseDurationMs: 60_000,
+      maxOutboxAttempts: 100,
+      maxOutboxRetryDelayMs: 300_000,
+      maxTaskAttempts: 5,
       outboxIntervalMs: 1_000,
+      readinessIntervalMs: 30_000,
       reconcileIntervalMs: 30_000,
       retryDelayMs: 5_000,
       schedulerIntervalMs: 1_000,
     });
     expect(config.runtime.shardIds).toHaveLength(256);
+  });
+
+  it("allows runtime durations above the TCP port range", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_DISPATCH_TIMEOUT_MS: "600000",
+      WORKFLOW_LEASE_DURATION_MS: "120000",
+    }));
+
+    expect(config.runtime.dispatchTimeoutMs).toBe(600_000);
+    expect(config.runtime.leaseDurationMs).toBe(120_000);
+  });
+
+  it("rejects an invalid health port independently from durations", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_HEALTH_PORT: "65536",
+    }))).toThrow("WORKFLOW_HEALTH_PORT must be an integer from 1 to 65535");
   });
 });
 

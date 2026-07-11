@@ -15,8 +15,14 @@ export type WorkflowWorkerConfig = {
   roles: ReadonlySet<WorkflowWorkerRole>;
   runtime: {
     batchSize: number;
+    dispatchTimeoutMs: number;
+    inboxCleanupBatchSize: number;
     leaseDurationMs: number;
+    maxTaskAttempts: number;
+    maxOutboxAttempts: number;
+    maxOutboxRetryDelayMs: number;
     outboxIntervalMs: number;
+    readinessIntervalMs: number;
     reconcileIntervalMs: number;
     retryDelayMs: number;
     schedulerIntervalMs: number;
@@ -73,9 +79,9 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     broker,
     databaseUrl,
     environment,
-    healthPort: parsePositiveInteger(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
+    healthPort: parsePort(env.WORKFLOW_HEALTH_PORT, 3002, "WORKFLOW_HEALTH_PORT"),
     logLevel: optionalValue(env.LOG_LEVEL) ?? "info",
-    maxRedeliverCount: parsePositiveInteger(
+    maxRedeliverCount: parseCount(
       env.WORKFLOW_MAX_REDELIVER_COUNT,
       5,
       "WORKFLOW_MAX_REDELIVER_COUNT",
@@ -83,28 +89,58 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
     runtime: {
-      batchSize: parsePositiveInteger(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
-      leaseDurationMs: parsePositiveInteger(
+      batchSize: parseCount(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
+      dispatchTimeoutMs: parseDurationMs(
+        env.WORKFLOW_DISPATCH_TIMEOUT_MS,
+        300_000,
+        "WORKFLOW_DISPATCH_TIMEOUT_MS",
+      ),
+      inboxCleanupBatchSize: parseCount(
+        env.WORKFLOW_INBOX_CLEANUP_BATCH_SIZE,
+        1_000,
+        "WORKFLOW_INBOX_CLEANUP_BATCH_SIZE",
+      ),
+      leaseDurationMs: parseDurationMs(
         env.WORKFLOW_LEASE_DURATION_MS,
         60_000,
         "WORKFLOW_LEASE_DURATION_MS",
       ),
-      outboxIntervalMs: parsePositiveInteger(
+      maxTaskAttempts: parseCount(
+        env.WORKFLOW_MAX_TASK_ATTEMPTS,
+        5,
+        "WORKFLOW_MAX_TASK_ATTEMPTS",
+      ),
+      maxOutboxAttempts: parseCount(
+        env.WORKFLOW_MAX_OUTBOX_ATTEMPTS,
+        100,
+        "WORKFLOW_MAX_OUTBOX_ATTEMPTS",
+      ),
+      maxOutboxRetryDelayMs: parseDurationMs(
+        env.WORKFLOW_MAX_OUTBOX_RETRY_DELAY_MS,
+        300_000,
+        "WORKFLOW_MAX_OUTBOX_RETRY_DELAY_MS",
+      ),
+      outboxIntervalMs: parseDurationMs(
         env.WORKFLOW_OUTBOX_INTERVAL_MS,
         1_000,
         "WORKFLOW_OUTBOX_INTERVAL_MS",
       ),
-      reconcileIntervalMs: parsePositiveInteger(
+      readinessIntervalMs: parseDurationMs(
+        env.WORKFLOW_READINESS_INTERVAL_MS,
+        30_000,
+        "WORKFLOW_READINESS_INTERVAL_MS",
+      ),
+      reconcileIntervalMs: parseDurationMs(
         env.WORKFLOW_RECONCILE_INTERVAL_MS,
         30_000,
         "WORKFLOW_RECONCILE_INTERVAL_MS",
       ),
-      retryDelayMs: parsePositiveInteger(
+      retryDelayMs: parseDurationMs(
         env.WORKFLOW_OUTBOX_RETRY_DELAY_MS,
         5_000,
         "WORKFLOW_OUTBOX_RETRY_DELAY_MS",
       ),
-      schedulerIntervalMs: parsePositiveInteger(
+      schedulerIntervalMs: parseDurationMs(
         env.WORKFLOW_SCHEDULER_INTERVAL_MS,
         1_000,
         "WORKFLOW_SCHEDULER_INTERVAL_MS",
@@ -151,13 +187,25 @@ function parseRoles(value: string | undefined) {
   return new Set(roles as WorkflowWorkerRole[]);
 }
 
-function parsePositiveInteger(value: string | undefined, fallback: number, name: string) {
+function parseInteger(value: string | undefined, fallback: number, name: string, maximum: number) {
   if (!optionalValue(value)) return fallback;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 65_535) {
-    throw new Error(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) {
+    throw new Error(`${name} must be an integer from 1 to ${maximum}`);
   }
   return parsed;
+}
+
+function parsePort(value: string | undefined, fallback: number, name: string) {
+  return parseInteger(value, fallback, name, 65_535);
+}
+
+function parseDurationMs(value: string | undefined, fallback: number, name: string) {
+  return parseInteger(value, fallback, name, 86_400_000);
+}
+
+function parseCount(value: string | undefined, fallback: number, name: string) {
+  return parseInteger(value, fallback, name, 1_000_000);
 }
 
 function parseShardIds(value: string | undefined) {

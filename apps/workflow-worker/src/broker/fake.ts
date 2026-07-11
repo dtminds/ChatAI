@@ -20,6 +20,10 @@ export class FakeWorkflowBroker implements WorkflowBroker {
   private readonly published = new Map<string, StoredMessage[]>();
   private readonly subscriptions: SubscriptionState[] = [];
 
+  async checkHealth() {
+    this.assertOpen();
+  }
+
   async publish(input: WorkflowBrokerPublishInput) {
     this.assertOpen();
     const message = this.store(input);
@@ -35,6 +39,7 @@ export class FakeWorkflowBroker implements WorkflowBroker {
       close: async () => {
         state.closed = true;
       },
+      isConnected: () => !this.closed && !state.closed,
     };
   }
 

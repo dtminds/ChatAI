@@ -23,7 +23,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const logger = createWorkflowWorkerLogger(config.logLevel);
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
-  const runtimeService = new WorkflowRuntimeService(repository, repository);
+  const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
+    taskLeaseDurationMs: config.runtime.leaseDurationMs,
+  });
   const reconcilerService = new WorkflowRuntimeReconciler(repository);
   let broker: Awaited<ReturnType<typeof createWorkflowBroker>>;
   try {

@@ -18,6 +18,7 @@ export type WorkflowBrokerMessage = {
 
 export type WorkflowBrokerSubscription = {
   close(): Promise<void>;
+  isConnected(): boolean;
 };
 
 export type WorkflowBrokerSubscribeInput = {
@@ -30,6 +31,7 @@ export type WorkflowBrokerSubscribeInput = {
 };
 
 export interface WorkflowBroker {
+  checkHealth(topics: string[]): Promise<void>;
   close(): Promise<void>;
   publish(input: WorkflowBrokerPublishInput): Promise<{ messageId: string }>;
   subscribe(input: WorkflowBrokerSubscribeInput): Promise<WorkflowBrokerSubscription>;

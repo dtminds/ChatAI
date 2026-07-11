@@ -3,7 +3,7 @@ import type { WorkflowBroker } from "./broker/types.js";
 
 type OutboxPublisherRepository = Pick<
   WorkflowOutboxRepository,
-  "claimOutboxBatch" | "markOutboxFailed" | "markOutboxSent"
+  "claimOutboxBatch" | "markOutboxDead" | "markOutboxFailed" | "markOutboxSent"
 >;
 
 export async function publishWorkflowOutboxBatch(input: {
@@ -11,6 +11,8 @@ export async function publishWorkflowOutboxBatch(input: {
   leaseDurationMs: number;
   leaseOwner: string;
   limit: number;
+  maxAttempts: number;
+  maxRetryDelayMs: number;
   now?: () => Date;
   repository: OutboxPublisherRepository;
   retryDelayMs: number;
@@ -23,7 +25,7 @@ export async function publishWorkflowOutboxBatch(input: {
     limit: input.limit,
     now,
   });
-  const result = { claimed: records.length, failed: 0, sent: 0 };
+  const result = { claimed: records.length, dead: 0, failed: 0, sent: 0 };
   for (const record of records) {
     try {
       await input.broker.publish({
@@ -36,11 +38,24 @@ export async function publishWorkflowOutboxBatch(input: {
         topic: input.topic,
       });
     } catch (error) {
-      await input.repository.markOutboxFailed({
+      const failedAt = input.now?.() ?? new Date();
+      if (record.attempt >= input.maxAttempts) {
+        if (!await input.repository.markOutboxDead({
+          id: record.id,
+          leaseOwner: input.leaseOwner,
+        })) throw new Error("Workflow Outbox lease was lost while marking delivery dead");
+        result.dead += 1;
+        continue;
+      }
+      const retryDelayMs = Math.min(
+        input.retryDelayMs * 2 ** Math.max(0, record.attempt - 1),
+        input.maxRetryDelayMs,
+      );
+      if (!await input.repository.markOutboxFailed({
         id: record.id,
         leaseOwner: input.leaseOwner,
-        nextAttemptAt: new Date((input.now?.() ?? new Date()).getTime() + input.retryDelayMs),
-      });
+        nextAttemptAt: new Date(failedAt.getTime() + retryDelayMs),
+      })) throw new Error("Workflow Outbox lease was lost while scheduling retry");
       result.failed += 1;
       continue;
     }

@@ -163,13 +163,11 @@ function WorkflowWorkspaceContent({
   return (
     <>
       <WorkflowTopBar
-        activationReady={topBar.activationReady}
         canPublish={topBar.canPublish}
         canRetrySave={topBar.canRetrySave}
         isPreviewingVersion={versionHistory.isPreviewing}
         lastSavedAt={topBar.lastSavedAt}
         onExitPreview={versionHistory.onExitPreview}
-        onEnable={topBar.onEnable}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
@@ -190,6 +188,7 @@ function WorkflowWorkspaceContent({
         restoreState={versionHistory.restoreState}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
+        validatedForActivation={topBar.validatedForActivation}
         workflowName={currentDocument.name}
       />
 

@@ -5,6 +5,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
 } from "./workflow-resources";
 import {
   WorkflowDeleteDialog,
+  type WorkflowLifecycleAction,
   WorkflowListRow,
   WorkflowListState,
   WorkflowRenameDialog,
@@ -44,6 +46,7 @@ export function WorkflowListPage({
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
+  const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredItems = useMemo(
     () => normalizedQuery
@@ -98,6 +101,41 @@ export function WorkflowListPage({
     }
     finally {
       setOperationPending(false);
+    }
+  };
+
+  const changeWorkflowLifecycle = async (
+    workflow: WorkflowListItem,
+    action: WorkflowLifecycleAction,
+  ) => {
+    if (lifecyclePendingId) return;
+    if (action === "enable" && !workflow.activationReady) {
+      toast.error("请先在编辑页发布当前草稿");
+      return;
+    }
+    const operation = {
+      enable: repository.enableDocument,
+      pause: repository.pauseDocument,
+      resume: repository.resumeDocument,
+      stop: repository.stopDocument,
+    }[action];
+
+    if (!operation) {
+      toast.error("操作失败，请重试");
+      return;
+    }
+
+    setLifecyclePendingId(workflow.id);
+    try {
+      await Promise.resolve(operation(workflow.id));
+      await reload();
+      toast.success(getWorkflowLifecycleSuccessMessage(action));
+    }
+    catch (error) {
+      toast.error(getWorkflowLifecycleErrorMessage(action, error));
+    }
+    finally {
+      setLifecyclePendingId(null);
     }
   };
 
@@ -173,7 +211,9 @@ export function WorkflowListPage({
                     setOperationError(null);
                     setDeleteTarget(workflow);
                   }}
+                  onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
                   onRename={() => openRenameDialog(workflow)}
+                  operationPending={lifecyclePendingId === workflow.id}
                   workflow={workflow}
                 />
               ))}
@@ -225,5 +265,27 @@ function getWorkflowOperationErrorMessage(error: unknown) {
     return "该 Workflow 已不存在";
   }
 
+  return "操作失败，请重试";
+}
+
+function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
+  return {
+    enable: "已启用",
+    pause: "已暂停",
+    resume: "已恢复",
+    stop: "已停止",
+  }[action];
+}
+
+function getWorkflowLifecycleErrorMessage(
+  action: WorkflowLifecycleAction,
+  error: unknown,
+) {
+  const repositoryError = normalizeWorkflowRepositoryError(error);
+  if (action === "enable" && repositoryError.code === "conflict") {
+    return "请先在编辑页发布当前草稿";
+  }
+  if (repositoryError.code === "not-found") return "该 Workflow 已不存在";
+  if (repositoryError.code === "forbidden") return "没有操作权限";
   return "操作失败，请重试";
 }

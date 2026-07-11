@@ -53,14 +53,22 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   const broker = parseBroker(env.WORKFLOW_BROKER);
   const pulsarServiceUrl = optionalValue(env.WORKFLOW_PULSAR_SERVICE_URL);
   const pulsarToken = optionalValue(env.WORKFLOW_PULSAR_TOKEN);
+  const pulsarClusterId = optionalValue(env.WORKFLOW_PULSAR_CLUSTER_ID);
+  const pulsarNamespace = optionalValue(env.WORKFLOW_PULSAR_NAMESPACE);
   if (broker === "pulsar" && (!pulsarServiceUrl || !pulsarToken)) {
     throw new Error("Missing required Workflow Pulsar configuration");
+  }
+  if (broker === "pulsar" && (!pulsarClusterId || !pulsarNamespace)) {
+    throw new Error("Missing required Workflow Pulsar cluster ID or namespace");
   }
 
   const subscription = optionalValue(env.WORKFLOW_SUBSCRIPTION)
     ?? `consumer-chatai-worker-env-${environment}`;
   const entrySubscription = optionalValue(env.WORKFLOW_ENTRY_SUBSCRIPTION) ?? subscription;
   const taskSubscription = optionalValue(env.WORKFLOW_TASK_SUBSCRIPTION) ?? subscription;
+  const qualifyTopic = (topic: string) => broker === "pulsar"
+    ? qualifyPulsarTopic(topic, pulsarClusterId!, pulsarNamespace!)
+    : topic;
   return {
     broker,
     databaseUrl,
@@ -109,14 +117,20 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       task: taskSubscription,
     },
     deadLetterTopics: {
-      entry: optionalValue(env.WORKFLOW_ENTRY_DLQ_TOPIC) ?? `${entrySubscription}-DLQ`,
-      task: optionalValue(env.WORKFLOW_TASK_DLQ_TOPIC) ?? `${taskSubscription}-DLQ`,
+      entry: qualifyTopic(optionalValue(env.WORKFLOW_ENTRY_DLQ_TOPIC) ?? `${entrySubscription}-DLQ`),
+      task: qualifyTopic(optionalValue(env.WORKFLOW_TASK_DLQ_TOPIC) ?? `${taskSubscription}-DLQ`),
     },
     topics: {
-      entry: optionalValue(env.WORKFLOW_ENTRY_TOPIC) ?? `topic-workflow-entry-${environment}`,
-      task: optionalValue(env.WORKFLOW_TASK_TOPIC) ?? `topic-workflow-task-${environment}`,
+      entry: qualifyTopic(optionalValue(env.WORKFLOW_ENTRY_TOPIC) ?? `topic-workflow-entry-${environment}`),
+      task: qualifyTopic(optionalValue(env.WORKFLOW_TASK_TOPIC) ?? `topic-workflow-task-${environment}`),
     },
   };
+}
+
+function qualifyPulsarTopic(topic: string, clusterId: string, namespace: string) {
+  if (topic.startsWith("persistent://")) return topic;
+  if (topic.includes("://")) throw new Error("Workflow Pulsar topics must use persistent://");
+  return `persistent://${clusterId}/${namespace}/${topic}`;
 }
 
 function parseBroker(value: string | undefined): WorkflowWorkerConfig["broker"] {

@@ -1,8 +1,24 @@
 import type { WorkflowTriggerBindingRecord } from "@chatai/workflow-runtime";
 import { describe, expect, it, vi } from "vitest";
-import { publishWorkflowEntrySmoke } from "../src/smoke-entry.js";
+import {
+  parseWorkflowEntrySmokeArgs,
+  publishWorkflowEntrySmoke,
+} from "../src/smoke-entry.js";
 
 describe("workflow entry smoke producer", () => {
+  it("accepts the pnpm argument separator before CLI options", () => {
+    expect(parseWorkflowEntrySmokeArgs([
+      "--",
+      "--workflow-id",
+      "31",
+      "--subject-id",
+      "third-user-1",
+    ])).toEqual({
+      subjectId: "third-user-1",
+      workflowId: "31",
+    });
+  });
+
   it.each([
     {
       eventType: "contact.friend_added" as const,

@@ -169,6 +169,8 @@ dev 与 test01 使用独立 Topic 和 Subscription：
 
 Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称而保持独立消费游标；Subscription 类型为 Shared。腾讯云按该消费组自动创建对应的 `-RETRY` 和 `-DLQ` Topic。普通 CI 只使用 Fake Broker，不连接腾讯云；真实 TDMQ 只运行手动 Smoke。Pulsar 地址、Token、Namespace、Topic 和 Subscription 全部通过环境变量注入，禁止写入仓库。
 
+真实 Pulsar 模式必须配置 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE`。Worker 将短 Topic 名统一规范化为 `persistent://<cluster-id>/<namespace>/<topic>`，并对 Entry、Task 和显式 DLQ Topic 使用相同规则，避免依赖 Pulsar 默认 namespace。
+
 Workflow Worker 作为独立 `apps/workflow-worker` 进程和镜像部署，不复用 API Server 或现有 Insights Worker。初期单实例启用 Entry Consumer、Task Consumer、Scheduler、Outbox Publisher 和 Reconciler，后续可通过角色开关独立扩容。Phase 3 可观测性使用结构化日志和独立健康检查，不引入 Prometheus 或 OpenTelemetry 依赖。
 
 ## 5. 总体架构

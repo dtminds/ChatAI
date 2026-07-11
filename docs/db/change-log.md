@@ -2,6 +2,39 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-11
+
+- Added the Workflow entry guard and Run entry-window index for subject-level re-entry limits.
+- Made trigger binding filters required.
+- Added lease ownership and expiry fields to the Workflow Outbox so concurrent publishers can safely claim rows and the Reconciler can recover expired leases.
+
+Manual migration for databases created from the initial 2026-07-10 Workflow schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
+  subject_id VARCHAR(256) NOT NULL COMMENT '租户内不透明客户ID',
+  total_entries INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '历史累计成功进入次数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_entry_guard_subject (uid, workflow_id, subject_id)
+) COMMENT='营销Workflow客户进入串行化守卫表';
+
+ALTER TABLE xy_wap_embed_workflow_trigger_binding
+  MODIFY COLUMN filter_spec_json JSON NOT NULL COMMENT '结构化触发筛选规则';
+
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id);
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  ADD COLUMN lease_owner VARCHAR(128) NULL COMMENT '投递租约持有者' AFTER attempt,
+  ADD COLUMN lease_expires_at DATETIME NULL COMMENT '投递租约过期时间' AFTER lease_owner,
+  ADD KEY idx_workflow_outbox_lease (status, lease_expires_at, id);
+```
+
 ## 2026-07-10
 
 - Added the marketing Workflow control-plane tables for mutable definitions and immutable revisions.

@@ -21,6 +21,11 @@ describe("compileWorkflowDraft", () => {
       kind: "wait",
       nodeSchemaVersion: 1,
     });
+    expect(spec.nodes.find((node) => node.id === "start")?.config).toEqual({
+      accountIds: ["account-a"],
+      entryPolicy: { mode: "never" },
+      triggers: [{ type: "contact.friend_added" }],
+    });
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
@@ -150,6 +155,7 @@ function startConfig() {
   return {
     accountIds: ["account-a"],
     entryPolicy: { mode: "never" },
+    panelState: { section: "triggers" },
     triggers: [{ type: "contact.friend_added" }],
   };
 }

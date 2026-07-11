@@ -503,6 +503,19 @@ describe("Agent workflow page", () => {
     expect(editLink).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("offers activation from the inactive workflow row menu", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "启用" }));
+
+    await waitFor(() => {
+      expect(getWorkflowDocument("newcomer-conversion").runtimeStatus).toBe("active");
+    });
+  });
+
   it("filters workflow rows and supports renaming from the row menu", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");

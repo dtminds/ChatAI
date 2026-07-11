@@ -41,16 +41,7 @@ export async function runWorkflowEntrySmoke(
   env: NodeJS.ProcessEnv = process.env,
   argv: string[] = process.argv.slice(2),
 ) {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      "subject-id": { type: "string" },
-      "workflow-id": { type: "string" },
-    },
-    strict: true,
-  });
-  const subjectId = requireCliValue(values["subject-id"], "--subject-id");
-  const workflowId = requireCliValue(values["workflow-id"], "--workflow-id");
+  const { subjectId, workflowId } = parseWorkflowEntrySmokeArgs(argv);
   const config = loadWorkflowWorkerConfig(env);
   const database = createWorkflowDatabase(config.databaseUrl);
   let broker: WorkflowBroker | undefined;
@@ -80,6 +71,21 @@ export async function runWorkflowEntrySmoke(
       database.destroy(),
     ]);
   }
+}
+
+export function parseWorkflowEntrySmokeArgs(argv: string[]) {
+  const args = argv[0] === "--" ? argv.slice(1) : argv;
+  const { values } = parseArgs({
+    args,
+    options: {
+      "subject-id": { type: "string" },
+      "workflow-id": { type: "string" },
+    },
+    strict: true,
+  });
+  const subjectId = requireCliValue(values["subject-id"], "--subject-id");
+  const workflowId = requireCliValue(values["workflow-id"], "--workflow-id");
+  return { subjectId, workflowId };
 }
 
 async function findActiveWorkflowBinding(

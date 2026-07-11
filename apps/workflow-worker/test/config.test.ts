@@ -41,6 +41,47 @@ describe("workflow worker config", () => {
     }))).toThrowError(expect.objectContaining({ message: expect.not.stringContaining(token) }));
   });
 
+  it("qualifies Pulsar topics with the configured tenant and namespace", () => {
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BROKER: "pulsar",
+      WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
+      WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
+      WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
+      WORKFLOW_PULSAR_TOKEN: "secret-token",
+    }));
+
+    expect(config.topics).toEqual({
+      entry: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-entry-dev",
+      task: "persistent://pulsar-cluster/chatai-workflow/topic-workflow-task-dev",
+    });
+    expect(config.deadLetterTopics).toEqual({
+      entry: "persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-dev-DLQ",
+      task: "persistent://pulsar-cluster/chatai-workflow/consumer-chatai-worker-env-dev-DLQ",
+    });
+  });
+
+  it("requires a cluster ID and namespace for the Pulsar broker", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BROKER: "pulsar",
+      WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
+      WORKFLOW_PULSAR_TOKEN: "secret-token",
+    }))).toThrow("Missing required Workflow Pulsar cluster ID or namespace");
+  });
+
+  it("preserves fully-qualified Pulsar topic overrides", () => {
+    const topic = "persistent://another-tenant/another-namespace/custom-entry";
+    const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_BROKER: "pulsar",
+      WORKFLOW_ENTRY_TOPIC: topic,
+      WORKFLOW_PULSAR_CLUSTER_ID: "pulsar-cluster",
+      WORKFLOW_PULSAR_NAMESPACE: "chatai-workflow",
+      WORKFLOW_PULSAR_SERVICE_URL: "http://pulsar.example.com:8080",
+      WORKFLOW_PULSAR_TOKEN: "secret-token",
+    }));
+
+    expect(config.topics.entry).toBe(topic);
+  });
+
   it("rejects unknown broker modes instead of falling through to Pulsar", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({ WORKFLOW_BROKER: "tdmq" })))
       .toThrow("WORKFLOW_BROKER must be fake or pulsar");

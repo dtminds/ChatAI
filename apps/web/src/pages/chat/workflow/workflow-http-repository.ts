@@ -276,6 +276,7 @@ function toDocument(
     draftVersion: definition.draftVersion,
     permissions: {
       canEdit: definition.permissions.canEdit,
+      canOperate: definition.permissions.canOperate,
       canPublish: definition.permissions.canPublish,
     },
     publishedAt: currentVersion?.publishedAt ?? null,
@@ -292,12 +293,16 @@ function toDocument(
 function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
   const draft = toDraft(definition.draft);
   return {
+    activationReady: definition.runtimeStatus === "inactive"
+      && definition.validatedDraftVersion === definition.draftVersion,
+    canOperate: definition.permissions.canOperate,
     conversion: getWorkflowConversion(draft) ?? "-",
     entered: "-",
     id: definition.id,
     name: definition.name,
     nodes: draft.nodes.length,
     owner: "当前账号",
+    runtimeStatus: definition.runtimeStatus,
     status: definition.runtimeStatus === "active"
       ? "Published"
       : definition.runtimeStatus === "paused"

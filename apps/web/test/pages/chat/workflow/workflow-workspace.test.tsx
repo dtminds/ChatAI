@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/workflow/use-workflow-workspace";
 import {
@@ -18,6 +19,12 @@ import type {
   WorkflowDraftPublishOptions,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import type { WorkflowDraft } from "@/pages/chat/workflow/types";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+  },
+}));
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -53,6 +60,7 @@ vi.mock("@xyflow/react", async () => {
 describe("useWorkflowWorkspace", () => {
   beforeEach(() => {
     resetWorkflowDocumentsForTest();
+    vi.mocked(toast.success).mockClear();
   });
 
   it("derives canvas and publish capabilities from document permissions", () => {
@@ -60,6 +68,7 @@ describe("useWorkflowWorkspace", () => {
     const editableDocument = repository.getDocument("newcomer-conversion");
     editableDocument.permissions = {
       canEdit: true,
+      canOperate: true,
       canPublish: false,
     };
     const { result } = renderHook(() => useWorkflowWorkspace(
@@ -192,31 +201,6 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.topBar.saveState).toBe("saving");
-  });
-
-  it("withdraws activation readiness as soon as a validated draft becomes dirty", () => {
-    const repository = createInMemoryWorkflowDraftRepository();
-    const document = repository.getDocument("newcomer-conversion");
-    document.draftVersion = 3;
-    document.runtimeStatus = "inactive";
-    document.validatedDraftVersion = 3;
-    const { result } = renderHook(() => useWorkflowWorkspace(
-      document.id,
-      repository,
-      document,
-    ));
-
-    expect(result.current.topBar.activationReady).toBe(true);
-
-    act(() => {
-      result.current.canvas.onSelectNode("message-welcome");
-    });
-    act(() => {
-      result.current.inspector.onNodeChange({ title: "修改后的节点" });
-    });
-
-    expect(result.current.topBar.saveState).toBe("saving");
-    expect(result.current.topBar.activationReady).toBe(false);
   });
 
   it("keeps node dragging transient and unsaved until the drag finishes", () => {
@@ -566,6 +550,7 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
+      expect(toast.success).toHaveBeenCalledWith("发布成功");
       expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe("更新后的发布人群");
     }
     finally {

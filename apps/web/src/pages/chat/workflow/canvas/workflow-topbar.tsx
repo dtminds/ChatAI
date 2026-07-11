@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -166,7 +165,7 @@ export function WorkflowTopBar({
         ) : (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <Badge className={getRuntimeStatusClassName(runtimeStatus)} variant="outline">
+              <Badge className={getRuntimeStatusClassName(runtimeStatus)}>
                 {getRuntimeStatusLabel(runtimeStatus)}
               </Badge>
               <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
@@ -221,10 +220,10 @@ export function WorkflowTopBar({
                 </span>
               )}
               {hasUnpublishedChanges ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="shrink-0 text-amber-600">有尚未发布的修改</span>
-                </>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-600">
+                  <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={2} />
+                  有尚未发布的修改
+                </span>
               ) : null}
             </div>
           </div>
@@ -306,10 +305,9 @@ export function WorkflowTopBar({
         }}
         open={metadataDialogOpen}
       >
-        <DialogContent closeButtonDisabled={metadataUpdating}>
+        <DialogContent aria-describedby={undefined} closeButtonDisabled={metadataUpdating}>
           <DialogHeader>
             <DialogTitle>编辑 Workflow 信息</DialogTitle>
-            <DialogDescription>名称用于识别 Workflow，描述会展示在标题旁的信息提示中</DialogDescription>
           </DialogHeader>
           <form
             className="space-y-4"
@@ -370,10 +368,10 @@ function getRuntimeStatusLabel(status: "active" | "inactive" | "paused" | "stopp
 function getRuntimeStatusClassName(status: "active" | "inactive" | "paused" | "stopped") {
   return cn(
     "shrink-0 rounded-md px-1.5 py-0.5",
-    status === "active" && "border-emerald-200 bg-emerald-50 text-emerald-700",
-    status === "inactive" && "border-border bg-muted/60 text-muted-foreground",
-    status === "paused" && "border-amber-200 bg-amber-50 text-amber-700",
-    status === "stopped" && "border-border bg-muted/60 text-muted-foreground",
+    status === "active" && "bg-emerald-50 text-emerald-700",
+    status === "inactive" && "bg-muted text-muted-foreground",
+    status === "paused" && "bg-amber-50 text-amber-700",
+    status === "stopped" && "bg-muted text-muted-foreground",
   );
 }
 

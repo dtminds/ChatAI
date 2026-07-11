@@ -20,12 +20,15 @@ describe("core node executors", () => {
   });
 
   it("persists wait as an absolute due time", async () => {
-    await expect(registry.execute(node("wait", { delayDays: 2 }), context()))
+    await expect(registry.execute(node("wait", { duration: 2, unit: "day" }), context()))
       .resolves.toEqual({
         dueAt: "2026-07-12T00:00:00.000Z",
         output: { dueAt: "2026-07-12T00:00:00.000Z" },
         type: "wait",
       });
+
+    await expect(registry.execute(node("wait", { duration: 90, unit: "minute" }), context()))
+      .resolves.toMatchObject({ dueAt: "2026-07-10T01:30:00.000Z" });
   });
 
   it("selects the first matching branch and falls back to default", async () => {

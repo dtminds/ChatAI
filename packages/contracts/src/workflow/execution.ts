@@ -54,19 +54,9 @@ export const WorkflowTaskMessageSchema = Type.Object({
   uid: WorkflowIdSchema,
 });
 
-export const WorkflowEntryCommandSchema = Type.Object({
-  eventId: Type.String({ minLength: 1, maxLength: 128 }),
-  eventType: Type.String({ minLength: 1, maxLength: 128 }),
-  occurredAt: Type.String(),
-  subjectId: Type.String({ minLength: 1, maxLength: 256 }),
-  triggerPayload: Type.Record(Type.String(), Type.Unknown()),
-  uid: WorkflowIdSchema,
-});
-
 export type WorkflowExecutionNode = Static<typeof WorkflowExecutionNodeSchema>;
 export type WorkflowExecutionEdge = Static<typeof WorkflowExecutionEdgeSchema>;
 export type WorkflowExecutionSpec = Static<typeof WorkflowExecutionSpecSchema>;
 export type WorkflowRunStatus = Static<typeof WorkflowRunStatusSchema>;
 export type WorkflowTaskStatus = Static<typeof WorkflowTaskStatusSchema>;
 export type WorkflowTaskMessage = Static<typeof WorkflowTaskMessageSchema>;
-export type WorkflowEntryCommand = Static<typeof WorkflowEntryCommandSchema>;

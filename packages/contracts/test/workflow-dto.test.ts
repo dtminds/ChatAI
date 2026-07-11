@@ -5,6 +5,11 @@ import {
   WorkflowDraftSchema,
   WorkflowRuntimeStatusSchema,
 } from "../src/workflow/dto.js";
+import {
+  WorkflowEntryCommandSchema,
+  WorkflowStartConfigSchema,
+  WorkflowWaitConfigSchema,
+} from "../src/workflow/trigger.js";
 
 describe("workflow contracts", () => {
   it("accepts the production node kinds and rejects legacy kinds", () => {
@@ -41,6 +46,50 @@ describe("workflow contracts", () => {
   it("models paused and stopped as distinct runtime states", () => {
     expect(Value.Check(WorkflowRuntimeStatusSchema, "paused")).toBe(true);
     expect(Value.Check(WorkflowRuntimeStatusSchema, "stopped")).toBe(true);
+  });
+
+  it("validates production start and wait configurations", () => {
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      accountIds: ["account-a"],
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      triggers: [
+        { type: "contact.friend_added" },
+        { tagIds: ["tag-vip"], type: "customer.tag_added" },
+        { keywords: ["优惠"], match: "keywords", type: "message.received" },
+      ],
+    })).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, {
+      accountIds: [],
+      entryPolicy: { maxEntries: 0, mode: "lifetime_limit" },
+      triggers: [],
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 15, unit: "minute" })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 0, unit: "day" })).toBe(false);
+  });
+
+  it("validates standard entry commands by event payload", () => {
+    const base = {
+      eventId: "event-1",
+      occurredAt: "2026-07-11T00:00:00.000Z",
+      subjectId: "external-user-1",
+      thirdUserId: "account-a",
+      uid: "9",
+    };
+    expect(Value.Check(WorkflowEntryCommandSchema, {
+      ...base,
+      eventType: "customer.tag_added",
+      triggerPayload: { tagId: "tag-vip" },
+    })).toBe(true);
+    expect(Value.Check(WorkflowEntryCommandSchema, {
+      ...base,
+      eventType: "customer.tag_added",
+      triggerPayload: {},
+    })).toBe(false);
+    expect(Value.Check(WorkflowEntryCommandSchema, {
+      ...base,
+      eventType: "message.received",
+      triggerPayload: { messageId: "message-1", messageType: "text", text: "咨询优惠" },
+    })).toBe(true);
   });
 });
 

@@ -91,11 +91,14 @@ function executeWait(
   node: WorkflowExecutionNode,
   context: WorkflowNodeExecutionContext,
 ): WorkflowNodeExecutionResult {
-  const delayDays = node.config.delayDays;
-  if (typeof delayDays !== "number" || !Number.isFinite(delayDays) || delayDays < 0) {
-    throw new WorkflowNodeExecutionError("Wait node requires a non-negative delayDays");
+  const duration = node.config.duration;
+  const unit = node.config.unit;
+  if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration <= 0
+    || (unit !== "minute" && unit !== "hour" && unit !== "day")) {
+    throw new WorkflowNodeExecutionError("Wait node requires a positive duration and supported unit");
   }
-  const dueAt = new Date(context.now.getTime() + delayDays * 86_400_000).toISOString();
+  const unitMilliseconds = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
+  const dueAt = new Date(context.now.getTime() + duration * unitMilliseconds).toISOString();
   return { dueAt, output: { dueAt }, type: "wait" };
 }
 

@@ -13,3 +13,4 @@ export * from "./settings/dto.js";
 export * from "./settings/password.js";
 export * from "./workflow/dto.js";
 export * from "./workflow/execution.js";
+export * from "./workflow/trigger.js";

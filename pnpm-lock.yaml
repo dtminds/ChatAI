@@ -329,6 +329,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@sinclair/typebox':
+        specifier: ^0.34.41
+        version: 0.34.49
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

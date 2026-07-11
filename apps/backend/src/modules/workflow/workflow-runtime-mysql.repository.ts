@@ -38,7 +38,7 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
         const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
           .select(["biz_status", "published_revision", "runtime_status"])
           .where("uid", "=", input.uid).where("id", "=", input.workflowId)
-          .forUpdate().executeTakeFirst();
+          .forShare().executeTakeFirst();
         const boundaryDecision = definition
           ? getWorkflowExecutionBoundaryDecision({
               bizStatus: definition.biz_status === 1 ? 1 : 0,
@@ -113,7 +113,7 @@ export class MysqlWorkflowRuntimeRepository implements WorkflowRuntimeRepository
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
         .select(["biz_status", "runtime_status"])
         .where("uid", "=", input.uid).where("id", "=", task.workflowId)
-        .forUpdate().executeTakeFirst();
+        .forShare().executeTakeFirst();
       const boundaryDecision = definition
         ? getWorkflowExecutionBoundaryDecision({
             bizStatus: definition.biz_status === 1 ? 1 : 0,

@@ -20,11 +20,11 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
 
     expect(result).toEqual({ action: "cancel", kind: "workflow-unavailable" });
-    expect(db.definitionReadLocked).toBe(true);
+    expect(db.definitionReadShareLocked).toBe(true);
     expect(db.runInsertCount).toBe(0);
   });
 
-  it("uses a locking definition read when claiming an execution task", async () => {
+  it("uses a shared definition lock when claiming an execution task", async () => {
     const db = createClaimDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
 
@@ -37,7 +37,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
 
     expect(result.kind).toBe("success");
-    expect(db.definitionReadLocked).toBe(true);
+    expect(db.definitionReadShareLocked).toBe(true);
   });
 
   it.each([
@@ -84,7 +84,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
 function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   const db = {
-    definitionReadLocked: false,
+    definitionReadShareLocked: false,
     runInsertCount: 0,
     insertInto(table: string) {
       if (table === "xy_wap_embed_workflow_run") db.runInsertCount += 1;
@@ -92,8 +92,8 @@ function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
     },
     selectFrom(table: string) {
       const builder = {
-        forUpdate() {
-          if (table === "xy_wap_embed_workflow_definition") db.definitionReadLocked = true;
+        forShare() {
+          if (table === "xy_wap_embed_workflow_definition") db.definitionReadShareLocked = true;
           return builder;
         },
         select() { return builder; },
@@ -137,12 +137,15 @@ function createClaimDbMock(runtimeStatus = "active") {
     workflow_id: "42",
   };
   const db = {
-    definitionReadLocked: false,
+    definitionReadShareLocked: false,
     taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
         forUpdate() {
-          if (table === "xy_wap_embed_workflow_definition") db.definitionReadLocked = true;
+          return builder;
+        },
+        forShare() {
+          if (table === "xy_wap_embed_workflow_definition") db.definitionReadShareLocked = true;
           return builder;
         },
         select() { return builder; },

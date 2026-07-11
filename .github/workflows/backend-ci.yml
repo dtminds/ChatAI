@@ -73,6 +73,9 @@ jobs:
       - name: Typecheck backend
         run: pnpm backend:typecheck
 
+      - name: Test workflow engine
+        run: pnpm --filter @chatai/workflow-engine test
+
       - name: Test backend
         run: pnpm backend:test
 

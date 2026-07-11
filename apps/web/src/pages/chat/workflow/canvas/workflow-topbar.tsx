@@ -115,7 +115,7 @@ export function WorkflowTopBar({
   };
 
   return (
-    <header className="workflow-canvas-topbar z-[12] flex min-h-20 shrink-0 items-center justify-between gap-4 border-b bg-background px-5 py-3 max-sm:flex-wrap max-sm:px-3">
+    <header className="workflow-canvas-topbar z-[12] flex min-h-16 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 py-2 max-sm:flex-wrap max-sm:px-3">
       <div className="flex min-w-0 items-center gap-3 max-sm:w-full">
         <Button
           aria-label="返回 Workflow 列表"

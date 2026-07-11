@@ -25,10 +25,15 @@ import {
   getWorkflowStartFixtureTags,
 } from "./fixture-options";
 
-const accounts = getWorkflowStartFixtureAccounts();
-const tags = getWorkflowStartFixtureTags();
-
-export function StartConfig({ node, onNodeChange }: NodeSettingsProps<"start">) {
+export function StartConfig({
+  accounts = getWorkflowStartFixtureAccounts(),
+  node,
+  onNodeChange,
+  tags = getWorkflowStartFixtureTags(),
+}: NodeSettingsProps<"start"> & {
+  accounts?: ReturnType<typeof getWorkflowStartFixtureAccounts>;
+  tags?: ReturnType<typeof getWorkflowStartFixtureTags>;
+}) {
   const { accountIds, entryPolicy, triggers } = node.data;
   const updateStartConfig = (patch: {
     accountIds?: string[];
@@ -61,7 +66,9 @@ export function StartConfig({ node, onNodeChange }: NodeSettingsProps<"start">) 
         </AccordionTrigger>
         <AccordionContent className="pb-3">
           <div className="space-y-2 rounded-[8px] border bg-card p-3">
-            {accounts.map(account => (
+            {accounts.length === 0 ? (
+              <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用托管账号</p>
+            ) : accounts.map(account => (
               <CheckboxRow
                 checked={accountIds.includes(account.id)}
                 key={account.id}
@@ -106,6 +113,9 @@ export function StartConfig({ node, onNodeChange }: NodeSettingsProps<"start">) 
                     })}
                   />
                 ))}
+                {tags.length === 0 ? (
+                  <p className="py-2 text-center text-[13px] text-muted-foreground">暂无可用标签</p>
+                ) : null}
               </div>
             </TriggerCheckbox>
             <TriggerCheckbox

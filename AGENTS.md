@@ -64,6 +64,15 @@
 - 需要修改平台层数据时，必须通过对应的 API 接口，禁止直接 INSERT/UPDATE/DELETE。
 - 发现平台层数据缺失或异常，应反馈给平台团队修复，不要在应用层做补偿（如轮询修补、重试回写等）。
 
+## Database Timezone Contract
+
+- 本项目所有应用服务器、MySQL Server 和 MySQL Session 统一使用 UTC+8；数据库中的 `DATETIME` 表示 UTC+8 wall-clock time。这是明确的部署契约，不支持把同一套服务部署为 UTC 或其它时区后继续复用这些 `DATETIME` 语义。
+- Backend 和 Workflow Worker 的 mysql2 连接必须保持 `timezone: "+08:00"`。不要删除该配置，也不要在业务代码中对 mysql2 已返回的 `Date` 再手工加减 8 小时。
+- `packages/workflow-runtime` 提供实际时区偏移校验，Backend 首次数据库 readiness 检查、Backend Worker 和 Workflow Worker 启动时会要求 `CURRENT_TIMESTAMP() - UTC_TIMESTAMP() = 28800` 秒；不满足时服务不会进入可服务状态。
+- 在上述契约和运行时校验均存在的情况下，使用 `CURRENT_TIMESTAMP`、读取 `DATETIME` 或通过 mysql2 返回 `Date` 不应被 Review 重复报告为“容器可能运行在 UTC 导致 8 小时偏移”。这不是当前系统支持的部署场景，也不是缺陷。
+- 只有在改动破坏 UTC+8 契约时才应提出时区问题，例如移除 mysql2 `timezone: "+08:00"`、绕过/删除实际偏移校验、混用 UTC 与 UTC+8 `DATETIME`、手工重复做时区转换，或引入未声明时区语义的外部时间字符串。
+- 不要为了消除假设性的 UTC 部署风险，把局部业务查询改成 `UNIX_TIMESTAMP()`、字符串拼接时区或页面/服务内零散转换。若未来要迁移为全链路 UTC，必须作为独立架构迁移统一修改数据库存储、连接配置、序列化边界、历史数据和部署规范。
+
 ## Environment Files
 
 - 根目录 `.env.development`: 本地前端 -> 本地 backend。

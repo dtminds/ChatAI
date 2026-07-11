@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import {
+  assertDatabaseUtc8Timezone,
   MysqlWorkflowRuntimeRepository,
   WorkflowRuntimeReconciler,
   WorkflowRuntimeService,
@@ -29,6 +30,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const reconcilerService = new WorkflowRuntimeReconciler(repository);
   let broker: Awaited<ReturnType<typeof createWorkflowBroker>>;
   try {
+    await assertDatabaseUtc8Timezone(database);
     broker = await createWorkflowBroker({
       broker: config.broker,
       serviceUrl: config.pulsar.serviceUrl,

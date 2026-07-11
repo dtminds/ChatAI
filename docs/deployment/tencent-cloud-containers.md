@@ -156,7 +156,7 @@ GET /healthz
 GET /readyz
 ```
 
-`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。未配置数据库时 backend 会在启动阶段失败，不会进入可服务状态。
+`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，并在首次检查时验证 MySQL 会话的实际时区偏移为 UTC+8。Workflow Worker 启动时执行同一项校验。未配置数据库或时区不符合约束时，服务不会进入可服务状态。
 
 ## Backend Worker 容器要求
 

@@ -97,8 +97,12 @@ export function WorkflowListCard({
 
       <div className="mt-4 border-t border-dashed pt-3">
         <div className="text-xs text-muted-foreground">触发条件</div>
-        <div className="mt-1.5 inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-foreground">
-          <span className="truncate">{workflow.trigger}</span>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {splitWorkflowTriggers(workflow.trigger).map(trigger => (
+            <span className="rounded-md bg-muted px-2 py-1 text-xs text-foreground" key={trigger}>
+              {trigger}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -362,4 +366,8 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-primary/10 text-primary", icon: CheckmarkCircle02Icon, label: "已发布" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
+}
+
+export function splitWorkflowTriggers(trigger: string) {
+  return trigger.split(/[、，,]/).map(item => item.trim()).filter(Boolean);
 }

@@ -7,6 +7,7 @@ import {
   WorkflowEditorPage,
   WorkflowPage,
 } from "@/pages/chat/workflow/workflow-page";
+import { splitWorkflowTriggers } from "@/pages/chat/workflow/workflow-list-components";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
@@ -394,6 +395,12 @@ describe("Agent workflow page", () => {
         used: 4,
       },
     });
+  });
+
+  it("splits multiple workflow triggers into separate labels", () => {
+    expect(splitWorkflowTriggers("添加好友、用户消息")).toEqual(["添加好友", "用户消息"]);
+    expect(splitWorkflowTriggers("表单提交，收到邮件")).toEqual(["表单提交", "收到邮件"]);
+    expect(splitWorkflowTriggers("90 天未复购会员")).toEqual(["90 天未复购会员"]);
   });
 
   it("keeps node metadata, default data, renderers, settings panels and palette in sync", () => {

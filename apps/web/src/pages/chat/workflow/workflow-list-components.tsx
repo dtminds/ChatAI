@@ -1,12 +1,12 @@
 import {
   AlertCircleIcon,
-  CheckmarkCircle02Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
   PauseIcon,
   PlayIcon,
   StopCircleIcon,
+  Tick02Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -296,7 +296,7 @@ function WorkflowMetric({ label, value }: { label: string; value: string }) {
 
 function getWorkflowStatus(workflow: WorkflowListItem) {
   if (workflow.runtimeStatus === "active") {
-    return { className: "bg-success-muted text-success", icon: CheckmarkCircle02Icon, label: "运行中" };
+    return { className: "bg-success-muted text-success", icon: Tick02Icon, label: "运行中" };
   }
   if (workflow.runtimeStatus === "paused") {
     return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "已暂停" };
@@ -305,7 +305,7 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
   if (workflow.status === "Published") {
-    return { className: "bg-primary/10 text-primary", icon: CheckmarkCircle02Icon, label: "已发布" };
+    return { className: "bg-primary/10 text-primary", icon: Tick02Icon, label: "已发布" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
 }

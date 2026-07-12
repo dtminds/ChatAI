@@ -64,8 +64,8 @@ export function WorkflowListPage({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredItems = useMemo(() => items.filter((workflow) => {
     const matchesStatus = statusFilter === "all"
-      || (statusFilter === "draft" && workflow.status === "Draft")
-      || (statusFilter === "published" && workflow.status === "Published" && workflow.runtimeStatus === "inactive")
+      || (statusFilter === "draft" && workflow.runtimeStatus === "inactive" && !workflow.activationReady)
+      || (statusFilter === "published" && workflow.runtimeStatus === "inactive" && workflow.activationReady)
       || workflow.runtimeStatus === statusFilter;
     const matchesQuery = !normalizedQuery
       || [workflow.name, workflow.description, workflow.trigger, workflow.owner]

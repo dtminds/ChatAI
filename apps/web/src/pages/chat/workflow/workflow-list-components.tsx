@@ -304,7 +304,7 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
   if (workflow.runtimeStatus === "stopped") {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
-  if (workflow.status === "Published") {
+  if (workflow.activationReady) {
     return { className: "bg-primary/10 text-primary", icon: Tick02Icon, label: "已发布" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };

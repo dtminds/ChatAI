@@ -50,9 +50,10 @@ export function logWorkflowReadinessTransition(
   previous: WorkflowReadiness,
   current: WorkflowReadiness,
 ) {
-  if (JSON.stringify(previous) === JSON.stringify(current)) return false;
-
+  const previousReady = isReady(previous);
   const ready = isReady(current);
+  if (previousReady === ready) return false;
+
   const fields = {
     broker: current.broker,
     database: current.database,

@@ -86,6 +86,24 @@ describe("workflow worker observability", () => {
       status: "ready",
     }, "workflow worker readiness recovered");
   });
+
+  it("does not report partial startup progress as readiness degradation", () => {
+    const logger = createLogger();
+    const starting = {
+      broker: true,
+      database: false,
+      roles: { outbox: false, reconciler: false, scheduler: false },
+    };
+    const partiallyReady = {
+      broker: true,
+      database: true,
+      roles: { outbox: false, reconciler: false, scheduler: true },
+    };
+
+    expect(logWorkflowReadinessTransition(logger, starting, partiallyReady)).toBe(false);
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
 });
 
 function createLogger() {

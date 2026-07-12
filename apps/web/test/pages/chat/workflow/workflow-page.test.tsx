@@ -451,13 +451,35 @@ describe("Agent workflow page", () => {
       "/chat/workflows",
     );
     expect(screen.getByRole("textbox", { name: "搜索 Workflow" })).toBeInTheDocument();
-    const createLink = screen.getByRole("link", { name: "新建 Workflow" });
-
-    expect(createLink).toHaveAttribute("href", "/chat/workflows/new");
-    expect(createLink).toHaveAttribute("target", "_blank");
-    expect(createLink).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("button", { name: "新建 Workflow" })).toBeInTheDocument();
     expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
     expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
+  });
+
+  it("collects workflow metadata before creating and opens the new canvas", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    const createDocumentSpy = vi.spyOn(repository, "createDocument");
+    const { router } = renderWorkflowPage("/chat/workflows");
+
+    await user.click(screen.getByRole("button", { name: "新建 Workflow" }));
+
+    expect(createDocumentSpy).not.toHaveBeenCalled();
+    const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
+    const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
+    await user.type(nameInput, "新客欢迎旅程");
+    await user.type(descriptionInput, "添加客户后发送欢迎消息");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => {
+      expect(createDocumentSpy).toHaveBeenCalledWith(expect.objectContaining({
+        description: "添加客户后发送欢迎消息",
+        name: "新客欢迎旅程",
+      }));
+      expect(router.state.location.pathname).toBe("/chat/workflows/workflow-1");
+    });
+    expect(await screen.findByRole("heading", { name: "新客欢迎旅程" })).toBeInTheDocument();
+    expect(getWorkflowDocument("workflow-1").description).toBe("添加客户后发送欢迎消息");
   });
 
   it("renders workflows as cards with their descriptions and direct open links", async () => {

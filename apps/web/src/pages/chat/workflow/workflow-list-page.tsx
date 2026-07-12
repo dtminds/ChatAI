@@ -3,8 +3,8 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,9 +50,12 @@ export function WorkflowListPage({
   repository?: WorkflowDraftRepository;
 }) {
   const { items, reload, status } = useWorkflowListResource(repository);
+  const navigate = useNavigate();
+  const createRequestIdRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
@@ -72,6 +75,32 @@ export function WorkflowListPage({
   const openMetadataDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
     setMetadataTarget(workflow);
+  };
+
+  const createWorkflow = async (metadata: WorkflowMetadata) => {
+    if (operationPending) return false;
+
+    setOperationPending(true);
+    setOperationError(null);
+    createRequestIdRef.current ??= createWorkflowCreateRequestId();
+
+    try {
+      const document = await Promise.resolve(repository.createDocument({
+        clientRequestId: createRequestIdRef.current,
+        ...metadata,
+      }));
+      setCreateDialogOpen(false);
+      createRequestIdRef.current = null;
+      navigate(`/chat/workflows/${document.id}`);
+      return true;
+    }
+    catch (error) {
+      setOperationError(getWorkflowOperationErrorMessage(error));
+    }
+    finally {
+      setOperationPending(false);
+    }
+    return false;
   };
 
   const updateWorkflowMetadata = async (metadata: WorkflowMetadata) => {
@@ -161,11 +190,15 @@ export function WorkflowListPage({
               管理营销旅程
             </p>
           </div>
-          <Button asChild className="h-9 gap-1.5 rounded-lg px-3 text-sm">
-            <Link rel="noopener noreferrer" target="_blank" to="/chat/workflows/new">
-              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-              新建 Workflow
-            </Link>
+          <Button
+            className="h-9 gap-1.5 rounded-lg px-3 text-sm"
+            onClick={() => {
+              setOperationError(null);
+              setCreateDialogOpen(true);
+            }}
+          >
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
+            新建 Workflow
           </Button>
         </div>
 
@@ -262,6 +295,25 @@ export function WorkflowListPage({
         pending={operationPending}
       />
 
+      <WorkflowMetadataDialog
+        error={operationError}
+        metadata={{ description: "", name: "" }}
+        onOpenChange={(open) => {
+          if (!operationPending) {
+            setCreateDialogOpen(open);
+            if (!open) {
+              createRequestIdRef.current = null;
+              setOperationError(null);
+            }
+          }
+        }}
+        onSave={createWorkflow}
+        open={createDialogOpen}
+        pending={operationPending}
+        submitLabel="创建"
+        title="新建 Workflow"
+      />
+
       <WorkflowDeleteDialog
         error={operationError}
         onDelete={() => void deleteWorkflow()}
@@ -276,6 +328,12 @@ export function WorkflowListPage({
       />
     </AiHostingLayout>
   );
+}
+
+function createWorkflowCreateRequestId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `workflow-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function getWorkflowOperationErrorMessage(error: unknown) {

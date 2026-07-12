@@ -22,6 +22,8 @@ export function WorkflowMetadataDialog({
   onSave,
   open,
   pending = false,
+  submitLabel = "保存",
+  title = "编辑 Workflow 信息",
 }: {
   error?: string | null;
   metadata: WorkflowMetadata;
@@ -29,6 +31,8 @@ export function WorkflowMetadataDialog({
   onSave: (metadata: WorkflowMetadata) => Promise<boolean>;
   open: boolean;
   pending?: boolean;
+  submitLabel?: string;
+  title?: string;
 }) {
   const [nameValue, setNameValue] = useState(metadata.name);
   const [descriptionValue, setDescriptionValue] = useState(metadata.description);
@@ -61,7 +65,7 @@ export function WorkflowMetadataDialog({
     >
       <DialogContent aria-describedby={undefined} closeButtonDisabled={pending}>
         <DialogHeader>
-          <DialogTitle>编辑 Workflow 信息</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -101,7 +105,7 @@ export function WorkflowMetadataDialog({
           {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button disabled={!nameValue.trim() || pending} type="submit">
-              {pending ? "保存中" : "保存"}
+              {pending ? `${submitLabel}中` : submitLabel}
             </Button>
           </DialogFooter>
         </form>

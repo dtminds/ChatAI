@@ -57,6 +57,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const document = createNewWorkflowDocument(
         `workflow-${workflowIdSequence.toString(36)}`,
         input?.name,
+        input?.description,
       );
       workflowDocuments = [document, ...workflowDocuments];
 
@@ -447,7 +448,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   ];
 }
 
-function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument {
+function createNewWorkflowDocument(id: string, name?: string, description?: string): WorkflowDocument {
   const draft = createInitialDraft();
 
   return {
@@ -455,7 +456,7 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
     canOperate: true,
     conversion: "0%",
     currentVersion: null,
-    description: "",
+    description: description?.trim() || "",
     draft,
     draftHash: createWorkflowDraftHash(draft),
     entered: "0",

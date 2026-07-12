@@ -11,7 +11,7 @@ The Worker writes JSON to stdout through Pino. Production uses `LOG_LEVEL=info`.
 | Level | Meaning |
 | --- | --- |
 | `debug` | Idle polling and per-iteration diagnostics |
-| `info` | Process lifecycle, readiness recovery, and iterations that handled work |
+| `info` | Process lifecycle, readiness becoming ready, and iterations that handled work |
 | `warn` | Readiness degradation, retries, dead records, lease recovery, and stalled-task republish |
 | `error` | A role iteration or readiness check failed |
 

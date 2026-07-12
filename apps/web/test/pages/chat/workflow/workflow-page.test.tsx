@@ -489,6 +489,18 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
   });
 
+  it("shows an explicit placeholder when a workflow has no description", async () => {
+    await getWorkflowDraftRepository().createDocument({
+      clientRequestId: "empty-description-workflow",
+      name: "未填写描述的流程",
+    });
+
+    renderWorkflowPage("/chat/workflows");
+
+    const card = await screen.findByRole("article", { name: "未填写描述的流程" });
+    expect(within(card).getByText("暂无描述")).toBeInTheDocument();
+  });
+
   it("renders the direct editor route as a fullscreen canvas without a list back link", async () => {
     const createDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "createDocument");
     const { router } = renderWorkflowPage("/chat/workflows/new");

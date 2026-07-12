@@ -1,5 +1,6 @@
 import {
   AlertCircleIcon,
+  CheckmarkCircle02Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -69,11 +70,14 @@ export function WorkflowListCard({
   return (
     <article
       aria-labelledby={titleId}
-      className="relative flex min-h-80 flex-col rounded-lg border bg-background p-5 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
+      className="relative flex flex-col rounded-lg border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
     >
-      <Badge className={cn("w-fit rounded-md", status.className)}>{status.label}</Badge>
+      <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
+        <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
+        {status.label}
+      </Badge>
 
-      <div className="mt-5 min-w-0">
+      <div className="mt-2 min-w-0">
         <Link
           aria-label={`打开 ${workflow.name}`}
           className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
@@ -81,24 +85,24 @@ export function WorkflowListCard({
         >
           <h2 className="truncate text-base font-semibold" id={titleId}>{workflow.name}</h2>
         </Link>
-        <p className="mt-1.5 min-h-10 line-clamp-2 text-sm leading-5 text-muted-foreground">
-          {workflow.description}
+        <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">
+          {workflow.description || "暂无描述"}
         </p>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-6">
+      <div className="mt-4 grid grid-cols-2 gap-6">
         <WorkflowMetric label="进入人数" value={workflow.entered} />
         <WorkflowMetric label="转化率" value={workflow.conversion} />
       </div>
 
-      <div className="mt-5 border-t border-dashed pt-4">
+      <div className="mt-4 border-t border-dashed pt-3">
         <div className="text-xs text-muted-foreground">触发条件</div>
-        <div className="mt-2 inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-foreground">
+        <div className="mt-1.5 inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-foreground">
           <span className="truncate">{workflow.trigger}</span>
         </div>
       </div>
 
-      <div className="relative z-10 mt-auto flex items-center gap-2 pt-5">
+      <div className="relative z-10 mt-4 flex items-center gap-2">
         <WorkflowPrimaryAction
           onLifecycleAction={onLifecycleAction}
           operationPending={operationPending}
@@ -346,16 +350,16 @@ function WorkflowMetric({ label, value }: { label: string; value: string }) {
 
 function getWorkflowStatus(workflow: WorkflowListItem) {
   if (workflow.runtimeStatus === "active") {
-    return { className: "bg-success-muted text-success", label: "运行中" };
+    return { className: "bg-success-muted text-success", icon: CheckmarkCircle02Icon, label: "运行中" };
   }
   if (workflow.runtimeStatus === "paused") {
-    return { className: "bg-warning-muted text-warning", label: "已暂停" };
+    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "已暂停" };
   }
   if (workflow.runtimeStatus === "stopped") {
-    return { className: "bg-muted text-muted-foreground", label: "已停止" };
+    return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
   if (workflow.status === "Published") {
-    return { className: "bg-primary/10 text-primary", label: "已发布" };
+    return { className: "bg-primary/10 text-primary", icon: CheckmarkCircle02Icon, label: "已发布" };
   }
-  return { className: "bg-muted text-muted-foreground", label: "草稿" };
+  return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
 }

@@ -46,7 +46,7 @@ Second row:
 
 - Cloud status icon and autosave state.
 - Saved state shows only the formatted time (`已自动保存 HH:mm:ss`); saving and failed states retain their current behavior.
-- Show `有尚未发布的修改` only when a published revision exists and the active draft differs from that revision.
+- Show `有尚未发布的修改` only when a published revision exists and the active draft's execution semantics differ from that revision; viewport and node-position changes remain autosaved editor state.
 - Do not repeat published timestamps in the left header.
 
 The right-side history, publish, and overflow actions remain unchanged.

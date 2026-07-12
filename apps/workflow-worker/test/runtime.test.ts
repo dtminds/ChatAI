@@ -174,7 +174,7 @@ function createResources() {
       pingDatabase: vi.fn(async () => {
         if (!databaseReady) throw new Error("database unavailable");
       }),
-      logger: { error: vi.fn(), info: vi.fn() },
+      logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       outboxPublisher,
       outboxRepository: {} as never,
       reconciler,

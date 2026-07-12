@@ -82,6 +82,7 @@ export * from "./error-policy.js";
 export * from "./health.js";
 export * from "./logger.js";
 export * from "./outbox-publisher.js";
+export * from "./observability.js";
 export * from "./reconciler.js";
 export * from "./role-loop.js";
 export * from "./runtime.js";

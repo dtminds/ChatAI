@@ -3,6 +3,11 @@ import type { WorkflowBroker, WorkflowBrokerSubscription } from "./broker/types.
 import type { WorkflowWorkerConfig } from "./config.js";
 import type { startEntryConsumer } from "./entry-consumer.js";
 import type { WorkflowReadiness } from "./health.js";
+import {
+  logWorkflowReadinessTransition,
+  logWorkflowRoleHeartbeat,
+  type WorkflowWorkerLogger,
+} from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
 import type { publishWorkflowOutboxBatch } from "./outbox-publisher.js";
 import type { reconcileWorkflowRuntime } from "./reconciler.js";
@@ -11,11 +16,6 @@ import type { scheduleWorkflowTasks } from "./scheduler.js";
 
 type WorkerRuntimeService = Parameters<typeof startEntryConsumer>[0]["runtimeService"]
   & Parameters<typeof startTaskConsumer>[0]["runtimeService"];
-type WorkerLogger = {
-  error(value: unknown, message?: string): void;
-  info(value: unknown, message?: string): void;
-};
-
 export async function startWorkflowWorker(input: {
   config: WorkflowWorkerConfig;
   logger: { info(value: unknown, message?: string): void };
@@ -39,7 +39,11 @@ export async function startWorkflowWorker(input: {
     await runtime.close();
     throw error;
   }
-  input.logger.info({ environment: input.config.environment, roles: [...input.config.roles] }, "workflow worker started");
+  input.logger.info({
+    environment: input.config.environment,
+    event: "workflow.worker.started",
+    roles: [...input.config.roles],
+  }, "workflow worker started");
   let closed = false;
   return {
     async close() {
@@ -47,7 +51,7 @@ export async function startWorkflowWorker(input: {
       closed = true;
       await runtime.close();
       await health.close();
-      input.logger.info("workflow worker stopped");
+      input.logger.info({ event: "workflow.worker.stopped" }, "workflow worker stopped");
     },
   };
 }
@@ -58,7 +62,7 @@ export async function startWorkflowWorkerRuntime(input: {
   database: { destroy(): Promise<void> };
   entryConsumer: typeof startEntryConsumer;
   pingDatabase(): Promise<void>;
-  logger: WorkerLogger;
+  logger: WorkflowWorkerLogger;
   outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
   outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
   reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
@@ -79,6 +83,7 @@ export async function startWorkflowWorkerRuntime(input: {
     roles: Object.fromEntries([...input.config.roles].map(role => [role, false])),
   };
   let closed = false;
+  let previousReadiness = structuredClone(readiness);
 
   try {
     await input.pingDatabase();
@@ -148,8 +153,16 @@ export async function startWorkflowWorkerRuntime(input: {
     }
     loops.push(input.roleLoop({
       intervalMs: input.config.runtime.readinessIntervalMs,
-      onError: error => input.logger.error({ error, role: "readiness" }, "workflow worker readiness probe failed"),
-      onHeartbeat: heartbeat => input.logger.info({ ...heartbeat, role: "readiness" }, "workflow worker readiness checked"),
+      onError: error => input.logger.error({
+        error,
+        event: "workflow.worker.readiness.failed",
+        role: "readiness",
+      }, "workflow worker readiness probe failed"),
+      onHeartbeat: heartbeat => {
+        const currentReadiness = heartbeat.result as WorkflowReadiness;
+        logWorkflowReadinessTransition(input.logger, previousReadiness, currentReadiness);
+        previousReadiness = structuredClone(currentReadiness);
+      },
       role: "readiness",
       run: async () => {
         const healthTopics = new Set<string>();
@@ -203,11 +216,15 @@ export async function startWorkflowWorkerRuntime(input: {
       intervalMs,
       onError: error => {
         readiness.roles[role] = false;
-        input.logger.error({ error, role }, "workflow worker role iteration failed");
+        input.logger.error({
+          error,
+          event: "workflow.worker.role.failed",
+          role,
+        }, "workflow worker role iteration failed");
       },
       onHeartbeat: heartbeat => {
         readiness.roles[role] = true;
-        input.logger.info({ ...heartbeat, role }, "workflow worker role iteration completed");
+        logWorkflowRoleHeartbeat(input.logger, role, heartbeat);
       },
       role,
       run,

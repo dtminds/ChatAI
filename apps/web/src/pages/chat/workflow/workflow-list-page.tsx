@@ -180,10 +180,10 @@ export function WorkflowListPage({
             onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
             value={statusFilter}
           >
-            <TabsList className="h-9 gap-0 rounded-lg bg-muted p-1">
+            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
               {workflowStatusFilters.map(filter => (
                 <TabsTrigger
-                  className="h-7 min-w-0 rounded-md px-3 py-1 text-xs"
+                  className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm"
                   key={filter.value}
                   value={filter.value}
                 >

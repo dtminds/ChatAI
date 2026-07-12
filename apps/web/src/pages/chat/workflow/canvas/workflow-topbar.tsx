@@ -9,25 +9,16 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +32,7 @@ import type {
   WorkflowDraftSaveStatus,
   WorkflowRepositoryErrorCode,
 } from "../workflow-draft-service";
+import { WorkflowMetadataDialog } from "../workflow-metadata-dialog";
 
 export function WorkflowTopBar({
   canPublish = true,
@@ -110,37 +102,10 @@ export function WorkflowTopBar({
   workflowName: string;
 }) {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
-  const [nameValue, setNameValue] = useState(workflowName);
-  const [descriptionValue, setDescriptionValue] = useState(description);
   const published = publishState === "published";
   const publishing = publishState === "publishing";
   const restoring = restoreState === "restoring";
   const readOnlyMode = Boolean(isPreviewingVersion);
-
-  useEffect(() => {
-    if (!metadataDialogOpen) {
-      setNameValue(workflowName);
-      setDescriptionValue(description);
-    }
-  }, [description, metadataDialogOpen, workflowName]);
-
-  const submitMetadata = async () => {
-    const normalizedName = nameValue.trim();
-    const normalizedDescription = descriptionValue.trim();
-
-    if (!normalizedName) return;
-    if (normalizedName === workflowName && normalizedDescription === description) {
-      setMetadataDialogOpen(false);
-      return;
-    }
-
-    if (onUpdateMetadata && await onUpdateMetadata({
-      description: normalizedDescription,
-      name: normalizedName,
-    })) {
-      setMetadataDialogOpen(false);
-    }
-  };
 
   return (
     <header className="workflow-canvas-topbar z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
@@ -324,62 +289,13 @@ export function WorkflowTopBar({
         )}
       </div>
 
-      <Dialog
-        onOpenChange={(open) => {
-          if (!metadataUpdating) setMetadataDialogOpen(open);
-        }}
+      <WorkflowMetadataDialog
+        metadata={{ description, name: workflowName }}
+        onOpenChange={setMetadataDialogOpen}
+        onSave={async metadata => await onUpdateMetadata?.(metadata) ?? false}
         open={metadataDialogOpen}
-      >
-        <DialogContent aria-describedby={undefined} closeButtonDisabled={metadataUpdating}>
-          <DialogHeader>
-            <DialogTitle>编辑 Workflow 信息</DialogTitle>
-          </DialogHeader>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitMetadata();
-            }}
-          >
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium" htmlFor="workflow-metadata-name">Workflow 名称</label>
-                <span className="text-xs text-muted-foreground">{nameValue.length}/100</span>
-              </div>
-              <Input
-                autoFocus
-                id="workflow-metadata-name"
-                maxLength={100}
-                onChange={(event) => setNameValue(event.target.value)}
-                readOnly={metadataUpdating}
-                value={nameValue}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium" htmlFor="workflow-metadata-description">Workflow 描述</label>
-                <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
-              </div>
-              <Textarea
-                id="workflow-metadata-description"
-                maxLength={1000}
-                onChange={(event) => setDescriptionValue(event.target.value)}
-                placeholder="填写 Workflow 的用途或目标"
-                readOnly={metadataUpdating}
-                value={descriptionValue}
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={!nameValue.trim() || metadataUpdating}
-                type="submit"
-              >
-                {metadataUpdating ? "保存中" : "保存"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        pending={metadataUpdating}
+      />
     </header>
   );
 }

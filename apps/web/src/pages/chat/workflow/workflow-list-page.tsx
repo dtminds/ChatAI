@@ -27,8 +27,8 @@ import {
   WorkflowListCard,
   type WorkflowLifecycleAction,
   WorkflowListState,
-  WorkflowRenameDialog,
 } from "./workflow-list-components";
+import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
   return <WorkflowListPage repository={repository} />;
@@ -52,8 +52,7 @@ export function WorkflowListPage({
   const { items, reload, status } = useWorkflowListResource(repository);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
-  const [renameTarget, setRenameTarget] = useState<WorkflowListItem | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
@@ -70,27 +69,22 @@ export function WorkflowListPage({
     return matchesStatus && matchesQuery;
   }), [items, normalizedQuery, statusFilter]);
 
-  const openRenameDialog = (workflow: WorkflowListItem) => {
+  const openMetadataDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
-    setRenameTarget(workflow);
-    setRenameValue(workflow.name);
+    setMetadataTarget(workflow);
   };
 
-  const renameWorkflow = async () => {
-    if (!renameTarget || !renameValue.trim() || operationPending) {
-      return;
-    }
+  const updateWorkflowMetadata = async (metadata: WorkflowMetadata) => {
+    if (!metadataTarget || operationPending) return false;
 
     setOperationPending(true);
     setOperationError(null);
 
     try {
-      await Promise.resolve(repository.updateDocumentMetadata(renameTarget.id, {
-        description: renameTarget.description,
-        name: renameValue,
-      }));
-      setRenameTarget(null);
+      await Promise.resolve(repository.updateDocumentMetadata(metadataTarget.id, metadata));
+      setMetadataTarget(null);
       await reload();
+      return true;
     }
     catch (error) {
       setOperationError(getWorkflowOperationErrorMessage(error));
@@ -98,6 +92,7 @@ export function WorkflowListPage({
     finally {
       setOperationPending(false);
     }
+    return false;
   };
 
   const deleteWorkflow = async () => {
@@ -241,7 +236,7 @@ export function WorkflowListPage({
                   setDeleteTarget(workflow);
                 }}
                 onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
-                onRename={() => openRenameDialog(workflow)}
+                onRename={() => openMetadataDialog(workflow)}
                 operationPending={lifecyclePendingId === workflow.id}
                 workflow={workflow}
               />
@@ -250,20 +245,21 @@ export function WorkflowListPage({
         ) : null}
       </section>
 
-      <WorkflowRenameDialog
+      <WorkflowMetadataDialog
         error={operationError}
-        onCancel={() => setRenameTarget(null)}
+        metadata={{
+          description: metadataTarget?.description ?? "",
+          name: metadataTarget?.name ?? "",
+        }}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
-            setRenameTarget(null);
+            setMetadataTarget(null);
             setOperationError(null);
           }
         }}
-        onRename={() => void renameWorkflow()}
-        onValueChange={setRenameValue}
-        open={Boolean(renameTarget)}
+        onSave={updateWorkflowMetadata}
+        open={Boolean(metadataTarget)}
         pending={operationPending}
-        value={renameValue}
       />
 
       <WorkflowDeleteDialog

@@ -593,7 +593,7 @@ describe("Agent workflow page", () => {
     });
   });
 
-  it("filters workflow rows and supports renaming from the row menu", async () => {
+  it("filters workflow cards and edits metadata from the card menu", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");
 
@@ -605,15 +605,23 @@ describe("Agent workflow page", () => {
 
     await user.clear(screen.getByRole("textbox", { name: "搜索 Workflow" }));
     await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
-    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑信息" }));
     const nameInput = screen.getByRole("textbox", { name: "Workflow 名称" });
+    const descriptionInput = screen.getByRole("textbox", { name: "Workflow 描述" });
     expect(nameInput).toHaveAttribute("maxlength", "100");
+    expect(descriptionInput).toHaveAttribute("maxlength", "1000");
+    expect(nameInput).toHaveValue("新人转化旅程");
+    expect(descriptionInput).toHaveValue("引导新客户完成首次购买");
     await user.clear(nameInput);
     await user.type(nameInput, "新客首购旅程");
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, "帮助新客户完成第一次购买");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText("新客首购旅程")).toBeInTheDocument();
+    expect(screen.getByText("帮助新客户完成第一次购买")).toBeInTheDocument();
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+    expect(getWorkflowDocument("newcomer-conversion").description).toBe("帮助新客户完成第一次购买");
   });
 
   it("deletes a workflow from the row menu and refreshes the list", async () => {

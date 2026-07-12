@@ -23,13 +23,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -44,7 +37,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
@@ -205,7 +197,7 @@ function WorkflowCardMenu({
         ) : null}
         <DropdownMenuItem onSelect={onRename}>
           <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
-          重命名
+          编辑信息
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
@@ -224,56 +216,6 @@ function WorkflowCardMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-export function WorkflowRenameDialog({
-  error,
-  onCancel,
-  onOpenChange,
-  onRename,
-  onValueChange,
-  open,
-  pending,
-  value,
-}: {
-  error: string | null;
-  onCancel: () => void;
-  onOpenChange: (open: boolean) => void;
-  onRename: () => void;
-  onValueChange: (value: string) => void;
-  open: boolean;
-  pending: boolean;
-  value: string;
-}) {
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>重命名 Workflow</DialogTitle>
-        </DialogHeader>
-        <Input
-          aria-label="Workflow 名称"
-          autoFocus
-          maxLength={100}
-          onChange={(event) => onValueChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              onRename();
-            }
-          }}
-          value={value}
-        />
-        {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
-        <DialogFooter>
-          <Button disabled={pending} onClick={onCancel} type="button" variant="outline">取消</Button>
-          <Button disabled={!value.trim() || pending} onClick={onRename} type="button">
-            {pending ? "保存中" : "保存"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

@@ -38,9 +38,11 @@ export function WorkflowMetadataDialog({
   const [descriptionValue, setDescriptionValue] = useState(metadata.description);
 
   useEffect(() => {
-    setNameValue(metadata.name);
-    setDescriptionValue(metadata.description);
-  }, [metadata.description, metadata.name]);
+    if (open) {
+      setNameValue(metadata.name);
+      setDescriptionValue(metadata.description);
+    }
+  }, [metadata.description, metadata.name, open]);
 
   const submitMetadata = async () => {
     const normalizedMetadata = {

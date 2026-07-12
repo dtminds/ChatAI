@@ -482,6 +482,20 @@ describe("Agent workflow page", () => {
     expect(getWorkflowDocument("workflow-1").description).toBe("添加客户后发送欢迎消息");
   });
 
+  it("discards unfinished metadata when the create dialog is reopened", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(screen.getByRole("button", { name: "新建 Workflow" }));
+    await user.type(screen.getByRole("textbox", { name: "Workflow 名称" }), "未保存名称");
+    await user.type(screen.getByRole("textbox", { name: "Workflow 描述" }), "未保存描述");
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "新建 Workflow" }));
+
+    expect(screen.getByRole("textbox", { name: "Workflow 名称" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Workflow 描述" })).toHaveValue("");
+  });
+
   it("renders workflows as cards with their descriptions and direct open links", async () => {
     renderWorkflowPage("/chat/workflows");
 

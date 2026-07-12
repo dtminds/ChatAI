@@ -9,6 +9,7 @@ import {
   cloneWorkflowDraft,
   cloneWorkflowVersionHistoryItem,
   createWorkflowDraftHash,
+  createWorkflowPublishHash,
   createWorkflowPublishedVersion,
   createWorkflowVersionHistoryItem,
   getWorkflowConversion,
@@ -141,34 +142,60 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
       const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
-      const nextRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
-      const publishedAt = "刚刚";
-      const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, persistedDraft);
+      const nextDraftRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
+      const shouldCreatePublishedRevision = currentDocument.publishedRevision === null
+        || !currentDocument.publishedDraft
+        || createWorkflowPublishHash(currentDocument.publishedDraft) !== createWorkflowPublishHash(nextDraft);
+      const nextPublishedRevision = shouldCreatePublishedRevision
+        ? nextDraftRevision
+        : currentDocument.publishedRevision;
+      const publishedAt = shouldCreatePublishedRevision ? "刚刚" : currentDocument.publishedAt;
+      const createdVersion = shouldCreatePublishedRevision
+        ? createWorkflowVersionHistoryItem(currentDocument.id, nextDraftRevision, "刚刚", persistedDraft)
+        : null;
+      const currentVersion = createdVersion ?? currentDocument.currentVersion;
       const nextDraftHash = shouldCreateDraftRevision
         ? createWorkflowDraftHash(nextDraft)
         : currentDocument.draftHash;
       const nextDocument: WorkflowDocument = {
         ...currentDocument,
         conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        currentVersion: version,
+        currentVersion,
         draft: persistedDraft,
         draftHash: nextDraftHash,
         nodes: persistedDraft.nodes.length,
         publishedAt,
-        publishedDraft: cloneWorkflowDraft(persistedDraft),
-        publishedRevision: nextRevision,
-        revision: nextRevision,
-        savedAt: publishedAt,
+        publishedDraft: shouldCreatePublishedRevision
+          ? cloneWorkflowDraft(persistedDraft)
+          : currentDocument.publishedDraft,
+        publishedRevision: nextPublishedRevision,
+        revision: nextDraftRevision,
+        savedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.savedAt,
         status: "Published",
         trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt: publishedAt,
-        versionHistory: [
-          version,
-          ...currentDocument.versionHistory.filter((historyVersion) => historyVersion.id !== version.id),
-        ],
+        updatedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.updatedAt,
+        versionHistory: createdVersion
+          ? [
+              createdVersion,
+              ...currentDocument.versionHistory.filter((historyVersion) => historyVersion.id !== createdVersion.id),
+            ]
+          : currentDocument.versionHistory,
       };
 
       workflowDocuments[documentIndex] = nextDocument;
+      if (!shouldCreatePublishedRevision && currentVersion && nextPublishedRevision !== null && publishedAt) {
+        return {
+          document: cloneWorkflowDocument(nextDocument),
+          draft: cloneWorkflowDraft(persistedDraft),
+          draftHash: nextDraftHash,
+          publishedAt,
+          publishedRevision: nextPublishedRevision,
+          revision: nextDraftRevision,
+          updatedAt: nextDocument.updatedAt,
+          validatedOnly: false,
+          version: { ...currentVersion },
+        };
+      }
       return normalizeWorkflowDraftPublishResult(nextDocument);
     },
     reset: () => {
@@ -176,17 +203,22 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowIdSequence = 0;
       createdDocumentIdsByRequest.clear();
     },
-    renameDocument: (workflowId, name) => {
-      const normalizedName = name.trim();
+    updateDocumentMetadata: (workflowId, metadata) => {
+      const normalizedName = metadata.name.trim();
+      const normalizedDescription = metadata.description.trim();
 
       if (!normalizedName) {
         throw new WorkflowRepositoryError("validation", "Workflow name is required");
+      }
+      if (normalizedDescription.length > 1000) {
+        throw new WorkflowRepositoryError("validation", "Workflow description is too long");
       }
 
       const documentIndex = getWorkflowDocumentIndex(workflowId);
       const currentDocument = workflowDocuments[documentIndex];
       const nextDocument = {
         ...currentDocument,
+        description: normalizedDescription,
         name: normalizedName,
         updatedAt: "刚刚",
       };
@@ -337,6 +369,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "18.4%",
       currentVersion: null,
+      description: "引导新客户完成首次购买",
       draft: newcomerConversionDraft,
       draftHash: createWorkflowDraftHash(newcomerConversionDraft),
       entered: "124.8万",
@@ -362,6 +395,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "23.1%",
       currentVersion: createWorkflowPublishedVersion("vip-reactivation", 1, "昨天 21:04"),
+      description: "唤醒长期未复购的会员客户",
       draft: vipReactivationDraft,
       draftHash: createWorkflowDraftHash(vipReactivationDraft),
       entered: "86.3万",
@@ -389,6 +423,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
       canOperate: true,
       conversion: "9.7%",
       currentVersion: null,
+      description: "直播结束后继续跟进高意向客户",
       draft: liveFollowUpDraft,
       draftHash: createWorkflowDraftHash(liveFollowUpDraft),
       entered: "42.6万",
@@ -420,6 +455,7 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
     canOperate: true,
     conversion: "0%",
     currentVersion: null,
+    description: "",
     draft,
     draftHash: createWorkflowDraftHash(draft),
     entered: "0",

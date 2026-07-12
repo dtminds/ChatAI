@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowDefinitionSchema,
   WorkflowDraftSchema,
+  WorkflowMetadataUpdateRequestSchema,
   WorkflowRuntimeStatusSchema,
 } from "../src/workflow/dto.js";
 import {
@@ -22,6 +23,7 @@ describe("workflow contracts", () => {
   it("keeps database identifiers as decimal strings", () => {
     const definition = {
       createdAt: "2026-07-10T00:00:00.000Z",
+      description: "引导新客完成首购",
       draft: createDraft("branch"),
       draftVersion: 1,
       id: "9007199254740993",
@@ -41,6 +43,17 @@ describe("workflow contracts", () => {
 
     expect(Value.Check(WorkflowDefinitionSchema, definition)).toBe(true);
     expect(Value.Check(WorkflowDefinitionSchema, { ...definition, id: 9_007_199_254_740_993 })).toBe(false);
+  });
+
+  it("limits workflow metadata descriptions to 1000 characters", () => {
+    expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
+      description: "描".repeat(1000),
+      name: "新客培育",
+    })).toBe(true);
+    expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
+      description: "描".repeat(1001),
+      name: "新客培育",
+    })).toBe(false);
   });
 
   it("models paused and stopped as distinct runtime states", () => {

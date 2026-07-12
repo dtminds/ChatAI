@@ -24,7 +24,7 @@ describe("reduceWorkflowViewState", () => {
     });
 
     expect(previewState).toEqual({
-      activePanel: "version-history",
+      activePanel: null,
       inspectorOpen: false,
       previewVersionId: "version-1",
     });
@@ -33,7 +33,7 @@ describe("reduceWorkflowViewState", () => {
       type: "close-version-history",
     })).toEqual({
       activePanel: null,
-      inspectorOpen: true,
+      inspectorOpen: false,
       previewVersionId: null,
     });
   });

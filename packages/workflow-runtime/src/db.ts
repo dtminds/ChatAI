@@ -10,6 +10,7 @@ export interface WorkflowDefinitionTable {
   biz_status: number;
   client_request_id: string | null;
   create_time: GeneratedDate;
+  description: string;
   draft_json: JsonText;
   draft_schema_version: number;
   draft_version: number;

@@ -33,6 +33,7 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
       bizStatus: 1,
       clientRequestId: input.clientRequestId,
       createdAt: now,
+      description: input.description,
       draft: clone(input.draft),
       draftSchemaVersion: 1,
       draftVersion: 1,
@@ -105,10 +106,11 @@ export class InMemoryWorkflowRepository implements WorkflowRepository, WorkflowT
     return this.saveDraft(input);
   }
 
-  async renameDefinition(input: Parameters<WorkflowRepository["renameDefinition"]>[0]) {
+  async updateDefinitionMetadata(input: Parameters<WorkflowRepository["updateDefinitionMetadata"]>[0]) {
     return this.mutate(input.uid, input.workflowId, (definition) => {
       if (definition.runtimeStatus === "stopped") return invalidStatus(definition.runtimeStatus);
-      definition.name = input.name;
+      if (input.name !== undefined) definition.name = input.name;
+      if (input.description !== undefined) definition.description = input.description;
       touch(definition, input.opSubUserId);
       return success(definition);
     });

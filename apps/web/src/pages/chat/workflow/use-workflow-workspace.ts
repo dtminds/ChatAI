@@ -60,8 +60,10 @@ export function useWorkflowWorkspace(
 ) {
   const {
     document,
+    hasUnpublishedChanges,
     lastSavedAt,
     markDirty,
+    metadataUpdateState,
     publishDraft,
     publishError,
     publishState,
@@ -70,6 +72,7 @@ export function useWorkflowWorkspace(
     restoreVersion,
     saveError,
     saveState,
+    updateMetadata,
   } = useWorkflowDocument(workflowId, repository, initialDocument);
   const [viewState, dispatchViewState] = useReducer(
     reduceWorkflowViewState,
@@ -461,6 +464,16 @@ export function useWorkflowWorkspace(
     if (result) toast.success("发布成功");
   });
 
+  const updateWorkflowMetadata = useWorkflowStableCallback(async (metadata: { description: string; name: string }) => {
+    try {
+      return await updateMetadata(metadata);
+    }
+    catch {
+      toast.error("保存失败，请重试");
+      return false;
+    }
+  });
+
   const handleNodesChange = useWorkflowStableCallback((changes: NodeChange<WorkflowRenderNode>[]) => {
     if (!permissions.canEditGraph) {
       return;
@@ -535,9 +548,6 @@ export function useWorkflowWorkspace(
 
   const closeVersionHistory = useWorkflowStableCallback(() => {
     dispatchViewState({ type: "close-version-history" });
-    clearEdgeSelection();
-    clearNodeSelection();
-    closeCanvasOverlays();
   });
 
   const openVersionHistory = useWorkflowStableCallback(() => {
@@ -627,17 +637,23 @@ export function useWorkflowWorkspace(
     },
     topBar: {
       canPublish: permissions.canPublish,
+      canRename: document.permissions.canEdit && !isPreviewingVersion,
       canRetrySave: Boolean(saveError),
+      description: document.description,
+      hasUnpublishedChanges,
       lastSavedAt,
       onOpenVersionHistory: openVersionHistory,
       onPublishCheck: handlePublishCheck,
       onPublish: publishCurrentDraft,
+      onUpdateMetadata: updateWorkflowMetadata,
       onRetrySave: retrySave,
       publishedAt: document.publishedAt,
       publishError,
       publishState,
       publishReady: publishChecks.publishReady,
       readyChecks: publishChecks.readyChecks,
+      metadataUpdating: metadataUpdateState === "updating",
+      runtimeStatus: document.runtimeStatus,
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
       validatedForActivation: document.runtimeStatus === "inactive"

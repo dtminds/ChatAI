@@ -2,6 +2,25 @@ import { describe, expect, it } from "vitest";
 import { MysqlWorkflowRepository } from "../../../src/modules/workflow/workflow-mysql.repository.js";
 
 describe("MysqlWorkflowRepository", () => {
+  it("updates workflow metadata without changing the draft", async () => {
+    const db = createWorkflowDbMock();
+    const repository = new MysqlWorkflowRepository(db as never);
+
+    await repository.updateDefinitionMetadata({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+      opSubUserId: "19",
+      uid: 8,
+      workflowId: "42",
+    });
+
+    expect(db.updateBuilders[0].sets).toEqual({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+      op_sub_uid: "19",
+    });
+  });
+
   it("saves a draft with tenant, logical-delete, and draft-version fencing", async () => {
     const db = createWorkflowDbMock();
     const repository = new MysqlWorkflowRepository(db as never);
@@ -98,6 +117,7 @@ function createWorkflowDbMock(options: { numUpdatedRows?: bigint } = {}) {
   const row = {
     biz_status: 1,
     create_time: new Date("2026-07-10T00:00:00.000Z"),
+    description: "",
     draft_json: JSON.stringify(createDraft()),
     draft_schema_version: 1,
     draft_version: 4,
@@ -159,6 +179,7 @@ function createPublicationDbMock() {
   const definition = {
     biz_status: 1,
     create_time: now,
+    description: "",
     draft_json: JSON.stringify(createDraft()),
     draft_schema_version: 1,
     draft_version: 4,

@@ -14,6 +14,37 @@ describe("workflow routes", () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
 
+  it("updates workflow metadata and keeps descriptions through the legacy name route", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: {},
+      url: "/api/server/workflows",
+    })).json().data;
+
+    const metadataResponse = await app.inject({
+      method: "PATCH",
+      payload: { description: "引导新客完成首购", name: "新客首购旅程" },
+      url: `/api/server/workflows/${created.id}/metadata`,
+    });
+    expect(metadataResponse.statusCode).toBe(200);
+    expect(metadataResponse.json().data).toMatchObject({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+
+    const renameResponse = await app.inject({
+      method: "PATCH",
+      payload: { name: "首购旅程" },
+      url: `/api/server/workflows/${created.id}/name`,
+    });
+    expect(renameResponse.json().data).toMatchObject({
+      description: "引导新客完成首购",
+      name: "首购旅程",
+    });
+  });
+
+
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");
 

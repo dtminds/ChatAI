@@ -157,6 +157,7 @@ function WorkflowWorkspaceContent({
   onReloadDocument?: () => void;
   repository: WorkflowDraftRepository;
 }) {
+  const navigate = useNavigate();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
 
@@ -164,14 +165,21 @@ function WorkflowWorkspaceContent({
     <>
       <WorkflowTopBar
         canPublish={topBar.canPublish}
+        canRename={topBar.canRename}
         canRetrySave={topBar.canRetrySave}
+        description={topBar.description}
+        hasUnpublishedChanges={topBar.hasUnpublishedChanges}
         isPreviewingVersion={versionHistory.isPreviewing}
         lastSavedAt={topBar.lastSavedAt}
+        metadataUpdating={topBar.metadataUpdating}
+        onBack={() => navigate("/chat/workflows")}
+        onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
         onOpenVersionHistory={topBar.onOpenVersionHistory}
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
+        onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
         onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
           ? () => versionHistory.onRestoreVersion(versionHistory.currentPreviewVersionId!)
@@ -186,16 +194,28 @@ function WorkflowWorkspaceContent({
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}
         restoreState={versionHistory.restoreState}
+        runtimeStatus={topBar.runtimeStatus}
         saveState={topBar.saveState}
         totalChecks={topBar.totalChecks}
         validatedForActivation={topBar.validatedForActivation}
+        versionHistoryContent={(
+          <WorkflowVersionHistoryPanel
+            currentPreviewVersionId={versionHistory.currentPreviewVersionId}
+            onClose={versionHistory.onClose}
+            onExitPreview={versionHistory.onExitPreview}
+            onRestoreVersion={versionHistory.onRestoreVersion}
+            onSelectVersion={versionHistory.onSelectVersion}
+            restoreState={versionHistory.restoreState}
+            versions={versionHistory.versions}
+          />
+        )}
+        versionHistoryOpen={versionHistory.isOpen}
         workflowName={currentDocument.name}
       />
 
       <div
         className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
-        data-version-panel-open={versionHistory.isOpen ? "true" : undefined}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           <WorkflowCanvas
@@ -234,17 +254,6 @@ function WorkflowWorkspaceContent({
               onNavigateToNode={checks.onNavigateToNode}
               publishAttempted={checks.publishAttempted}
               publishReady={checks.publishReady}
-            />
-          ) : null}
-          {versionHistory.isOpen ? (
-            <WorkflowVersionHistoryPanel
-              currentPreviewVersionId={versionHistory.currentPreviewVersionId}
-              onClose={versionHistory.onClose}
-              onExitPreview={versionHistory.onExitPreview}
-              onRestoreVersion={versionHistory.onRestoreVersion}
-              onSelectVersion={versionHistory.onSelectVersion}
-              restoreState={versionHistory.restoreState}
-              versions={versionHistory.versions}
             />
           ) : null}
         </section>

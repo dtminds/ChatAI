@@ -1,11 +1,13 @@
 import {
   apiSuccess,
   WorkflowCreateRequestSchema,
+  WorkflowMetadataUpdateRequestSchema,
   WorkflowPublishRequestSchema,
   WorkflowRenameRequestSchema,
   WorkflowRestoreRequestSchema,
   WorkflowSaveDraftRequestSchema,
   type WorkflowCreateRequest,
+  type WorkflowMetadataUpdateRequest,
   type WorkflowPublishRequest,
   type WorkflowRenameRequest,
   type WorkflowRestoreRequest,
@@ -78,6 +80,19 @@ export async function registerWorkflowRoutes(
       getWorkflowScope(request),
       request.params.workflowId,
       request.body.name,
+    )),
+  );
+
+  app.patch<{ Body: WorkflowMetadataUpdateRequest; Params: WorkflowParams }>(
+    "/api/server/workflows/:workflowId/metadata",
+    {
+      ...authenticated,
+      schema: { body: WorkflowMetadataUpdateRequestSchema, params: WorkflowParamsSchema },
+    },
+    async (request) => apiSuccess(await service.updateMetadata(
+      getWorkflowScope(request),
+      request.params.workflowId,
+      request.body,
     )),
   );
 

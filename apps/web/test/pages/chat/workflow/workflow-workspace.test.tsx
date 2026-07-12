@@ -548,6 +548,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
       expect(result.current.document.status).toBe("Published");
       expect(result.current.document.publishedAt).toBe("刚刚");
       expect(toast.success).toHaveBeenCalledWith("发布成功");
@@ -583,6 +584,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(true);
       expect(result.current.canvas.canUndo).toBe(true);
 
       act(() => {
@@ -590,6 +592,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("published");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(false);
       expect(getCanvasStartKeyword(result.current.canvas)).toBe(publishedKeyword);
       expect(result.current.canvas.canRedo).toBe(true);
 
@@ -598,6 +601,7 @@ describe("useWorkflowWorkspace", () => {
       });
 
       expect(result.current.topBar.publishState).toBe("idle");
+      expect(result.current.topBar.hasUnpublishedChanges).toBe(true);
       expect(getCanvasStartKeyword(result.current.canvas)).toBe("发布后的草稿修改");
       expect(getStartKeyword(getWorkflowDocument("newcomer-conversion").publishedDraft)).toBe(publishedKeyword);
     }

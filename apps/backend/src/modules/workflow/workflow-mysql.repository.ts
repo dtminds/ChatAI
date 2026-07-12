@@ -35,6 +35,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
       const result = await this.db.insertInto(DEFINITION_TABLE).values({
         biz_status: 1,
         client_request_id: input.clientRequestId ?? null,
+        description: input.description,
         draft_json: stringifyJson(input.draft),
         draft_schema_version: 1,
         draft_version: 1,
@@ -116,11 +117,13 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
     return this.saveDraft(input);
   }
 
-  async renameDefinition(input: Parameters<WorkflowRepository["renameDefinition"]>[0]) {
-    const updated = await this.db.updateTable(DEFINITION_TABLE).set({
-      name: input.name,
+  async updateDefinitionMetadata(input: Parameters<WorkflowRepository["updateDefinitionMetadata"]>[0]) {
+    const metadata: { description?: string; name?: string; op_sub_uid: string } = {
       op_sub_uid: input.opSubUserId,
-    }).where("uid", "=", input.uid)
+    };
+    if (input.name !== undefined) metadata.name = input.name;
+    if (input.description !== undefined) metadata.description = input.description;
+    const updated = await this.db.updateTable(DEFINITION_TABLE).set(metadata).where("uid", "=", input.uid)
       .where("id", "=", input.workflowId)
       .where("biz_status", "=", 1)
       .where("runtime_status", "!=", "stopped")
@@ -316,6 +319,7 @@ function mapDefinition(row: Record<string, unknown>): WorkflowDefinitionRecord {
   return {
     bizStatus: Number(row.biz_status) === 1 ? 1 : 0,
     createdAt: toDate(row.create_time),
+    description: String(row.description ?? ""),
     draft: parseJson<WorkflowDraft>(row.draft_json),
     draftSchemaVersion: Number(row.draft_schema_version),
     draftVersion: Number(row.draft_version),

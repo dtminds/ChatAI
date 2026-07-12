@@ -323,10 +323,6 @@
   left: calc((100% - 26.25rem) / 2);
 }
 
-.workflow-editor-body[data-version-panel-open="true"] .workflow-bottom-toolbar {
-  left: calc((100% - 268px - 2rem) / 2);
-}
-
 .workflow-editor-body[data-run-panel-open="true"] .workflow-bottom-toolbar {
   left: calc((100% - 360px - 2rem) / 2);
 }

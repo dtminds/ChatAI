@@ -9,8 +9,8 @@ import {
 import { Add01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
-import { getPaletteItemsByKinds, paletteItems } from "../node-definitions";
 import type { WorkflowRenderEdge } from "../types";
+import { WorkflowNodePicker } from "./workflow-palette";
 
 export function WorkflowBezierEdge({
   data,
@@ -38,10 +38,6 @@ export function WorkflowBezierEdge({
   const isConnectedHighlight = data?.highlightState === "connected";
   const isDimmed = data?.highlightState === "dimmed";
   const stroke = selected || isConnectedHighlight ? "var(--workflow-blue)" : "var(--workflow-edge)";
-  const candidatePaletteItems = data?.insertableNodeKinds
-    ? getPaletteItemsByKinds(data.insertableNodeKinds)
-    : paletteItems;
-
   return (
     <>
       <BaseEdge
@@ -82,35 +78,14 @@ export function WorkflowBezierEdge({
             <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={1.8} />
           </button>
           {menuOpen ? (
-            <div
-              aria-label="从连线添加节点"
-              className="workflow-edge-menu absolute left-1/2 top-[34px] z-40 w-[248px] -translate-x-1/2 rounded-xl border-[0.5px] border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] p-1.5 shadow-[0_18px_44px_var(--shadow-medium)] backdrop-blur-[10px]"
-              onClick={(event) => event.stopPropagation()}
+            <WorkflowNodePicker
+              className="workflow-edge-menu absolute left-1/2 top-[34px] z-40 w-[340px] -translate-x-1/2"
+              kinds={data?.insertableNodeKinds}
+              onAddNode={(kind) => {
+                data?.onInsertBetween?.(id, source, target, kind);
+              }}
               role="menu"
-            >
-              {candidatePaletteItems.map((item) => (
-                <button
-                  className="workflow-edge-menu-item flex w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-[7px] text-left transition-colors hover:bg-muted"
-                  key={item.id}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    data?.onInsertBetween?.(id, source, target, item.id);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-                    <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground">{item.label}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {item.description}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
+            />
           ) : null}
         </div>
       </EdgeLabelRenderer>

@@ -93,7 +93,7 @@ export function WorkflowListRow({
         </div>
         <div className="flex items-center gap-1">
           <Button asChild className="h-8 rounded-lg px-2.5 text-xs" variant="outline">
-            <Link rel="noopener noreferrer" target="_blank" to={`/chat/workflows/${workflow.id}`}>编辑</Link>
+            <Link to={`/chat/workflows/${workflow.id}`}>编辑</Link>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -185,7 +185,7 @@ export function WorkflowRenameDialog({
         <Input
           aria-label="Workflow 名称"
           autoFocus
-          maxLength={80}
+          maxLength={100}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {

@@ -4,6 +4,7 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-11
 
+- Added `xy_wap_embed_workflow_definition.description` for Workflow metadata shown from the canvas header.
 - Added the Workflow entry guard and Run entry-window index for subject-level re-entry limits.
 - Made trigger binding filters required.
 - Added lease ownership and expiry fields to the Workflow Outbox so concurrent publishers can safely claim rows and the Reconciler can recover expired leases.
@@ -12,6 +13,9 @@ Manual database changes for the backend should be recorded here.
 Manual migration for databases created from the initial 2026-07-10 Workflow schema:
 
 ```sql
+ALTER TABLE xy_wap_embed_workflow_definition
+  ADD COLUMN description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述' AFTER name;
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_entry_guard (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

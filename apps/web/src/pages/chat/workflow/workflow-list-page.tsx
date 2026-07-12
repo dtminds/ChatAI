@@ -71,7 +71,10 @@ export function WorkflowListPage({
     setOperationError(null);
 
     try {
-      await Promise.resolve(repository.renameDocument(renameTarget.id, renameValue));
+      await Promise.resolve(repository.updateDocumentMetadata(renameTarget.id, {
+        description: renameTarget.description,
+        name: renameValue,
+      }));
       setRenameTarget(null);
       await reload();
     }

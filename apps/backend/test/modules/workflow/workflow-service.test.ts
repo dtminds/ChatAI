@@ -7,6 +7,22 @@ import {
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
+  it("updates trimmed workflow metadata without changing the draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+
+    const updated = await service.updateMetadata(operator, created.id, {
+      description: "  引导新客完成首购  ",
+      name: "  新客首购旅程  ",
+    });
+
+    expect(updated).toMatchObject({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+    expect(updated.draft).toEqual(created.draft);
+  });
+
   it("allows only owners and admins to access workflows", async () => {
     const service = createService();
 
@@ -41,7 +57,11 @@ describe("WorkflowService", () => {
     await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await service.enable(operator, created.id);
     const saved = await service.saveDraft(operator, created.id, {
-      draft: { ...created.draft, viewport: { x: 50, y: 25, zoom: 1 } },
+      draft: withStartConfig(created.draft, {
+        accountIds: ["account-b"],
+        entryPolicy: { mode: "never" },
+        triggers: [{ type: "contact.friend_added" }],
+      }),
       expectedDraftVersion: created.draftVersion,
     });
     await service.pause(operator, created.id);
@@ -53,6 +73,77 @@ describe("WorkflowService", () => {
     expect(published.validatedOnly).toBe(false);
     expect(published.revision?.revision).toBe(2);
     expect(published.definition.runtimeStatus).toBe("paused");
+  });
+
+  it("reuses the published revision for position-only draft changes", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    const enabled = await service.enable(operator, created.id);
+    const movedDraft = {
+      ...enabled.draft,
+      nodes: enabled.draft.nodes.map(node => node.id === "start"
+        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+        : node),
+    };
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: movedDraft,
+      expectedDraftVersion: enabled.draftVersion,
+    });
+
+    const published = await service.publish(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+
+    expect(published.revision?.revision).toBe(1);
+    expect(published.definition.publishedRevision).toBe(1);
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+  });
+
+  it("reuses the published revision for viewport-only draft changes", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    const enabled = await service.enable(operator, created.id);
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: { ...enabled.draft, viewport: { x: 320, y: 180, zoom: 0.72 } },
+      expectedDraftVersion: enabled.draftVersion,
+    });
+
+    const published = await service.publish(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+
+    expect(published.revision?.revision).toBe(1);
+    expect(published.definition.publishedRevision).toBe(1);
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
+  });
+
+  it("creates a new revision when wait configuration changes", async () => {
+    const service = createService();
+    const created = await service.create(operator, {});
+    const configured = await service.saveDraft(operator, created.id, {
+      draft: withWaitNode(withStartConfig(created.draft, {
+        accountIds: ["account-a"],
+        entryPolicy: { mode: "never" },
+        triggers: [{ type: "contact.friend_added" }],
+      }), { duration: 2, unit: "day" }),
+      expectedDraftVersion: created.draftVersion,
+    });
+    await service.publish(operator, created.id, { expectedDraftVersion: configured.draftVersion });
+    const enabled = await service.enable(operator, created.id);
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withWaitConfig(enabled.draft, { duration: 3, unit: "day" }),
+      expectedDraftVersion: enabled.draftVersion,
+    });
+
+    const published = await service.publish(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+
+    expect(published.revision?.revision).toBe(2);
+    expect(published.definition.publishedRevision).toBe(2);
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(2);
   });
 
   it("publishes only the current revision trigger bindings after enable", async () => {
@@ -205,6 +296,51 @@ function withStartConfig(
   return {
     ...draft,
     nodes: draft.nodes.map(node => node.id === "start"
+      ? { ...node, data: { ...node.data, ...config } }
+      : node),
+  };
+}
+
+function withWaitNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: { duration: number; unit: "day" | "hour" | "minute" },
+) {
+  return {
+    ...draft,
+    edges: [
+      { id: "start-wait", source: "start", target: "wait", type: "workflowEdge" },
+      { id: "wait-end", source: "wait", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end"),
+      {
+        data: {
+          ...config,
+          kind: "wait" as const,
+          label: "等待",
+          metric: "",
+          schemaVersion: 1,
+          status: "ready" as const,
+          summary: "",
+          title: "等待",
+        },
+        id: "wait",
+        position: { x: 340, y: 240 },
+        selected: false,
+        type: "workflowNode",
+      },
+      ...draft.nodes.filter(node => node.id === "end"),
+    ],
+  };
+}
+
+function withWaitConfig(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  config: { duration: number; unit: "day" | "hour" | "minute" },
+) {
+  return {
+    ...draft,
+    nodes: draft.nodes.map(node => node.id === "wait"
       ? { ...node, data: { ...node.data, ...config } }
       : node),
   };

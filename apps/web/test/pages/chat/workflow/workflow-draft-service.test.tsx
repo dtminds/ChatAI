@@ -16,6 +16,7 @@ import {
 } from "@/pages/chat/workflow/workflow-draft-service";
 import { createInitialDraft } from "@/pages/chat/workflow/graph";
 import type {
+  WorkflowDocument,
   WorkflowDraftRepository,
   WorkflowDraftPublishOptions,
   WorkflowDraftReader,
@@ -51,6 +52,22 @@ describe("workflow draft service", () => {
     expect(() => getWorkflowName("missing-workflow")).toThrow("Unknown workflow document");
   });
 
+  it("initializes publish equality from an already-published document", () => {
+    const publishedDocument = publishWorkflowDraft(
+      "newcomer-conversion",
+      getWorkflowDocument("newcomer-conversion").draft,
+    );
+
+    const { result } = renderHook(() => useWorkflowDocument(
+      publishedDocument.id,
+      undefined,
+      publishedDocument,
+    ));
+
+    expect(result.current.publishState).toBe("published");
+    expect(result.current.hasUnpublishedChanges).toBe(false);
+  });
+
   it("creates independent workflow documents with idempotent request keys", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const newDocument = repository.createDocument({ clientRequestId: "create-request-1" });
@@ -78,11 +95,53 @@ describe("workflow draft service", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const createdDocument = repository.createDocument();
 
-    expect(repository.renameDocument(createdDocument.id, "活动召回").name).toBe("活动召回");
+    expect(repository.updateDocumentMetadata(createdDocument.id, {
+      description: "召回沉默客户",
+      name: "活动召回",
+    })).toMatchObject({ description: "召回沉默客户", name: "活动召回" });
     repository.deleteDocument(createdDocument.id);
 
     expect(repository.listDocuments().map((workflow) => workflow.id)).not.toContain(createdDocument.id);
     expect(() => repository.getDocument(createdDocument.id)).toThrow(WorkflowRepositoryError);
+  });
+
+  it("updates active workflow metadata without reloading its draft", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    const initialDocument = baseRepository.getDocument("newcomer-conversion");
+    let resolveUpdate!: (document: WorkflowDocument) => void;
+    const updateDocumentMetadata = vi.fn(() => new Promise<WorkflowDocument>((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    const repository = { ...baseRepository, updateDocumentMetadata };
+    const { result } = renderHook(() => useWorkflowDocument(
+      initialDocument.id,
+      repository,
+      initialDocument,
+    ));
+
+    let firstUpdate!: Promise<boolean>;
+    await act(async () => {
+      firstUpdate = result.current.updateMetadata({
+        description: "引导新客完成首购",
+        name: "新客首购旅程",
+      });
+      expect(await result.current.updateMetadata({ description: "重复提交", name: "重复提交" })).toBe(false);
+    });
+
+    await act(async () => {
+      resolveUpdate({
+        ...initialDocument,
+        description: "引导新客完成首购",
+        name: "新客首购旅程",
+      });
+      expect(await firstUpdate).toBe(true);
+    });
+
+    expect(updateDocumentMetadata).toHaveBeenCalledOnce();
+    expect(result.current.document.description).toBe("引导新客完成首购");
+    expect(result.current.document.name).toBe("新客首购旅程");
+    expect(result.current.document.draft).toEqual(initialDocument.draft);
+    expect(result.current.metadataUpdateState).toBe("idle");
   });
 
   it("rejects unknown workflow ids instead of mutating the first document", () => {
@@ -728,6 +787,44 @@ describe("workflow draft service", () => {
     expect(result.current.saveState).toBe("saved");
   });
 
+  it("saves position-only changes without marking them as unpublished", async () => {
+    vi.useFakeTimers();
+    try {
+      const repository = createInMemoryWorkflowDraftRepository();
+      const sourceDocument = repository.getDocument("newcomer-conversion");
+      const initialDocument = repository.publishDraft(sourceDocument.id, sourceDocument.draft).document;
+      const { result } = renderHook(() => useWorkflowDocument(
+        initialDocument.id,
+        repository,
+        initialDocument,
+      ));
+      const movedDraft = {
+        ...result.current.document.draft,
+        nodes: result.current.document.draft.nodes.map((node) => node.id === "start"
+          ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+          : node),
+      };
+
+      act(() => {
+        result.current.markDirty(movedDraft);
+      });
+
+      expect(result.current.publishState).toBe("published");
+      expect(result.current.hasUnpublishedChanges).toBe(false);
+      expect(result.current.saveState).not.toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(repository.getDocument(initialDocument.id).draft.nodes.find((node) => node.id === "start")?.position)
+        .toEqual(movedDraft.nodes.find((node) => node.id === "start")?.position);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("marks publish as failed when the async repository publish rejects", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
@@ -744,6 +841,37 @@ describe("workflow draft service", () => {
     expect(result.current.publishState).toBe("error");
     expect(result.current.publishError?.code).toBe("server");
     expect(result.current.document.status).toBe("Draft");
+  });
+
+  it("keeps unpublished changes visible after publishing a changed draft fails", async () => {
+    const baseRepository = createInMemoryWorkflowDraftRepository();
+    baseRepository.publishDraft(
+      "newcomer-conversion",
+      baseRepository.getDocument("newcomer-conversion").draft,
+    );
+    const repository: WorkflowDraftRepository = {
+      ...baseRepository,
+      publishDraft: () => {
+        throw new WorkflowRepositoryError("server", "publish failed");
+      },
+    };
+    const publishedDocument = baseRepository.getDocument("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowDocument(
+      publishedDocument.id,
+      repository,
+      publishedDocument,
+    ));
+    const changedDraft = createDraftWithStartKeyword("发布失败后仍未发布");
+
+    act(() => {
+      result.current.markDirty(changedDraft);
+    });
+    await act(async () => {
+      await result.current.publishDraft(changedDraft);
+    });
+
+    expect(result.current.publishState).toBe("error");
+    expect(result.current.hasUnpublishedChanges).toBe(true);
   });
 
   it("exposes publish conflicts separately from retryable publish failures", async () => {
@@ -829,6 +957,24 @@ describe("workflow draft service", () => {
     expect(publishedDocument.draftHash).toBe(document.draftHash);
     expect(publishedDocument.draft.viewport).toEqual(document.draft.viewport);
     expect(publishedDocument.publishedDraft?.viewport).toEqual(document.draft.viewport);
+  });
+
+  it("keeps the published revision when publishing a position-only draft", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const initialDocument = repository.getDocument("newcomer-conversion");
+    const document = repository.publishDraft(initialDocument.id, initialDocument.draft).document;
+    const movedDraft = {
+      ...document.draft,
+      nodes: document.draft.nodes.map((node) => node.id === "start"
+        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+        : node),
+    };
+    const savedDocument = repository.saveDraft(document.id, movedDraft).document;
+    const publishedDocument = repository.publishDraft(document.id, movedDraft).document;
+
+    expect(savedDocument.draftHash).not.toBe(document.draftHash);
+    expect(publishedDocument.publishedRevision).toBe(document.publishedRevision);
+    expect(publishedDocument.versionHistory).toHaveLength(document.versionHistory.length);
   });
 
   it("rejects stale repository publishes when the saved draft hash changed", () => {
@@ -1221,7 +1367,7 @@ function createDeferredWorkflowDraftRepository() {
     rejectSave: (index) => {
       pendingSaves[index]?.reject(new Error("save failed"));
     },
-    renameDocument: baseRepository.renameDocument,
+    updateDocumentMetadata: baseRepository.updateDocumentMetadata,
     resolveImport: (index) => {
       const pendingImport = pendingImports[index];
 

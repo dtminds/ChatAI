@@ -179,14 +179,25 @@ export function createHttpWorkflowDraftRepository(
       }
     },
 
-    async renameDocument(workflowId, name) {
+    async updateDocumentMetadata(workflowId, metadata) {
       try {
         const definition = unwrap<ApiWorkflowDefinition>(await client.patch(
-          `/server/workflows/${workflowId}/name`,
-          { name },
+          `/server/workflows/${workflowId}/metadata`,
+          metadata,
         ));
-        definitions.set(workflowId, definition);
-        return toDocument(definition, revisions.get(workflowId) ?? []);
+        const current = definitions.get(workflowId);
+        const updatedDefinition = current
+          ? {
+              ...current,
+              description: definition.description,
+              name: definition.name,
+              updatedAt: definition.updatedAt > current.updatedAt
+                ? definition.updatedAt
+                : current.updatedAt,
+            }
+          : definition;
+        definitions.set(workflowId, updatedDefinition);
+        return toDocument(updatedDefinition, revisions.get(workflowId) ?? []);
       } catch (error) {
         throw normalizeHttpError(error);
       }
@@ -262,6 +273,7 @@ function toDocument(
   definition: ApiWorkflowDefinition,
   revisionRecords: ApiWorkflowRevision[],
 ): WorkflowDocument {
+  const listItem = toListItem(definition);
   const draft = toDraft(definition.draft);
   const versionHistory = revisionRecords.map(toVersionHistoryItem);
   const currentVersion = definition.publishedRevision === null
@@ -269,7 +281,7 @@ function toDocument(
     : versionHistory.find((version) => version.revision === definition.publishedRevision) ?? null;
   const publishedDraft = currentVersion ? cloneWorkflowDraft(currentVersion.draft) : null;
   return {
-    ...toListItem(definition),
+    ...listItem,
     currentVersion,
     draft,
     draftHash: createWorkflowDraftHash(draft),
@@ -284,7 +296,7 @@ function toDocument(
     publishedRevision: definition.publishedRevision,
     revision: definition.draftVersion,
     runtimeStatus: definition.runtimeStatus,
-    savedAt: definition.updatedAt,
+    savedAt: listItem.updatedAt,
     validatedDraftVersion: definition.validatedDraftVersion,
     versionHistory,
   };
@@ -297,6 +309,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
       && definition.validatedDraftVersion === definition.draftVersion,
     canOperate: definition.permissions.canOperate,
     conversion: getWorkflowConversion(draft) ?? "-",
+    description: definition.description,
     entered: "-",
     id: definition.id,
     name: definition.name,
@@ -311,7 +324,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
           ? "Stopped"
           : "Draft",
     trigger: getWorkflowTrigger(draft) ?? "未配置",
-    updatedAt: definition.updatedAt,
+    updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
   };
 }
 
@@ -320,9 +333,31 @@ function toVersionHistoryItem(revision: ApiWorkflowRevision): WorkflowVersionHis
     draft: toDraft(revision.draft),
     id: `${revision.workflowId}-r${revision.revision}`,
     name: `版本 ${revision.revision}`,
-    publishedAt: revision.publishedAt,
+    publishedAt: formatWorkflowDisplayTime(revision.publishedAt),
     revision: revision.revision,
   };
+}
+
+function formatWorkflowDisplayTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Shanghai",
+  }).formatToParts(date);
+  const lookup = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return `${lookup("month")}-${lookup("day")} ${lookup("hour")}:${lookup("minute")}:${lookup("second")}`;
 }
 
 function toSaveResult(document: WorkflowDocument): WorkflowDraftSaveResult {

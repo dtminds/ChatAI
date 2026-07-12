@@ -6,6 +6,7 @@ import {
   findWorkflowEntryNode,
   findWorkflowTerminalNode,
 } from "./node-catalog";
+import { createWorkflowExecutionGraph } from "./workflow-dsl";
 import type { WorkflowDraft } from "./types";
 import type {
   WorkflowDocument,
@@ -18,8 +19,8 @@ import type {
   WorkflowVersionHistoryItem,
 } from "./workflow-repository-types";
 
-export function createWorkflowPublishedDraftHash(document: WorkflowDocument) {
-  return document.publishedDraft ? createWorkflowDraftHash(document.publishedDraft) : undefined;
+export function createWorkflowPublishedHash(document: WorkflowDocument) {
+  return document.publishedDraft ? createWorkflowPublishHash(document.publishedDraft) : undefined;
 }
 
 export function getWorkflowPublishStateForDraft(
@@ -27,8 +28,8 @@ export function getWorkflowPublishStateForDraft(
   document: WorkflowDocument,
 ): WorkflowDraftPublishStatus {
   return getWorkflowPublishStateFromHashes(
-    createWorkflowDraftHash(draft),
-    createWorkflowPublishedDraftHash(document),
+    createWorkflowPublishHash(draft),
+    createWorkflowPublishedHash(document),
   );
 }
 
@@ -229,14 +230,23 @@ export function createWorkflowDraftHash(draft: WorkflowDraft): string {
     edges: canonicalDraft.edges,
     nodes: canonicalDraft.nodes,
   });
+
+  return hashWorkflowValue("draft", serializedDraft);
+}
+
+export function createWorkflowPublishHash(draft: WorkflowDraft): string {
+  return hashWorkflowValue("publish", JSON.stringify(createWorkflowExecutionGraph(draft)));
+}
+
+function hashWorkflowValue(prefix: "draft" | "publish", serializedValue: string) {
   let hash = 2166136261;
 
-  for (let index = 0; index < serializedDraft.length; index += 1) {
-    hash ^= serializedDraft.charCodeAt(index);
+  for (let index = 0; index < serializedValue.length; index += 1) {
+    hash ^= serializedValue.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
 
-  return `draft_${(hash >>> 0).toString(36)}_${serializedDraft.length.toString(36)}`;
+  return `${prefix}_${(hash >>> 0).toString(36)}_${serializedValue.length.toString(36)}`;
 }
 
 export function getWorkflowTrigger(draft: WorkflowDraft) {

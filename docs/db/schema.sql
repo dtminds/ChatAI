@@ -549,6 +549,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   name VARCHAR(100) NOT NULL COMMENT 'Workflow名称',
+  description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述',
   runtime_status VARCHAR(32) NOT NULL DEFAULT 'inactive' COMMENT '运行状态：inactive、active、paused、stopped',
   biz_status TINYINT NOT NULL DEFAULT 1 COMMENT '业务状态：1正常，0已删除',
   draft_schema_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '草稿DSL Schema版本',

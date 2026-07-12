@@ -44,12 +44,13 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { WorkflowListItem } from "./workflow-draft-service";
 
 export type WorkflowLifecycleAction = "enable" | "pause" | "resume" | "stop";
 
-export function WorkflowListRow({
+export function WorkflowListCard({
   onDelete,
   onLifecycleAction,
   onRename,
@@ -62,95 +63,108 @@ export function WorkflowListRow({
   operationPending?: boolean;
   workflow: WorkflowListItem;
 }) {
+  const status = getWorkflowStatus(workflow);
+  const titleId = `workflow-card-title-${workflow.id}`;
+
   return (
-    <article className="grid gap-3 px-4 py-4 transition-colors hover:bg-muted/40 lg:grid-cols-[minmax(0,1.5fr)_0.8fr_0.8fr_0.7fr_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <HugeiconsIcon icon={WorkflowSquare01Icon} size={16} strokeWidth={1.8} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold">{workflow.name}</h2>
-            <p className="mt-1 truncate text-xs text-muted-foreground">{workflow.trigger}</p>
-          </div>
-        </div>
+    <article
+      aria-labelledby={titleId}
+      className="relative flex min-h-72 flex-col rounded-lg border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <Badge className={cn("rounded-md", status.className)}>{status.label}</Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`操作 ${workflow.name}`}
+              className="relative z-10 -mr-1 -mt-1 size-8"
+              size="icon"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {workflow.runtimeStatus === "inactive" ? (
+              <DropdownMenuItem
+                disabled={!workflow.canOperate || operationPending}
+                onSelect={() => onLifecycleAction("enable")}
+              >
+                <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+                启用
+              </DropdownMenuItem>
+            ) : null}
+            {workflow.runtimeStatus === "active" ? (
+              <DropdownMenuItem
+                disabled={!workflow.canOperate || operationPending}
+                onSelect={() => onLifecycleAction("pause")}
+              >
+                <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
+                暂停
+              </DropdownMenuItem>
+            ) : null}
+            {workflow.runtimeStatus === "paused" ? (
+              <DropdownMenuItem
+                disabled={!workflow.canOperate || operationPending}
+                onSelect={() => onLifecycleAction("resume")}
+              >
+                <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+                恢复
+              </DropdownMenuItem>
+            ) : null}
+            {workflow.runtimeStatus !== "stopped" ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem onSelect={onRename}>
+              <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
+              重命名
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                disabled={!workflow.canOperate || operationPending}
+                onSelect={() => onLifecycleAction("stop")}
+              >
+                <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
+                停止
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
+              <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
+              删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <MetricPill label="进入" value={workflow.entered} />
-      <MetricPill label="转化" value={workflow.conversion} />
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge
-          className="rounded-md"
-          variant={workflow.status === "Published" ? "default" : "secondary"}
+
+      <div className="mt-4 min-w-0">
+        <Link
+          aria-label={`打开 ${workflow.name}`}
+          className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
+          to={`/chat/workflows/${workflow.id}`}
         >
-          {workflow.status}
-        </Badge>
-        <span>{workflow.nodes} 节点</span>
+          <h2 className="truncate text-base font-semibold" id={titleId}>{workflow.name}</h2>
+        </Link>
+        {workflow.description ? (
+          <p className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {workflow.description}
+          </p>
+        ) : null}
       </div>
-      <div className="flex items-center justify-between gap-3 lg:justify-end">
-        <div className="text-right text-xs text-muted-foreground">
-          <div>{workflow.updatedAt}</div>
-          <div className="mt-0.5">{workflow.owner}</div>
+
+      <div className="mt-5 min-w-0">
+        <div className="text-xs text-muted-foreground">触发条件</div>
+        <div className="mt-1 truncate text-sm text-foreground">{workflow.trigger}</div>
+      </div>
+
+      <div className="mt-auto pt-5">
+        <div className="grid grid-cols-3 border-y py-3">
+          <WorkflowMetric label="进入人数" value={workflow.entered} />
+          <WorkflowMetric className="border-l pl-3" label="转化率" value={workflow.conversion} />
+          <WorkflowMetric className="border-l pl-3" label="节点" value={String(workflow.nodes)} />
         </div>
-        <div className="flex items-center gap-1">
-          <Button asChild className="h-8 rounded-lg px-2.5 text-xs" variant="outline">
-            <Link to={`/chat/workflows/${workflow.id}`}>编辑</Link>
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={`操作 ${workflow.name}`} className="size-8" size="icon" variant="ghost">
-                <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {workflow.runtimeStatus === "inactive" ? (
-                <DropdownMenuItem
-                  disabled={!workflow.canOperate || operationPending}
-                  onSelect={() => onLifecycleAction("enable")}
-                >
-                  <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-                  启用
-                </DropdownMenuItem>
-              ) : null}
-              {workflow.runtimeStatus === "active" ? (
-                <DropdownMenuItem
-                  disabled={!workflow.canOperate || operationPending}
-                  onSelect={() => onLifecycleAction("pause")}
-                >
-                  <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
-                  暂停
-                </DropdownMenuItem>
-              ) : null}
-              {workflow.runtimeStatus === "paused" ? (
-                <DropdownMenuItem
-                  disabled={!workflow.canOperate || operationPending}
-                  onSelect={() => onLifecycleAction("resume")}
-                >
-                  <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-                  恢复
-                </DropdownMenuItem>
-              ) : null}
-              {workflow.runtimeStatus !== "stopped" ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuItem onSelect={onRename}>
-                <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
-                重命名
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  disabled={!workflow.canOperate || operationPending}
-                  onSelect={() => onLifecycleAction("stop")}
-                >
-                  <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
-                  停止
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
-                <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span className="truncate">{workflow.owner}</span>
+          <span className="shrink-0">{workflow.updatedAt}</span>
         </div>
       </div>
     </article>
@@ -273,11 +287,35 @@ export function WorkflowListState({
   );
 }
 
-function MetricPill({ label, value }: { label: string; value: string }) {
+function WorkflowMetric({
+  className,
+  label,
+  value,
+}: {
+  className?: string;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-lg bg-muted px-2 py-1.5 text-xs">
-      <div className="font-semibold text-foreground">{value}</div>
-      <div className="mt-0.5 text-muted-foreground">{label}</div>
+    <div className={cn("min-w-0 pr-2", className)}>
+      <div className="truncate text-sm font-semibold text-foreground">{value}</div>
+      <div className="mt-1 truncate text-xs text-muted-foreground">{label}</div>
     </div>
   );
+}
+
+function getWorkflowStatus(workflow: WorkflowListItem) {
+  if (workflow.runtimeStatus === "active") {
+    return { className: "bg-success-muted text-success", label: "运行中" };
+  }
+  if (workflow.runtimeStatus === "paused") {
+    return { className: "bg-warning-muted text-warning", label: "已暂停" };
+  }
+  if (workflow.runtimeStatus === "stopped") {
+    return { className: "bg-muted text-muted-foreground", label: "已停止" };
+  }
+  if (workflow.status === "Published") {
+    return { className: "bg-primary/10 text-primary", label: "已发布" };
+  }
+  return { className: "bg-muted text-muted-foreground", label: "草稿" };
 }

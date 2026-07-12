@@ -453,6 +453,30 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
   });
 
+  it("renders workflows as cards with their descriptions and direct open links", async () => {
+    renderWorkflowPage("/chat/workflows");
+
+    const card = await screen.findByRole("article", { name: "新人转化旅程" });
+
+    expect(within(card).getByText("引导新客户完成首次购买")).toBeInTheDocument();
+    expect(within(card).getByText("草稿")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
+      "href",
+      "/chat/workflows/newcomer-conversion",
+    );
+  });
+
+  it("finds workflows by description", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("新人转化旅程");
+    await user.type(screen.getByRole("textbox", { name: "搜索 Workflow" }), "长期未复购");
+
+    expect(screen.getByText("会员复购唤醒")).toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+  });
+
   it("renders the direct editor route as a fullscreen canvas without a list back link", async () => {
     const createDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "createDocument");
     const { router } = renderWorkflowPage("/chat/workflows/new");
@@ -493,10 +517,10 @@ describe("Agent workflow page", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
   });
 
-  it("opens workflow row edit actions in the current tab", async () => {
+  it("opens workflow cards in the current tab", async () => {
     renderWorkflowPage("/chat/workflows");
 
-    const editLink = (await screen.findAllByRole("link", { name: "编辑" }))[0];
+    const editLink = await screen.findByRole("link", { name: "打开 新人转化旅程" });
 
     expect(editLink).toHaveAttribute("href", "/chat/workflows/newcomer-conversion");
     expect(editLink).not.toHaveAttribute("target");

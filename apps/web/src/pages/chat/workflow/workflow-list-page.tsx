@@ -24,8 +24,8 @@ import {
 } from "./workflow-resources";
 import {
   WorkflowDeleteDialog,
+  WorkflowListCard,
   type WorkflowLifecycleAction,
-  WorkflowListRow,
   WorkflowListState,
   WorkflowRenameDialog,
 } from "./workflow-list-components";
@@ -50,7 +50,7 @@ export function WorkflowListPage({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredItems = useMemo(
     () => normalizedQuery
-      ? items.filter((workflow) => [workflow.name, workflow.trigger, workflow.owner]
+      ? items.filter((workflow) => [workflow.name, workflow.description, workflow.trigger, workflow.owner]
           .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)))
       : items,
     [items, normalizedQuery],
@@ -149,7 +149,7 @@ export function WorkflowListPage({
           <div>
             <h1 className="text-xl font-semibold tracking-normal">Workflow</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              管理营销旅程，点击新建或编辑进入全屏画布
+              管理营销旅程
             </p>
           </div>
           <Button asChild className="h-9 gap-1.5 rounded-lg px-3 text-sm">
@@ -160,69 +160,66 @@ export function WorkflowListPage({
           </Button>
         </div>
 
-        <div className="rounded-[12px] border bg-background shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="relative w-full max-w-sm">
-              <HugeiconsIcon
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                icon={Search01Icon}
-                size={15}
-                strokeWidth={1.8}
-              />
-              <Input
-                aria-label="搜索 Workflow"
-                className="h-8 rounded-lg pl-8 text-sm"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索 Workflow"
-                value={query}
-              />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="secondary">{items.length} 个流程</Badge>
-              <span>自动保存草稿</span>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+          <div className="relative w-full max-w-sm">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              icon={Search01Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索 Workflow"
+              className="h-8 rounded-lg pl-8 text-sm"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索 Workflow"
+              value={query}
+            />
           </div>
-
-          {status === "loading" && items.length === 0 ? (
-            <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner />
-              <span>正在加载</span>
-            </div>
-          ) : null}
-
-          {status === "error" ? (
-            <WorkflowListState
-              description="工作流列表加载失败"
-              onRetry={() => void reload()}
-              title="无法加载 Workflow"
-            />
-          ) : null}
-
-          {status === "ready" && filteredItems.length === 0 ? (
-            <WorkflowListState
-              description={normalizedQuery ? "没有匹配的 Workflow" : "创建第一个营销流程"}
-              title={normalizedQuery ? "暂无搜索结果" : "暂无 Workflow"}
-            />
-          ) : null}
-
-          {filteredItems.length > 0 ? (
-            <div className="divide-y">
-              {filteredItems.map((workflow) => (
-                <WorkflowListRow
-                  key={workflow.id}
-                  onDelete={() => {
-                    setOperationError(null);
-                    setDeleteTarget(workflow);
-                  }}
-                  onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
-                  onRename={() => openRenameDialog(workflow)}
-                  operationPending={lifecyclePendingId === workflow.id}
-                  workflow={workflow}
-                />
-              ))}
-            </div>
-          ) : null}
+          <div className="text-xs text-muted-foreground">
+            <Badge variant="secondary">{items.length} 个流程</Badge>
+          </div>
         </div>
+
+        {status === "loading" && items.length === 0 ? (
+          <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+            <Spinner />
+            <span>正在加载</span>
+          </div>
+        ) : null}
+
+        {status === "error" ? (
+          <WorkflowListState
+            description="工作流列表加载失败"
+            onRetry={() => void reload()}
+            title="无法加载 Workflow"
+          />
+        ) : null}
+
+        {status === "ready" && filteredItems.length === 0 ? (
+          <WorkflowListState
+            description={normalizedQuery ? "没有匹配的 Workflow" : "创建第一个营销流程"}
+            title={normalizedQuery ? "暂无搜索结果" : "暂无 Workflow"}
+          />
+        ) : null}
+
+        {filteredItems.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredItems.map((workflow) => (
+              <WorkflowListCard
+                key={workflow.id}
+                onDelete={() => {
+                  setOperationError(null);
+                  setDeleteTarget(workflow);
+                }}
+                onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
+                onRename={() => openRenameDialog(workflow)}
+                operationPending={lifecyclePendingId === workflow.id}
+                workflow={workflow}
+              />
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <WorkflowRenameDialog

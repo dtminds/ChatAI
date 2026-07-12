@@ -185,8 +185,19 @@ export function createHttpWorkflowDraftRepository(
           `/server/workflows/${workflowId}/metadata`,
           metadata,
         ));
-        definitions.set(workflowId, definition);
-        return toDocument(definition, revisions.get(workflowId) ?? []);
+        const current = definitions.get(workflowId);
+        const updatedDefinition = current
+          ? {
+              ...current,
+              description: definition.description,
+              name: definition.name,
+              updatedAt: definition.updatedAt > current.updatedAt
+                ? definition.updatedAt
+                : current.updatedAt,
+            }
+          : definition;
+        definitions.set(workflowId, updatedDefinition);
+        return toDocument(updatedDefinition, revisions.get(workflowId) ?? []);
       } catch (error) {
         throw normalizeHttpError(error);
       }

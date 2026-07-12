@@ -26,6 +26,38 @@ describe("HTTP workflow draft repository", () => {
     });
   });
 
+  it("does not replace the cached draft version with a stale metadata response", async () => {
+    const initialDefinition = createDefinition();
+    const client = createClient({ definition: initialDefinition, revisions: [] });
+    let resolveMetadata!: (value: ApiSuccessEnvelope<WorkflowDefinition>) => void;
+    client.patch.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveMetadata = resolve;
+    }));
+    client.put
+      .mockResolvedValueOnce(envelope(createDefinition({ draftVersion: 2 })))
+      .mockResolvedValueOnce(envelope(createDefinition({ draftVersion: 3 })));
+    const repository = createHttpWorkflowDraftRepository(client);
+    const document = await repository.getDocument("42");
+
+    const metadataUpdate = repository.updateDocumentMetadata("42", {
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+    await repository.saveDraft("42", document.draft);
+    resolveMetadata(envelope(createDefinition({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    })));
+    await metadataUpdate;
+    await repository.saveDraft("42", document.draft);
+
+    expect(client.put).toHaveBeenNthCalledWith(
+      2,
+      "/server/workflows/42/draft",
+      expect.objectContaining({ expectedDraftVersion: 2 }),
+    );
+  });
+
   it("formats API timestamps for workflow views in Asia/Shanghai", async () => {
     const definition = createDefinition({
       publishedRevision: 1,

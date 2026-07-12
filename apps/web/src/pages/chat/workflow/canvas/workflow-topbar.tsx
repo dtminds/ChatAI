@@ -309,7 +309,7 @@ function getRuntimeStatusLabel(
     return "待启用";
   }
   return {
-    active: "执行中",
+    active: "运行中",
     inactive: "草稿",
     paused: "待启用",
     stopped: "已停止",

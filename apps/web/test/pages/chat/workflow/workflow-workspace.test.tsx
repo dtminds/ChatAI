@@ -81,6 +81,20 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.topBar.canPublish).toBe(false);
   });
 
+  it("derives activation readiness from the in-memory draft revision", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const document = repository.getDocument("newcomer-conversion");
+    const { result } = renderHook(() => useWorkflowWorkspace(
+      document.id,
+      repository,
+      document,
+    ));
+
+    expect(document.draftVersion).toBeUndefined();
+    expect(document.validatedDraftVersion).toBe(document.revision);
+    expect(result.current.topBar.validatedForActivation).toBe(true);
+  });
+
   it("selects nodes and opens the inspector while closing checks", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

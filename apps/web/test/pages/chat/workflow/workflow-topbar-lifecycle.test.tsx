@@ -119,7 +119,7 @@ describe("WorkflowTopBar lifecycle", () => {
       />,
     );
 
-    expect(screen.getByText("执行中")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
     expect(screen.getByText("有尚未发布的修改")).toBeInTheDocument();
     await user.hover(screen.getByRole("button", { name: "查看 Workflow 描述" }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent("引导新客完成首购");

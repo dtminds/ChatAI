@@ -496,6 +496,28 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
   });
 
+  it("filters workflow cards by status and combines the filter with search", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("新人转化旅程");
+    expect(screen.getByRole("tab", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "运行中" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已暂停" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已停止" })).toBeInTheDocument();
+    expect(screen.queryByText("3 个流程")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "运行中" }));
+
+    expect(screen.getByText("会员复购唤醒")).toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+    expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox", { name: "搜索 Workflow" }), "不存在");
+    expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
+  });
+
   it("shows an explicit placeholder when a workflow has no description", async () => {
     await getWorkflowDraftRepository().createDocument({
       clientRequestId: "empty-description-workflow",

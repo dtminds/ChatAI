@@ -6,10 +6,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import {
   getWorkflowDraftRepository,
@@ -34,6 +34,16 @@ export function WorkflowPage({ repository }: { repository?: WorkflowDraftReposit
   return <WorkflowListPage repository={repository} />;
 }
 
+type WorkflowStatusFilter = "all" | "active" | "paused" | "draft" | "stopped";
+
+const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
+  { label: "全部", value: "all" },
+  { label: "运行中", value: "active" },
+  { label: "已暂停", value: "paused" },
+  { label: "草稿", value: "draft" },
+  { label: "已停止", value: "stopped" },
+];
+
 export function WorkflowListPage({
   repository = getWorkflowDraftRepository(),
 }: {
@@ -41,6 +51,7 @@ export function WorkflowListPage({
 }) {
   const { items, reload, status } = useWorkflowListResource(repository);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [renameTarget, setRenameTarget] = useState<WorkflowListItem | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
@@ -48,13 +59,16 @@ export function WorkflowListPage({
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredItems = useMemo(
-    () => normalizedQuery
-      ? items.filter((workflow) => [workflow.name, workflow.description, workflow.trigger, workflow.owner]
-          .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)))
-      : items,
-    [items, normalizedQuery],
-  );
+  const filteredItems = useMemo(() => items.filter((workflow) => {
+    const matchesStatus = statusFilter === "all"
+      || (statusFilter === "draft"
+        ? workflow.status === "Draft"
+        : workflow.runtimeStatus === statusFilter);
+    const matchesQuery = !normalizedQuery
+      || [workflow.name, workflow.description, workflow.trigger, workflow.owner]
+        .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+    return matchesStatus && matchesQuery;
+  }), [items, normalizedQuery, statusFilter]);
 
   const openRenameDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
@@ -160,8 +174,25 @@ export function WorkflowListPage({
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-          <div className="relative w-full max-w-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Tabs
+            className="w-auto"
+            onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
+            value={statusFilter}
+          >
+            <TabsList className="h-9 gap-0 rounded-lg bg-muted p-1">
+              {workflowStatusFilters.map(filter => (
+                <TabsTrigger
+                  className="h-7 min-w-0 rounded-md px-3 py-1 text-xs"
+                  key={filter.value}
+                  value={filter.value}
+                >
+                  {filter.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <div className="relative w-full max-w-sm sm:w-72">
             <HugeiconsIcon
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
               icon={Search01Icon}
@@ -175,9 +206,6 @@ export function WorkflowListPage({
               placeholder="搜索 Workflow"
               value={query}
             />
-          </div>
-          <div className="text-xs text-muted-foreground">
-            <Badge variant="secondary">{items.length} 个流程</Badge>
           </div>
         </div>
 
@@ -198,8 +226,8 @@ export function WorkflowListPage({
 
         {status === "ready" && filteredItems.length === 0 ? (
           <WorkflowListState
-            description={normalizedQuery ? "没有匹配的 Workflow" : "创建第一个营销流程"}
-            title={normalizedQuery ? "暂无搜索结果" : "暂无 Workflow"}
+            description={normalizedQuery || statusFilter !== "all" ? "没有匹配的 Workflow" : "创建第一个营销流程"}
+            title={normalizedQuery || statusFilter !== "all" ? "暂无搜索结果" : "暂无 Workflow"}
           />
         ) : null}
 

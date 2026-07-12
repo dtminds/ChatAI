@@ -3,13 +3,13 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import {
   getWorkflowDraftRepository,
@@ -24,15 +24,25 @@ import {
 } from "./workflow-resources";
 import {
   WorkflowDeleteDialog,
+  WorkflowListCard,
   type WorkflowLifecycleAction,
-  WorkflowListRow,
   WorkflowListState,
-  WorkflowRenameDialog,
 } from "./workflow-list-components";
+import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
 export function WorkflowPage({ repository }: { repository?: WorkflowDraftRepository } = {}) {
   return <WorkflowListPage repository={repository} />;
 }
+
+type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
+
+const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
+  { label: "全部", value: "all" },
+  { label: "运行中", value: "active" },
+  { label: "待启用", value: "ready" },
+  { label: "草稿", value: "draft" },
+  { label: "已停止", value: "stopped" },
+];
 
 export function WorkflowListPage({
   repository = getWorkflowDraftRepository(),
@@ -40,43 +50,52 @@ export function WorkflowListPage({
   repository?: WorkflowDraftRepository;
 }) {
   const { items, reload, status } = useWorkflowListResource(repository);
+  const navigate = useNavigate();
+  const createRequestIdRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
-  const [renameTarget, setRenameTarget] = useState<WorkflowListItem | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
+  const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredItems = useMemo(
-    () => normalizedQuery
-      ? items.filter((workflow) => [workflow.name, workflow.trigger, workflow.owner]
-          .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)))
-      : items,
-    [items, normalizedQuery],
-  );
+  const filteredItems = useMemo(() => items.filter((workflow) => {
+    const matchesStatus = statusFilter === "all"
+      || (statusFilter === "draft" && workflow.runtimeStatus === "inactive" && !workflow.activationReady)
+      || (statusFilter === "ready" && (
+        workflow.runtimeStatus === "paused"
+        || (workflow.runtimeStatus === "inactive" && workflow.activationReady)
+      ))
+      || workflow.runtimeStatus === statusFilter;
+    const matchesQuery = !normalizedQuery
+      || [workflow.name, workflow.description, workflow.trigger, workflow.owner]
+        .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+    return matchesStatus && matchesQuery;
+  }), [items, normalizedQuery, statusFilter]);
 
-  const openRenameDialog = (workflow: WorkflowListItem) => {
+  const openMetadataDialog = (workflow: WorkflowListItem) => {
     setOperationError(null);
-    setRenameTarget(workflow);
-    setRenameValue(workflow.name);
+    setMetadataTarget(workflow);
   };
 
-  const renameWorkflow = async () => {
-    if (!renameTarget || !renameValue.trim() || operationPending) {
-      return;
-    }
+  const createWorkflow = async (metadata: WorkflowMetadata) => {
+    if (operationPending) return false;
 
     setOperationPending(true);
     setOperationError(null);
+    createRequestIdRef.current ??= createWorkflowCreateRequestId();
 
     try {
-      await Promise.resolve(repository.updateDocumentMetadata(renameTarget.id, {
-        description: renameTarget.description,
-        name: renameValue,
+      const document = await Promise.resolve(repository.createDocument({
+        clientRequestId: createRequestIdRef.current,
+        ...metadata,
       }));
-      setRenameTarget(null);
-      await reload();
+      setCreateDialogOpen(false);
+      createRequestIdRef.current = null;
+      navigate(`/chat/workflows/${document.id}`);
+      return true;
     }
     catch (error) {
       setOperationError(getWorkflowOperationErrorMessage(error));
@@ -84,6 +103,28 @@ export function WorkflowListPage({
     finally {
       setOperationPending(false);
     }
+    return false;
+  };
+
+  const updateWorkflowMetadata = async (metadata: WorkflowMetadata) => {
+    if (!metadataTarget || operationPending) return false;
+
+    setOperationPending(true);
+    setOperationError(null);
+
+    try {
+      await Promise.resolve(repository.updateDocumentMetadata(metadataTarget.id, metadata));
+      setMetadataTarget(null);
+      await reload();
+      return true;
+    }
+    catch (error) {
+      setOperationError(getWorkflowOperationErrorMessage(error));
+    }
+    finally {
+      setOperationPending(false);
+    }
+    return false;
   };
 
   const deleteWorkflow = async () => {
@@ -149,96 +190,131 @@ export function WorkflowListPage({
           <div>
             <h1 className="text-xl font-semibold tracking-normal">Workflow</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              管理营销旅程，点击新建或编辑进入全屏画布
+              管理营销旅程
             </p>
           </div>
-          <Button asChild className="h-9 gap-1.5 rounded-lg px-3 text-sm">
-            <Link rel="noopener noreferrer" target="_blank" to="/chat/workflows/new">
-              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-              新建 Workflow
-            </Link>
+          <Button
+            className="h-9 gap-1.5 rounded-lg px-3 text-sm"
+            onClick={() => {
+              setOperationError(null);
+              setCreateDialogOpen(true);
+            }}
+          >
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
+            新建 Workflow
           </Button>
         </div>
 
-        <div className="rounded-[12px] border bg-background shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="relative w-full max-w-sm">
-              <HugeiconsIcon
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                icon={Search01Icon}
-                size={15}
-                strokeWidth={1.8}
-              />
-              <Input
-                aria-label="搜索 Workflow"
-                className="h-8 rounded-lg pl-8 text-sm"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索 Workflow"
-                value={query}
-              />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="secondary">{items.length} 个流程</Badge>
-              <span>自动保存草稿</span>
-            </div>
-          </div>
-
-          {status === "loading" && items.length === 0 ? (
-            <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner />
-              <span>正在加载</span>
-            </div>
-          ) : null}
-
-          {status === "error" ? (
-            <WorkflowListState
-              description="工作流列表加载失败"
-              onRetry={() => void reload()}
-              title="无法加载 Workflow"
-            />
-          ) : null}
-
-          {status === "ready" && filteredItems.length === 0 ? (
-            <WorkflowListState
-              description={normalizedQuery ? "没有匹配的 Workflow" : "创建第一个营销流程"}
-              title={normalizedQuery ? "暂无搜索结果" : "暂无 Workflow"}
-            />
-          ) : null}
-
-          {filteredItems.length > 0 ? (
-            <div className="divide-y">
-              {filteredItems.map((workflow) => (
-                <WorkflowListRow
-                  key={workflow.id}
-                  onDelete={() => {
-                    setOperationError(null);
-                    setDeleteTarget(workflow);
-                  }}
-                  onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
-                  onRename={() => openRenameDialog(workflow)}
-                  operationPending={lifecyclePendingId === workflow.id}
-                  workflow={workflow}
-                />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Tabs
+            className="w-auto"
+            onValueChange={(value) => setStatusFilter(value as WorkflowStatusFilter)}
+            value={statusFilter}
+          >
+            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+              {workflowStatusFilters.map(filter => (
+                <TabsTrigger
+                  className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm"
+                  key={filter.value}
+                  value={filter.value}
+                >
+                  {filter.label}
+                </TabsTrigger>
               ))}
-            </div>
-          ) : null}
+            </TabsList>
+          </Tabs>
+          <div className="relative w-full max-w-sm sm:w-72">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              icon={Search01Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索 Workflow"
+              className="h-8 rounded-lg pl-8 text-sm"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索 Workflow"
+              value={query}
+            />
+          </div>
         </div>
+
+        {status === "loading" && items.length === 0 ? (
+          <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+            <Spinner />
+            <span>正在加载</span>
+          </div>
+        ) : null}
+
+        {status === "error" ? (
+          <WorkflowListState
+            description="工作流列表加载失败"
+            onRetry={() => void reload()}
+            title="无法加载 Workflow"
+          />
+        ) : null}
+
+        {status === "ready" && filteredItems.length === 0 ? (
+          <WorkflowListState
+            description={normalizedQuery || statusFilter !== "all" ? "没有匹配的 Workflow" : "创建第一个营销流程"}
+            title={normalizedQuery || statusFilter !== "all" ? "暂无搜索结果" : "暂无 Workflow"}
+          />
+        ) : null}
+
+        {filteredItems.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredItems.map((workflow) => (
+              <WorkflowListCard
+                key={workflow.id}
+                onDelete={() => {
+                  setOperationError(null);
+                  setDeleteTarget(workflow);
+                }}
+                onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
+                onRename={() => openMetadataDialog(workflow)}
+                operationPending={lifecyclePendingId === workflow.id}
+                workflow={workflow}
+              />
+            ))}
+          </div>
+        ) : null}
       </section>
 
-      <WorkflowRenameDialog
+      <WorkflowMetadataDialog
         error={operationError}
-        onCancel={() => setRenameTarget(null)}
+        metadata={{
+          description: metadataTarget?.description ?? "",
+          name: metadataTarget?.name ?? "",
+        }}
         onOpenChange={(open) => {
           if (!open && !operationPending) {
-            setRenameTarget(null);
+            setMetadataTarget(null);
             setOperationError(null);
           }
         }}
-        onRename={() => void renameWorkflow()}
-        onValueChange={setRenameValue}
-        open={Boolean(renameTarget)}
+        onSave={updateWorkflowMetadata}
+        open={Boolean(metadataTarget)}
         pending={operationPending}
-        value={renameValue}
+      />
+
+      <WorkflowMetadataDialog
+        error={operationError}
+        metadata={{ description: "", name: "" }}
+        onOpenChange={(open) => {
+          if (!operationPending) {
+            setCreateDialogOpen(open);
+            if (!open) {
+              createRequestIdRef.current = null;
+              setOperationError(null);
+            }
+          }
+        }}
+        onSave={createWorkflow}
+        open={createDialogOpen}
+        pending={operationPending}
+        submitLabel="创建"
+        title="新建 Workflow"
       />
 
       <WorkflowDeleteDialog
@@ -255,6 +331,12 @@ export function WorkflowListPage({
       />
     </AiHostingLayout>
   );
+}
+
+function createWorkflowCreateRequestId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `workflow-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function getWorkflowOperationErrorMessage(error: unknown) {
@@ -275,7 +357,7 @@ function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
   return {
     enable: "已启用",
     pause: "已暂停",
-    resume: "已恢复",
+    resume: "已启用",
     stop: "已停止",
   }[action];
 }

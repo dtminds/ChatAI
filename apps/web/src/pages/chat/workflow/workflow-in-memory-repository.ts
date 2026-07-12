@@ -43,6 +43,18 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
   return {
     createDocument: (input) => {
       const clientRequestId = input?.clientRequestId?.trim();
+      const name = input?.name?.trim();
+      const description = input?.description?.trim() ?? "";
+
+      if (input?.name !== undefined && !name) {
+        throw new WorkflowRepositoryError("validation", "Workflow name is required");
+      }
+      if (name && name.length > 100) {
+        throw new WorkflowRepositoryError("validation", "Workflow name is too long");
+      }
+      if (description.length > 1000) {
+        throw new WorkflowRepositoryError("validation", "Workflow description is too long");
+      }
       const existingDocumentId = clientRequestId
         ? createdDocumentIdsByRequest.get(clientRequestId)
         : undefined;
@@ -56,7 +68,8 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       workflowIdSequence += 1;
       const document = createNewWorkflowDocument(
         `workflow-${workflowIdSequence.toString(36)}`,
-        input?.name,
+        name,
+        description,
       );
       workflowDocuments = [document, ...workflowDocuments];
 
@@ -174,6 +187,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         status: "Published",
         trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
         updatedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.updatedAt,
+        validatedDraftVersion: nextDraftRevision,
         versionHistory: createdVersion
           ? [
               createdVersion,
@@ -313,7 +327,9 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
           ? "Paused"
           : runtimeStatus === "stopped"
             ? "Stopped"
-            : "Draft",
+            : currentDocument.publishedRevision === null
+              ? "Draft"
+              : "Published",
       updatedAt: "刚刚",
     };
     workflowDocuments[documentIndex] = nextDocument;
@@ -447,7 +463,7 @@ function createWorkflowDocuments(): WorkflowDocument[] {
   ];
 }
 
-function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument {
+function createNewWorkflowDocument(id: string, name?: string, description?: string): WorkflowDocument {
   const draft = createInitialDraft();
 
   return {
@@ -455,7 +471,7 @@ function createNewWorkflowDocument(id: string, name?: string): WorkflowDocument 
     canOperate: true,
     conversion: "0%",
     currentVersion: null,
-    description: "",
+    description: description?.trim() || "",
     draft,
     draftHash: createWorkflowDraftHash(draft),
     entered: "0",

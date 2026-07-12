@@ -45,7 +45,7 @@ export class WorkflowService {
     assertWorkflowAccess(scope);
     return toDefinition(await this.repository.createDefinition({
       clientRequestId: input.clientRequestId,
-      description: "",
+      description: input.description?.trim() || "",
       draft: createInitialWorkflowDraft(),
       name: input.name?.trim() || "未命名 Workflow",
       opSubUserId: scope.subUserId,

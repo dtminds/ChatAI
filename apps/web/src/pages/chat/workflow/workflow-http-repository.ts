@@ -304,9 +304,10 @@ function toDocument(
 
 function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
   const draft = toDraft(definition.draft);
+  const activationReady = definition.runtimeStatus === "inactive"
+    && definition.validatedDraftVersion === definition.draftVersion;
   return {
-    activationReady: definition.runtimeStatus === "inactive"
-      && definition.validatedDraftVersion === definition.draftVersion,
+    activationReady,
     canOperate: definition.permissions.canOperate,
     conversion: getWorkflowConversion(draft) ?? "-",
     description: definition.description,
@@ -322,7 +323,7 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
         ? "Paused"
         : definition.runtimeStatus === "stopped"
           ? "Stopped"
-          : "Draft",
+          : activationReady ? "Published" : "Draft",
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
   };

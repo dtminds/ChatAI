@@ -7,6 +7,20 @@ import {
 const operator = { roles: ["owner"], subUserId: "17", uid: 9 };
 
 describe("WorkflowService", () => {
+  it("creates a workflow with trimmed metadata", async () => {
+    const service = createService();
+
+    const created = await service.create(operator, {
+      description: "  添加客户后发送欢迎消息  ",
+      name: "  新客欢迎旅程  ",
+    });
+
+    expect(created).toMatchObject({
+      description: "添加客户后发送欢迎消息",
+      name: "新客欢迎旅程",
+    });
+  });
+
   it("updates trimmed workflow metadata without changing the draft", async () => {
     const service = createService();
     const created = await service.create(operator, {});

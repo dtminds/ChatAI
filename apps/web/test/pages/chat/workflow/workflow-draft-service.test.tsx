@@ -91,6 +91,17 @@ describe("workflow draft service", () => {
     expect(getStartKeyword(repository.getDocument("newcomer-conversion").draft)).toBeNull();
   });
 
+  it("validates workflow metadata when creating in-memory documents", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+
+    expect(() => repository.createDocument({ name: " " })).toThrow(WorkflowRepositoryError);
+    expect(() => repository.createDocument({ name: "名".repeat(101) })).toThrow(WorkflowRepositoryError);
+    expect(() => repository.createDocument({
+      description: "描".repeat(1001),
+      name: "有效名称",
+    })).toThrow(WorkflowRepositoryError);
+  });
+
   it("renames and deletes workflow documents through the repository boundary", () => {
     const repository = createInMemoryWorkflowDraftRepository();
     const createdDocument = repository.createDocument();

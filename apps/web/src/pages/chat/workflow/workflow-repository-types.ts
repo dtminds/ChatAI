@@ -129,6 +129,7 @@ export type WorkflowDraftReader = {
 export type WorkflowDraftWriter = {
   createDocument: (input?: {
     clientRequestId?: string;
+    description?: string;
     name?: string;
   }) => Promise<WorkflowDocument> | WorkflowDocument;
   deleteDocument: (workflowId: string) => Promise<void> | void;
@@ -162,7 +163,7 @@ export type WorkflowDraftWriter = {
 export type WorkflowDraftRepository = WorkflowDraftReader & WorkflowDraftWriter;
 
 export type SyncWorkflowDraftRepository = {
-  createDocument: (input?: { clientRequestId?: string; name?: string }) => WorkflowDocument;
+  createDocument: (input?: { clientRequestId?: string; description?: string; name?: string }) => WorkflowDocument;
   deleteDocument: (workflowId: string) => void;
   getDocument: (workflowId: string) => WorkflowDocument;
   importDraft: (workflowId: string, draft: WorkflowDraft) => WorkflowDraftImportResult;

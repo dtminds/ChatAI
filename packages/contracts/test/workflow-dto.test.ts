@@ -2,6 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   WorkflowDefinitionSchema,
+  WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowRuntimeStatusSchema,
@@ -53,6 +54,18 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowMetadataUpdateRequestSchema, {
       description: "描".repeat(1001),
       name: "新客培育",
+    })).toBe(false);
+  });
+
+  it("accepts workflow metadata when creating a workflow", () => {
+    expect(Value.Check(WorkflowCreateRequestSchema, {
+      clientRequestId: "create-workflow-1",
+      description: "添加客户后发送欢迎消息",
+      name: "新客欢迎旅程",
+    })).toBe(true);
+    expect(Value.Check(WorkflowCreateRequestSchema, {
+      description: "描".repeat(1001),
+      name: "新客欢迎旅程",
     })).toBe(false);
   });
 

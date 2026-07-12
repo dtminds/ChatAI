@@ -100,6 +100,7 @@ export const WorkflowRevisionSchema = Type.Object({
 
 export const WorkflowCreateRequestSchema = Type.Object({
   clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+  description: Type.Optional(Type.String({ maxLength: 1000 })),
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
 });
 

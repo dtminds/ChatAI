@@ -657,8 +657,8 @@ export function useWorkflowWorkspace(
       saveState,
       totalChecks: publishChecks.totalSummaryChecks,
       validatedForActivation: document.runtimeStatus === "inactive"
-        && document.draftVersion !== undefined
-        && document.validatedDraftVersion === document.draftVersion,
+        && document.validatedDraftVersion != null
+        && document.validatedDraftVersion === (document.draftVersion ?? document.revision),
     },
     versionHistory: {
       currentPreviewVersionId: previewVersion?.id,

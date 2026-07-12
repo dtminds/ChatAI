@@ -12,10 +12,10 @@ The Worker writes JSON to stdout through Pino. Production uses `LOG_LEVEL=info`.
 | --- | --- |
 | `debug` | Idle polling and per-iteration diagnostics |
 | `info` | Process lifecycle, readiness recovery, and iterations that handled work |
-| `warn` | Readiness degradation, retries, dead records, lease recovery, stalled-task republish, and run cancellation |
+| `warn` | Readiness degradation, retries, dead records, lease recovery, and stalled-task republish |
 | `error` | A role iteration or readiness check failed |
 
-Scheduler and Outbox run every second by default. An idle iteration must stay at `debug`; it must not emit an `info` heartbeat. Readiness is logged only when its dependency or role state changes.
+Scheduler and Outbox run every second by default. An idle iteration must stay at `debug`; it must not emit an `info` heartbeat. Readiness is logged only when its overall `ready` status changes.
 
 ## Stable Events
 
@@ -25,12 +25,12 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.worker.stopped` | `info` | none |
 | `workflow.worker.role.idle` | `debug` | `role`, `durationMs`, role counters |
 | `workflow.worker.role.completed` | `info` | `role`, `durationMs`, role counters |
-| `workflow.worker.role.warning` | `warn` | `role`, `durationMs`, retry, dead-letter, recovery, and cancellation counters |
-| `workflow.worker.role.failed` | `error` | `role`, `error` |
+| `workflow.worker.role.warning` | `warn` | `role`, `durationMs`, retry, dead-letter, and recovery counters |
+| `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
-| `workflow.worker.readiness.failed` | `error` | `role`, `error` |
+| `workflow.worker.readiness.failed` | `error` | `role`, `err` |
 
-Role results are flattened into the log event. Do not put counters under a nested `result` object. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inboxDeleted`, and `error`.
+Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inboxDeleted`, and `err`.
 
 ## Health Checks
 

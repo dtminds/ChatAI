@@ -52,7 +52,39 @@ describe("workflow worker observability", () => {
     }), "workflow worker role reported warning counters");
   });
 
-  it("logs readiness only when dependency state changes", () => {
+  it("records expected workflow cancellations at info", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "scheduler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 12,
+      result: { cancelled: 2, deferred: 0, dispatched: 0 },
+    });
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:01.000Z"),
+      durationMs: 18,
+      result: { cancelled: 3, nextCursor: "run-42", taskLeasesRecovered: 0 },
+    });
+
+    expect(logger.info).toHaveBeenNthCalledWith(1, {
+      cancelled: 2,
+      deferred: 0,
+      dispatched: 0,
+      durationMs: 12,
+      event: "workflow.worker.role.completed",
+      role: "scheduler",
+    }, "workflow worker role completed");
+    expect(logger.info).toHaveBeenNthCalledWith(2, {
+      cancelled: 3,
+      durationMs: 18,
+      event: "workflow.worker.role.completed",
+      role: "reconciler",
+      taskLeasesRecovered: 0,
+    }, "workflow worker role completed");
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("logs readiness only when the overall ready status changes", () => {
     const logger = createLogger();
     const ready = {
       broker: true,
@@ -84,7 +116,7 @@ describe("workflow worker observability", () => {
       event: "workflow.worker.readiness.changed",
       roles: { outbox: true, scheduler: true },
       status: "ready",
-    }, "workflow worker readiness recovered");
+    }, "workflow worker readiness became ready");
   });
 
   it("does not report partial startup progress as readiness degradation", () => {

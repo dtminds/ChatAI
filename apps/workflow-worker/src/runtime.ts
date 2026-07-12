@@ -154,7 +154,7 @@ export async function startWorkflowWorkerRuntime(input: {
     loops.push(input.roleLoop({
       intervalMs: input.config.runtime.readinessIntervalMs,
       onError: error => input.logger.error({
-        error,
+        err: error,
         event: "workflow.worker.readiness.failed",
         role: "readiness",
       }, "workflow worker readiness probe failed"),
@@ -217,7 +217,7 @@ export async function startWorkflowWorkerRuntime(input: {
       onError: error => {
         readiness.roles[role] = false;
         input.logger.error({
-          error,
+          err: error,
           event: "workflow.worker.role.failed",
           role,
         }, "workflow worker role iteration failed");

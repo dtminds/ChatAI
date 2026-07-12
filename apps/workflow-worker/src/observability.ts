@@ -62,7 +62,7 @@ export function logWorkflowReadinessTransition(
     status: ready ? "ready" : "not-ready",
   };
   if (ready) {
-    logger.info(fields, "workflow worker readiness recovered");
+    logger.info(fields, "workflow worker readiness became ready");
   } else {
     logger.warn(fields, "workflow worker readiness degraded");
   }
@@ -71,11 +71,14 @@ export function logWorkflowReadinessTransition(
 
 function flattenResult(result: unknown) {
   if (!result || typeof result !== "object" || Array.isArray(result)) return {};
-  return Object.fromEntries(Object.entries(result).filter(([, value]) =>
-    value === null
-    || typeof value === "boolean"
-    || typeof value === "number"
-    || typeof value === "string",
+  return Object.fromEntries(Object.entries(result).filter(([key, value]) =>
+    key !== "nextCursor"
+    && (
+      value === null
+      || typeof value === "boolean"
+      || typeof value === "number"
+      || typeof value === "string"
+    ),
   ));
 }
 
@@ -90,7 +93,6 @@ function requiresRecoveryWarning(
   if (role === "outbox") return hasPositive(result, ["dead", "failed"]);
   if (role === "reconciler") {
     return hasPositive(result, [
-      "cancelled",
       "outboxLeasesRecovered",
       "stalledTasksRepublished",
       "taskLeasesDead",

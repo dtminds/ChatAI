@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import pino from "pino";
 import type { WorkflowBroker, WorkflowBrokerSubscription } from "../src/broker/types.js";
+import type { startRoleLoop } from "../src/role-loop.js";
 import { startWorkflowWorker, startWorkflowWorkerRuntime } from "../src/runtime.js";
 
 describe("workflow worker runtime", () => {
@@ -75,11 +77,85 @@ describe("workflow worker runtime", () => {
     expect(resources.loopClose).toHaveBeenCalledTimes(4);
   });
 
+  it("routes idle role heartbeats through the debug log policy", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["scheduler"] as const)),
+    });
+
+    await vi.waitFor(() => {
+      expect(resources.dependencies.logger.debug).toHaveBeenCalledWith(expect.objectContaining({
+        event: "workflow.worker.role.idle",
+        role: "scheduler",
+      }), "workflow worker role idle");
+    });
+    expect(resources.dependencies.logger.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: "workflow.worker.role.completed",
+      role: "scheduler",
+    }), expect.any(String));
+    await runtime.close();
+  });
+
+  it("keeps role failure details in structured Pino logs", async () => {
+    const resources = createResources();
+    const records: Array<Record<string, unknown>> = [];
+    const logger = pino({ base: null, timestamp: false }, {
+      write(message) {
+        records.push(JSON.parse(message) as Record<string, unknown>);
+      },
+    });
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["scheduler"] as const)),
+      logger,
+    });
+    const failure = new Error("scheduler unavailable");
+
+    resources.failRole("scheduler", failure);
+
+    expect(records).toContainEqual(expect.objectContaining({
+      err: expect.objectContaining({
+        message: "scheduler unavailable",
+        stack: expect.any(String),
+        type: "Error",
+      }),
+      event: "workflow.worker.role.failed",
+      role: "scheduler",
+    }));
+    await runtime.close();
+  });
+
+  it("wires readiness probe failures to the structured error field", async () => {
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+    });
+    const failure = new Error("readiness unavailable");
+
+    resources.failRole("readiness", failure);
+
+    expect(resources.dependencies.logger.error).toHaveBeenCalledWith({
+      err: failure,
+      event: "workflow.worker.readiness.failed",
+      role: "readiness",
+    }, "workflow worker readiness probe failed");
+    await runtime.close();
+  });
+
   it("updates readiness when a consumer or dependency becomes unavailable", async () => {
     const resources = createResources();
     const runtime = await startWorkflowWorkerRuntime({
       ...resources.dependencies,
       config: config(),
+    });
+
+    await vi.waitFor(() => {
+      expect(resources.dependencies.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: "workflow.worker.readiness.changed",
+        status: "ready",
+      }), "workflow worker readiness became ready");
     });
 
     resources.subscriptionConnected = false;
@@ -92,6 +168,12 @@ describe("workflow worker runtime", () => {
       database: false,
       roles: { "entry-consumer": false, "task-consumer": false },
     });
+    expect(resources.dependencies.logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      broker: false,
+      database: false,
+      event: "workflow.worker.readiness.changed",
+      status: "not-ready",
+    }), "workflow worker readiness degraded");
     await runtime.close();
   });
 
@@ -131,6 +213,7 @@ function createResources() {
   let databaseReady = true;
   let subscriptionConnected = true;
   let readinessProbe: (() => Promise<unknown>) | undefined;
+  const roleInputs = new Map<string, Parameters<typeof startRoleLoop>[0]>();
   const subscriptionClose = vi.fn(async () => {});
   const subscription: WorkflowBrokerSubscription = {
     close: subscriptionClose,
@@ -180,6 +263,7 @@ function createResources() {
       reconciler,
       reconcilerService: {} as never,
       roleLoop: vi.fn(input => {
+        roleInputs.set(input.role, input);
         if (input.role === "readiness") readinessProbe = input.run;
         void input.run().then(result => input.onHeartbeat?.({
           completedAt: new Date(),
@@ -200,6 +284,11 @@ function createResources() {
       triggerBindingReader: { listActiveTriggerBindings: vi.fn(async () => []) },
       workerId: "worker-1",
     },
+    failRole: (role: string, error: unknown) => {
+      const input = roleInputs.get(role);
+      if (!input) throw new Error(`Role loop not started: ${role}`);
+      input.onError?.(error);
+    },
     loopClose,
     outboxPublisher,
     reconciler,
@@ -209,7 +298,13 @@ function createResources() {
     set databaseReady(value: boolean) { databaseReady = value; },
     runReadinessProbe: async () => {
       if (!readinessProbe) throw new Error("readiness probe not started");
-      return readinessProbe();
+      const result = await readinessProbe();
+      roleInputs.get("readiness")?.onHeartbeat?.({
+        completedAt: new Date(),
+        durationMs: 1,
+        result,
+      });
+      return result;
     },
     scheduler,
     subscriptionClose,

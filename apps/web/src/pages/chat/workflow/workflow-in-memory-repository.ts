@@ -187,6 +187,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         status: "Published",
         trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
         updatedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.updatedAt,
+        validatedDraftVersion: nextDraftRevision,
         versionHistory: createdVersion
           ? [
               createdVersion,

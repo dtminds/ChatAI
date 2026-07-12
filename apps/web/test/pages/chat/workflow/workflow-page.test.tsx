@@ -575,6 +575,21 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
   });
 
+  it("moves an inactive workflow from draft to published after publishing", async () => {
+    const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    const draft = await repository.createDocument({ name: "待发布流程" });
+    await repository.publishDraft(draft.id, draft.draft);
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    expect(screen.queryByText("待发布流程")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "已发布" }));
+    const card = await screen.findByRole("article", { name: "待发布流程" });
+    expect(within(card).getByText("已发布")).toBeInTheDocument();
+  });
+
   it("shows an explicit placeholder when a workflow has no description", async () => {
     await getWorkflowDraftRepository().createDocument({
       clientRequestId: "empty-description-workflow",

@@ -387,6 +387,8 @@ TKE / CLS 侧配置建议：
 - 媒体代理只记录 `host` 和 `path`，不得记录完整带签名或查询参数的 URL。
 - poll cursor 失效记录 `sinceVersion`、`sinceLastMsgTime`、`currentSeatId`、`activeConversationId`，用于判断是否需要前端重新加载基线。
 
+Workflow Worker 的日志分级、稳定事件字段、CLS 索引和 MySQL 观测查询见 [`docs/operations/marketing-workflow-observability.md`](../operations/marketing-workflow-observability.md)。生产环境保持 `LOG_LEVEL=info`；每秒空轮询只写入 `debug`，不得作为 `info` 心跳输出。
+
 ## Ingress 路由
 
 推荐路径规则：

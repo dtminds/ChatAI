@@ -9,6 +9,7 @@ import {
   cloneWorkflowDraft,
   cloneWorkflowVersionHistoryItem,
   createWorkflowDraftHash,
+  createWorkflowPublishHash,
   createWorkflowPublishedVersion,
   createWorkflowVersionHistoryItem,
   getWorkflowConversion,
@@ -141,34 +142,60 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
       const nextDraft = cloneWorkflowDraft(draft);
       const shouldCreateDraftRevision = !isWorkflowGraphEqual(currentDocument.draft, nextDraft);
       const persistedDraft = shouldCreateDraftRevision ? nextDraft : currentDocument.draft;
-      const nextRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
-      const publishedAt = "刚刚";
-      const version = createWorkflowVersionHistoryItem(currentDocument.id, nextRevision, publishedAt, persistedDraft);
+      const nextDraftRevision = shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision;
+      const shouldCreatePublishedRevision = currentDocument.publishedRevision === null
+        || !currentDocument.publishedDraft
+        || createWorkflowPublishHash(currentDocument.publishedDraft) !== createWorkflowPublishHash(nextDraft);
+      const nextPublishedRevision = shouldCreatePublishedRevision
+        ? nextDraftRevision
+        : currentDocument.publishedRevision;
+      const publishedAt = shouldCreatePublishedRevision ? "刚刚" : currentDocument.publishedAt;
+      const createdVersion = shouldCreatePublishedRevision
+        ? createWorkflowVersionHistoryItem(currentDocument.id, nextDraftRevision, "刚刚", persistedDraft)
+        : null;
+      const currentVersion = createdVersion ?? currentDocument.currentVersion;
       const nextDraftHash = shouldCreateDraftRevision
         ? createWorkflowDraftHash(nextDraft)
         : currentDocument.draftHash;
       const nextDocument: WorkflowDocument = {
         ...currentDocument,
         conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-        currentVersion: version,
+        currentVersion,
         draft: persistedDraft,
         draftHash: nextDraftHash,
         nodes: persistedDraft.nodes.length,
         publishedAt,
-        publishedDraft: cloneWorkflowDraft(persistedDraft),
-        publishedRevision: nextRevision,
-        revision: nextRevision,
-        savedAt: publishedAt,
+        publishedDraft: shouldCreatePublishedRevision
+          ? cloneWorkflowDraft(persistedDraft)
+          : currentDocument.publishedDraft,
+        publishedRevision: nextPublishedRevision,
+        revision: nextDraftRevision,
+        savedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.savedAt,
         status: "Published",
         trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-        updatedAt: publishedAt,
-        versionHistory: [
-          version,
-          ...currentDocument.versionHistory.filter((historyVersion) => historyVersion.id !== version.id),
-        ],
+        updatedAt: shouldCreatePublishedRevision ? "刚刚" : currentDocument.updatedAt,
+        versionHistory: createdVersion
+          ? [
+              createdVersion,
+              ...currentDocument.versionHistory.filter((historyVersion) => historyVersion.id !== createdVersion.id),
+            ]
+          : currentDocument.versionHistory,
       };
 
       workflowDocuments[documentIndex] = nextDocument;
+      if (!shouldCreatePublishedRevision && currentVersion && nextPublishedRevision !== null && publishedAt) {
+        return {
+          document: cloneWorkflowDocument(nextDocument),
+          draft: cloneWorkflowDraft(persistedDraft),
+          draftHash: nextDraftHash,
+          publishedAt,
+          publishedRevision: nextPublishedRevision,
+          revision: nextDraftRevision,
+          updatedAt: nextDocument.updatedAt,
+          validatedOnly: false,
+          version: { ...currentVersion },
+        };
+      }
       return normalizeWorkflowDraftPublishResult(nextDocument);
     },
     reset: () => {

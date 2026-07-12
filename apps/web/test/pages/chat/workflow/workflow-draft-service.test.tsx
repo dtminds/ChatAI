@@ -787,6 +787,44 @@ describe("workflow draft service", () => {
     expect(result.current.saveState).toBe("saved");
   });
 
+  it("saves position-only changes without marking them as unpublished", async () => {
+    vi.useFakeTimers();
+    try {
+      const repository = createInMemoryWorkflowDraftRepository();
+      const sourceDocument = repository.getDocument("newcomer-conversion");
+      const initialDocument = repository.publishDraft(sourceDocument.id, sourceDocument.draft).document;
+      const { result } = renderHook(() => useWorkflowDocument(
+        initialDocument.id,
+        repository,
+        initialDocument,
+      ));
+      const movedDraft = {
+        ...result.current.document.draft,
+        nodes: result.current.document.draft.nodes.map((node) => node.id === "start"
+          ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+          : node),
+      };
+
+      act(() => {
+        result.current.markDirty(movedDraft);
+      });
+
+      expect(result.current.publishState).toBe("published");
+      expect(result.current.hasUnpublishedChanges).toBe(false);
+      expect(result.current.saveState).not.toBe("saved");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(repository.getDocument(initialDocument.id).draft.nodes.find((node) => node.id === "start")?.position)
+        .toEqual(movedDraft.nodes.find((node) => node.id === "start")?.position);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("marks publish as failed when the async repository publish rejects", async () => {
     const repository = createDeferredWorkflowDraftRepository();
     const { result } = renderHook(() => useWorkflowDocument("newcomer-conversion", repository));
@@ -919,6 +957,24 @@ describe("workflow draft service", () => {
     expect(publishedDocument.draftHash).toBe(document.draftHash);
     expect(publishedDocument.draft.viewport).toEqual(document.draft.viewport);
     expect(publishedDocument.publishedDraft?.viewport).toEqual(document.draft.viewport);
+  });
+
+  it("keeps the published revision when publishing a position-only draft", () => {
+    const repository = createInMemoryWorkflowDraftRepository();
+    const initialDocument = repository.getDocument("newcomer-conversion");
+    const document = repository.publishDraft(initialDocument.id, initialDocument.draft).document;
+    const movedDraft = {
+      ...document.draft,
+      nodes: document.draft.nodes.map((node) => node.id === "start"
+        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+        : node),
+    };
+    const savedDocument = repository.saveDraft(document.id, movedDraft).document;
+    const publishedDocument = repository.publishDraft(document.id, movedDraft).document;
+
+    expect(savedDocument.draftHash).not.toBe(document.draftHash);
+    expect(publishedDocument.publishedRevision).toBe(document.publishedRevision);
+    expect(publishedDocument.versionHistory).toHaveLength(document.versionHistory.length);
   });
 
   it("rejects stale repository publishes when the saved draft hash changed", () => {

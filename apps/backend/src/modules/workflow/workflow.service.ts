@@ -125,13 +125,26 @@ export class WorkflowService {
 
     const nextRevision = definition.publishedRevision + 1;
     const executionSpec = this.compile(definition, nextRevision);
+    const specHash = hashExecutionSpec(executionSpec);
+    const currentRevision = await this.repository.findRevision(
+      scope.uid,
+      workflowId,
+      definition.publishedRevision,
+    );
+    if (currentRevision && hashExecutionSpec(currentRevision.executionSpec) === specHash) {
+      return {
+        definition: toDefinition(definition),
+        revision: toRevision(currentRevision),
+        validatedOnly: false,
+      };
+    }
     const published = this.unwrapMutation(await this.repository.publishRevision({
       draft: definition.draft,
       executionSpec,
       expectedDraftVersion: input.expectedDraftVersion,
       expectedPublishedRevision: definition.publishedRevision,
       opSubUserId: scope.subUserId,
-      specHash: hashExecutionSpec(executionSpec),
+      specHash,
       triggerBindings: createTriggerBindings(executionSpec),
       uid: scope.uid,
       workflowId,
@@ -306,8 +319,9 @@ function createInitialNode(kind: "end" | "start", title: string, position: { x: 
   };
 }
 
-function hashExecutionSpec(spec: object) {
-  return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
+function hashExecutionSpec(spec: { revision: number }) {
+  const { revision: _revision, ...publishSemantics } = spec;
+  return createHash("sha256").update(JSON.stringify(publishSemantics)).digest("hex");
 }
 
 function createTriggerBindings(spec: ReturnType<typeof compileWorkflowDraft>) {

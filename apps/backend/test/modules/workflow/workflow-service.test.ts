@@ -57,7 +57,11 @@ describe("WorkflowService", () => {
     await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
     await service.enable(operator, created.id);
     const saved = await service.saveDraft(operator, created.id, {
-      draft: { ...created.draft, viewport: { x: 50, y: 25, zoom: 1 } },
+      draft: withStartConfig(created.draft, {
+        accountIds: ["account-b"],
+        entryPolicy: { mode: "never" },
+        triggers: [{ type: "contact.friend_added" }],
+      }),
       expectedDraftVersion: created.draftVersion,
     });
     await service.pause(operator, created.id);
@@ -69,6 +73,31 @@ describe("WorkflowService", () => {
     expect(published.validatedOnly).toBe(false);
     expect(published.revision?.revision).toBe(2);
     expect(published.definition.runtimeStatus).toBe("paused");
+  });
+
+  it("reuses the published revision for position-only draft changes", async () => {
+    const service = createService();
+    const created = await createConfigured(service);
+    await service.publish(operator, created.id, { expectedDraftVersion: created.draftVersion });
+    const enabled = await service.enable(operator, created.id);
+    const movedDraft = {
+      ...enabled.draft,
+      nodes: enabled.draft.nodes.map(node => node.id === "start"
+        ? { ...node, position: { x: node.position.x + 120, y: node.position.y + 80 } }
+        : node),
+    };
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: movedDraft,
+      expectedDraftVersion: enabled.draftVersion,
+    });
+
+    const published = await service.publish(operator, created.id, {
+      expectedDraftVersion: saved.draftVersion,
+    });
+
+    expect(published.revision?.revision).toBe(1);
+    expect(published.definition.publishedRevision).toBe(1);
+    expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
   it("publishes only the current revision trigger bindings after enable", async () => {

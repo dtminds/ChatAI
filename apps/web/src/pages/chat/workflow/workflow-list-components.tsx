@@ -150,7 +150,22 @@ function WorkflowPrimaryAction({
         variant="secondary"
       >
         <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-        恢复
+        启用
+      </Button>
+    );
+  }
+
+  if (workflow.runtimeStatus === "inactive" && workflow.activationReady) {
+    return (
+      <Button
+        className="h-8 flex-1 gap-1.5"
+        disabled={!workflow.canOperate || operationPending}
+        onClick={() => onLifecycleAction("enable")}
+        size="sm"
+        variant="secondary"
+      >
+        <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
+        启用
       </Button>
     );
   }
@@ -299,13 +314,13 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-success-muted text-success", icon: Tick02Icon, label: "运行中" };
   }
   if (workflow.runtimeStatus === "paused") {
-    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "已暂停" };
+    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
   }
   if (workflow.runtimeStatus === "stopped") {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
   if (workflow.activationReady) {
-    return { className: "bg-primary/10 text-primary", icon: Tick02Icon, label: "已发布" };
+    return { className: "bg-primary/10 text-primary", icon: Tick02Icon, label: "待启用" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
 }

@@ -34,14 +34,13 @@ export function WorkflowPage({ repository }: { repository?: WorkflowDraftReposit
   return <WorkflowListPage repository={repository} />;
 }
 
-type WorkflowStatusFilter = "all" | "active" | "paused" | "draft" | "published" | "stopped";
+type WorkflowStatusFilter = "all" | "active" | "ready" | "draft" | "stopped";
 
 const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
   { label: "全部", value: "all" },
   { label: "运行中", value: "active" },
-  { label: "已暂停", value: "paused" },
+  { label: "待启用", value: "ready" },
   { label: "草稿", value: "draft" },
-  { label: "已发布", value: "published" },
   { label: "已停止", value: "stopped" },
 ];
 
@@ -65,7 +64,10 @@ export function WorkflowListPage({
   const filteredItems = useMemo(() => items.filter((workflow) => {
     const matchesStatus = statusFilter === "all"
       || (statusFilter === "draft" && workflow.runtimeStatus === "inactive" && !workflow.activationReady)
-      || (statusFilter === "published" && workflow.runtimeStatus === "inactive" && workflow.activationReady)
+      || (statusFilter === "ready" && (
+        workflow.runtimeStatus === "paused"
+        || (workflow.runtimeStatus === "inactive" && workflow.activationReady)
+      ))
       || workflow.runtimeStatus === statusFilter;
     const matchesQuery = !normalizedQuery
       || [workflow.name, workflow.description, workflow.trigger, workflow.owner]
@@ -355,7 +357,7 @@ function getWorkflowLifecycleSuccessMessage(action: WorkflowLifecycleAction) {
   return {
     enable: "已启用",
     pause: "已暂停",
-    resume: "已恢复",
+    resume: "已启用",
     stop: "已停止",
   }[action];
 }

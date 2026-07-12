@@ -502,14 +502,11 @@ describe("Agent workflow page", () => {
     const card = await screen.findByRole("article", { name: "新人转化旅程" });
 
     expect(within(card).getByText("引导新客户完成首次购买")).toBeInTheDocument();
-    expect(within(card).getByText("已发布")).toBeInTheDocument();
+    expect(within(card).getByText("待启用")).toBeInTheDocument();
     expect(within(card).queryByText("8 节点")).not.toBeInTheDocument();
     expect(within(card).queryByText("运营主管")).not.toBeInTheDocument();
     expect(within(card).queryByText("今天 18:20")).not.toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: "编辑" })).toHaveAttribute(
-      "href",
-      "/chat/workflows/newcomer-conversion",
-    );
+    expect(within(card).getByRole("button", { name: "启用" })).toBeInTheDocument();
     expect(within(card).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
       "href",
       "/chat/workflows/newcomer-conversion",
@@ -518,7 +515,8 @@ describe("Agent workflow page", () => {
     const activeCard = screen.getByRole("article", { name: "会员复购唤醒" });
     const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
     expect(within(activeCard).getByRole("button", { name: "暂停" })).toBeInTheDocument();
-    expect(within(pausedCard).getByRole("button", { name: "恢复" })).toBeInTheDocument();
+    expect(within(pausedCard).getByText("待启用")).toBeInTheDocument();
+    expect(within(pausedCard).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
   it("finds workflows by description", async () => {
@@ -532,7 +530,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
   });
 
-  it("filters every workflow lifecycle and publish status", async () => {
+  it("filters workflows by user-facing status", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
     await repository.createDocument({ name: "普通草稿流程" });
@@ -543,10 +541,11 @@ describe("Agent workflow page", () => {
     await screen.findByText("新人转化旅程");
     expect(screen.getByRole("tab", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "运行中" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "已暂停" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "待启用" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "已发布" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已停止" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "已暂停" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "已发布" })).not.toBeInTheDocument();
     expect(screen.queryByText("3 个流程")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "运行中" }));
@@ -554,17 +553,14 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
     expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "已暂停" }));
+    await user.click(screen.getByRole("tab", { name: "待启用" }));
+    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
     expect(screen.getByText("直播后跟进")).toBeInTheDocument();
     expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByText("普通草稿流程")).toBeInTheDocument();
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("tab", { name: "已发布" }));
-    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
-    expect(screen.queryByText("普通草稿流程")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "已停止" }));
     expect(screen.getByText("已停止流程")).toBeInTheDocument();
@@ -575,7 +571,7 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
   });
 
-  it("moves an inactive workflow from draft to published after publishing", async () => {
+  it("moves an inactive workflow from draft to ready after publishing", async () => {
     const user = userEvent.setup();
     const repository = getWorkflowDraftRepository();
     const draft = await repository.createDocument({ name: "待发布流程" });
@@ -585,9 +581,10 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.queryByText("待发布流程")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "已发布" }));
+    await user.click(screen.getByRole("tab", { name: "待启用" }));
     const card = await screen.findByRole("article", { name: "待发布流程" });
-    expect(within(card).getByText("已发布")).toBeInTheDocument();
+    expect(within(card).getByText("待启用")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "启用" })).toBeInTheDocument();
   });
 
   it("shows an explicit placeholder when a workflow has no description", async () => {
@@ -662,6 +659,18 @@ describe("Agent workflow page", () => {
 
     await waitFor(() => {
       expect(getWorkflowDocument("newcomer-conversion").runtimeStatus).toBe("active");
+    });
+  });
+
+  it("enables a paused workflow through the resume lifecycle action", async () => {
+    const user = userEvent.setup();
+    renderWorkflowPage("/chat/workflows");
+
+    const card = await screen.findByRole("article", { name: "直播后跟进" });
+    await user.click(within(card).getByRole("button", { name: "启用" }));
+
+    await waitFor(() => {
+      expect(getWorkflowDocument("live-follow-up").runtimeStatus).toBe("active");
     });
   });
 

@@ -662,6 +662,16 @@ describe("Agent workflow page", () => {
     });
   });
 
+  it("does not offer activation for an unpublished draft", async () => {
+    const user = userEvent.setup();
+    await getWorkflowDraftRepository().createDocument({ name: "未发布草稿" });
+    renderWorkflowPage("/chat/workflows");
+
+    await user.click(await screen.findByRole("button", { name: "操作 未发布草稿" }));
+
+    expect(screen.queryByRole("menuitem", { name: "启用" })).not.toBeInTheDocument();
+  });
+
   it("enables a paused workflow through the resume lifecycle action", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");

@@ -28,7 +28,7 @@ describe("WorkflowTopBar lifecycle", () => {
     expect(onPublish).toHaveBeenCalledOnce();
   });
 
-  it("shows the inactive runtime state in the header", () => {
+  it("shows validated inactive and paused workflows as ready in the header", () => {
     render(
       <WorkflowTopBar
         lastSavedAt="刚刚"
@@ -41,12 +41,32 @@ describe("WorkflowTopBar lifecycle", () => {
         readyChecks={4}
         saveState="saved"
         totalChecks={4}
+        validatedForActivation
         runtimeStatus="inactive"
         workflowName="新客培育"
       />,
     );
 
-    expect(screen.getByText("草稿")).toBeInTheDocument();
+    expect(screen.getByText("待启用")).toBeInTheDocument();
+
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        publishedAt="刚刚"
+        publishReady
+        publishState="published"
+        readyChecks={4}
+        saveState="saved"
+        totalChecks={4}
+        runtimeStatus="paused"
+        workflowName="暂停流程"
+      />,
+    );
+
+    expect(screen.getAllByText("待启用")).toHaveLength(2);
   });
 
   it("opens version history directly and publish checks from the overflow menu", async () => {

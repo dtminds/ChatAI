@@ -63,6 +63,7 @@ export function WorkflowTopBar({
   runtimeStatus = "inactive",
   saveState,
   totalChecks,
+  validatedForActivation = false,
   versionHistoryContent,
   versionHistoryOpen = false,
   workflowName,
@@ -137,8 +138,8 @@ export function WorkflowTopBar({
         ) : (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <Badge className={getRuntimeStatusClassName(runtimeStatus)}>
-                {getRuntimeStatusLabel(runtimeStatus)}
+              <Badge className={getRuntimeStatusClassName(runtimeStatus, validatedForActivation)}>
+                {getRuntimeStatusLabel(runtimeStatus, validatedForActivation)}
               </Badge>
               <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
               <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
@@ -300,21 +301,31 @@ export function WorkflowTopBar({
   );
 }
 
-function getRuntimeStatusLabel(status: "active" | "inactive" | "paused" | "stopped") {
+function getRuntimeStatusLabel(
+  status: "active" | "inactive" | "paused" | "stopped",
+  validatedForActivation: boolean,
+) {
+  if (status === "paused" || (status === "inactive" && validatedForActivation)) {
+    return "待启用";
+  }
   return {
     active: "执行中",
     inactive: "草稿",
-    paused: "已暂停",
+    paused: "待启用",
     stopped: "已停止",
   }[status];
 }
 
-function getRuntimeStatusClassName(status: "active" | "inactive" | "paused" | "stopped") {
+function getRuntimeStatusClassName(
+  status: "active" | "inactive" | "paused" | "stopped",
+  validatedForActivation: boolean,
+) {
+  const ready = status === "paused" || (status === "inactive" && validatedForActivation);
   return cn(
     "shrink-0 rounded-md px-1.5 py-0.5",
     status === "active" && "bg-emerald-50 text-emerald-700",
-    status === "inactive" && "bg-muted text-muted-foreground",
-    status === "paused" && "bg-amber-50 text-amber-700",
+    status === "inactive" && !ready && "bg-muted text-muted-foreground",
+    ready && "bg-warning-muted text-warning",
     status === "stopped" && "bg-muted text-muted-foreground",
   );
 }

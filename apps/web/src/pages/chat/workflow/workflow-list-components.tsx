@@ -201,7 +201,7 @@ function WorkflowCardMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {workflow.runtimeStatus === "inactive" ? (
+        {workflow.runtimeStatus === "inactive" && workflow.activationReady ? (
           <DropdownMenuItem
             disabled={!workflow.canOperate || operationPending}
             onSelect={() => onLifecycleAction("enable")}
@@ -320,7 +320,7 @@ function getWorkflowStatus(workflow: WorkflowListItem) {
     return { className: "bg-muted text-muted-foreground", icon: StopCircleIcon, label: "已停止" };
   }
   if (workflow.activationReady) {
-    return { className: "bg-primary/10 text-primary", icon: Tick02Icon, label: "待启用" };
+    return { className: "bg-warning-muted text-warning", icon: PauseIcon, label: "待启用" };
   }
   return { className: "bg-muted text-muted-foreground", icon: Edit02Icon, label: "草稿" };
 }

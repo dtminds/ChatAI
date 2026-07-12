@@ -1,4 +1,6 @@
 type WorkflowReconciler = {
+  aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
+  cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cancelUnavailableRuns(input: {
     afterRunId?: string;
     limit: number;
@@ -26,6 +28,13 @@ export async function reconcileWorkflowRuntime(input: {
   now: Date;
   reconciler: WorkflowReconciler;
 }) {
+  const nodeMetricEventsAggregated = await input.reconciler.aggregateNodeMetricEvents({
+    limit: input.limit,
+  });
+  const nodeMetricEventsDeleted = await input.reconciler.cleanupProcessedNodeMetricEvents({
+    limit: input.inboxCleanupBatchSize,
+    processedBefore: new Date(input.now.getTime() - 7 * 86_400_000),
+  });
   const cancellation = await input.reconciler.cancelUnavailableRuns({
     afterRunId: input.afterRunId,
     limit: input.limit,
@@ -52,6 +61,8 @@ export async function reconcileWorkflowRuntime(input: {
     cancelled: cancellation.cancelled,
     inboxDeleted,
     nextCursor: cancellation.done ? null : cancellation.nextCursor,
+    nodeMetricEventsAggregated,
+    nodeMetricEventsDeleted,
     stalledTasksRepublished,
     outboxLeasesRecovered,
     taskLeasesDead: taskLeaseRecovery.dead,

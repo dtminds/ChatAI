@@ -339,9 +339,11 @@ function createClaimDbMock(runtimeStatus = "active") {
         selectAll() { return builder; },
         where() { return builder; },
         async executeTakeFirst() {
-          return table === "xy_wap_embed_workflow_task"
-            ? task
-            : { biz_status: 1, runtime_status: runtimeStatus };
+          if (table === "xy_wap_embed_workflow_task") return task;
+          if (table === "xy_wap_embed_workflow_run") {
+            return { current_node_id: "start", revision: 1, shard_id: 1, workflow_id: "42" };
+          }
+          return { biz_status: 1, runtime_status: runtimeStatus };
         },
       };
       return builder;
@@ -411,14 +413,18 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
 function createRuntimeDbMock() {
   const db = {
     runUpdateWheres: [] as unknown[][],
-    selectFrom() {
+    selectFrom(table: string) {
       const builder = {
         forUpdate() { return builder; },
         limit() { return builder; },
         orderBy() { return builder; },
         select() { return builder; },
         where() { return builder; },
-        async execute() { return [{ id: "1" }]; },
+        async execute() {
+          return table === "xy_wap_embed_workflow_run"
+            ? [{ current_node_id: "start", id: "1", revision: 1, shard_id: 1, workflow_id: "42" }]
+            : [];
+        },
       };
       return builder;
     },
@@ -462,7 +468,16 @@ function createOutboxDeadDbMock() {
     uid: 8,
     update_time: new Date("2026-07-11T00:00:00.000Z"),
   };
-  const task = { id: "7", run_id: "5", task_version: 2 };
+  const task = {
+    id: "7",
+    node_id: "start",
+    node_kind: "start",
+    revision: 1,
+    run_id: "5",
+    shard_id: 1,
+    task_version: 2,
+    workflow_id: "42",
+  };
   const db = {
     outboxUpdate: {} as Record<string, unknown>,
     runUpdate: {} as Record<string, unknown>,
@@ -474,8 +489,14 @@ function createOutboxDeadDbMock() {
         selectAll() { return builder; },
         where() { return builder; },
         async executeTakeFirst() {
-          return table === "xy_wap_embed_workflow_outbox" ? outbox : task;
+          if (table === "xy_wap_embed_workflow_outbox") return outbox;
+          if (table === "xy_wap_embed_workflow_run") {
+            return { current_node_id: "start", revision: 1, shard_id: 1, workflow_id: "42" };
+          }
+          return task;
         },
+        limit() { return builder; },
+        orderBy() { return builder; },
       };
       return builder;
     },

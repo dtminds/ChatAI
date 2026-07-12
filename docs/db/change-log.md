@@ -2,6 +2,42 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-12
+
+- Added idempotent Workflow node metric events and sharded node counters for the data-mode canvas.
+- Processed metric events are retained for seven days and then removed in bounded Reconciler batches.
+
+Manual migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID', uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID', revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT 'Run ID', node_id VARCHAR(128) NOT NULL COMMENT '节点ID',
+  shard_id SMALLINT UNSIGNED NOT NULL COMMENT '统计分片ID', event_key VARCHAR(256) NOT NULL COMMENT '统计事件幂等键',
+  entered_delta BIGINT NOT NULL DEFAULT 0 COMMENT '进入增量', current_delta BIGINT NOT NULL DEFAULT 0 COMMENT '当前停留增量',
+  passed_delta BIGINT NOT NULL DEFAULT 0 COMMENT '已通过增量', completed_delta BIGINT NOT NULL DEFAULT 0 COMMENT '已完成增量',
+  processed_at DATETIME NULL COMMENT '聚合完成时间', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间', PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_node_metric_event_key (uid, event_key), KEY idx_workflow_node_metric_event_pending (processed_at, id)
+) COMMENT='营销Workflow节点统计增量事件表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID', uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID', revision INT UNSIGNED NOT NULL COMMENT '固定执行Revision',
+  node_id VARCHAR(128) NOT NULL COMMENT '节点ID', shard_id SMALLINT UNSIGNED NOT NULL COMMENT '统计分片ID',
+  entered_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计进入记录数', current_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前停留记录数',
+  passed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计已通过记录数', completed_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计已完成记录数',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间', PRIMARY KEY (id),
+  UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
+  KEY idx_workflow_node_metric_query (uid, workflow_id, revision, node_id)
+) COMMENT='营销Workflow节点分片统计表';
+```
+
 ## 2026-07-11
 
 - Added `xy_wap_embed_workflow_definition.description` for Workflow metadata shown from the canvas header.

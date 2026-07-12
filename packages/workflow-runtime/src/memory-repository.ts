@@ -11,6 +11,7 @@ import {
   transitionRun,
   transitionTask,
 } from "@chatai/workflow-engine";
+import { createNodeMetricDeltas } from "./node-metrics.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -23,10 +24,27 @@ type NodeExecutionRecord = WorkflowCommitNodeResultInput["nodeExecution"] & {
   uid: number;
 };
 
+type NodeMetricEvent = {
+  completed: number;
+  current: number;
+  entered: number;
+  eventKey: string;
+  nodeId: string;
+  passed: number;
+  processedAt: Date | null;
+  revision: number;
+  runId: string;
+  shardId: number;
+  uid: number;
+  workflowId: string;
+};
+
 export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeRepository {
   readonly runs: WorkflowRunRecord[] = [];
   readonly tasks: WorkflowTaskRecord[] = [];
   readonly nodeExecutions: NodeExecutionRecord[] = [];
+  readonly nodeMetricEvents: NodeMetricEvent[] = [];
+  readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private nextId = 1n;
@@ -93,6 +111,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     this.runs.push(run);
     this.tasks.push(task);
     this.outbox.push(createOutbox(this.createId(), task, admittedAt));
+    this.appendNodeMetricEvents(run, `${run.id}:entered`, createNodeMetricDeltas({
+      kind: "entered",
+      nodeId: input.initialNodeId,
+      nodeKind: input.initialNodeKind,
+    }));
     return { deduplicated: false, kind: "success" as const, run: clone(run), task: clone(task) };
   }
 
@@ -120,7 +143,25 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
     const run = this.runs.find(item => item.id === task.runId && item.uid === task.uid);
-    if (run?.status === "queued") run.status = transitionRun(run.status, "running");
+    if (run) {
+      if (run.currentNodeId !== task.nodeId) {
+        const previousTask = this.tasks.find(candidate => candidate.runId === run.id
+          && candidate.sequence === task.sequence - 1);
+        if (previousTask) {
+          this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:activated`, createNodeMetricDeltas({
+            fromNodeId: previousTask.nodeId,
+            fromNodeKind: previousTask.nodeKind,
+            kind: "advanced",
+            toNodeId: task.nodeId,
+            toNodeKind: task.nodeKind,
+          }));
+        }
+        run.currentNodeId = task.nodeId;
+      }
+      if (run.status === "queued" || run.status === "waiting") {
+        run.status = transitionRun(run.status, "running");
+      }
+    }
     return { kind: "success" as const, task: clone(task) };
   }
 
@@ -137,6 +178,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selected = candidates.slice(0, input.limit);
     const selectedIds = new Set(selected.map((run) => run.id));
     for (const run of selected) {
+      const task = this.tasks.find(item => item.runId === run.id
+        && (item.status === "pending" || item.status === "leased" || item.status === "dispatched" || item.status === "running"));
+      if (task) this.appendNodeMetricEvents(run, `${run.id}:cancelled`, createNodeMetricDeltas({
+        kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
+      }));
       run.status = "cancelled";
     }
     for (const task of this.tasks) {
@@ -171,6 +217,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selected = unavailable.slice(0, Math.max(0, input.limit));
     const selectedIds = new Set(selected.map(run => run.id));
     for (const run of selected) {
+      const task = this.tasks.find(item => item.runId === run.id
+        && (item.status === "pending" || item.status === "leased" || item.status === "dispatched" || item.status === "running"));
+      if (task) this.appendNodeMetricEvents(run, `${run.id}:cancelled`, createNodeMetricDeltas({
+        kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
+      }));
       run.status = "cancelled";
       run.lockVersion += 1;
       run.nextExecuteAt = null;
@@ -239,7 +290,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
     let nextTask: WorkflowTaskRecord | null = null;
     if (input.nextTask) {
-      run.currentNodeId = input.nextTask.nodeId;
+      const delayedSuccessor = input.nextTask.taskType === "wait";
+      if (!delayedSuccessor) run.currentNodeId = input.nextTask.nodeId;
       run.sequence = nextSequence;
       run.status = nextRunStatus;
       run.nextExecuteAt = input.nextTask.dueAt;
@@ -248,9 +300,23 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       if (nextTask.status === "dispatched") {
         this.outbox.push(createOutbox(this.createId(), nextTask, this.now()));
       }
+      if (!delayedSuccessor) {
+        this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:advanced`, createNodeMetricDeltas({
+          fromNodeId: task.nodeId,
+          fromNodeKind: task.nodeKind,
+          kind: "advanced",
+          toNodeId: input.nextTask.nodeId,
+          toNodeKind: input.nextTask.nodeKind,
+        }));
+      }
     } else {
       run.status = nextRunStatus;
       run.nextExecuteAt = null;
+      this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:completed`, createNodeMetricDeltas({
+        kind: "completed",
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+      }));
     }
     return {
       kind: "success" as const,
@@ -275,6 +341,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         dead += 1;
         const run = this.runs.find(candidate => candidate.id === task.runId && candidate.uid === task.uid);
         if (run && (run.status === "queued" || run.status === "running" || run.status === "waiting")) {
+          this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:failed`, createNodeMetricDeltas({
+            kind: "left-incomplete",
+            nodeId: task.nodeId,
+            nodeKind: task.nodeKind,
+          }));
           run.status = "failed";
           run.lockVersion += 1;
           run.nextExecuteAt = null;
@@ -319,6 +390,58 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const expiredKeys = new Set(expired.map(item => `${item.consumer}\0${item.messageId}`));
     this.inbox = this.inbox.filter(item => !expiredKeys.has(`${item.consumer}\0${item.messageId}`));
     return expired.length;
+  }
+
+  async aggregateNodeMetricEvents(input: Parameters<WorkflowRuntimeRepository["aggregateNodeMetricEvents"]>[0]) {
+    const events = this.nodeMetricEvents.filter(event => event.processedAt === null).slice(0, Math.max(0, input.limit));
+    for (const event of events) {
+      let metric = this.nodeMetrics.find(item => item.uid === event.uid
+        && item.workflowId === event.workflowId
+        && item.revision === event.revision
+        && item.nodeId === event.nodeId
+        && item.shardId === event.shardId);
+      if (!metric) {
+        metric = {
+          completed: 0,
+          current: 0,
+          entered: 0,
+          nodeId: event.nodeId,
+          passed: 0,
+          revision: event.revision,
+          shardId: event.shardId,
+          uid: event.uid,
+          updatedAt: this.now(),
+          workflowId: event.workflowId,
+        };
+        this.nodeMetrics.push(metric);
+      }
+      metric.completed += event.completed;
+      metric.current = Math.max(0, metric.current + event.current);
+      metric.entered += event.entered;
+      metric.passed += event.passed;
+      metric.updatedAt = this.now();
+      event.processedAt = this.now();
+    }
+    return events.length;
+  }
+
+  async cleanupProcessedNodeMetricEvents(
+    input: Parameters<WorkflowRuntimeRepository["cleanupProcessedNodeMetricEvents"]>[0],
+  ) {
+    const selected = this.nodeMetricEvents
+      .filter(event => event.processedAt !== null && event.processedAt <= input.processedBefore)
+      .slice(0, Math.max(0, input.limit));
+    const keys = new Set(selected.map(event => event.eventKey));
+    for (let index = this.nodeMetricEvents.length - 1; index >= 0; index -= 1) {
+      if (keys.has(this.nodeMetricEvents[index]!.eventKey)) this.nodeMetricEvents.splice(index, 1);
+    }
+    return selected.length;
+  }
+
+  async listNodeMetrics(uid: number, workflowId: string, revision: number) {
+    return clone(this.nodeMetrics.filter(item => item.uid === uid
+      && item.workflowId === workflowId
+      && item.revision === revision));
   }
 
   async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
@@ -446,6 +569,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return clone({
       inbox: this.inbox,
       nodeExecutions: this.nodeExecutions,
+      nodeMetricEvents: this.nodeMetricEvents,
+      nodeMetrics: this.nodeMetrics,
       outbox: this.outbox,
       runs: this.runs,
       tasks: this.tasks,
@@ -454,6 +579,27 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   private createId() {
     return String(this.nextId++);
+  }
+
+  private appendNodeMetricEvents(
+    run: WorkflowRunRecord,
+    eventKey: string,
+    deltas: ReturnType<typeof createNodeMetricDeltas>,
+  ) {
+    for (const delta of deltas) {
+      const key = `${eventKey}:${delta.nodeId}`;
+      if (this.nodeMetricEvents.some(event => event.eventKey === key)) continue;
+      this.nodeMetricEvents.push({
+        ...delta,
+        eventKey: key,
+        processedAt: null,
+        revision: run.revision,
+        runId: run.id,
+        shardId: run.shardId % 16,
+        uid: run.uid,
+        workflowId: run.workflowId,
+      });
+    }
   }
 }
 

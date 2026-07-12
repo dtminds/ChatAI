@@ -152,11 +152,46 @@ export interface WorkflowInboxTable {
   update_time: GeneratedDate;
 }
 
+export interface WorkflowNodeMetricEventTable {
+  completed_delta: number;
+  create_time: GeneratedDate;
+  current_delta: number;
+  entered_delta: number;
+  event_key: string;
+  id: Generated<DatabaseId>;
+  node_id: string;
+  passed_delta: number;
+  processed_at: NullableDate;
+  revision: number;
+  run_id: DatabaseId;
+  shard_id: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
+export interface WorkflowNodeMetricTable {
+  completed_count: number;
+  create_time: GeneratedDate;
+  current_count: number;
+  entered_count: number;
+  id: Generated<DatabaseId>;
+  node_id: string;
+  passed_count: number;
+  revision: number;
+  shard_id: number;
+  uid: number;
+  update_time: GeneratedDate;
+  workflow_id: DatabaseId;
+}
+
 export interface WorkflowDatabase {
   xy_wap_embed_workflow_definition: WorkflowDefinitionTable;
   xy_wap_embed_workflow_entry_guard: WorkflowEntryGuardTable;
   xy_wap_embed_workflow_inbox: WorkflowInboxTable;
   xy_wap_embed_workflow_node_execution: WorkflowNodeExecutionTable;
+  xy_wap_embed_workflow_node_metric: WorkflowNodeMetricTable;
+  xy_wap_embed_workflow_node_metric_event: WorkflowNodeMetricEventTable;
   xy_wap_embed_workflow_outbox: WorkflowOutboxTable;
   xy_wap_embed_workflow_revision: WorkflowRevisionTable;
   xy_wap_embed_workflow_run: WorkflowRunTable;

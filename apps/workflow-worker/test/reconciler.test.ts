@@ -4,6 +4,8 @@ import { reconcileWorkflowRuntime } from "../src/reconciler.js";
 describe("workflow reconciler", () => {
   it("recovers task and outbox leases and advances workflow cancellation", async () => {
     const reconciler = {
+      aggregateNodeMetricEvents: vi.fn(async () => 7),
+      cleanupProcessedNodeMetricEvents: vi.fn(async () => 8),
       cancelUnavailableRuns: vi.fn(async () => ({ cancelled: 4, done: false, nextCursor: "88" })),
       cleanupExpiredInbox: vi.fn(async () => 5),
       recoverExpiredLeases: vi.fn(async () => ({ dead: 1, recovered: 2 })),
@@ -23,6 +25,8 @@ describe("workflow reconciler", () => {
       cancelled: 4,
       inboxDeleted: 5,
       nextCursor: "88",
+      nodeMetricEventsAggregated: 7,
+      nodeMetricEventsDeleted: 8,
       stalledTasksRepublished: 6,
       outboxLeasesRecovered: 3,
       taskLeasesDead: 1,

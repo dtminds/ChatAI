@@ -6,6 +6,9 @@ import {
   WorkflowDraftSchema,
   WorkflowMetadataUpdateRequestSchema,
   WorkflowRuntimeStatusSchema,
+  WorkflowDataOverviewSchema,
+  WorkflowEntryRecordPageSchema,
+  WorkflowEntryRecordDetailSchema,
 } from "../src/workflow/dto.js";
 import {
   WorkflowEntryCommandSchema,
@@ -122,6 +125,45 @@ describe("workflow contracts", () => {
       ...base,
       eventType: "message.received",
       triggerPayload: { messageId: "message-1", messageType: "text", text: "咨询优惠" },
+    })).toBe(true);
+  });
+
+  it("validates user-facing workflow data mode responses", () => {
+    expect(Value.Check(WorkflowDataOverviewSchema, {
+      calculatedAt: "2026-07-12T10:00:00.000Z",
+      nodes: [
+        { completed: 0, current: 0, entered: 120, nodeId: "start", passed: 0 },
+        { completed: 0, current: 18, entered: 0, nodeId: "wait-1", passed: 102 },
+        { completed: 96, current: 0, entered: 0, nodeId: "end", passed: 0 },
+      ],
+      revision: 3,
+    })).toBe(true);
+    expect(Value.Check(WorkflowEntryRecordPageSchema, {
+      items: [{
+        createdAt: "2026-07-12T09:00:00.000Z",
+        currentNodeId: "wait-1",
+        customer: { avatar: null, name: "张三" },
+        nextExecuteAt: "2026-07-13T10:00:00.000Z",
+        recordId: "31",
+        revision: 3,
+        status: "waiting",
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      }],
+      nextCursor: null,
+    })).toBe(true);
+    expect(Value.Check(WorkflowEntryRecordDetailSchema, {
+      createdAt: "2026-07-12T09:00:00.000Z",
+      customer: { avatar: null, name: "张三" },
+      recordId: "31",
+      revision: 3,
+      status: "waiting",
+      steps: [{
+        occurredAt: "2026-07-12T09:00:00.000Z",
+        nodeId: "start",
+        nodeKind: "start",
+        status: "completed",
+        title: "进入流程",
+      }],
     })).toBe(true);
   });
 });

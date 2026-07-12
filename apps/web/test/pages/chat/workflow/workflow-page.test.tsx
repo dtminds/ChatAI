@@ -460,10 +460,22 @@ describe("Agent workflow page", () => {
 
     expect(within(card).getByText("引导新客户完成首次购买")).toBeInTheDocument();
     expect(within(card).getByText("草稿")).toBeInTheDocument();
+    expect(within(card).queryByText("8 节点")).not.toBeInTheDocument();
+    expect(within(card).queryByText("运营主管")).not.toBeInTheDocument();
+    expect(within(card).queryByText("今天 18:20")).not.toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "编辑" })).toHaveAttribute(
+      "href",
+      "/chat/workflows/newcomer-conversion",
+    );
     expect(within(card).getByRole("link", { name: "打开 新人转化旅程" })).toHaveAttribute(
       "href",
       "/chat/workflows/newcomer-conversion",
     );
+
+    const activeCard = screen.getByRole("article", { name: "会员复购唤醒" });
+    const pausedCard = screen.getByRole("article", { name: "直播后跟进" });
+    expect(within(activeCard).getByRole("button", { name: "暂停" })).toBeInTheDocument();
+    expect(within(pausedCard).getByRole("button", { name: "恢复" })).toBeInTheDocument();
   });
 
   it("finds workflows by description", async () => {

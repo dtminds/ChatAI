@@ -69,74 +69,11 @@ export function WorkflowListCard({
   return (
     <article
       aria-labelledby={titleId}
-      className="relative flex min-h-72 flex-col rounded-lg border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
+      className="relative flex min-h-80 flex-col rounded-lg border bg-background p-5 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
     >
-      <div className="flex items-start justify-between gap-3">
-        <Badge className={cn("rounded-md", status.className)}>{status.label}</Badge>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`操作 ${workflow.name}`}
-              className="relative z-10 -mr-1 -mt-1 size-8"
-              size="icon"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {workflow.runtimeStatus === "inactive" ? (
-              <DropdownMenuItem
-                disabled={!workflow.canOperate || operationPending}
-                onSelect={() => onLifecycleAction("enable")}
-              >
-                <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-                启用
-              </DropdownMenuItem>
-            ) : null}
-            {workflow.runtimeStatus === "active" ? (
-              <DropdownMenuItem
-                disabled={!workflow.canOperate || operationPending}
-                onSelect={() => onLifecycleAction("pause")}
-              >
-                <HugeiconsIcon icon={PauseIcon} size={16} strokeWidth={1.8} />
-                暂停
-              </DropdownMenuItem>
-            ) : null}
-            {workflow.runtimeStatus === "paused" ? (
-              <DropdownMenuItem
-                disabled={!workflow.canOperate || operationPending}
-                onSelect={() => onLifecycleAction("resume")}
-              >
-                <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
-                恢复
-              </DropdownMenuItem>
-            ) : null}
-            {workflow.runtimeStatus !== "stopped" ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem onSelect={onRename}>
-              <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
-              重命名
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                disabled={!workflow.canOperate || operationPending}
-                onSelect={() => onLifecycleAction("stop")}
-              >
-                <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
-                停止
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
-              <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
-              删除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <Badge className={cn("w-fit rounded-md", status.className)}>{status.label}</Badge>
 
-      <div className="mt-4 min-w-0">
+      <div className="mt-5 min-w-0">
         <Link
           aria-label={`打开 ${workflow.name}`}
           className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
@@ -144,30 +81,141 @@ export function WorkflowListCard({
         >
           <h2 className="truncate text-base font-semibold" id={titleId}>{workflow.name}</h2>
         </Link>
-        {workflow.description ? (
-          <p className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {workflow.description}
-          </p>
-        ) : null}
+        <p className="mt-1.5 min-h-10 line-clamp-2 text-sm leading-5 text-muted-foreground">
+          {workflow.description}
+        </p>
       </div>
 
-      <div className="mt-5 min-w-0">
+      <div className="mt-6 grid grid-cols-2 gap-6">
+        <WorkflowMetric label="进入人数" value={workflow.entered} />
+        <WorkflowMetric label="转化率" value={workflow.conversion} />
+      </div>
+
+      <div className="mt-5 border-t border-dashed pt-4">
         <div className="text-xs text-muted-foreground">触发条件</div>
-        <div className="mt-1 truncate text-sm text-foreground">{workflow.trigger}</div>
+        <div className="mt-2 inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-foreground">
+          <span className="truncate">{workflow.trigger}</span>
+        </div>
       </div>
 
-      <div className="mt-auto pt-5">
-        <div className="grid grid-cols-3 border-y py-3">
-          <WorkflowMetric label="进入人数" value={workflow.entered} />
-          <WorkflowMetric className="border-l pl-3" label="转化率" value={workflow.conversion} />
-          <WorkflowMetric className="border-l pl-3" label="节点" value={String(workflow.nodes)} />
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span className="truncate">{workflow.owner}</span>
-          <span className="shrink-0">{workflow.updatedAt}</span>
-        </div>
+      <div className="relative z-10 mt-auto flex items-center gap-2 pt-5">
+        <WorkflowPrimaryAction
+          onLifecycleAction={onLifecycleAction}
+          operationPending={operationPending}
+          workflow={workflow}
+        />
+        <WorkflowCardMenu
+          onDelete={onDelete}
+          onLifecycleAction={onLifecycleAction}
+          onRename={onRename}
+          operationPending={operationPending}
+          workflow={workflow}
+        />
       </div>
     </article>
+  );
+}
+
+function WorkflowPrimaryAction({
+  onLifecycleAction,
+  operationPending,
+  workflow,
+}: {
+  onLifecycleAction: (action: WorkflowLifecycleAction) => void;
+  operationPending: boolean;
+  workflow: WorkflowListItem;
+}) {
+  if (workflow.runtimeStatus === "active") {
+    return (
+      <Button
+        className="h-8 flex-1 gap-1.5"
+        disabled={!workflow.canOperate || operationPending}
+        onClick={() => onLifecycleAction("pause")}
+        size="sm"
+        variant="outline"
+      >
+        <HugeiconsIcon icon={PauseIcon} size={15} strokeWidth={1.8} />
+        暂停
+      </Button>
+    );
+  }
+
+  if (workflow.runtimeStatus === "paused") {
+    return (
+      <Button
+        className="h-8 flex-1 gap-1.5"
+        disabled={!workflow.canOperate || operationPending}
+        onClick={() => onLifecycleAction("resume")}
+        size="sm"
+        variant="secondary"
+      >
+        <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
+        恢复
+      </Button>
+    );
+  }
+
+  return (
+    <Button asChild className="h-8 flex-1 gap-1.5" size="sm" variant="outline">
+      <Link to={`/chat/workflows/${workflow.id}`}>
+        <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+        编辑
+      </Link>
+    </Button>
+  );
+}
+
+function WorkflowCardMenu({
+  onDelete,
+  onLifecycleAction,
+  onRename,
+  operationPending,
+  workflow,
+}: {
+  onDelete: () => void;
+  onLifecycleAction: (action: WorkflowLifecycleAction) => void;
+  onRename: () => void;
+  operationPending: boolean;
+  workflow: WorkflowListItem;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={`操作 ${workflow.name}`} className="size-8" size="icon" variant="outline">
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {workflow.runtimeStatus === "inactive" ? (
+          <DropdownMenuItem
+            disabled={!workflow.canOperate || operationPending}
+            onSelect={() => onLifecycleAction("enable")}
+          >
+            <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.8} />
+            启用
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem onSelect={onRename}>
+          <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
+          重命名
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {workflow.runtimeStatus === "active" || workflow.runtimeStatus === "paused" ? (
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            disabled={!workflow.canOperate || operationPending}
+            onSelect={() => onLifecycleAction("stop")}
+          >
+            <HugeiconsIcon icon={StopCircleIcon} size={16} strokeWidth={1.8} />
+            停止
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
+          <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
+          删除
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -287,17 +335,9 @@ export function WorkflowListState({
   );
 }
 
-function WorkflowMetric({
-  className,
-  label,
-  value,
-}: {
-  className?: string;
-  label: string;
-  value: string;
-}) {
+function WorkflowMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className={cn("min-w-0 pr-2", className)}>
+    <div className="min-w-0">
       <div className="truncate text-sm font-semibold text-foreground">{value}</div>
       <div className="mt-1 truncate text-xs text-muted-foreground">{label}</div>
     </div>

@@ -322,7 +322,9 @@ function toListItem(definition: ApiWorkflowDefinition): WorkflowListItem {
         ? "Paused"
         : definition.runtimeStatus === "stopped"
           ? "Stopped"
-          : "Draft",
+          : definition.publishedRevision === null
+            ? "Draft"
+            : "Published",
     trigger: getWorkflowTrigger(draft) ?? "未配置",
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
   };

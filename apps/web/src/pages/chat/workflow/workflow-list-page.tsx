@@ -34,13 +34,14 @@ export function WorkflowPage({ repository }: { repository?: WorkflowDraftReposit
   return <WorkflowListPage repository={repository} />;
 }
 
-type WorkflowStatusFilter = "all" | "active" | "paused" | "draft" | "stopped";
+type WorkflowStatusFilter = "all" | "active" | "paused" | "draft" | "published" | "stopped";
 
 const workflowStatusFilters: Array<{ label: string; value: WorkflowStatusFilter }> = [
   { label: "全部", value: "all" },
   { label: "运行中", value: "active" },
   { label: "已暂停", value: "paused" },
   { label: "草稿", value: "draft" },
+  { label: "已发布", value: "published" },
   { label: "已停止", value: "stopped" },
 ];
 
@@ -63,9 +64,9 @@ export function WorkflowListPage({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredItems = useMemo(() => items.filter((workflow) => {
     const matchesStatus = statusFilter === "all"
-      || (statusFilter === "draft"
-        ? workflow.status === "Draft"
-        : workflow.runtimeStatus === statusFilter);
+      || (statusFilter === "draft" && workflow.status === "Draft")
+      || (statusFilter === "published" && workflow.status === "Published" && workflow.runtimeStatus === "inactive")
+      || workflow.runtimeStatus === statusFilter;
     const matchesQuery = !normalizedQuery
       || [workflow.name, workflow.description, workflow.trigger, workflow.owner]
         .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));

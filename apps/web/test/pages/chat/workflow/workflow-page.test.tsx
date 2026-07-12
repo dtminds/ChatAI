@@ -532,8 +532,13 @@ describe("Agent workflow page", () => {
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
   });
 
-  it("filters workflow cards by status and combines the filter with search", async () => {
+  it("filters every workflow lifecycle and publish status", async () => {
     const user = userEvent.setup();
+    const repository = getWorkflowDraftRepository();
+    const published = await repository.createDocument({ name: "待启用已发布流程" });
+    await repository.publishDraft(published.id, published.draft);
+    const stopped = await repository.createDocument({ name: "已停止流程" });
+    await repository.stopDocument?.(stopped.id);
     renderWorkflowPage("/chat/workflows");
 
     await screen.findByText("新人转化旅程");
@@ -541,15 +546,32 @@ describe("Agent workflow page", () => {
     expect(screen.getByRole("tab", { name: "运行中" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已暂停" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已发布" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已停止" })).toBeInTheDocument();
     expect(screen.queryByText("3 个流程")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "运行中" }));
-
     expect(screen.getByText("会员复购唤醒")).toBeInTheDocument();
     expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
     expect(screen.queryByText("直播后跟进")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("tab", { name: "已暂停" }));
+    expect(screen.getByText("直播后跟进")).toBeInTheDocument();
+    expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
+    expect(screen.queryByText("待启用已发布流程")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "已发布" }));
+    expect(screen.getByText("待启用已发布流程")).toBeInTheDocument();
+    expect(screen.queryByText("新人转化旅程")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "已停止" }));
+    expect(screen.getByText("已停止流程")).toBeInTheDocument();
+    expect(screen.queryByText("待启用已发布流程")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "运行中" }));
     await user.type(screen.getByRole("textbox", { name: "搜索 Workflow" }), "不存在");
     expect(screen.queryByText("会员复购唤醒")).not.toBeInTheDocument();
   });

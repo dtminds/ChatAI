@@ -104,6 +104,16 @@ describe("HTTP workflow draft repository", () => {
     });
   });
 
+  it("maps published inactive definitions as published list items", async () => {
+    const definition = createDefinition({ publishedRevision: 1, runtimeStatus: "inactive" });
+    const client = createClient({ definition, revisions: [] });
+    const repository = createHttpWorkflowDraftRepository(client);
+
+    const [listItem] = await repository.listDocuments();
+
+    expect(listItem).toMatchObject({ runtimeStatus: "inactive", status: "Published" });
+  });
+
   it("sends the cached draft version when saving", async () => {
     const client = createClient({ definition: createDefinition(), revisions: [] });
     const repository = createHttpWorkflowDraftRepository(client);

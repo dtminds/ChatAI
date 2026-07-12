@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,6 +34,9 @@ export function WorkflowMetadataDialog({
   submitLabel?: string;
   title?: string;
 }) {
+  const fieldId = useId();
+  const nameId = `${fieldId}-name`;
+  const descriptionId = `${fieldId}-description`;
   const [nameValue, setNameValue] = useState(metadata.name);
   const [descriptionValue, setDescriptionValue] = useState(metadata.description);
 
@@ -78,12 +81,12 @@ export function WorkflowMetadataDialog({
         >
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor="workflow-metadata-name">Workflow 名称</label>
+              <label className="text-sm font-medium" htmlFor={nameId}>Workflow 名称</label>
               <span className="text-xs text-muted-foreground">{nameValue.length}/100</span>
             </div>
             <Input
               autoFocus
-              id="workflow-metadata-name"
+              id={nameId}
               maxLength={100}
               onChange={(event) => setNameValue(event.target.value)}
               readOnly={pending}
@@ -92,11 +95,11 @@ export function WorkflowMetadataDialog({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium" htmlFor="workflow-metadata-description">Workflow 描述</label>
+              <label className="text-sm font-medium" htmlFor={descriptionId}>Workflow 描述</label>
               <span className="text-xs text-muted-foreground">{descriptionValue.length}/1000</span>
             </div>
             <Textarea
-              id="workflow-metadata-description"
+              id={descriptionId}
               maxLength={1000}
               onChange={(event) => setDescriptionValue(event.target.value)}
               placeholder="填写 Workflow 的用途或目标"

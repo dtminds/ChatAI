@@ -722,7 +722,9 @@ function cancelTask(task: WorkflowTaskRecord) {
 }
 
 function compareById(first: { id: string }, second: { id: string }) {
-  return BigInt(first.id) < BigInt(second.id) ? -1 : 1;
+  const firstId = BigInt(first.id);
+  const secondId = BigInt(second.id);
+  return firstId === secondId ? 0 : firstId < secondId ? -1 : 1;
 }
 
 function sameDate(first: Date, second: Date | null) {

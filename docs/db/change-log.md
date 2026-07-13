@@ -4,6 +4,22 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-13
 
+- Added indexes for the 180-day retained-record query and bounded cleanup of terminal Runs, Node Execution ledgers, and task Outbox rows.
+
+Workflow history retention migration (apply before enabling the Worker cleanup settings):
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_run
+  ADD KEY idx_workflow_run_history_cleanup (status, completed_at, id),
+  ADD KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id);
+
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD KEY idx_workflow_node_execution_run_cleanup (run_id, id);
+
+ALTER TABLE xy_wap_embed_workflow_outbox
+  ADD KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id);
+```
+
 - Added the Workflow Action failure classification used by the durable retry ledger.
 
 Action reliability migration:

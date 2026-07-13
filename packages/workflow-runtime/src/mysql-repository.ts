@@ -50,6 +50,7 @@ const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as con
 const NODE_METRIC_TABLE = "xy_wap_embed_workflow_node_metric" as const;
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting"] as const;
 const ACTIVE_TASK_STATUSES = ["pending", "leased", "dispatched", "running"] as const;
+const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
 const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;
 
@@ -1279,6 +1280,96 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
+  async cleanupWorkflowHistory(
+    input: Parameters<WorkflowRuntimeRepository["cleanupWorkflowHistory"]>[0],
+  ) {
+    if (input.limit <= 0) return emptyHistoryCleanupResult();
+    const technical = await this.db.transaction().execute(async (trx) => {
+      const runs = await trx.selectFrom(RUN_TABLE).select("id")
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<=", input.taskOutboxBefore)
+        .where(({ exists, selectFrom }) => exists(
+          selectFrom(`${TASK_TABLE} as cleanup_task`)
+            .select("cleanup_task.id")
+            .whereRef("cleanup_task.run_id", "=", `${RUN_TABLE}.id`),
+        ))
+        .orderBy("completed_at", "asc")
+        .orderBy("id", "asc")
+        .limit(input.limit + 1)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const selectedRuns = runs.slice(0, input.limit);
+      const runIds = selectedRuns.map(run => run.id);
+      if (runIds.length === 0) return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
+      const tasks = await trx.selectFrom(TASK_TABLE).select("id")
+        .where("run_id", "in", runIds)
+        .orderBy("id", "asc")
+        .forUpdate()
+        .execute();
+      const taskIds = tasks.map(task => task.id);
+      const outboxDeleted = taskIds.length === 0 ? 0 : Number((await trx.deleteFrom(OUTBOX_TABLE)
+        .where("aggregate_type", "=", "workflow_task")
+        .where("aggregate_id", "in", taskIds)
+        .executeTakeFirst()).numDeletedRows);
+      const tasksDeleted = taskIds.length === 0 ? 0 : Number((await trx.deleteFrom(TASK_TABLE)
+        .where("id", "in", taskIds)
+        .executeTakeFirst()).numDeletedRows);
+      return { hasMore: runs.length > selectedRuns.length, outboxDeleted, tasksDeleted };
+    });
+    const userVisible = await this.db.transaction().execute(async (trx) => {
+      const runs = await trx.selectFrom(RUN_TABLE).select("id")
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<=", input.runBefore)
+        .orderBy("completed_at", "asc")
+        .orderBy("id", "asc")
+        .limit(input.limit + 1)
+        .forUpdate()
+        .skipLocked()
+        .execute();
+      const selectedRuns = runs.slice(0, input.limit);
+      if (selectedRuns.length === 0) {
+        return { hasMore: false, nodeExecutionsDeleted: 0, runsDeleted: 0 };
+      }
+      const runIds = selectedRuns.map(run => run.id);
+      const remainingTasks = await trx.selectFrom(TASK_TABLE).select("run_id")
+        .where("run_id", "in", runIds)
+        .execute();
+      const blockedRunIds = new Set(remainingTasks.map(task => normalizeId(task.run_id)));
+      const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
+      if (deletableRunIds.length === 0) {
+        return {
+          hasMore: runs.length > selectedRuns.length,
+          nodeExecutionsDeleted: 0,
+          runsDeleted: 0,
+        };
+      }
+      const nodeExecutionsDeleted = Number((await trx.deleteFrom(EXECUTION_TABLE)
+        .where("run_id", "in", deletableRunIds)
+        .executeTakeFirst()).numDeletedRows);
+      const runsDeleted = Number((await trx.deleteFrom(RUN_TABLE)
+        .where("id", "in", deletableRunIds)
+        .where("status", "in", TERMINAL_RUN_STATUSES)
+        .where("completed_at", "is not", null)
+        .where("completed_at", "<=", input.runBefore)
+        .executeTakeFirst()).numDeletedRows);
+      return {
+        hasMore: runs.length > selectedRuns.length,
+        nodeExecutionsDeleted,
+        runsDeleted,
+      };
+    });
+    return {
+      hasMore: technical.hasMore || userVisible.hasMore,
+      nodeExecutionsDeleted: userVisible.nodeExecutionsDeleted,
+      outboxDeleted: technical.outboxDeleted,
+      runsDeleted: userVisible.runsDeleted,
+      tasksDeleted: technical.tasksDeleted,
+    };
+  }
+
   async aggregateNodeMetricEvents(
     input: Parameters<WorkflowRuntimeRepository["aggregateNodeMetricEvents"]>[0],
   ) {
@@ -1682,6 +1773,16 @@ function emptyRunTaskConsistencyResult() {
     staleTasksCancelled: 0,
     tasksChecked: 0,
     terminalRunTasksCancelled: 0,
+  };
+}
+
+function emptyHistoryCleanupResult() {
+  return {
+    hasMore: false,
+    nodeExecutionsDeleted: 0,
+    outboxDeleted: 0,
+    runsDeleted: 0,
+    tasksDeleted: 0,
   };
 }
 

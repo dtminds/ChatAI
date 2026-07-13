@@ -15,6 +15,12 @@ export class WorkflowRuntimeReconciler {
     return this.repository.cleanupExpiredInbox(input);
   }
 
+  cleanupWorkflowHistory(
+    input: Parameters<WorkflowRuntimeRepository["cleanupWorkflowHistory"]>[0],
+  ) {
+    return this.repository.cleanupWorkflowHistory(input);
+  }
+
   recoverExpiredOutboxLeases(input: { limit: number; now: Date }) {
     return this.repository.recoverExpiredOutboxLeases(input);
   }

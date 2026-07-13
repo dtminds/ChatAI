@@ -39,6 +39,17 @@ describe("workflow worker observability", () => {
       durationMs: 24,
       result: { claimed: 2, dead: 0, failed: 1, sent: 1 },
     });
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:02.000Z"),
+      durationMs: 31,
+      result: {
+        historyCleanupHasMore: true,
+        nodeExecutionsDeleted: 4,
+        outboxDeleted: 6,
+        runsDeleted: 2,
+        tasksDeleted: 5,
+      },
+    });
 
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
       dispatched: 3,
@@ -50,6 +61,16 @@ describe("workflow worker observability", () => {
       failed: 1,
       role: "outbox",
     }), "workflow worker role reported warning counters");
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: "workflow.worker.role.completed",
+      historyCleanupHasMore: true,
+      nodeExecutionsDeleted: 4,
+      outboxDeleted: 6,
+      role: "reconciler",
+      runsDeleted: 2,
+      tasksDeleted: 5,
+    }), "workflow worker role completed");
+    expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
   it("records expected workflow cancellations at info", () => {

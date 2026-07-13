@@ -91,7 +91,8 @@ describe("WorkflowDataPage", () => {
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: /已进入 9/ }));
 
-    expect(await screen.findByRole("dialog", { name: "全部进入记录" })).toBeInTheDocument();
+    const records = await screen.findByRole("dialog", { name: "全部进入记录" });
+    expect(within(records).getByText("仅展示最近 180 天的运行记录")).toBeInTheDocument();
     expect(repository.listRecords).toHaveBeenCalledWith({
       cursor: undefined,
       revision: document.publishedRevision!,

@@ -1,5 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { WorkflowIdSchema } from "./dto.js";
+import {
+  WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
+  WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+} from "./retention.js";
 
 export const WorkflowEntryEventTypeSchema = Type.Union([
   Type.Literal("contact.friend_added"),
@@ -16,8 +20,14 @@ export const WorkflowEntryPolicySchema = Type.Union([
   Type.Object({
     maxEntries: Type.Integer({ minimum: 1, maximum: 1_000 }),
     mode: Type.Literal("rolling_window"),
-    windowSize: Type.Integer({ minimum: 1, maximum: 365 }),
-    windowUnit: Type.Union([Type.Literal("hour"), Type.Literal("day")]),
+    windowSize: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_WINDOW_MAX_HOURS }),
+    windowUnit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    maxEntries: Type.Integer({ minimum: 1, maximum: 1_000 }),
+    mode: Type.Literal("rolling_window"),
+    windowSize: Type.Integer({ minimum: 1, maximum: WORKFLOW_ENTRY_WINDOW_MAX_DAYS }),
+    windowUnit: Type.Literal("day"),
   }, { additionalProperties: false }),
 ]);
 

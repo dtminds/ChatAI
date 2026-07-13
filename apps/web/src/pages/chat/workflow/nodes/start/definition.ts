@@ -1,4 +1,8 @@
 import { PlayIcon } from "@hugeicons/core-free-icons";
+import {
+  WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
+  WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+} from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createCatalogIssue,
@@ -37,6 +41,19 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
   kind: "start",
   layout: standardNodeLayout,
   role: "entry",
+  sanitizeData: (data) => {
+    if (data.entryPolicy.mode !== "rolling_window") return data;
+    const maxWindowSize = data.entryPolicy.windowUnit === "hour"
+      ? WORKFLOW_ENTRY_WINDOW_MAX_HOURS
+      : WORKFLOW_ENTRY_WINDOW_MAX_DAYS;
+    return {
+      ...data,
+      entryPolicy: {
+        ...data.entryPolicy,
+        windowSize: Math.min(maxWindowSize, Math.max(1, Math.trunc(data.entryPolicy.windowSize))),
+      },
+    };
+  },
   schemaVersion: 1,
   getSourceHandles: createDefaultSourceHandles,
   getTargetHandles: createNoTargetHandles,

@@ -96,6 +96,19 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowWaitConfigSchema, { duration: 0, unit: "day" })).toBe(false);
   });
 
+  it("limits rolling entry windows to 90 days by actual duration", () => {
+    const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
+      accountIds: ["account-a"],
+      entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
+      triggers: [{ type: "contact.friend_added" }],
+    });
+
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(91, "day"))).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_160, "hour"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_161, "hour"))).toBe(false);
+  });
+
   it("validates standard entry commands by event payload", () => {
     const base = {
       accountId: "account-a",

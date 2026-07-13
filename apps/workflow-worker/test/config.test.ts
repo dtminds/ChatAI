@@ -103,6 +103,8 @@ describe("workflow worker config", () => {
       batchSize: 100,
       dispatchTimeoutMs: 300_000,
       inboxCleanupBatchSize: 1_000,
+      historyCleanupBatchSize: 1_000,
+      historyCleanupIntervalMs: 3_600_000,
       leaseDurationMs: 60_000,
       maxOutboxAttempts: 100,
       maxOutboxRetryDelayMs: 300_000,
@@ -110,8 +112,10 @@ describe("workflow worker config", () => {
       outboxIntervalMs: 1_000,
       readinessIntervalMs: 30_000,
       reconcileIntervalMs: 30_000,
+      runRetentionDays: 180,
       retryDelayMs: 5_000,
       schedulerIntervalMs: 1_000,
+      taskOutboxRetentionDays: 30,
     });
     expect(config.runtime.shardIds).toHaveLength(256);
   });
@@ -135,6 +139,7 @@ describe("workflow worker config", () => {
       WORKFLOW_HEALTH_PORT: "65536",
     }))).toThrow("WORKFLOW_HEALTH_PORT must be an integer from 1 to 65535");
   });
+
 });
 
 function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {

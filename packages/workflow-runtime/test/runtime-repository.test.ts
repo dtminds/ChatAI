@@ -384,6 +384,119 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().inbox).toHaveLength(0);
   });
 
+  it("prunes terminal workflow history in technical and user-visible retention stages", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const completed = await repository.createRunWithInitialTask(createRunInput());
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: completed.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    await repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-02-01T00:00:00.000Z"),
+        messageId: "history-retention",
+      },
+      nodeExecution: { idempotencyKey: "history-retention", input: {}, output: {} },
+      runId: completed.run.id,
+      taskId: completed.task.id,
+      uid: 9,
+    });
+    const active = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryEventId: "active-event",
+    });
+
+    now = new Date("2026-02-01T00:00:00.000Z");
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2025-08-05T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-01-02T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: false,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 1,
+      runsDeleted: 0,
+      tasksDeleted: 1,
+    });
+    expect(repository.snapshot()).toMatchObject({
+      nodeExecutions: [expect.objectContaining({ runId: completed.run.id })],
+      runs: expect.arrayContaining([
+        expect.objectContaining({ id: completed.run.id, status: "completed" }),
+        expect.objectContaining({ id: active.run.id, status: "queued" }),
+      ]),
+      tasks: [expect.objectContaining({ runId: active.run.id })],
+    });
+
+    now = new Date("2026-07-13T00:00:00.000Z");
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: false,
+      nodeExecutionsDeleted: 1,
+      outboxDeleted: 0,
+      runsDeleted: 1,
+      tasksDeleted: 0,
+    });
+    expect(repository.snapshot()).toMatchObject({
+      nodeExecutions: [],
+      runs: [expect.objectContaining({ id: active.run.id, status: "queued" })],
+      tasks: [expect.objectContaining({ runId: active.run.id })],
+    });
+    expect(repository.snapshot().outbox).toHaveLength(1);
+  });
+
+  it("preserves lifetime entry limits after old runs are removed", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryPolicy: { mode: "never" },
+    });
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    await repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-02-01T00:00:00.000Z"),
+        messageId: "lifetime-retention",
+      },
+      nodeExecution: { idempotencyKey: "lifetime-retention", input: {}, output: {} },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    });
+    now = new Date("2026-07-13T00:00:00.000Z");
+    await repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    });
+
+    await expect(repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryEventId: "event-after-cleanup",
+      entryPolicy: { mode: "never" },
+    })).resolves.toEqual({ kind: "entry-policy-rejected" });
+  });
+
   it("cancels stopped workflow runs in cursor-based batches", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     await repository.createRunWithInitialTask(createRunInput());

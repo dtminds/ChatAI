@@ -56,6 +56,25 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it("lists active runs and only terminal runs inside the 180-day record window", async () => {
+    const listDb = createRecordListDbMock();
+    const detailDb = createRecordDbMock({ runStatus: "completed" });
+    const listReader = new MysqlWorkflowDataReader(listDb as never);
+    const detailReader = new MysqlWorkflowDataReader(detailDb as never);
+
+    await listReader.listRecords({ limit: 20, revision: 3, uid: 9, workflowId: "12" });
+    await detailReader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(listDb.retentionConditions).toEqual([
+      ["status", "in", ["queued", "running", "waiting"]],
+      ["completed_at", ">=", expect.anything()],
+    ]);
+    expect(detailDb.retentionConditions).toEqual([
+      ["status", "in", ["queued", "running", "waiting"]],
+      ["completed_at", ">=", expect.anything()],
+    ]);
+  });
+
   it.each(["running", "retrying"])(
     "does not present a non-terminal %s action ledger as a completed trajectory step",
     async (executionStatus) => {
@@ -168,12 +187,23 @@ function createRecordDbMock(options: {
   });
   const now = new Date("2026-07-12T10:00:00.000Z");
   const db = {
+    retentionConditions: [] as unknown[][],
     wheres: [] as unknown[][],
     selectFrom(table: string) {
       const builder = {
         orderBy() { return builder; },
         select() { return builder; },
         where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run" && typeof args[0] === "function") {
+            const eb = Object.assign(
+              (...expression: unknown[]) => {
+                db.retentionConditions.push(expression);
+                return expression;
+              },
+              { or: (expressions: unknown[]) => expressions },
+            );
+            (args[0] as (expressionBuilder: typeof eb) => unknown)(eb);
+          }
           db.wheres.push([table, ...args]);
           return builder;
         },
@@ -206,6 +236,35 @@ function createRecordDbMock(options: {
             draft_json: draftJson,
           };
         },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createRecordListDbMock() {
+  const db = {
+    retentionConditions: [] as unknown[][],
+    selectFrom(table: string) {
+      const builder = {
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run" && typeof args[0] === "function") {
+            const eb = Object.assign(
+              (...expression: unknown[]) => {
+                db.retentionConditions.push(expression);
+                return expression;
+              },
+              { or: (expressions: unknown[]) => expressions },
+            );
+            (args[0] as (expressionBuilder: typeof eb) => unknown)(eb);
+          }
+          return builder;
+        },
+        async execute() { return []; },
       };
       return builder;
     },

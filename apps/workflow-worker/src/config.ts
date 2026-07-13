@@ -1,3 +1,8 @@
+import {
+  WORKFLOW_RUN_RETENTION_DAYS,
+  WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
+} from "@chatai/contracts";
+
 export type WorkflowEnvironment = "dev" | "test01";
 export type WorkflowWorkerRole = "entry-consumer" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
@@ -18,6 +23,8 @@ export type WorkflowWorkerConfig = {
     actionRetryDelayMs: number;
     batchSize: number;
     dispatchTimeoutMs: number;
+    historyCleanupBatchSize: number;
+    historyCleanupIntervalMs: number;
     inboxCleanupBatchSize: number;
     leaseDurationMs: number;
     maxTaskAttempts: number;
@@ -27,8 +34,10 @@ export type WorkflowWorkerConfig = {
     readinessIntervalMs: number;
     reconcileIntervalMs: number;
     retryDelayMs: number;
+    runRetentionDays: number;
     schedulerIntervalMs: number;
     shardIds: number[];
+    taskOutboxRetentionDays: number;
   };
   subscriptionType: "Shared";
   subscriptions: {
@@ -107,6 +116,16 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         300_000,
         "WORKFLOW_DISPATCH_TIMEOUT_MS",
       ),
+      historyCleanupBatchSize: parseCount(
+        env.WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE,
+        1_000,
+        "WORKFLOW_HISTORY_CLEANUP_BATCH_SIZE",
+      ),
+      historyCleanupIntervalMs: parseDurationMs(
+        env.WORKFLOW_HISTORY_CLEANUP_INTERVAL_MS,
+        3_600_000,
+        "WORKFLOW_HISTORY_CLEANUP_INTERVAL_MS",
+      ),
       inboxCleanupBatchSize: parseCount(
         env.WORKFLOW_INBOX_CLEANUP_BATCH_SIZE,
         1_000,
@@ -152,12 +171,14 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         5_000,
         "WORKFLOW_OUTBOX_RETRY_DELAY_MS",
       ),
+      runRetentionDays: WORKFLOW_RUN_RETENTION_DAYS,
       schedulerIntervalMs: parseDurationMs(
         env.WORKFLOW_SCHEDULER_INTERVAL_MS,
         1_000,
         "WORKFLOW_SCHEDULER_INTERVAL_MS",
       ),
       shardIds: parseShardIds(env.WORKFLOW_SHARD_IDS),
+      taskOutboxRetentionDays: WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
     },
     subscriptionType: "Shared",
     subscriptions: {

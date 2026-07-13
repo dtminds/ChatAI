@@ -1,3 +1,5 @@
+import type { WorkflowHistoryCleanupResult } from "@chatai/workflow-runtime";
+
 type WorkflowReconciler = {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
@@ -6,6 +8,11 @@ type WorkflowReconciler = {
     limit: number;
   }): Promise<{ cancelled: number; done: boolean; nextCursor: string | null }>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
+  cleanupWorkflowHistory(input: {
+    limit: number;
+    runBefore: Date;
+    taskOutboxBefore: Date;
+  }): Promise<WorkflowHistoryCleanupResult>;
   recoverExpiredLeases(input: {
     limit: number;
     maxAttempts: number;
@@ -42,6 +49,11 @@ export async function reconcileWorkflowRuntime(input: {
   afterConsistencyTaskId?: string;
   consistencyGraceMs: number;
   dispatchTimeoutMs: number;
+  historyRetention?: {
+    runBefore: Date;
+    taskOutboxBefore: Date;
+  };
+  historyCleanupBatchSize: number;
   inboxCleanupBatchSize: number;
   limit: number;
   maxTaskAttempts: number;
@@ -84,8 +96,21 @@ export async function reconcileWorkflowRuntime(input: {
     limit: input.inboxCleanupBatchSize,
     now: input.now,
   });
+  const history = input.historyRetention
+    ? await input.reconciler.cleanupWorkflowHistory({
+        limit: input.historyCleanupBatchSize,
+        ...input.historyRetention,
+      })
+    : {
+        hasMore: false,
+        nodeExecutionsDeleted: 0,
+        outboxDeleted: 0,
+        runsDeleted: 0,
+        tasksDeleted: 0,
+      };
   return {
     cancelled: cancellation.cancelled,
+    historyCleanupHasMore: history.hasMore,
     inboxDeleted,
     inconsistentRunsFailed: consistency.inconsistentRunsFailed,
     nextConsistencyRunCursor: consistency.hasMoreRuns ? consistency.lastRunId : null,
@@ -93,13 +118,17 @@ export async function reconcileWorkflowRuntime(input: {
     nextCursor: cancellation.done ? null : cancellation.nextCursor,
     nodeMetricEventsAggregated,
     nodeMetricEventsDeleted,
+    nodeExecutionsDeleted: history.nodeExecutionsDeleted,
     stalledTasksRepublished,
     outboxLeasesRecovered,
+    outboxDeleted: history.outboxDeleted,
+    runsDeleted: history.runsDeleted,
     runsChecked: consistency.runsChecked,
     staleTasksCancelled: consistency.staleTasksCancelled,
     taskLeasesDead: taskLeaseRecovery.dead,
     taskLeasesRecovered: taskLeaseRecovery.recovered,
     tasksChecked: consistency.tasksChecked,
+    tasksDeleted: history.tasksDeleted,
     terminalRunTasksCancelled: consistency.terminalRunTasksCancelled,
   };
 }

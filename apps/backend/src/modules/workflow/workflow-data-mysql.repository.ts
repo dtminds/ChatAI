@@ -1,12 +1,13 @@
-import type {
-  WorkflowDataOverview,
-  WorkflowEntryRecordDetail,
-  WorkflowEntryRecordPage,
-  WorkflowEntryRecordStepNodeKind,
-  WorkflowEntryRecordStatus,
-  WorkflowNodeKind,
+import {
+  WORKFLOW_RUN_RETENTION_DAYS,
+  type WorkflowDataOverview,
+  type WorkflowEntryRecordDetail,
+  type WorkflowEntryRecordPage,
+  type WorkflowEntryRecordStepNodeKind,
+  type WorkflowEntryRecordStatus,
+  type WorkflowNodeKind,
 } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
@@ -60,6 +61,10 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
       .where("revision", "=", input.revision)
+      .where(eb => eb.or([
+        eb("status", "in", ["queued", "running", "waiting"]),
+        eb("completed_at", ">=", sql<Date>`CURRENT_TIMESTAMP - INTERVAL ${WORKFLOW_RUN_RETENTION_DAYS} DAY`),
+      ]))
       .orderBy("id", "desc")
       .limit(input.limit + 1);
     if (input.cursor) query = query.where("id", "<", input.cursor);
@@ -89,6 +94,10 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       .where("uid", "=", input.uid)
       .where("workflow_id", "=", input.workflowId)
       .where("id", "=", input.recordId)
+      .where(eb => eb.or([
+        eb("status", "in", ["queued", "running", "waiting"]),
+        eb("completed_at", ">=", sql<Date>`CURRENT_TIMESTAMP - INTERVAL ${WORKFLOW_RUN_RETENTION_DAYS} DAY`),
+      ]))
       .executeTakeFirst();
     if (!run) throw new NotFoundError("WORKFLOW_RECORD_NOT_FOUND", "运行记录不存在");
     const [executions, revision, customers] = await Promise.all([

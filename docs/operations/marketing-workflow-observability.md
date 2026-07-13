@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 3 uses JSON logs, Worker health endpoints, and read-only MySQL queries. It does not add Prometheus, OpenTelemetry, alert thresholds, or product retention rules. Capacity targets and alert thresholds remain Phase 5 inputs.
+The Workflow runtime uses JSON logs, Worker health endpoints, and read-only MySQL queries. 1.0 includes bounded history retention but does not add Prometheus, OpenTelemetry, or alert thresholds. Capacity targets and alert thresholds remain later production-readiness inputs.
 
 ## Worker Log Policy
 
@@ -32,7 +32,21 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.action.retry.scheduled` | `warn` | `uid`, `taskId`, `failureKind`, `errorCode`, `retryAt` |
 | `workflow.action.failed` | `warn` | `uid`, `taskId`, `failureKind`, `errorCode` |
 
-Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, and `err`.
+Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.
+
+## History Retention
+
+1.0 applies one global policy to every tenant:
+
+- `queued`, `running`, and `waiting` Runs are retained without a time limit.
+- `completed`, `failed`, and `cancelled` Runs and their Node Execution ledgers are retained for 180 days from `completed_at`.
+- Task and task Outbox rows are removed 30 days after their owning Run terminates.
+- Entry Guard lifetime counters and cumulative node metrics are retained long-term.
+- No archive or product restore path exists; the run-record panel explicitly covers the latest 180 days.
+
+The Reconciler starts cleanup hourly in bounded batches. If a batch reports more work, it catches up at the normal Reconciler interval until the backlog is drained. Cleanup counters are expected `info`-level work, not recovery warnings. A terminal Run is deleted only after its Tasks are gone, and its Node Execution rows are deleted in the same transaction.
+
+Before rollout, apply the history-cleanup indexes in `docs/db/change-log.md`. A future real Entry Source must keep its approved replay window shorter than Run retention, with the initial integration capped at 30 days. Replaying an Entry after its Run deduplication row has expired is unsupported.
 
 ## Action Failure Recovery
 
@@ -138,6 +152,7 @@ Before Phase 5 defines thresholds, the Workflow dashboard should expose:
 - Dead Task and dead Outbox counts.
 - Expired Task and Outbox leases.
 - Reconciler recovery counters from `workflow.worker.role.warning`.
+- Reconciler history cleanup counters from `workflow.worker.role.completed`.
 - Internal cancellation backlog after Workflow stop or deletion.
 
 `Dead Task` and `Dead Outbox` above are database terminal states, not Pulsar DLQ depth. Pulsar DLQ backlog monitoring is added with the real Entry Source integration because it depends on the final Entry topic, alert channel, and operations ownership.

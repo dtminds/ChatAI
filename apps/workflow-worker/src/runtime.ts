@@ -63,6 +63,7 @@ export async function startWorkflowWorkerRuntime(input: {
   entryConsumer: typeof startEntryConsumer;
   pingDatabase(): Promise<void>;
   logger: WorkflowWorkerLogger;
+  now?: () => Date;
   outboxPublisher(input: Parameters<typeof publishWorkflowOutboxBatch>[0]): ReturnType<typeof publishWorkflowOutboxBatch>;
   outboxRepository: Parameters<typeof publishWorkflowOutboxBatch>[0]["repository"];
   reconciler(input: Parameters<typeof reconcileWorkflowRuntime>[0]): ReturnType<typeof reconcileWorkflowRuntime>;
@@ -83,6 +84,7 @@ export async function startWorkflowWorkerRuntime(input: {
     roles: Object.fromEntries([...input.config.roles].map(role => [role, false])),
   };
   let closed = false;
+  const now = input.now ?? (() => new Date());
   let previousReadiness = structuredClone(readiness);
 
   try {
@@ -117,7 +119,7 @@ export async function startWorkflowWorkerRuntime(input: {
       loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>
         input.scheduler({
           limit: input.config.runtime.batchSize,
-          now: new Date(),
+          now: now(),
           repository: input.schedulerRepository,
           shardIds: input.config.runtime.shardIds,
         })));
@@ -140,22 +142,41 @@ export async function startWorkflowWorkerRuntime(input: {
       let afterRunId: string | undefined;
       let afterConsistencyRunId: string | undefined;
       let afterConsistencyTaskId: string | undefined;
+      let nextHistoryCleanupAt = 0;
       loops.push(startBackgroundRole("reconciler", input.config.runtime.reconcileIntervalMs, async () => {
+        const currentTime = now();
+        const historyRetention = currentTime.getTime() >= nextHistoryCleanupAt
+          ? {
+              runBefore: new Date(
+                currentTime.getTime() - input.config.runtime.runRetentionDays * 86_400_000,
+              ),
+              taskOutboxBefore: new Date(
+                currentTime.getTime() - input.config.runtime.taskOutboxRetentionDays * 86_400_000,
+              ),
+            }
+          : undefined;
         const result = await input.reconciler({
           afterRunId,
           afterConsistencyRunId,
           afterConsistencyTaskId,
           consistencyGraceMs: input.config.runtime.reconcileIntervalMs * 2,
           dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
+          historyCleanupBatchSize: input.config.runtime.historyCleanupBatchSize,
+          historyRetention,
           inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
           limit: input.config.runtime.batchSize,
           maxTaskAttempts: input.config.runtime.maxTaskAttempts,
-          now: new Date(),
+          now: currentTime,
           reconciler: input.reconcilerService,
         });
         afterRunId = result.nextCursor ?? undefined;
         afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
         afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;
+        if (historyRetention) {
+          nextHistoryCleanupAt = result.historyCleanupHasMore
+            ? currentTime.getTime() + input.config.runtime.reconcileIntervalMs
+            : currentTime.getTime() + input.config.runtime.historyCleanupIntervalMs;
+        }
         return result;
       }));
     }

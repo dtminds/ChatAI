@@ -109,6 +109,14 @@ export type WorkflowNodeMetricRecord = {
   workflowId: string;
 };
 
+export type WorkflowHistoryCleanupResult = {
+  hasMore: boolean;
+  nodeExecutionsDeleted: number;
+  outboxDeleted: number;
+  runsDeleted: number;
+  tasksDeleted: number;
+};
+
 export type WorkflowNodeExecutionStatus = "completed" | "failed" | "retrying" | "running";
 
 export type WorkflowNodeExecutionRecord = {
@@ -232,6 +240,11 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
   cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
+  cleanupWorkflowHistory(input: {
+    limit: number;
+    runBefore: Date;
+    taskOutboxBefore: Date;
+  }): Promise<WorkflowHistoryCleanupResult>;
   cancelUnavailableWorkflowRuns(input: {
     afterRunId?: string;
     limit: number;

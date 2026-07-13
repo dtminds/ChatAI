@@ -41,6 +41,8 @@ export class GroupChatSettingsService {
         this.listReceptionManagedAccountsByGroupId(scope),
         this.listGroupChatRows(scope, query),
       ]);
+    const selectableReceptionManagedAccountsByGroupSeatId =
+      await this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
 
     return {
       filterManagedAccounts: filterManagedAccounts.map((account) => ({
@@ -51,6 +53,7 @@ export class GroupChatSettingsService {
         mapGroupChat(
           row,
           receptionManagedAccountsByGroupId.get(row.third_group_id) ?? [],
+          selectableReceptionManagedAccountsByGroupSeatId.get(row.group_seat_id) ?? [],
         ),
       ),
     };
@@ -117,6 +120,77 @@ export class GroupChatSettingsService {
     return accountsByGroupId;
   }
 
+  private async listSelectableReceptionManagedAccountsByGroupSeatId(
+    scope: TenantScope,
+    groupChatRows: GroupChatRow[],
+  ) {
+    const groupSeatIds = groupChatRows.map((row) => row.group_seat_id);
+
+    if (groupSeatIds.length === 0) {
+      return new Map<number, SettingsGroupChat["selectableReceptionManagedAccounts"]>();
+    }
+
+    const openingSeatIdByGroupSeatId = new Map(
+      groupChatRows.map((row) => [row.group_seat_id, row.seat_id] as const),
+    );
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_group_member as member")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "member.third_userid")
+          .onRef("seat.uid", "=", "member.uid")
+          .onRef("seat.platform", "=", "member.platform"),
+      )
+      .select([
+        "member.group_seat_id as group_seat_id",
+        "seat.id as seat_id",
+        "seat.third_avatar as seat_avatar",
+        "seat.third_user_name as seat_name",
+      ])
+      .where("member.uid", "=", scope.uid)
+      .where("member.platform", "=", scope.platform)
+      .where("member.biz_status", "=", dbActiveStatus)
+      .where("seat.biz_status", "=", dbActiveStatus)
+      .where("member.group_seat_id", "in", groupSeatIds)
+      .orderBy("seat.id", "desc")
+      .execute();
+
+    const accountsByGroupSeatId = new Map<
+      number,
+      SettingsGroupChat["selectableReceptionManagedAccounts"]
+    >();
+    const seenSeatIdsByGroupSeatId = new Map<number, Set<string>>();
+
+    for (const row of rows) {
+      const openingSeatId = openingSeatIdByGroupSeatId.get(row.group_seat_id);
+
+      if (openingSeatId == null || row.seat_id === openingSeatId) {
+        continue;
+      }
+
+      const seatId = String(row.seat_id);
+      const seenSeatIds =
+        seenSeatIdsByGroupSeatId.get(row.group_seat_id) ?? new Set<string>();
+
+      if (seenSeatIds.has(seatId)) {
+        continue;
+      }
+
+      seenSeatIds.add(seatId);
+      seenSeatIdsByGroupSeatId.set(row.group_seat_id, seenSeatIds);
+
+      const accounts = accountsByGroupSeatId.get(row.group_seat_id) ?? [];
+      accounts.push({
+        avatarUrl: row.seat_avatar || "",
+        id: seatId,
+        name: row.seat_name || "未命名托管账号",
+      });
+      accountsByGroupSeatId.set(row.group_seat_id, accounts);
+    }
+
+    return accountsByGroupSeatId;
+  }
+
   private listGroupChatRows(scope: TenantScope, query: SettingsGroupChatsQuery) {
     let groupQuery = this.db
       .selectFrom("xy_wap_embed_group_seat as group_seat")
@@ -173,6 +247,7 @@ export function createGroupChatSettingsService(db: Kysely<Database>) {
 function mapGroupChat(
   row: GroupChatRow,
   receptionManagedAccounts: SettingsGroupChat["receptionManagedAccounts"],
+  selectableReceptionManagedAccounts: SettingsGroupChat["selectableReceptionManagedAccounts"],
 ): SettingsGroupChat {
   return {
     avatarUrl: row.avatar || "",
@@ -185,6 +260,7 @@ function mapGroupChat(
     },
     receptionManagedAccounts,
     receptionSeatCount: receptionManagedAccounts.length,
+    selectableReceptionManagedAccounts,
     thirdGroupId: row.third_group_id,
   };
 }

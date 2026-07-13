@@ -24,6 +24,7 @@ type HostingAgentOption = {
 
 export function PermissionSettingRow({
   checked,
+  className,
   description,
   disabled = false,
   id,
@@ -32,6 +33,7 @@ export function PermissionSettingRow({
   tooltip,
 }: {
   checked: boolean;
+  className?: string;
   description: string;
   disabled?: boolean;
   id: string;
@@ -49,7 +51,12 @@ export function PermissionSettingRow({
   );
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3.5 last:border-b-0">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 border-b border-border px-4 py-3.5 last:border-b-0",
+        className,
+      )}
+    >
       <div className="min-w-0 space-y-1">
         <Label className="font-medium text-foreground" htmlFor={id}>
           {title}

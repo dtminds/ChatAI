@@ -35,6 +35,13 @@ describe("GroupChatSettingsService", () => {
             },
           ],
           receptionSeatCount: 2,
+          selectableReceptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/ndt.png",
+              id: "102",
+              name: "念都堂",
+            },
+          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
         {
@@ -54,6 +61,13 @@ describe("GroupChatSettingsService", () => {
             },
           ],
           receptionSeatCount: 1,
+          selectableReceptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
+            },
+          ],
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
         {
@@ -78,6 +92,13 @@ describe("GroupChatSettingsService", () => {
             },
           ],
           receptionSeatCount: 2,
+          selectableReceptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
+            },
+          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
       ],
@@ -110,15 +131,39 @@ describe("GroupChatSettingsService", () => {
           },
         ],
         receptionSeatCount: 1,
+        selectableReceptionManagedAccounts: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            id: "101",
+            name: "德瑞可",
+          },
+        ],
         thirdGroupId: "8C2D4F1A9B7765432100",
       },
     ]);
+  });
+
+  it("lists selectable reception managed accounts from group seat members excluding opening seat", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+
+    const result = await service.list({ platform: 5, uid: 9001 });
+
+    expect(result.groupChats.find((groupChat) => groupChat.id === "501")).toMatchObject({
+      openingManagedAccount: { id: "101", name: "德瑞可" },
+      selectableReceptionManagedAccounts: [{ id: "102", name: "念都堂" }],
+    });
+    expect(
+      result.groupChats
+        .find((groupChat) => groupChat.id === "501")
+        ?.selectableReceptionManagedAccounts.some((account) => account.id === "101"),
+    ).toBe(false);
   });
 });
 
 function createDbMock() {
   const seats = [
     {
+      biz_status: 1,
       id: 101,
       platform: 5,
       third_avatar: "https://example.com/drc.png",
@@ -127,6 +172,7 @@ function createDbMock() {
       uid: 9001,
     },
     {
+      biz_status: 1,
       id: 102,
       platform: 5,
       third_avatar: "https://example.com/ndt.png",
@@ -171,6 +217,51 @@ function createDbMock() {
     },
   ];
 
+  const groupMembers = [
+    {
+      biz_status: 1,
+      group_seat_id: 501,
+      platform: 5,
+      third_userid: "user-101",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      group_seat_id: 501,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      group_seat_id: 502,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      group_seat_id: 502,
+      platform: 5,
+      third_userid: "user-101",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      group_seat_id: 503,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      group_seat_id: 503,
+      platform: 5,
+      third_userid: "user-101",
+      uid: 9001,
+    },
+  ];
+
   return {
     selectFrom(table: string) {
       if (table === "xy_wap_embed_user_seat as seat") {
@@ -185,16 +276,22 @@ function createDbMock() {
         return createGroupSeatListBuilder(groupSeats, seats);
       }
 
+      if (table === "xy_wap_embed_group_member as member") {
+        return createGroupMemberQueryBuilder(groupMembers, seats);
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     },
   };
 }
 
 function createSeatQueryBuilder(seats: Array<{
+  biz_status?: number;
   id: number;
   platform: number;
   third_avatar?: string;
   third_user_name: string | null;
+  third_userid?: string;
   uid: number;
 }>) {
   const wheres: Array<[string, string, unknown]> = [];
@@ -202,6 +299,7 @@ function createSeatQueryBuilder(seats: Array<{
     execute: async () =>
       seats
         .filter((seat) => matchesWhere(seat, wheres, {
+          "seat.biz_status": "biz_status",
           "seat.id": "id",
           "seat.platform": "platform",
           "seat.uid": "uid",
@@ -210,7 +308,84 @@ function createSeatQueryBuilder(seats: Array<{
           avatarUrl: seat.third_avatar ?? "",
           id: seat.id,
           name: seat.third_user_name,
+          seat_avatar: seat.third_avatar ?? "",
+          seat_id: seat.id,
+          seat_name: seat.third_user_name,
         })),
+    innerJoin: () => builder,
+    orderBy: () => builder,
+    select: () => builder,
+    where: (...whereArgs: [string, string, unknown]) => {
+      wheres.push(whereArgs);
+      return builder;
+    },
+  };
+
+  return builder;
+}
+
+function createGroupMemberQueryBuilder(
+  groupMembers: Array<{
+    biz_status: number;
+    group_seat_id: number;
+    platform: number;
+    third_userid: string;
+    uid: number;
+  }>,
+  seats: Array<{
+    biz_status?: number;
+    id: number;
+    platform: number;
+    third_avatar: string;
+    third_user_name: string | null;
+    third_userid: string;
+    uid: number;
+  }>,
+) {
+  const wheres: Array<[string, string, unknown]> = [];
+  const builder = {
+    execute: async () =>
+      groupMembers
+        .filter((member) =>
+          wheres.every(([column, operator, value]) => {
+            if (column === "member.group_seat_id" && operator === "in" && Array.isArray(value)) {
+              return value.includes(member.group_seat_id);
+            }
+
+            return true;
+          }),
+        )
+        .filter((member) =>
+          matchesWhere(member, wheres, {
+            "member.biz_status": "biz_status",
+            "member.group_seat_id": "group_seat_id",
+            "member.platform": "platform",
+            "member.uid": "uid",
+          }),
+        )
+        .map((member) => {
+          const seat = seats.find(
+            (item) =>
+              item.third_userid === member.third_userid &&
+              item.uid === member.uid &&
+              item.platform === member.platform &&
+              (item.biz_status ?? 1) === 1,
+          );
+
+          if (!seat) {
+            return null;
+          }
+
+          return {
+            group_seat_id: member.group_seat_id,
+            seat_avatar: seat.third_avatar,
+            seat_id: seat.id,
+            seat_name: seat.third_user_name,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null)
+        .sort((left, right) => right.seat_id - left.seat_id),
+    innerJoin: () => builder,
     orderBy: () => builder,
     select: () => builder,
     where: (...whereArgs: [string, string, unknown]) => {
@@ -432,7 +607,11 @@ function matchesWhere<T extends Record<string, unknown>>(
   wheres: Array<[string, string, unknown]>,
   columnMap: Record<string, keyof T>,
 ) {
-  return wheres.every(([column, , value]) => {
+  return wheres.every(([column, operator, value]) => {
+    if (operator === "in") {
+      return true;
+    }
+
     const rowKey = columnMap[column];
 
     if (rowKey === undefined) {

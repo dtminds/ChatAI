@@ -196,6 +196,7 @@ export function GroupChatSettingsDialog({
             <div className="overflow-hidden rounded-[8px] border border-border">
               <PermissionSettingRow
                 checked={fullAutoAuth}
+                className={fullAutoAuth ? "border-b-0" : undefined}
                 description="开启后群聊自动进入托管模式，Agent将自动回复群内被@的消息"
                 disabled={fullAutoAuthDisabled}
                 id="group-chat-settings-auto-hosting"
@@ -204,13 +205,16 @@ export function GroupChatSettingsDialog({
                 tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
               />
               {fullAutoAuth ? (
-                <div className="space-y-2 border-b border-border bg-muted/35 px-4 py-3.5">
-                  <p className="text-sm font-medium text-foreground">回复规则</p>
-                  <ReplyRuleSelector onValueChange={setReplyMode} value={replyMode} />
+                <div className="px-4 pb-3 pt-1">
+                  <div className="space-y-2 rounded-[8px] bg-surface-muted px-3 py-3">
+                    <p className="text-sm font-medium text-foreground">回复规则</p>
+                    <ReplyRuleSelector onValueChange={setReplyMode} value={replyMode} />
+                  </div>
                 </div>
               ) : null}
               <PermissionSettingRow
                 checked={semiAutoAuth}
+                className={fullAutoAuth ? "border-t border-border" : undefined}
                 description="Agent 会自动生成回复建议，提升客服服务效率"
                 id="group-chat-settings-script-recommendation"
                 onCheckedChange={setSemiAutoAuth}

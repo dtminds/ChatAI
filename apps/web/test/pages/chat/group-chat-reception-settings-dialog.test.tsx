@@ -26,6 +26,13 @@ const dialogState: GroupChatReceptionDialogState = {
       },
       receptionManagedAccounts: [],
       receptionSeatCount: 0,
+      selectableReceptionManagedAccounts: [
+        {
+          avatarUrl: "",
+          id: "102",
+          name: "念都堂",
+        },
+      ],
       thirdGroupId: "group-501",
     },
   ],

@@ -314,6 +314,13 @@ describe("Chat settings pages", () => {
             },
           ],
           receptionSeatCount: 3,
+          selectableReceptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/ndt.png",
+              id: "102",
+              name: "念都堂",
+            },
+          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
         {
@@ -338,6 +345,13 @@ describe("Chat settings pages", () => {
             },
           ],
           receptionSeatCount: 2,
+          selectableReceptionManagedAccounts: [
+            {
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
+            },
+          ],
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
       ].filter((groupChat) => {
@@ -467,9 +481,9 @@ describe("Chat settings pages", () => {
     );
 
     await user.click(within(singleDialog).getByRole("button", { name: "选择可接待企微号" }));
-    await user.click(await within(document.body).findByRole("checkbox", { name: "德瑞可" }));
+    await user.click(await within(document.body).findByRole("checkbox", { name: "念都堂" }));
     expect(within(singleDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "德瑞可",
+      "念都堂",
     );
 
     await user.click(within(singleDialog).getByRole("button", { name: "取消" }));

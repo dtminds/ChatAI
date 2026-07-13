@@ -88,6 +88,9 @@ export const SettingsGroupChatSchema = Type.Object({
   openingManagedAccount: SettingsGroupChatOpeningManagedAccountSchema,
   receptionManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
   receptionSeatCount: Type.Integer({ minimum: 0 }),
+  selectableReceptionManagedAccounts: Type.Array(
+    SettingsGroupChatReceptionManagedAccountSchema,
+  ),
   thirdGroupId: Type.String(),
 });
 

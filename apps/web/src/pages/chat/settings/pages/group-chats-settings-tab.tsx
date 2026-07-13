@@ -104,10 +104,6 @@ export function GroupChatsSettingsTab() {
     };
   }, [keyword, managedAccountFilter]);
 
-  const availableManagedAccounts = useMemo(
-    () => buildAvailableManagedAccounts(data.filterManagedAccounts, data.groupChats),
-    [data.filterManagedAccounts, data.groupChats],
-  );
   const {
     currentPage,
     pagedItems: pagedGroupChats,
@@ -157,7 +153,7 @@ export function GroupChatsSettingsTab() {
     }
 
     setDialogState({
-      availableManagedAccounts,
+      availableManagedAccounts: buildAvailableManagedAccountsForDialog(groupChats),
       groupChats,
     });
   }
@@ -514,24 +510,35 @@ function getInitial(name: string) {
   return name.trim().slice(0, 1) || "?";
 }
 
-function buildAvailableManagedAccounts(
-  filterManagedAccounts: SettingsGroupChatsResponse["filterManagedAccounts"],
+function buildAvailableManagedAccountsForDialog(
   groupChats: SettingsGroupChat[],
 ): GroupChatReceptionManagedAccountOption[] {
-  const avatarById = new Map<string, string>();
-
-  for (const groupChat of groupChats) {
-    avatarById.set(
-      groupChat.openingManagedAccount.id,
-      groupChat.openingManagedAccount.avatarUrl,
-    );
+  if (groupChats.length === 0) {
+    return [];
   }
 
-  return filterManagedAccounts.map((account) => ({
-    avatarUrl: avatarById.get(account.id) ?? "",
-    id: account.id,
-    name: account.name,
-  }));
+  const selectableLists = groupChats.map(
+    (groupChat) => groupChat.selectableReceptionManagedAccounts,
+  );
+  const [firstList, ...restLists] = selectableLists;
+  const sharedAccountIds = restLists.reduce((currentIds, accounts) => {
+    const accountIdSet = new Set(accounts.map((account) => account.id));
+
+    return new Set([...currentIds].filter((accountId) => accountIdSet.has(accountId)));
+  }, new Set(firstList.map((account) => account.id)));
+  const accountById = new Map<string, GroupChatReceptionManagedAccountOption>();
+
+  for (const accounts of selectableLists) {
+    for (const account of accounts) {
+      if (!accountById.has(account.id)) {
+        accountById.set(account.id, account);
+      }
+    }
+  }
+
+  return [...sharedAccountIds]
+    .map((accountId) => accountById.get(accountId))
+    .filter((account): account is GroupChatReceptionManagedAccountOption => account != null);
 }
 
 function getErrorMessage(error: unknown) {

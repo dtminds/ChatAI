@@ -738,6 +738,26 @@ describe("Agent workflow page", () => {
     });
   });
 
+  it("confirms before stopping a workflow", async () => {
+    const user = userEvent.setup();
+    const stopDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "stopDocument");
+    renderWorkflowPage("/chat/workflows");
+
+    await screen.findByText("会员复购唤醒");
+    await user.click(screen.getByRole("button", { name: "操作 会员复购唤醒" }));
+    await user.click(screen.getByRole("menuitem", { name: "停止" }));
+
+    expect(stopDocumentSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止" }));
+
+    await waitFor(() => {
+      expect(stopDocumentSpy).toHaveBeenCalledWith("vip-reactivation");
+      expect(getWorkflowDocument("vip-reactivation").runtimeStatus).toBe("stopped");
+    });
+  });
+
   it("filters workflow cards and edits metadata from the card menu", async () => {
     const user = userEvent.setup();
     renderWorkflowPage("/chat/workflows");

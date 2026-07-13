@@ -101,6 +101,8 @@ WHERE status = 'leased'
 
 ### Cancellation Backlog
 
+This query measures whether stopped or deleted Workflows are converging internally. It is an operations signal for the Reconciler, not a product-facing stop-progress API: users see the Workflow as stopped as soon as the control-plane status change succeeds.
+
 ```sql
 SELECT COUNT(*) AS cancellation_backlog
 FROM xy_wap_embed_workflow_run AS run
@@ -126,6 +128,6 @@ Before Phase 5 defines thresholds, the Workflow dashboard should expose:
 - Dead Task and dead Outbox counts.
 - Expired Task and Outbox leases.
 - Reconciler recovery counters from `workflow.worker.role.warning`.
-- Cancellation backlog.
+- Internal cancellation backlog after Workflow stop or deletion.
 
 Do not assign warning or critical thresholds until target traffic, peak distribution, maximum Wait concentration, and acceptable recovery time are approved.

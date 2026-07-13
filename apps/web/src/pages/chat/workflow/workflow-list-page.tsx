@@ -27,6 +27,7 @@ import {
   WorkflowListCard,
   type WorkflowLifecycleAction,
   WorkflowListState,
+  WorkflowStopDialog,
 } from "./workflow-list-components";
 import { WorkflowMetadataDialog, type WorkflowMetadata } from "./workflow-metadata-dialog";
 
@@ -57,6 +58,7 @@ export function WorkflowListPage({
   const [metadataTarget, setMetadataTarget] = useState<WorkflowListItem | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkflowListItem | null>(null);
+  const [stopTarget, setStopTarget] = useState<WorkflowListItem | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationPending, setOperationPending] = useState(false);
   const [lifecyclePendingId, setLifecyclePendingId] = useState<string | null>(null);
@@ -152,10 +154,10 @@ export function WorkflowListPage({
     workflow: WorkflowListItem,
     action: WorkflowLifecycleAction,
   ) => {
-    if (lifecyclePendingId) return;
+    if (lifecyclePendingId) return false;
     if (action === "enable" && !workflow.activationReady) {
       toast.error("请先在编辑页发布当前草稿");
-      return;
+      return false;
     }
     const operation = {
       enable: repository.enableDocument,
@@ -166,7 +168,7 @@ export function WorkflowListPage({
 
     if (!operation) {
       toast.error("操作失败，请重试");
-      return;
+      return false;
     }
 
     setLifecyclePendingId(workflow.id);
@@ -174,9 +176,11 @@ export function WorkflowListPage({
       await Promise.resolve(operation(workflow.id));
       await reload();
       toast.success(getWorkflowLifecycleSuccessMessage(action));
+      return true;
     }
     catch (error) {
       toast.error(getWorkflowLifecycleErrorMessage(action, error));
+      return false;
     }
     finally {
       setLifecyclePendingId(null);
@@ -271,7 +275,13 @@ export function WorkflowListPage({
                   setOperationError(null);
                   setDeleteTarget(workflow);
                 }}
-                onLifecycleAction={(action) => void changeWorkflowLifecycle(workflow, action)}
+                onLifecycleAction={(action) => {
+                  if (action === "stop") {
+                    setStopTarget(workflow);
+                    return;
+                  }
+                  void changeWorkflowLifecycle(workflow, action);
+                }}
                 onRename={() => openMetadataDialog(workflow)}
                 operationPending={lifecyclePendingId === workflow.id}
                 workflow={workflow}
@@ -328,6 +338,20 @@ export function WorkflowListPage({
         }}
         open={Boolean(deleteTarget)}
         pending={operationPending}
+      />
+
+      <WorkflowStopDialog
+        onOpenChange={(open) => {
+          if (!open && !lifecyclePendingId) setStopTarget(null);
+        }}
+        onStop={() => {
+          if (!stopTarget) return;
+          void changeWorkflowLifecycle(stopTarget, "stop").then((stopped) => {
+            if (stopped) setStopTarget(null);
+          });
+        }}
+        open={Boolean(stopTarget)}
+        pending={Boolean(stopTarget && lifecyclePendingId === stopTarget.id)}
       />
     </AiHostingLayout>
   );

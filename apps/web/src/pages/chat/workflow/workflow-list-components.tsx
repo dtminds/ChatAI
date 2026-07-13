@@ -251,7 +251,7 @@ export function WorkflowDeleteDialog({
     <AlertDialog onOpenChange={onOpenChange} open={open}>
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
-          <AlertDialogTitle>删除 Workflow</AlertDialogTitle>
+          <AlertDialogTitle>确认要删除该 SOP 吗？</AlertDialogTitle>
           <AlertDialogDescription>删除后无法恢复</AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
@@ -266,6 +266,42 @@ export function WorkflowDeleteDialog({
             variant="destructive"
           >
             {pending ? "删除中" : "删除"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export function WorkflowStopDialog({
+  onOpenChange,
+  onStop,
+  open,
+  pending,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onStop: () => void;
+  open: boolean;
+  pending: boolean;
+}) {
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={open}>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认要停止该 SOP 吗？</AlertDialogTitle>
+          <AlertDialogDescription>停止后将无法恢复</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault();
+              onStop();
+            }}
+            variant="destructive"
+          >
+            {pending ? "停止中" : "停止"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

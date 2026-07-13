@@ -11,6 +11,23 @@ type WorkflowReconciler = {
     maxAttempts: number;
     now: Date;
   }): Promise<{ dead: number; recovered: number }>;
+  reconcileRunTaskConsistency(input: {
+    afterRunId?: string;
+    afterTaskId?: string;
+    inconsistentBefore: Date;
+    limit: number;
+    now: Date;
+  }): Promise<{
+    hasMoreRuns: boolean;
+    hasMoreTasks: boolean;
+    inconsistentRunsFailed: number;
+    lastRunId: string | null;
+    lastTaskId: string | null;
+    runsChecked: number;
+    staleTasksCancelled: number;
+    tasksChecked: number;
+    terminalRunTasksCancelled: number;
+  }>;
   republishStalledDispatchedTasks(input: {
     dispatchedBefore: Date;
     limit: number;
@@ -21,6 +38,9 @@ type WorkflowReconciler = {
 
 export async function reconcileWorkflowRuntime(input: {
   afterRunId?: string;
+  afterConsistencyRunId?: string;
+  afterConsistencyTaskId?: string;
+  consistencyGraceMs: number;
   dispatchTimeoutMs: number;
   inboxCleanupBatchSize: number;
   limit: number;
@@ -38,6 +58,13 @@ export async function reconcileWorkflowRuntime(input: {
   const cancellation = await input.reconciler.cancelUnavailableRuns({
     afterRunId: input.afterRunId,
     limit: input.limit,
+  });
+  const consistency = await input.reconciler.reconcileRunTaskConsistency({
+    afterRunId: input.afterConsistencyRunId,
+    afterTaskId: input.afterConsistencyTaskId,
+    inconsistentBefore: new Date(input.now.getTime() - input.consistencyGraceMs),
+    limit: input.limit,
+    now: input.now,
   });
   const taskLeaseRecovery = await input.reconciler.recoverExpiredLeases({
     limit: input.limit,
@@ -60,12 +87,19 @@ export async function reconcileWorkflowRuntime(input: {
   return {
     cancelled: cancellation.cancelled,
     inboxDeleted,
+    inconsistentRunsFailed: consistency.inconsistentRunsFailed,
+    nextConsistencyRunCursor: consistency.hasMoreRuns ? consistency.lastRunId : null,
+    nextConsistencyTaskCursor: consistency.hasMoreTasks ? consistency.lastTaskId : null,
     nextCursor: cancellation.done ? null : cancellation.nextCursor,
     nodeMetricEventsAggregated,
     nodeMetricEventsDeleted,
     stalledTasksRepublished,
     outboxLeasesRecovered,
+    runsChecked: consistency.runsChecked,
+    staleTasksCancelled: consistency.staleTasksCancelled,
     taskLeasesDead: taskLeaseRecovery.dead,
     taskLeasesRecovered: taskLeaseRecovery.recovered,
+    tasksChecked: consistency.tasksChecked,
+    terminalRunTasksCancelled: consistency.terminalRunTasksCancelled,
   };
 }

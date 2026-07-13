@@ -47,6 +47,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
+  private readonly runUpdatedAt = new Map<string, Date>();
   private nextId = 1n;
 
   constructor(
@@ -109,6 +110,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       taskType: "execute",
     });
     this.runs.push(run);
+    this.runUpdatedAt.set(run.id, admittedAt);
     this.tasks.push(task);
     this.outbox.push(createOutbox(this.createId(), task, admittedAt));
     this.appendNodeMetricEvents(run, `${run.id}:entered`, createNodeMetricDeltas({
@@ -141,6 +143,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         return { action: decision, kind: "workflow-unavailable" as const };
       }
     }
+    const previousRunStatus = run.status;
+    const previousNodeId = run.currentNodeId;
     task.status = transitionTask(task.status, "running");
     task.attempt += 1;
     task.taskVersion += 1;
@@ -163,6 +167,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (run.status === "queued" || run.status === "waiting") {
       run.status = transitionRun(run.status, "running");
     }
+    if (run.status !== previousRunStatus || run.currentNodeId !== previousNodeId) {
+      this.touchRun(run);
+    }
     return { kind: "success" as const, task: clone(task) };
   }
 
@@ -184,6 +191,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
       }));
       run.status = "cancelled";
+      this.touchRun(run);
     }
     for (const task of this.tasks) {
       if (selectedIds.has(task.runId)
@@ -224,6 +232,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       run.status = "cancelled";
       run.lockVersion += 1;
       run.nextExecuteAt = null;
+      this.touchRun(run);
     }
     for (const task of this.tasks) {
       if (selectedIds.has(task.runId)
@@ -323,6 +332,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         nodeKind: task.nodeKind,
       }));
     }
+    this.touchRun(run);
     return {
       kind: "success" as const,
       nextTask: nextTask ? clone(nextTask) : null,
@@ -354,12 +364,103 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
           run.status = "failed";
           run.lockVersion += 1;
           run.nextExecuteAt = null;
+          this.touchRun(run);
         }
       } else {
         recovered += 1;
       }
     }
     return { dead, recovered };
+  }
+
+  async reconcileRunTaskConsistency(
+    input: Parameters<WorkflowRuntimeRepository["reconcileRunTaskConsistency"]>[0],
+  ) {
+    const activeRunStatuses = new Set(["queued", "running", "waiting"]);
+    const activeTaskStatuses = new Set(["pending", "leased", "dispatched", "running"]);
+    const runCandidates = this.runs
+      .filter(run => activeRunStatuses.has(run.status)
+        && (!input.afterRunId || BigInt(run.id) > BigInt(input.afterRunId)))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selectedRuns = runCandidates.slice(0, Math.max(0, input.limit));
+    let inconsistentRunsFailed = 0;
+    let staleTasksCancelled = 0;
+
+    for (const run of selectedRuns) {
+      const boundary = this.resolveWorkflowBoundary
+        ? await this.resolveWorkflowBoundary({ uid: run.uid, workflowId: run.workflowId })
+        : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+      if (!boundary || getWorkflowExecutionBoundaryDecision(boundary) === "cancel") continue;
+
+      const activeTasks = this.tasks.filter(task => task.runId === run.id && activeTaskStatuses.has(task.status));
+      const authoritativeTask = activeTasks.find(task => task.sequence === run.sequence);
+      for (const task of activeTasks) {
+        if (task === authoritativeTask) continue;
+        cancelTask(task);
+        staleTasksCancelled += 1;
+      }
+
+      const updatedAt = this.runUpdatedAt.get(run.id) ?? run.createdAt;
+      const invalidAuthoritativeTask = !authoritativeTask
+        || authoritativeTask.uid !== run.uid
+        || authoritativeTask.workflowId !== run.workflowId
+        || authoritativeTask.revision !== run.revision
+        || authoritativeTask.shardId !== run.shardId
+        || (run.status !== "waiting" && authoritativeTask.nodeId !== run.currentNodeId)
+        || (run.status === "waiting" && (
+          authoritativeTask.taskType !== "wait"
+          || !sameDate(authoritativeTask.dueAt, run.nextExecuteAt)
+        ));
+      if (!invalidAuthoritativeTask || updatedAt > input.inconsistentBefore) continue;
+
+      for (const task of activeTasks) {
+        if (!activeTaskStatuses.has(task.status)) continue;
+        cancelTask(task);
+        staleTasksCancelled += 1;
+      }
+      const currentTask = this.findCurrentTask(run);
+      if (currentTask) this.appendNodeMetricEvents(
+        run,
+        `${run.id}:runtime-state-inconsistent`,
+        createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: currentTask.nodeId,
+          nodeKind: currentTask.nodeKind,
+        }),
+      );
+      run.status = "failed";
+      run.lockVersion += 1;
+      run.nextExecuteAt = null;
+      this.runUpdatedAt.set(run.id, input.now);
+      inconsistentRunsFailed += 1;
+    }
+
+    const taskCandidates = this.tasks
+      .filter(task => activeTaskStatuses.has(task.status)
+        && (!input.afterTaskId || BigInt(task.id) > BigInt(input.afterTaskId)))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selectedTasks = taskCandidates.slice(0, Math.max(0, input.limit));
+    let terminalRunTasksCancelled = 0;
+    for (const task of selectedTasks) {
+      const run = this.runs.find(candidate => candidate.id === task.runId);
+      if (run && activeRunStatuses.has(run.status)) continue;
+      cancelTask(task);
+      terminalRunTasksCancelled += 1;
+    }
+
+    return {
+      hasMoreRuns: runCandidates.length > selectedRuns.length,
+      hasMoreTasks: taskCandidates.length > selectedTasks.length,
+      inconsistentRunsFailed,
+      lastRunId: selectedRuns.at(-1)?.id ?? null,
+      lastTaskId: selectedTasks.at(-1)?.id ?? null,
+      runsChecked: selectedRuns.length,
+      staleTasksCancelled,
+      tasksChecked: selectedTasks.length,
+      terminalRunTasksCancelled,
+    };
   }
 
   async republishStalledDispatchedTasks(
@@ -536,6 +637,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         run.status = "failed";
         run.lockVersion += 1;
         run.nextExecuteAt = null;
+        this.touchRun(run);
       }
     }
     return true;
@@ -586,6 +688,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return String(this.nextId++);
   }
 
+  private touchRun(run: WorkflowRunRecord) {
+    this.runUpdatedAt.set(run.id, this.now());
+  }
+
   private appendNodeMetricEvents(
     run: WorkflowRunRecord,
     eventKey: string,
@@ -606,6 +712,23 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       });
     }
   }
+}
+
+function cancelTask(task: WorkflowTaskRecord) {
+  task.status = "cancelled";
+  task.taskVersion += 1;
+  task.leaseOwner = null;
+  task.leaseExpiresAt = null;
+}
+
+function compareById(first: { id: string }, second: { id: string }) {
+  const firstId = BigInt(first.id);
+  const secondId = BigInt(second.id);
+  return firstId === secondId ? 0 : firstId < secondId ? -1 : 1;
+}
+
+function sameDate(first: Date, second: Date | null) {
+  return second !== null && first.getTime() === second.getTime();
 }
 
 function canEnterWorkflow(

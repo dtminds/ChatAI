@@ -663,6 +663,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
   UNIQUE KEY uk_workflow_task_run_sequence (uid, run_id, sequence),
   KEY idx_workflow_task_schedule (shard_id, status, bucket_time, due_at, id),
   KEY idx_workflow_task_run_status_sequence (run_id, status, sequence, id),
+  KEY idx_workflow_task_status_reconcile (status, id),
   KEY idx_workflow_task_lease (lease_expires_at, status, id)
 ) COMMENT='营销Workflow执行任务表';
 

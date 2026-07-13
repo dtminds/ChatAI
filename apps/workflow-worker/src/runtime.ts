@@ -137,9 +137,14 @@ export async function startWorkflowWorkerRuntime(input: {
     }
     if (input.config.roles.has("reconciler")) {
       let afterRunId: string | undefined;
+      let afterConsistencyRunId: string | undefined;
+      let afterConsistencyTaskId: string | undefined;
       loops.push(startBackgroundRole("reconciler", input.config.runtime.reconcileIntervalMs, async () => {
         const result = await input.reconciler({
           afterRunId,
+          afterConsistencyRunId,
+          afterConsistencyTaskId,
+          consistencyGraceMs: input.config.runtime.reconcileIntervalMs * 2,
           dispatchTimeoutMs: input.config.runtime.dispatchTimeoutMs,
           inboxCleanupBatchSize: input.config.runtime.inboxCleanupBatchSize,
           limit: input.config.runtime.batchSize,
@@ -148,6 +153,8 @@ export async function startWorkflowWorkerRuntime(input: {
           reconciler: input.reconcilerService,
         });
         afterRunId = result.nextCursor ?? undefined;
+        afterConsistencyRunId = result.nextConsistencyRunCursor ?? undefined;
+        afterConsistencyTaskId = result.nextConsistencyTaskCursor ?? undefined;
         return result;
       }));
     }

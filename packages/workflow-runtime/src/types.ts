@@ -238,6 +238,23 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
     maxAttempts: number;
     now: Date;
   }): Promise<{ dead: number; recovered: number }>;
+  reconcileRunTaskConsistency(input: {
+    afterRunId?: string;
+    afterTaskId?: string;
+    inconsistentBefore: Date;
+    limit: number;
+    now: Date;
+  }): Promise<{
+    hasMoreRuns: boolean;
+    hasMoreTasks: boolean;
+    inconsistentRunsFailed: number;
+    lastRunId: string | null;
+    lastTaskId: string | null;
+    runsChecked: number;
+    staleTasksCancelled: number;
+    tasksChecked: number;
+    terminalRunTasksCancelled: number;
+  }>;
   republishStalledDispatchedTasks(input: {
     dispatchedBefore: Date;
     limit: number;

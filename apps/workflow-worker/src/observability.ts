@@ -72,7 +72,7 @@ export function logWorkflowReadinessTransition(
 function flattenResult(result: unknown) {
   if (!result || typeof result !== "object" || Array.isArray(result)) return {};
   return Object.fromEntries(Object.entries(result).filter(([key, value]) =>
-    key !== "nextCursor"
+    !key.toLowerCase().includes("cursor")
     && (
       value === null
       || typeof value === "boolean"
@@ -83,7 +83,9 @@ function flattenResult(result: unknown) {
 }
 
 function hasPositiveCount(result: Record<string, unknown>) {
-  return Object.values(result).some(value => typeof value === "number" && value > 0);
+  return Object.entries(result).some(([key, value]) =>
+    !key.endsWith("Checked") && typeof value === "number" && value > 0,
+  );
 }
 
 function requiresRecoveryWarning(
@@ -94,9 +96,12 @@ function requiresRecoveryWarning(
   if (role === "reconciler") {
     return hasPositive(result, [
       "outboxLeasesRecovered",
+      "inconsistentRunsFailed",
+      "staleTasksCancelled",
       "stalledTasksRepublished",
       "taskLeasesDead",
       "taskLeasesRecovered",
+      "terminalRunTasksCancelled",
     ]);
   }
   return false;

@@ -45,6 +45,9 @@ const REVISION_TABLE = "xy_wap_embed_workflow_revision" as const;
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 const NODE_METRIC_EVENT_TABLE = "xy_wap_embed_workflow_node_metric_event" as const;
 const NODE_METRIC_TABLE = "xy_wap_embed_workflow_node_metric" as const;
+const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting"] as const;
+const ACTIVE_TASK_STATUSES = ["pending", "leased", "dispatched", "running"] as const;
+const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
 type RuntimeTransaction = Transaction<WorkflowDatabase>;
 
 export class MysqlWorkflowRuntimeRepository implements
@@ -772,6 +775,213 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
+  async reconcileRunTaskConsistency(
+    input: Parameters<WorkflowRuntimeRepository["reconcileRunTaskConsistency"]>[0],
+  ) {
+    const limit = Math.max(0, input.limit);
+    if (limit === 0) return emptyRunTaskConsistencyResult();
+
+    const runResult = await this.db.transaction().execute(async (trx) => {
+      let runQuery = trx.selectFrom(RUN_TABLE).select([
+        "current_node_id",
+        "id",
+        "lock_version",
+        "next_execute_at",
+        "revision",
+        "sequence",
+        "shard_id",
+        "status",
+        "uid",
+        "update_time",
+        "workflow_id",
+      ])
+        .where("status", "in", ACTIVE_RUN_STATUSES)
+        .orderBy("id", "asc")
+        .limit(limit + 1)
+        .forUpdate()
+        .skipLocked();
+      if (input.afterRunId) runQuery = runQuery.where("id", ">", input.afterRunId);
+      const candidateRuns = await runQuery.execute();
+      const runs = candidateRuns.slice(0, limit);
+      const runIds = runs.map(run => run.id);
+      const taskRows = runIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).selectAll()
+            .where("run_id", "in", runIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("run_id", "asc")
+            .orderBy("sequence", "asc")
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const tasks = taskRows.map(mapTask);
+      const taskIdsToCancel = new Set<string>();
+      const runsToFail: typeof runs = [];
+      const definitionKeys = new Map<string, { uid: number; workflowIds: Array<string | number | bigint> }>();
+      for (const run of runs) {
+        const uid = normalizeTenantId(run.uid);
+        const key = String(uid);
+        const group = definitionKeys.get(key) ?? { uid, workflowIds: [] };
+        group.workflowIds.push(run.workflow_id);
+        definitionKeys.set(key, group);
+      }
+      const definitions = definitionKeys.size === 0
+        ? []
+        : await trx.selectFrom("xy_wap_embed_workflow_definition")
+            .select(["biz_status", "id", "runtime_status", "uid"])
+            .where(eb => eb.or([...definitionKeys.values()].map(group => eb.and([
+              eb("uid", "=", group.uid),
+              eb("id", "in", group.workflowIds),
+            ]))))
+            .forShare()
+            .execute();
+      const definitionByKey = new Map(definitions.map(definition => [
+        `${normalizeTenantId(definition.uid)}:${normalizeId(definition.id)}`,
+        definition,
+      ]));
+
+      for (const run of runs) {
+        const definition = definitionByKey.get(
+          `${normalizeTenantId(run.uid)}:${normalizeId(run.workflow_id)}`,
+        );
+        const boundaryDecision = definition
+          ? getWorkflowExecutionBoundaryDecision({
+              bizStatus: definition.biz_status === 1 ? 1 : 0,
+              runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+            })
+          : "cancel";
+        if (boundaryDecision === "cancel") continue;
+
+        const runId = normalizeId(run.id);
+        const runTasks = tasks.filter(task => task.runId === runId);
+        const authoritativeTask = runTasks.find(task => task.sequence === run.sequence);
+        for (const task of runTasks) {
+          if (task !== authoritativeTask) taskIdsToCancel.add(task.id);
+        }
+        const invalidAuthoritativeTask = !authoritativeTask
+          || authoritativeTask.uid !== normalizeTenantId(run.uid)
+          || authoritativeTask.workflowId !== normalizeId(run.workflow_id)
+          || authoritativeTask.revision !== run.revision
+          || authoritativeTask.shardId !== run.shard_id
+          || (run.status !== "waiting" && authoritativeTask.nodeId !== run.current_node_id)
+          || (run.status === "waiting" && (
+            authoritativeTask.taskType !== "wait"
+            || !sameTimestamp(authoritativeTask.dueAt, run.next_execute_at)
+          ));
+        if (!invalidAuthoritativeTask || toDate(run.update_time) > input.inconsistentBefore) continue;
+        runsToFail.push(run);
+        for (const task of runTasks) taskIdsToCancel.add(task.id);
+
+        const currentTask = runTasks.find(task => task.nodeId === run.current_node_id);
+        if (currentTask) {
+          await insertNodeMetricEvents(trx, {
+            eventKey: `${runId}:runtime-state-inconsistent`,
+            runId,
+            runRevision: run.revision,
+            runShardId: run.shard_id,
+            uid: normalizeTenantId(run.uid),
+            workflowId: normalizeId(run.workflow_id),
+          }, createNodeMetricDeltas({
+            kind: "left-incomplete",
+            nodeId: currentTask.nodeId,
+            nodeKind: currentTask.nodeKind,
+          }));
+        }
+      }
+
+      let staleTasksCancelled = 0;
+      if (taskIdsToCancel.size > 0) {
+        const update = await trx.updateTable(TASK_TABLE).set({
+          last_error_code: RUNTIME_STATE_INCONSISTENT,
+          lease_expires_at: null,
+          lease_owner: null,
+          status: "cancelled",
+          task_version: sql<number>`task_version + 1`,
+        }).where("id", "in", [...taskIdsToCancel])
+          .where("status", "in", ACTIVE_TASK_STATUSES)
+          .executeTakeFirst();
+        staleTasksCancelled = Number(update.numUpdatedRows);
+      }
+
+      let inconsistentRunsFailed = 0;
+      if (runsToFail.length > 0) {
+        const update = await trx.updateTable(RUN_TABLE).set({
+          completed_at: input.now,
+          lock_version: sql<number>`lock_version + 1`,
+          next_execute_at: null,
+          status: "failed",
+          terminal_reason: RUNTIME_STATE_INCONSISTENT,
+        }).where("id", "in", runsToFail.map(run => run.id))
+          .where("status", "in", ACTIVE_RUN_STATUSES)
+          .where("update_time", "<=", input.inconsistentBefore)
+          .executeTakeFirst();
+        inconsistentRunsFailed = Number(update.numUpdatedRows);
+      }
+
+      return {
+        hasMoreRuns: candidateRuns.length > runs.length,
+        inconsistentRunsFailed,
+        lastRunId: runs.length > 0 ? normalizeId(runs.at(-1)!.id) : null,
+        runsChecked: runs.length,
+        staleTasksCancelled,
+      };
+    });
+
+    let taskQuery = this.db.selectFrom(TASK_TABLE).select(["id", "run_id"])
+      .where("status", "in", ACTIVE_TASK_STATUSES)
+      .orderBy("id", "asc")
+      .limit(limit + 1);
+    if (input.afterTaskId) taskQuery = taskQuery.where("id", ">", input.afterTaskId);
+    const candidateTasks = await taskQuery.execute();
+    const selectedTaskCandidates = candidateTasks.slice(0, limit);
+
+    const taskResult = await this.db.transaction().execute(async (trx) => {
+      const candidateRunIds = [...new Set(selectedTaskCandidates.map(task => task.run_id))];
+      const runs = candidateRunIds.length === 0
+        ? []
+        : await trx.selectFrom(RUN_TABLE).select(["id", "status"])
+            .where("id", "in", candidateRunIds)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const runStatusById = new Map(runs.map(run => [normalizeId(run.id), parseRunStatus(run.status)]));
+      const candidateTaskIds = selectedTaskCandidates.map(task => task.id);
+      const tasks = candidateTaskIds.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).select(["id", "run_id"])
+            .where("id", "in", candidateTaskIds)
+            .where("status", "in", ACTIVE_TASK_STATUSES)
+            .orderBy("id", "asc")
+            .forUpdate()
+            .execute();
+      const terminalTaskIds = tasks.filter(task => {
+        const runStatus = runStatusById.get(normalizeId(task.run_id));
+        return !runStatus || !isActiveRunStatus(runStatus);
+      }).map(task => task.id);
+      if (terminalTaskIds.length === 0) return { terminalRunTasksCancelled: 0 };
+      const update = await trx.updateTable(TASK_TABLE).set({
+        last_error_code: RUNTIME_STATE_INCONSISTENT,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "cancelled",
+        task_version: sql<number>`task_version + 1`,
+      }).where("id", "in", terminalTaskIds)
+        .where("status", "in", ACTIVE_TASK_STATUSES)
+        .executeTakeFirst();
+      return { terminalRunTasksCancelled: Number(update.numUpdatedRows) };
+    });
+
+    return {
+      ...runResult,
+      hasMoreTasks: candidateTasks.length > selectedTaskCandidates.length,
+      lastTaskId: selectedTaskCandidates.length > 0
+        ? normalizeId(selectedTaskCandidates.at(-1)!.id)
+        : null,
+      tasksChecked: selectedTaskCandidates.length,
+      ...taskResult,
+    };
+  }
+
   async republishStalledDispatchedTasks(
     input: Parameters<WorkflowRuntimeRepository["republishStalledDispatchedTasks"]>[0],
   ) {
@@ -1209,6 +1419,28 @@ function createTaskMessage(task: WorkflowTaskRecord, now: Date): WorkflowTaskMes
     taskVersion: task.taskVersion,
     uid: String(task.uid),
   };
+}
+
+function emptyRunTaskConsistencyResult() {
+  return {
+    hasMoreRuns: false,
+    hasMoreTasks: false,
+    inconsistentRunsFailed: 0,
+    lastRunId: null,
+    lastTaskId: null,
+    runsChecked: 0,
+    staleTasksCancelled: 0,
+    tasksChecked: 0,
+    terminalRunTasksCancelled: 0,
+  };
+}
+
+function sameTimestamp(first: Date, second: Date | null) {
+  return second !== null && toDate(first).getTime() === toDate(second).getTime();
+}
+
+function isActiveRunStatus(status: WorkflowRunStatus) {
+  return status === "queued" || status === "running" || status === "waiting";
 }
 
 function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {

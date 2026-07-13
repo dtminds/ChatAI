@@ -2,6 +2,17 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-13
+
+- Added the active Task status/index cursor used by bounded Run/Task consistency reconciliation.
+
+Manual migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_task
+  ADD KEY idx_workflow_task_status_reconcile (status, id);
+```
+
 ## 2026-07-12
 
 - Added idempotent Workflow node metric events and sharded node counters for the data-mode canvas.

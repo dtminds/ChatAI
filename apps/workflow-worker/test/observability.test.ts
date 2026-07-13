@@ -84,6 +84,56 @@ describe("workflow worker observability", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("warns on consistency repairs without logging internal cursors", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: {
+        inconsistentRunsFailed: 1,
+        nextConsistencyRunCursor: "91",
+        nextConsistencyTaskCursor: "103",
+        staleTasksCancelled: 2,
+        terminalRunTasksCancelled: 3,
+      },
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith({
+      durationMs: 20,
+      event: "workflow.worker.role.warning",
+      inconsistentRunsFailed: 1,
+      role: "reconciler",
+      staleTasksCancelled: 2,
+      terminalRunTasksCancelled: 3,
+    }, "workflow worker role reported warning counters");
+  });
+
+  it("keeps consistency scans without repairs at debug level", () => {
+    const logger = createLogger();
+
+    logWorkflowRoleHeartbeat(logger, "reconciler", {
+      completedAt: new Date("2026-07-12T00:00:00.000Z"),
+      durationMs: 20,
+      result: {
+        inconsistentRunsFailed: 0,
+        runsChecked: 100,
+        staleTasksCancelled: 0,
+        tasksChecked: 100,
+        terminalRunTasksCancelled: 0,
+      },
+    });
+
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: "workflow.worker.role.idle",
+      role: "reconciler",
+      runsChecked: 100,
+      tasksChecked: 100,
+    }), "workflow worker role idle");
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("logs readiness only when the overall ready status changes", () => {
     const logger = createLogger();
     const ready = {

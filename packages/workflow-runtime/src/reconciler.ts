@@ -19,6 +19,12 @@ export class WorkflowRuntimeReconciler {
     return this.repository.recoverExpiredOutboxLeases(input);
   }
 
+  reconcileRunTaskConsistency(
+    input: Parameters<WorkflowRuntimeRepository["reconcileRunTaskConsistency"]>[0],
+  ) {
+    return this.repository.reconcileRunTaskConsistency(input);
+  }
+
   aggregateNodeMetricEvents(input: { limit: number }) {
     return this.repository.aggregateNodeMetricEvents(input);
   }

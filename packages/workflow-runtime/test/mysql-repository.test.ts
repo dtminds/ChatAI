@@ -3,6 +3,49 @@ import { Kysely, MysqlDialect } from "kysely";
 import { MysqlWorkflowRuntimeRepository } from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
+  it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
+    const db = createRunTaskConsistencyDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2026-07-10T00:01:00.000Z"),
+      limit: 100,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      inconsistentRunsFailed: 1,
+      runsChecked: 1,
+      tasksChecked: 1,
+      terminalRunTasksCancelled: 1,
+    });
+    expect(db.lockOrder).toEqual(["run", "task", "run", "task"]);
+    expect(db.runUpdate).toMatchObject({
+      status: "failed",
+      terminal_reason: "WORKFLOW_RUNTIME_STATE_INCONSISTENT",
+    });
+    expect(db.taskUpdate).toMatchObject({
+      lease_expires_at: null,
+      lease_owner: null,
+      status: "cancelled",
+    });
+  });
+
+  it("returns null consistency cursors when there is no work", async () => {
+    const repository = new MysqlWorkflowRuntimeRepository(createEmptyConsistencyDbMock() as never);
+
+    await expect(repository.reconcileRunTaskConsistency({
+      inconsistentBefore: new Date("2026-07-10T00:01:00.000Z"),
+      limit: 100,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    })).resolves.toMatchObject({
+      lastRunId: null,
+      lastTaskId: null,
+      runsChecked: 0,
+      tasksChecked: 0,
+    });
+  });
+
   it("checks the workflow boundary in the same transaction before creating a run", async () => {
     const db = createRunDbMock({ bizStatus: 1, runtimeStatus: "stopped" });
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -607,6 +650,128 @@ function createRuntimeDbMock() {
         },
       };
       return builder;
+    },
+  };
+  return db;
+}
+
+function createRunTaskConsistencyDbMock() {
+  const activeRun = {
+    create_time: new Date("2026-07-10T00:00:00.000Z"),
+    current_node_id: "start",
+    id: "1",
+    lock_version: 1,
+    next_execute_at: new Date("2026-07-10T00:00:00.000Z"),
+    revision: 1,
+    sequence: 1,
+    shard_id: 7,
+    status: "running",
+    uid: 9,
+    update_time: new Date("2026-07-10T00:00:00.000Z"),
+    workflow_id: "31",
+  };
+  const terminalTask = {
+    attempt: 0,
+    due_at: new Date("2026-07-10T00:00:00.000Z"),
+    id: "7",
+    lease_expires_at: null,
+    lease_owner: null,
+    node_id: "end",
+    node_kind: "end",
+    revision: 1,
+    run_id: "2",
+    sequence: 2,
+    shard_id: 7,
+    status: "dispatched",
+    task_type: "execute",
+    task_version: 1,
+    uid: 9,
+    workflow_id: "31",
+  };
+  let runSelectCount = 0;
+  let taskSelectCount = 0;
+  const db = {
+    lockOrder: [] as string[],
+    runUpdate: {} as Record<string, unknown>,
+    taskUpdate: {} as Record<string, unknown>,
+    selectFrom(table: string) {
+      const builder = {
+        forShare() { return builder; },
+        forUpdate() {
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
+          return builder;
+        },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        selectAll() { return builder; },
+        skipLocked() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_run") {
+            runSelectCount += 1;
+            if (runSelectCount === 1) return [activeRun];
+            return [{ id: "2", status: "completed" }];
+          }
+          if (table === "xy_wap_embed_workflow_task") {
+            taskSelectCount += 1;
+            if (taskSelectCount === 1) return [];
+            return [terminalTask];
+          }
+          if (table === "xy_wap_embed_workflow_definition") {
+            return [{ biz_status: 1, id: "31", runtime_status: "active", uid: 9 }];
+          }
+          return [];
+        },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_definition") {
+            return { biz_status: 1, runtime_status: "active" };
+          }
+          return undefined;
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set(values: Record<string, unknown>) {
+          if (table === "xy_wap_embed_workflow_run") db.runUpdate = values;
+          if (table === "xy_wap_embed_workflow_task") db.taskUpdate = values;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirst() { return { numUpdatedRows: 1n }; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createEmptyConsistencyDbMock() {
+  const db = {
+    selectFrom() {
+      const builder = {
+        forUpdate() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        skipLocked() { return builder; },
+        where() { return builder; },
+        async execute() { return []; },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
     },
   };
   return db;

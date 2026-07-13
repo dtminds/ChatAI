@@ -164,15 +164,24 @@ function WorkflowWorkspaceContent({
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const [dataRevision, setDataRevision] = useState(currentDocument.publishedRevision);
+  const [followPublishedDataRevision, setFollowPublishedDataRevision] = useState(true);
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   const selectedDataVersion = currentDocument.versionHistory.find(item => item.revision === dataRevision)
     ?? currentDocument.currentVersion;
   useEffect(() => {
-    if (currentDocument.publishedRevision !== null
-      && !currentDocument.versionHistory.some(item => item.revision === dataRevision)) {
+    if (currentDocument.publishedRevision === null) return;
+    const selectedRevisionExists = currentDocument.versionHistory
+      .some(item => item.revision === dataRevision);
+    if (followPublishedDataRevision || !selectedRevisionExists) {
       setDataRevision(currentDocument.publishedRevision);
+      if (!selectedRevisionExists) setFollowPublishedDataRevision(true);
     }
-  }, [currentDocument.publishedRevision, currentDocument.versionHistory, dataRevision]);
+  }, [
+    currentDocument.publishedRevision,
+    currentDocument.versionHistory,
+    dataRevision,
+    followPublishedDataRevision,
+  ]);
 
   return (
     <>
@@ -234,7 +243,10 @@ function WorkflowWorkspaceContent({
               ? `${dataRevision === currentDocument.publishedRevision ? "当前流程" : "历史流程"} · ${selectedDataVersion.publishedAt}`
               : "当前流程"}
             onRefresh={() => setDataRefreshVersion(value => value + 1)}
-            onSelectRevision={setDataRevision}
+            onSelectRevision={(revision) => {
+              setDataRevision(revision);
+              setFollowPublishedDataRevision(revision === currentDocument.publishedRevision);
+            }}
             versions={currentDocument.versionHistory.map(version => ({
               label: `${version.revision === currentDocument.publishedRevision ? "当前流程" : "历史流程"} · ${version.publishedAt}`,
               revision: version.revision,

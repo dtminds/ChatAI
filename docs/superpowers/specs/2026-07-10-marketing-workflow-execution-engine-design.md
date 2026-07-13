@@ -485,7 +485,7 @@ update_time
 - `id` 为无业务含义自增主键。
 - 业务匹配索引至少包含 `(uid, event_type, status, workflow_id)`。
 
-Start 节点的最终配置尚未确定，因此 `filter_spec_json` 的业务字段暂不在本 Spec 固化。触发匹配必须是结构化规则，不得执行任意脚本。
+`filter_spec_json` 保存发布后编译出的结构化 `WorkflowStartConfig`，包含 `accountIds`、`entryPolicy` 与 `triggers`。触发匹配必须使用这些结构化规则，不得执行任意脚本。
 
 ### 9.4 `xy_wap_embed_workflow_run`
 
@@ -514,14 +514,19 @@ completed_at
 关键索引：
 
 ```text
-(uid, workflow_id, revision, status, create_time)
-(uid, subject_id, status, create_time)
-(shard_id, status, next_execute_at)
+UNIQUE (uid, workflow_id, entry_event_id)
+(uid, workflow_id, revision, id)
+(uid, workflow_id, status, revision, id)
+(uid, workflow_id, revision, current_node_id, id)
+(uid, workflow_id, subject_id, create_time, id)
+(status, id)
 ```
+
+`next_execute_at` 用于展示 Run 的下一执行时间，不作为 Scheduler 的到期扫描索引。实际调度以 Task 的 `(shard_id, status, bucket_time, due_at, id)` 索引为准；Run 的 `(status, id)` 索引用于 Reconciler 扫描需要取消的不可用运行实例。
 
 `subject_id` 是引擎不解析的不透明字符串，其唯一业务范围为 `uid + subject_id`。平台、托管账号或外部联系人 ID 的组合方式由 Trigger Adapter 决定。
 
-是否允许同一客户重复进入由 Start 规则决定；对应唯一约束必须在 Start 契约确定后设计，不能仅依赖应用查询防重。
+`(uid, workflow_id, entry_event_id)` 唯一键负责入口事件幂等。是否允许同一客户重复进入由 Start 规则决定，通过 Entry Guard 串行化并使用 Run 的客户时间窗索引校验，不能仅依赖应用内存防重。
 
 ### 9.5 `xy_wap_embed_workflow_task`
 

@@ -64,6 +64,18 @@ describe("database schema document", () => {
       "description VARCHAR(1000) NOT NULL DEFAULT '' COMMENT 'Workflow描述'",
     );
   });
+
+  it("keeps only workflow run indexes required by current query paths", () => {
+    const runTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_run");
+
+    expect(runTable.match(/^  KEY .+$/gm)).toEqual([
+      "  KEY idx_workflow_run_records (uid, workflow_id, revision, id),",
+      "  KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),",
+      "  KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),",
+      "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),",
+      "  KEY idx_workflow_run_status_reconcile (status, id)",
+    ]);
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

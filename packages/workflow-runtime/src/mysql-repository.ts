@@ -463,15 +463,34 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("lease_owner", "=", input.leaseOwner)
         .executeTakeFirst();
       if (!outboxRow) return false;
-      const taskRow = await trx.selectFrom(TASK_TABLE).select([
+      const candidateTask = await trx.selectFrom(TASK_TABLE).select([
         "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "task_version", "workflow_id",
       ])
         .where("uid", "=", outboxRow.uid)
         .where("id", "=", outboxRow.aggregate_id)
         .where("status", "=", "dispatched")
         .where("task_version", "=", outboxRow.task_version)
-        .forUpdate()
         .executeTakeFirst();
+      const runRow = candidateTask
+        ? await trx.selectFrom(RUN_TABLE)
+            .select(["current_node_id", "revision", "shard_id", "workflow_id"])
+            .where("uid", "=", outboxRow.uid)
+            .where("id", "=", candidateTask.run_id)
+            .forUpdate()
+            .executeTakeFirst()
+        : undefined;
+      const taskRow = candidateTask
+        ? await trx.selectFrom(TASK_TABLE).select([
+            "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "task_version", "workflow_id",
+          ])
+            .where("uid", "=", outboxRow.uid)
+            .where("id", "=", outboxRow.aggregate_id)
+            .where("run_id", "=", candidateTask.run_id)
+            .where("status", "=", "dispatched")
+            .where("task_version", "=", outboxRow.task_version)
+            .forUpdate()
+            .executeTakeFirst()
+        : undefined;
       const lockedOutbox = await trx.selectFrom(OUTBOX_TABLE).select("id")
         .where("id", "=", input.id)
         .where("status", "=", "leased")
@@ -488,10 +507,6 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("lease_owner", "=", input.leaseOwner)
         .executeTakeFirstOrThrow();
       if (taskRow) {
-        const runRow = await trx.selectFrom(RUN_TABLE).select(["current_node_id", "revision", "shard_id", "workflow_id"])
-          .where("uid", "=", outboxRow.uid)
-          .where("id", "=", taskRow.run_id)
-          .executeTakeFirst();
         const metricTask = runRow && runRow.current_node_id !== taskRow.node_id
           ? await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind"])
               .where("uid", "=", outboxRow.uid)

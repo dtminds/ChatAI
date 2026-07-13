@@ -11,7 +11,13 @@ Manual migration:
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_run
-  ADD KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id);
+  DROP KEY idx_workflow_run_workflow_status_time,
+  DROP KEY idx_workflow_run_subject_status_time,
+  DROP KEY idx_workflow_run_schedule,
+  ADD KEY idx_workflow_run_records (uid, workflow_id, revision, id),
+  ADD KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),
+  ADD KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),
+  ADD KEY idx_workflow_run_status_reconcile (status, id);
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric_event (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID', uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

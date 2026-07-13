@@ -10,6 +10,7 @@ import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
+import { CURRENT_WORKBENCH_PLATFORM } from "../workbench-platform-scope.js";
 import type { WorkflowDataReader } from "./workflow-data.service.js";
 
 type DataDatabase = Database & WorkflowDatabase;
@@ -150,6 +151,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     const rows = await this.db.selectFrom("xy_wap_embed_contact")
       .select(["avatar", "name", "real_name", "third_external_userid"])
       .where("uid", "=", uid)
+      .where("platform", "=", CURRENT_WORKBENCH_PLATFORM)
       .where("third_external_userid", "in", ids)
       .where("biz_status", "=", 1)
       .execute();

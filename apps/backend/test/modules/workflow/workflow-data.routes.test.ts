@@ -4,6 +4,7 @@ import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
 import { registerWorkflowRoutes } from "../../../src/modules/workflow/workflow.routes.js";
 import { MysqlWorkflowDataReader } from "../../../src/modules/workflow/workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "../../../src/modules/workflow/workflow-data.service.js";
+import { CURRENT_WORKBENCH_PLATFORM } from "../../../src/modules/workbench-platform-scope.js";
 
 describe("workflow data routes", () => {
   const apps: Array<ReturnType<typeof Fastify>> = [];
@@ -85,6 +86,20 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it("hydrates workflow customers within the current workbench platform", async () => {
+    const db = createRecordDbMock();
+    const reader = new MysqlWorkflowDataReader(db as never);
+
+    await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(db.wheres).toContainEqual([
+      "xy_wap_embed_contact",
+      "platform",
+      "=",
+      CURRENT_WORKBENCH_PLATFORM,
+    ]);
+  });
+
   it("rejects data access for users without workflow administration permission", async () => {
     const reader = {
       getOverview: vi.fn(),
@@ -120,12 +135,16 @@ function createRecordDbMock(options: { draftJson?: unknown; executionKind?: stri
     nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
   });
   const now = new Date("2026-07-12T10:00:00.000Z");
-  return {
+  const db = {
+    wheres: [] as unknown[][],
     selectFrom(table: string) {
       const builder = {
         orderBy() { return builder; },
         select() { return builder; },
-        where() { return builder; },
+        where(...args: unknown[]) {
+          db.wheres.push([table, ...args]);
+          return builder;
+        },
         async execute() {
           if (table === "xy_wap_embed_workflow_node_execution") {
             return [{
@@ -159,4 +178,5 @@ function createRecordDbMock(options: { draftJson?: unknown; executionKind?: stri
       return builder;
     },
   };
+  return db;
 }

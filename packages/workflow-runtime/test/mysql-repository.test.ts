@@ -209,6 +209,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       status: "failed",
       terminal_reason: "WORKFLOW_OUTBOX_ATTEMPTS_EXHAUSTED",
     });
+    expect(db.lockOrder).toEqual(["run", "task", "outbox"]);
   });
 });
 
@@ -640,12 +641,18 @@ function createOutboxDeadDbMock() {
     workflow_id: "42",
   };
   const db = {
+    lockOrder: [] as string[],
     outboxUpdate: {} as Record<string, unknown>,
     runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
-        forUpdate() { return builder; },
+        forUpdate() {
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run"
+            ? "run"
+            : table === "xy_wap_embed_workflow_task" ? "task" : "outbox");
+          return builder;
+        },
         select() { return builder; },
         selectAll() { return builder; },
         where() { return builder; },

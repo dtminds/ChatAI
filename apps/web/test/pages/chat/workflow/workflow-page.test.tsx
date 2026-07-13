@@ -659,6 +659,40 @@ describe("Agent workflow page", () => {
     getDocumentSpy.mockRestore();
   });
 
+  it("follows a newly published revision when opening workflow data", async () => {
+    const repository = getWorkflowDraftRepository();
+    const existing = getWorkflowDocument("vip-reactivation");
+    const start = existing.draft.nodes.find(node => node.data.kind === "start")!;
+    const wait = existing.draft.nodes.find(node => node.data.kind === "wait")!;
+    const end = existing.draft.nodes.find(node => node.data.kind === "end")!;
+    await repository.publishDraft(existing.id, {
+      ...existing.draft,
+      edges: [
+        { id: "edge-start-wait", source: start.id, target: wait.id, type: "workflow" },
+        { id: "edge-wait-end", source: wait.id, target: end.id, type: "workflow" },
+      ],
+      nodes: [start, wait, end],
+    });
+    const initialPublishedRevision = getWorkflowDocument(existing.id).publishedRevision!;
+    const user = setupCanvasUser();
+    const { router } = renderWorkflowPage("/chat/workflows/vip-reactivation");
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    fireEvent.change(within(panel).getByLabelText("时长"), { target: { value: "3" } });
+
+    const publishButton = await screen.findByRole("button", { name: "发布" });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    await user.click(publishButton);
+    await waitFor(() => expect(getWorkflowDocument("vip-reactivation").publishedRevision)
+      .toBe(initialPublishedRevision + 1));
+
+    await user.click(screen.getByRole("tab", { name: "数据" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/vip-reactivation/data"));
+    expect(screen.getByRole("button", { name: /当前流程 · 刚刚/ })).toBeInTheDocument();
+  });
+
   it("opens workflow cards in the current tab", async () => {
     renderWorkflowPage("/chat/workflows");
 

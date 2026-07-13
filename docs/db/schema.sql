@@ -631,11 +631,11 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
-  KEY idx_workflow_run_workflow_status_time (uid, workflow_id, revision, status, create_time, id),
+  KEY idx_workflow_run_records (uid, workflow_id, revision, id),
+  KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),
   KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),
-  KEY idx_workflow_run_subject_status_time (uid, subject_id, status, create_time, id),
   KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),
-  KEY idx_workflow_run_schedule (shard_id, status, next_execute_at, id)
+  KEY idx_workflow_run_status_reconcile (status, id)
 ) COMMENT='营销Workflow运行实例表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (

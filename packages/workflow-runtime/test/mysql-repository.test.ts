@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Kysely, MysqlDialect } from "kysely";
 import { MysqlWorkflowRuntimeRepository } from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
@@ -97,6 +98,19 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result).toEqual({ dead: 0, recovered: 1 });
     expect(db.lockOrder).toEqual(["run", "task"]);
+  });
+
+  it("casts the unsigned current counter before applying a negative delta", async () => {
+    const db = createMetricAggregationDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await repository.aggregateNodeMetricEvents({ limit: 100 });
+
+    const compiler = new Kysely({ dialect: new MysqlDialect({ pool: {} as never }) });
+    const compiled = (db.currentCountExpression as { compile(provider: Kysely<unknown>): { parameters: readonly unknown[]; sql: string } })
+      .compile(compiler);
+    expect(compiled.sql).toContain("CAST(current_count AS SIGNED)");
+    expect(compiled.parameters).toEqual([-1]);
   });
 
   it("reads only active current-revision trigger bindings through the definition join", async () => {
@@ -488,6 +502,68 @@ function createLeaseRecoveryDbMock() {
         set() { return builder; },
         where() { return builder; },
         async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createMetricAggregationDbMock() {
+  const now = new Date("2026-07-12T10:00:00.000Z");
+  const db = {
+    currentCountExpression: null as unknown,
+    insertInto() {
+      const builder = {
+        values() { return builder; },
+        onDuplicateKeyUpdate(values: Record<string, unknown>) {
+          db.currentCountExpression = values.current_count;
+          return builder;
+        },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
+    selectFrom() {
+      const builder = {
+        forUpdate() { return builder; },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        selectAll() { return builder; },
+        skipLocked() { return builder; },
+        where() { return builder; },
+        async execute() {
+          return [{
+            completed_delta: 0,
+            create_time: now,
+            current_delta: -1,
+            entered_delta: 0,
+            event_key: "5:cancelled:wait-1",
+            id: "1",
+            node_id: "wait-1",
+            passed_delta: 0,
+            processed_at: null,
+            revision: 1,
+            run_id: "5",
+            shard_id: 1,
+            uid: 8,
+            update_time: now,
+            workflow_id: "42",
+          }];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable() {
+      const builder = {
+        set() { return builder; },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return {}; },
       };
       return builder;
     },

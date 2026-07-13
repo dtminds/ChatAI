@@ -176,11 +176,16 @@ export const WorkflowEntryRecordPageSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
+export const WorkflowEntryRecordStepNodeKindSchema = Type.Union([
+  WorkflowNodeKindSchema,
+  Type.Literal("unknown"),
+]);
+
 export const WorkflowEntryRecordStepSchema = Type.Object({
   description: Type.Optional(Type.String()),
   occurredAt: Type.String(),
   nodeId: Type.String({ minLength: 1, maxLength: 128 }),
-  nodeKind: WorkflowNodeKindSchema,
+  nodeKind: WorkflowEntryRecordStepNodeKindSchema,
   status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("current")]),
   title: Type.String(),
 });
@@ -195,6 +200,7 @@ export const WorkflowEntryRecordDetailSchema = Type.Object({
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
+export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;
 export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;

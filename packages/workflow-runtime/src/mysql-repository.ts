@@ -863,7 +863,7 @@ export class MysqlWorkflowRuntimeRepository implements
           workflow_id: metric.workflowId,
         }).onDuplicateKeyUpdate({
           completed_count: sql<number>`completed_count + ${metric.completed}`,
-          current_count: sql<number>`GREATEST(0, current_count + ${metric.current})`,
+          current_count: sql<number>`GREATEST(0, CAST(current_count AS SIGNED) + ${metric.current})`,
           entered_count: sql<number>`entered_count + ${metric.entered}`,
           passed_count: sql<number>`passed_count + ${metric.passed}`,
         }).executeTakeFirstOrThrow();

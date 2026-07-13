@@ -2,6 +2,7 @@ import type {
   WorkflowDataOverview,
   WorkflowEntryRecordDetail,
   WorkflowEntryRecordPage,
+  WorkflowEntryRecordStepNodeKind,
   WorkflowEntryRecordStatus,
   WorkflowNodeKind,
 } from "@chatai/contracts";
@@ -105,22 +106,27 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       this.loadCustomers(input.uid, [run.subject_id]),
     ]);
     const titles = readNodeTitles(revision?.draft_json);
-    const steps: WorkflowEntryRecordDetail["steps"] = executions.map(row => ({
-      ...(row.error_message ? { description: row.error_message } : {}),
-      occurredAt: toDate(row.completed_at ?? row.create_time).toISOString(),
-      nodeId: row.node_id,
-      nodeKind: parseNodeKind(row.node_kind),
-      status: row.status === "failed" ? "failed" : "completed",
-      title: titles.get(row.node_id)?.title ?? fallbackNodeTitle(parseNodeKind(row.node_kind)),
-    }));
+    const steps: WorkflowEntryRecordDetail["steps"] = executions.map(row => {
+      const nodeKind = parseRecordNodeKind(row.node_kind);
+      return {
+        ...(row.error_message ? { description: row.error_message } : {}),
+        occurredAt: toDate(row.completed_at ?? row.create_time).toISOString(),
+        nodeId: row.node_id,
+        nodeKind,
+        status: row.status === "failed" ? "failed" : "completed",
+        title: titles.get(row.node_id)?.title ?? fallbackNodeTitle(nodeKind),
+      };
+    });
     if (run.status === "queued" || run.status === "running" || run.status === "waiting") {
-      const currentKind = titles.get(run.current_node_id)?.kind ?? "wait";
+      const metadata = titles.get(run.current_node_id);
+      const previousStep = steps.at(-1)?.nodeId === run.current_node_id ? steps.at(-1) : undefined;
+      const currentKind = metadata?.kind ?? previousStep?.nodeKind ?? "unknown";
       const currentStep = {
         occurredAt: toDate(run.update_time).toISOString(),
         nodeId: run.current_node_id,
         nodeKind: currentKind,
         status: "current" as const,
-        title: titles.get(run.current_node_id)?.title ?? fallbackNodeTitle(currentKind),
+        title: metadata?.title ?? previousStep?.title ?? fallbackNodeTitle(currentKind),
       };
       if (steps.at(-1)?.nodeId === run.current_node_id) {
         steps[steps.length - 1] = currentStep;
@@ -161,15 +167,19 @@ function parseStatus(value: string): WorkflowEntryRecordStatus {
   throw new Error(`Unknown workflow record status: ${value}`);
 }
 
-function parseNodeKind(value: string): WorkflowNodeKind {
+function parseKnownNodeKind(value: string): WorkflowNodeKind | null {
   if (["start", "wait", "branch", "message", "tag", "coupon", "handoff", "end"].includes(value)) {
     return value as WorkflowNodeKind;
   }
-  throw new Error(`Unknown workflow node kind: ${value}`);
+  return null;
+}
+
+function parseRecordNodeKind(value: string): WorkflowEntryRecordStepNodeKind {
+  return parseKnownNodeKind(value) ?? "unknown";
 }
 
 function readNodeTitles(value: unknown) {
-  const result = new Map<string, { kind: WorkflowNodeKind; title: string }>();
+  const result = new Map<string, { kind: WorkflowNodeKind | null; title: string }>();
   let draft = value;
   if (typeof value === "string") {
     try {
@@ -184,16 +194,16 @@ function readNodeTitles(value: unknown) {
     const data = node.data;
     if (!data || typeof data !== "object" || !("kind" in data) || !("title" in data)) continue;
     if (typeof node.id === "string" && typeof data.kind === "string" && typeof data.title === "string") {
-      result.set(node.id, { kind: parseNodeKind(data.kind), title: data.title });
+      result.set(node.id, { kind: parseKnownNodeKind(data.kind), title: data.title });
     }
   }
   return result;
 }
 
-function fallbackNodeTitle(kind: WorkflowNodeKind) {
+function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
   return ({
     branch: "条件分支", coupon: "发送优惠券", end: "结束", handoff: "转人工",
-    message: "发送消息", start: "进入流程", tag: "添加标签", wait: "等待",
+    message: "发送消息", start: "进入流程", tag: "添加标签", unknown: "未知节点", wait: "等待",
   } as const)[kind];
 }
 

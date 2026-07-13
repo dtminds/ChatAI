@@ -268,7 +268,9 @@ function statusLabel(status: WorkflowEntryRecord["status"]) {
 }
 
 function nodeTitle(document: WorkflowDocument, revision: number, nodeId: string) {
-  return document.versionHistory.find(item => item.revision === revision)?.draft.nodes.find(node => node.id === nodeId)?.data.title ?? nodeId;
+  const draft = document.versionHistory.find(item => item.revision === revision)?.draft
+    ?? (revision === document.publishedRevision ? document.publishedDraft : null);
+  return draft?.nodes.find(node => node.id === nodeId)?.data.title ?? nodeId;
 }
 
 function formatDate(value: string) {

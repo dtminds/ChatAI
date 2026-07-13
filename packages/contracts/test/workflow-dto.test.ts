@@ -165,6 +165,21 @@ describe("workflow contracts", () => {
         title: "进入流程",
       }],
     })).toBe(true);
+
+    expect(Value.Check(WorkflowEntryRecordDetailSchema, {
+      createdAt: "2026-07-12T09:00:00.000Z",
+      customer: { avatar: null, name: "张三" },
+      recordId: "31",
+      revision: 3,
+      status: "waiting",
+      steps: [{
+        occurredAt: "2026-07-12T09:00:00.000Z",
+        nodeId: "future-action",
+        nodeKind: "unknown",
+        status: "current",
+        title: "未来动作",
+      }],
+    })).toBe(true);
   });
 });
 

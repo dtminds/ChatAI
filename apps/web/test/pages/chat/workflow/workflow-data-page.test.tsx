@@ -121,4 +121,36 @@ describe("WorkflowDataPage", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     expect(screen.queryByText("旧版本客户")).not.toBeInTheDocument();
   });
+
+  it("uses the published draft to resolve current-revision node titles", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const waitNode = document.publishedDraft!.nodes.find(node => node.data.kind === "wait")!;
+    const repository = {
+      getOverview: vi.fn(async () => ({ calculatedAt: "2026-07-12T10:00:00.000Z", nodes: [], revision: 1 })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(async () => ({
+        items: [{
+          createdAt: "2026-07-12T09:00:00.000Z",
+          currentNodeId: waitNode.id,
+          customer: { avatar: null, name: "张三" },
+          nextExecuteAt: null,
+          recordId: "31",
+          revision: document.publishedRevision!,
+          status: "waiting" as const,
+          updatedAt: "2026-07-12T10:00:00.000Z",
+        }],
+        nextCursor: null,
+      })),
+    };
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage document={{ ...document, versionHistory: [] }} repository={repository} />
+      </ReactFlowProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "进入记录" }));
+
+    expect(await screen.findByText(waitNode.data.title)).toBeInTheDocument();
+  });
 });

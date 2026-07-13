@@ -56,7 +56,7 @@ describe("workflow data routes", () => {
   });
 
   it("falls back to default node titles when a revision snapshot cannot be parsed", async () => {
-    const reader = new MysqlWorkflowDataReader(createRecordDbMock("{not-json") as never);
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({ draftJson: "{not-json" }) as never);
 
     const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
 
@@ -64,6 +64,24 @@ describe("workflow data routes", () => {
       nodeId: "wait-1",
       status: "current",
       title: "等待",
+    })]);
+  });
+
+  it("preserves titles and returns an unknown kind for unrecognized revision and ledger nodes", async () => {
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      draftJson: JSON.stringify({
+        nodes: [{ data: { kind: "future-action", title: "未来动作" }, id: "wait-1" }],
+      }),
+      executionKind: "future-action",
+    }) as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([expect.objectContaining({
+      nodeId: "wait-1",
+      nodeKind: "unknown",
+      status: "current",
+      title: "未来动作",
     })]);
   });
 
@@ -97,9 +115,10 @@ describe("workflow data routes", () => {
   }
 });
 
-function createRecordDbMock(draftJson: unknown = JSON.stringify({
-  nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
-})) {
+function createRecordDbMock(options: { draftJson?: unknown; executionKind?: string } = {}) {
+  const draftJson = options.draftJson ?? JSON.stringify({
+    nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
+  });
   const now = new Date("2026-07-12T10:00:00.000Z");
   return {
     selectFrom(table: string) {
@@ -114,7 +133,7 @@ function createRecordDbMock(draftJson: unknown = JSON.stringify({
               create_time: now,
               error_message: null,
               node_id: "wait-1",
-              node_kind: "wait",
+              node_kind: options.executionKind ?? "wait",
               status: "completed",
             }];
           }

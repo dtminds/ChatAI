@@ -12,13 +12,66 @@ vi.mock("@xyflow/react", async () => {
     ...actual,
     Background: () => null,
     MiniMap: () => null,
-    ReactFlow: ({ nodes, nodeTypes, children }: any) => <div>{nodes.map((node: any) => { const Component = nodeTypes[node.type]; return <Component data={node.data} id={node.id} key={node.id} />; })}{children}</div>,
+    ReactFlow: ({ edges, nodes, nodeTypes, children }: any) => <div data-edge-ids={edges.map((edge: any) => edge.id).join(",")} data-testid="workflow-flow">{nodes.map((node: any) => { const Component = nodeTypes[node.type]; return <div data-position={`${node.position.x},${node.position.y}`} data-testid={`workflow-flow-node-${node.id}`} key={node.id}><Component data={node.data} id={node.id} /></div>; })}{children}</div>,
     useReactFlow: () => ({ fitView: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn(), zoomTo: vi.fn() }),
     useViewport: () => ({ zoom: 1 }),
   };
 });
 
 describe("WorkflowDataPage", () => {
+  it("uses current node positions without exposing unpublished graph changes", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const publishedDraft = document.publishedDraft!;
+    const waitNode = publishedDraft.nodes.find(node => node.data.kind === "wait")!;
+    const movedPosition = { x: waitNode.position.x + 160, y: waitNode.position.y + 80 };
+    const unpublishedNode = {
+      ...publishedDraft.nodes[0]!,
+      id: "unpublished-node",
+      position: { x: 999, y: 999 },
+    };
+    const currentDraft = {
+      ...document.draft,
+      edges: [],
+      nodes: [
+        ...document.draft.nodes.map(node => node.id === waitNode.id
+          ? {
+              ...node,
+              data: { ...node.data, title: "未发布节点标题" },
+              position: movedPosition,
+            }
+          : node),
+        unpublishedNode,
+      ],
+    };
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [],
+        revision: document.publishedRevision!,
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(),
+    };
+    render(
+      <ReactFlowProvider>
+        <WorkflowDataPage document={{ ...document, draft: currentDraft }} repository={repository} />
+      </ReactFlowProvider>,
+    );
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const renderedWaitNode = within(canvas).getByTestId(`workflow-flow-node-${waitNode.id}`);
+    expect(renderedWaitNode).toHaveAttribute("data-position", `${movedPosition.x},${movedPosition.y}`);
+    expect(within(renderedWaitNode).getByRole("button", {
+      name: `${waitNode.data.title} ${waitNode.data.summary}`,
+    })).toBeInTheDocument();
+    expect(within(canvas).queryByTestId("workflow-flow-node-unpublished-node")).not.toBeInTheDocument();
+    expect(within(canvas).getByTestId("workflow-flow")).toHaveAttribute(
+      "data-edge-ids",
+      publishedDraft.edges.map(edge => edge.id).join(","),
+    );
+  });
+
   it("opens all records from the start node metric action", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");

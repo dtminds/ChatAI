@@ -219,7 +219,7 @@ export function WorkflowTopBar({
             <button
               aria-selected={mode === item}
               className={cn(
-                "relative flex h-full min-w-12 items-center justify-center text-sm text-muted-foreground transition-colors",
+                "relative flex h-full min-w-12 items-center justify-center text-base text-muted-foreground transition-colors",
                 mode === item && "font-medium text-primary after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary",
               )}
               key={item}

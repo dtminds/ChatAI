@@ -42,6 +42,24 @@ type WorkflowRecordsSelection = {
   nodeId?: string;
 };
 
+function resolveWorkflowDataDraft(document: WorkflowDocument, revision: number) {
+  const version = document.versionHistory.find(item => item.revision === revision);
+  const revisionDraft = version?.draft
+    ?? (revision === document.publishedRevision ? document.publishedDraft : null);
+  if (!revisionDraft || revision !== document.publishedRevision) return revisionDraft;
+
+  const currentPositions = new Map(document.draft.nodes.map(node => [node.id, node.position]));
+  return {
+    ...revisionDraft,
+    nodes: revisionDraft.nodes.map(node => {
+      const currentPosition = currentPositions.get(node.id);
+      return currentPosition
+        ? { ...node, position: { ...currentPosition } }
+        : node;
+    }),
+  };
+}
+
 export function WorkflowDataPage({
   document,
   refreshVersion = 0,
@@ -55,8 +73,10 @@ export function WorkflowDataPage({
 }) {
   const [recordsSelection, setRecordsSelection] = useState<WorkflowRecordsSelection | null>(null);
   const revision = selectedRevision ?? document.publishedRevision;
-  const version = document.versionHistory.find(item => item.revision === revision);
-  const draft = version?.draft ?? (revision === document.publishedRevision ? document.publishedDraft : null);
+  const draft = useMemo(
+    () => revision === null ? null : resolveWorkflowDataDraft(document, revision),
+    [document, revision],
+  );
   useEffect(() => setRecordsSelection(null), [revision]);
 
   if (revision === null || !draft) {

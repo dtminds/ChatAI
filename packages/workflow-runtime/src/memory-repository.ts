@@ -179,9 +179,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selected = candidates.slice(0, input.limit);
     const selectedIds = new Set(selected.map((run) => run.id));
     for (const run of selected) {
-      const task = this.tasks
-        .filter(item => item.runId === run.id && item.nodeId === run.currentNodeId)
-        .sort((first, second) => second.sequence - first.sequence)[0];
+      const task = this.findCurrentTask(run);
       if (task) this.appendNodeMetricEvents(run, `${run.id}:cancelled`, createNodeMetricDeltas({
         kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
       }));
@@ -219,8 +217,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selected = unavailable.slice(0, Math.max(0, input.limit));
     const selectedIds = new Set(selected.map(run => run.id));
     for (const run of selected) {
-      const task = this.tasks.find(item => item.runId === run.id
-        && (item.status === "pending" || item.status === "leased" || item.status === "dispatched" || item.status === "running"));
+      const task = this.findCurrentTask(run);
       if (task) this.appendNodeMetricEvents(run, `${run.id}:cancelled`, createNodeMetricDeltas({
         kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
       }));
@@ -252,6 +249,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   async findTask(uid: number, taskId: string) {
     const task = this.tasks.find((item) => item.uid === uid && item.id === taskId);
     return task ? clone(task) : null;
+  }
+
+  private findCurrentTask(run: WorkflowRunRecord) {
+    return this.tasks
+      .filter(item => item.runId === run.id && item.nodeId === run.currentNodeId)
+      .sort((first, second) => second.sequence - first.sequence)[0];
   }
 
   async commitNodeResult(input: WorkflowCommitNodeResultInput) {

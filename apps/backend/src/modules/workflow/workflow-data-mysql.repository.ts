@@ -169,8 +169,15 @@ function parseNodeKind(value: string): WorkflowNodeKind {
 }
 
 function readNodeTitles(value: unknown) {
-  const draft = typeof value === "string" ? JSON.parse(value) : value;
   const result = new Map<string, { kind: WorkflowNodeKind; title: string }>();
+  let draft = value;
+  if (typeof value === "string") {
+    try {
+      draft = JSON.parse(value);
+    } catch {
+      return result;
+    }
+  }
   if (!draft || typeof draft !== "object" || !("nodes" in draft) || !Array.isArray(draft.nodes)) return result;
   for (const node of draft.nodes) {
     if (!node || typeof node !== "object" || !("id" in node) || !("data" in node)) continue;

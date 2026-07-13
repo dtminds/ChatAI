@@ -85,6 +85,20 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.taskUpdate).toEqual({});
   });
 
+  it("locks runs before tasks when recovering expired leases", async () => {
+    const db = createLeaseRecoveryDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 3,
+      now: new Date("2026-07-10T00:02:00.000Z"),
+    });
+
+    expect(result).toEqual({ dead: 0, recovered: 1 });
+    expect(db.lockOrder).toEqual(["run", "task"]);
+  });
+
   it("reads only active current-revision trigger bindings through the definition join", async () => {
     const db = createTriggerBindingDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -423,6 +437,57 @@ function createTriggerBindingDbMock(options: { uid?: number | string } = {}) {
       };
       const joinBuilder = {
         onRef(...args: unknown[]) { db.joinReferences.push(args); return joinBuilder; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createLeaseRecoveryDbMock() {
+  const task = {
+    attempt: 1,
+    id: "7",
+    node_id: "wait-1",
+    node_kind: "wait",
+    revision: 1,
+    run_id: "5",
+    shard_id: 1,
+    uid: 8,
+    workflow_id: "42",
+  };
+  const db = {
+    lockOrder: [] as string[],
+    selectFrom(table: string) {
+      let locked = false;
+      const builder = {
+        forUpdate() {
+          locked = true;
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
+          return builder;
+        },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        skipLocked() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_run") return [{ id: "5" }];
+          return locked || table === "xy_wap_embed_workflow_task" ? [task] : [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
+    },
+    updateTable() {
+      const builder = {
+        set() { return builder; },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
       };
       return builder;
     },

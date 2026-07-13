@@ -687,11 +687,25 @@ export class MysqlWorkflowRuntimeRepository implements
   async recoverExpiredLeases(input: Parameters<WorkflowRuntimeRepository["recoverExpiredLeases"]>[0]) {
     if (input.limit <= 0) return { dead: 0, recovered: 0 };
     return this.db.transaction().execute(async (trx) => {
-      const rows = await trx.selectFrom(TASK_TABLE).select([
+      const candidateRows = await trx.selectFrom(TASK_TABLE).select([
         "attempt", "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "uid", "workflow_id",
       ])
         .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
         .orderBy("lease_expires_at", "asc").orderBy("id", "asc").limit(input.limit)
+        .execute();
+      if (candidateRows.length === 0) return { dead: 0, recovered: 0 };
+      const runIds = [...new Set(candidateRows.map(row => row.run_id))];
+      await trx.selectFrom(RUN_TABLE).select("id")
+        .where("id", "in", runIds)
+        .orderBy("id", "asc")
+        .forUpdate()
+        .execute();
+      const rows = await trx.selectFrom(TASK_TABLE).select([
+        "attempt", "id", "node_id", "node_kind", "revision", "run_id", "shard_id", "uid", "workflow_id",
+      ])
+        .where("id", "in", candidateRows.map(row => row.id))
+        .where("status", "=", "running").where("lease_expires_at", "<=", input.now)
+        .orderBy("lease_expires_at", "asc").orderBy("id", "asc")
         .forUpdate().skipLocked().execute();
       if (rows.length === 0) return { dead: 0, recovered: 0 };
       const deadRows = rows.filter(row => row.attempt >= input.maxAttempts);
@@ -728,14 +742,14 @@ export class MysqlWorkflowRuntimeRepository implements
           task_version: sql<number>`task_version + 1`,
         }).where("id", "in", deadIds).where("status", "=", "running")
           .where("lease_expires_at", "<=", input.now).executeTakeFirstOrThrow();
-        const runIds = [...new Set(deadRows.map(row => row.run_id))];
+        const deadRunIds = [...new Set(deadRows.map(row => row.run_id))];
         await trx.updateTable(RUN_TABLE).set({
           completed_at: input.now,
           lock_version: sql<number>`lock_version + 1`,
           next_execute_at: null,
           status: "failed",
           terminal_reason: "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED",
-        }).where("id", "in", runIds)
+        }).where("id", "in", deadRunIds)
           .where("status", "in", ["queued", "running", "waiting"])
           .executeTakeFirstOrThrow();
       }

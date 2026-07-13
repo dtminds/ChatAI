@@ -55,6 +55,18 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it("falls back to default node titles when a revision snapshot cannot be parsed", async () => {
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock("{not-json") as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([expect.objectContaining({
+      nodeId: "wait-1",
+      status: "current",
+      title: "等待",
+    })]);
+  });
+
   it("rejects data access for users without workflow administration permission", async () => {
     const reader = {
       getOverview: vi.fn(),
@@ -85,7 +97,9 @@ describe("workflow data routes", () => {
   }
 });
 
-function createRecordDbMock() {
+function createRecordDbMock(draftJson: unknown = JSON.stringify({
+  nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
+})) {
   const now = new Date("2026-07-12T10:00:00.000Z");
   return {
     selectFrom(table: string) {
@@ -119,9 +133,7 @@ function createRecordDbMock() {
             };
           }
           return {
-            draft_json: JSON.stringify({
-              nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
-            }),
+            draft_json: draftJson,
           };
         },
       };

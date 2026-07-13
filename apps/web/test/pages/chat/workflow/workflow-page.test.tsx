@@ -645,6 +645,7 @@ describe("Agent workflow page", () => {
 
   it("switches between design and data without treating it as leaving an unsaved workflow", async () => {
     const user = setupCanvasUser();
+    const getDocumentSpy = vi.spyOn(getWorkflowDraftRepository(), "getDocument");
     const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion");
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
@@ -654,6 +655,8 @@ describe("Agent workflow page", () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/newcomer-conversion/data"));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(getDocumentSpy).toHaveBeenCalledTimes(1);
+    getDocumentSpy.mockRestore();
   });
 
   it("opens workflow cards in the current tab", async () => {

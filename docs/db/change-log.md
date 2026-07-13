@@ -4,9 +4,18 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-13
 
+- Added the Workflow Action failure classification used by the durable retry ledger.
+
+Action reliability migration:
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_node_execution
+  ADD COLUMN failure_kind VARCHAR(32) NULL COMMENT 'Action失败分类：retryable/unknown/terminal' AFTER error_message;
+```
+
 - Added the active Task status/index cursor used by bounded Run/Task consistency reconciliation.
 
-Manual migration:
+Run/Task reconciliation migration:
 
 ```sql
 ALTER TABLE xy_wap_embed_workflow_task

@@ -29,6 +29,8 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
 | `workflow.worker.readiness.failed` | `error` | `role`, `err` |
+| `workflow.action.retry.scheduled` | `warn` | `uid`, `taskId`, `failureKind`, `errorCode`, `retryAt` |
+| `workflow.action.failed` | `warn` | `uid`, `taskId`, `failureKind`, `errorCode` |
 
 Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `dispatched`, `deferred`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskLeasesRecovered`, `taskLeasesDead`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, and `err`.
 

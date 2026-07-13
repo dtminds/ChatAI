@@ -41,3 +41,16 @@ export class WorkflowNodeExecutionError extends Error {
     this.name = "WorkflowNodeExecutionError";
   }
 }
+
+export type WorkflowActionFailureKind = "retryable" | "terminal" | "unknown";
+
+export class WorkflowActionExecutionError extends Error {
+  constructor(
+    readonly failureKind: WorkflowActionFailureKind,
+    readonly code: string,
+    safeMessage: string,
+  ) {
+    super(safeMessage);
+    this.name = "WorkflowActionExecutionError";
+  }
+}

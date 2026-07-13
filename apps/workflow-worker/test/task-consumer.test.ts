@@ -65,6 +65,48 @@ describe("workflow task consumer", () => {
     expect(malformed.negativeAck).toHaveBeenCalledTimes(1);
     expect(transient.negativeAck).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    {
+      event: "workflow.action.retry.scheduled",
+      result: {
+        errorCode: "DOWNSTREAM_TEMPORARY",
+        failureKind: "unknown",
+        kind: "retry-scheduled",
+        retryAt: new Date("2026-07-12T00:00:05.000Z"),
+        task: { attempt: 1 },
+      },
+    },
+    {
+      event: "workflow.action.failed",
+      result: {
+        errorCode: "DOWNSTREAM_REJECTED",
+        failureKind: "terminal",
+        kind: "failed",
+        task: { attempt: 1 },
+      },
+    },
+  ])("logs and ACKs the persisted $event outcome", async ({ event, result }) => {
+    const logger = { warn: vi.fn() };
+    const message = createBrokerMessage(taskMessage());
+    const handler = createTaskConsumerHandler({
+      logger,
+      runtimeService: { executeTask: vi.fn(async () => result) },
+      workerId: "worker-1",
+    });
+
+    await handler(message);
+
+    expect(message.ack).toHaveBeenCalledTimes(1);
+    expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      errorCode: result.errorCode,
+      event,
+      failureKind: result.failureKind,
+      taskId: "7",
+      uid: "9",
+    }), expect.any(String));
+  });
 });
 
 function taskMessage(): WorkflowTaskMessage {

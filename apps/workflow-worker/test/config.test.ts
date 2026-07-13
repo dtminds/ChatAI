@@ -98,6 +98,8 @@ describe("workflow worker config", () => {
       "task-consumer",
     ]);
     expect(config.runtime).toMatchObject({
+      actionMaxRetryDelayMs: 300_000,
+      actionRetryDelayMs: 5_000,
       batchSize: 100,
       dispatchTimeoutMs: 300_000,
       inboxCleanupBatchSize: 1_000,
@@ -116,10 +118,14 @@ describe("workflow worker config", () => {
 
   it("allows runtime durations above the TCP port range", () => {
     const config = loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_ACTION_MAX_RETRY_DELAY_MS: "900000",
+      WORKFLOW_ACTION_RETRY_DELAY_MS: "15000",
       WORKFLOW_DISPATCH_TIMEOUT_MS: "600000",
       WORKFLOW_LEASE_DURATION_MS: "120000",
     }));
 
+    expect(config.runtime.actionMaxRetryDelayMs).toBe(900_000);
+    expect(config.runtime.actionRetryDelayMs).toBe(15_000);
     expect(config.runtime.dispatchTimeoutMs).toBe(600_000);
     expect(config.runtime.leaseDurationMs).toBe(120_000);
   });

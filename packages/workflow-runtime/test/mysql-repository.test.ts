@@ -3,6 +3,114 @@ import { Kysely, MysqlDialect } from "kysely";
 import { MysqlWorkflowRuntimeRepository } from "../src/index.js";
 
 describe("MysqlWorkflowRuntimeRepository", () => {
+  it("locks the run and task before creating an action execution ledger", async () => {
+    const db = createActionExecutionDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.prepareActionExecution({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      idempotencyKey: "9:5:message:2",
+      input: { subjectId: "customer-1" },
+      now: new Date("2026-07-13T00:00:00.000Z"),
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({
+      execution: { idempotencyKey: "9:5:message:2", status: "running" },
+      kind: "success",
+    });
+    expect(db.lockOrder).toEqual(["run", "task", "execution"]);
+    expect(db.inserts.xy_wap_embed_workflow_node_execution).toMatchObject({
+      failure_kind: null,
+      idempotency_key: "9:5:message:2",
+      status: "running",
+    });
+  });
+
+  it("persists one classified action retry and fences the current task message", async () => {
+    const db = createActionExecutionDbMock({ executionStatus: "running" });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+    const dueAt = new Date("2026-07-13T00:00:05.000Z");
+
+    const result = await repository.scheduleActionRetry({
+      dueAt,
+      errorCode: "DOWNSTREAM_TEMPORARY",
+      errorMessage: "可展示的下游错误",
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      failureKind: "unknown",
+      idempotencyKey: "9:5:message:2",
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-1",
+      },
+      now: new Date("2026-07-13T00:00:00.000Z"),
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({ kind: "success", task: { status: "pending", taskVersion: 3 } });
+    expect(db.inserts.xy_wap_embed_workflow_inbox).toMatchObject({ message_id: "message-1" });
+    expect(db.updates.xy_wap_embed_workflow_node_execution).toMatchObject({
+      error_code: "DOWNSTREAM_TEMPORARY",
+      failure_kind: "unknown",
+      status: "retrying",
+    });
+    expect(db.updates.xy_wap_embed_workflow_task).toMatchObject({
+      due_at: dueAt,
+      lease_owner: null,
+      status: "pending",
+      task_version: 3,
+    });
+    expect(db.updates.xy_wap_embed_workflow_run).toMatchObject({
+      lock_version: 2,
+      next_execute_at: dueAt,
+    });
+  });
+
+  it("atomically marks the ledger, task, and run failed for a terminal action error", async () => {
+    const db = createActionExecutionDbMock({ executionStatus: "running" });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.failActionExecution({
+      errorCode: "DOWNSTREAM_REJECTED",
+      errorMessage: "可展示的下游错误",
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      failureKind: "terminal",
+      idempotencyKey: "9:5:message:2",
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-1",
+      },
+      now: new Date("2026-07-13T00:00:00.000Z"),
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({
+      kind: "success",
+      run: { status: "failed" },
+      task: { status: "dead" },
+    });
+    expect(db.updates.xy_wap_embed_workflow_node_execution).toMatchObject({
+      failure_kind: "terminal",
+      status: "failed",
+    });
+    expect(db.updates.xy_wap_embed_workflow_task).toMatchObject({ status: "dead" });
+    expect(db.updates.xy_wap_embed_workflow_run).toMatchObject({
+      status: "failed",
+      terminal_reason: "DOWNSTREAM_REJECTED",
+    });
+  });
+
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
     const db = createRunTaskConsistencyDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -295,6 +403,120 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.lockOrder).toEqual(["run", "task", "outbox"]);
   });
 });
+
+function createActionExecutionDbMock(options: { executionStatus?: string } = {}) {
+  const run = {
+    completed_at: null,
+    context_json: JSON.stringify({ trigger: {} }),
+    create_time: new Date("2026-07-13T00:00:00.000Z"),
+    current_node_id: "message",
+    entry_event_id: "event-1",
+    id: "5",
+    lock_version: 1,
+    next_execute_at: new Date("2026-07-13T00:00:00.000Z"),
+    revision: 1,
+    sequence: 2,
+    shard_id: 7,
+    status: "running",
+    subject_id: "customer-1",
+    terminal_reason: null,
+    uid: 9,
+    update_time: new Date("2026-07-13T00:00:00.000Z"),
+    workflow_id: "31",
+  };
+  const task = {
+    attempt: 1,
+    bucket_time: new Date("2026-07-13T00:00:00.000Z"),
+    create_time: new Date("2026-07-13T00:00:00.000Z"),
+    due_at: new Date("2026-07-13T00:00:00.000Z"),
+    id: "7",
+    last_error_code: null,
+    lease_expires_at: new Date("2026-07-13T00:01:00.000Z"),
+    lease_owner: "worker-1",
+    node_id: "message",
+    node_kind: "message",
+    revision: 1,
+    run_id: "5",
+    sequence: 2,
+    shard_id: 7,
+    status: "running",
+    task_type: "execute",
+    task_version: 2,
+    uid: 9,
+    update_time: new Date("2026-07-13T00:00:00.000Z"),
+    workflow_id: "31",
+  };
+  const execution = options.executionStatus ? {
+    completed_at: null,
+    create_time: new Date("2026-07-13T00:00:00.000Z"),
+    error_code: null,
+    error_message: null,
+    failure_kind: null,
+    id: "11",
+    idempotency_key: "9:5:message:2",
+    input_snapshot_json: JSON.stringify({ subjectId: "customer-1" }),
+    node_id: "message",
+    node_kind: "message",
+    output_json: JSON.stringify({}),
+    run_id: "5",
+    sequence: 2,
+    started_at: new Date("2026-07-13T00:00:00.000Z"),
+    status: options.executionStatus,
+    uid: 9,
+    update_time: new Date("2026-07-13T00:00:00.000Z"),
+  } : undefined;
+  const db = {
+    inserts: {} as Record<string, Record<string, unknown>>,
+    lockOrder: [] as string[],
+    updates: {} as Record<string, Record<string, unknown>>,
+    insertInto(table: string) {
+      const builder = {
+        onDuplicateKeyUpdate() { return builder; },
+        values(values: Record<string, unknown>) {
+          db.inserts[table] = values;
+          return builder;
+        },
+        async executeTakeFirstOrThrow() { return {}; },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() {
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run"
+            ? "run"
+            : table === "xy_wap_embed_workflow_task" ? "task" : "execution");
+          return builder;
+        },
+        select() { return builder; },
+        selectAll() { return builder; },
+        where() { return builder; },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_run") return run;
+          if (table === "xy_wap_embed_workflow_task") return task;
+          if (table === "xy_wap_embed_workflow_node_execution") return execution;
+          return undefined;
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return { execute: async (operation: (transaction: typeof db) => unknown) => operation(db) };
+    },
+    updateTable(table: string) {
+      const builder = {
+        set(values: Record<string, unknown>) {
+          db.updates[table] = values;
+          return builder;
+        },
+        where() { return builder; },
+        async executeTakeFirstOrThrow() { return { numUpdatedRows: 1n }; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
 
 function createRunDbMock(input: { bizStatus: number; runtimeStatus: string }) {
   const db = {

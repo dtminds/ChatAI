@@ -22,6 +22,7 @@ type WorkflowTaskRuntimeService = {
 };
 
 export function createTaskConsumerHandler(input: {
+  logger?: { warn(value: unknown, message?: string): void };
   now?: () => Date;
   runtimeService: WorkflowTaskRuntimeService;
   workerId: string;
@@ -34,7 +35,7 @@ export function createTaskConsumerHandler(input: {
     }
 
     try {
-      await input.runtimeService.executeTask({
+      const result = await input.runtimeService.executeTask({
         messageId: command.messageId,
         now: input.now?.() ?? new Date(),
         taskId: command.taskId,
@@ -42,6 +43,7 @@ export function createTaskConsumerHandler(input: {
         uid: parseSafeDatabaseId(command.uid),
         workerId: input.workerId,
       });
+      logPersistedActionOutcome(input.logger, command, result);
       await message.ack();
     } catch (error) {
       if (classifyTaskError(error) === "ack") await message.ack();
@@ -50,9 +52,32 @@ export function createTaskConsumerHandler(input: {
   };
 }
 
+function logPersistedActionOutcome(
+  logger: { warn(value: unknown, message?: string): void } | undefined,
+  command: WorkflowTaskMessage,
+  result: unknown,
+) {
+  if (!logger || !result || typeof result !== "object" || !("kind" in result)) return;
+  const outcome = result as Record<string, unknown>;
+  if (outcome.kind !== "retry-scheduled" && outcome.kind !== "failed") return;
+  logger.warn({
+    errorCode: outcome.errorCode,
+    event: outcome.kind === "retry-scheduled"
+      ? "workflow.action.retry.scheduled"
+      : "workflow.action.failed",
+    failureKind: outcome.failureKind,
+    ...(outcome.kind === "retry-scheduled" ? { retryAt: outcome.retryAt } : {}),
+    taskId: command.taskId,
+    uid: command.uid,
+  }, outcome.kind === "retry-scheduled"
+    ? "workflow action retry scheduled"
+    : "workflow action failed");
+}
+
 export function startTaskConsumer(input: {
   broker: WorkflowBroker;
   deadLetterTopic?: string;
+  logger?: { warn(value: unknown, message?: string): void };
   maxRedeliverCount?: number;
   runtimeService: WorkflowTaskRuntimeService;
   subscription: string;

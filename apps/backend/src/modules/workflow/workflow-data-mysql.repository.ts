@@ -96,6 +96,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
         .select(["completed_at", "create_time", "error_message", "node_id", "node_kind", "status"])
         .where("uid", "=", input.uid)
         .where("run_id", "=", input.recordId)
+        .where("status", "in", ["completed", "failed"])
         .orderBy("sequence", "asc")
         .execute(),
       this.db.selectFrom("xy_wap_embed_workflow_revision")

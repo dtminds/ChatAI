@@ -56,6 +56,32 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it.each(["running", "retrying"])(
+    "does not present a non-terminal %s action ledger as a completed trajectory step",
+    async (executionStatus) => {
+      const db = createRecordDbMock({
+        executionKind: "message",
+        executionStatus,
+        runCurrentNodeId: "message-1",
+        runStatus: "running",
+      });
+      const reader = new MysqlWorkflowDataReader(db as never);
+
+      const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+      expect(detail.steps).toEqual([expect.objectContaining({
+        nodeId: "message-1",
+        status: "current",
+      })]);
+      expect(db.wheres).toContainEqual([
+          "xy_wap_embed_workflow_node_execution",
+          "status",
+          "in",
+          ["completed", "failed"],
+        ]);
+    },
+  );
+
   it("falls back to default node titles when a revision snapshot cannot be parsed", async () => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock({ draftJson: "{not-json" }) as never);
 
@@ -130,7 +156,13 @@ describe("workflow data routes", () => {
   }
 });
 
-function createRecordDbMock(options: { draftJson?: unknown; executionKind?: string } = {}) {
+function createRecordDbMock(options: {
+  draftJson?: unknown;
+  executionKind?: string;
+  executionStatus?: string;
+  runCurrentNodeId?: string;
+  runStatus?: string;
+} = {}) {
   const draftJson = options.draftJson ?? JSON.stringify({
     nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
   });
@@ -151,9 +183,9 @@ function createRecordDbMock(options: { draftJson?: unknown; executionKind?: stri
               completed_at: now,
               create_time: now,
               error_message: null,
-              node_id: "wait-1",
+              node_id: options.runCurrentNodeId ?? "wait-1",
               node_kind: options.executionKind ?? "wait",
-              status: "completed",
+              status: options.executionStatus ?? "completed",
             }];
           }
           return [];
@@ -162,10 +194,10 @@ function createRecordDbMock(options: { draftJson?: unknown; executionKind?: stri
           if (table === "xy_wap_embed_workflow_run") {
             return {
               create_time: now,
-              current_node_id: "wait-1",
+              current_node_id: options.runCurrentNodeId ?? "wait-1",
               id: "31",
               revision: 3,
-              status: "waiting",
+              status: options.runStatus ?? "waiting",
               subject_id: "customer-1",
               update_time: now,
             };

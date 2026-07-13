@@ -1,6 +1,8 @@
 import type {
+  WorkflowActionExecutionFailureInput,
   WorkflowCommitNodeResultInput,
   WorkflowCreateRunInput,
+  WorkflowNodeExecutionRecord,
   WorkflowOutboxRecord,
   WorkflowRunRecord,
   WorkflowRuntimeRepository,
@@ -17,12 +19,6 @@ type WorkflowBoundaryResolver = (input: {
   uid: number;
   workflowId: string;
 }) => Promise<{ bizStatus: 0 | 1; runtimeStatus: "active" | "inactive" | "paused" | "stopped" } | null>;
-
-type NodeExecutionRecord = WorkflowCommitNodeResultInput["nodeExecution"] & {
-  runId: string;
-  sequence: number;
-  uid: number;
-};
 
 type NodeMetricEvent = {
   completed: number;
@@ -42,7 +38,7 @@ type NodeMetricEvent = {
 export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeRepository {
   readonly runs: WorkflowRunRecord[] = [];
   readonly tasks: WorkflowTaskRecord[] = [];
-  readonly nodeExecutions: NodeExecutionRecord[] = [];
+  readonly nodeExecutions: WorkflowNodeExecutionRecord[] = [];
   readonly nodeMetricEvents: NodeMetricEvent[] = [];
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
@@ -191,6 +187,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
       }));
       run.status = "cancelled";
+      run.lockVersion += 1;
+      run.nextExecuteAt = null;
       this.touchRun(run);
     }
     for (const task of this.tasks) {
@@ -202,6 +200,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
       hasMore: candidates.length > selected.length,
@@ -243,6 +242,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         task.leaseExpiresAt = null;
       }
     }
+    this.failRunningExecutions(selectedIds, "WORKFLOW_RUN_CANCELLED", "Workflow run was cancelled");
     return {
       cancelled: selected.length,
       hasMore: unavailable.length > selected.length,
@@ -266,6 +266,115 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       .sort((first, second) => second.sequence - first.sequence)[0];
   }
 
+  async prepareActionExecution(
+    input: Parameters<WorkflowRuntimeRepository["prepareActionExecution"]>[0],
+  ) {
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running") return conflict();
+    const existing = this.nodeExecutions.find(item => item.uid === input.uid
+      && item.runId === input.runId
+      && item.sequence === task.sequence);
+    if (existing) {
+      if (existing.idempotencyKey !== input.idempotencyKey
+        || existing.nodeId !== task.nodeId
+        || existing.nodeKind !== task.nodeKind
+        || existing.status === "completed"
+        || existing.status === "failed") return conflict();
+      existing.status = "running";
+      existing.errorCode = null;
+      existing.errorMessage = null;
+      existing.failureKind = null;
+      return { execution: clone(existing), kind: "success" as const };
+    }
+    const execution: WorkflowNodeExecutionRecord = {
+      errorCode: null,
+      errorMessage: null,
+      failureKind: null,
+      idempotencyKey: input.idempotencyKey,
+      input: clone(input.input),
+      nodeId: task.nodeId,
+      nodeKind: task.nodeKind,
+      output: {},
+      runId: run.id,
+      sequence: task.sequence,
+      status: "running",
+      uid: input.uid,
+    };
+    this.nodeExecutions.push(execution);
+    return { execution: clone(execution), kind: "success" as const };
+  }
+
+  async scheduleActionRetry(
+    input: Parameters<WorkflowRuntimeRepository["scheduleActionRetry"]>[0],
+  ) {
+    const state = this.requireActionFailureState(input);
+    if ("kind" in state) return state;
+    const { execution, run, task } = state;
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    execution.errorCode = input.errorCode;
+    execution.errorMessage = input.errorMessage;
+    execution.failureKind = input.failureKind;
+    execution.status = "retrying";
+    task.dueAt = input.dueAt;
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "pending");
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = input.dueAt;
+    this.touchRun(run);
+    return { kind: "success" as const, task: clone(task) };
+  }
+
+  async failActionExecution(
+    input: Parameters<WorkflowRuntimeRepository["failActionExecution"]>[0],
+  ) {
+    const state = this.requireActionFailureState(input);
+    if ("kind" in state) return state;
+    const { execution, run, task } = state;
+    this.inbox.push({ ...clone(input.inbox), uid: input.uid });
+    execution.errorCode = input.errorCode;
+    execution.errorMessage = input.errorMessage;
+    execution.failureKind = input.failureKind;
+    execution.status = "failed";
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = transitionTask(task.status, "dead");
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = null;
+    run.status = transitionRun(run.status, "failed");
+    this.appendNodeMetricEvents(run, `${run.id}:${task.id}:failed`, createNodeMetricDeltas({
+      kind: "left-incomplete",
+      nodeId: task.nodeId,
+      nodeKind: task.nodeKind,
+    }));
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), task: clone(task) };
+  }
+
+  private requireActionFailureState(input: WorkflowActionExecutionFailureInput) {
+    if (this.inbox.some(item => item.consumer === input.inbox.consumer
+      && item.messageId === input.inbox.messageId)) return alreadyProcessed();
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    const execution = this.nodeExecutions.find(item => item.uid === input.uid
+      && item.runId === input.runId
+      && item.sequence === task.sequence
+      && item.idempotencyKey === input.idempotencyKey);
+    if (!execution) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running"
+      || execution.status !== "running") return conflict();
+    return { execution, run, task };
+  }
+
   async commitNodeResult(input: WorkflowCommitNodeResultInput) {
     if (this.inbox.some((item) =>
       item.consumer === input.inbox.consumer && item.messageId === input.inbox.messageId,
@@ -286,12 +395,33 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         ? input.nextTask.taskType === "wait" ? "waiting" : "running"
         : "completed",
     );
-    this.nodeExecutions.push({
-      ...clone(input.nodeExecution),
-      runId: run.id,
-      sequence: task.sequence,
-      uid: input.uid,
-    });
+    const existingExecution = this.nodeExecutions.find(item => item.uid === input.uid
+      && item.runId === run.id
+      && item.sequence === task.sequence);
+    if (existingExecution) {
+      if (existingExecution.idempotencyKey !== input.nodeExecution.idempotencyKey
+        || existingExecution.status !== "running") return conflict();
+      existingExecution.errorCode = input.nodeExecution.errorCode ?? null;
+      existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
+      existingExecution.failureKind = null;
+      existingExecution.output = clone(input.nodeExecution.output);
+      existingExecution.status = input.nodeExecution.errorCode ? "failed" : "completed";
+    } else {
+      this.nodeExecutions.push({
+        errorCode: input.nodeExecution.errorCode ?? null,
+        errorMessage: input.nodeExecution.errorMessage ?? null,
+        failureKind: null,
+        idempotencyKey: input.nodeExecution.idempotencyKey,
+        input: clone(input.nodeExecution.input),
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+        output: clone(input.nodeExecution.output),
+        runId: run.id,
+        sequence: task.sequence,
+        status: input.nodeExecution.errorCode ? "failed" : "completed",
+        uid: input.uid,
+      });
+    }
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
     task.status = nextTaskStatus;
     task.taskVersion += 1;
@@ -354,6 +484,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       task.leaseExpiresAt = null;
       if (exhausted) {
         dead += 1;
+        const execution = this.nodeExecutions.find(item => item.uid === task.uid
+          && item.runId === task.runId
+          && item.sequence === task.sequence
+          && item.status === "running");
+        if (execution) {
+          execution.errorCode = "WORKFLOW_TASK_ATTEMPTS_EXHAUSTED";
+          execution.errorMessage = "Workflow Task attempts exhausted";
+          execution.failureKind = null;
+          execution.status = "failed";
+        }
         const run = this.runs.find(candidate => candidate.id === task.runId && candidate.uid === task.uid);
         if (run && (run.status === "queued" || run.status === "running" || run.status === "waiting")) {
           this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:failed`, createNodeMetricDeltas({
@@ -686,6 +826,16 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   private createId() {
     return String(this.nextId++);
+  }
+
+  private failRunningExecutions(runIds: Set<string>, errorCode: string, errorMessage: string) {
+    for (const execution of this.nodeExecutions) {
+      if (!runIds.has(execution.runId) || execution.status !== "running") continue;
+      execution.errorCode = errorCode;
+      execution.errorMessage = errorMessage;
+      execution.failureKind = null;
+      execution.status = "failed";
+    }
   }
 
   private touchRun(run: WorkflowRunRecord) {

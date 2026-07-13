@@ -1,6 +1,6 @@
 import type { ColumnType, Generated } from "kysely";
 
-type DatabaseId = bigint | number | string;
+export type DatabaseId = bigint | number | string;
 type DatabaseDate = ColumnType<Date, Date | string, Date | string>;
 type GeneratedDate = ColumnType<Date, Date | string | undefined, Date | string>;
 type NullableDate = ColumnType<Date | null, Date | string | null, Date | string | null>;
@@ -109,6 +109,7 @@ export interface WorkflowNodeExecutionTable {
   create_time: GeneratedDate;
   error_code: string | null;
   error_message: string | null;
+  failure_kind: string | null;
   id: Generated<DatabaseId>;
   idempotency_key: string;
   input_snapshot_json: JsonText | null;

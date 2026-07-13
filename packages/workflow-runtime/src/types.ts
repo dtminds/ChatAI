@@ -9,6 +9,7 @@ import type {
   WorkflowTaskStatus,
   WorkflowTaskMessage,
 } from "@chatai/contracts";
+import type { WorkflowActionFailureKind } from "@chatai/workflow-engine";
 
 export type WorkflowRuntimeDefinitionRecord = {
   bizStatus: 0 | 1;
@@ -108,6 +109,23 @@ export type WorkflowNodeMetricRecord = {
   workflowId: string;
 };
 
+export type WorkflowNodeExecutionStatus = "completed" | "failed" | "retrying" | "running";
+
+export type WorkflowNodeExecutionRecord = {
+  errorCode: string | null;
+  errorMessage: string | null;
+  failureKind: WorkflowActionFailureKind | null;
+  idempotencyKey: string;
+  input: Record<string, unknown>;
+  nodeId: string;
+  nodeKind: WorkflowNodeKind;
+  output: Record<string, unknown>;
+  runId: string;
+  sequence: number;
+  status: WorkflowNodeExecutionStatus;
+  uid: number;
+};
+
 export type WorkflowSchedulerRepository = {
   dispatchDueTasks(input: {
     limit: number;
@@ -183,6 +201,20 @@ export type WorkflowCommitNodeResultInput = {
   uid: number;
 };
 
+export type WorkflowActionExecutionFailureInput = {
+  errorCode: string;
+  errorMessage: string;
+  expectedRunLockVersion: number;
+  expectedTaskVersion: number;
+  failureKind: WorkflowActionFailureKind;
+  idempotencyKey: string;
+  inbox: WorkflowCommitNodeResultInput["inbox"];
+  now: Date;
+  runId: string;
+  taskId: string;
+  uid: number;
+};
+
 export type WorkflowRuntimeMutationResult<T> =
   | { kind: "success"; value: T }
   | { kind: "already-processed" }
@@ -217,6 +249,22 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
     taskId: string;
     uid: number;
   }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  prepareActionExecution(input: {
+    expectedRunLockVersion: number;
+    expectedTaskVersion: number;
+    idempotencyKey: string;
+    input: Record<string, unknown>;
+    now: Date;
+    runId: string;
+    taskId: string;
+    uid: number;
+  }): Promise<{ execution: WorkflowNodeExecutionRecord; kind: "success" } | WorkflowRuntimeFailure>;
+  scheduleActionRetry(input: WorkflowActionExecutionFailureInput & {
+    dueAt: Date;
+  }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  failActionExecution(input: WorkflowActionExecutionFailureInput): Promise<
+    { kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord } | WorkflowRuntimeFailure
+  >;
   commitNodeResult(input: WorkflowCommitNodeResultInput): Promise<
     | { kind: "success"; nextTask: WorkflowTaskRecord | null; run: WorkflowRunRecord }
     | WorkflowRuntimeFailure

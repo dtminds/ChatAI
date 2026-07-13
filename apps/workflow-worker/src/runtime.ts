@@ -105,6 +105,7 @@ export async function startWorkflowWorkerRuntime(input: {
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.task ?? undefined,
         maxRedeliverCount: input.config.maxRedeliverCount,
+        logger: input.logger,
         runtimeService: input.runtimeService,
         subscription: input.config.subscriptions.task,
         topic: input.config.topics.task,

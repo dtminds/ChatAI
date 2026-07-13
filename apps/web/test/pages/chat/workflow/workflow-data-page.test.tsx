@@ -19,6 +19,33 @@ vi.mock("@xyflow/react", async () => {
 });
 
 describe("WorkflowDataPage", () => {
+  it("opens all records from the start node metric action", async () => {
+    resetWorkflowDocumentsForTest();
+    const document = getWorkflowDocument("vip-reactivation");
+    const startNode = document.publishedDraft!.nodes.find(node => node.data.kind === "start")!;
+    const repository = {
+      getOverview: vi.fn(async () => ({
+        calculatedAt: "2026-07-12T10:00:00.000Z",
+        nodes: [{ completed: 0, current: 0, entered: 9, nodeId: startNode.id, passed: 0 }],
+        revision: document.publishedRevision!,
+      })),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(async () => ({ items: [], nextCursor: null })),
+    };
+    const user = userEvent.setup();
+    render(<ReactFlowProvider><WorkflowDataPage document={document} repository={repository} /></ReactFlowProvider>);
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /已进入 9/ }));
+
+    expect(await screen.findByRole("dialog", { name: "全部进入记录" })).toBeInTheDocument();
+    expect(repository.listRecords).toHaveBeenCalledWith({
+      cursor: undefined,
+      revision: document.publishedRevision!,
+      workflowId: document.id,
+    });
+  });
+
   it("shows workflow totals and opens all records without a node filter", async () => {
     resetWorkflowDocumentsForTest();
     const document = getWorkflowDocument("vip-reactivation");
@@ -107,9 +134,7 @@ describe("WorkflowDataPage", () => {
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     expect(screen.queryByRole("tablist", { name: "数据视图" })).not.toBeInTheDocument();
     expect(within(canvas).queryByRole("button", { name: "打开节点库" })).not.toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /已进入/ })).not.toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /已通过 102/ })).not.toBeInTheDocument();
-    await user.click(within(canvas).getByRole("button", { name: /当前停留 18/ }));
+    await user.click(within(canvas).getByRole("button", { name: /当前停留 18.*已通过 102/ }));
     const records = await screen.findByRole("dialog", { name: `${waitNode.data.title}进入记录` });
     expect(screen.getByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
     expect(within(records).getByText("张三")).toBeInTheDocument();

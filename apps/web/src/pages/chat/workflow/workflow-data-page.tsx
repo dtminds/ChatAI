@@ -173,9 +173,9 @@ function WorkflowDataOverviewView({
     data: {
       ...node.data,
       dataMetric: metrics.get(node.id) ?? { completed: 0, current: 0, entered: 0, nodeId: node.id, passed: 0 },
-      onDataMetricClick: () => onViewNodeRecords(node.id),
+      onDataMetricClick: () => node.data.kind === "start" ? onViewAllRecords() : onViewNodeRecords(node.id),
     },
-  })) as WorkflowRenderNode[], [draft.nodes, metrics, onViewNodeRecords]);
+  })) as WorkflowRenderNode[], [draft.nodes, metrics, onViewAllRecords, onViewNodeRecords]);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState onRetry={load} />;

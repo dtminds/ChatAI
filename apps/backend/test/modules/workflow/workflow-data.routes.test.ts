@@ -2,6 +2,8 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/plugins/error-handler.js";
 import { registerWorkflowRoutes } from "../../../src/modules/workflow/workflow.routes.js";
+import { MysqlWorkflowDataReader } from "../../../src/modules/workflow/workflow-data-mysql.repository.js";
+import { WorkflowDataService } from "../../../src/modules/workflow/workflow-data.service.js";
 
 describe("workflow data routes", () => {
   const apps: Array<ReturnType<typeof Fastify>> = [];
@@ -41,12 +43,39 @@ describe("workflow data routes", () => {
     }));
   });
 
-  async function createApp(dataService: object) {
+  it("shows a waiting node once as the current trajectory step", async () => {
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock() as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([expect.objectContaining({
+      nodeId: "wait-1",
+      status: "current",
+      title: "等待一天",
+    })]);
+  });
+
+  it("rejects data access for users without workflow administration permission", async () => {
+    const reader = {
+      getOverview: vi.fn(),
+      getRecord: vi.fn(),
+      listRecords: vi.fn(),
+    };
+    const app = await createApp(new WorkflowDataService(reader as never), ["viewer"]);
+
+    const response = await app.inject({ method: "GET", url: "/api/server/workflows/12/data?revision=3" });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: { code: "WORKFLOW_ACCESS_FORBIDDEN" } });
+    expect(reader.getOverview).not.toHaveBeenCalled();
+  });
+
+  async function createApp(dataService: object, roles = ["owner"]) {
     const app = Fastify({ logger: false });
     apps.push(app);
     await registerErrorHandler(app);
     app.decorate("authenticate", async (request) => {
-      request.user = { roles: ["owner"], sessionId: "session-1", sessionVersion: 1, subUserId: "17", uid: 9 };
+      request.user = { roles, sessionId: "session-1", sessionVersion: 1, subUserId: "17", uid: 9 } as never;
     });
     await registerWorkflowRoutes(app, {
       dataService: dataService as never,
@@ -55,3 +84,48 @@ describe("workflow data routes", () => {
     return app;
   }
 });
+
+function createRecordDbMock() {
+  const now = new Date("2026-07-12T10:00:00.000Z");
+  return {
+    selectFrom(table: string) {
+      const builder = {
+        orderBy() { return builder; },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_node_execution") {
+            return [{
+              completed_at: now,
+              create_time: now,
+              error_message: null,
+              node_id: "wait-1",
+              node_kind: "wait",
+              status: "completed",
+            }];
+          }
+          return [];
+        },
+        async executeTakeFirst() {
+          if (table === "xy_wap_embed_workflow_run") {
+            return {
+              create_time: now,
+              current_node_id: "wait-1",
+              id: "31",
+              revision: 3,
+              status: "waiting",
+              subject_id: "customer-1",
+              update_time: now,
+            };
+          }
+          return {
+            draft_json: JSON.stringify({
+              nodes: [{ data: { kind: "wait", title: "等待一天" }, id: "wait-1" }],
+            }),
+          };
+        },
+      };
+      return builder;
+    },
+  };
+}

@@ -124,6 +124,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (!task) return notFound();
     if ((task.status !== "dispatched" && task.status !== "pending")
       || task.taskVersion !== input.expectedTaskVersion) return conflict();
+    const run = this.runs.find(item => item.id === task.runId && item.uid === task.uid);
+    if (!run || (run.status !== "queued" && run.status !== "running" && run.status !== "waiting")) {
+      return conflict();
+    }
     if (this.resolveWorkflowBoundary) {
       const boundary = await this.resolveWorkflowBoundary({ uid: input.uid, workflowId: task.workflowId });
       const decision = boundary
@@ -142,25 +146,22 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.taskVersion += 1;
     task.leaseOwner = input.leaseOwner;
     task.leaseExpiresAt = input.leaseExpiresAt;
-    const run = this.runs.find(item => item.id === task.runId && item.uid === task.uid);
-    if (run) {
-      if (run.currentNodeId !== task.nodeId) {
-        const previousTask = this.tasks.find(candidate => candidate.runId === run.id
-          && candidate.sequence === task.sequence - 1);
-        if (previousTask) {
-          this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:activated`, createNodeMetricDeltas({
-            fromNodeId: previousTask.nodeId,
-            fromNodeKind: previousTask.nodeKind,
-            kind: "advanced",
-            toNodeId: task.nodeId,
-            toNodeKind: task.nodeKind,
-          }));
-        }
-        run.currentNodeId = task.nodeId;
+    if (run.currentNodeId !== task.nodeId) {
+      const previousTask = this.tasks.find(candidate => candidate.runId === run.id
+        && candidate.sequence === task.sequence - 1);
+      if (previousTask) {
+        this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:activated`, createNodeMetricDeltas({
+          fromNodeId: previousTask.nodeId,
+          fromNodeKind: previousTask.nodeKind,
+          kind: "advanced",
+          toNodeId: task.nodeId,
+          toNodeKind: task.nodeKind,
+        }));
       }
-      if (run.status === "queued" || run.status === "waiting") {
-        run.status = transitionRun(run.status, "running");
-      }
+      run.currentNodeId = task.nodeId;
+    }
+    if (run.status === "queued" || run.status === "waiting") {
+      run.status = transitionRun(run.status, "running");
     }
     return { kind: "success" as const, task: clone(task) };
   }
@@ -178,8 +179,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const selected = candidates.slice(0, input.limit);
     const selectedIds = new Set(selected.map((run) => run.id));
     for (const run of selected) {
-      const task = this.tasks.find(item => item.runId === run.id
-        && (item.status === "pending" || item.status === "leased" || item.status === "dispatched" || item.status === "running"));
+      const task = this.tasks
+        .filter(item => item.runId === run.id && item.nodeId === run.currentNodeId)
+        .sort((first, second) => second.sequence - first.sequence)[0];
       if (task) this.appendNodeMetricEvents(run, `${run.id}:cancelled`, createNodeMetricDeltas({
         kind: "left-incomplete", nodeId: task.nodeId, nodeKind: task.nodeKind,
       }));

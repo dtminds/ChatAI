@@ -56,6 +56,21 @@ describe("workflow runtime repository", () => {
     })).resolves.toEqual({ kind: "conflict" });
   });
 
+  it("rejects a task claim after its run becomes terminal", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    repository.runs[0]!.status = "cancelled";
+
+    await expect(repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    })).resolves.toEqual({ kind: "conflict" });
+    expect(repository.tasks[0]).toMatchObject({ attempt: 0, status: "dispatched", taskVersion: 1 });
+  });
+
   it("commits execution and the next task under run and task version fences", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository();
     const created = await repository.createRunWithInitialTask(createRunInput());
@@ -161,6 +176,49 @@ describe("workflow runtime repository", () => {
     expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ current: -1, nodeId: "wait-1", passed: 1 }),
       expect.objectContaining({ current: 1, nodeId: "message-1", passed: 0 }),
+    ]));
+  });
+
+  it("removes a cancelled waiting run from the wait node instead of its delayed successor", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository();
+    const created = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      initialNodeId: "wait-1",
+      initialNodeKind: "wait",
+    });
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    const committed = await repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: { consumer: "workflow-task", expiresAt: new Date("2026-08-10T00:00:00.000Z"), messageId: "waiting-cancel" },
+      nextTask: {
+        dispatchImmediately: false,
+        dueAt: new Date("2026-07-13T00:00:00.000Z"),
+        nodeId: "message-1",
+        nodeKind: "message",
+        taskType: "wait",
+      },
+      nodeExecution: { idempotencyKey: "waiting-cancel", input: {}, output: {} },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (committed.kind !== "success") throw new Error("commit failed");
+
+    await repository.cancelWorkflowBatch({ limit: 100, uid: 9, workflowId: "31" });
+
+    expect(repository.snapshot().nodeMetricEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ current: -1, nodeId: "wait-1", passed: 0 }),
+    ]));
+    expect(repository.snapshot().nodeMetricEvents).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ current: -1, nodeId: "message-1" }),
     ]));
   });
 

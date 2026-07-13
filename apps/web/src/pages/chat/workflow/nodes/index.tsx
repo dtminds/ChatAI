@@ -35,15 +35,31 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
         targetHandles={<WorkflowNodeTargetHandles data={data} />}
       />
       {data.dataMetric ? (
-        <button
+        <div
           className="nodrag nopan absolute left-0 top-full mt-1.5 flex w-full justify-center gap-3 whitespace-nowrap text-[11px] text-muted-foreground"
-          onClick={(event) => { event.stopPropagation(); data.onDataMetricClick?.(id); }}
-          type="button"
         >
-          {data.kind === "start" ? <span>已进入 <strong className="font-semibold text-foreground">{data.dataMetric.entered}</strong></span> : null}
-          {data.kind !== "start" && data.kind !== "end" ? <><span>当前停留 <strong className="font-semibold text-foreground">{data.dataMetric.current}</strong></span><span>已通过 <strong className="font-semibold text-foreground">{data.dataMetric.passed}</strong></span></> : null}
-          {data.kind === "end" ? <span>已完成 <strong className="font-semibold text-foreground">{data.dataMetric.completed}</strong></span> : null}
-        </button>
+          {data.kind === "start" ? (
+            <span>已进入 <strong className="font-semibold text-foreground">{data.dataMetric.entered}</strong></span>
+          ) : null}
+          {data.kind !== "start" && data.kind !== "end" ? (
+            <>
+              <button
+                className="hover:text-foreground"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  data.onDataMetricClick?.(id);
+                }}
+                type="button"
+              >
+                当前停留 <strong className="font-semibold text-foreground">{data.dataMetric.current}</strong>
+              </button>
+              <span>已通过 <strong className="font-semibold text-foreground">{data.dataMetric.passed}</strong></span>
+            </>
+          ) : null}
+          {data.kind === "end" ? (
+            <span>已完成 <strong className="font-semibold text-foreground">{data.dataMetric.completed}</strong></span>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -115,13 +115,18 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
     }));
     if (run.status === "queued" || run.status === "running" || run.status === "waiting") {
       const currentKind = titles.get(run.current_node_id)?.kind ?? "wait";
-      steps.push({
+      const currentStep = {
         occurredAt: toDate(run.update_time).toISOString(),
         nodeId: run.current_node_id,
         nodeKind: currentKind,
-        status: "current",
+        status: "current" as const,
         title: titles.get(run.current_node_id)?.title ?? fallbackNodeTitle(currentKind),
-      });
+      };
+      if (steps.at(-1)?.nodeId === run.current_node_id) {
+        steps[steps.length - 1] = currentStep;
+      } else {
+        steps.push(currentStep);
+      }
     }
     return {
       createdAt: toDate(run.create_time).toISOString(),

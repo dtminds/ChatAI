@@ -231,13 +231,32 @@ export class MysqlWorkflowRuntimeRepository implements
 
   async claimTask(input: Parameters<WorkflowRuntimeRepository["claimTask"]>[0]) {
     return this.db.transaction().execute(async (trx) => {
+      const candidateRow = await trx.selectFrom(TASK_TABLE).selectAll()
+        .where("uid", "=", input.uid).where("id", "=", input.taskId)
+        .executeTakeFirst();
+      if (!candidateRow) return { kind: "not-found" as const };
+      const candidate = mapTask(candidateRow);
+      if ((candidate.status !== "pending" && candidate.status !== "dispatched")
+        || candidate.taskVersion !== input.expectedTaskVersion) return { kind: "conflict" as const };
+
+      const runRow = await trx.selectFrom(RUN_TABLE)
+        .select(["current_node_id", "revision", "shard_id", "status", "workflow_id"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", candidate.runId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!runRow || !["queued", "running", "waiting"].includes(runRow.status)) {
+        return { kind: "conflict" as const };
+      }
+
       const taskRow = await trx.selectFrom(TASK_TABLE).selectAll()
         .where("uid", "=", input.uid).where("id", "=", input.taskId)
         .forUpdate().executeTakeFirst();
       if (!taskRow) return { kind: "not-found" as const };
       const task = mapTask(taskRow);
       if ((task.status !== "pending" && task.status !== "dispatched")
-        || task.taskVersion !== input.expectedTaskVersion) return { kind: "conflict" as const };
+        || task.taskVersion !== input.expectedTaskVersion
+        || task.runId !== candidate.runId) return { kind: "conflict" as const };
 
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
         .select(["biz_status", "runtime_status"])
@@ -275,11 +294,7 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("id", "=", task.runId)
         .where("status", "in", ["queued", "waiting"])
         .executeTakeFirst();
-      const runRow = await trx.selectFrom(RUN_TABLE).select(["current_node_id", "revision", "shard_id", "workflow_id"])
-        .where("uid", "=", input.uid)
-        .where("id", "=", task.runId)
-        .executeTakeFirst();
-      if (runRow && runRow.current_node_id !== task.nodeId) {
+      if (runRow.current_node_id !== task.nodeId) {
         const previousTask = await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind"])
           .where("uid", "=", input.uid)
           .where("run_id", "=", task.runId)

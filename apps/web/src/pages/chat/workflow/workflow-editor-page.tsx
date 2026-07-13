@@ -312,7 +312,8 @@ function WorkflowWorkspaceContent({
 }
 
 function WorkflowLeaveGuard({ enabled }: { enabled: boolean }) {
-  const blocker = useBlocker(enabled);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    enabled && !isWorkflowModeNavigation(currentLocation.pathname, nextLocation.pathname));
   const blocked = blocker.state === "blocked";
 
   return (
@@ -343,6 +344,13 @@ function WorkflowLeaveGuard({ enabled }: { enabled: boolean }) {
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+
+function isWorkflowModeNavigation(currentPath: string, nextPath: string) {
+  const normalize = (path: string) => path.endsWith("/data") ? path.slice(0, -5) : path;
+  const currentWorkflowPath = normalize(currentPath);
+  return currentWorkflowPath === normalize(nextPath)
+    && /^\/chat\/workflows\/[^/]+$/.test(currentWorkflowPath);
 }
 
 function WorkflowEditorResourceState({

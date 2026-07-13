@@ -331,6 +331,10 @@ function renderWorkflowPage(initialEntry = "/chat/workflows/new") {
         path: "/chat/workflows/:workflowId",
         element: <WorkflowEditorPage />,
       },
+      {
+        path: "/chat/workflows/:workflowId/data",
+        element: <WorkflowEditorPage />,
+      },
     ],
     { initialEntries: [initialEntry] },
   );
@@ -637,6 +641,19 @@ describe("Agent workflow page", () => {
     void router.navigate("/chat/workflows");
     await user.click(await screen.findByRole("button", { name: "仍然离开" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows"));
+  });
+
+  it("switches between design and data without treating it as leaving an unsaved workflow", async () => {
+    const user = setupCanvasUser();
+    const { router } = renderWorkflowPage("/chat/workflows/newcomer-conversion");
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    await user.click(within(screen.getByRole("region", { name: "节点库" })).getByRole("button", { name: "添加 转人工节点" }));
+
+    await user.click(screen.getByRole("tab", { name: "数据" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/workflows/newcomer-conversion/data"));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("opens workflow cards in the current tab", async () => {

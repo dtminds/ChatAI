@@ -203,6 +203,7 @@ function WorkflowRecordsView({ document, nodeId, refreshVersion, repository, rev
     let active = true;
     setLoading(true);
     setError(false);
+    if (!cursor) setPage(null);
     void repository.listRecords({ cursor, nodeId, workflowId: document.id, revision }).then(value => {
       if (active) setPage(current => cursor && current
         ? { items: [...current.items, ...value.items], nextCursor: value.nextCursor }

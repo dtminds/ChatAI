@@ -63,8 +63,26 @@ describe("MysqlWorkflowRuntimeRepository", () => {
 
     expect(result.kind).toBe("success");
     expect(db.definitionReadShareLocked).toBe(true);
+    expect(db.lockOrder).toEqual(["run", "task"]);
     expect(db.taskUpdate).toMatchObject({ attempt: 1 });
     expect(db.runUpdate).toMatchObject({ status: "running" });
+  });
+
+  it("locks the run before the task and rejects a claim after the run becomes terminal", async () => {
+    const db = createClaimDbMock("active", "cancelled");
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: "7",
+      uid: 8,
+    });
+
+    expect(result).toEqual({ kind: "conflict" });
+    expect(db.lockOrder).toEqual(["run"]);
+    expect(db.taskUpdate).toEqual({});
   });
 
   it("reads only active current-revision trigger bindings through the definition join", async () => {
@@ -299,7 +317,7 @@ function createConcurrentDuplicateRunDbMock() {
   return db;
 }
 
-function createClaimDbMock(runtimeStatus = "active") {
+function createClaimDbMock(runtimeStatus = "active", runStatus = "waiting") {
   const task = {
     attempt: 0,
     bucket_time: new Date("2026-07-10T00:00:00.000Z"),
@@ -324,11 +342,13 @@ function createClaimDbMock(runtimeStatus = "active") {
   };
   const db = {
     definitionReadShareLocked: false,
+    lockOrder: [] as string[],
     runUpdate: {} as Record<string, unknown>,
     taskUpdate: {} as Record<string, unknown>,
     selectFrom(table: string) {
       const builder = {
         forUpdate() {
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
           return builder;
         },
         forShare() {
@@ -341,7 +361,7 @@ function createClaimDbMock(runtimeStatus = "active") {
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_run") {
-            return { current_node_id: "start", revision: 1, shard_id: 1, workflow_id: "42" };
+            return { current_node_id: "start", revision: 1, shard_id: 1, status: runStatus, workflow_id: "42" };
           }
           return { biz_status: 1, runtime_status: runtimeStatus };
         },

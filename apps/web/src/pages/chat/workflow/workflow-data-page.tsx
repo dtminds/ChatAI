@@ -277,7 +277,7 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
           <h2 className="truncate text-sm font-semibold">{title}</h2>
           <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
             <span>共显示 {page?.items.length ?? 0} 条进入记录</span>
-            <span>仅展示最近 {WORKFLOW_RUN_RETENTION_DAYS} 天的运行记录</span>
+            <span>已结束记录仅保留最近 {WORKFLOW_RUN_RETENTION_DAYS} 天</span>
           </div>
         </div>
         <Button aria-label="关闭进入记录" className="size-8" onClick={onClose} size="icon" type="button" variant="ghost">

@@ -1288,7 +1288,7 @@ export class MysqlWorkflowRuntimeRepository implements
       const runs = await trx.selectFrom(RUN_TABLE).select("id")
         .where("status", "in", TERMINAL_RUN_STATUSES)
         .where("completed_at", "is not", null)
-        .where("completed_at", "<=", input.taskOutboxBefore)
+        .where("completed_at", "<", input.taskOutboxBefore)
         .where(({ exists, selectFrom }) => exists(
           selectFrom(`${TASK_TABLE} as cleanup_task`)
             .select("cleanup_task.id")
@@ -1303,26 +1303,46 @@ export class MysqlWorkflowRuntimeRepository implements
       const selectedRuns = runs.slice(0, input.limit);
       const runIds = selectedRuns.map(run => run.id);
       if (runIds.length === 0) return { hasMore: false, outboxDeleted: 0, tasksDeleted: 0 };
-      const tasks = await trx.selectFrom(TASK_TABLE).select("id")
+      const tasks = await trx.selectFrom(TASK_TABLE).select(["id", "run_id"])
         .where("run_id", "in", runIds)
         .orderBy("id", "asc")
         .forUpdate()
         .execute();
       const taskIds = tasks.map(task => task.id);
-      const outboxDeleted = taskIds.length === 0 ? 0 : Number((await trx.deleteFrom(OUTBOX_TABLE)
+      const taskOutbox = taskIds.length === 0 ? [] : await trx.selectFrom(OUTBOX_TABLE)
+        .select(["aggregate_id", "status"])
         .where("aggregate_type", "=", "workflow_task")
         .where("aggregate_id", "in", taskIds)
+        .orderBy("id", "asc")
+        .forUpdate()
+        .execute();
+      const leasedTaskIds = new Set(taskOutbox
+        .filter(item => item.status === "leased")
+        .map(item => normalizeId(item.aggregate_id)));
+      const blockedRunIds = new Set(tasks
+        .filter(task => leasedTaskIds.has(normalizeId(task.id)))
+        .map(task => normalizeId(task.run_id)));
+      const deletableTaskIds = tasks
+        .filter(task => !blockedRunIds.has(normalizeId(task.run_id)))
+        .map(task => task.id);
+      const outboxDeleted = deletableTaskIds.length === 0 ? 0 : Number((await trx.deleteFrom(OUTBOX_TABLE)
+        .where("aggregate_type", "=", "workflow_task")
+        .where("aggregate_id", "in", deletableTaskIds)
         .executeTakeFirst()).numDeletedRows);
-      const tasksDeleted = taskIds.length === 0 ? 0 : Number((await trx.deleteFrom(TASK_TABLE)
-        .where("id", "in", taskIds)
+      const tasksDeleted = deletableTaskIds.length === 0 ? 0 : Number((await trx.deleteFrom(TASK_TABLE)
+        .where("id", "in", deletableTaskIds)
         .executeTakeFirst()).numDeletedRows);
-      return { hasMore: runs.length > selectedRuns.length, outboxDeleted, tasksDeleted };
+      return {
+        hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
+        outboxDeleted,
+        tasksDeleted,
+      };
     });
     const userVisible = await this.db.transaction().execute(async (trx) => {
       const runs = await trx.selectFrom(RUN_TABLE).select("id")
         .where("status", "in", TERMINAL_RUN_STATUSES)
         .where("completed_at", "is not", null)
-        .where("completed_at", "<=", input.runBefore)
+        .where("completed_at", "<", input.runBefore)
         .orderBy("completed_at", "asc")
         .orderBy("id", "asc")
         .limit(input.limit + 1)
@@ -1341,7 +1361,7 @@ export class MysqlWorkflowRuntimeRepository implements
       const deletableRunIds = runIds.filter(runId => !blockedRunIds.has(normalizeId(runId)));
       if (deletableRunIds.length === 0) {
         return {
-          hasMore: runs.length > selectedRuns.length,
+          hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
           nodeExecutionsDeleted: 0,
           runsDeleted: 0,
         };
@@ -1353,10 +1373,10 @@ export class MysqlWorkflowRuntimeRepository implements
         .where("id", "in", deletableRunIds)
         .where("status", "in", TERMINAL_RUN_STATUSES)
         .where("completed_at", "is not", null)
-        .where("completed_at", "<=", input.runBefore)
+        .where("completed_at", "<", input.runBefore)
         .executeTakeFirst()).numDeletedRows);
       return {
-        hasMore: runs.length > selectedRuns.length,
+        hasMore: blockedRunIds.size > 0 || runs.length > selectedRuns.length,
         nodeExecutionsDeleted,
         runsDeleted,
       };

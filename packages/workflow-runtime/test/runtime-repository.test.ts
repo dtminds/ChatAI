@@ -414,6 +414,22 @@ describe("workflow runtime repository", () => {
       entryEventId: "active-event",
     });
 
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-01T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-01-01T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: false,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 0,
+      runsDeleted: 0,
+      tasksDeleted: 0,
+    });
+    expect(repository.snapshot()).toMatchObject({
+      runs: expect.arrayContaining([expect.objectContaining({ id: completed.run.id })]),
+      tasks: expect.arrayContaining([expect.objectContaining({ runId: completed.run.id })]),
+    });
+
     now = new Date("2026-02-01T00:00:00.000Z");
     await expect(repository.cleanupWorkflowHistory({
       limit: 100,
@@ -453,6 +469,55 @@ describe("workflow runtime repository", () => {
       tasks: [expect.objectContaining({ runId: active.run.id })],
     });
     expect(repository.snapshot().outbox).toHaveLength(1);
+  });
+
+  it("keeps terminal task history while its outbox delivery is leased", async () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    await repository.claimOutboxBatch({
+      leaseExpiresAt: new Date("2026-07-14T00:01:00.000Z"),
+      leaseOwner: "publisher-1",
+      limit: 1,
+      now,
+    });
+    const claimed = await repository.claimTask({
+      expectedTaskVersion: 1,
+      leaseExpiresAt: new Date("2026-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("claim failed");
+    await repository.commitNodeResult({
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: claimed.task.taskVersion,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-02-01T00:00:00.000Z"),
+        messageId: "leased-history-retention",
+      },
+      nodeExecution: { idempotencyKey: "leased-history-retention", input: {}, output: {} },
+      runId: created.run.id,
+      taskId: created.task.id,
+      uid: 9,
+    });
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-07-13T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-07-13T00:00:00.000Z"),
+    })).resolves.toMatchObject({
+      hasMore: true,
+      outboxDeleted: 0,
+      runsDeleted: 0,
+      tasksDeleted: 0,
+    });
+    expect(repository.snapshot()).toMatchObject({
+      outbox: [expect.objectContaining({ status: "leased" })],
+      runs: [expect.objectContaining({ id: created.run.id })],
+      tasks: [expect.objectContaining({ id: created.task.id })],
+    });
   });
 
   it("preserves lifetime entry limits after old runs are removed", async () => {

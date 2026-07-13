@@ -324,11 +324,13 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.taskExistenceWhereRefs).toEqual([
       ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
     ]);
-    expect(db.lockOrder).toEqual(["run", "task", "run"]);
+    expect(db.lockOrder).toEqual(["run", "task", "outbox", "run"]);
     expect(db.deleteOrder).toEqual(["outbox", "task", "execution", "run"]);
     expect(db.runWhereCalls).toEqual(expect.arrayContaining([
       ["status", "in", ["cancelled", "completed", "failed"]],
       ["completed_at", "is not", null],
+      ["completed_at", "<", new Date("2026-01-14T00:00:00.000Z")],
+      ["completed_at", "<", new Date("2026-06-13T00:00:00.000Z")],
     ]));
   });
 
@@ -345,7 +347,29 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       runBefore: new Date("2026-01-14T00:00:00.000Z"),
       taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
     })).resolves.toEqual({
-      hasMore: false,
+      hasMore: true,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 0,
+      runsDeleted: 0,
+      tasksDeleted: 0,
+    });
+    expect(db.deleteOrder).toEqual([]);
+  });
+
+  it("keeps task history while its outbox row is leased", async () => {
+    const db = createHistoryCleanupDbMock({
+      taskOutbox: [{ aggregate_id: "10", status: "leased" }],
+      technicalRuns: [{ id: "1" }],
+      userRuns: [],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: true,
       nodeExecutionsDeleted: 0,
       outboxDeleted: 0,
       runsDeleted: 0,
@@ -934,6 +958,7 @@ function createMetricAggregationDbMock() {
 
 function createHistoryCleanupDbMock(options: {
   remainingTasks?: Array<{ run_id: string }>;
+  taskOutbox?: Array<{ aggregate_id: string; status: string }>;
   technicalRuns?: Array<{ id: string }>;
   userRuns?: Array<{ id: string }>;
 } = {}) {
@@ -966,7 +991,11 @@ function createHistoryCleanupDbMock(options: {
     selectFrom(table: string) {
       const builder = {
         forUpdate() {
-          db.lockOrder.push(table === "xy_wap_embed_workflow_run" ? "run" : "task");
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run"
+            ? "run"
+            : table === "xy_wap_embed_workflow_task"
+              ? "task"
+              : "outbox");
           return builder;
         },
         limit() { return builder; },
@@ -999,7 +1028,10 @@ function createHistoryCleanupDbMock(options: {
             runSelectCount += 1;
             return runSelectCount === 1 ? technicalRuns : userRuns;
           }
-          if (runSelectCount === 1) return [{ id: "10" }];
+          if (table === "xy_wap_embed_workflow_task" && runSelectCount === 1) {
+            return [{ id: "10", run_id: "1" }];
+          }
+          if (table === "xy_wap_embed_workflow_outbox") return options.taskOutbox ?? [];
           return options.remainingTasks ?? [];
         },
       };

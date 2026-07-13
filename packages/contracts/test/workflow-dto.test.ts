@@ -10,6 +10,7 @@ import {
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
 } from "../src/workflow/dto.js";
+import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
   WorkflowEntryCommandSchema,
   WorkflowStartConfigSchema,
@@ -107,6 +108,31 @@ describe("workflow contracts", () => {
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(91, "day"))).toBe(false);
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_160, "hour"))).toBe(true);
     expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_161, "hour"))).toBe(false);
+  });
+
+  it("normalizes legacy rolling entry windows to the current maximum", () => {
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 365,
+      windowUnit: "day",
+    })).toEqual({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 90,
+      windowUnit: "day",
+    });
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 8_760,
+      windowUnit: "hour",
+    })).toEqual({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 2_160,
+      windowUnit: "hour",
+    });
   });
 
   it("validates standard entry commands by event payload", () => {

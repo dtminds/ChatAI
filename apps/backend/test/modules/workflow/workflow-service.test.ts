@@ -65,6 +65,40 @@ describe("WorkflowService", () => {
     expect(await service.listRevisions(operator, created.id)).toHaveLength(1);
   });
 
+  it("publishes legacy rolling entry windows using the current maximum", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = new WorkflowService(repository);
+    const created = await service.create(operator, {});
+    const legacyDraft = withStartConfig(created.draft, {
+      accountIds: ["account-a"],
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 365,
+        windowUnit: "day",
+      },
+      triggers: [{ type: "contact.friend_added" }],
+    });
+
+    const seeded = await repository.saveDraft({
+      draft: legacyDraft,
+      expectedDraftVersion: created.draftVersion,
+      opSubUserId: operator.subUserId,
+      uid: operator.uid,
+      workflowId: created.id,
+    });
+    if (seeded.kind !== "success") throw new Error("legacy draft seed failed");
+    const validated = await service.publish(operator, created.id, {
+      expectedDraftVersion: seeded.value.draftVersion,
+    });
+    const enabled = await service.enable(operator, created.id);
+    const [revision] = await service.listRevisions(operator, created.id);
+
+    expect(getStartEntryPolicy(validated.definition.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
+    expect(getStartEntryPolicy(enabled.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
+    expect(getStartEntryPolicy(revision!.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
+  });
+
   it("publishes immutable revisions after first enable without changing pause state", async () => {
     const service = createService();
     const created = await createConfigured(service);
@@ -358,4 +392,8 @@ function withWaitConfig(
       ? { ...node, data: { ...node.data, ...config } }
       : node),
   };
+}
+
+function getStartEntryPolicy(draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"]) {
+  return (draft.nodes.find(node => node.id === "start")!.data as { entryPolicy?: unknown }).entryPolicy;
 }

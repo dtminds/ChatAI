@@ -29,6 +29,27 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
+  it("compiles legacy rolling entry windows with the current maximum", () => {
+    const draft = createDraft();
+    Object.assign(draft.nodes.find(node => node.id === "start")!.data, {
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 365,
+        windowUnit: "day",
+      },
+    });
+
+    const spec = compileWorkflowDraft({ draft, revision: 1, workflowId: "42" });
+
+    expect(spec.nodes.find(node => node.id === "start")?.config.entryPolicy).toEqual({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 90,
+      windowUnit: "day",
+    });
+  });
+
   it("rejects unreachable nodes, cycles, and missing branch outlets", () => {
     const draft = createDraft();
     draft.nodes.splice(2, 0, node("orphan", "message"));

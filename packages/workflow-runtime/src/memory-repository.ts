@@ -661,11 +661,18 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const terminal = new Set(["cancelled", "completed", "failed"]);
     const technicalRuns = this.runs
       .filter(run => terminal.has(run.status))
-      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) <= input.taskOutboxBefore)
+      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) < input.taskOutboxBefore)
       .filter(run => this.tasks.some(task => task.runId === run.id))
       .sort(compareById)
       .slice(0, Math.max(0, input.limit) + 1);
-    const technicalRunIds = new Set(technicalRuns.slice(0, input.limit).map(run => run.id));
+    const selectedTechnicalRuns = technicalRuns.slice(0, input.limit);
+    const blockedTechnicalRunIds = new Set(selectedTechnicalRuns
+      .filter(run => this.tasks.some(task => task.runId === run.id
+        && this.outbox.some(item => item.payload.taskId === task.id && item.status === "leased")))
+      .map(run => run.id));
+    const technicalRunIds = new Set(selectedTechnicalRuns
+      .filter(run => !blockedTechnicalRunIds.has(run.id))
+      .map(run => run.id));
     const taskIds = new Set(this.tasks
       .filter(task => technicalRunIds.has(task.runId))
       .map(task => task.id));
@@ -678,11 +685,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
     const expiredRuns = this.runs
       .filter(run => terminal.has(run.status))
-      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) <= input.runBefore)
+      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) < input.runBefore)
       .sort(compareById)
       .slice(0, Math.max(0, input.limit) + 1);
-    const expiredRunIds = new Set(expiredRuns
-      .slice(0, input.limit)
+    const selectedExpiredRuns = expiredRuns.slice(0, input.limit);
+    const expiredRunIds = new Set(selectedExpiredRuns
       .filter(run => !this.tasks.some(task => task.runId === run.id))
       .map(run => run.id));
     const nodeExecutionsDeleted = this.nodeExecutions.filter(item => expiredRunIds.has(item.runId)).length;
@@ -697,7 +704,10 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       this.runUpdatedAt.delete(run.id);
     }
     return {
-      hasMore: technicalRuns.length > input.limit || expiredRuns.length > input.limit,
+      hasMore: blockedTechnicalRunIds.size > 0
+        || selectedExpiredRuns.some(run => this.tasks.some(task => task.runId === run.id))
+        || technicalRuns.length > input.limit
+        || expiredRuns.length > input.limit,
       nodeExecutionsDeleted,
       outboxDeleted,
       runsDeleted: expiredRunIds.size,

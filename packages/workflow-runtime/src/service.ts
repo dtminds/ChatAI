@@ -9,6 +9,8 @@ import { WorkflowStartConfigSchema } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
   createWorkflowActionIdempotencyKey,
+  isWorkflowActionNodeKind,
+  WorkflowActionExecutionError,
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
 import { WorkflowRuntimeError } from "./errors.js";
@@ -22,15 +24,26 @@ import type {
 type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAction"]>;
 
 export class WorkflowRuntimeService {
+  private readonly actionMaxRetryDelayMs: number;
+  private readonly actionRetryDelayMs: number;
   private readonly executors = createCoreNodeExecutorRegistry();
+  private readonly maxTaskAttempts: number;
   private readonly taskLeaseDurationMs: number;
 
   constructor(
     private readonly controlRepository: WorkflowRuntimeControlReader,
     private readonly runtimeRepository: WorkflowRuntimeRepository,
     private readonly executeAction?: WorkflowActionAdapter,
-    options: { taskLeaseDurationMs?: number } = {},
+    options: {
+      actionMaxRetryDelayMs?: number;
+      actionRetryDelayMs?: number;
+      maxTaskAttempts?: number;
+      taskLeaseDurationMs?: number;
+    } = {},
   ) {
+    this.actionMaxRetryDelayMs = options.actionMaxRetryDelayMs ?? 300_000;
+    this.actionRetryDelayMs = options.actionRetryDelayMs ?? 5_000;
+    this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
   }
 
@@ -110,11 +123,78 @@ export class WorkflowRuntimeService {
     if (claimed.kind !== "success") throw staleTaskError();
 
     const node = requireExecutionNode(revision.executionSpec, claimed.task.nodeId);
-    const executionResult = await this.executors.execute(node, createExecutionContext(
-      run,
-      input.now,
-      this.executeAction,
-    ));
+    const actionIdempotencyKey = createWorkflowActionIdempotencyKey({
+      nodeId: node.id,
+      runId: run.id,
+      sequence: claimed.task.sequence,
+      uid: String(input.uid),
+    });
+    if (isWorkflowActionNodeKind(node.kind)) {
+      const prepared = await this.runtimeRepository.prepareActionExecution({
+        expectedRunLockVersion: run.lockVersion,
+        expectedTaskVersion: claimed.task.taskVersion,
+        idempotencyKey: actionIdempotencyKey,
+        input: createNodeInputSnapshot(run),
+        now: input.now,
+        runId: run.id,
+        taskId: task.id,
+        uid: input.uid,
+      });
+      if (prepared.kind !== "success") throw staleTaskError();
+    }
+    let executionResult: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>;
+    try {
+      executionResult = await this.executors.execute(node, createExecutionContext(
+        run,
+        input.now,
+        this.executeAction,
+        isWorkflowActionNodeKind(node.kind) ? actionIdempotencyKey : undefined,
+      ));
+    } catch (error) {
+      if (!(error instanceof WorkflowActionExecutionError) || !isWorkflowActionNodeKind(node.kind)) throw error;
+      const failureInput = {
+        errorCode: error.code.slice(0, 128),
+        errorMessage: error.message.slice(0, 512),
+        expectedRunLockVersion: run.lockVersion,
+        expectedTaskVersion: claimed.task.taskVersion,
+        failureKind: error.failureKind,
+        idempotencyKey: actionIdempotencyKey,
+        inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
+        now: input.now,
+        runId: run.id,
+        taskId: task.id,
+        uid: input.uid,
+      };
+      if (error.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
+        const failed = await this.runtimeRepository.failActionExecution(failureInput);
+        if (failed.kind === "already-processed") throw alreadyProcessedError();
+        if (failed.kind !== "success") throw staleTaskError();
+        return {
+          errorCode: failureInput.errorCode,
+          failureKind: failureInput.failureKind,
+          kind: "failed" as const,
+          run: failed.run,
+          task: failed.task,
+        };
+      }
+      const retryDelayMs = Math.min(
+        this.actionRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
+        this.actionMaxRetryDelayMs,
+      );
+      const scheduled = await this.runtimeRepository.scheduleActionRetry({
+        ...failureInput,
+        dueAt: new Date(input.now.getTime() + retryDelayMs),
+      });
+      if (scheduled.kind === "already-processed") throw alreadyProcessedError();
+      if (scheduled.kind !== "success") throw staleTaskError();
+      return {
+        errorCode: failureInput.errorCode,
+        failureKind: failureInput.failureKind,
+        kind: "retry-scheduled" as const,
+        retryAt: scheduled.task.dueAt,
+        task: scheduled.task,
+      };
+    }
     const nextTask = createNextTask(revision.executionSpec, node, executionResult, input.now);
     const nextContext = appendNodeOutput(run.context, node.id, executionResult.output);
     const commitInput: WorkflowCommitNodeResultInput = {
@@ -122,17 +202,10 @@ export class WorkflowRuntimeService {
       expectedRunLockVersion: run.lockVersion,
       expectedTaskVersion: claimed.task.taskVersion,
       inbox: {
-        consumer: "workflow-task",
-        expiresAt: new Date(input.now.getTime() + 31 * 86_400_000),
-        messageId: input.messageId ?? `task:${task.id}:v${input.taskVersion}`,
+        ...createInbox(input.messageId, task.id, input.taskVersion, input.now),
       },
       nodeExecution: {
-        idempotencyKey: createWorkflowActionIdempotencyKey({
-          nodeId: node.id,
-          runId: run.id,
-          sequence: claimed.task.sequence,
-          uid: String(input.uid),
-        }),
+        idempotencyKey: actionIdempotencyKey,
         input: createNodeInputSnapshot(run),
         output: executionResult.output,
       },
@@ -152,12 +225,14 @@ function createExecutionContext(
   run: WorkflowRunRecord,
   now: Date,
   executeAction: WorkflowActionAdapter | undefined,
+  actionIdempotencyKey?: string,
 ): WorkflowNodeExecutionContext {
   const trigger = isRecord(run.context.trigger) ? run.context.trigger : {};
   const outputs = isRecord(run.context.outputs)
     ? run.context.outputs as Record<string, Record<string, unknown>>
     : {};
   return {
+    actionIdempotencyKey,
     evaluateBranchPath: (path) => {
       const matches = isRecord(run.context.branchMatches) ? run.context.branchMatches : {};
       return matches[path.id] === true;
@@ -173,6 +248,14 @@ function createExecutionContext(
       uid: String(run.uid),
     },
     trigger,
+  };
+}
+
+function createInbox(messageId: string | undefined, taskId: string, taskVersion: number, now: Date) {
+  return {
+    consumer: "workflow-task",
+    expiresAt: new Date(now.getTime() + 31 * 86_400_000),
+    messageId: messageId ?? `task:${taskId}:v${taskVersion}`,
   };
 }
 

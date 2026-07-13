@@ -14,6 +14,8 @@ export type WorkflowWorkerConfig = {
   };
   roles: ReadonlySet<WorkflowWorkerRole>;
   runtime: {
+    actionMaxRetryDelayMs: number;
+    actionRetryDelayMs: number;
     batchSize: number;
     dispatchTimeoutMs: number;
     inboxCleanupBatchSize: number;
@@ -89,6 +91,16 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     roles: parseRoles(env.WORKFLOW_WORKER_ROLES),
     runtime: {
+      actionMaxRetryDelayMs: parseDurationMs(
+        env.WORKFLOW_ACTION_MAX_RETRY_DELAY_MS,
+        300_000,
+        "WORKFLOW_ACTION_MAX_RETRY_DELAY_MS",
+      ),
+      actionRetryDelayMs: parseDurationMs(
+        env.WORKFLOW_ACTION_RETRY_DELAY_MS,
+        5_000,
+        "WORKFLOW_ACTION_RETRY_DELAY_MS",
+      ),
       batchSize: parseCount(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
       dispatchTimeoutMs: parseDurationMs(
         env.WORKFLOW_DISPATCH_TIMEOUT_MS,

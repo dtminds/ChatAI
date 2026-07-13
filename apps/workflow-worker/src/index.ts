@@ -25,6 +25,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const database = createWorkflowDatabase(config.databaseUrl);
   const repository = new MysqlWorkflowRuntimeRepository(database);
   const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
+    actionMaxRetryDelayMs: config.runtime.actionMaxRetryDelayMs,
+    actionRetryDelayMs: config.runtime.actionRetryDelayMs,
+    maxTaskAttempts: config.runtime.maxTaskAttempts,
     taskLeaseDurationMs: config.runtime.leaseDurationMs,
   });
   const reconcilerService = new WorkflowRuntimeReconciler(repository);

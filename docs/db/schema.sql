@@ -680,6 +680,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   output_json JSON NULL COMMENT '节点输出',
   error_code VARCHAR(128) NULL COMMENT '业务错误码',
   error_message VARCHAR(512) NULL COMMENT '脱敏错误信息',
+  failure_kind VARCHAR(32) NULL COMMENT 'Action失败分类：retryable/unknown/terminal',
   started_at DATETIME NULL COMMENT '开始执行时间',
   completed_at DATETIME NULL COMMENT '完成时间',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

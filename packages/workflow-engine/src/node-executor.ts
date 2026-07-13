@@ -5,8 +5,10 @@ export type WorkflowNodeExecutionContext = {
   evaluateBranchPath?: (path: WorkflowBranchPathConfig) => boolean;
   executeAction?: (input: {
     context: WorkflowNodeExecutionContext;
+    idempotencyKey: string;
     node: WorkflowExecutionNode;
   }) => Promise<Record<string, unknown>>;
+  actionIdempotencyKey?: string;
   matchingPathIds?: Set<string>;
   now: Date;
   outputs: Record<string, Record<string, unknown>>;
@@ -74,8 +76,15 @@ export function createCoreNodeExecutorRegistry() {
       if (!context.executeAction) {
         throw new WorkflowNodeExecutionError(`Action adapter is not configured: ${node.kind}`);
       }
+      if (!context.actionIdempotencyKey) {
+        throw new WorkflowNodeExecutionError(`Action idempotency key is not configured: ${node.kind}`);
+      }
       return {
-        output: await context.executeAction({ context, node }),
+        output: await context.executeAction({
+          context,
+          idempotencyKey: context.actionIdempotencyKey,
+          node,
+        }),
         sourceOutletId: "default",
         type: "advance",
       };
@@ -85,6 +94,10 @@ export function createCoreNodeExecutorRegistry() {
     registry.register(kind, actionExecutor);
   }
   return registry;
+}
+
+export function isWorkflowActionNodeKind(kind: WorkflowNodeKind) {
+  return kind === "message" || kind === "tag" || kind === "coupon" || kind === "handoff";
 }
 
 function executeWait(

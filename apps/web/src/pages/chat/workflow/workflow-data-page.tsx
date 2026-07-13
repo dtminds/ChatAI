@@ -1,9 +1,11 @@
 import {
   ArrowDown01Icon,
+  Cancel01Icon,
   RefreshIcon,
+  Task01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type {
   WorkflowDataOverview,
   WorkflowEntryRecord,
@@ -36,6 +38,10 @@ import type { WorkflowDraft, WorkflowRenderNode } from "./types";
 
 const defaultWorkflowDataRepository = createWorkflowDataRepository();
 
+type WorkflowRecordsSelection = {
+  nodeId?: string;
+};
+
 export function WorkflowDataPage({
   document,
   refreshVersion = 0,
@@ -47,56 +53,38 @@ export function WorkflowDataPage({
   repository?: WorkflowDataRepository;
   revision?: number;
 }) {
-  const [view, setView] = useState<"overview" | "records">("overview");
-  const [nodeId, setNodeId] = useState<string | undefined>();
+  const [recordsSelection, setRecordsSelection] = useState<WorkflowRecordsSelection | null>(null);
   const revision = selectedRevision ?? document.publishedRevision;
   const version = document.versionHistory.find(item => item.revision === revision);
   const draft = version?.draft ?? (revision === document.publishedRevision ? document.publishedDraft : null);
+  useEffect(() => setRecordsSelection(null), [revision]);
 
   if (revision === null || !draft) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">发布后可查看运行数据</div>;
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <nav aria-label="数据视图" className="flex h-12 shrink-0 items-end gap-6 border-b px-6" role="tablist">
-        {(["overview", "records"] as const).map(item => (
-          <button
-            aria-selected={view === item}
-            className={cn(
-              "relative h-full px-1 text-sm text-muted-foreground",
-              view === item && "font-medium text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary",
-            )}
-            key={item}
-            onClick={() => setView(item)}
-            role="tab"
-            type="button"
-          >
-            {item === "overview" ? "概览" : "进入记录"}
-          </button>
-        ))}
-      </nav>
-      {view === "overview" ? (
-        <WorkflowDataOverviewView
-          document={document}
-          draft={draft}
-          onViewNodeRecords={(selectedNodeId) => {
-            setNodeId(selectedNodeId);
-            setView("records");
-          }}
-          refreshVersion={refreshVersion}
-          repository={repository}
-          revision={revision}
-        />
-      ) : (
-        <WorkflowRecordsView
-          document={document}
-          nodeId={nodeId}
-          refreshVersion={refreshVersion}
-          repository={repository}
-          revision={revision}
-        />
-      )}
+    <div className="relative flex h-full min-h-0 flex-col bg-background">
+      <WorkflowDataOverviewView
+        document={document}
+        draft={draft}
+        onViewAllRecords={() => setRecordsSelection({})}
+        onViewNodeRecords={nodeId => setRecordsSelection({ nodeId })}
+        recordsPanel={recordsSelection ? (
+          <WorkflowRecordsView
+            document={document}
+            key={`${revision}:${recordsSelection.nodeId ?? "all"}`}
+            nodeId={recordsSelection.nodeId}
+            onClose={() => setRecordsSelection(null)}
+            refreshVersion={refreshVersion}
+            repository={repository}
+            revision={revision}
+          />
+        ) : null}
+        refreshVersion={refreshVersion}
+        repository={repository}
+        revision={revision}
+      />
     </div>
   );
 }
@@ -139,14 +127,18 @@ export function WorkflowDataActions({
 function WorkflowDataOverviewView({
   document,
   draft,
+  onViewAllRecords,
   onViewNodeRecords,
+  recordsPanel,
   refreshVersion,
   repository,
   revision,
 }: {
   document: WorkflowDocument;
   draft: WorkflowDraft;
+  onViewAllRecords: () => void;
   onViewNodeRecords: (nodeId: string) => void;
+  recordsPanel: ReactNode;
   refreshVersion: number;
   repository: WorkflowDataRepository;
   revision: number;
@@ -169,6 +161,13 @@ function WorkflowDataOverviewView({
   }, [document.id, repository, revision]);
   useEffect(load, [load, refreshVersion]);
   const metrics = useMemo(() => new Map(overview?.nodes.map(item => [item.nodeId, item]) ?? []), [overview]);
+  const totals = useMemo(() => draft.nodes.reduce((result, node) => {
+    const metric = metrics.get(node.id);
+    result.current += metric?.current ?? 0;
+    if (node.data.kind === "start") result.entered += metric?.entered ?? 0;
+    if (node.data.kind === "end") result.completed += metric?.completed ?? 0;
+    return result;
+  }, { completed: 0, current: 0, entered: 0 }), [draft.nodes, metrics]);
   const nodes = useMemo(() => draft.nodes.map(node => ({
     ...node,
     data: {
@@ -181,20 +180,43 @@ function WorkflowDataOverviewView({
   if (loading) return <LoadingState />;
   if (error) return <ErrorState onRetry={load} />;
   return (
-    <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
-      <WorkflowCanvas
-        canRedo={false} canUndo={false} edges={draft.edges} isReadOnly nodes={nodes} showEditingTools={false}
-        onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
-        onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}
-        onNodeHoverEnd={() => {}} onNodeHoverStart={() => {}} onNodesChange={() => {}} onPaletteOpenChange={() => {}}
-        onPaneClick={() => {}} onRedo={() => {}} onSelectEdge={() => {}} onSelectNode={() => {}} onUndo={() => {}}
-        onViewportChangeEnd={() => {}} paletteOpen={false} viewport={draft.viewport}
-      />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <section aria-label="运行汇总" className="flex shrink-0 items-stretch border-b bg-background" role="region">
+        <dl className="grid min-w-0 flex-1 grid-cols-3">
+          {([
+            ["进入次数", totals.entered],
+            ["当前停留", totals.current],
+            ["已完成", totals.completed],
+          ] as const).map(([label, value], index) => (
+            <div className={cn("min-w-0 px-6 py-3", index > 0 && "border-l")} key={label}>
+              <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+              <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value.toLocaleString("zh-CN")}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="flex shrink-0 items-center border-l px-5">
+          <Button className="gap-2" onClick={onViewAllRecords} size="sm" type="button" variant="outline">
+            <HugeiconsIcon icon={Task01Icon} size={16} strokeWidth={1.8} />
+            查看全部记录
+          </Button>
+        </div>
+      </section>
+      <div className="relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]">
+        <WorkflowCanvas
+          canRedo={false} canUndo={false} edges={draft.edges} isReadOnly nodes={nodes} showEditingTools={false}
+          onAddNode={() => {}} onArrange={() => {}} onConnect={() => {}} onEdgesChange={() => {}}
+          onIsValidConnection={() => false} onNodeDrag={() => {}} onNodeDragStart={() => {}} onNodeDragStop={() => {}}
+          onNodeHoverEnd={() => {}} onNodeHoverStart={() => {}} onNodesChange={() => {}} onPaletteOpenChange={() => {}}
+          onPaneClick={() => {}} onRedo={() => {}} onSelectEdge={() => {}} onSelectNode={() => {}} onUndo={() => {}}
+          onViewportChangeEnd={() => {}} paletteOpen={false} viewport={draft.viewport}
+        />
+        {recordsPanel}
+      </div>
     </div>
   );
 }
 
-function WorkflowRecordsView({ document, nodeId, refreshVersion, repository, revision }: { document: WorkflowDocument; nodeId?: string; refreshVersion: number; repository: WorkflowDataRepository; revision: number }) {
+function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, repository, revision }: { document: WorkflowDocument; nodeId?: string; onClose(): void; refreshVersion: number; repository: WorkflowDataRepository; revision: number }) {
   const [page, setPage] = useState<WorkflowEntryRecordPage | null>(null);
   const [detail, setDetail] = useState<WorkflowEntryRecordDetail | null>(null);
   const [error, setError] = useState(false);
@@ -204,7 +226,12 @@ function WorkflowRecordsView({ document, nodeId, refreshVersion, repository, rev
     setLoading(true);
     setError(false);
     if (!cursor) setPage(null);
-    void repository.listRecords({ cursor, nodeId, workflowId: document.id, revision }).then(value => {
+    void repository.listRecords({
+      cursor,
+      ...(nodeId ? { nodeId } : {}),
+      workflowId: document.id,
+      revision,
+    }).then(value => {
       if (active) setPage(current => cursor && current
         ? { items: [...current.items, ...value.items], nextCursor: value.nextCursor }
         : value);
@@ -216,36 +243,50 @@ function WorkflowRecordsView({ document, nodeId, refreshVersion, repository, rev
   const openDetail = useCallback((record: WorkflowEntryRecord) => {
     void repository.getRecord(document.id, record.recordId).then(setDetail);
   }, [document.id, repository]);
-  if (loading && !page) return <LoadingState />;
-  if (error && !page) return <ErrorState onRetry={() => load()} />;
+  const title = nodeId ? nodeTitle(document, revision, nodeId) : "全部进入记录";
+  const panelLabel = nodeId ? `${title}进入记录` : title;
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
-      <div className="mb-4 text-sm text-muted-foreground">
-        {nodeId ? `${nodeTitle(document, revision, nodeId)} · ` : ""}共显示 {page?.items.length ?? 0} 条进入记录
-      </div>
-      {page?.nextCursor ? (
-        <div className="mt-4 flex justify-center">
-          <Button disabled={loading} onClick={() => load(page.nextCursor ?? undefined)} type="button" variant="outline">
-            {loading ? "正在加载" : "加载更多"}
-          </Button>
+    <section
+      aria-label={panelLabel}
+      className="absolute inset-4 z-10 flex min-h-0 flex-col overflow-hidden rounded-[8px] border bg-background shadow-sm"
+      role="dialog"
+    >
+      <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{title}</h2>
+          <div className="mt-1 text-xs text-muted-foreground">共显示 {page?.items.length ?? 0} 条进入记录</div>
         </div>
-      ) : null}
-      <div className="overflow-hidden rounded-md border">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">客户</th><th className="px-4 py-3 font-medium">当前进度</th><th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium">进入时间</th><th className="px-4 py-3 font-medium">最近更新</th></tr></thead>
-          <tbody>{page?.items.map(record => (
-            <tr className="cursor-pointer border-t hover:bg-muted/30" key={record.recordId} onClick={() => openDetail(record)}>
-              <td className="px-4 py-3 font-medium">{record.customer.name}</td>
-              <td className="px-4 py-3">{nodeTitle(document, record.revision, record.currentNodeId)}</td>
-              <td className="px-4 py-3"><RecordStatus record={record} /></td>
-              <td className="px-4 py-3 text-muted-foreground">{formatDate(record.createdAt)}</td>
-              <td className="px-4 py-3 text-muted-foreground">{formatDate(record.updatedAt)}</td>
-            </tr>
-          ))}{page?.items.length === 0 ? <tr><td className="px-4 py-12 text-center text-muted-foreground" colSpan={5}>暂无数据</td></tr> : null}</tbody>
-        </table>
+        <Button aria-label="关闭进入记录" className="size-8" onClick={onClose} size="icon" type="button" variant="ghost">
+          <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
+        </Button>
       </div>
+      {loading && !page ? <LoadingState /> : error && !page ? <ErrorState onRetry={() => load()} /> : (
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          <div className="overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="text-foreground"><tr><th className="h-11 px-4 text-left font-semibold">客户</th><th className="h-11 px-4 text-left font-semibold">当前进度</th><th className="h-11 px-4 text-left font-semibold">状态</th><th className="h-11 px-4 text-left font-semibold">进入时间</th><th className="h-11 px-4 text-left font-semibold">最近更新</th></tr></thead>
+              <tbody>{page?.items.map(record => (
+                <tr className="cursor-pointer border-t hover:bg-muted/30" key={record.recordId} onClick={() => openDetail(record)}>
+                  <td className="px-4 py-3 font-medium">{record.customer.name}</td>
+                  <td className="px-4 py-3">{nodeTitle(document, record.revision, record.currentNodeId)}</td>
+                  <td className="px-4 py-3"><RecordStatus record={record} /></td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDate(record.createdAt)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDate(record.updatedAt)}</td>
+                </tr>
+              ))}{page?.items.length === 0 ? <tr><td className="px-4 py-12 text-center text-muted-foreground" colSpan={5}>暂无数据</td></tr> : null}</tbody>
+            </table>
+          </div>
+          {page?.nextCursor ? (
+            <div className="mt-4 flex justify-center">
+              <Button disabled={loading} onClick={() => load(page.nextCursor ?? undefined)} type="button" variant="outline">
+                {loading ? "正在加载" : "加载更多"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      )}
       <RecordDetailSheet detail={detail} onOpenChange={open => { if (!open) setDetail(null); }} />
-    </div>
+    </section>
   );
 }
 

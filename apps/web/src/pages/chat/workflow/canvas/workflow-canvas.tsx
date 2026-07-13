@@ -72,6 +72,7 @@ export function WorkflowCanvas({
   canUndo,
   edges,
   isReadOnly = false,
+  showEditingTools = true,
   nodes,
   nextRedoLabel,
   nextUndoLabel,
@@ -100,6 +101,7 @@ export function WorkflowCanvas({
   canUndo: boolean;
   edges: WorkflowRenderEdge[];
   isReadOnly?: boolean;
+  showEditingTools?: boolean;
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
@@ -254,6 +256,7 @@ export function WorkflowCanvas({
           onUndo={onUndo}
           paletteOpen={paletteOpen}
           showMiniMap={showMiniMap}
+          showEditingTools={showEditingTools}
           zoom={zoom}
           zoomIn={zoomIn}
           zoomOut={zoomOut}
@@ -360,6 +363,7 @@ function WorkflowBottomToolbar({
   onUndo,
   paletteOpen,
   showMiniMap,
+  showEditingTools,
   zoom,
   zoomIn,
   zoomOut,
@@ -379,6 +383,7 @@ function WorkflowBottomToolbar({
   onUndo: () => void;
   paletteOpen: boolean;
   showMiniMap: boolean;
+  showEditingTools: boolean;
   zoom: number;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -488,6 +493,7 @@ function WorkflowBottomToolbar({
             </div>
           ) : null}
         </div>
+        {showEditingTools ? <>
         <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
         <WorkflowToolbarTooltip label="撤销">
           <Button
@@ -536,6 +542,7 @@ function WorkflowBottomToolbar({
             <HugeiconsIcon icon={DashboardSquare02Icon} size={16} strokeWidth={1.8} />
           </Button>
         </WorkflowToolbarTooltip>
+        </> : null}
         <div className="workflow-toolbar-minimap-wrap relative flex shrink-0">
           <WorkflowToolbarTooltip label="小地图">
             <Button
@@ -552,6 +559,7 @@ function WorkflowBottomToolbar({
             </Button>
           </WorkflowToolbarTooltip>
         </div>
+        {showEditingTools ? <>
         <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
         <div className="workflow-toolbar-palette-wrap relative flex shrink-0">
           {paletteOpen && !disabled ? (
@@ -580,6 +588,7 @@ function WorkflowBottomToolbar({
             <span>添加节点</span>
           </Button>
         </div>
+        </> : null}
       </div>
     </TooltipProvider>
   );

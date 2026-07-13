@@ -19,6 +19,14 @@ export class WorkflowRuntimeReconciler {
     return this.repository.recoverExpiredOutboxLeases(input);
   }
 
+  aggregateNodeMetricEvents(input: { limit: number }) {
+    return this.repository.aggregateNodeMetricEvents(input);
+  }
+
+  cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }) {
+    return this.repository.cleanupProcessedNodeMetricEvents(input);
+  }
+
   async cancelStoppedWorkflow(input: {
     afterRunId?: string;
     limit: number;

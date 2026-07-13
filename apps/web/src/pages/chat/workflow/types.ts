@@ -4,6 +4,7 @@ import type {
   WorkflowStartTrigger,
   WorkflowWaitConfig,
 } from "@chatai/contracts";
+import type { WorkflowNodeMetric } from "@chatai/contracts";
 import type {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,
@@ -110,6 +111,7 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
   WorkflowNodeConfigPatchFor<WorkflowNodeData<TKind>>;
 
 export type WorkflowNodeRuntimeData = {
+  dataMetric?: WorkflowNodeMetric;
   insertMenuOpen?: boolean;
   insertMenuSourceHandle?: string;
   onDuplicate?: (nodeId: string) => void;
@@ -120,6 +122,7 @@ export type WorkflowNodeRuntimeData = {
   ) => void;
   onRename?: (nodeId: string, title: string) => void;
   onDelete?: (nodeId: string) => void;
+  onDataMetricClick?: (nodeId: string) => void;
   onToggleInsertMenu?: (nodeId: string, sourceHandle?: string) => void;
   onSelect?: (nodeId: string, options?: { additive?: boolean }) => void;
   selected?: boolean;

@@ -245,6 +245,10 @@ export const routerConfig = [
         element: withRouteSuspense(<WorkflowEditorPage />),
       },
       {
+        path: "chat/workflows/:workflowId/data",
+        element: withRouteSuspense(<WorkflowEditorPage />),
+      },
+      {
         path: "chat/ai-hosting/agents/new",
         element: withRouteSuspense(<AgentSettingsPage />),
       },

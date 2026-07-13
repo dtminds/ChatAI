@@ -2,7 +2,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,7 @@ import type {
   WorkflowDraftRepository,
 } from "./workflow-draft-service";
 import { useWorkflowDocumentResource } from "./workflow-resources";
+import { WorkflowDataActions, WorkflowDataPage } from "./workflow-data-page";
 import "@xyflow/react/dist/style.css";
 import "./workflow-page.css";
 
@@ -158,8 +159,29 @@ function WorkflowWorkspaceContent({
   repository: WorkflowDraftRepository;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
+  const mode = location.pathname.endsWith("/data") ? "data" : "design";
+  const [dataRevision, setDataRevision] = useState(currentDocument.publishedRevision);
+  const [followPublishedDataRevision, setFollowPublishedDataRevision] = useState(true);
+  const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
+  const selectedDataVersion = currentDocument.versionHistory.find(item => item.revision === dataRevision)
+    ?? currentDocument.currentVersion;
+  useEffect(() => {
+    if (currentDocument.publishedRevision === null) return;
+    const selectedRevisionExists = currentDocument.versionHistory
+      .some(item => item.revision === dataRevision);
+    if (followPublishedDataRevision || !selectedRevisionExists) {
+      setDataRevision(currentDocument.publishedRevision);
+      if (!selectedRevisionExists) setFollowPublishedDataRevision(true);
+    }
+  }, [
+    currentDocument.publishedRevision,
+    currentDocument.versionHistory,
+    dataRevision,
+    followPublishedDataRevision,
+  ]);
 
   return (
     <>
@@ -172,6 +194,7 @@ function WorkflowWorkspaceContent({
         isPreviewingVersion={versionHistory.isPreviewing}
         lastSavedAt={topBar.lastSavedAt}
         metadataUpdating={topBar.metadataUpdating}
+        mode={mode}
         onBack={() => navigate("/chat/workflows")}
         onCloseVersionHistory={versionHistory.onClose}
         onExitPreview={versionHistory.onExitPreview}
@@ -179,6 +202,9 @@ function WorkflowWorkspaceContent({
         onPublish={topBar.onPublish}
         onPublishCheck={topBar.onPublishCheck}
         onReloadDocument={onReloadDocument}
+        onModeChange={(nextMode) => navigate(nextMode === "data"
+          ? `/chat/workflows/${document.id}/data`
+          : `/chat/workflows/${document.id}`)}
         onUpdateMetadata={topBar.onUpdateMetadata}
         onRetrySave={topBar.onRetrySave}
         onRestoreVersion={currentDocument.permissions.canEdit && versionHistory.currentPreviewVersionId
@@ -211,9 +237,33 @@ function WorkflowWorkspaceContent({
         )}
         versionHistoryOpen={versionHistory.isOpen}
         workflowName={currentDocument.name}
+        dataActions={(
+          <WorkflowDataActions
+            label={selectedDataVersion
+              ? `${dataRevision === currentDocument.publishedRevision ? "当前流程" : "历史流程"} · ${selectedDataVersion.publishedAt}`
+              : "当前流程"}
+            onRefresh={() => setDataRefreshVersion(value => value + 1)}
+            onSelectRevision={(revision) => {
+              setDataRevision(revision);
+              setFollowPublishedDataRevision(revision === currentDocument.publishedRevision);
+            }}
+            versions={currentDocument.versionHistory.map(version => ({
+              label: `${version.revision === currentDocument.publishedRevision ? "当前流程" : "历史流程"} · ${version.publishedAt}`,
+              revision: version.revision,
+            }))}
+          />
+        )}
       />
 
-      <div
+      {mode === "data" ? (
+        <div className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden">
+          <WorkflowDataPage
+            document={currentDocument}
+            refreshVersion={dataRefreshVersion}
+            revision={dataRevision ?? undefined}
+          />
+        </div>
+      ) : <div
         className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
         data-inspector-open={inspector.isOpen ? "true" : undefined}
       >
@@ -267,14 +317,15 @@ function WorkflowWorkspaceContent({
             onNodeChange={inspector.onNodeChange}
           />
         ) : null}
-      </div>
+      </div>}
       <WorkflowLeaveGuard enabled={topBar.saveState !== "saved"} />
     </>
   );
 }
 
 function WorkflowLeaveGuard({ enabled }: { enabled: boolean }) {
-  const blocker = useBlocker(enabled);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    enabled && !isWorkflowModeNavigation(currentLocation.pathname, nextLocation.pathname));
   const blocked = blocker.state === "blocked";
 
   return (
@@ -305,6 +356,13 @@ function WorkflowLeaveGuard({ enabled }: { enabled: boolean }) {
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+
+function isWorkflowModeNavigation(currentPath: string, nextPath: string) {
+  const normalize = (path: string) => path.endsWith("/data") ? path.slice(0, -5) : path;
+  const currentWorkflowPath = normalize(currentPath);
+  return currentWorkflowPath === normalize(nextPath)
+    && /^\/chat\/workflows\/[^/]+$/.test(currentWorkflowPath);
 }
 
 function WorkflowEditorResourceState({

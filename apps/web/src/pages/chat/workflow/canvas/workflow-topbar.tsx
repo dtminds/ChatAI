@@ -43,6 +43,7 @@ export function WorkflowTopBar({
   isPreviewingVersion,
   lastSavedAt,
   metadataUpdating = false,
+  mode = "design",
   onBack,
   onCloseVersionHistory,
   onExitPreview,
@@ -50,6 +51,7 @@ export function WorkflowTopBar({
   onPublish,
   onPublishCheck,
   onReloadDocument,
+  onModeChange,
   onUpdateMetadata,
   onRetrySave,
   onRestoreVersion,
@@ -67,6 +69,7 @@ export function WorkflowTopBar({
   versionHistoryContent,
   versionHistoryOpen = false,
   workflowName,
+  dataActions,
 }: {
   canPublish?: boolean;
   canRename?: boolean;
@@ -76,6 +79,7 @@ export function WorkflowTopBar({
   isPreviewingVersion?: boolean;
   lastSavedAt: string;
   metadataUpdating?: boolean;
+  mode?: "data" | "design";
   onBack?: () => void;
   onCloseVersionHistory?: () => void;
   onExitPreview?: () => void;
@@ -83,6 +87,7 @@ export function WorkflowTopBar({
   onPublish: () => void;
   onPublishCheck: () => void;
   onReloadDocument?: () => void;
+  onModeChange?: (mode: "data" | "design") => void;
   onUpdateMetadata?: (metadata: { description: string; name: string }) => Promise<boolean>;
   onRetrySave?: () => void;
   onRestoreVersion?: () => void;
@@ -101,6 +106,7 @@ export function WorkflowTopBar({
   versionHistoryContent?: ReactNode;
   versionHistoryOpen?: boolean;
   workflowName: string;
+  dataActions?: ReactNode;
 }) {
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const published = publishState === "published";
@@ -109,7 +115,7 @@ export function WorkflowTopBar({
   const readOnlyMode = Boolean(isPreviewingVersion);
 
   return (
-    <header className="workflow-canvas-topbar z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
+    <header className="workflow-canvas-topbar relative z-[12] flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 max-sm:h-auto max-sm:min-h-14 max-sm:flex-wrap max-sm:py-2 max-sm:px-3">
       <div className="flex min-w-0 items-center gap-2.5 max-sm:w-full">
         <Button
           aria-label="返回 Workflow 列表"
@@ -203,6 +209,30 @@ export function WorkflowTopBar({
         )}
       </div>
 
+      {!readOnlyMode && onModeChange ? (
+        <div
+          aria-label="Workflow 模式"
+          className="absolute left-1/2 top-0 flex h-full -translate-x-1/2 items-center gap-8 max-md:static max-md:h-auto max-md:translate-x-0"
+          role="tablist"
+        >
+          {(["design", "data"] as const).map(item => (
+            <button
+              aria-selected={mode === item}
+              className={cn(
+                "relative flex h-full min-w-12 items-center justify-center text-base text-muted-foreground transition-colors",
+                mode === item && "font-medium text-primary after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary",
+              )}
+              key={item}
+              onClick={() => onModeChange(item)}
+              role="tab"
+              type="button"
+            >
+              {item === "design" ? "设计" : "数据"}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex shrink-0 items-center gap-2" aria-label="Workflow 操作">
         {readOnlyMode ? (
           <>
@@ -218,6 +248,8 @@ export function WorkflowTopBar({
               退出版本
             </Button>
           </>
+        ) : mode === "data" ? (
+          dataActions
         ) : (
           <>
             <Popover

@@ -82,6 +82,7 @@
 
 .workflow-node-shell {
   position: relative;
+  z-index: 1;
   display: flex;
   width: auto;
   height: auto;

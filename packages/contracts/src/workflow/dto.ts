@@ -132,7 +132,75 @@ export const WorkflowPublishResultSchema = Type.Object({
   validatedOnly: Type.Boolean(),
 });
 
+export const WorkflowNodeMetricSchema = Type.Object({
+  completed: Type.Integer({ minimum: 0 }),
+  current: Type.Integer({ minimum: 0 }),
+  entered: Type.Integer({ minimum: 0 }),
+  nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+  passed: Type.Integer({ minimum: 0 }),
+});
+
+export const WorkflowDataOverviewSchema = Type.Object({
+  calculatedAt: Type.String(),
+  nodes: Type.Array(WorkflowNodeMetricSchema, { maxItems: 200 }),
+  revision: Type.Integer({ minimum: 1 }),
+});
+
+export const WorkflowEntryRecordStatusSchema = Type.Union([
+  Type.Literal("queued"),
+  Type.Literal("running"),
+  Type.Literal("waiting"),
+  Type.Literal("completed"),
+  Type.Literal("failed"),
+  Type.Literal("cancelled"),
+]);
+
+export const WorkflowEntryRecordCustomerSchema = Type.Object({
+  avatar: Type.Union([Type.String(), Type.Null()]),
+  name: Type.String(),
+});
+
+export const WorkflowEntryRecordSchema = Type.Object({
+  createdAt: Type.String(),
+  currentNodeId: Type.String({ minLength: 1, maxLength: 128 }),
+  customer: WorkflowEntryRecordCustomerSchema,
+  nextExecuteAt: Type.Union([Type.String(), Type.Null()]),
+  recordId: WorkflowIdSchema,
+  revision: Type.Integer({ minimum: 1 }),
+  status: WorkflowEntryRecordStatusSchema,
+  updatedAt: Type.String(),
+});
+
+export const WorkflowEntryRecordPageSchema = Type.Object({
+  items: Type.Array(WorkflowEntryRecordSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const WorkflowEntryRecordStepNodeKindSchema = Type.Union([
+  WorkflowNodeKindSchema,
+  Type.Literal("unknown"),
+]);
+
+export const WorkflowEntryRecordStepSchema = Type.Object({
+  description: Type.Optional(Type.String()),
+  occurredAt: Type.String(),
+  nodeId: Type.String({ minLength: 1, maxLength: 128 }),
+  nodeKind: WorkflowEntryRecordStepNodeKindSchema,
+  status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("current")]),
+  title: Type.String(),
+});
+
+export const WorkflowEntryRecordDetailSchema = Type.Object({
+  createdAt: Type.String(),
+  customer: WorkflowEntryRecordCustomerSchema,
+  recordId: WorkflowIdSchema,
+  revision: Type.Integer({ minimum: 1 }),
+  status: WorkflowEntryRecordStatusSchema,
+  steps: Type.Array(WorkflowEntryRecordStepSchema),
+});
+
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
+export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;
 export type WorkflowDraftNode = Static<typeof WorkflowDraftNodeSchema>;
@@ -148,3 +216,10 @@ export type WorkflowMetadataUpdateRequest = Static<typeof WorkflowMetadataUpdate
 export type WorkflowPublishRequest = Static<typeof WorkflowPublishRequestSchema>;
 export type WorkflowRestoreRequest = Static<typeof WorkflowRestoreRequestSchema>;
 export type WorkflowPublishResult = Static<typeof WorkflowPublishResultSchema>;
+export type WorkflowNodeMetric = Static<typeof WorkflowNodeMetricSchema>;
+export type WorkflowDataOverview = Static<typeof WorkflowDataOverviewSchema>;
+export type WorkflowEntryRecordStatus = Static<typeof WorkflowEntryRecordStatusSchema>;
+export type WorkflowEntryRecord = Static<typeof WorkflowEntryRecordSchema>;
+export type WorkflowEntryRecordPage = Static<typeof WorkflowEntryRecordPageSchema>;
+export type WorkflowEntryRecordStep = Static<typeof WorkflowEntryRecordStepSchema>;
+export type WorkflowEntryRecordDetail = Static<typeof WorkflowEntryRecordDetailSchema>;

@@ -95,6 +95,19 @@ export type WorkflowOutboxRecord = {
   uid: number;
 };
 
+export type WorkflowNodeMetricRecord = {
+  completed: number;
+  current: number;
+  entered: number;
+  nodeId: string;
+  passed: number;
+  revision: number;
+  shardId: number;
+  uid: number;
+  updatedAt: Date;
+  workflowId: string;
+};
+
 export type WorkflowSchedulerRepository = {
   dispatchDueTasks(input: {
     limit: number;
@@ -184,6 +197,8 @@ type WorkflowRuntimeFailure =
   | { action: "cancel" | "defer"; kind: "workflow-unavailable" };
 
 export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSchedulerRepository & {
+  aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
+  cleanupProcessedNodeMetricEvents(input: { limit: number; processedBefore: Date }): Promise<number>;
   cleanupExpiredInbox(input: { limit: number; now: Date }): Promise<number>;
   cancelUnavailableWorkflowRuns(input: {
     afterRunId?: string;
@@ -217,6 +232,7 @@ export type WorkflowRuntimeRepository = WorkflowOutboxRepository & WorkflowSched
   >;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findTask(uid: number, taskId: string): Promise<WorkflowTaskRecord | null>;
+  listNodeMetrics(uid: number, workflowId: string, revision: number): Promise<WorkflowNodeMetricRecord[]>;
   recoverExpiredLeases(input: {
     limit: number;
     maxAttempts: number;

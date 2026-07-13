@@ -4,6 +4,32 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkflowTopBar } from "@/pages/chat/workflow/canvas/workflow-topbar";
 
 describe("WorkflowTopBar lifecycle", () => {
+  it("switches between design and data modes from centered tabs", async () => {
+    const user = userEvent.setup();
+    const onModeChange = vi.fn();
+
+    render(
+      <WorkflowTopBar
+        lastSavedAt="刚刚"
+        mode="design"
+        onModeChange={onModeChange}
+        onOpenVersionHistory={vi.fn()}
+        onPublish={vi.fn()}
+        onPublishCheck={vi.fn()}
+        publishedAt="刚刚"
+        publishReady
+        publishState="published"
+        readyChecks={4}
+        saveState="saved"
+        totalChecks={4}
+        workflowName="新客培育"
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "设计" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "数据" }));
+    expect(onModeChange).toHaveBeenCalledWith("data");
+  });
   it("keeps publishing as the editor primary action for an inactive workflow", async () => {
     const onPublish = vi.fn();
     render(

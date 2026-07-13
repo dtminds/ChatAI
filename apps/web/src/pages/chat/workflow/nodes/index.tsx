@@ -1,5 +1,7 @@
 import { memo } from "react";
 import type { NodeProps } from "@xyflow/react";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   getDefaultSourceHandleId,
   getNodeSourceHandleDefinitions,
@@ -20,19 +22,49 @@ function WorkflowNodeCardComponent({ data, id }: NodeProps<WorkflowRenderNode>) 
   const CustomBody = body.kind === "custom" ? body.component : null;
 
   return (
-    <WorkflowBaseNode
-      body={
-        CustomBody
-          ? <CustomBody data={data} visual={nodeVisuals[data.kind]} />
-          : body.kind === "fields"
-            ? <NodeFieldList fields={body.getFields(data)} />
-            : null
-      }
-      data={data}
-      id={id}
-      sourceHandles={<WorkflowNodeSourceHandles data={data} id={id} />}
-      targetHandles={<WorkflowNodeTargetHandles data={data} />}
-    />
+    <div className="relative isolate">
+      <WorkflowBaseNode
+        body={
+          CustomBody
+            ? <CustomBody data={data} visual={nodeVisuals[data.kind]} />
+            : body.kind === "fields"
+              ? <NodeFieldList fields={body.getFields(data)} />
+              : null
+        }
+        data={data}
+        id={id}
+        sourceHandles={<WorkflowNodeSourceHandles data={data} id={id} />}
+        targetHandles={<WorkflowNodeTargetHandles data={data} />}
+      />
+      {data.dataMetric ? (
+        <button
+          className="nodrag nopan absolute inset-x-4 top-full -mt-px flex h-8 items-center justify-between rounded-b-[8px] border-x border-b bg-background px-3 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onDataMetricClick?.(id);
+          }}
+          type="button"
+        >
+          <span className="flex min-w-0 items-center gap-3 whitespace-nowrap text-left">
+            {data.kind === "start" ? (
+              <span>已进入 <strong className="font-semibold text-foreground">{data.dataMetric.entered}</strong></span>
+            ) : null}
+            {data.kind !== "start" && data.kind !== "end" ? (
+              <>
+                <span>
+                  当前停留 <strong className="font-semibold text-foreground">{data.dataMetric.current}</strong>
+                </span>
+                <span>已通过 <strong className="font-semibold text-foreground">{data.dataMetric.passed}</strong></span>
+              </>
+            ) : null}
+            {data.kind === "end" ? (
+              <span>已完成 <strong className="font-semibold text-foreground">{data.dataMetric.completed}</strong></span>
+            ) : null}
+          </span>
+          <HugeiconsIcon className="shrink-0" icon={ArrowRight01Icon} size={14} strokeWidth={1.8} />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -64,7 +96,7 @@ function WorkflowNodeSourceHandles({
           label={handle.label}
           nodeId={id}
           onToggleInsertMenu={data.onToggleInsertMenu}
-          showInsertAction
+          showInsertAction={!data.dataMetric}
           title={data.title}
           top={handle.top}
         />

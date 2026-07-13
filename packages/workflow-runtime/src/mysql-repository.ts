@@ -871,22 +871,45 @@ export class MysqlWorkflowRuntimeRepository implements
         if (!invalidAuthoritativeTask || toDate(run.update_time) > input.inconsistentBefore) continue;
         runsToFail.push(run);
         for (const task of runTasks) taskIdsToCancel.add(task.id);
+      }
 
-        const currentTask = runTasks.find(task => task.nodeId === run.current_node_id);
-        if (currentTask) {
-          await insertNodeMetricEvents(trx, {
-            eventKey: `${runId}:runtime-state-inconsistent`,
-            runId,
-            runRevision: run.revision,
-            runShardId: run.shard_id,
-            uid: normalizeTenantId(run.uid),
-            workflowId: normalizeId(run.workflow_id),
-          }, createNodeMetricDeltas({
-            kind: "left-incomplete",
-            nodeId: currentTask.nodeId,
-            nodeKind: currentTask.nodeKind,
-          }));
-        }
+      const waitingRuns = runsToFail.filter(run => run.status === "waiting");
+      const completedWaitTasks = waitingRuns.length === 0
+        ? []
+        : await trx.selectFrom(TASK_TABLE).select(["node_id", "node_kind", "run_id", "sequence"])
+            .where(eb => eb.or(waitingRuns.map(run => eb.and([
+              eb("uid", "=", normalizeTenantId(run.uid)),
+              eb("run_id", "=", run.id),
+              eb("sequence", "=", run.sequence - 1),
+              eb("node_id", "=", run.current_node_id),
+            ]))))
+            .where("status", "=", "completed")
+            .where("node_kind", "=", "wait")
+            .execute();
+      const completedWaitTaskByRunId = new Map(completedWaitTasks.map(task => [
+        normalizeId(task.run_id),
+        { nodeId: task.node_id, nodeKind: parseNodeKind(task.node_kind) },
+      ]));
+      for (const run of runsToFail) {
+        const runId = normalizeId(run.id);
+        const runTasks = tasks.filter(task => task.runId === runId);
+        const activeMetricTask = runTasks.find(task => task.nodeId === run.current_node_id);
+        const metricTask = activeMetricTask
+          ? { nodeId: activeMetricTask.nodeId, nodeKind: activeMetricTask.nodeKind }
+          : completedWaitTaskByRunId.get(runId);
+        if (!metricTask) continue;
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${runId}:runtime-state-inconsistent`,
+          runId,
+          runRevision: run.revision,
+          runShardId: run.shard_id,
+          uid: normalizeTenantId(run.uid),
+          workflowId: normalizeId(run.workflow_id),
+        }, createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: metricTask.nodeId,
+          nodeKind: metricTask.nodeKind,
+        }));
       }
 
       let staleTasksCancelled = 0;

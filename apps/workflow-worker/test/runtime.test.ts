@@ -77,6 +77,58 @@ describe("workflow worker runtime", () => {
     expect(resources.loopClose).toHaveBeenCalledTimes(4);
   });
 
+  it("feeds consistency cursors into the next reconciler iteration and resets after the last page", async () => {
+    const resources = createResources();
+    resources.reconciler
+      .mockResolvedValueOnce(reconcilerResult({
+        nextConsistencyRunCursor: "10",
+        nextConsistencyTaskCursor: null,
+        nextCursor: "5",
+      }))
+      .mockResolvedValueOnce(reconcilerResult({
+        nextConsistencyRunCursor: null,
+        nextConsistencyTaskCursor: "20",
+        nextCursor: null,
+      }))
+      .mockResolvedValueOnce(reconcilerResult({
+        nextConsistencyRunCursor: null,
+        nextConsistencyTaskCursor: null,
+        nextCursor: null,
+      }))
+      .mockResolvedValueOnce(reconcilerResult());
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["reconciler"] as const)),
+    });
+    await vi.waitFor(() => expect(resources.reconciler).toHaveBeenCalledTimes(1));
+
+    await resources.runRole("reconciler");
+    await resources.runRole("reconciler");
+    await resources.runRole("reconciler");
+
+    expect(resources.reconciler).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      afterConsistencyRunId: undefined,
+      afterConsistencyTaskId: undefined,
+      afterRunId: undefined,
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      afterConsistencyRunId: "10",
+      afterConsistencyTaskId: undefined,
+      afterRunId: "5",
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      afterConsistencyRunId: undefined,
+      afterConsistencyTaskId: "20",
+      afterRunId: undefined,
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      afterConsistencyRunId: undefined,
+      afterConsistencyTaskId: undefined,
+      afterRunId: undefined,
+    }));
+    await runtime.close();
+  });
+
   it("routes idle role heartbeats through the debug log policy", async () => {
     const resources = createResources();
     const runtime = await startWorkflowWorkerRuntime({
@@ -306,10 +358,41 @@ function createResources() {
       });
       return result;
     },
+    runRole: async (role: string) => {
+      const input = roleInputs.get(role);
+      if (!input) throw new Error(`Role loop not started: ${role}`);
+      return input.run();
+    },
     scheduler,
     subscriptionClose,
     get subscriptionConnected() { return subscriptionConnected; },
     set subscriptionConnected(value: boolean) { subscriptionConnected = value; },
+  };
+}
+
+function reconcilerResult(overrides: {
+  nextConsistencyRunCursor?: string | null;
+  nextConsistencyTaskCursor?: string | null;
+  nextCursor?: string | null;
+} = {}) {
+  return {
+    cancelled: 0,
+    inboxDeleted: 0,
+    inconsistentRunsFailed: 0,
+    nextConsistencyRunCursor: null,
+    nextConsistencyTaskCursor: null,
+    nextCursor: null,
+    nodeMetricEventsAggregated: 0,
+    nodeMetricEventsDeleted: 0,
+    outboxLeasesRecovered: 0,
+    runsChecked: 0,
+    staleTasksCancelled: 0,
+    stalledTasksRepublished: 0,
+    taskLeasesDead: 0,
+    taskLeasesRecovered: 0,
+    tasksChecked: 0,
+    terminalRunTasksCancelled: 0,
+    ...overrides,
   };
 }
 

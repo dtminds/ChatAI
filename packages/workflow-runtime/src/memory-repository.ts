@@ -143,6 +143,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         return { action: decision, kind: "workflow-unavailable" as const };
       }
     }
+    const previousRunStatus = run.status;
+    const previousNodeId = run.currentNodeId;
     task.status = transitionTask(task.status, "running");
     task.attempt += 1;
     task.taskVersion += 1;
@@ -165,7 +167,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     if (run.status === "queued" || run.status === "waiting") {
       run.status = transitionRun(run.status, "running");
     }
-    this.touchRun(run);
+    if (run.status !== previousRunStatus || run.currentNodeId !== previousNodeId) {
+      this.touchRun(run);
+    }
     return { kind: "success" as const, task: clone(task) };
   }
 

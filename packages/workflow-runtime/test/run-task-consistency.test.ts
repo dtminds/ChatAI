@@ -139,6 +139,66 @@ describe("workflow run/task consistency reconciliation", () => {
     expect(repository.runs[0]?.status).toBe("running");
   });
 
+  it("does not extend the grace period when re-claiming an already-running run", async () => {
+    let now = admittedAt;
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    if (created.kind !== "success") throw new Error("create failed");
+    const firstClaim = await repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2026-07-10T00:00:30.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: created.task.uid,
+    });
+    if (firstClaim.kind !== "success") throw new Error("claim failed");
+    await repository.recoverExpiredLeases({
+      limit: 100,
+      maxAttempts: 5,
+      now: new Date("2026-07-10T00:01:00.000Z"),
+    });
+    now = new Date("2026-07-10T00:01:30.000Z");
+    const secondClaim = await repository.claimTask({
+      expectedTaskVersion: firstClaim.task.taskVersion + 1,
+      leaseExpiresAt: new Date("2026-07-10T00:02:30.000Z"),
+      leaseOwner: "worker-2",
+      taskId: created.task.id,
+      uid: created.task.uid,
+    });
+    if (secondClaim.kind !== "success") throw new Error("re-claim failed");
+    repository.tasks.splice(0);
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 100,
+      now: reconcileAt,
+    });
+
+    expect(result.inconsistentRunsFailed).toBe(1);
+    expect(repository.runs[0]?.status).toBe("failed");
+  });
+
+  it("fails an inconsistent paused run after the grace period", async () => {
+    let runtimeStatus: "active" | "paused" = "active";
+    const repository = new InMemoryWorkflowRuntimeRepository(async () => ({
+      bizStatus: 1,
+      runtimeStatus,
+    }), () => admittedAt);
+    const created = await repository.createRunWithInitialTask(createRunInput());
+    if (created.kind !== "success") throw new Error("create failed");
+    repository.tasks.splice(0);
+    runtimeStatus = "paused";
+
+    const result = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 100,
+      now: reconcileAt,
+    });
+
+    expect(result.inconsistentRunsFailed).toBe(1);
+    expect(repository.runs[0]?.status).toBe("failed");
+  });
+
   it("cancels stale and terminal-run tasks without failing a healthy active run", async () => {
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
     const active = await repository.createRunWithInitialTask(createRunInput());
@@ -176,6 +236,54 @@ describe("workflow run/task consistency reconciliation", () => {
       taskVersion: terminal.task.taskVersion + 1,
     });
     expect(repository.runs.find(run => run.id === active.run.id)?.status).toBe("queued");
+  });
+
+  it("advances and resets the run and task consistency cursors independently", async () => {
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => admittedAt);
+    const first = await repository.createRunWithInitialTask(createRunInput());
+    const second = await repository.createRunWithInitialTask({
+      ...createRunInput(),
+      entryEventId: "event-2",
+      subjectId: "customer-2",
+    });
+    if (first.kind !== "success" || second.kind !== "success") throw new Error("create failed");
+
+    const firstPage = await repository.reconcileRunTaskConsistency({
+      inconsistentBefore,
+      limit: 1,
+      now: reconcileAt,
+    });
+    const secondPage = await repository.reconcileRunTaskConsistency({
+      afterRunId: firstPage.lastRunId ?? undefined,
+      afterTaskId: firstPage.lastTaskId ?? undefined,
+      inconsistentBefore,
+      limit: 1,
+      now: reconcileAt,
+    });
+    const resetPage = await repository.reconcileRunTaskConsistency({
+      afterRunId: secondPage.hasMoreRuns ? secondPage.lastRunId ?? undefined : undefined,
+      afterTaskId: secondPage.hasMoreTasks ? secondPage.lastTaskId ?? undefined : undefined,
+      inconsistentBefore,
+      limit: 1,
+      now: reconcileAt,
+    });
+
+    expect(firstPage).toMatchObject({
+      hasMoreRuns: true,
+      hasMoreTasks: true,
+      lastRunId: first.run.id,
+      lastTaskId: first.task.id,
+    });
+    expect(secondPage).toMatchObject({
+      hasMoreRuns: false,
+      hasMoreTasks: false,
+      lastRunId: second.run.id,
+      lastTaskId: second.task.id,
+    });
+    expect(resetPage).toMatchObject({
+      lastRunId: first.run.id,
+      lastTaskId: first.task.id,
+    });
   });
 });
 

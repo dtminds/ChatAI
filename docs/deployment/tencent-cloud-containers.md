@@ -275,6 +275,12 @@ WORKFLOW_PULSAR_TOKEN=<tdmq-pulsar-token>
 
 Entry 和 Task 位于不同 Topic，可以复用同一 Subscription 名称。TDMQ 会为每个环境消费组维护系统 `-RETRY` 和 `-DLQ` Topic，不需要在应用中创建额外业务 Topic。测试与开发不得交叉使用 Topic 或 Subscription。
 
+当前 Smoke Producer 阶段允许 Entry 和 Task 显式配置到同一个 DLQ Topic，不提供通用人工重放。接入真实 Entry Source 并进入生产灰度前，必须将 `WORKFLOW_ENTRY_DLQ_TOPIC` 和 `WORKFLOW_TASK_DLQ_TOPIC` 配置为可明确区分的 Topic，并完成以下运维能力：
+
+- 使用 TDMQ 原生指标监控 Entry DLQ 积压和增长，并接入明确的告警渠道。
+- 提供仅供授权运维使用的 Entry 重新投递工具，保留原 `eventId` 并记录操作结果。
+- Task DLQ 仅用于诊断；不得直接重放旧 Task 消息，应以 MySQL 中的 Run、Task 和当前 `task_version` 为准，由 Reconciler、Scheduler 和 Outbox 自动恢复。
+
 Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` 将上述短 Topic 名规范化为 `persistent://<cluster-id>/<namespace>/<topic>`。也可以直接为 Topic 配置完整的 `persistent://` 地址；完整地址不会被重复拼接。真实 Pulsar 模式缺少集群 ID 或 namespace 时 Worker 会拒绝启动，避免消息误投到默认 namespace。
 
 角色说明：

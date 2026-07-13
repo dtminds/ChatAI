@@ -25,7 +25,7 @@ Scheduler and Outbox run every second by default. An idle iteration must stay at
 | `workflow.worker.stopped` | `info` | none |
 | `workflow.worker.role.idle` | `debug` | `role`, `durationMs`, role counters |
 | `workflow.worker.role.completed` | `info` | `role`, `durationMs`, role counters |
-| `workflow.worker.role.warning` | `warn` | `role`, `durationMs`, retry, dead-letter, and recovery counters |
+| `workflow.worker.role.warning` | `warn` | `role`, `durationMs`, retry, terminal-failure, and recovery counters |
 | `workflow.worker.role.failed` | `error` | `role`, `err` |
 | `workflow.worker.readiness.changed` | `info` or `warn` | `status`, `broker`, `database`, `roles` |
 | `workflow.worker.readiness.failed` | `error` | `role`, `err` |
@@ -39,6 +39,16 @@ Role results are flattened into the log event. Do not put counters under a neste
 Action adapters must classify known downstream failures with `WorkflowActionExecutionError`. Retryable, unknown-outcome, and terminal failures are persisted before the broker message is acknowledged.
 
 An unclassified exception is treated as an infrastructure or programming failure. After a Task has been claimed, its `task_version` has already advanced, so a NACKed copy of the original broker message becomes stale and is acknowledged on redelivery. Recovery therefore depends on the Task lease expiring: Reconciler returns the Task to `pending`, and Scheduler publishes a new message with the current Task version. Do not describe this path as direct Pulsar redelivery recovery.
+
+## DLQ Boundary
+
+Phase 3 configures Pulsar dead-letter routing, but the current Smoke Producer stage does not build a product page or a manual replay tool for DLQ messages.
+
+- An Entry DLQ message may represent a customer who never received a Run. When a real Entry Source is integrated, Entry and Task must use distinguishable DLQ topics, and operations must add TDMQ-native backlog alerts plus an internal Entry redelivery tool. Redelivery preserves the original `eventId`, so existing entry idempotency prevents duplicate Runs.
+- A Task DLQ message is not the execution source of truth. Run and Task state remains in MySQL, and recovery publishes a message for the current `task_version` through Reconciler, Scheduler, and Outbox. Do not replay the old Task DLQ payload directly.
+- Business Action retries and final failures are database state and appear in Workflow run records; they are not operated as MQ dead-letter replay.
+
+These DLQ operations are required before a real Entry Source enters production gray release, but they do not block Phase 4 node development against Smoke Producer events.
 
 ## Health Checks
 
@@ -129,5 +139,7 @@ Before Phase 5 defines thresholds, the Workflow dashboard should expose:
 - Expired Task and Outbox leases.
 - Reconciler recovery counters from `workflow.worker.role.warning`.
 - Internal cancellation backlog after Workflow stop or deletion.
+
+`Dead Task` and `Dead Outbox` above are database terminal states, not Pulsar DLQ depth. Pulsar DLQ backlog monitoring is added with the real Entry Source integration because it depends on the final Entry topic, alert channel, and operations ownership.
 
 Do not assign warning or critical thresholds until target traffic, peak distribution, maximum Wait concentration, and acceptable recovery time are approved.

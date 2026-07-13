@@ -833,7 +833,7 @@ shard_id = hash(uid + subjectId) % 256
 - Task 消息的并发防重首先依赖 Task 执行租约和版本，Inbox 用于识别“状态已经成功提交但 MQ 尚未 ACK”的重复消息。
 - Entry 消息没有外部副作用，可以在创建 Run 的单个数据库事务中同时完成 Inbox 去重。
 - Inbox 只防止同一消息 ID 重复处理，不能替代业务幂等。
-- Inbox 数据设置保留期，过期清理不得早于 MQ 最大重投和人工重放窗口。
+- Inbox 数据设置保留期，过期清理不得早于 MQ 最大重投窗口；接入真实 Entry Source 后，还不得早于经批准的入口事件恢复窗口。
 
 ### 13.4 重试分工
 
@@ -841,7 +841,9 @@ shard_id = hash(uid + subjectId) % 256
 - 业务 Action 返回明确的可重试错误时，Worker 在数据库中将 Task 恢复为 `pending` 并写入退避后的 `due_at`，随后 ACK 当前 MQ 消息。
 - 下游超时属于结果未知，也进入数据库 Retry Task，并保持原 `idempotency_key`。
 - 不可重试业务错误将 Task 标记为 `dead`，Run 标记为 `failed`，随后 ACK MQ 消息。
-- 未被分类的异常允许由 TDMQ Pulsar 重投；超过 Consumer Dead Letter Policy 配置的最大次数后进入 DLQ 并触发告警。
+- 未被分类的异常允许由 TDMQ Pulsar 重投；超过 Consumer Dead Letter Policy 配置的最大次数后进入 DLQ。
+- Entry 消息进入 DLQ 可能导致客户没有对应 Run。当前 Smoke Producer 阶段不建设恢复工具；接入真实 Entry Source 时，必须同时完成独立的 Entry DLQ、TDMQ 原生积压告警和保留原 `eventId` 的内部重新投递能力，并将其作为生产灰度前置条件。
+- Task 的事实状态保存在数据库。Task 消息进入 DLQ 后，由租约恢复、Scheduler 和 Outbox 根据当前 `task_version` 重新生成消息；DLQ 中的旧消息可能已经过期，不提供直接重放原消息的能力。
 - 同一个失败不能同时创建数据库 Retry Task 并让原 MQ 消息继续重试，避免形成双重重试流。
 
 ### 13.5 并发控制
@@ -904,7 +906,8 @@ shard_id = hash(uid + subjectId) % 256
 | Outbox Publisher 崩溃 | 未发送记录由其他实例继续扫描 |
 | 下游返回可重试错误 | 写入数据库 Retry Task，ACK 当前 Pulsar 消息，保持同一幂等键 |
 | 下游返回不可重试错误 | Node Execution 和 Run 进入失败，记录业务错误码 |
-| 消息进入死信 | 产生告警并保留人工重放入口，重放仍使用原 Task ID |
+| Entry 消息进入死信 | Smoke Producer 阶段只保留 DLQ；接入真实 Entry Source 时增加独立积压告警和内部重新投递能力，保留原 `eventId` 以复用入口幂等 |
+| Task 消息进入死信 | 不直接重放旧消息；以数据库中的 Run、Task 和当前 `task_version` 为准，由 Reconciler、Scheduler 和 Outbox 自动恢复，最终失败进入运行记录 |
 | Workflow 被暂停 | 不派发新任务；执行中的节点按暂停语义收敛 |
 | Workflow 被逻辑删除 | Worker 在下一个执行边界取消 Run / Task；已经发往下游的请求不撤回 |
 
@@ -914,7 +917,7 @@ Reconciler 至少负责：
 - 检查长期未发送 Outbox。
 - 检查 `running` 超时的 Node Execution。
 - 检查 Run 当前节点与有效 Task 不一致。
-- 统计并告警死信、重复拒绝和版本冲突。
+- 统计数据库侧的重复拒绝、版本冲突、租约恢复和最终失败。Broker DLQ 由 TDMQ 原生指标监控，不通过 Reconciler 扫描 Topic。
 
 ## 16. 数据保留与基础统计
 
@@ -1003,7 +1006,7 @@ idempotencyKey
 - 密钥和渠道凭证不得写入 Workflow Revision；节点配置只保存资源引用。
 - 变量解析必须经过白名单 Registry，不允许任意对象路径访问。
 - Trigger Payload 和节点输出必须有大小限制和结构校验。
-- 手工重放、取消和查看运行明细需要独立权限。
+- 接入真实 Entry Source 后，内部入口事件重新投递、人工取消和查看运行明细需要独立权限；普通 Workflow 用户不接触 DLQ、Task ID 等运维概念。
 
 ## 20. 测试与发布门槛
 
@@ -1065,7 +1068,7 @@ idempotencyKey
 ### Phase 3：Worker 与 TDMQ Pulsar
 
 - 实现独立 Worker、Scheduler、Outbox Publisher 和 Reconciler。
-- 接入 Pulsar Subscription、重投、死信和监控。
+- 接入 Pulsar Subscription、重投和 DLQ 路由；真实 Entry Source 的 DLQ 告警与恢复在入口接入时补齐。
 - 接入 Start 触发与 Wait 调度。
 - 只允许启用 `start`、`wait`、`end`，通过开发 Fixture 配置 Start 资源选项。
 - 提供只读 Workflow 配置并投递标准事件的 Smoke Producer，不提供公开测试触发 API。
@@ -1094,6 +1097,7 @@ idempotencyKey
 | ClickHouse | 延后 | MySQL 无法承担运行明细和聚合查询 |
 | COS 归档 | 延后 | 法规或产品要求长期保留完整执行历史 |
 | 分布式执行数据库 | 延后 | 单集群容量测试或生产指标达到明确升级阈值 |
+| Entry DLQ 恢复工具 | 延后 | 接入真实 Entry Source；必须在生产灰度前完成独立 DLQ、积压告警、内部重新投递和操作审计 |
 
 ## 23. 待业务确认项
 
@@ -1122,6 +1126,6 @@ idempotencyKey
 - 停止在控制面立即生效并向用户展示“已停止”；活跃 Run 由后台异步取消，不阻塞 HTTP 请求，取消积压仅供内部运维检查。
 - 删除只更新 `biz_status`，Worker 在每个执行边界校验并取消未执行任务，不物理删除数据。
 - Scheduler 可多实例运行且不会重复认领导致状态破坏。
-- Outbox 积压、Task Lag、重试、死信和租约恢复均有指标和告警。
+- Outbox 积压、Task Lag、数据库重试、最终失败和租约恢复具有可观测信号；真实 Entry Source 上线前必须补齐 Entry DLQ 积压告警和恢复流程。
 - 核心正确性不依赖 Redis、进程内状态或 MQ 长延迟消息。
 - 容量测试证明目标流量下数据库、MQ、Worker 和下游动作均有明确余量。

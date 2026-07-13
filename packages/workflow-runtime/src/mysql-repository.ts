@@ -1967,7 +1967,7 @@ function failRunningNodeExecutions(
     failure_kind: null,
     status: "failed",
   }).where("run_id", "in", runIds)
-    .where("status", "=", "running")
+    .where("status", "in", ["running", "retrying"])
     .executeTakeFirst();
 }
 

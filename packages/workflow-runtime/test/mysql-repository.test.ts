@@ -376,6 +376,11 @@ describe("MysqlWorkflowRuntimeRepository", () => {
       "in",
       ["queued", "running", "waiting"],
     ]);
+    expect(db.executionUpdateWheres).toContainEqual([
+      "status",
+      "in",
+      ["running", "retrying"],
+    ]);
   });
 
   it("fails the matching dispatched task when its outbox attempts are exhausted", async () => {
@@ -879,6 +884,7 @@ function createMetricAggregationDbMock() {
 
 function createRuntimeDbMock() {
   const db = {
+    executionUpdateWheres: [] as unknown[][],
     runUpdateWheres: [] as unknown[][],
     selectFrom(table: string) {
       const builder = {
@@ -905,6 +911,7 @@ function createRuntimeDbMock() {
         set() { return builder; },
         where(...args: unknown[]) {
           if (table === "xy_wap_embed_workflow_run") db.runUpdateWheres.push(args);
+          if (table === "xy_wap_embed_workflow_node_execution") db.executionUpdateWheres.push(args);
           return builder;
         },
         async executeTakeFirst() {

@@ -167,6 +167,7 @@ export class WorkflowRuntimeService {
       };
       if (error.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
         const failed = await this.runtimeRepository.failActionExecution(failureInput);
+        if (failed.kind === "already-processed") throw alreadyProcessedError();
         if (failed.kind !== "success") throw staleTaskError();
         return {
           errorCode: failureInput.errorCode,
@@ -184,6 +185,7 @@ export class WorkflowRuntimeService {
         ...failureInput,
         dueAt: new Date(input.now.getTime() + retryDelayMs),
       });
+      if (scheduled.kind === "already-processed") throw alreadyProcessedError();
       if (scheduled.kind !== "success") throw staleTaskError();
       return {
         errorCode: failureInput.errorCode,

@@ -273,6 +273,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
     if (!run || !task || task.runId !== run.id) return notFound();
     if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running") return conflict();
     const existing = this.nodeExecutions.find(item => item.uid === input.uid
@@ -369,6 +370,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && item.idempotencyKey === input.idempotencyKey);
     if (!execution) return notFound();
     if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running"
       || execution.status !== "running") return conflict();
@@ -830,7 +832,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   private failRunningExecutions(runIds: Set<string>, errorCode: string, errorMessage: string) {
     for (const execution of this.nodeExecutions) {
-      if (!runIds.has(execution.runId) || execution.status !== "running") continue;
+      if (!runIds.has(execution.runId)
+        || (execution.status !== "running" && execution.status !== "retrying")) continue;
       execution.errorCode = errorCode;
       execution.errorMessage = errorMessage;
       execution.failureKind = null;

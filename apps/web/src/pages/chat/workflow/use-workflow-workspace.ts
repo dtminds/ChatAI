@@ -634,6 +634,7 @@ export function useWorkflowWorkspace(
       nodes: controller.nodes,
       onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
+      onRenameNode: handleRenameNode,
     },
     topBar: {
       canPublish: permissions.canPublish,

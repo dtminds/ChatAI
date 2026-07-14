@@ -1537,6 +1537,70 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: "首购欢迎消息" })).toBeInTheDocument();
   });
 
+  it("starts inline node renaming by double-clicking the title", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const messageNode = within(canvas).getByTestId("workflow-node-message-welcome");
+    await user.dblClick(within(messageNode).getByText("发送欢迎消息"));
+
+    const nameInput = within(messageNode).getByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "双击重命名{Enter}");
+
+    expect(within(canvas).getByRole("button", { name: "双击重命名" })).toBeInTheDocument();
+  });
+
+  it("renames a node from the settings panel menu", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "等待复购{Enter}");
+
+    expect(within(panel).getByRole("heading", { name: "等待复购" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "等待复购" })).toBeInTheDocument();
+    expect(getUndoButton(canvas)).toHaveAttribute("aria-label", "撤销：修改节点名称");
+  });
+
+  it("does not show the settings menu for protected nodes", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "新人入会触发" }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+
+    expect(within(panel).queryByRole("button", { name: "更多节点操作" })).not.toBeInTheDocument();
+  });
+
+  it("does not rename protected node titles on double-click", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const startNode = within(canvas).getByTestId("workflow-node-start");
+    const endNode = within(canvas).getByTestId("workflow-node-end");
+
+    await user.dblClick(within(startNode).getByText("新人入会触发"));
+    await user.dblClick(within(endNode).getByText("结束"));
+
+    expect(within(startNode).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(within(endNode).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+  });
+
   it("cancels inline node renaming with Escape", async () => {
     const user = userEvent.setup();
 

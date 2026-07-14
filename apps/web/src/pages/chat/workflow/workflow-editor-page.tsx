@@ -315,6 +315,7 @@ function WorkflowWorkspaceContent({
             nodes={inspector.nodes}
             onClose={inspector.onClose}
             onNodeChange={inspector.onNodeChange}
+            onRenameNode={inspector.onRenameNode}
           />
         ) : null}
       </div>}

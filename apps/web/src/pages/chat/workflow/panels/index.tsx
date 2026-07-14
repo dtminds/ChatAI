@@ -9,12 +9,14 @@ export function NodeConfigPanel({
   nodes,
   onClose,
   onNodeChange,
+  onRenameNode,
 }: {
   edges: WorkflowEdge[];
   node?: WorkflowNode;
   nodes: WorkflowNode[];
   onClose: () => void;
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
+  onRenameNode: (nodeId: string, title: string) => void;
 }) {
   if (!node) {
     return (
@@ -29,7 +31,7 @@ export function NodeConfigPanel({
   }
 
   return (
-    <BasePanel node={node} onClose={onClose}>
+    <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
       <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
     </BasePanel>
   );

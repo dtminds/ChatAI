@@ -47,6 +47,7 @@ function WorkflowBaseNodeComponent({
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(data.title);
   const renameCancelledRef = useRef(false);
+  const canRename = definition.canRename && Boolean(data.onRename);
   const nodeCardStyle = {
     "--workflow-node-accent-rgb": visual.accentRgb,
   } as CSSProperties;
@@ -71,11 +72,7 @@ function WorkflowBaseNodeComponent({
           actionMenuOpen={actionMenuOpen}
           data={data}
           id={id}
-          onRename={() => {
-            renameCancelledRef.current = false;
-            setRenameValue(data.title);
-            setIsRenaming(true);
-          }}
+          onRename={startRenaming}
           setActionMenuOpen={setActionMenuOpen}
         />
         <div
@@ -99,6 +96,7 @@ function WorkflowBaseNodeComponent({
           tabIndex={0}
         >
           <NodeHeader
+            canRename={canRename}
             data={data}
             isRenaming={isRenaming}
             onCancelRename={() => {
@@ -123,6 +121,7 @@ function WorkflowBaseNodeComponent({
               }
             }}
             onRenameValueChange={setRenameValue}
+            onStartRename={startRenaming}
             renameValue={renameValue}
             visual={visual}
           />
@@ -132,24 +131,36 @@ function WorkflowBaseNodeComponent({
       </div>
     </div>
   );
+
+  function startRenaming() {
+    if (!canRename) return;
+
+    renameCancelledRef.current = false;
+    setRenameValue(data.title);
+    setIsRenaming(true);
+  }
 }
 
 export const WorkflowBaseNode = memo(WorkflowBaseNodeComponent);
 
 function NodeHeader({
+  canRename,
   data,
   isRenaming,
   onCancelRename,
   onCommitRename,
   onRenameValueChange,
+  onStartRename,
   renameValue,
   visual,
 }: {
+  canRename: boolean;
   data: WorkflowNodeRenderData;
   isRenaming: boolean;
   onCancelRename: () => void;
   onCommitRename: () => void;
   onRenameValueChange: (value: string) => void;
+  onStartRename: () => void;
   renameValue: string;
   visual: NodeVisual;
 }) {
@@ -193,7 +204,17 @@ function NodeHeader({
           </span>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-base font-semibold text-foreground">{data.title}</span>
+            <span
+              className="truncate text-base font-semibold text-foreground"
+              onDoubleClick={(event) => {
+                if (!canRename) return;
+
+                event.stopPropagation();
+                onStartRename();
+              }}
+            >
+              {data.title}
+            </span>
             <NodeAiBadge visual={visual} />
           </span>
         )}

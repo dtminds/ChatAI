@@ -24,6 +24,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 const maxReceptionManagedAccountsPerGroup = 5;
@@ -41,10 +42,12 @@ export type GroupChatReceptionDialogState = {
 
 export function GroupChatReceptionSettingsDialog({
   onOpenChange,
+  onSave,
   open,
   state,
 }: {
   onOpenChange: (open: boolean) => void;
+  onSave: (groupChatIds: string[], hostUserSeatIds: string[]) => void | Promise<void>;
   open: boolean;
   state: GroupChatReceptionDialogState | null;
 }) {
@@ -52,6 +55,8 @@ export function GroupChatReceptionSettingsDialog({
   const [selectedManagedAccountIds, setSelectedManagedAccountIds] = useState<string[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const groupChats = state?.groupChats ?? [];
   const availableManagedAccounts = state?.availableManagedAccounts ?? [];
@@ -72,12 +77,23 @@ export function GroupChatReceptionSettingsDialog({
     selectedManagedAccountIds.length >= maxReceptionManagedAccountsPerGroup;
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !state) {
       return;
     }
 
-    setSelectedManagedAccountIds([]);
+    const availableIds = new Set(state.availableManagedAccounts.map((account) => account.id));
+    const initialSelectedIds =
+      state.groupChats.length === 1
+        ? state.groupChats[0].receptionManagedAccounts
+            .map((account) => account.id)
+            .filter((accountId) => availableIds.has(accountId))
+            .slice(0, maxReceptionManagedAccountsPerGroup)
+        : [];
+
+    setSelectedManagedAccountIds(initialSelectedIds);
     setIsPickerOpen(false);
+    setSaving(false);
+    setErrorMessage("");
   }, [open, state]);
 
   function toggleManagedAccount(managedAccountId: string) {
@@ -94,9 +110,27 @@ export function GroupChatReceptionSettingsDialog({
     });
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onOpenChange(false);
+
+    if (groupChats.length === 0 || saving) {
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+
+    try {
+      await onSave(
+        groupChats.map((groupChat) => groupChat.id),
+        selectedManagedAccountIds,
+      );
+      onOpenChange(false);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -202,15 +236,29 @@ export function GroupChatReceptionSettingsDialog({
                 )}
               </PopoverContent>
             </Popover>
+            {errorMessage ? (
+              <p className="text-sm text-destructive" role="alert">
+                {errorMessage}
+              </p>
+            ) : null}
           </div>
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="outline">
+              <Button disabled={saving} type="button" variant="outline">
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit">确认提交</Button>
+            <Button disabled={saving} type="submit">
+              {saving ? (
+                <>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>保存中</span>
+                </>
+              ) : (
+                "确认提交"
+              )}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -275,4 +323,16 @@ function ManagedAccountIdentity({
 
 function getInitial(name: string) {
   return name.trim().slice(0, 1) || "?";
+}
+
+function getErrorMessage(error: unknown) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return "保存失败，请稍后重试";
 }

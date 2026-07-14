@@ -150,6 +150,36 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts group seat host user seat ids payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().setGroupSeatHostUserSeatIds({
+      groupSeatId: 501,
+      hostUserSeatIds: [102, 103],
+      platform: 5,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/group-seat/set-host-user-seat-ids",
+      expect.objectContaining({
+        body: JSON.stringify({
+          groupSeatId: 501,
+          hostUserSeatIds: [102, 103],
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";

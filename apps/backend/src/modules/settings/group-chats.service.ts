@@ -1,11 +1,15 @@
 import type {
   SettingsGroupChat,
+  SettingsGroupChatReceptionUpdateRequest,
+  SettingsGroupChatReceptionUpdateResponse,
   SettingsGroupChatsQuery,
   SettingsGroupChatsResponse,
 } from "@chatai/contracts";
 import { type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import { BadRequestError } from "../../shared/errors.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
+import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 
 type TenantScope = AuthenticatedWorkbenchScope;
 
@@ -14,6 +18,7 @@ type GroupChatRow = {
   group_seat_id: number;
   group_name: string | null;
   group_remark: string | null;
+  host_user_seat_ids: string | null;
   seat_avatar: string | null;
   seat_id: number;
   seat_name: string | null;
@@ -25,8 +30,15 @@ type ManagedAccountFilterRow = {
   name: string | null;
 };
 
+type SeatIdentityRow = {
+  id: number;
+  third_avatar: string | null;
+  third_user_name: string | null;
+};
+
 const dbActiveStatus = 1;
 const groupChatListLimit = 500;
+const maxReceptionManagedAccountsPerGroup = 5;
 
 export class GroupChatSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
@@ -35,14 +47,15 @@ export class GroupChatSettingsService {
     scope: TenantScope,
     query: SettingsGroupChatsQuery = {},
   ): Promise<SettingsGroupChatsResponse> {
-    const [filterManagedAccounts, receptionManagedAccountsByGroupId, groupChatRows] =
+    const [filterManagedAccounts, groupChatRows] = await Promise.all([
+      this.listFilterManagedAccounts(scope),
+      this.listGroupChatRows(scope, query),
+    ]);
+    const [receptionManagedAccountsByGroupSeatId, selectableReceptionManagedAccountsByGroupSeatId] =
       await Promise.all([
-        this.listFilterManagedAccounts(scope),
-        this.listReceptionManagedAccountsByGroupId(scope),
-        this.listGroupChatRows(scope, query),
+        this.listReceptionManagedAccountsByGroupSeatId(scope, groupChatRows),
+        this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows),
       ]);
-    const selectableReceptionManagedAccountsByGroupSeatId =
-      await this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
 
     return {
       filterManagedAccounts: filterManagedAccounts.map((account) => ({
@@ -52,11 +65,60 @@ export class GroupChatSettingsService {
       groupChats: groupChatRows.map((row) =>
         mapGroupChat(
           row,
-          receptionManagedAccountsByGroupId.get(row.third_group_id) ?? [],
+          receptionManagedAccountsByGroupSeatId.get(row.group_seat_id) ?? [],
           selectableReceptionManagedAccountsByGroupSeatId.get(row.group_seat_id) ?? [],
         ),
       ),
     };
+  }
+
+  async updateReception(
+    scope: TenantScope,
+    payload: SettingsGroupChatReceptionUpdateRequest,
+    javaClient: WorkbenchJavaClient,
+  ): Promise<SettingsGroupChatReceptionUpdateResponse> {
+    const groupSeatIds = uniquePositiveIds(payload.groupChatIds);
+
+    if (groupSeatIds.length === 0) {
+      throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
+    }
+
+    if (payload.hostUserSeatIds.length > maxReceptionManagedAccountsPerGroup) {
+      throw new BadRequestError(
+        "RECEPTION_SEAT_LIMIT_EXCEEDED",
+        `每个群聊最多选择 ${maxReceptionManagedAccountsPerGroup} 个可接待企微号`,
+      );
+    }
+
+    const requestedHostUserSeatIds = uniquePositiveIds(payload.hostUserSeatIds);
+    const groupChatRows = await this.listGroupChatRowsByIds(scope, groupSeatIds);
+
+    if (groupChatRows.length !== groupSeatIds.length) {
+      throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
+    }
+
+    const selectableByGroupSeatId =
+      await this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
+
+    for (const groupChat of groupChatRows) {
+      const selectableIds = new Set(
+        (selectableByGroupSeatId.get(groupChat.group_seat_id) ?? []).map(
+          (account) => account.id,
+        ),
+      );
+      const hostUserSeatIds = requestedHostUserSeatIds.filter((seatId) =>
+        selectableIds.has(String(seatId)),
+      );
+
+      await javaClient.setGroupSeatHostUserSeatIds({
+        groupSeatId: groupChat.group_seat_id,
+        hostUserSeatIds,
+        platform: scope.platform,
+        uid: scope.uid,
+      });
+    }
+
+    return { updated: true };
   }
 
   private listFilterManagedAccounts(scope: TenantScope) {
@@ -69,55 +131,48 @@ export class GroupChatSettingsService {
       .execute() as Promise<ManagedAccountFilterRow[]>;
   }
 
-  private async listReceptionManagedAccountsByGroupId(scope: TenantScope) {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_group_seat as reception_group_seat")
-      .innerJoin("xy_wap_embed_user_seat as reception_seat", (join) =>
-        join
-          .onRef("reception_seat.third_userid", "=", "reception_group_seat.third_userid")
-          .onRef("reception_seat.uid", "=", "reception_group_seat.uid")
-          .onRef("reception_seat.platform", "=", "reception_group_seat.platform"),
-      )
-      .select([
-        "reception_group_seat.third_group_id as third_group_id",
-        "reception_seat.id as seat_id",
-        "reception_seat.third_avatar as seat_avatar",
-        "reception_seat.third_user_name as seat_name",
-      ])
-      .where("reception_group_seat.uid", "=", scope.uid)
-      .where("reception_group_seat.platform", "=", scope.platform)
-      .where("reception_group_seat.biz_status", "=", dbActiveStatus)
-      .orderBy("reception_seat.id", "desc")
-      .execute();
-
-    const accountsByGroupId = new Map<
-      string,
+  private async listReceptionManagedAccountsByGroupSeatId(
+    scope: TenantScope,
+    groupChatRows: GroupChatRow[],
+  ) {
+    const hostUserSeatIds = uniquePositiveIds(
+      groupChatRows.flatMap((row) => parseHostUserSeatIds(row.host_user_seat_ids)),
+    );
+    const seatsById = await this.listSeatsByIds(scope, hostUserSeatIds);
+    const accountsByGroupSeatId = new Map<
+      number,
       SettingsGroupChat["receptionManagedAccounts"]
     >();
-    const seenSeatIdsByGroupId = new Map<string, Set<string>>();
 
-    for (const row of rows) {
-      const seatId = String(row.seat_id);
-      const seenSeatIds =
-        seenSeatIdsByGroupId.get(row.third_group_id) ?? new Set<string>();
+    for (const row of groupChatRows) {
+      const accounts: SettingsGroupChat["receptionManagedAccounts"] = [];
+      const seenSeatIds = new Set<string>();
 
-      if (seenSeatIds.has(seatId)) {
-        continue;
+      for (const seatId of parseHostUserSeatIds(row.host_user_seat_ids)) {
+        const seatKey = String(seatId);
+
+        if (seenSeatIds.has(seatKey)) {
+          continue;
+        }
+
+        const seat = seatsById.get(seatId);
+
+        if (!seat) {
+          continue;
+        }
+
+        seenSeatIds.add(seatKey);
+        accounts.push({
+          avatarUrl: seat.third_avatar || "",
+          id: seatKey,
+          name: seat.third_user_name || "未命名托管账号",
+        });
       }
 
-      seenSeatIds.add(seatId);
-      seenSeatIdsByGroupId.set(row.third_group_id, seenSeatIds);
-
-      const accounts = accountsByGroupId.get(row.third_group_id) ?? [];
-      accounts.push({
-        avatarUrl: row.seat_avatar || "",
-        id: seatId,
-        name: row.seat_name || "未命名托管账号",
-      });
-      accountsByGroupId.set(row.third_group_id, accounts);
+      accountsByGroupSeatId.set(row.group_seat_id, accounts);
     }
 
-    return accountsByGroupId;
+    return accountsByGroupSeatId;
   }
 
   private async listSelectableReceptionManagedAccountsByGroupSeatId(
@@ -191,6 +246,49 @@ export class GroupChatSettingsService {
     return accountsByGroupSeatId;
   }
 
+  private async listSeatsByIds(scope: TenantScope, seatIds: number[]) {
+    if (seatIds.length === 0) {
+      return new Map<number, SeatIdentityRow>();
+    }
+
+    const rows = (await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select(["seat.id", "seat.third_avatar", "seat.third_user_name"])
+      .where("seat.uid", "=", scope.uid)
+      .where("seat.platform", "=", scope.platform)
+      .where("seat.id", "in", seatIds)
+      .execute()) as SeatIdentityRow[];
+
+    return new Map(rows.map((row) => [row.id, row] as const));
+  }
+
+  private listGroupChatRowsByIds(scope: TenantScope, groupSeatIds: number[]) {
+    return this.db
+      .selectFrom("xy_wap_embed_group_seat as group_seat")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "group_seat.third_userid")
+          .onRef("seat.uid", "=", "group_seat.uid")
+          .onRef("seat.platform", "=", "group_seat.platform"),
+      )
+      .select([
+        "group_seat.avatar as avatar",
+        "group_seat.id as group_seat_id",
+        "group_seat.host_user_seat_ids as host_user_seat_ids",
+        "group_seat.name as group_name",
+        "group_seat.remark as group_remark",
+        "group_seat.third_group_id as third_group_id",
+        "seat.id as seat_id",
+        "seat.third_avatar as seat_avatar",
+        "seat.third_user_name as seat_name",
+      ])
+      .where("group_seat.uid", "=", scope.uid)
+      .where("group_seat.platform", "=", scope.platform)
+      .where("group_seat.biz_status", "=", dbActiveStatus)
+      .where("group_seat.id", "in", groupSeatIds)
+      .execute() as Promise<GroupChatRow[]>;
+  }
+
   private listGroupChatRows(scope: TenantScope, query: SettingsGroupChatsQuery) {
     let groupQuery = this.db
       .selectFrom("xy_wap_embed_group_seat as group_seat")
@@ -203,6 +301,7 @@ export class GroupChatSettingsService {
       .select([
         "group_seat.avatar as avatar",
         "group_seat.id as group_seat_id",
+        "group_seat.host_user_seat_ids as host_user_seat_ids",
         "group_seat.name as group_name",
         "group_seat.remark as group_remark",
         "group_seat.third_group_id as third_group_id",
@@ -263,6 +362,42 @@ function mapGroupChat(
     selectableReceptionManagedAccounts,
     thirdGroupId: row.third_group_id,
   };
+}
+
+function parseHostUserSeatIds(value: string | null | undefined) {
+  if (value == null || !value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return uniquePositiveIds(parsed.map((item) => String(item)));
+  } catch {
+    return [];
+  }
+}
+
+function uniquePositiveIds(values: Array<string | number>) {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+
+  for (const value of values) {
+    const numericValue = parseMySqlId(value);
+
+    if (numericValue == null || seen.has(numericValue)) {
+      continue;
+    }
+
+    seen.add(numericValue);
+    ids.push(numericValue);
+  }
+
+  return ids;
 }
 
 function firstNonEmptyString(...values: Array<string | null | undefined>) {

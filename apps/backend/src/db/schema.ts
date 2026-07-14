@@ -985,6 +985,10 @@ export interface XyWapEmbedGroupSeat {
    */
   create_time: Generated<Date>;
   /**
+   * 可接待的企微成员席位ids（关联xy_wap_embed_user_seat.id），示例：[1,2,3]
+   */
+  host_user_seat_ids: Generated<string>;
+  /**
    * id
    */
   id: Generated<number>;

@@ -6,6 +6,7 @@ import {
   listGroupChats,
   listSubAccounts,
   syncManagedAccountSeatGroups,
+  updateGroupChatReception,
   updateSubAccount,
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
@@ -107,6 +108,24 @@ describe("settings service", () => {
     expect(mock.history.get[0]?.params).toEqual({
       keyword: "护肤",
       managedAccountId: "101",
+    });
+  });
+
+  it("uses public /server settings endpoints for group chat reception updates", async () => {
+    mock.onPut("/server/settings/group-chats/reception").reply(200, {
+      data: { updated: true },
+      success: true,
+    });
+
+    await updateGroupChatReception({
+      groupChatIds: ["501"],
+      hostUserSeatIds: ["102"],
+    });
+
+    expect(mock.history.put[0]?.url).toBe("/server/settings/group-chats/reception");
+    expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
+      groupChatIds: ["501"],
+      hostUserSeatIds: ["102"],
     });
   });
 });

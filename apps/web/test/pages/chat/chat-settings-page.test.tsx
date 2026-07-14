@@ -283,6 +283,10 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
+    mock.onPut("/server/settings/group-chats/reception").reply(200, {
+      data: { updated: true },
+      success: true,
+    });
     mock.onGet("/server/settings/group-chats").reply((config) => {
       const keyword = config.params?.keyword as string | undefined;
       const managedAccountId = config.params?.managedAccountId as string | undefined;

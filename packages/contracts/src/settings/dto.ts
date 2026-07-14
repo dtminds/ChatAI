@@ -109,6 +109,15 @@ export const SettingsGroupChatsQuerySchema = Type.Object({
   managedAccountId: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
+export const SettingsGroupChatReceptionUpdateRequestSchema = Type.Object({
+  groupChatIds: Type.Array(Type.String(), { minItems: 1 }),
+  hostUserSeatIds: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionUpdateResponseSchema = Type.Object({
+  updated: Type.Boolean(),
+});
+
 export const SettingsSubAccountCreateRequestSchema = Type.Object({
   account: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
@@ -215,6 +224,12 @@ export type SettingsGroupChatFilterManagedAccount = Static<
 >;
 export type SettingsGroupChatsResponse = Static<typeof SettingsGroupChatsResponseSchema>;
 export type SettingsGroupChatsQuery = Static<typeof SettingsGroupChatsQuerySchema>;
+export type SettingsGroupChatReceptionUpdateRequest = Static<
+  typeof SettingsGroupChatReceptionUpdateRequestSchema
+>;
+export type SettingsGroupChatReceptionUpdateResponse = Static<
+  typeof SettingsGroupChatReceptionUpdateResponseSchema
+>;
 export type SettingsSubAccountCreateRequest = Static<
   typeof SettingsSubAccountCreateRequestSchema
 >;

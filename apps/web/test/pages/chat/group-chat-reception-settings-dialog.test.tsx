@@ -45,6 +45,7 @@ describe("GroupChatReceptionSettingsDialog", () => {
     render(
       <GroupChatReceptionSettingsDialog
         onOpenChange={vi.fn()}
+        onSave={vi.fn()}
         open
         state={dialogState}
       />,
@@ -68,5 +69,28 @@ describe("GroupChatReceptionSettingsDialog", () => {
     expect(within(dialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
       "企微号1，企微号2，企微号3，企微号4，企微号5",
     );
+  });
+
+  it("saves selected reception seats for the current group chats", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onOpenChange = vi.fn();
+
+    render(
+      <GroupChatReceptionSettingsDialog
+        onOpenChange={onOpenChange}
+        onSave={onSave}
+        open
+        state={dialogState}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "群聊接待设置" });
+    await user.click(within(dialog).getByRole("button", { name: "选择可接待企微号" }));
+    await user.click(await screen.findByRole("checkbox", { name: "企微号1" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认提交" }));
+
+    expect(onSave).toHaveBeenCalledWith(["501"], ["1"]);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

@@ -311,6 +311,12 @@ export type WorkbenchJavaClient = {
     syncMembers?: boolean;
     uid: number;
   }): Promise<void>;
+  setGroupSeatHostUserSeatIds(input: {
+    groupSeatId: number;
+    hostUserSeatIds: number[] | null;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   testAgent(input: {
     messages: Array<{
       contents: Array<{
@@ -777,6 +783,21 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "sync-seat-groups",
+      ).then(() => undefined);
+    },
+    setGroupSeatHostUserSeatIds(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/group-seat/set-host-user-seat-ids",
+        {
+          groupSeatId: input.groupSeatId,
+          hostUserSeatIds: input.hostUserSeatIds,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "set-group-seat-host-user-seat-ids",
       ).then(() => undefined);
     },
     testAgent(input) {

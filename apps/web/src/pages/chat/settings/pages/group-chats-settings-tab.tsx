@@ -32,7 +32,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listGroupChats } from "@/pages/chat/settings/settings-service";
+import {
+  listGroupChats,
+  updateGroupChatReception,
+} from "@/pages/chat/settings/settings-service";
 import {
   GroupChatReceptionSettingsDialog,
   type GroupChatReceptionManagedAccountOption,
@@ -156,6 +159,27 @@ export function GroupChatsSettingsTab() {
       availableManagedAccounts: buildAvailableManagedAccountsForDialog(groupChats),
       groupChats,
     });
+  }
+
+  async function handleSaveReception(groupChatIds: string[], hostUserSeatIds: string[]) {
+    await updateGroupChatReception({
+      groupChatIds,
+      hostUserSeatIds,
+    });
+
+    const response = await listGroupChats({
+      keyword: keyword.trim() || undefined,
+      managedAccountId:
+        managedAccountFilter === allManagedAccountsFilterValue
+          ? undefined
+          : managedAccountFilter,
+    });
+    setData(response);
+    setSelectedGroupChatIds((current) =>
+      current.filter((groupChatId) =>
+        response.groupChats.some((groupChat) => groupChat.id === groupChatId),
+      ),
+    );
   }
 
   const selectedGroupChats = data.groupChats.filter((groupChat) =>
@@ -295,6 +319,7 @@ export function GroupChatsSettingsTab() {
             setDialogState(null);
           }
         }}
+        onSave={handleSaveReception}
         open={!!dialogState}
         state={dialogState}
       />

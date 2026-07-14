@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GroupChatSettingsService } from "../../../src/modules/settings/group-chats.service.js";
 
 describe("GroupChatSettingsService", () => {
-  it("lists enabled group chats with opening managed account and reception seat count", async () => {
+  it("lists enabled group chats with opening managed account and reception seats from host_user_seat_ids", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
 
     const result = await service.list({ platform: 5, uid: 9001 });
@@ -28,13 +28,8 @@ describe("GroupChatSettingsService", () => {
               id: "102",
               name: "念都堂",
             },
-            {
-              avatarUrl: "https://example.com/drc.png",
-              id: "101",
-              name: "德瑞可",
-            },
           ],
-          receptionSeatCount: 2,
+          receptionSeatCount: 1,
           selectableReceptionManagedAccounts: [
             {
               avatarUrl: "https://example.com/ndt.png",
@@ -55,9 +50,9 @@ describe("GroupChatSettingsService", () => {
           },
           receptionManagedAccounts: [
             {
-              avatarUrl: "https://example.com/ndt.png",
-              id: "102",
-              name: "念都堂",
+              avatarUrl: "https://example.com/drc.png",
+              id: "101",
+              name: "德瑞可",
             },
           ],
           receptionSeatCount: 1,
@@ -79,19 +74,8 @@ describe("GroupChatSettingsService", () => {
             id: "102",
             name: "念都堂",
           },
-          receptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/ndt.png",
-              id: "102",
-              name: "念都堂",
-            },
-            {
-              avatarUrl: "https://example.com/drc.png",
-              id: "101",
-              name: "德瑞可",
-            },
-          ],
-          receptionSeatCount: 2,
+          receptionManagedAccounts: [],
+          receptionSeatCount: 0,
           selectableReceptionManagedAccounts: [
             {
               avatarUrl: "https://example.com/drc.png",
@@ -125,9 +109,9 @@ describe("GroupChatSettingsService", () => {
         },
         receptionManagedAccounts: [
           {
-            avatarUrl: "https://example.com/ndt.png",
-            id: "102",
-            name: "念都堂",
+            avatarUrl: "https://example.com/drc.png",
+            id: "101",
+            name: "德瑞可",
           },
         ],
         receptionSeatCount: 1,
@@ -158,6 +142,36 @@ describe("GroupChatSettingsService", () => {
         ?.selectableReceptionManagedAccounts.some((account) => account.id === "101"),
     ).toBe(false);
   });
+
+  it("updates reception seats through Java API and ignores seats outside each group", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+    const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      service.updateReception(
+        { platform: 5, uid: 9001 },
+        {
+          groupChatIds: ["501", "502"],
+          hostUserSeatIds: ["101", "102"],
+        },
+        { setGroupSeatHostUserSeatIds } as never,
+      ),
+    ).resolves.toEqual({ updated: true });
+
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledTimes(2);
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenNthCalledWith(1, {
+      groupSeatId: 501,
+      hostUserSeatIds: [102],
+      platform: 5,
+      uid: 9001,
+    });
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenNthCalledWith(2, {
+      groupSeatId: 502,
+      hostUserSeatIds: [101],
+      platform: 5,
+      uid: 9001,
+    });
+  });
 });
 
 function createDbMock() {
@@ -185,6 +199,7 @@ function createDbMock() {
     {
       avatar: "https://example.com/group-1.png",
       biz_status: 1,
+      host_user_seat_ids: "[102]",
       id: 501,
       name: "护肤交流群",
       platform: 5,
@@ -196,6 +211,7 @@ function createDbMock() {
     {
       avatar: "",
       biz_status: 1,
+      host_user_seat_ids: "[101]",
       id: 502,
       name: "售后答疑群",
       platform: 5,
@@ -207,6 +223,7 @@ function createDbMock() {
     {
       avatar: "",
       biz_status: 1,
+      host_user_seat_ids: "[]",
       id: 503,
       name: "护肤交流群 2",
       platform: 5,
@@ -268,10 +285,6 @@ function createDbMock() {
         return createSeatQueryBuilder(seats);
       }
 
-      if (table === "xy_wap_embed_group_seat as reception_group_seat") {
-        return createReceptionManagedAccountsBuilder(groupSeats, seats);
-      }
-
       if (table === "xy_wap_embed_group_seat as group_seat") {
         return createGroupSeatListBuilder(groupSeats, seats);
       }
@@ -298,12 +311,23 @@ function createSeatQueryBuilder(seats: Array<{
   const builder = {
     execute: async () =>
       seats
-        .filter((seat) => matchesWhere(seat, wheres, {
-          "seat.biz_status": "biz_status",
-          "seat.id": "id",
-          "seat.platform": "platform",
-          "seat.uid": "uid",
-        }))
+        .filter((seat) =>
+          matchesWhere(seat, wheres, {
+            "seat.biz_status": "biz_status",
+            "seat.id": "id",
+            "seat.platform": "platform",
+            "seat.uid": "uid",
+          }),
+        )
+        .filter((seat) =>
+          wheres.every(([column, operator, value]) => {
+            if (column === "seat.id" && operator === "in" && Array.isArray(value)) {
+              return value.includes(seat.id);
+            }
+
+            return true;
+          }),
+        )
         .map((seat) => ({
           avatarUrl: seat.third_avatar ?? "",
           id: seat.id,
@@ -311,6 +335,8 @@ function createSeatQueryBuilder(seats: Array<{
           seat_avatar: seat.third_avatar ?? "",
           seat_id: seat.id,
           seat_name: seat.third_user_name,
+          third_avatar: seat.third_avatar ?? "",
+          third_user_name: seat.third_user_name,
         })),
     innerJoin: () => builder,
     orderBy: () => builder,
@@ -397,71 +423,11 @@ function createGroupMemberQueryBuilder(
   return builder;
 }
 
-function createReceptionManagedAccountsBuilder(
-  groupSeats: Array<{
-    biz_status: number;
-    platform: number;
-    third_group_id: string;
-    third_userid: string;
-    uid: number;
-  }>,
-  seats: Array<{
-    id: number;
-    platform: number;
-    third_avatar: string;
-    third_user_name: string | null;
-    third_userid: string;
-    uid: number;
-  }>,
-) {
-  const wheres: Array<[string, string, unknown]> = [];
-  const builder = {
-    execute: async () =>
-      groupSeats
-        .filter((groupSeat) =>
-          matchesWhere(groupSeat, wheres, {
-            "reception_group_seat.biz_status": "biz_status",
-            "reception_group_seat.platform": "platform",
-            "reception_group_seat.uid": "uid",
-          }),
-        )
-        .map((groupSeat) => {
-          const seat = seats.find(
-            (item) =>
-              item.third_userid === groupSeat.third_userid &&
-              item.uid === groupSeat.uid &&
-              item.platform === groupSeat.platform,
-          );
-
-          if (!seat) {
-            return null;
-          }
-
-          return {
-            seat_avatar: seat.third_avatar,
-            seat_id: seat.id,
-            seat_name: seat.third_user_name,
-            third_group_id: groupSeat.third_group_id,
-          };
-        })
-        .filter((row): row is NonNullable<typeof row> => row != null)
-        .sort((left, right) => right.seat_id - left.seat_id),
-    innerJoin: () => builder,
-    orderBy: () => builder,
-    select: () => builder,
-    where: (...whereArgs: [string, string, unknown]) => {
-      wheres.push(whereArgs);
-      return builder;
-    },
-  };
-
-  return builder;
-}
-
 function createGroupSeatListBuilder(
   groupSeats: Array<{
     avatar: string;
     biz_status: number;
+    host_user_seat_ids: string;
     id: number;
     name: string | null;
     platform: number;
@@ -505,6 +471,7 @@ function createGroupSeatListBuilder(
             group_name: groupSeat.name,
             group_remark: groupSeat.remark,
             group_seat_id: groupSeat.id,
+            host_user_seat_ids: groupSeat.host_user_seat_ids,
             seat_avatar: seat.third_avatar,
             seat_id: seat.id,
             seat_name: seat.third_user_name,
@@ -539,8 +506,8 @@ function createGroupSeatListBuilder(
           }
 
           if (
-            Array.isArray(thirdGroupIdFilter) &&
-            !thirdGroupIdFilter.includes(row.third_group_id)
+            typeof thirdGroupIdFilter === "string" &&
+            row.third_group_id !== thirdGroupIdFilter
           ) {
             return false;
           }
@@ -553,11 +520,7 @@ function createGroupSeatListBuilder(
             return false;
           }
 
-          if (orFilters.length > 0) {
-            return orFilters.some((filter) => filter(row));
-          }
-
-          return true;
+          return orFilters.length === 0 || orFilters.some((filter) => filter(row));
         }),
     innerJoin: () => builder,
     limit: () => builder,

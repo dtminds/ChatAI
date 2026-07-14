@@ -221,19 +221,6 @@ type ConversationHydrationSources = {
   lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
 
-type ConversationMessageScopeRow = {
-  chat_type: number;
-  conversation_external_id: string;
-  conversation_group_id: string;
-  conversation_id: number | string;
-  group_seat_id?: number | string | null;
-  platform: number;
-  seat_id?: number | string | null;
-  third_group_origin_userid?: string | null;
-  third_userid: string;
-  uid: number;
-};
-
 type SeatBaseRow = {
   avatar: string | null;
   biz_status: number | string | null;
@@ -4070,6 +4057,7 @@ export class WorkbenchRepository {
       smartReplyScope?: {
         chatType: number;
         thirdExternalId: string;
+        thirdGroupId?: string;
         thirdUserId: string;
         uid: number;
       };
@@ -4211,6 +4199,7 @@ export class WorkbenchRepository {
     );
 
     const thirdExternalId = (conversation.conversation_external_id || "").trim();
+    const thirdGroupId = (conversation.conversation_group_id || "").trim();
     const thirdUserId = (conversation.third_userid || "").trim();
     const uid = toNumber(conversation.uid) ?? 0;
     const smartReplyScope =
@@ -4221,7 +4210,15 @@ export class WorkbenchRepository {
             thirdUserId,
             uid,
           }
-        : undefined;
+        : conversation.chat_type === CHAT_TYPE_GROUP && thirdGroupId && thirdUserId && uid > 0
+          ? {
+              chatType: CHAT_TYPE_GROUP,
+              thirdExternalId: "",
+              thirdGroupId,
+              thirdUserId,
+              uid,
+            }
+          : undefined;
 
     return {
       filteredCount: 0,

@@ -49,7 +49,13 @@ function renderPanel({
   );
 }
 
-function enableSmartReplyDisplayContext(enabled = true) {
+function enableSmartReplyDisplayContext({
+  enabled = true,
+  mode = "single",
+}: {
+  enabled?: boolean;
+  mode?: "single" | "group";
+} = {}) {
   useWorkbenchStore.setState((state) => ({
     accounts: [
       {
@@ -82,7 +88,7 @@ function enableSmartReplyDisplayContext(enabled = true) {
           customerId: "cust-001",
           customerName: "客户甲",
           id: "conv-001",
-          mode: "single",
+          mode,
           preview: "",
           priority: "medium",
           quietFor: "",
@@ -151,15 +157,15 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(screen.queryByText("隐藏的话术")).not.toBeInTheDocument();
   });
 
-  it("does not show smart replies in group conversations", () => {
-    enableSmartReplyDisplayContext();
+  it("shows smart replies in group conversations", () => {
+    enableSmartReplyDisplayContext({ mode: "group" });
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
           "1": {
             assistantName: "智能助手",
-            content: "群聊不展示的话术",
+            content: "群聊可展示的话术",
             generateStatus: 2,
             pollComplete: true,
             status: "ready",
@@ -178,8 +184,8 @@ describe("ChatMessagePanel smart reply state", () => {
       ],
     });
 
-    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    expect(screen.queryByText("群聊不展示的话术")).not.toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("群聊可展示的话术")).toBeInTheDocument();
   });
 
   it("hides cached smart replies immediately after seat AI assistant is disabled", () => {
@@ -327,7 +333,7 @@ describe("ChatMessagePanel smart reply state", () => {
   it("disables the smart reply action when seat AI assistant is unavailable", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
-    enableSmartReplyDisplayContext(false);
+    enableSmartReplyDisplayContext({ enabled: false });
 
     renderPanel({ onTriggerSmartReply });
 

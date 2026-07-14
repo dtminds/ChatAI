@@ -597,13 +597,13 @@ describe("smart-reply-adapter", () => {
         mode: "single",
       } as Conversation),
     ).toBe(false);
-    expect(isSmartReplySupportedConversation({ mode: "group" } as Conversation)).toBe(false);
+    expect(isSmartReplySupportedConversation({ mode: "group" } as Conversation)).toBe(true);
     expect(
       isSmartReplyEligibleMessage({
         ...customerMessage,
         isGroupConversation: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowSmartReplyTriggerIcon(
         {
@@ -612,7 +612,7 @@ describe("smart-reply-adapter", () => {
         },
         undefined,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, undefined),
     ).toBe(true);

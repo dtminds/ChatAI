@@ -168,6 +168,10 @@ export function createTriggeredSmartReplySuggestion(
 export function isSmartReplySupportedConversation(
   conversation?: Pick<Conversation, "customerBindType" | "mode"> | null,
 ) {
+  if (conversation?.mode === "group") {
+    return true;
+  }
+
   return isConversationAIFeatureSupported(conversation);
 }
 
@@ -175,8 +179,7 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
   if (
     message.role !== "customer" ||
     message.isOwnMessage ||
-    message.isRevoked ||
-    message.isGroupConversation
+    message.isRevoked
   ) {
     return false;
   }

@@ -222,9 +222,18 @@ type SmartReplyMessagePageMetadata = {
   smartReplyScope?: {
     chatType: number;
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   };
+};
+
+type SmartReplyJavaScope = {
+  chatType: number;
+  thirdExternalId: string;
+  thirdGroupId?: string;
+  thirdUserId: string;
+  uid: number;
 };
 
 type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
@@ -266,8 +275,11 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
   return msgIds;
 }
 
-function assertSmartReplySingleConversation(conversation: ConversationLookup) {
-  if (conversation.chatType !== CHAT_TYPE.SINGLE) {
+function assertSmartReplySupportedConversation(conversation: ConversationLookup) {
+  if (
+    conversation.chatType !== CHAT_TYPE.SINGLE &&
+    conversation.chatType !== CHAT_TYPE.GROUP
+  ) {
     throw new BadRequestError(
       "SMART_REPLY_SCOPE_INVALID",
       "当前会话暂不支持智能回复",
@@ -275,8 +287,36 @@ function assertSmartReplySingleConversation(conversation: ConversationLookup) {
   }
 }
 
-function getSmartReplyThirdExternalId(conversation: ConversationLookup) {
-  assertSmartReplySingleConversation(conversation);
+function getSmartReplyJavaScope(conversation: ConversationLookup): SmartReplyJavaScope {
+  assertSmartReplySupportedConversation(conversation);
+
+  const thirdUserId = conversation.thirdUserId?.trim();
+
+  if (!thirdUserId) {
+    throw new BadRequestError(
+      "SMART_REPLY_SCOPE_INVALID",
+      "当前会话缺少智能回复所需的席位标识",
+    );
+  }
+
+  if (conversation.chatType === CHAT_TYPE.GROUP) {
+    const thirdGroupId = conversation.thirdGroupId?.trim();
+
+    if (!thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的群标识",
+      );
+    }
+
+    return {
+      chatType: CHAT_TYPE.GROUP,
+      thirdExternalId: "",
+      thirdGroupId,
+      thirdUserId,
+      uid: conversation.uid,
+    };
+  }
 
   const thirdExternalId = conversation.thirdExternalUserId?.trim();
 
@@ -287,7 +327,12 @@ function getSmartReplyThirdExternalId(conversation: ConversationLookup) {
     );
   }
 
-  return thirdExternalId;
+  return {
+    chatType: CHAT_TYPE.SINGLE,
+    thirdExternalId,
+    thirdUserId,
+    uid: conversation.uid,
+  };
 }
 
 export type WorkbenchService = {
@@ -904,6 +949,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         chatType: smartReplyScope.chatType,
         msgIds,
         thirdExternalId: smartReplyScope.thirdExternalId,
+        thirdGroupId: smartReplyScope.thirdGroupId,
         thirdUserId: smartReplyScope.thirdUserId,
         uid: smartReplyScope.uid,
       });
@@ -1513,7 +1559,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
 
@@ -1521,17 +1567,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return { suggestions: [] };
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
-
-    const javaRequest = {
-      chatType: CHAT_TYPE.SINGLE,
+    return this.javaClient.listUserHistoryAnswers({
+      chatType: javaScope.chatType,
       msgIds: javaMsgIds,
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
-    };
-
-    return this.javaClient.listUserHistoryAnswers(javaRequest);
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
+    });
   }
 
   async requestSmartReplyGeneralAnswer(
@@ -1549,15 +1592,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     return this.javaClient.requestGeneralAnswer({
-      chatType: CHAT_TYPE.SINGLE,
+      chatType: javaScope.chatType,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
     });
   }
 
@@ -1576,14 +1620,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     return this.javaClient.requestAutoGeneralAnswer({
-      chatType: CHAT_TYPE.SINGLE,
+      chatType: javaScope.chatType,
       msgId: request.msgId,
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
     });
   }
 
@@ -1597,7 +1642,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const content = request.content.trim();
 
@@ -1646,7 +1691,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const recordId = request.recordId.trim();
 
@@ -1681,7 +1726,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const ids = normalizeAttachmentIds(request.ids);
 
@@ -1711,7 +1756,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     return this.javaClient.checkTextModerationPlus({
       content,
@@ -1729,7 +1774,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const response = await this.javaClient.listKnowledgePage({
       page: 1,
@@ -1761,7 +1806,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     return this.javaClient.getKnowledgeConfig({
       uid: conversation.uid,
@@ -1778,7 +1823,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
 
@@ -1827,7 +1872,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const docId = normalizeKnowledgeId(request.docId);
 

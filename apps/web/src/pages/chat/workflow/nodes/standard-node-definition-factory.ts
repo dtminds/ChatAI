@@ -22,7 +22,6 @@ export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
   metric,
   paletteGroup,
   sort,
-  summary,
 }: {
   accentClassName: string;
   accentRgb: string;
@@ -34,7 +33,6 @@ export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
   metric: string;
   paletteGroup: WorkflowNodePaletteGroupId;
   sort: number;
-  summary: string;
 }): WorkflowNodeDefinition<TKind> {
   return {
     availableNextKinds: targetNodeKinds,
@@ -50,7 +48,6 @@ export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
       metric,
       schemaVersion: 1,
       status: "ready",
-      summary,
       title: label,
     }) as WorkflowNodeData<TKind>,
     createExecutionConfig: () => ({}),

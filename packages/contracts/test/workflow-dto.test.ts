@@ -251,7 +251,6 @@ function createDraft(kind: string) {
           metric: "",
           schemaVersion: 1,
           status: "ready",
-          summary: "",
           title: "条件分支",
         },
         id: "node-1",

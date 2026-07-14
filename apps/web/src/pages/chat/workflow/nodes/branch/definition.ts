@@ -59,7 +59,6 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
       label: "条件",
       metric: "未配置分支",
       status: "warning",
-      summary: "按客户标签、行为或会话意图拆分路径",
       title: "条件分支",
     }),
   createExecutionConfig: (data) => pickDefinedWorkflowConfig({

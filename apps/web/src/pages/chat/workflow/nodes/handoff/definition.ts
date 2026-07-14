@@ -11,5 +11,4 @@ export const handoffNodeDefinition = createStandardNodeDefinition({
   metric: "待配置接管目标",
   paletteGroup: "message",
   sort: 110,
-  summary: "配置人工接管规则",
 });

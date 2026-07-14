@@ -79,7 +79,7 @@ function WorkflowBaseNodeComponent({
           setActionMenuOpen={setActionMenuOpen}
         />
         <div
-          aria-label={`${data.title} ${data.summary}`}
+          aria-label={data.title}
           className="workflow-node-select"
           onClick={(event) => {
             event.stopPropagation();

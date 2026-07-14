@@ -11,5 +11,4 @@ export const orderQueryNodeDefinition = createStandardNodeDefinition({
   metric: "待配置查询范围",
   paletteGroup: "data",
   sort: 60,
-  summary: "配置需要查询的客户订单范围",
 });

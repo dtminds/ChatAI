@@ -12,5 +12,4 @@ export const agentNodeDefinition = createStandardNodeDefinition({
   metric: "待配置 Agent",
   paletteGroup: "message",
   sort: 120,
-  summary: "配置接管客户会话的 Agent",
 });

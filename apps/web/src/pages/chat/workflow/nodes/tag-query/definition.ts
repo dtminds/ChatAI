@@ -11,5 +11,4 @@ export const tagQueryNodeDefinition = createStandardNodeDefinition({
   metric: "待配置查询标签",
   paletteGroup: "data",
   sort: 70,
-  summary: "配置需要查询的客户标签",
 });

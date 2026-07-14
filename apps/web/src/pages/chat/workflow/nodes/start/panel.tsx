@@ -51,9 +51,6 @@ export function StartConfig({
         ? `${nextAccountIds.length} 个账号 · ${nextTriggers.length} 个触发条件`
         : "待配置触发条件",
       status: configured ? "ready" : "warning",
-      summary: configured
-        ? formatTriggerSummary(nextTriggers)
-        : "配置客户进入营销旅程的触发条件",
     });
   };
   return (
@@ -371,13 +368,4 @@ function updateKeywords(triggers: WorkflowStartTrigger[], value: string) {
     trigger.type !== "message.received" || trigger.match !== "keywords",
   );
   return [...remaining, { keywords, match: "keywords" as const, type: "message.received" as const }];
-}
-
-function formatTriggerSummary(triggers: WorkflowStartTrigger[]) {
-  const labels = triggers.map(trigger => {
-    if (trigger.type === "contact.friend_added") return "添加好友";
-    if (trigger.type === "customer.tag_added") return "添加标签";
-    return trigger.match === "keywords" ? "消息关键词" : "用户消息";
-  });
-  return [...new Set(labels)].join("、");
 }

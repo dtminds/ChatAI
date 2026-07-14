@@ -12,5 +12,4 @@ export const llmNodeDefinition = createStandardNodeDefinition({
   metric: "待配置模型任务",
   paletteGroup: "data",
   sort: 40,
-  summary: "配置提示词、输入变量和输出格式",
 });

@@ -266,7 +266,6 @@ function node(
       metric: "",
       schemaVersion: 1,
       status: "ready" as const,
-      summary: "",
       title: kind,
     },
     id,

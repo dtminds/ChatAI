@@ -176,7 +176,6 @@ describe("workflow clipboard", () => {
       kind: "message",
       metric: expect.any(String),
       status: expect.any(String),
-      summary: expect.any(String),
       title: "外部动作",
     }));
     expect(hydrated.edges).toHaveLength(0);

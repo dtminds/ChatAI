@@ -360,7 +360,6 @@ describe("workflow DSL", () => {
       expect(node.config).not.toHaveProperty("label");
       expect(node.config).not.toHaveProperty("metric");
       expect(node.config).not.toHaveProperty("status");
-      expect(node.config).not.toHaveProperty("summary");
       expect(node.config).not.toHaveProperty("title");
     });
   });

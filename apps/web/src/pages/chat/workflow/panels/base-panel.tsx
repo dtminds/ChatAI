@@ -39,10 +39,11 @@ function PanelHeader({
   onClose: () => void;
 }) {
   const visual = nodeVisuals[node.data.kind];
+  const showNodeType = node.data.title !== visual.label;
 
   return (
     <div className="border-b border-[var(--workflow-border)] p-4">
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         <span
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-xl ring-1",
@@ -53,12 +54,13 @@ function PanelHeader({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-sm font-semibold">{node.data.title}</h2>
-            <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
-              {visual.label}
-            </Badge>
+            <h2 className="truncate text-base font-semibold">{node.data.title}</h2>
+            {showNodeType ? (
+              <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
+                {visual.label}
+              </Badge>
+            ) : null}
           </div>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{node.data.summary}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button aria-label="更多节点操作" className="size-8 rounded-lg p-0" type="button" variant="ghost">

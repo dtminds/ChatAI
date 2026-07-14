@@ -11,5 +11,4 @@ export const tagNodeDefinition = createStandardNodeDefinition({
   metric: "待配置标签",
   paletteGroup: "data",
   sort: 80,
-  summary: "配置需要执行的客户标签变更",
 });

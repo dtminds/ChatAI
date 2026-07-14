@@ -36,7 +36,6 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
           toPatch: (value, data) => ({
             duration: value,
             metric: `${value} ${waitUnitLabels[data.unit]}后唤醒`,
-            summary: `等待 ${value} ${waitUnitLabels[data.unit]}后继续触达`,
           }),
           validation: {
             number: {
@@ -60,7 +59,6 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
             const unit = value as keyof typeof waitUnitLabels;
             return {
               metric: `${data.duration} ${waitUnitLabels[unit]}后唤醒`,
-              summary: `等待 ${data.duration} ${waitUnitLabels[unit]}后继续触达`,
               unit,
             };
           },
@@ -75,7 +73,6 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
       duration: 1,
       label: "等待",
       metric: "1 天后唤醒",
-      summary: "等待 1 天后继续触达",
       title: "等待",
       unit: "day",
     }),

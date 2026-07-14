@@ -13,7 +13,6 @@ const baseMessageNodeDefinition = createStandardNodeDefinition({
   metric: "待配置消息内容",
   paletteGroup: "message",
   sort: 100,
-  summary: "配置客户触达消息",
 });
 
 export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {

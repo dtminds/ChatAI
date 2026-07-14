@@ -11,5 +11,4 @@ export const couponNodeDefinition = createStandardNodeDefinition({
   metric: "待配置优惠券",
   paletteGroup: "benefit",
   sort: 130,
-  summary: "配置需要发放的优惠券",
 });

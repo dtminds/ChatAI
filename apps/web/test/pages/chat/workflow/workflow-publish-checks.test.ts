@@ -381,7 +381,6 @@ describe("buildPublishChecks", () => {
       data: {
         ...createDefaultNodeData("handoff"),
         metric: "知识库：护肤知识库",
-        summary: "护肤小助理",
       },
       id: "handoff-node",
       position: { x: 1200, y: 120 },

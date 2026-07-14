@@ -43,7 +43,6 @@ type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unkno
   metric: string;
   schemaVersion: number;
   status: WorkflowNodeStatus;
-  summary: string;
   title: string;
 };
 

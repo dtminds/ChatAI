@@ -63,7 +63,7 @@ describe("WorkflowDataPage", () => {
     const renderedWaitNode = within(canvas).getByTestId(`workflow-flow-node-${waitNode.id}`);
     expect(renderedWaitNode).toHaveAttribute("data-position", `${movedPosition.x},${movedPosition.y}`);
     expect(within(renderedWaitNode).getByRole("button", {
-      name: `${waitNode.data.title} ${waitNode.data.summary}`,
+      name: waitNode.data.title,
     })).toBeInTheDocument();
     expect(within(canvas).queryByTestId("workflow-flow-node-unpublished-node")).not.toBeInTheDocument();
     expect(within(canvas).getByTestId("workflow-flow")).toHaveAttribute(

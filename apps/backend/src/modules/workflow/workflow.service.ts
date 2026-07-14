@@ -317,7 +317,7 @@ function createInitialWorkflowDraft(): WorkflowDraft {
 
 function createInitialNode(kind: "end" | "start", title: string, position: { x: number; y: number }) {
   return {
-    data: { kind, label: title, metric: "", schemaVersion: 1, status: "ready" as const, summary: "", title },
+    data: { kind, label: title, metric: "", schemaVersion: 1, status: "ready" as const, title },
     id: kind,
     position,
     selected: false,

@@ -10,7 +10,7 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
 
   return (
     <>
-      <SchemaNodeSettingsPanel includeBase edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
+      <SchemaNodeSettingsPanel edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
       <FieldGroup title="消息内容">
         <MessageContentEditor
           onChange={(content) => onNodeChange({

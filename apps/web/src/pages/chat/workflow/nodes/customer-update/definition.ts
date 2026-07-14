@@ -11,5 +11,4 @@ export const customerUpdateNodeDefinition = createStandardNodeDefinition({
   metric: "待配置资料字段",
   paletteGroup: "data",
   sort: 90,
-  summary: "配置需要修改的客户资料",
 });

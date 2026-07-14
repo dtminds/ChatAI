@@ -37,7 +37,6 @@ export const WorkflowDraftNodeDataSchema = Type.Object({
     Type.Literal("running"),
     Type.Literal("warning"),
   ]),
-  summary: Type.String(),
   title: Type.String(),
 }, { additionalProperties: true });
 

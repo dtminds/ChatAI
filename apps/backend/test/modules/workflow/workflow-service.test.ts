@@ -369,7 +369,6 @@ function withWaitNode(
           metric: "",
           schemaVersion: 1,
           status: "ready" as const,
-          summary: "",
           title: "等待",
         },
         id: "wait",

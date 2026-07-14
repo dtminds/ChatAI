@@ -12,5 +12,4 @@ export const aiCollectNodeDefinition = createStandardNodeDefinition({
   metric: "待配置收集字段",
   paletteGroup: "data",
   sort: 50,
-  summary: "配置 AI 需要收集的客户资料",
 });

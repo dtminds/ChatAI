@@ -100,7 +100,6 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
   expect(defaultData.kind).toBe(kind);
   expect(defaultData.schemaVersion).toBe(definition.schemaVersion);
   expect(defaultData.title).toBeTruthy();
-  expect(defaultData.summary).toBeTruthy();
   expect(defaultData.metric).toBeTruthy();
   expect(catalogEntry.layout.width).toBeGreaterThan(0);
   expect(catalogEntry.layout.estimatedHeight).toBeGreaterThan(0);

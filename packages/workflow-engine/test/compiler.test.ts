@@ -190,7 +190,6 @@ function node(id: string, kind: string, config: Record<string, unknown> = {}) {
       metric: "canvas metric",
       schemaVersion: 1,
       status: "ready",
-      summary: "canvas summary",
       title: kind,
     },
     id,

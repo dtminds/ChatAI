@@ -12,5 +12,4 @@ export const aiIntentNodeDefinition = createStandardNodeDefinition({
   metric: "待配置意图范围",
   paletteGroup: "flow",
   sort: 30,
-  summary: "配置需要识别的客户意图",
 });

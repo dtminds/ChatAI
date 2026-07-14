@@ -268,7 +268,6 @@ function createNode(kind: "end" | "start") {
       metric: "",
       schemaVersion: 1,
       status: "ready" as const,
-      summary: "",
       title: kind,
     },
     id: kind,

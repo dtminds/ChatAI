@@ -20,7 +20,6 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
     createNodeData("end", 1, {
       label: "结束",
       metric: "退出营销旅程",
-      summary: "客户到达后结束当前旅程",
       title: "结束",
     }),
   createExecutionConfig: () => ({}),

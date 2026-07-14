@@ -28,13 +28,22 @@ describe("buildPublishChecks", () => {
     expect(checklist.summary.map((check) => [check.id, check.status])).toEqual([
       ["start", "ready"],
       ["connectivity", "warning"],
-      ["config", "ready"],
+      ["config", "warning"],
       ["end", "ready"],
     ]);
-    expect(checklist.checks.map((check) => [check.id, check.category])).toEqual([
-      ["connectivity", "connectivity"],
-      ["graph-branch-path-unconnected-branch-intent", "connectivity"],
-    ]);
+    expect(checklist.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "connectivity", category: "connectivity" }),
+      expect.objectContaining({
+        id: "graph-branch-path-unconnected-branch-intent",
+        category: "connectivity",
+      }),
+      expect.objectContaining({
+        id: "node-config-message-welcome",
+        category: "config",
+        nodeId: "message-welcome",
+        messages: ["当前节点暂不支持发布"],
+      }),
+    ]));
     expect(checklist.canPublish).toBe(false);
     expect(checklist.publishBlockers).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -44,8 +53,29 @@ describe("buildPublishChecks", () => {
     ]));
   });
 
+  it("blocks node kinds that the runtime cannot execute", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const checklist = buildPublishChecklist(nodes, edges);
+
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.publishBlockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "node-config-branch-intent",
+        nodeId: "branch-intent",
+        messages: ["当前节点暂不支持发布"],
+      }),
+      expect.objectContaining({
+        id: "node-config-message-welcome",
+        nodeId: "message-welcome",
+        messages: ["当前节点暂不支持发布"],
+      }),
+    ]));
+  });
+
   it("does not treat node display status as a publish config issue", () => {
-    const nodes = createInitialNodes().map((node) =>
+    const originalNodes = createInitialNodes();
+    const nodes = originalNodes.map((node) =>
       node.id === "message-welcome"
         ? {
             ...node,
@@ -58,9 +88,14 @@ describe("buildPublishChecks", () => {
     );
     const edges = createInitialEdges().filter((edge) => edge.target !== "message-welcome");
     const checks = buildPublishChecks(nodes, edges);
+    const originalChecks = buildPublishChecks(originalNodes, edges);
 
+    expect(checks).toEqual(originalChecks);
     expect(checks.find((check) => check.id === "connectivity")?.category).toBe("connectivity");
-    expect(checks.find((check) => check.id === "config")).toBeUndefined();
+    expect(checks.find((check) => check.id === "config")).toEqual(expect.objectContaining({
+      category: "config",
+      status: "warning",
+    }));
     expect(checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -348,8 +383,13 @@ describe("buildPublishChecks", () => {
         nodeId: "message-welcome",
       }),
     ]));
-    expect(summary.checks.some((check) => check.id === "node-config-message-welcome")).toBe(false);
-    expect(summary.summary.find((check) => check.id === "config")?.status).toBe("ready");
+    expect(summary.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "node-config-message-welcome",
+        messages: ["当前节点暂不支持发布"],
+      }),
+    ]));
+    expect(summary.summary.find((check) => check.id === "config")?.status).toBe("warning");
     expect(summary.summary.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 
@@ -652,9 +692,9 @@ describe("useWorkflowPublishChecks", () => {
       useWorkflowPublishChecks(createInitialNodes(), createInitialEdges()),
     );
 
-    expect(result.current.checks).toHaveLength(2);
+    expect(result.current.checks).toHaveLength(5);
     expect(result.current.summary).toHaveLength(4);
-    expect(result.current.readyChecks).toBe(3);
+    expect(result.current.readyChecks).toBe(2);
     expect(result.current.totalChecks).toBe(4);
     expect(result.current.publishReady).toBe(false);
     expect(result.current.hasWarnings).toBe(true);

@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/workflow/use-workflow-workspace";
 import {
   createEdge,
-  createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import {
   createInMemoryWorkflowDraftRepository,
@@ -541,7 +540,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
@@ -577,7 +576,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const publishedKeyword = getCanvasStartKeyword(result.current.canvas);
 
@@ -625,7 +624,7 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("keeps publish state published across non-draft canvas interactions", async () => {
-    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+    importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
@@ -653,7 +652,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       await act(async () => {
@@ -767,7 +766,7 @@ describe("useWorkflowWorkspace", () => {
 
   it("allows viewport navigation while publishing without saving a draft change", async () => {
     const repository = createDeferredPublishRepository();
-    repository.importDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNodeFromRepository(repository));
+    repository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraftFromRepository(repository));
     const initialRevision = repository.getDocument("newcomer-conversion").revision;
     const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
@@ -1004,85 +1003,26 @@ function getCanvasPositions(nodes: Array<{ id: string; position: { x: number; y:
   return Object.fromEntries(nodes.map((node) => [node.id, node.position]));
 }
 
-function createWorkflowDraftWithConnectedBranchOutlets() {
-  const draft = getWorkflowDocument("newcomer-conversion").draft;
-
-  return connectBranchOutlets(draft);
+function createRuntimeSupportedWorkflowDraft() {
+  return toRuntimeSupportedDraft(getWorkflowDocument("newcomer-conversion").draft);
 }
 
-function createWorkflowDraftWithConnectedHandoffNode() {
-  return connectHandoffSupportNode(createWorkflowDraftWithConnectedBranchOutlets());
-}
-
-function createWorkflowDraftWithConnectedHandoffNodeFromRepository(
+function createRuntimeSupportedWorkflowDraftFromRepository(
   repository: Pick<SyncWorkflowDraftRepository, "getDocument">,
 ) {
-  return connectHandoffSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
+  return toRuntimeSupportedDraft(repository.getDocument("newcomer-conversion").draft);
 }
 
-function connectBranchOutlets(draft: WorkflowDraft): WorkflowDraft {
-  return {
-    ...draft,
-    edges: [
-      ...draft.edges,
-      createEdge("branch-intent", "message-normal", "普通客户", {
-        sourceHandle: "branch-normal",
-      }),
-      createEdge("branch-intent", "message-default", "默认路径", {
-        sourceHandle: "branch-default",
-      }),
-      createEdge("message-normal", "end"),
-      createEdge("message-default", "end"),
-    ],
-    nodes: [
-      ...draft.nodes,
-      {
-        ...createNodeFromKind("message", "message-normal", 10),
-        data: {
-          ...createNodeFromKind("message", "message-normal", 10).data,
-          content: [{ type: "text" as const, value: "普通客户消息" }],
-          metric: "普通客户消息",
-          status: "ready" as const,
-        },
-        position: { x: 930, y: 94 },
-      },
-      {
-        ...createNodeFromKind("message", "message-default", 11),
-        data: {
-          ...createNodeFromKind("message", "message-default", 11).data,
-          content: [{ type: "text" as const, value: "默认路径消息" }],
-          metric: "默认路径消息",
-          status: "ready" as const,
-        },
-        position: { x: 930, y: 282 },
-      },
-    ],
-  };
-}
-
-function connectHandoffSupportNode(draft: WorkflowDraft): WorkflowDraft {
-  const handoffNode = createNodeFromKind("handoff", "handoff-support", 12);
+function toRuntimeSupportedDraft(draft: WorkflowDraft): WorkflowDraft {
+  const supportedNodeIds = new Set(["start", "wait-2d", "end"]);
 
   return {
     ...draft,
     edges: [
-      ...draft.edges.filter((edge) => edge.id !== "edge-message-welcome-end"),
-      createEdge("message-welcome", "handoff-support"),
-      createEdge("handoff-support", "end"),
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
     ],
-    nodes: [
-      ...draft.nodes,
-      {
-        ...handoffNode,
-        data: {
-          ...handoffNode.data,
-          metric: "客户需要人工处理",
-          operatorMessage: [{ type: "text", value: "客户需要人工处理" }],
-          status: "ready",
-        },
-        position: { x: 1240, y: -94 },
-      },
-    ],
+    nodes: draft.nodes.filter((node) => supportedNodeIds.has(node.id)),
   };
 }
 

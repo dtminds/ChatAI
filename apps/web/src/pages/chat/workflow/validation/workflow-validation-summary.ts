@@ -1,3 +1,4 @@
+import { WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS } from "@chatai/contracts";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -55,6 +56,23 @@ export function buildWorkflowValidationSummaryFromResult(
       node,
     }))
     .filter((item) => item.issues.length > 0);
+  const unsupportedRuntimeNodeIssues: WorkflowValidationNodeIssue[] = nodes
+    .filter((node) => !WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.some(
+      (kind) => kind === node.data.kind,
+    ))
+    .map((node) => ({
+      issues: [{
+        code: "runtime-node-unsupported",
+        message: "当前节点暂不支持发布",
+        severity: "warning",
+        source: "catalog",
+      }],
+      node,
+    }));
+  const publishConfigIssues = mergeNodeIssues(
+    nodeConfigIssues,
+    unsupportedRuntimeNodeIssues,
+  );
   const startConfigIssues = startIssue?.issues.filter(
     (issue) => issue.source !== "graph",
   ) ?? [];
@@ -87,11 +105,11 @@ export function buildWorkflowValidationSummaryFromResult(
     },
     {
       ...getBlockingScope(),
-      description: nodeConfigIssues.length
-        ? `${nodeConfigIssues.length} 个节点仍需补全配置`
+      description: publishConfigIssues.length
+        ? `${publishConfigIssues.length} 个节点存在发布阻断`
         : "所有节点已完成关键配置",
       id: "config",
-      status: nodeConfigIssues.length ? "warning" : "ready",
+      status: publishConfigIssues.length ? "warning" : "ready",
       title: "节点配置",
     },
     {
@@ -135,7 +153,7 @@ export function buildWorkflowValidationSummaryFromResult(
         blocksPublish: true,
       }),
     ),
-    ...nodeConfigIssues.map(({ issues, node }) =>
+    ...publishConfigIssues.map(({ issues, node }) =>
       createNodeIssueCheck("config", `node-config-${node.id}`, node, issues, {
         blocksPublish: true,
       }),
@@ -157,6 +175,23 @@ export function buildWorkflowValidationSummaryFromResult(
     totalSummaryChecks: summary.length,
     validation,
   };
+}
+
+function mergeNodeIssues(
+  ...groups: WorkflowValidationNodeIssue[][]
+): WorkflowValidationNodeIssue[] {
+  const issueByNodeId = new Map<string, WorkflowValidationNodeIssue>();
+
+  for (const group of groups) {
+    for (const item of group) {
+      const existing = issueByNodeId.get(item.node.id);
+      issueByNodeId.set(item.node.id, existing
+        ? { issues: [...existing.issues, ...item.issues], node: item.node }
+        : item);
+    }
+  }
+
+  return [...issueByNodeId.values()];
 }
 
 function createNodeIssueCheck(

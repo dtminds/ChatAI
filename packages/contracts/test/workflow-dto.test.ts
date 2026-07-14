@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowDefinitionSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
@@ -41,6 +42,16 @@ describe("workflow contracts", () => {
       expect(Value.Check(WorkflowDraftSchema, createDraft(kind))).toBe(true);
     });
     expect(Value.Check(WorkflowDraftSchema, createDraft("action"))).toBe(false);
+  });
+
+  it("exposes the node kinds currently supported by the runtime", () => {
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toEqual([
+      "start",
+      "wait",
+      "end",
+    ]);
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toContain("wait");
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).not.toContain("message");
   });
 
   it("keeps database identifiers as decimal strings", () => {

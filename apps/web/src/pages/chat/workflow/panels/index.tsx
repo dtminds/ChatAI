@@ -31,7 +31,7 @@ export function NodeConfigPanel({
   }
 
   return (
-    <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
+    <BasePanel key={node.id} node={node} onClose={onClose} onRenameNode={onRenameNode}>
       <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
     </BasePanel>
   );

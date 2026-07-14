@@ -1679,6 +1679,28 @@ describe("Agent workflow page", () => {
     expect(getUndoButton(canvas)).toHaveAttribute("aria-label", "撤销：修改节点名称");
   });
 
+  it("clears settings rename state when selecting another node", async () => {
+    const user = setupCanvasUser();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+    let panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "观察期新名称");
+    await user.click(within(canvas).getByRole("button", { name: "发送欢迎消息" }));
+
+    panel = screen.getByRole("complementary", { name: "节点配置" });
+    expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "发送欢迎消息" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "观察期新名称" })).toBeInTheDocument();
+  });
+
   it("does not show the settings menu for protected nodes", async () => {
     const user = userEvent.setup();
 

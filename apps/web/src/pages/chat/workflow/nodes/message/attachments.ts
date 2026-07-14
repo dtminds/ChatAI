@@ -3,6 +3,7 @@ import {
   validateQuickReplyAttachment,
   type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
+import type { WorkflowNodeStatus } from "../../types";
 
 export function normalizeWorkflowMessageAttachments(
   attachments: unknown,
@@ -26,6 +27,21 @@ export function hasInvalidWorkflowMessageAttachments(attachments: unknown) {
     || !attachment.msgInfoId
     || !validateQuickReplyAttachment(attachment).ok
   ));
+}
+
+export function getWorkflowMessageNodeStatus({
+  attachments,
+  hasContent,
+}: {
+  attachments: unknown;
+  hasContent: boolean;
+}): WorkflowNodeStatus {
+  const normalizedAttachments = normalizeWorkflowMessageAttachments(attachments);
+  const configured = hasContent || normalizedAttachments.length > 0;
+
+  return configured && !hasInvalidWorkflowMessageAttachments(attachments)
+    ? "ready"
+    : "warning";
 }
 
 function sanitizeAttachmentContent(content: Record<string, unknown>) {

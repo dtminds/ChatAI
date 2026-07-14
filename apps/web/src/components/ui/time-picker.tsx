@@ -26,7 +26,8 @@ export function TimePicker({
   value: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [hour, minute] = parseTime(value);
+  const parsedTime = parseTime(value);
+  const [hour, minute] = parsedTime ?? ["00", "00"];
   const selectedHourRef = useRef<HTMLButtonElement>(null);
   const selectedMinuteRef = useRef<HTMLButtonElement>(null);
 
@@ -46,7 +47,9 @@ export function TimePicker({
           type="button"
           variant="outline"
         >
-          <span>{hour}:{minute}</span>
+          <span className={cn(!parsedTime && "text-muted-foreground")}>
+            {parsedTime ? `${hour}:${minute}` : "未配置"}
+          </span>
           <HugeiconsIcon
             aria-hidden="true"
             className="text-muted-foreground"
@@ -123,7 +126,7 @@ function TimeColumn({
   );
 }
 
-function parseTime(value: string): [string, string] {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  return match ? [match[1]!, match[2]!] : ["00", "00"];
+function parseTime(value: string): [string, string] | undefined {
+  const match = /^(?:[01]\d|2[0-3]):[0-5]\d$/.exec(value);
+  return match ? [value.slice(0, 2), value.slice(3, 5)] : undefined;
 }

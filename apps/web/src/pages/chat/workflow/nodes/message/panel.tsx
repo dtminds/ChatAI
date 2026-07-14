@@ -7,7 +7,10 @@ import type { NodeSettingsProps } from "../../panels/types";
 import { getAvailableVariablesForNode } from "../../workflow-variables";
 import { getVariableContentPreview, normalizeVariableContent } from "../variable-content/content";
 import { VariableContentEditor } from "../variable-content/editor";
-import { normalizeWorkflowMessageAttachments } from "./attachments";
+import {
+  getWorkflowMessageNodeStatus,
+  normalizeWorkflowMessageAttachments,
+} from "./attachments";
 
 export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"message">) {
   const variables = getAvailableVariablesForNode(node.id, nodes, edges);
@@ -29,7 +32,10 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
       attachments: nextAttachments,
       content: nextContent,
       metric: preview || attachmentMetric || "待配置消息内容",
-      status: preview || attachmentMetric ? "ready" : "warning",
+      status: getWorkflowMessageNodeStatus({
+        attachments: nextAttachments,
+        hasContent: Boolean(preview),
+      }),
     });
   };
 

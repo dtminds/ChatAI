@@ -20,6 +20,12 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("end"),
 ]);
 
+export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
+  "start",
+  "wait",
+  "end",
+] as const satisfies readonly WorkflowNodeKind[];
+
 export const WorkflowRuntimeStatusSchema = Type.Union([
   Type.Literal("inactive"),
   Type.Literal("active"),
@@ -206,6 +212,8 @@ export const WorkflowEntryRecordDetailSchema = Type.Object({
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
+export type WorkflowRuntimeSupportedNodeKind =
+  (typeof WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS)[number];
 export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;

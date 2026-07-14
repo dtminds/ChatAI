@@ -12,13 +12,13 @@ import type {
   SphFeedMessageContent,
 } from "@/pages/chat/chat-types";
 
-type QuickReplyAttachmentPreviewProps = {
+type MessageAttachmentPreviewProps = {
   attachment: WorkbenchQuickReplyAttachment;
 };
 
-export function QuickReplyAttachmentPreview({
+export function MessageAttachmentPreview({
   attachment,
-}: QuickReplyAttachmentPreviewProps) {
+}: MessageAttachmentPreviewProps) {
   if (attachment.type === "image") {
     return <ImageMessageCard content={toImageContent(attachment)} />;
   }

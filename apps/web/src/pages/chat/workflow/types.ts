@@ -1,5 +1,6 @@
 import type { Edge, Node, Viewport } from "@xyflow/react";
 import type {
+  WorkbenchQuickReplyAttachment,
   WorkflowEntryPolicy,
   WorkflowStartTrigger,
   WorkflowWaitConfig,
@@ -85,7 +86,8 @@ export type WorkflowVariableContentSegment =
   | { selector: WorkflowVariableSelector; type: "variable" };
 
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
-  content?: WorkflowVariableContentSegment[];
+  attachments: WorkbenchQuickReplyAttachment[];
+  content: WorkflowVariableContentSegment[];
 };
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;

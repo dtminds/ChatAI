@@ -72,8 +72,9 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("message"),
+        content: [{ type: "text", value: "欢迎加入，这是为你准备的新人活动" }],
         label: "发送消息",
-        metric: "欢迎语 + 活动卡片",
+        metric: "欢迎加入，这是为你准备的新人活动",
         status: "ready",
         title: "发送欢迎消息",
       },

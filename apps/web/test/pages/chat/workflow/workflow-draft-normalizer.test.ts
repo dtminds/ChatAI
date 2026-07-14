@@ -300,6 +300,58 @@ describe("workflow draft normalizer", () => {
     ]);
   });
 
+  it("keeps normalized message attachments in persisted workflow drafts", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          attachments: [
+            {
+              content: {
+                alt: "商品图",
+                fileUrl: "https://cdn.example.com/product.png",
+                localUrl: undefined,
+                preview: {
+                  fallbackUrl: "blob:https://example.com/temporary-preview",
+                },
+              },
+              localFile: { name: "should-not-survive.png" },
+              materialCollectionId: "material-image-1",
+              msgInfoId: "9001",
+              type: "image",
+            },
+            { content: {}, type: "unsupported" },
+          ],
+          content: [{ type: "text", value: "查看商品图" }],
+          kind: "message",
+          title: "外部消息节点",
+        },
+        id: "message-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toMatchObject({
+      attachments: [{
+        content: {
+          alt: "商品图",
+          fileUrl: "https://cdn.example.com/product.png",
+        },
+        materialCollectionId: "material-image-1",
+        msgInfoId: "9001",
+        type: "image",
+      }],
+      content: [{ type: "text", value: "查看商品图" }],
+      kind: "message",
+    });
+    const messageNode = draft.nodes[0];
+    expect(messageNode?.data.kind).toBe("message");
+    if (messageNode?.data.kind === "message") {
+      expect(messageNode.data.attachments[0]).not.toHaveProperty("localFile");
+    }
+  });
+
   it("does not downgrade node data created by a newer schema", () => {
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [],

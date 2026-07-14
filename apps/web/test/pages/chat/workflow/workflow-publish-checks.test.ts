@@ -204,12 +204,26 @@ describe("buildPublishChecks", () => {
       source: "catalog",
     });
 
-    for (const kind of ["message", "tag", "coupon", "end"] as const) {
+    for (const kind of ["tag", "coupon", "end"] as const) {
       const node = kind === "end"
         ? nodes.find((item) => item.data.kind === "end")!
         : createNodeFromKind(kind, `${kind}-contract`, nodes.length);
       expect(validateWorkflowNodeConfig(node, [...nodes, node], createInitialEdges())).toEqual([]);
     }
+
+    const messageNode = createNodeFromKind("message", "message-contract", nodes.length);
+    const configuredMessageNode = {
+      ...messageNode,
+      data: {
+        ...messageNode.data,
+        content: [{ type: "text" as const, value: "已配置消息" }],
+      },
+    };
+    expect(validateWorkflowNodeConfig(
+      configuredMessageNode,
+      [...nodes, configuredMessageNode],
+      createInitialEdges(),
+    )).toEqual([]);
 
     const handoffNode = createNodeFromKind("handoff", "handoff-contract", nodes.length);
     expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], createInitialEdges())).toContainEqual({
@@ -364,6 +378,82 @@ describe("buildPublishChecks", () => {
       severity: "warning",
       source: "config",
     });
+  });
+
+  it("requires message text or attachments and accepts either source", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const validate = (data: WorkflowNode<"message">["data"]) =>
+      validateWorkflowNodeConfig(
+        { ...messageNode, data },
+        nodes.map((node) => node.id === messageNode.id ? { ...messageNode, data } : node),
+        edges,
+      );
+
+    expect(validate({ ...messageNode.data, attachments: [], content: [] })).toContainEqual({
+      code: "message-content-required",
+      message: "消息节点需要配置消息内容或附件",
+      severity: "warning",
+      source: "config",
+    });
+    expect(validate({
+      ...messageNode.data,
+      attachments: [{
+        content: { alt: "商品图", fileUrl: "https://cdn.example.com/product.png" },
+        materialCollectionId: "material-image-1",
+        msgInfoId: "9001",
+        type: "image",
+      }],
+      content: [],
+    })).toEqual([]);
+    expect(validate({
+      ...messageNode.data,
+      attachments: [],
+      content: [{ type: "text", value: "欢迎加入" }],
+    })).toEqual([]);
+  });
+
+  it("validates message length, attachment count and attachment payloads", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const messageNode = nodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const validate = (data: WorkflowNode<"message">["data"]) =>
+      validateWorkflowNodeConfig(
+        { ...messageNode, data },
+        nodes.map((node) => node.id === messageNode.id ? { ...messageNode, data } : node),
+        edges,
+      );
+    const attachment = {
+      content: { alt: "商品图", fileUrl: "https://cdn.example.com/product.png" },
+      materialCollectionId: "material-image-1",
+      msgInfoId: "9001",
+      type: "image" as const,
+    };
+
+    expect(validate({
+      ...messageNode.data,
+      content: [{ type: "text", value: "a".repeat(1001) }],
+    })).toContainEqual(expect.objectContaining({ code: "message-content-too-long" }));
+    expect(validate({
+      ...messageNode.data,
+      attachments: Array.from({ length: 6 }, (_, index) => ({
+        ...attachment,
+        materialCollectionId: `material-image-${index}`,
+      })),
+      content: [],
+    })).toContainEqual(expect.objectContaining({ code: "message-attachments-too-many" }));
+    expect(validate({
+      ...messageNode.data,
+      attachments: [{ ...attachment, content: {} }],
+      content: [],
+    })).toContainEqual(expect.objectContaining({ code: "message-attachment-invalid" }));
   });
 
   it("keeps start summary scoped to start configuration issues", () => {

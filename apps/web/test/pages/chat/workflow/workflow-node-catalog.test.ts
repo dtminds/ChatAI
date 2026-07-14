@@ -395,6 +395,10 @@ describe("workflow node catalog", () => {
           id: "content",
           value: { kind: "empty" },
         }),
+        expect.objectContaining({
+          id: "attachments",
+          value: { kind: "empty" },
+        }),
       ]);
     expect(handoffBody.kind === "fields" ? handoffBody.getFields(createDefaultNodeData("handoff")) : [])
       .toEqual([

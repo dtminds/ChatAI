@@ -40,6 +40,17 @@ describe("workflow DSL", () => {
                     { type: "text", value: "你好，" },
                     { selector: ["customer", "name"], type: "variable" },
                   ],
+                  attachments: [
+                    {
+                      content: {
+                        alt: "新人活动",
+                        fileUrl: "https://cdn.example.com/welcome.png",
+                      },
+                      materialCollectionId: "material-image-1",
+                      msgInfoId: "9001",
+                      type: "image",
+                    },
+                  ],
                   _connectedSourceHandleIds: ["source"],
                   _runtimeStatus: "selected",
                   onDelete: vi.fn(),
@@ -92,6 +103,17 @@ describe("workflow DSL", () => {
       kind: "message",
     }));
     expect(executionNode.config).toEqual({
+      attachments: [
+        {
+          content: {
+            alt: "新人活动",
+            fileUrl: "https://cdn.example.com/welcome.png",
+          },
+          materialCollectionId: "material-image-1",
+          msgInfoId: "9001",
+          type: "image",
+        },
+      ],
       content: [
         { type: "text", value: "你好，" },
         { selector: ["customer", "name"], type: "variable" },
@@ -367,7 +389,10 @@ describe("workflow DSL", () => {
       branchPaths: expect.any(Array),
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
-    expect(configByKind.get("message")).toEqual({ content: [] });
+    expect(configByKind.get("message")).toEqual({
+      attachments: [],
+      content: [{ type: "text", value: "欢迎加入，这是为你准备的新人活动" }],
+    });
     expect(configByKind.get("handoff")).toEqual({
       customerMessage: [],
       operatorMessage: [],

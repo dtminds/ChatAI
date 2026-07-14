@@ -25,6 +25,12 @@ import {
   getWorkflowDraftRepository,
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
+import {
+  createMockWorkbenchService,
+  resetWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
@@ -380,6 +386,7 @@ describe("Agent workflow page", () => {
   beforeEach(() => {
     vi.useRealTimers();
     resetWorkflowDocumentsForTest();
+    resetWorkbenchService();
     reactFlowControlMock.fitView.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();
@@ -1181,6 +1188,54 @@ describe("Agent workflow page", () => {
       expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{意向判断.命中分支名称} {客户昵称}");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
+  });
+
+  it("configures message content and collected image attachments", async () => {
+    const user = setupCanvasUser();
+    const service = createMockWorkbenchService();
+    setWorkbenchService({
+      ...service,
+      async listMaterialCollections(request) {
+        if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+          return service.listMaterialCollections(request);
+        }
+
+        return {
+          items: [{
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+            content: {
+              alt: "新人活动图",
+              fileUrl: "https://cdn.example.com/welcome.png",
+            },
+            contentType: "image",
+            groupId: "mock-material-group-image",
+            id: "material-image-1",
+            msgInfoId: "9001",
+            sort: 100,
+            title: "新人活动图",
+          }],
+          pagination: { hasMore: false, page: 1, pageSize: 100, total: 1 },
+        };
+      },
+    });
+
+    renderWorkflowPage();
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "发送欢迎消息" }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+
+    expect(within(panel).getByText(/\/1000$/)).toBeInTheDocument();
+    expect(within(panel).queryByLabelText("上传图片")).not.toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "添加附件" }));
+    await user.click(screen.getByRole("menuitem", { name: "图片" }));
+    expect(await screen.findByRole("dialog", { name: "收录的图片" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "选择图片 新人活动图" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(within(panel).getByText("新人活动图")).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("附件：1 个");
+    await user.click(within(panel).getByRole("button", { name: "删除附件 新人活动图" }));
+    expect(within(panel).queryByText("新人活动图")).not.toBeInTheDocument();
   });
 
   it("closes and reopens the node config panel from canvas selection", async () => {

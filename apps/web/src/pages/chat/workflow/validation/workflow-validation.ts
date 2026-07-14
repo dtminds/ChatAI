@@ -12,6 +12,7 @@ import type {
   WorkflowNodeValidationIssue,
 } from "../types";
 import { getVariableContentText } from "../nodes/variable-content/content";
+import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
 import { getAvailableVariablesForNode, getInvalidVariableContentSelectors } from "../workflow-variables";
 import {
   validateWorkflowGraph,
@@ -96,9 +97,20 @@ function validateNodeVariableContent(
   const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
 
   if (node.data.kind === "message") {
-    return getInvalidVariableContentSelectors(node.data.content, availableVariables).length
-      ? [createVariableContentIssue("message-variable-invalid", "消息内容引用了不可用变量")]
-      : [];
+    const issues: WorkflowNodeValidationIssue[] = [];
+    if (getInvalidVariableContentSelectors(node.data.content, availableVariables).length) {
+      issues.push(createVariableContentIssue(
+        "message-variable-invalid",
+        "消息内容引用了不可用变量",
+      ));
+    }
+    if (getVariableContentText(node.data.content, availableVariables).length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH) {
+      issues.push(createVariableContentIssue(
+        "message-content-too-long",
+        `消息内容不能超过 ${QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH} 字`,
+      ));
+    }
+    return issues;
   }
 
   if (node.data.kind !== "handoff") {

@@ -1020,7 +1020,7 @@ function createWorkflowDraftWithConnectedHandoffNodeFromRepository(
   return connectHandoffSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
 }
 
-function connectBranchOutlets(draft: WorkflowDraft) {
+function connectBranchOutlets(draft: WorkflowDraft): WorkflowDraft {
   return {
     ...draft,
     edges: [
@@ -1038,10 +1038,22 @@ function connectBranchOutlets(draft: WorkflowDraft) {
       ...draft.nodes,
       {
         ...createNodeFromKind("message", "message-normal", 10),
+        data: {
+          ...createNodeFromKind("message", "message-normal", 10).data,
+          content: [{ type: "text" as const, value: "普通客户消息" }],
+          metric: "普通客户消息",
+          status: "ready" as const,
+        },
         position: { x: 930, y: 94 },
       },
       {
         ...createNodeFromKind("message", "message-default", 11),
+        data: {
+          ...createNodeFromKind("message", "message-default", 11).data,
+          content: [{ type: "text" as const, value: "默认路径消息" }],
+          metric: "默认路径消息",
+          status: "ready" as const,
+        },
         position: { x: 930, y: 282 },
       },
     ],

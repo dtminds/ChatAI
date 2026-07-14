@@ -75,6 +75,8 @@ const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
+/** 群资料/群消息归属席位：影子群用开通号，否则用当前会话席位 */
+const GROUP_SOURCE_THIRD_USERID_SQL = sql<string>`coalesce(nullif(trim(conversation.third_group_origin_userid), ''), conversation.third_userid)`;
 const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
@@ -195,6 +197,7 @@ type ConversationPageRow = Omit<
   | "last_message_type"
 > & {
   last_audit_info_id: number | string | null;
+  third_group_origin_userid?: string | null;
 };
 
 type ConversationHydrationSources = {
@@ -211,11 +214,24 @@ type ConversationHydrationSources = {
       realName: string | null;
     }
   >;
-  groupsByThirdGroupId: Map<
+  groupsBySourceKey: Map<
     string,
     { avatar: string | null; bizStatus: number | null; name: string | null; remark: string | null }
   >;
   lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
+};
+
+type ConversationMessageScopeRow = {
+  chat_type: number;
+  conversation_external_id: string;
+  conversation_group_id: string;
+  conversation_id: number | string;
+  group_seat_id?: number | string | null;
+  platform: number;
+  seat_id?: number | string | null;
+  third_group_origin_userid?: string | null;
+  third_userid: string;
+  uid: number;
 };
 
 type SeatBaseRow = {
@@ -2396,6 +2412,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.platform as platform",
         "seat.id as seat_id",
@@ -2406,7 +2423,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -2418,6 +2435,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return { messages: [] };
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -2441,7 +2463,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_user_id", "=", messageThirdUserId)
       .where("message.id", "in", normalizedSeqs);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
@@ -2524,6 +2546,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.platform as platform",
         "conversation.uid as uid",
@@ -2538,6 +2561,11 @@ export class WorkbenchRepository {
       return undefined;
     }
 
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
+
     let parentQuery = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
@@ -2547,7 +2575,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_user_id", "=", messageThirdUserId)
       .where("message.id", "=", messageSeq);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
@@ -2612,7 +2640,7 @@ export class WorkbenchRepository {
           third_external_id: conversation.conversation_external_id,
           third_from_id: row.name ?? "",
           third_group_id: conversation.conversation_group_id,
-          third_user_id: conversation.third_userid,
+          third_user_id: messageThirdUserId,
         }),
       ),
     };
@@ -3473,6 +3501,7 @@ export class WorkbenchRepository {
         "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
@@ -3536,7 +3565,6 @@ export class WorkbenchRepository {
       conversationRows,
       seat.uid,
       seat.platform,
-      seat.third_userid,
     );
 
     const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
@@ -3645,6 +3673,7 @@ export class WorkbenchRepository {
         "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
@@ -3680,7 +3709,6 @@ export class WorkbenchRepository {
       conversationRows,
       seat.uid,
       seat.platform,
-      seat.third_userid,
     );
 
     const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
@@ -3713,7 +3741,7 @@ export class WorkbenchRepository {
       .leftJoin("xy_wap_embed_group_seat as group_seat", (join) =>
         join
           .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .onRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .on("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .onRef("group_seat.uid", "=", "conversation.uid")
           .onRef("group_seat.platform", "=", "conversation.platform")
           .on("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE),
@@ -3982,6 +4010,7 @@ export class WorkbenchRepository {
       .innerJoin("xy_wap_embed_group_seat as group_seat", (join) =>
         join
           .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .on("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .onRef("group_seat.uid", "=", "conversation.uid")
           .onRef("group_seat.platform", "=", "conversation.platform"),
       )
@@ -4067,6 +4096,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
@@ -4075,7 +4105,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -4095,6 +4125,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return emptyMessagePage();
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4127,7 +4162,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === 2) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4281,6 +4316,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
@@ -4289,7 +4325,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -4301,6 +4337,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return emptyHistoryMessagePage();
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4333,7 +4374,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4458,6 +4499,7 @@ export class WorkbenchRepository {
       conversation_group_id: string;
       group_seat_id?: number | string | null;
       platform: number;
+      third_group_origin_userid?: string | null;
       third_userid: string;
       uid: number;
     },
@@ -4469,6 +4511,11 @@ export class WorkbenchRepository {
     if (!missingQuoteIds.length) {
       return { fetchedRows: [] as MessageRow[] };
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4501,7 +4548,7 @@ export class WorkbenchRepository {
       .where("message.id", "in", missingQuoteIds)
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4713,7 +4760,6 @@ export class WorkbenchRepository {
     rows: ConversationPageRow[],
     uid: number,
     platform: number,
-    seatThirdUserId: string,
   ): Promise<ConversationHydrationSources> {
     const lastMessageIds = uniqueIds(
       rows.map((row) => row.last_audit_info_id),
@@ -4723,10 +4769,18 @@ export class WorkbenchRepository {
         .filter((row) => row.chat_type !== CHAT_TYPE_GROUP)
         .map((row) => row.third_external_userid),
     );
+    const seatThirdUserIds = uniqueNonEmpty(rows.map((row) => row.third_userid));
     const groupIds = uniqueNonEmpty(
       rows
         .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
         .map((row) => row.third_group_id),
+    );
+    const groupSourceThirdUserIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
+        .map((row) =>
+          resolveGroupSourceThirdUserId(row.third_group_origin_userid, row.third_userid),
+        ),
     );
 
     const [lastMessages, contacts, bindRelations, groups] = await Promise.all([
@@ -4748,23 +4802,30 @@ export class WorkbenchRepository {
             .where("third_external_userid", "in", contactThirdExternalIds)
             .execute()
         : [],
-      contactThirdExternalIds.length
+      contactThirdExternalIds.length && seatThirdUserIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
             .select(["bind_type", "third_external_userid", "remark"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
-            .where("third_userid", "=", seatThirdUserId)
+            .where("third_userid", "in", seatThirdUserIds)
             .where("third_external_userid", "in", contactThirdExternalIds)
             .execute()
         : [],
-      groupIds.length
+      groupIds.length && groupSourceThirdUserIds.length
         ? this.db
             .selectFrom("xy_wap_embed_group_seat")
-            .select(["third_group_id", "avatar", "name", "remark", "biz_status"])
+            .select([
+              "third_group_id",
+              "third_userid",
+              "avatar",
+              "name",
+              "remark",
+              "biz_status",
+            ])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
-            .where("third_userid", "=", seatThirdUserId)
+            .where("third_userid", "in", groupSourceThirdUserIds)
             .where("third_group_id", "in", groupIds)
             .execute()
         : [],
@@ -4791,9 +4852,9 @@ export class WorkbenchRepository {
           },
         ]),
       ),
-      groupsByThirdGroupId: new Map(
+      groupsBySourceKey: new Map(
         groups.map((group) => [
-          group.third_group_id,
+          getGroupSourceHydrationKey(group.third_group_id, group.third_userid),
           {
             avatar: group.avatar,
             bizStatus: group.biz_status,
@@ -4833,7 +4894,16 @@ export class WorkbenchRepository {
     const bindRelation = hydrationSources.bindRelationsByThirdExternalId.get(
       row.third_external_userid,
     );
-    const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+    const groupSourceThirdUserId = resolveGroupSourceThirdUserId(
+      row.third_group_origin_userid,
+      row.third_userid,
+    );
+    const group =
+      row.chat_type === CHAT_TYPE_GROUP
+        ? hydrationSources.groupsBySourceKey.get(
+            getGroupSourceHydrationKey(row.third_group_id, groupSourceThirdUserId),
+          )
+        : undefined;
 
     return mapConversationRow({
       ...row,
@@ -5078,6 +5148,7 @@ export class WorkbenchRepository {
         "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
@@ -5103,7 +5174,6 @@ export class WorkbenchRepository {
       [conversationRow],
       uid,
       platform,
-      seatThirdUserId,
     );
 
     return this.mapHydratedConversationRow(conversationRow, hydrationSources);
@@ -5380,6 +5450,19 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
         .filter(Boolean),
     ),
   );
+}
+
+/** 群聊读路径用开通号；影子会话 third_group_origin_userid 非空时优先 */
+function resolveGroupSourceThirdUserId(
+  thirdGroupOriginUserId: string | null | undefined,
+  thirdUserId: string,
+) {
+  const origin = thirdGroupOriginUserId?.trim();
+  return origin || thirdUserId;
+}
+
+function getGroupSourceHydrationKey(thirdGroupId: string, sourceThirdUserId: string) {
+  return `${thirdGroupId}\0${sourceThirdUserId}`;
 }
 
 function firstNonEmptyString(...values: Array<string | null | undefined>) {

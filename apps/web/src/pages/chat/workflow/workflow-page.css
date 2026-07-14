@@ -6,7 +6,7 @@
  */
 
 .workflow-page {
-  --workflow-canvas-bg: #f3f4f6;
+  --workflow-canvas-bg: #f0f1f3;
   --workflow-grid: rgba(16, 24, 40, 0.13);
   --workflow-edge: #9aa4b2;
   --workflow-border: rgba(15, 23, 42, 0.12);

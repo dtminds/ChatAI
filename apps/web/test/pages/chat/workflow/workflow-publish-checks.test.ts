@@ -183,11 +183,26 @@ describe("buildPublishChecks", () => {
     }, nodes, createInitialEdges())).toEqual([
       {
         code: "wait-delay-required",
-        message: "等待节点需要配置正整数时长",
+        message: "等待时长需要为 1-45 天",
         severity: "warning",
-        source: "config",
+        source: "catalog",
       },
     ]);
+
+    expect(validateWorkflowNodeConfig({
+      ...waitNode,
+      data: {
+        ...waitNode.data,
+        dayOffset: 46,
+        mode: "fixed-time",
+        time: "09:00",
+      },
+    }, nodes, createInitialEdges())).toContainEqual({
+      code: "wait-day-offset-invalid",
+      message: "固定时间等待需要配置 1-45 天",
+      severity: "warning",
+      source: "catalog",
+    });
 
     for (const kind of ["message", "tag", "coupon", "end"] as const) {
       const node = kind === "end"

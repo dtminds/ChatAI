@@ -248,6 +248,7 @@ describe("workflow draft normalizer", () => {
           data: {
             duration: 7,
             kind: "wait",
+            mode: "duration",
             selected: true,
             title: "外部等待节点",
             unit: "day",
@@ -283,6 +284,7 @@ describe("workflow draft normalizer", () => {
       duration: 7,
       kind: "wait",
       label: "等待",
+      mode: "duration",
       schemaVersion: 1,
       title: "外部等待节点",
     }));
@@ -331,6 +333,7 @@ describe("workflow draft normalizer", () => {
     const migrateData = vi.fn(({ data }) => ({
       ...data,
       duration: 9,
+      mode: "duration",
     }));
     definition.migrateData = migrateData;
 
@@ -342,6 +345,7 @@ describe("workflow draft normalizer", () => {
             data: {
               duration: 2,
               kind: "wait",
+              mode: "duration",
               title: "待迁移节点",
             },
             id: "migrated-wait",
@@ -354,6 +358,7 @@ describe("workflow draft normalizer", () => {
         data: expect.objectContaining({
           duration: 2,
           kind: "wait",
+          mode: "duration",
           title: "待迁移节点",
         }),
         fromVersion: 0,
@@ -361,6 +366,7 @@ describe("workflow draft normalizer", () => {
       });
       expect(hydratedDraft.nodes[0]?.data).toEqual(expect.objectContaining({
         duration: 9,
+        mode: "duration",
         schemaVersion: 1,
         title: "待迁移节点",
       }));

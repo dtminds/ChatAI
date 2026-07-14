@@ -589,6 +589,7 @@ describe("workflow graph operations", () => {
     const draft = createDraft();
     const operation = updateNodeDataOperation(draft, "wait-2d", {
       duration: 5,
+      mode: "duration",
       title: "等待 5 天",
     });
 

@@ -129,7 +129,7 @@ function validateNodeConfig(
     if (!isWorkflowWaitConfig(node.data)) {
       issues.push({
         code: "invalid-node-config",
-        message: "Wait node requires a positive duration and a supported unit",
+        message: "Wait node requires a valid duration or fixed-time configuration",
         nodeId: node.id,
       });
     }
@@ -147,10 +147,9 @@ function isWorkflowStartConfig(value: Record<string, unknown>): value is Record<
 }
 
 function isWorkflowWaitConfig(value: Record<string, unknown>): value is Record<string, unknown> & WorkflowWaitConfig {
-  return Value.Check(WorkflowWaitConfigSchema, {
-    duration: value.duration,
-    unit: value.unit,
-  });
+  return Value.Check(WorkflowWaitConfigSchema, value.mode === "fixed-time"
+    ? { dayOffset: value.dayOffset, mode: value.mode, time: value.time }
+    : { duration: value.duration, mode: value.mode, unit: value.unit });
 }
 
 export function getWorkflowSourceOutletId(edge: WorkflowDraftEdge) {

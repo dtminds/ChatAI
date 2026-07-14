@@ -66,14 +66,35 @@ export const WorkflowStartConfigSchema = Type.Object({
   triggers: Type.Array(WorkflowStartTriggerSchema, { maxItems: 100, minItems: 1 }),
 }, { additionalProperties: false });
 
-export const WorkflowWaitConfigSchema = Type.Object({
-  duration: Type.Integer({ minimum: 1, maximum: 525_600 }),
-  unit: Type.Union([
-    Type.Literal("minute"),
-    Type.Literal("hour"),
-    Type.Literal("day"),
-  ]),
-}, { additionalProperties: false });
+export const WORKFLOW_WAIT_DURATION_MAX_BY_UNIT = {
+  day: 45,
+  hour: 96,
+  minute: 360,
+} as const;
+export const WORKFLOW_WAIT_DAY_OFFSET_MAX = 45;
+
+export const WorkflowWaitConfigSchema = Type.Union([
+  Type.Object({
+    duration: Type.Integer({ minimum: 1, maximum: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.minute }),
+    mode: Type.Literal("duration"),
+    unit: Type.Literal("minute"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({ minimum: 1, maximum: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.hour }),
+    mode: Type.Literal("duration"),
+    unit: Type.Literal("hour"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    duration: Type.Integer({ minimum: 1, maximum: WORKFLOW_WAIT_DURATION_MAX_BY_UNIT.day }),
+    mode: Type.Literal("duration"),
+    unit: Type.Literal("day"),
+  }, { additionalProperties: false }),
+  Type.Object({
+    dayOffset: Type.Integer({ minimum: 1, maximum: WORKFLOW_WAIT_DAY_OFFSET_MAX }),
+    mode: Type.Literal("fixed-time"),
+    time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
+  }, { additionalProperties: false }),
+]);
 
 const WorkflowEntryCommandBaseSchema = Type.Object({
   accountId: Type.String({ minLength: 1, maxLength: 128 }),

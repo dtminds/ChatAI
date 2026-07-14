@@ -20,15 +20,65 @@ describe("core node executors", () => {
   });
 
   it("persists wait as an absolute due time", async () => {
-    await expect(registry.execute(node("wait", { duration: 2, unit: "day" }), context()))
+    await expect(registry.execute(node("wait", {
+      duration: 2,
+      mode: "duration",
+      unit: "day",
+    }), context()))
       .resolves.toEqual({
         dueAt: "2026-07-12T00:00:00.000Z",
         output: { dueAt: "2026-07-12T00:00:00.000Z" },
         type: "wait",
       });
 
-    await expect(registry.execute(node("wait", { duration: 90, unit: "minute" }), context()))
+    await expect(registry.execute(node("wait", {
+      duration: 90,
+      mode: "duration",
+      unit: "minute",
+    }), context()))
       .resolves.toMatchObject({ dueAt: "2026-07-10T01:30:00.000Z" });
+  });
+
+  it("rejects regular waits above the selected unit limit", async () => {
+    await expect(registry.execute(node("wait", {
+      duration: 361,
+      mode: "duration",
+      unit: "minute",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+    await expect(registry.execute(node("wait", {
+      duration: 97,
+      mode: "duration",
+      unit: "hour",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+    await expect(registry.execute(node("wait", {
+      duration: 46,
+      mode: "duration",
+      unit: "day",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+  });
+
+  it("resumes fixed-time waits on the configured local day and time", async () => {
+    const expectedDueAt = new Date(2025, 2, 26, 9, 0, 0).toISOString();
+    const fixedTimeNode = node("wait", {
+      dayOffset: 1,
+      mode: "fixed-time",
+      time: "09:00",
+    });
+
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date(2025, 2, 25, 9, 30, 0),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date(2025, 2, 25, 23, 59, 0),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
   });
 
   it("selects the first matching branch and falls back to default", async () => {

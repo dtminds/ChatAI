@@ -111,8 +111,66 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 0, mode: "lifetime_limit" },
       triggers: [],
     })).toBe(false);
-    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 15, unit: "minute" })).toBe(true);
-    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 0, unit: "day" })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 15,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 360,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 361,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 96,
+      mode: "duration",
+      unit: "hour",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 97,
+      mode: "duration",
+      unit: "hour",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 45,
+      mode: "duration",
+      unit: "day",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 46,
+      mode: "duration",
+      unit: "day",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 45,
+      mode: "fixed-time",
+      time: "09:00",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 46,
+      mode: "fixed-time",
+      time: "09:00",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "17:58",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 0,
+      mode: "duration",
+      unit: "day",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 1,
+      mode: "fixed-time",
+      time: "24:00",
+    })).toBe(false);
   });
 
   it("limits rolling entry windows to 90 days by actual duration", () => {

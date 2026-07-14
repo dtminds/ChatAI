@@ -358,7 +358,11 @@ describe("workflow DSL", () => {
         { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
       ],
     });
-    expect(configByKind.get("wait")).toEqual({ duration: 2, unit: "day" });
+    expect(configByKind.get("wait")).toEqual({
+      duration: 2,
+      mode: "duration",
+      unit: "day",
+    });
     expect(configByKind.get("branch")).toEqual({
       branchPaths: expect.any(Array),
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",

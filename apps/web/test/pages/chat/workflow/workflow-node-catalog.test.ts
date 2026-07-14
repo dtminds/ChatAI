@@ -220,9 +220,8 @@ describe("workflow node catalog", () => {
       "order-query",
       "tag",
       "tag-query",
-      "wait",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "start"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "start", "wait"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -379,6 +378,17 @@ describe("workflow node catalog", () => {
           value: { kind: "text", text: "1 天后，执行后续节点" },
         }),
       ]);
+    expect(waitBody.kind === "fields" ? waitBody.getFields({
+      ...createDefaultNodeData("wait"),
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "20:00",
+    }) : []).toEqual([
+      expect.objectContaining({
+        id: "duration",
+        value: { kind: "text", text: "2 天后的 20:00，执行后续节点" },
+      }),
+    ]);
     expect(messageBody.kind === "fields" ? messageBody.getFields(createDefaultNodeData("message")) : [])
       .toEqual([
         expect.objectContaining({

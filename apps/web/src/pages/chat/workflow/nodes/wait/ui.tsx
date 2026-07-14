@@ -1,16 +1,11 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
+import { WaitConfig } from "./panel";
 
 const waitUnitLabels = {
   day: "天",
   hour: "小时",
   minute: "分钟",
 } as const;
-
-const waitHelp = () => (
-  <div className="rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground">
-    客户进入等待后，将在设定时间结束时继续执行下一步
-  </div>
-);
 
 export const waitNodeUi: WorkflowNodeUiBinding<"wait"> = {
   body: {
@@ -20,15 +15,13 @@ export const waitNodeUi: WorkflowNodeUiBinding<"wait"> = {
         label: "等待时间",
         value: {
           kind: "text",
-          text: `${data.duration} ${waitUnitLabels[data.unit]}后，执行后续节点`,
+          text: data.mode === "fixed-time"
+            ? `${data.dayOffset} 天后的 ${data.time}，执行后续节点`
+            : `${data.duration} ${waitUnitLabels[data.unit]}后，执行后续节点`,
         },
       },
     ],
     kind: "fields",
   },
-  settings: {
-    after: waitHelp,
-    kind: "schema",
-    nodeKind: "wait",
-  },
+  settings: { component: WaitConfig, kind: "custom" },
 };

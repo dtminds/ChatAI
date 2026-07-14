@@ -1,4 +1,9 @@
-import type { WorkflowExecutionNode, WorkflowNodeKind } from "@chatai/contracts";
+import {
+  WORKFLOW_WAIT_DAY_OFFSET_MAX,
+  WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
+  type WorkflowExecutionNode,
+  type WorkflowNodeKind,
+} from "@chatai/contracts";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
@@ -113,15 +118,46 @@ function executeWait(
   node: WorkflowExecutionNode,
   context: WorkflowNodeExecutionContext,
 ): WorkflowNodeExecutionResult {
-  const duration = node.config.duration;
-  const unit = node.config.unit;
-  if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration <= 0
+  const dueAt = node.config.mode === "fixed-time"
+    ? getFixedTimeWaitDueAt(node.config, context.now)
+    : getDurationWaitDueAt(node.config, context.now);
+  return { dueAt, output: { dueAt }, type: "wait" };
+}
+
+function getDurationWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {
+  const duration = config.duration;
+  const unit = config.unit;
+  if (config.mode !== "duration"
+    || typeof duration !== "number"
+    || !Number.isSafeInteger(duration)
+    || duration <= 0
     || (unit !== "minute" && unit !== "hour" && unit !== "day")) {
     throw new WorkflowNodeExecutionError("Wait node requires a positive duration and supported unit");
   }
+  if (duration > WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit]) {
+    throw new WorkflowNodeExecutionError("Wait node duration exceeds the supported unit limit");
+  }
   const unitMilliseconds = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
-  const dueAt = new Date(context.now.getTime() + duration * unitMilliseconds).toISOString();
-  return { dueAt, output: { dueAt }, type: "wait" };
+  return new Date(enteredAt.getTime() + duration * unitMilliseconds).toISOString();
+}
+
+function getFixedTimeWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {
+  const dayOffset = config.dayOffset;
+  const time = config.time;
+  if (config.mode !== "fixed-time"
+    || typeof dayOffset !== "number"
+    || !Number.isSafeInteger(dayOffset)
+    || dayOffset <= 0
+    || dayOffset > WORKFLOW_WAIT_DAY_OFFSET_MAX
+    || typeof time !== "string"
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new WorkflowNodeExecutionError("Wait node requires a valid day offset and fixed time");
+  }
+  const [hour, minute] = time.split(":").map(Number) as [number, number];
+  const dueAt = new Date(enteredAt);
+  dueAt.setDate(dueAt.getDate() + dayOffset);
+  dueAt.setHours(hour, minute, 0, 0);
+  return dueAt.toISOString();
 }
 
 function executeBranch(

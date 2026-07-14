@@ -715,7 +715,7 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    fireEvent.change(within(panel).getByLabelText("时长"), { target: { value: "3" } });
+    fireEvent.change(within(panel).getByLabelText("等待时长"), { target: { value: "3" } });
 
     const publishButton = await screen.findByRole("button", { name: "发布" });
     await waitFor(() => expect(publishButton).toBeEnabled());
@@ -1202,6 +1202,57 @@ describe("Agent workflow page", () => {
     expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
   });
 
+  it("configures fixed-time waits and reflects the schedule on the node", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    expect(within(panel).getByRole("radio", { name: "常规时长等待" })).toBeChecked();
+    await user.click(within(panel).getByRole("radio", { name: "固定时间等待" }));
+
+    const dayOffsetInput = within(panel).getByRole("spinbutton", { name: "等待天数" });
+    await user.clear(dayOffsetInput);
+    await user.type(dayOffsetInput, "2");
+    await user.click(within(panel).getByRole("button", { name: "执行时间" }));
+    await user.click(screen.getByRole("button", { name: /20\s*时/ }));
+    await user.click(screen.getByRole("button", { name: /00\s*分/ }));
+
+    await waitFor(() => {
+      expect(within(canvas).getByRole("button", { name: "观察期" }))
+        .toHaveTextContent("等待时间：2 天后的 20:00，执行后续节点");
+    });
+  });
+
+  it("limits regular wait duration by the selected unit", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "观察期" }));
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    const durationInput = within(panel).getByRole("spinbutton", { name: "等待时长" });
+
+    await user.click(within(panel).getByRole("combobox", { name: "等待时间单位" }));
+    await user.click(screen.getByRole("option", { name: "分钟" }));
+    await user.clear(durationInput);
+    await user.type(durationInput, "96");
+    await user.click(within(panel).getByRole("combobox", { name: "等待时间单位" }));
+    await user.click(screen.getByRole("option", { name: "小时" }));
+
+    expect(durationInput).toHaveAttribute("max", "96");
+    expect(durationInput).toHaveValue(96);
+
+    await user.click(within(panel).getByRole("combobox", { name: "等待时间单位" }));
+    await user.click(screen.getByRole("option", { name: "天" }));
+    expect(durationInput).toHaveAttribute("max", "45");
+    expect(durationInput).toHaveValue(45);
+  });
+
   it("supports undo and redo for inserted canvas nodes", async () => {
     const user = userEvent.setup();
 
@@ -1259,7 +1310,7 @@ describe("Agent workflow page", () => {
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    fireEvent.keyDown(within(panel).getByLabelText("时长"), { key: "z", metaKey: true });
+    fireEvent.keyDown(within(panel).getByLabelText("等待时长"), { key: "z", metaKey: true });
 
     expect(within(canvas).getByRole("button", { name: "观察期" })).toBeInTheDocument();
   });
@@ -1308,7 +1359,7 @@ describe("Agent workflow page", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: "观察期" }));
 
     const configPanel = screen.getByRole("complementary", { name: "节点配置" });
-    const durationInput = within(configPanel).getByLabelText("时长");
+    const durationInput = within(configPanel).getByLabelText("等待时长");
     const originalDuration = durationInput.getAttribute("value");
 
     vi.useFakeTimers();
@@ -1327,7 +1378,7 @@ describe("Agent workflow page", () => {
       expect(getUndoButton(canvas)).toBeEnabled();
       fireEvent.click(getUndoButton(canvas));
 
-      expect(within(configPanel).getByLabelText("时长")).toHaveValue(Number(originalDuration));
+      expect(within(configPanel).getByLabelText("等待时长")).toHaveValue(Number(originalDuration));
     }
     finally {
       vi.useRealTimers();
@@ -1736,7 +1787,7 @@ describe("Agent workflow page", () => {
 
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    fireEvent.keyDown(within(panel).getByLabelText("时长"), { key: "Backspace" });
+    fireEvent.keyDown(within(panel).getByLabelText("等待时长"), { key: "Backspace" });
 
     expect(within(canvas).getByRole("button", { name: "观察期" })).toBeInTheDocument();
   });

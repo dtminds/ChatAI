@@ -80,6 +80,7 @@ describe("workflow task consumer", () => {
     {
       event: "workflow.action.failed",
       result: {
+        diagnosticMessage: "Java messaging API returned 503",
         errorCode: "DOWNSTREAM_REJECTED",
         failureKind: "terminal",
         kind: "failed",
@@ -100,6 +101,7 @@ describe("workflow task consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      ...(result.diagnosticMessage ? { diagnosticMessage: result.diagnosticMessage } : {}),
       errorCode: result.errorCode,
       event,
       failureKind: result.failureKind,

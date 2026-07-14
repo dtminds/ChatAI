@@ -27,6 +27,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const runtimeService = new WorkflowRuntimeService(repository, repository, undefined, {
     actionMaxRetryDelayMs: config.runtime.actionMaxRetryDelayMs,
     actionRetryDelayMs: config.runtime.actionRetryDelayMs,
+    actionTimeoutMs: config.runtime.actionTimeoutMs,
     maxTaskAttempts: config.runtime.maxTaskAttempts,
     taskLeaseDurationMs: config.runtime.leaseDurationMs,
   });

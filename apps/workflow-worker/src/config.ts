@@ -21,6 +21,7 @@ export type WorkflowWorkerConfig = {
   runtime: {
     actionMaxRetryDelayMs: number;
     actionRetryDelayMs: number;
+    actionTimeoutMs: number;
     batchSize: number;
     dispatchTimeoutMs: number;
     historyCleanupBatchSize: number;
@@ -86,6 +87,19 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   const qualifyTopic = (topic: string) => broker === "pulsar"
     ? qualifyPulsarTopic(topic, pulsarClusterId!, pulsarNamespace!)
     : topic;
+  const actionTimeoutMs = parseDurationMs(
+    env.WORKFLOW_ACTION_TIMEOUT_MS,
+    15_000,
+    "WORKFLOW_ACTION_TIMEOUT_MS",
+  );
+  const leaseDurationMs = parseDurationMs(
+    env.WORKFLOW_LEASE_DURATION_MS,
+    60_000,
+    "WORKFLOW_LEASE_DURATION_MS",
+  );
+  if (actionTimeoutMs * 2 > leaseDurationMs) {
+    throw new Error("WORKFLOW_ACTION_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
+  }
   return {
     broker,
     databaseUrl,
@@ -110,6 +124,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         5_000,
         "WORKFLOW_ACTION_RETRY_DELAY_MS",
       ),
+      actionTimeoutMs,
       batchSize: parseCount(env.WORKFLOW_BATCH_SIZE, 100, "WORKFLOW_BATCH_SIZE"),
       dispatchTimeoutMs: parseDurationMs(
         env.WORKFLOW_DISPATCH_TIMEOUT_MS,
@@ -131,11 +146,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
         1_000,
         "WORKFLOW_INBOX_CLEANUP_BATCH_SIZE",
       ),
-      leaseDurationMs: parseDurationMs(
-        env.WORKFLOW_LEASE_DURATION_MS,
-        60_000,
-        "WORKFLOW_LEASE_DURATION_MS",
-      ),
+      leaseDurationMs,
       maxTaskAttempts: parseCount(
         env.WORKFLOW_MAX_TASK_ATTEMPTS,
         5,

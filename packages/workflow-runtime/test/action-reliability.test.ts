@@ -9,6 +9,187 @@ import {
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow action reliability", () => {
+  it("requires the action timeout to fit within half of the task lease", () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+
+    expect(() => createService(runtime, async () => ({}), {
+      actionTimeoutMs: 30_001,
+      taskLeaseDurationMs: 60_000,
+    })).toThrow("action timeout must not exceed half of the task lease duration");
+  });
+
+  it("aborts a timed-out action and persists an unknown-outcome retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      let actionSignal: AbortSignal | undefined;
+      let deadlineAt: Date | undefined;
+      const service = createService(runtime, async (input: unknown) => {
+        const actionInput = input as { deadlineAt: Date; signal: AbortSignal };
+        actionSignal = actionInput.signal;
+        deadlineAt = actionInput.deadlineAt;
+        return new Promise<Record<string, unknown>>(() => {});
+      }, { actionTimeoutMs: 100, taskLeaseDurationMs: 1_000 });
+      const actionTask = await startAction(service);
+
+      const execution = service.executeTask({
+        now,
+        taskId: actionTask.id,
+        taskVersion: actionTask.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      });
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(execution).resolves.toMatchObject({
+        diagnosticMessage: "Workflow action exceeded its 100ms deadline",
+        errorCode: "WORKFLOW_ACTION_TIMEOUT",
+        failureKind: "unknown",
+        kind: "retry-scheduled",
+      });
+      expect(actionSignal?.aborted).toBe(true);
+      expect(deadlineAt).toEqual(new Date(now.getTime() + 100));
+      expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          errorCode: "WORKFLOW_ACTION_TIMEOUT",
+          errorMessage: "节点执行超时",
+          failureKind: "unknown",
+          status: "retrying",
+        }),
+      ]));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails an action whose projected output exceeds 4 KiB in UTF-8", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({ value: "中".repeat(1_400) }));
+    const actionTask = await startAction(service);
+
+    const result = await service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    expect(result).toMatchObject({
+      errorCode: "WORKFLOW_ACTION_OUTPUT_TOO_LARGE",
+      failureKind: "terminal",
+      kind: "failed",
+    });
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        errorMessage: "节点返回的数据无法处理，流程已停止",
+        nodeId: "message",
+        output: {},
+        status: "failed",
+      }),
+    ]));
+    await expect(runtime.findRun(9, actionTask.runId)).resolves.toMatchObject({
+      context: { outputs: { start: {} } },
+      status: "failed",
+    });
+  });
+
+  it("fails an action that returns a non-JSON output", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({ value: 1n }) as never);
+    const actionTask = await startAction(service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "WORKFLOW_ACTION_OUTPUT_INVALID",
+      failureKind: "terminal",
+      kind: "failed",
+    });
+  });
+
+  it("fails when a valid action output would push the Run Context over its budget", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({ value: "y".repeat(3_000) }));
+    const actionTask = await startAction(service, {
+      padding: "x".repeat(128 * 1024 - 2_000),
+    });
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
+      failureKind: "terminal",
+      kind: "failed",
+    });
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nodeId: "message", output: {}, status: "failed" }),
+    ]));
+  });
+
+  it("does not call the downstream action when the existing Run Context is already over budget", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
+    const service = createService(runtime, executeAction);
+    const emptyContextBytes = Buffer.byteLength(JSON.stringify({
+      outputs: {},
+      trigger: { padding: "" },
+    }), "utf8");
+    const actionTask = await startAction(service, {
+      padding: "x".repeat(128 * 1024 - emptyContextBytes),
+    });
+
+    await expect(service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
+      kind: "failed",
+    });
+    expect(executeAction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an entry context above the runtime context budget", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({}));
+
+    await expect(service.startRun({
+      entryEventId: "oversized-context",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      trigger: { text: "中".repeat(50_000) },
+      uid: 9,
+      workflowId: "31",
+    })).rejects.toMatchObject({ code: "WORKFLOW_CONTEXT_TOO_LARGE", statusCode: 400 });
+    expect(runtime.snapshot().runs).toHaveLength(0);
+  });
+
+  it("rejects an entry context that cannot be represented as JSON", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({}));
+
+    await expect(service.startRun({
+      entryEventId: "invalid-context",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      trigger: { callback: () => undefined },
+      uid: 9,
+      workflowId: "31",
+    })).rejects.toMatchObject({ code: "WORKFLOW_CONTEXT_INVALID", statusCode: 400 });
+    expect(runtime.snapshot().runs).toHaveLength(0);
+  });
+
   it("starts legacy revisions with the current rolling entry maximum", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const createRun = vi.spyOn(runtime, "createRunWithInitialTask");
@@ -171,6 +352,38 @@ describe("workflow action reliability", () => {
         failureKind: "terminal",
         nodeId: "message",
         status: "failed",
+      }),
+    ]));
+  });
+
+  it("persists only the user-safe action error and returns diagnostics for internal logging", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => {
+      throw new WorkflowActionExecutionError(
+        "terminal",
+        "DOWNSTREAM_REJECTED",
+        "消息发送失败",
+        { diagnosticMessage: "Java messaging API returned 503" },
+      );
+    });
+    const actionTask = await startAction(service);
+
+    const result = await service.executeTask({
+      now,
+      taskId: actionTask.id,
+      taskVersion: actionTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    expect(result).toMatchObject({
+      diagnosticMessage: "Java messaging API returned 503",
+      kind: "failed",
+    });
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        errorCode: "DOWNSTREAM_REJECTED",
+        errorMessage: "消息发送失败",
       }),
     ]));
   });
@@ -457,22 +670,30 @@ describe("workflow action reliability", () => {
 function createService(
   runtime: InMemoryWorkflowRuntimeRepository,
   executeAction: (input: unknown) => Promise<Record<string, unknown>>,
-  options: { maxTaskAttempts?: number } = {},
+  options: {
+    actionTimeoutMs?: number;
+    maxTaskAttempts?: number;
+    taskLeaseDurationMs?: number;
+  } = {},
 ) {
   return new WorkflowRuntimeService(createControlReader(), runtime, executeAction as never, {
     actionMaxRetryDelayMs: 60_000,
     actionRetryDelayMs: 5_000,
+    actionTimeoutMs: options.actionTimeoutMs ?? 15_000,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
-    taskLeaseDurationMs: 60_000,
+    taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
 }
 
-async function startAction(service: WorkflowRuntimeService) {
+async function startAction(
+  service: WorkflowRuntimeService,
+  trigger: Record<string, unknown> = {},
+) {
   const started = await service.startRun({
     entryEventId: "event-1",
     expectedRevision: 1,
     subjectId: "customer-1",
-    trigger: {},
+    trigger,
     uid: 9,
     workflowId: "31",
   });

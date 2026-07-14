@@ -61,6 +61,9 @@ function logPersistedActionOutcome(
   const outcome = result as Record<string, unknown>;
   if (outcome.kind !== "retry-scheduled" && outcome.kind !== "failed") return;
   logger.warn({
+    ...(typeof outcome.diagnosticMessage === "string"
+      ? { diagnosticMessage: outcome.diagnosticMessage.slice(0, 1_024) }
+      : {}),
     errorCode: outcome.errorCode,
     event: outcome.kind === "retry-scheduled"
       ? "workflow.action.retry.scheduled"

@@ -513,6 +513,33 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("marks shadow group reception sends as own even when message partition is origin", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderAvatar: "",
+          senderName: "护肤小助理-花花?",
+          senderType: "agent",
+          thirdFromId: "reception-seat-001",
+          thirdGroupId: "group-1",
+          thirdUserId: "opening-seat-001",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isGroupConversation: true,
+      isOwnMessage: true,
+      role: "agent",
+      sender: {
+        userId: "reception-seat-001",
+      },
+      senderDisplayName: undefined,
+    });
+  });
+
   it("keeps other group members on the left and exposes their display name", () => {
     expect(
       adaptMessage(

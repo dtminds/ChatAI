@@ -1012,6 +1012,56 @@ describe("workbench MySQL mappers", () => {
     ]);
   });
 
+  it("maps shadow group own messages by reception third_userid, not origin partition", () => {
+    expect(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "reception-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "group-member-1",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "opening-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ].map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderType: "agent",
+        thirdFromId: "reception-seat-001",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "group-member-1",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "opening-seat-001",
+        thirdUserId: "opening-seat-001",
+      },
+    ]);
+  });
+
   it("maps group messages with missing sender identifiers without throwing", () => {
     expect(
       mapMessageRow(messageRow({

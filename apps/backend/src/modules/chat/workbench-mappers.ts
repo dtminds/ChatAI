@@ -66,6 +66,8 @@ export type MessageRow = {
   conversation_external_id: string;
   conversation_group_id: string;
   conversation_group_seat_id?: number | string | null;
+  /** 会话接待号 third_userid；影子群读分区可能是开通号，归属判断应用接待号 */
+  conversation_third_userid?: string | null;
   conversation_id: number | string;
   from_type: number | null;
   id: number | string;
@@ -348,9 +350,16 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
 
   if (row.chat_type === 2) {
     const thirdFromId = (row.third_from_id || "").trim();
-    const thirdUserId = (row.third_user_id || "").trim();
+    // 影子群消息分区可能是开通号，己方发送方是接待号
+    const ownershipThirdUserId = (
+      row.conversation_third_userid ||
+      row.third_user_id ||
+      ""
+    ).trim();
 
-    return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
+    return thirdFromId && ownershipThirdUserId && thirdFromId === ownershipThirdUserId
+      ? "agent"
+      : "customer";
   }
 
   switch (row.from_type) {

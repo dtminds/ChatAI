@@ -179,9 +179,8 @@ export function adaptMessage(
     dto.contentType,
     mergeTopLevelDownloadMetadata(dto),
   );
-  const isOwnMessage = isGroupConversation
-    ? dto.thirdFromId === dto.thirdUserId
-    : isAgent;
+  // 群聊己方消息由后端按「接待号」判定 senderType；勿再用 message.thirdUserId（影子群可能是开通号分区）
+  const isOwnMessage = isAgent;
   const senderName = isAgent
     ? dto.senderName ||
       (me && account
@@ -197,7 +196,7 @@ export function adaptMessage(
         ? ""
         : customer?.avatarUrl);
   const senderUserId = isOwnMessage
-    ? dto.thirdUserId
+    ? dto.thirdFromId || dto.thirdUserId
     : isGroupConversation
       ? dto.thirdFromId
       : dto.thirdExternalUserId ?? dto.customerId;

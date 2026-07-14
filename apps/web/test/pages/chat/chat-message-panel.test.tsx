@@ -157,8 +157,8 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(screen.queryByText("隐藏的话术")).not.toBeInTheDocument();
   });
 
-  it("shows smart replies in group conversations", () => {
-    enableSmartReplyDisplayContext({ mode: "group" });
+  it("shows smart replies in group conversations without seat AI assistant mode", () => {
+    enableSmartReplyDisplayContext({ enabled: false, mode: "group" });
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,

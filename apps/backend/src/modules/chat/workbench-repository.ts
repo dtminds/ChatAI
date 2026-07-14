@@ -2467,6 +2467,7 @@ export class WorkbenchRepository {
     const messageRows = (rows as MessageRow[]).map((row) => ({
       ...row,
       conversation_group_seat_id: conversation.group_seat_id,
+      conversation_third_userid: conversation.third_userid,
     }));
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
@@ -2501,6 +2502,7 @@ export class WorkbenchRepository {
           conversation_group_seat_id: conversation.group_seat_id,
           conversation_group_id: conversation.conversation_group_id,
           conversation_id: conversation.conversation_id,
+          conversation_third_userid: conversation.third_userid,
           seat_id: conversation.seat_id,
           third_external_id: row.third_external_id ?? undefined,
           third_from_id: row.third_from_id ?? undefined,
@@ -2614,6 +2616,7 @@ export class WorkbenchRepository {
           conversation_external_id: conversation.conversation_external_id,
           conversation_group_id: conversation.conversation_group_id,
           conversation_id: conversation.conversation_id,
+          conversation_third_userid: conversation.third_userid,
           from_type: 2,
           id: row.id,
           msgid: `chatrecord:${messageSeq}:${row.id}`,
@@ -4147,6 +4150,9 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -4368,6 +4374,9 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -4541,6 +4550,9 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id ?? null).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.id", "in", missingQuoteIds)
       .where("message.uid", "=", conversation.uid)

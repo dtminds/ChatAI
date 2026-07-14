@@ -34,6 +34,7 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyReady,
   isSmartReplySent,
+  isSmartReplySingleChatOnlyFailure,
   resolveSmartReplyProcessingLabel,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
@@ -760,6 +761,33 @@ describe("smart-reply-adapter", () => {
       } as ChatMessage,
       suggestion,
     )).toBe(false);
+  });
+
+  it("hides single-chat-only failures from the generation-failed UI", () => {
+    const failedWithoutContent = {
+      assistantName: "护肤小助手",
+      content: "",
+      failReason: "当前仅支持单聊生成",
+      generateStatus: 3,
+      pollComplete: true,
+    };
+    const failedWithContent = {
+      assistantName: "护肤小助手",
+      content: "油皮保湿优先选清爽型产品",
+      failReason: "当前仅支持单聊生成",
+      generateStatus: 3,
+      pollComplete: true,
+    };
+
+    expect(isSmartReplySingleChatOnlyFailure(failedWithoutContent)).toBe(true);
+    expect(isSmartReplyGenerationFailed(failedWithoutContent)).toBe(false);
+    expect(getSmartReplyInlineState(failedWithoutContent)).toBeUndefined();
+    expect(shouldShowSmartReplyCard(failedWithoutContent)).toBe(false);
+
+    expect(isSmartReplySingleChatOnlyFailure(failedWithContent)).toBe(true);
+    expect(isSmartReplyGenerationFailed(failedWithContent)).toBe(false);
+    expect(getSmartReplyInlineState(failedWithContent)).toBeUndefined();
+    expect(shouldShowSmartReplyCard(failedWithContent)).toBe(true);
   });
 
   it("treats incomplete content skips as an inline non-failure hint", () => {

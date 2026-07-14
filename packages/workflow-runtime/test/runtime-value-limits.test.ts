@@ -28,7 +28,9 @@ describe("workflow runtime value limits", () => {
 
   it.each([
     { label: "BigInt", value: { amount: 1n } },
+    { label: "accessor property", value: { get amount() { return 1; } } },
     { label: "non-finite number", value: { amount: Number.POSITIVE_INFINITY } },
+    { label: "symbol property", value: { [Symbol("amount")]: 1 } },
     { label: "undefined property", value: { amount: undefined } },
   ])("rejects a non-JSON $label", ({ value }) => {
     expect(() => assertWorkflowRuntimeValue(

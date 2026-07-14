@@ -87,6 +87,16 @@ describe("workflow task consumer", () => {
         task: { attempt: 1 },
       },
     },
+    {
+      event: "workflow.node.failed",
+      result: {
+        diagnosticMessage: "Workflow node-output was 4110 bytes; limit is 4096 bytes",
+        errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
+        kind: "node-failed",
+        nodeId: "branch",
+        nodeKind: "branch",
+      },
+    },
   ])("logs and ACKs the persisted $event outcome", async ({ event, result }) => {
     const logger = { warn: vi.fn() };
     const message = createBrokerMessage(taskMessage());
@@ -104,7 +114,10 @@ describe("workflow task consumer", () => {
       ...(result.diagnosticMessage ? { diagnosticMessage: result.diagnosticMessage } : {}),
       errorCode: result.errorCode,
       event,
-      failureKind: result.failureKind,
+      ...("failureKind" in result ? { failureKind: result.failureKind } : {}),
+      ...("nodeId" in result ? { nodeId: result.nodeId } : {}),
+      ...("nodeKind" in result ? { nodeKind: result.nodeKind } : {}),
+      runId: "5",
       taskId: "7",
       uid: "9",
     }), expect.any(String));

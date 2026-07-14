@@ -781,7 +781,7 @@ uid + runId + nodeId + sequence
 
 Action 默认总超时为 15 秒，且不得超过 Task 租约的一半。Runtime 向 Adapter 传递截止时间和 `AbortSignal`；Adapter 必须将信号继续传给下游 HTTP Client。超时只中止本次本地等待，不代表下游业务一定未执行，因此仍按结果未知处理。
 
-Adapter 不得将下游原始响应直接写入 Workflow。它必须先按节点输出契约提取后续节点需要的最小 JSON 数据。单节点持久化输出硬上限为 4 KiB，完整 Run Context 硬上限为 128 KiB；非法 JSON、超限输出或追加后超限的 Context 都使当前节点终态失败，且不得保存原始响应或继续重试。
+Adapter 不得将下游原始响应直接写入 Workflow。它必须先按节点输出契约提取后续节点需要的最小 JSON 数据。输出只接受由可枚举数据属性组成的 plain object、数组和 JSON 标量；`undefined`、访问器属性、Symbol key、class instance、非有限数字、稀疏数组和循环引用均视为非法。单节点持久化输出硬上限为 4 KiB，完整 Run Context 硬上限为 128 KiB；非法 JSON、超限输出或追加后超限的 Context 都使当前节点终态失败，且不得保存原始响应或继续重试。
 
 `WorkflowActionExecutionError.message` 是会写入运行记录的用户安全提示；内部诊断只能通过 `diagnosticMessage` 写入 Worker 日志。诊断日志不得包含凭证、完整下游响应、客户内容或其他敏感信息。
 

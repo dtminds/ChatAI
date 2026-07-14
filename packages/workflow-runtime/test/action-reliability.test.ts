@@ -22,6 +22,7 @@ describe("workflow action reliability", () => {
     vi.useFakeTimers();
     try {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const actionStartedAt = new Date(now.getTime() + 5_000);
       let actionSignal: AbortSignal | undefined;
       let deadlineAt: Date | undefined;
       const service = createService(runtime, async (input: unknown) => {
@@ -29,7 +30,11 @@ describe("workflow action reliability", () => {
         actionSignal = actionInput.signal;
         deadlineAt = actionInput.deadlineAt;
         return new Promise<Record<string, unknown>>(() => {});
-      }, { actionTimeoutMs: 100, taskLeaseDurationMs: 1_000 });
+      }, {
+        actionTimeoutMs: 100,
+        clock: () => actionStartedAt,
+        taskLeaseDurationMs: 1_000,
+      });
       const actionTask = await startAction(service);
 
       const execution = service.executeTask({
@@ -48,7 +53,7 @@ describe("workflow action reliability", () => {
         kind: "retry-scheduled",
       });
       expect(actionSignal?.aborted).toBe(true);
-      expect(deadlineAt).toEqual(new Date(now.getTime() + 100));
+      expect(deadlineAt).toEqual(new Date(actionStartedAt.getTime() + 100));
       expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
         expect.objectContaining({
           errorCode: "WORKFLOW_ACTION_TIMEOUT",
@@ -135,7 +140,7 @@ describe("workflow action reliability", () => {
     ]));
   });
 
-  it("does not call the downstream action when the existing Run Context is already over budget", async () => {
+  it("fails the current core node when its output pushes the Run Context over budget", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
     const service = createService(runtime, executeAction);
@@ -143,9 +148,105 @@ describe("workflow action reliability", () => {
       outputs: {},
       trigger: { padding: "" },
     }), "utf8");
-    const actionTask = await startAction(service, {
-      padding: "x".repeat(128 * 1024 - emptyContextBytes),
+    const started = await service.startRun({
+      entryEventId: "exact-context",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      trigger: {
+        padding: "x".repeat(128 * 1024 - emptyContextBytes),
+      },
+      uid: 9,
+      workflowId: "31",
     });
+
+    const result = await service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    expect(result).toMatchObject({
+      errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
+      kind: "node-failed",
+      nodeId: "start",
+      nodeKind: "start",
+      run: { status: "failed" },
+    });
+    expect(executeAction).not.toHaveBeenCalled();
+    expect(runtime.tasks).toEqual([
+      expect.objectContaining({ nodeId: "start", status: "dead" }),
+    ]);
+    expect(runtime.nodeExecutions).toEqual([
+      expect.objectContaining({
+        errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
+        nodeId: "start",
+        output: {},
+        status: "failed",
+      }),
+    ]);
+  });
+
+  it("fails a core node whose output exceeds 4 KiB", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const service = createService(runtime, async () => ({}), {
+      spec: branchSpec("x".repeat(4 * 1024)),
+    });
+    const started = await service.startRun({
+      entryEventId: "large-branch-output",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      trigger: {},
+      uid: 9,
+      workflowId: "31",
+    });
+    const advanced = await service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+    if (!("nextTask" in advanced) || !advanced.nextTask) throw new Error("branch task was not created");
+
+    const result = await service.executeTask({
+      now,
+      taskId: advanced.nextTask.id,
+      taskVersion: advanced.nextTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    });
+
+    expect(result).toMatchObject({
+      errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
+      kind: "node-failed",
+      nodeId: "branch",
+      nodeKind: "branch",
+      run: { status: "failed" },
+    });
+    expect(runtime.tasks.some(task => task.nodeId === "end")).toBe(false);
+    expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
+        nodeId: "branch",
+        output: {},
+        status: "failed",
+      }),
+    ]));
+  });
+
+  it("does not call the downstream action when the stored Run Context is already over budget", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
+    const service = createService(runtime, executeAction);
+    const actionTask = await startAction(service);
+    const run = runtime.runs.find(item => item.id === actionTask.runId);
+    if (!run) throw new Error("run was not created");
+    run.context = {
+      outputs: { start: {} },
+      trigger: { padding: "x".repeat(128 * 1024) },
+    };
 
     await expect(service.executeTask({
       now,
@@ -672,14 +773,17 @@ function createService(
   executeAction: (input: unknown) => Promise<Record<string, unknown>>,
   options: {
     actionTimeoutMs?: number;
+    clock?: () => Date;
     maxTaskAttempts?: number;
+    spec?: WorkflowExecutionSpec;
     taskLeaseDurationMs?: number;
   } = {},
 ) {
-  return new WorkflowRuntimeService(createControlReader(), runtime, executeAction as never, {
+  return new WorkflowRuntimeService(createControlReader(options.spec), runtime, executeAction as never, {
     actionMaxRetryDelayMs: 60_000,
     actionRetryDelayMs: 5_000,
     actionTimeoutMs: options.actionTimeoutMs ?? 15_000,
+    clock: options.clock ?? (() => now),
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
@@ -708,14 +812,38 @@ async function startAction(
   return advanced.nextTask;
 }
 
-function createControlReader() {
+function createControlReader(spec = actionSpec()) {
   return {
     findDefinition: vi.fn(async () => ({
       bizStatus: 1 as const,
       publishedRevision: 1,
       runtimeStatus: "active" as const,
     })),
-    findRevision: vi.fn(async () => ({ executionSpec: actionSpec(), revision: 1 })),
+    findRevision: vi.fn(async () => ({ executionSpec: spec, revision: 1 })),
+  };
+}
+
+function branchSpec(label: string): WorkflowExecutionSpec {
+  return {
+    edges: [
+      { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch" },
+      { id: "branch-end", source: "branch", sourceOutletId: "large", target: "end" },
+    ],
+    entryNodeId: "start",
+    nodes: [
+      { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
+      {
+        config: { branchPaths: [{ id: "large", isDefault: true, label }] },
+        id: "branch",
+        kind: "branch",
+        nodeSchemaVersion: 1,
+      },
+      { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
+    ],
+    revision: 1,
+    schemaVersion: 1,
+    terminalNodeId: "end",
+    workflowId: "31",
   };
 }
 

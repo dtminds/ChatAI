@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createCoreNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
@@ -45,9 +45,44 @@ describe("core node executors", () => {
     await expect(registry.execute(branch, context()))
       .resolves.toMatchObject({ sourceOutletId: "else", type: "advance" });
   });
+
+  it("requires deadline metadata before executing an action", async () => {
+    const executeAction = vi.fn(async () => ({}));
+
+    await expect(registry.execute(node("message"), context({
+      actionIdempotencyKey: "8:1:message:1",
+      executeAction,
+    }))).rejects.toThrow("Action deadline is not configured: message");
+    expect(executeAction).not.toHaveBeenCalled();
+  });
+
+  it("forwards action execution metadata to the adapter", async () => {
+    const controller = new AbortController();
+    const deadlineAt = new Date("2026-07-10T00:00:15.000Z");
+    const executeAction = vi.fn(async () => ({ messageId: "downstream-1" }));
+    const actionNode = node("message");
+    const executionContext = context({
+      actionDeadlineAt: deadlineAt,
+      actionIdempotencyKey: "8:1:message:1",
+      actionSignal: controller.signal,
+      executeAction,
+    });
+
+    await expect(registry.execute(actionNode, executionContext)).resolves.toMatchObject({
+      output: { messageId: "downstream-1" },
+      type: "advance",
+    });
+    expect(executeAction).toHaveBeenCalledWith({
+      context: executionContext,
+      deadlineAt,
+      idempotencyKey: "8:1:message:1",
+      node: actionNode,
+      signal: controller.signal,
+    });
+  });
 });
 
-function node(kind: "branch" | "end" | "start" | "wait", config: Record<string, unknown> = {}) {
+function node(kind: "branch" | "end" | "message" | "start" | "wait", config: Record<string, unknown> = {}) {
   return { config, id: kind, kind, nodeSchemaVersion: 1 };
 }
 

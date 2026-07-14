@@ -1,4 +1,4 @@
-import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { AlarmClockIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createDefaultSourceHandles,
@@ -94,9 +94,9 @@ export const waitNodeDefinition: WorkflowNodeDefinition<"wait"> = {
   getTargetHandles: createDefaultTargetHandles,
   sort: 10,
   visual: {
-    accentClassName: "bg-indigo-600 text-white ring-indigo-600/20",
-    accentRgb: "79 70 229",
-    icon: Clock01Icon,
+    accentClassName: "bg-indigo-500 text-white ring-indigo-500/20",
+    accentRgb: "99 102 241",
+    icon: AlarmClockIcon,
     label: "等待",
   },
 };

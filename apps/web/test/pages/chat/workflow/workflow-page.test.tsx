@@ -411,7 +411,23 @@ describe("Agent workflow page", () => {
     const nodeKinds = Object.keys(nodeDefinitions) as WorkflowNodeKind[];
     const paletteNodeIds = paletteItems.map((item) => item.id);
 
-    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
+    expect(nodeKinds).toEqual([
+      "agent",
+      "ai-collect",
+      "ai-intent",
+      "branch",
+      "coupon",
+      "customer-update",
+      "end",
+      "handoff",
+      "llm",
+      "message",
+      "order-query",
+      "start",
+      "tag",
+      "tag-query",
+      "wait",
+    ]);
 
     for (const kind of nodeKinds) {
       const definition = nodeDefinitions[kind];
@@ -430,16 +446,37 @@ describe("Agent workflow page", () => {
       expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
     }
 
-    expect(insertableNodeKinds).toEqual(["wait", "branch", "message", "tag", "coupon", "handoff"]);
+    expect(insertableNodeKinds).toEqual([
+      "wait",
+      "branch",
+      "ai-intent",
+      "llm",
+      "ai-collect",
+      "order-query",
+      "tag-query",
+      "tag",
+      "customer-update",
+      "message",
+      "handoff",
+      "agent",
+      "coupon",
+    ]);
     expect(paletteNodeIds).toEqual(insertableNodeKinds);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
       "start",
       "wait",
       "branch",
-      "message",
+      "ai-intent",
+      "llm",
+      "ai-collect",
+      "order-query",
+      "tag-query",
       "tag",
-      "coupon",
+      "customer-update",
+      "message",
       "handoff",
+      "agent",
+      "coupon",
       "end",
     ]);
   });
@@ -990,7 +1027,7 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    const picker = within(canvas).getByRole("menu", { name: "选择要添加的节点" });
+    const picker = screen.getByRole("menu", { name: "选择要添加的节点" });
     await user.click(
       within(picker).getByRole("menuitem", {
         name: "添加 转人工节点",
@@ -1016,14 +1053,14 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    expect(within(canvas).getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
-    expect(within(canvas).queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
-    expect(within(canvas).queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
   });
 
   it("keeps only one edge insertion menu open at a time", async () => {
@@ -1033,11 +1070,11 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    expect(within(canvas).getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
+    expect(screen.getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
 
     const edgeInsertButtons = within(canvas).getAllByRole("button", { name: /连线上添加节点/ });
     await user.click(edgeInsertButtons[1]!);
-    expect(within(canvas).getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
+    expect(screen.getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
   });
 
   it("renders a source handle for each branch path on branch nodes", async () => {
@@ -1080,7 +1117,7 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
 
     expect(within(palette).getByRole("button", { name: "添加 转人工节点" })).toBeInTheDocument();
-    expect(within(palette).getByRole("button", { name: "添加 发放优惠券节点" })).toBeInTheDocument();
+    expect(within(palette).getByRole("button", { name: "添加 发券节点" })).toBeInTheDocument();
     expect(within(palette).queryByRole("textbox")).not.toBeInTheDocument();
   });
 
@@ -1362,7 +1399,7 @@ describe("Agent workflow page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
-    await user.click(within(canvas).getByRole("menuitem", { name: /转人工/ }));
+    await user.click(screen.getByRole("menuitem", { name: /转人工/ }));
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
     const branchX = workflowNodeX("branch-intent");
@@ -1385,10 +1422,10 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的普通客户分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的高意向客户分支后添加节点" }));
-    await user.click(within(canvas).getByRole("menuitem", { name: /发放优惠券/ }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /发券/ }));
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
-    const highY = workflowNodeYByButtonName(canvas, /^发放优惠券 /);
+    const highY = workflowNodeYByButtonName(canvas, /^发券 /);
     const normalY = workflowNodeYByButtonName(canvas, /^等待 /);
     const defaultY = workflowNodeYByButtonName(canvas, /^转人工 /);
 

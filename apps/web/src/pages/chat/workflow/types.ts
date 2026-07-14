@@ -18,6 +18,13 @@ export type WorkflowNodeKind =
   | "tag"
   | "coupon"
   | "handoff"
+  | "agent"
+  | "llm"
+  | "order-query"
+  | "tag-query"
+  | "customer-update"
+  | "ai-collect"
+  | "ai-intent"
   | "end";
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
 export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "start" | "end">;
@@ -84,16 +91,30 @@ export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff">;
+export type AgentNodeData = WorkflowNodeDataBase<"agent">;
+export type LlmNodeData = WorkflowNodeDataBase<"llm">;
+export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
+export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
+export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">;
+export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
+export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent">;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
+  agent: AgentNodeData;
+  "ai-collect": AiCollectNodeData;
+  "ai-intent": AiIntentNodeData;
   branch: BranchNodeData;
   coupon: CouponNodeData;
+  "customer-update": CustomerUpdateNodeData;
   end: EndNodeData;
   handoff: HandoffNodeData;
+  llm: LlmNodeData;
   message: MessageNodeData;
+  "order-query": OrderQueryNodeData;
   start: StartNodeData;
   tag: TagNodeData;
+  "tag-query": TagQueryNodeData;
   wait: WaitNodeData;
 };
 
@@ -148,7 +169,7 @@ export type WorkflowEdgeRuntimeData = {
     targetNodeId: string,
     kind: InsertableWorkflowNodeKind,
   ) => void;
-  onToggleInsertMenu?: (edgeId: string) => void;
+  onToggleInsertMenu?: (edgeId: string, open?: boolean) => void;
 };
 export type WorkflowEdgeRenderData = WorkflowEdgeData & WorkflowEdgeRuntimeData;
 export type WorkflowEdge = Edge<WorkflowEdgeData, typeof WORKFLOW_EDGE_TYPE>;

@@ -17,10 +17,14 @@ export function useWorkflowTransientState() {
     setQuickInsertTarget(null);
   }, []);
 
-  const toggleEdgeInsertMenu = useCallback((edgeId: string) => {
+  const toggleEdgeInsertMenu = useCallback((edgeId: string, open?: boolean) => {
     setPaletteOpen(false);
     setQuickInsertTarget(null);
-    setActiveEdgeInsertMenuId((currentEdgeId) => (currentEdgeId === edgeId ? null : edgeId));
+    setActiveEdgeInsertMenuId((currentEdgeId) => {
+      if (open === false) return currentEdgeId === edgeId ? null : currentEdgeId;
+      if (open === true) return edgeId;
+      return currentEdgeId === edgeId ? null : edgeId;
+    });
   }, []);
 
   const toggleNodeInsertMenu = useCallback((nodeId: string, sourceHandle?: string) => {

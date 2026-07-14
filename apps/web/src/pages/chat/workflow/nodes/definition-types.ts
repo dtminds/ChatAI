@@ -16,11 +16,12 @@ import type {
 export type NodeVisual = {
   accentClassName: string;
   accentRgb: string;
+  badge?: "ai";
   icon: typeof Rocket01Icon;
   label: string;
 };
 
-export type WorkflowNodePaletteGroupId = "engagement" | "flow" | "logic";
+export type WorkflowNodePaletteGroupId = "benefit" | "data" | "flow" | "message";
 
 export type WorkflowNodePaletteGroup = {
   id: WorkflowNodePaletteGroupId;

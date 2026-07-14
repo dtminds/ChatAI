@@ -113,8 +113,8 @@
   border-radius: 14px 14px 0 0;
   background: linear-gradient(
     180deg,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.045) 0%,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.02) 48%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.07) 0%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.03) 48%,
     rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0) 100%
   );
   content: "";

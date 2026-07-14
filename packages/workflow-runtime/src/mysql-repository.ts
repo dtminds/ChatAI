@@ -2125,7 +2125,23 @@ function mapTriggerBinding(row: Record<string, unknown>): WorkflowTriggerBinding
 }
 
 function parseNodeKind(value: string): WorkflowNodeKind {
-  if (["start", "wait", "branch", "message", "tag", "coupon", "handoff", "end"].includes(value)) {
+  if ([
+    "start",
+    "wait",
+    "branch",
+    "message",
+    "tag",
+    "coupon",
+    "handoff",
+    "agent",
+    "llm",
+    "order-query",
+    "tag-query",
+    "customer-update",
+    "ai-collect",
+    "ai-intent",
+    "end",
+  ].includes(value)) {
     return value as WorkflowNodeKind;
   }
   throw new Error(`Unknown workflow node kind: ${value}`);

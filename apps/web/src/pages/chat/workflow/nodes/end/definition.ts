@@ -31,7 +31,7 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   schemaVersion: 1,
   getSourceHandles: createNoSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
-  sort: 100,
+  sort: 1000,
   visual: {
     accentClassName: "bg-slate-700 text-white ring-slate-700/20",
     accentRgb: "51 65 85",

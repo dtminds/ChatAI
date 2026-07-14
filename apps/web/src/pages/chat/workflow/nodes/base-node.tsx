@@ -7,6 +7,7 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import aiIconUrl from "@/assets/workflow/ai-icon.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -164,36 +165,53 @@ function NodeHeader({
       </span>
       <span className="flex min-h-7 min-w-0 flex-1 items-center">
         {isRenaming ? (
-          <Input
-            aria-label="节点名称"
-            autoFocus
-            className="nodrag nopan h-7 rounded px-2.5 text-xs font-normal"
-            onBlur={onCommitRename}
-            onChange={(event) => onRenameValueChange(event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              event.stopPropagation();
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <Input
+              aria-label="节点名称"
+              autoFocus
+              className="nodrag nopan h-7 min-w-0 rounded px-2.5 text-xs font-normal"
+              onBlur={onCommitRename}
+              onChange={(event) => onRenameValueChange(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                event.stopPropagation();
 
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
 
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onCancelRename();
-              }
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-            value={renameValue}
-          />
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onCancelRename();
+                }
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              value={renameValue}
+            />
+            <NodeAiBadge visual={visual} />
+          </span>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-base font-semibold text-foreground">{data.title}</span>
+            <NodeAiBadge visual={visual} />
           </span>
         )}
       </span>
     </span>
+  );
+}
+
+function NodeAiBadge({ visual }: { visual: NodeVisual }) {
+  if (visual.badge !== "ai") return null;
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="h-3 w-auto shrink-0"
+      src={aiIconUrl}
+    />
   );
 }
 

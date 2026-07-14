@@ -67,10 +67,17 @@ describe("createWorkflowRenderElements", () => {
     expect(rendered.edges[1].data?.insertableNodeKinds).toEqual([
       "wait",
       "branch",
-      "message",
+      "ai-intent",
+      "llm",
+      "ai-collect",
+      "order-query",
+      "tag-query",
       "tag",
-      "coupon",
+      "customer-update",
+      "message",
       "handoff",
+      "agent",
+      "coupon",
     ]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
   });

@@ -180,7 +180,23 @@ function parseStatus(value: string): WorkflowEntryRecordStatus {
 }
 
 function parseKnownNodeKind(value: string): WorkflowNodeKind | null {
-  if (["start", "wait", "branch", "message", "tag", "coupon", "handoff", "end"].includes(value)) {
+  if ([
+    "start",
+    "wait",
+    "branch",
+    "message",
+    "tag",
+    "coupon",
+    "handoff",
+    "agent",
+    "llm",
+    "order-query",
+    "tag-query",
+    "customer-update",
+    "ai-collect",
+    "ai-intent",
+    "end",
+  ].includes(value)) {
     return value as WorkflowNodeKind;
   }
   return null;
@@ -213,10 +229,25 @@ function readNodeTitles(value: unknown) {
 }
 
 function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
-  return ({
-    branch: "条件分支", coupon: "发送优惠券", end: "结束", handoff: "转人工",
-    message: "发送消息", start: "进入流程", tag: "添加标签", unknown: "未知节点", wait: "等待",
-  } as const)[kind];
+  const titles = {
+    agent: "转 Agent",
+    "ai-collect": "资料收集",
+    "ai-intent": "意图识别",
+    branch: "条件分支",
+    coupon: "发券",
+    "customer-update": "修改客户资料",
+    end: "结束",
+    handoff: "转人工",
+    llm: "大模型",
+    message: "消息发送",
+    "order-query": "订单查询",
+    start: "开始",
+    tag: "客户打标",
+    "tag-query": "标签查询",
+    unknown: "未知节点",
+    wait: "等待",
+  } satisfies Record<WorkflowEntryRecordStepNodeKind, string>;
+  return titles[kind];
 }
 
 function toDate(value: Date | string) {

@@ -39,6 +39,13 @@ export const sourceNodeKinds: WorkflowNodeKind[] = [
   "tag",
   "coupon",
   "handoff",
+  "agent",
+  "llm",
+  "order-query",
+  "tag-query",
+  "customer-update",
+  "ai-collect",
+  "ai-intent",
 ];
 export const targetNodeKinds: WorkflowNodeKind[] = [
   "wait",
@@ -47,6 +54,13 @@ export const targetNodeKinds: WorkflowNodeKind[] = [
   "tag",
   "coupon",
   "handoff",
+  "agent",
+  "llm",
+  "order-query",
+  "tag-query",
+  "customer-update",
+  "ai-collect",
+  "ai-intent",
   "end",
 ];
 

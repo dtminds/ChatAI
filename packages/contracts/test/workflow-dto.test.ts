@@ -19,9 +19,27 @@ import {
 
 describe("workflow contracts", () => {
   it("accepts the production node kinds and rejects legacy kinds", () => {
-    const draft = createDraft("branch");
+    const nodeKinds = [
+      "start",
+      "branch",
+      "wait",
+      "message",
+      "handoff",
+      "agent",
+      "llm",
+      "order-query",
+      "tag-query",
+      "tag",
+      "customer-update",
+      "coupon",
+      "ai-collect",
+      "ai-intent",
+      "end",
+    ];
 
-    expect(Value.Check(WorkflowDraftSchema, draft)).toBe(true);
+    nodeKinds.forEach((kind) => {
+      expect(Value.Check(WorkflowDraftSchema, createDraft(kind))).toBe(true);
+    });
     expect(Value.Check(WorkflowDraftSchema, createDraft("action"))).toBe(false);
   });
 

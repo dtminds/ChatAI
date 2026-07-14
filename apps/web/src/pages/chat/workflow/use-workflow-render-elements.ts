@@ -25,7 +25,7 @@ type WorkflowRenderElementHandlers = {
   ) => void;
   onRenameNode: (nodeId: string, title: string) => void;
   onSelectNode: (nodeId: string) => void;
-  onToggleEdgeInsertMenu: (edgeId: string) => void;
+  onToggleEdgeInsertMenu: (edgeId: string, open?: boolean) => void;
   onToggleNodeInsertMenu: (nodeId: string, sourceHandle?: string) => void;
   onToggleNodeSelection: (nodeId: string) => void;
 };

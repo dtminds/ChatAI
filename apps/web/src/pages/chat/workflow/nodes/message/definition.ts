@@ -1,17 +1,18 @@
 import { Message01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
-import { createActionNodeDefinition } from "../action-definition-factory";
+import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import { normalizeMessageContent } from "./content";
 
-const baseMessageNodeDefinition = createActionNodeDefinition({
-  accentClassName: "bg-sky-600 text-white ring-sky-600/20",
-  accentRgb: "2 132 199",
+const baseMessageNodeDefinition = createStandardNodeDefinition({
+  accentClassName: "bg-sky-500 text-white ring-sky-500/20",
+  accentRgb: "14 165 233",
   description: "向客户发送营销消息",
   icon: Message01Icon,
   kind: "message",
-  label: "发送消息",
+  label: "消息发送",
   metric: "待配置消息内容",
-  sort: 30,
+  paletteGroup: "message",
+  sort: 100,
   summary: "配置客户触达消息",
 });
 

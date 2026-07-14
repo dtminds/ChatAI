@@ -70,7 +70,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   insertable: true,
   kind: "branch",
   layout: branchNodeLayout,
-  paletteGroup: "logic",
+  paletteGroup: "flow",
   paletteLabel: "条件分支",
   schemaVersion: 1,
   getOutputVariables: () => [
@@ -94,8 +94,8 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   sort: 20,
   validate: validateBranchNode,
   visual: {
-    accentClassName: "bg-amber-600 text-white ring-amber-600/20",
-    accentRgb: "217 119 6",
+    accentClassName: "bg-amber-500 text-white ring-amber-500/20",
+    accentRgb: "245 158 11",
     icon: GitBranchIcon,
     label: "条件",
   },

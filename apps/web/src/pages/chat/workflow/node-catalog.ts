@@ -33,14 +33,19 @@ export const workflowNodePaletteGroups = [
     sort: 10,
   },
   {
-    id: "logic",
-    label: "条件逻辑",
+    id: "data",
+    label: "数据处理",
     sort: 20,
   },
   {
-    id: "engagement",
-    label: "触达动作",
+    id: "message",
+    label: "消息",
     sort: 30,
+  },
+  {
+    id: "benefit",
+    label: "权益",
+    sort: 40,
   },
 ] as const satisfies readonly WorkflowNodePaletteGroup[];
 
@@ -63,6 +68,7 @@ type InsertableWorkflowNodeCatalogEntry = AnyWorkflowNodeDefinition & {
 
 export type WorkflowPaletteItem = {
   accentClassName: string;
+  badge?: NodeVisual["badge"];
   description: string;
   groupId: WorkflowNodePaletteGroupId;
   icon: NodeVisual["icon"];
@@ -211,6 +217,7 @@ function createPaletteItem(definition: InsertableWorkflowNodeCatalogEntry): Work
 
   return {
     accentClassName: definition.visual.accentClassName,
+    badge: definition.visual.badge,
     description,
     groupId: definition.paletteGroup,
     icon: definition.visual.icon,

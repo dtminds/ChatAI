@@ -173,7 +173,23 @@ describe("workflow node catalog", () => {
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
+    expect(nodeKinds).toEqual([
+      "agent",
+      "ai-collect",
+      "ai-intent",
+      "branch",
+      "coupon",
+      "customer-update",
+      "end",
+      "handoff",
+      "llm",
+      "message",
+      "order-query",
+      "start",
+      "tag",
+      "tag-query",
+      "wait",
+    ]);
     expect(workflowNodeCatalog).toBe(workflowNodeDefinitions);
     expect(orderedWorkflowNodeCatalog).toBe(orderedWorkflowNodeDefinitions);
     expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
@@ -188,14 +204,26 @@ describe("workflow node catalog", () => {
   it("keeps pure node metadata, UI bindings and config schema in sync", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
+    expect(nodeKinds).toEqual(Object.keys(workflowNodeDefinitions));
 
     nodeKinds.forEach(assertDefinitionSourcesStayInSync);
   });
 
   it("keeps node definitions as the single extension contract", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
-    const schemaNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "tag", "wait"];
+    const schemaNodeKinds: WorkflowNodeKind[] = [
+      "agent",
+      "ai-collect",
+      "ai-intent",
+      "coupon",
+      "customer-update",
+      "handoff",
+      "llm",
+      "order-query",
+      "tag",
+      "tag-query",
+      "wait",
+    ];
     const customNodeKinds: WorkflowNodeKind[] = ["branch", "message", "start"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
@@ -298,7 +326,21 @@ describe("workflow node catalog", () => {
   });
 
   it("supports field, custom, and empty node body bindings", () => {
-    const fieldNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "message", "start", "tag", "wait"];
+    const fieldNodeKinds: WorkflowNodeKind[] = [
+      "agent",
+      "ai-collect",
+      "ai-intent",
+      "coupon",
+      "customer-update",
+      "handoff",
+      "llm",
+      "message",
+      "order-query",
+      "start",
+      "tag",
+      "tag-query",
+      "wait",
+    ];
 
     fieldNodeKinds.forEach((kind) => {
       expect(workflowNodeUiBindings[kind].body.kind).toBe("fields");
@@ -360,16 +402,24 @@ describe("workflow node catalog", () => {
     );
     expect(paletteItems.map((item) => item.groupId)).toEqual([
       "flow",
-      "logic",
-      "engagement",
-      "engagement",
-      "engagement",
-      "engagement",
+      "flow",
+      "flow",
+      "data",
+      "data",
+      "data",
+      "data",
+      "data",
+      "data",
+      "message",
+      "message",
+      "message",
+      "benefit",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
-      "logic",
-      "engagement",
+      "data",
+      "message",
+      "benefit",
     ]);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
@@ -384,15 +434,16 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait"] },
-      { id: "logic", items: ["branch"] },
-      { id: "engagement", items: ["message", "tag", "coupon", "handoff"] },
+      { id: "flow", items: ["wait", "branch", "ai-intent"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "tag", "customer-update"] },
+      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "benefit", items: ["coupon"] },
     ]);
     expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "engagement", items: ["handoff"] },
+      { id: "message", items: ["handoff"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
@@ -401,8 +452,15 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "logic", items: ["branch"] },
+      { id: "flow", items: ["branch"] },
     ]);
+  });
+
+  it("marks the AI-powered palette nodes for shared badge rendering", () => {
+    expect(paletteItems
+      .filter((item) => item.badge === "ai")
+      .map((item) => item.id))
+      .toEqual(["ai-intent", "llm", "ai-collect", "agent"]);
   });
 
   it("derives connection candidates from catalog capabilities", () => {

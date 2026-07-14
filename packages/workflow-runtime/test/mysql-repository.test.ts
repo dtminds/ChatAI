@@ -111,6 +111,52 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
   });
 
+  it("atomically fails a core node without persisting its rejected context", async () => {
+    const db = createActionExecutionDbMock({ nodeId: "start", nodeKind: "start", sequence: 1 });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    const result = await repository.commitNodeResult({
+      context: { rejected: "context" },
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+        messageId: "message-1",
+      },
+      nodeExecution: {
+        errorCode: "WORKFLOW_CONTEXT_TOO_LARGE",
+        errorMessage: "节点运行数据无法处理，流程已停止",
+        idempotencyKey: "9:5:start:1",
+        input: { subjectId: "customer-1" },
+        output: {},
+      },
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    });
+
+    expect(result).toMatchObject({
+      kind: "success",
+      nextTask: null,
+      run: { context: { trigger: {} }, status: "failed" },
+    });
+    expect(db.inserts.xy_wap_embed_workflow_node_execution).toMatchObject({
+      error_code: "WORKFLOW_CONTEXT_TOO_LARGE",
+      node_kind: "start",
+      status: "failed",
+    });
+    expect(db.updates.xy_wap_embed_workflow_task).toMatchObject({
+      last_error_code: "WORKFLOW_CONTEXT_TOO_LARGE",
+      status: "dead",
+    });
+    expect(db.updates.xy_wap_embed_workflow_run).toMatchObject({
+      context_json: JSON.stringify({ trigger: {} }),
+      status: "failed",
+      terminal_reason: "WORKFLOW_CONTEXT_TOO_LARGE",
+    });
+  });
+
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
     const db = createRunTaskConsistencyDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -483,18 +529,26 @@ describe("MysqlWorkflowRuntimeRepository", () => {
   });
 });
 
-function createActionExecutionDbMock(options: { executionStatus?: string } = {}) {
+function createActionExecutionDbMock(options: {
+  executionStatus?: string;
+  nodeId?: string;
+  nodeKind?: string;
+  sequence?: number;
+} = {}) {
+  const nodeId = options.nodeId ?? "message";
+  const nodeKind = options.nodeKind ?? "message";
+  const sequence = options.sequence ?? 2;
   const run = {
     completed_at: null,
     context_json: JSON.stringify({ trigger: {} }),
     create_time: new Date("2026-07-13T00:00:00.000Z"),
-    current_node_id: "message",
+    current_node_id: nodeId,
     entry_event_id: "event-1",
     id: "5",
     lock_version: 1,
     next_execute_at: new Date("2026-07-13T00:00:00.000Z"),
     revision: 1,
-    sequence: 2,
+    sequence,
     shard_id: 7,
     status: "running",
     subject_id: "customer-1",
@@ -512,11 +566,11 @@ function createActionExecutionDbMock(options: { executionStatus?: string } = {})
     last_error_code: null,
     lease_expires_at: new Date("2026-07-13T00:01:00.000Z"),
     lease_owner: "worker-1",
-    node_id: "message",
-    node_kind: "message",
+    node_id: nodeId,
+    node_kind: nodeKind,
     revision: 1,
     run_id: "5",
-    sequence: 2,
+    sequence,
     shard_id: 7,
     status: "running",
     task_type: "execute",
@@ -532,13 +586,13 @@ function createActionExecutionDbMock(options: { executionStatus?: string } = {})
     error_message: null,
     failure_kind: null,
     id: "11",
-    idempotency_key: "9:5:message:2",
+    idempotency_key: `9:5:${nodeId}:${sequence}`,
     input_snapshot_json: JSON.stringify({ subjectId: "customer-1" }),
-    node_id: "message",
-    node_kind: "message",
+    node_id: nodeId,
+    node_kind: nodeKind,
     output_json: JSON.stringify({}),
     run_id: "5",
-    sequence: 2,
+    sequence,
     started_at: new Date("2026-07-13T00:00:00.000Z"),
     status: options.executionStatus,
     uid: 9,

@@ -80,10 +80,21 @@ describe("workflow task consumer", () => {
     {
       event: "workflow.action.failed",
       result: {
+        diagnosticMessage: "Java messaging API returned 503",
         errorCode: "DOWNSTREAM_REJECTED",
         failureKind: "terminal",
         kind: "failed",
         task: { attempt: 1 },
+      },
+    },
+    {
+      event: "workflow.node.failed",
+      result: {
+        diagnosticMessage: "Workflow node-output was 4110 bytes; limit is 4096 bytes",
+        errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
+        kind: "node-failed",
+        nodeId: "branch",
+        nodeKind: "branch",
       },
     },
   ])("logs and ACKs the persisted $event outcome", async ({ event, result }) => {
@@ -100,9 +111,13 @@ describe("workflow task consumer", () => {
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      ...(result.diagnosticMessage ? { diagnosticMessage: result.diagnosticMessage } : {}),
       errorCode: result.errorCode,
       event,
-      failureKind: result.failureKind,
+      ...("failureKind" in result ? { failureKind: result.failureKind } : {}),
+      ...("nodeId" in result ? { nodeId: result.nodeId } : {}),
+      ...("nodeKind" in result ? { nodeKind: result.nodeKind } : {}),
+      runId: "5",
       taskId: "7",
       uid: "9",
     }), expect.any(String));

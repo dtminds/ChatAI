@@ -43,7 +43,7 @@ export function createTaskConsumerHandler(input: {
         uid: parseSafeDatabaseId(command.uid),
         workerId: input.workerId,
       });
-      logPersistedActionOutcome(input.logger, command, result);
+      logPersistedTaskOutcome(input.logger, command, result);
       await message.ack();
     } catch (error) {
       if (classifyTaskError(error) === "ack") await message.ack();
@@ -52,26 +52,35 @@ export function createTaskConsumerHandler(input: {
   };
 }
 
-function logPersistedActionOutcome(
+function logPersistedTaskOutcome(
   logger: { warn(value: unknown, message?: string): void } | undefined,
   command: WorkflowTaskMessage,
   result: unknown,
 ) {
   if (!logger || !result || typeof result !== "object" || !("kind" in result)) return;
   const outcome = result as Record<string, unknown>;
-  if (outcome.kind !== "retry-scheduled" && outcome.kind !== "failed") return;
+  if (outcome.kind !== "retry-scheduled"
+    && outcome.kind !== "failed"
+    && outcome.kind !== "node-failed") return;
+  const event = outcome.kind === "retry-scheduled"
+    ? "workflow.action.retry.scheduled"
+    : outcome.kind === "node-failed"
+      ? "workflow.node.failed"
+      : "workflow.action.failed";
   logger.warn({
+    ...(typeof outcome.diagnosticMessage === "string"
+      ? { diagnosticMessage: outcome.diagnosticMessage.slice(0, 1_024) }
+      : {}),
     errorCode: outcome.errorCode,
-    event: outcome.kind === "retry-scheduled"
-      ? "workflow.action.retry.scheduled"
-      : "workflow.action.failed",
-    failureKind: outcome.failureKind,
+    event,
+    ...(typeof outcome.failureKind === "string" ? { failureKind: outcome.failureKind } : {}),
+    ...(typeof outcome.nodeId === "string" ? { nodeId: outcome.nodeId } : {}),
+    ...(typeof outcome.nodeKind === "string" ? { nodeKind: outcome.nodeKind } : {}),
     ...(outcome.kind === "retry-scheduled" ? { retryAt: outcome.retryAt } : {}),
+    runId: command.runId,
     taskId: command.taskId,
     uid: command.uid,
-  }, outcome.kind === "retry-scheduled"
-    ? "workflow action retry scheduled"
-    : "workflow action failed");
+  }, event.replaceAll(".", " "));
 }
 
 export function startTaskConsumer(input: {

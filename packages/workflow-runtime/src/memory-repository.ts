@@ -394,13 +394,17 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.taskVersion !== input.expectedTaskVersion
       || task.status !== "running") return conflict();
 
+    const failed = input.nodeExecution.errorCode !== undefined;
+    if (failed && input.nextTask) return conflict();
     const nextSequence = run.sequence + 1;
-    const nextTaskStatus = transitionTask(task.status, "completed");
+    const nextTaskStatus = transitionTask(task.status, failed ? "dead" : "completed");
     const nextRunStatus = transitionRun(
       run.status,
-      input.nextTask
-        ? input.nextTask.taskType === "wait" ? "waiting" : "running"
-        : "completed",
+      failed
+        ? "failed"
+        : input.nextTask
+          ? input.nextTask.taskType === "wait" ? "waiting" : "running"
+          : "completed",
     );
     const existingExecution = this.nodeExecutions.find(item => item.uid === input.uid
       && item.runId === run.id
@@ -412,7 +416,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
       existingExecution.failureKind = null;
       existingExecution.output = clone(input.nodeExecution.output);
-      existingExecution.status = input.nodeExecution.errorCode ? "failed" : "completed";
+      existingExecution.status = failed ? "failed" : "completed";
     } else {
       this.nodeExecutions.push({
         errorCode: input.nodeExecution.errorCode ?? null,
@@ -425,7 +429,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         output: clone(input.nodeExecution.output),
         runId: run.id,
         sequence: task.sequence,
-        status: input.nodeExecution.errorCode ? "failed" : "completed",
+        status: failed ? "failed" : "completed",
         uid: input.uid,
       });
     }
@@ -435,12 +439,20 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.leaseOwner = null;
     task.leaseExpiresAt = null;
     run.lockVersion += 1;
-    if (input.context) {
+    if (!failed && input.context) {
       run.context = clone(input.context);
     }
 
     let nextTask: WorkflowTaskRecord | null = null;
-    if (input.nextTask) {
+    if (failed) {
+      run.status = nextRunStatus;
+      run.nextExecuteAt = null;
+      this.appendNodeMetricEvents(run, `${run.id}:${task.sequence}:failed`, createNodeMetricDeltas({
+        kind: "left-incomplete",
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+      }));
+    } else if (input.nextTask) {
       const delayedSuccessor = input.nextTask.taskType === "wait";
       if (!delayedSuccessor) run.currentNodeId = input.nextTask.nodeId;
       run.sequence = nextSequence;

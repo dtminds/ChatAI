@@ -779,6 +779,8 @@ export class MysqlWorkflowRuntimeRepository implements
         || task.taskVersion !== input.expectedTaskVersion
         || task.status !== "running") return { kind: "conflict" as const };
 
+      const failed = input.nodeExecution.errorCode !== undefined;
+      if (failed && input.nextTask) return { kind: "conflict" as const };
       const now = new Date();
       const existingExecution = await trx.selectFrom(EXECUTION_TABLE).selectAll()
         .where("uid", "=", input.uid)
@@ -795,7 +797,7 @@ export class MysqlWorkflowRuntimeRepository implements
           error_message: input.nodeExecution.errorMessage ?? null,
           failure_kind: null,
           output_json: stringifyJson(input.nodeExecution.output),
-          status: input.nodeExecution.errorCode ? "failed" : "completed",
+          status: failed ? "failed" : "completed",
         }).where("uid", "=", input.uid)
           .where("run_id", "=", run.id)
           .where("sequence", "=", task.sequence)
@@ -815,7 +817,7 @@ export class MysqlWorkflowRuntimeRepository implements
           run_id: run.id,
           sequence: task.sequence,
           started_at: now,
-          status: input.nodeExecution.errorCode ? "failed" : "completed",
+          status: failed ? "failed" : "completed",
           uid: input.uid,
         }).executeTakeFirstOrThrow();
       }
@@ -827,10 +829,10 @@ export class MysqlWorkflowRuntimeRepository implements
         uid: input.uid,
       }).executeTakeFirstOrThrow();
       await trx.updateTable(TASK_TABLE).set({
-        last_error_code: null,
+        last_error_code: input.nodeExecution.errorCode ?? null,
         lease_expires_at: null,
         lease_owner: null,
-        status: transitionTask(task.status, "completed"),
+        status: transitionTask(task.status, failed ? "dead" : "completed"),
         task_version: task.taskVersion + 1,
       }).where("uid", "=", input.uid).where("id", "=", task.id)
         .where("task_version", "=", task.taskVersion).where("status", "=", "running")
@@ -838,7 +840,7 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nextSequence = run.sequence + 1;
       let nextTask: WorkflowTaskRecord | null = null;
-      if (input.nextTask) {
+      if (!failed && input.nextTask) {
         const dispatchImmediately = input.nextTask.dispatchImmediately !== false
           && input.nextTask.taskType !== "wait";
         nextTask = await insertTask(trx, {
@@ -859,31 +861,47 @@ export class MysqlWorkflowRuntimeRepository implements
 
       const nextRun: WorkflowRunRecord = {
         ...run,
-        context: input.context ? structuredClone(input.context) : run.context,
-        currentNodeId: input.nextTask && input.nextTask.taskType !== "wait"
+        context: !failed && input.context ? structuredClone(input.context) : run.context,
+        currentNodeId: !failed && input.nextTask && input.nextTask.taskType !== "wait"
           ? input.nextTask.nodeId
           : run.currentNodeId,
         lockVersion: run.lockVersion + 1,
-        nextExecuteAt: input.nextTask?.dueAt ?? null,
-        sequence: input.nextTask ? nextSequence : run.sequence,
+        nextExecuteAt: !failed ? input.nextTask?.dueAt ?? null : null,
+        sequence: !failed && input.nextTask ? nextSequence : run.sequence,
         status: transitionRun(
           run.status,
-          input.nextTask
-            ? input.nextTask.taskType === "wait" ? "waiting" : "running"
-            : "completed",
+          failed
+            ? "failed"
+            : input.nextTask
+              ? input.nextTask.taskType === "wait" ? "waiting" : "running"
+              : "completed",
         ),
       };
       await trx.updateTable(RUN_TABLE).set({
-        completed_at: nextRun.status === "completed" ? now : null,
+        completed_at: nextRun.status === "completed" || nextRun.status === "failed" ? now : null,
         context_json: stringifyJson(nextRun.context),
         current_node_id: nextRun.currentNodeId,
         lock_version: nextRun.lockVersion,
         next_execute_at: nextRun.nextExecuteAt,
         sequence: nextRun.sequence,
         status: nextRun.status,
+        terminal_reason: input.nodeExecution.errorCode ?? null,
       }).where("uid", "=", input.uid).where("id", "=", run.id)
         .where("lock_version", "=", run.lockVersion).executeTakeFirstOrThrow();
-      if (input.nextTask && input.nextTask.taskType !== "wait") {
+      if (failed) {
+        await insertNodeMetricEvents(trx, {
+          eventKey: `${run.id}:${task.sequence}:failed`,
+          runId: run.id,
+          runRevision: run.revision,
+          runShardId: run.shardId,
+          uid: input.uid,
+          workflowId: run.workflowId,
+        }, createNodeMetricDeltas({
+          kind: "left-incomplete",
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+        }));
+      } else if (input.nextTask && input.nextTask.taskType !== "wait") {
         await insertNodeMetricEvents(trx, {
           eventKey: `${run.id}:${task.sequence}:advanced`,
           runId: run.id,

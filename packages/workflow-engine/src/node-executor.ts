@@ -5,10 +5,14 @@ export type WorkflowNodeExecutionContext = {
   evaluateBranchPath?: (path: WorkflowBranchPathConfig) => boolean;
   executeAction?: (input: {
     context: WorkflowNodeExecutionContext;
+    deadlineAt: Date;
     idempotencyKey: string;
     node: WorkflowExecutionNode;
+    signal: AbortSignal;
   }) => Promise<Record<string, unknown>>;
+  actionDeadlineAt?: Date;
   actionIdempotencyKey?: string;
+  actionSignal?: AbortSignal;
   matchingPathIds?: Set<string>;
   now: Date;
   outputs: Record<string, Record<string, unknown>>;
@@ -79,11 +83,16 @@ export function createCoreNodeExecutorRegistry() {
       if (!context.actionIdempotencyKey) {
         throw new WorkflowNodeExecutionError(`Action idempotency key is not configured: ${node.kind}`);
       }
+      if (!context.actionDeadlineAt || !context.actionSignal) {
+        throw new WorkflowNodeExecutionError(`Action deadline is not configured: ${node.kind}`);
+      }
       return {
         output: await context.executeAction({
           context,
+          deadlineAt: context.actionDeadlineAt,
           idempotencyKey: context.actionIdempotencyKey,
           node,
+          signal: context.actionSignal,
         }),
         sourceOutletId: "default",
         type: "advance",

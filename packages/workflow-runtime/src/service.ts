@@ -17,6 +17,12 @@ import {
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
 import { WorkflowRuntimeError } from "./errors.js";
+import {
+  assertWorkflowRuntimeValue,
+  WORKFLOW_NODE_OUTPUT_MAX_BYTES,
+  WORKFLOW_RUN_CONTEXT_MAX_BYTES,
+  WorkflowRuntimeValueError,
+} from "./runtime-value-limits.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowRuntimeControlReader,
@@ -29,6 +35,8 @@ type WorkflowActionAdapter = NonNullable<WorkflowNodeExecutionContext["executeAc
 export class WorkflowRuntimeService {
   private readonly actionMaxRetryDelayMs: number;
   private readonly actionRetryDelayMs: number;
+  private readonly actionTimeoutMs: number;
+  private readonly clock: () => Date;
   private readonly executors = createCoreNodeExecutorRegistry();
   private readonly maxTaskAttempts: number;
   private readonly taskLeaseDurationMs: number;
@@ -40,14 +48,24 @@ export class WorkflowRuntimeService {
     options: {
       actionMaxRetryDelayMs?: number;
       actionRetryDelayMs?: number;
+      actionTimeoutMs?: number;
+      clock?: () => Date;
       maxTaskAttempts?: number;
       taskLeaseDurationMs?: number;
     } = {},
   ) {
     this.actionMaxRetryDelayMs = options.actionMaxRetryDelayMs ?? 300_000;
     this.actionRetryDelayMs = options.actionRetryDelayMs ?? 5_000;
+    this.actionTimeoutMs = options.actionTimeoutMs ?? 15_000;
+    this.clock = options.clock ?? (() => new Date());
     this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
+    if (!Number.isSafeInteger(this.actionTimeoutMs) || this.actionTimeoutMs <= 0) {
+      throw new Error("Workflow action timeout must be a positive integer");
+    }
+    if (this.actionTimeoutMs * 2 > this.taskLeaseDurationMs) {
+      throw new Error("Workflow action timeout must not exceed half of the task lease duration");
+    }
   }
 
   async startRun(input: {
@@ -73,8 +91,21 @@ export class WorkflowRuntimeService {
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
     const startConfig = requireStartConfig(entryNode);
 
+    let context: Record<string, unknown>;
+    try {
+      context = { outputs: {}, trigger: structuredClone(input.trigger) };
+      assertWorkflowRuntimeValue(context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+    } catch (error) {
+      throw new WorkflowRuntimeError(
+        error instanceof WorkflowRuntimeValueError && error.reason === "too-large"
+          ? "WORKFLOW_CONTEXT_TOO_LARGE"
+          : "WORKFLOW_CONTEXT_INVALID",
+        "Workflow 运行数据无效",
+        400,
+      );
+    }
     const created = await this.runtimeRepository.createRunWithInitialTask({
-      context: { outputs: {}, trigger: structuredClone(input.trigger) },
+      context,
       entryEventId: input.entryEventId,
       entryPolicy: startConfig.entryPolicy,
       initialNodeId: entryNode.id,
@@ -145,22 +176,66 @@ export class WorkflowRuntimeService {
       });
       if (prepared.kind !== "success") throw staleTaskError();
     }
+    const actionNode = isWorkflowActionNodeKind(node.kind);
     let executionResult: Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>;
+    let nextContext: Record<string, unknown>;
     try {
-      executionResult = await this.executors.execute(node, createExecutionContext(
-        run,
-        input.now,
-        this.executeAction,
-        isWorkflowActionNodeKind(node.kind) ? actionIdempotencyKey : undefined,
-      ));
+      assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      executionResult = actionNode
+        ? await executeWithActionTimeout({
+            actionIdempotencyKey,
+            actionTimeoutMs: this.actionTimeoutMs,
+            execute: context => this.executors.execute(node, context),
+            executeAction: this.executeAction,
+            now: input.now,
+            run,
+            startedAt: this.clock(),
+          })
+        : await this.executors.execute(node, createExecutionContext(run, input.now));
+      assertWorkflowRuntimeValue(
+        executionResult.output,
+        "node-output",
+        WORKFLOW_NODE_OUTPUT_MAX_BYTES,
+      );
+      nextContext = appendNodeOutput(run.context, node.id, executionResult.output);
+      assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
-      if (!(error instanceof WorkflowActionExecutionError) || !isWorkflowActionNodeKind(node.kind)) throw error;
+      if (!actionNode && error instanceof WorkflowRuntimeValueError) {
+        const nodeFailure = toCoreNodeRuntimeFailure(error);
+        const committed = await this.runtimeRepository.commitNodeResult({
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimed.task.taskVersion,
+          inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
+          nodeExecution: {
+            errorCode: nodeFailure.errorCode,
+            errorMessage: nodeFailure.errorMessage,
+            idempotencyKey: actionIdempotencyKey,
+            input: createNodeInputSnapshot(run),
+            output: {},
+          },
+          runId: run.id,
+          taskId: task.id,
+          uid: input.uid,
+        });
+        if (committed.kind === "already-processed") throw alreadyProcessedError();
+        if (committed.kind !== "success") throw staleTaskError();
+        return {
+          ...nodeFailure,
+          diagnosticMessage: nodeFailure.diagnosticMessage.slice(0, 1_024),
+          kind: "node-failed" as const,
+          nodeId: node.id,
+          nodeKind: node.kind,
+          run: committed.run,
+        };
+      }
+      const actionError = actionNode ? toActionExecutionError(error) : null;
+      if (!actionError) throw error;
       const failureInput = {
-        errorCode: error.code.slice(0, 128),
-        errorMessage: error.message.slice(0, 512),
+        errorCode: actionError.code.slice(0, 128),
+        errorMessage: actionError.message.slice(0, 512),
         expectedRunLockVersion: run.lockVersion,
         expectedTaskVersion: claimed.task.taskVersion,
-        failureKind: error.failureKind,
+        failureKind: actionError.failureKind,
         idempotencyKey: actionIdempotencyKey,
         inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
         now: input.now,
@@ -168,12 +243,13 @@ export class WorkflowRuntimeService {
         taskId: task.id,
         uid: input.uid,
       };
-      if (error.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
+      if (actionError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
         const failed = await this.runtimeRepository.failActionExecution(failureInput);
         if (failed.kind === "already-processed") throw alreadyProcessedError();
         if (failed.kind !== "success") throw staleTaskError();
         return {
           errorCode: failureInput.errorCode,
+          diagnosticMessage: actionError.diagnosticMessage.slice(0, 1_024),
           failureKind: failureInput.failureKind,
           kind: "failed" as const,
           run: failed.run,
@@ -192,6 +268,7 @@ export class WorkflowRuntimeService {
       if (scheduled.kind !== "success") throw staleTaskError();
       return {
         errorCode: failureInput.errorCode,
+        diagnosticMessage: actionError.diagnosticMessage.slice(0, 1_024),
         failureKind: failureInput.failureKind,
         kind: "retry-scheduled" as const,
         retryAt: scheduled.task.dueAt,
@@ -199,7 +276,6 @@ export class WorkflowRuntimeService {
       };
     }
     const nextTask = createNextTask(revision.executionSpec, node, executionResult, input.now);
-    const nextContext = appendNodeOutput(run.context, node.id, executionResult.output);
     const commitInput: WorkflowCommitNodeResultInput = {
       context: nextContext,
       expectedRunLockVersion: run.lockVersion,
@@ -227,15 +303,19 @@ export class WorkflowRuntimeService {
 function createExecutionContext(
   run: WorkflowRunRecord,
   now: Date,
-  executeAction: WorkflowActionAdapter | undefined,
+  executeAction?: WorkflowActionAdapter,
   actionIdempotencyKey?: string,
+  actionDeadlineAt?: Date,
+  actionSignal?: AbortSignal,
 ): WorkflowNodeExecutionContext {
   const trigger = isRecord(run.context.trigger) ? run.context.trigger : {};
   const outputs = isRecord(run.context.outputs)
     ? run.context.outputs as Record<string, Record<string, unknown>>
     : {};
   return {
+    actionDeadlineAt,
     actionIdempotencyKey,
+    actionSignal,
     evaluateBranchPath: (path) => {
       const matches = isRecord(run.context.branchMatches) ? run.context.branchMatches : {};
       return matches[path.id] === true;
@@ -252,6 +332,96 @@ function createExecutionContext(
     },
     trigger,
   };
+}
+
+async function executeWithActionTimeout(input: {
+  actionIdempotencyKey: string;
+  actionTimeoutMs: number;
+  execute(context: WorkflowNodeExecutionContext): Promise<Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>>;
+  executeAction: WorkflowActionAdapter | undefined;
+  now: Date;
+  run: WorkflowRunRecord;
+  startedAt: Date;
+}) {
+  const controller = new AbortController();
+  const deadlineAt = new Date(input.startedAt.getTime() + input.actionTimeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new WorkflowActionExecutionError(
+        "unknown",
+        "WORKFLOW_ACTION_TIMEOUT",
+        "节点执行超时",
+        { diagnosticMessage: `Workflow action exceeded its ${input.actionTimeoutMs}ms deadline` },
+      );
+      reject(error);
+      controller.abort(error);
+    }, input.actionTimeoutMs);
+  });
+  try {
+    return await Promise.race([
+      input.execute(createExecutionContext(
+        input.run,
+        input.now,
+        input.executeAction,
+        input.actionIdempotencyKey,
+        deadlineAt,
+        controller.signal,
+      )),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function toActionExecutionError(error: unknown) {
+  if (error instanceof WorkflowActionExecutionError) return error;
+  if (!(error instanceof WorkflowRuntimeValueError)) return null;
+  const safeMessage = "节点返回的数据无法处理，流程已停止";
+  if (error.scope === "node-output" && error.reason === "invalid") {
+    return new WorkflowActionExecutionError(
+      "terminal",
+      "WORKFLOW_ACTION_OUTPUT_INVALID",
+      safeMessage,
+      { diagnosticMessage: "Workflow action returned a non-JSON output" },
+    );
+  }
+  const code = error.scope === "node-output"
+    ? "WORKFLOW_ACTION_OUTPUT_TOO_LARGE"
+    : error.reason === "invalid"
+      ? "WORKFLOW_CONTEXT_INVALID"
+      : "WORKFLOW_CONTEXT_TOO_LARGE";
+  return new WorkflowActionExecutionError(
+    "terminal",
+    code,
+    safeMessage,
+    {
+      diagnosticMessage: formatRuntimeValueDiagnostic(error),
+    },
+  );
+}
+
+function toCoreNodeRuntimeFailure(error: WorkflowRuntimeValueError) {
+  const errorCode = error.scope === "node-output"
+    ? error.reason === "invalid"
+      ? "WORKFLOW_NODE_OUTPUT_INVALID"
+      : "WORKFLOW_NODE_OUTPUT_TOO_LARGE"
+    : error.reason === "invalid"
+      ? "WORKFLOW_CONTEXT_INVALID"
+      : "WORKFLOW_CONTEXT_TOO_LARGE";
+  return {
+    diagnosticMessage: formatRuntimeValueDiagnostic(error),
+    errorCode,
+    errorMessage: "节点运行数据无法处理，流程已停止",
+  };
+}
+
+function formatRuntimeValueDiagnostic(error: WorkflowRuntimeValueError) {
+  const valueDescription = error.actualBytes === null
+    ? "invalid"
+    : `${error.actualBytes} bytes`;
+  return `Workflow ${error.scope} was ${valueDescription}; limit is ${error.limitBytes} bytes`;
 }
 
 function createInbox(messageId: string | undefined, taskId: string, taskVersion: number, now: Date) {

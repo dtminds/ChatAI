@@ -9,6 +9,39 @@ import {
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow action reliability", () => {
+  it("starts legacy revisions with the current rolling entry maximum", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const createRun = vi.spyOn(runtime, "createRunWithInitialTask");
+    const spec = actionSpec();
+    spec.nodes.find(node => node.kind === "start")!.config.entryPolicy = {
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 365,
+      windowUnit: "day",
+    };
+    const service = new WorkflowRuntimeService({
+      findDefinition: vi.fn(async () => ({
+        bizStatus: 1 as const,
+        publishedRevision: 1,
+        runtimeStatus: "active" as const,
+      })),
+      findRevision: vi.fn(async () => ({ executionSpec: spec, revision: 1 })),
+    }, runtime);
+
+    await service.startRun({
+      entryEventId: "legacy-window",
+      expectedRevision: 1,
+      subjectId: "customer-1",
+      trigger: {},
+      uid: 9,
+      workflowId: "31",
+    });
+
+    expect(createRun).toHaveBeenCalledWith(expect.objectContaining({
+      entryPolicy: expect.objectContaining({ windowSize: 90, windowUnit: "day" }),
+    }));
+  });
+
   it("creates the action ledger before the side effect and passes its stable idempotency key", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const receivedKeys: string[] = [];

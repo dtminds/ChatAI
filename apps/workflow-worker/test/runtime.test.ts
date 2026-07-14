@@ -129,6 +129,77 @@ describe("workflow worker runtime", () => {
     await runtime.close();
   });
 
+  it("runs history cleanup on its own low-frequency schedule", async () => {
+    let now = new Date("2026-07-13T00:00:00.000Z");
+    const resources = createResources();
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["reconciler"] as const)),
+      now: () => now,
+    });
+    await vi.waitFor(() => expect(resources.reconciler).toHaveBeenCalledTimes(1));
+
+    now = new Date("2026-07-13T00:00:30.000Z");
+    await resources.runRole("reconciler");
+    now = new Date("2026-07-13T01:00:00.000Z");
+    await resources.runRole("reconciler");
+
+    expect(resources.reconciler).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      historyRetention: {
+        runBefore: new Date("2026-01-14T00:00:00.000Z"),
+        taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+      },
+      now: new Date("2026-07-13T00:00:00.000Z"),
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(2, expect.not.objectContaining({
+      historyRetention: expect.anything(),
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      historyRetention: {
+        runBefore: new Date("2026-01-14T01:00:00.000Z"),
+        taskOutboxBefore: new Date("2026-06-13T01:00:00.000Z"),
+      },
+      now: new Date("2026-07-13T01:00:00.000Z"),
+    }));
+    await runtime.close();
+  });
+
+  it("catches up history cleanup on the reconciler interval while a backlog remains", async () => {
+    let now = new Date("2026-07-13T00:00:00.000Z");
+    const resources = createResources();
+    resources.reconciler
+      .mockResolvedValueOnce(reconcilerResult({ historyCleanupHasMore: true }))
+      .mockResolvedValueOnce(reconcilerResult({ historyCleanupHasMore: false }))
+      .mockResolvedValue(reconcilerResult());
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(new Set(["reconciler"] as const)),
+      now: () => now,
+    });
+    await vi.waitFor(() => expect(resources.reconciler).toHaveBeenCalledTimes(1));
+
+    now = new Date("2026-07-13T00:00:30.000Z");
+    await resources.runRole("reconciler");
+    now = new Date("2026-07-13T01:00:00.000Z");
+    await resources.runRole("reconciler");
+    now = new Date("2026-07-13T01:00:30.000Z");
+    await resources.runRole("reconciler");
+
+    expect(resources.reconciler).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      historyRetention: expect.any(Object),
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      historyRetention: expect.any(Object),
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(3, expect.not.objectContaining({
+      historyRetention: expect.anything(),
+    }));
+    expect(resources.reconciler).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      historyRetention: expect.any(Object),
+    }));
+    await runtime.close();
+  });
+
   it("routes idle role heartbeats through the debug log policy", async () => {
     const resources = createResources();
     const runtime = await startWorkflowWorkerRuntime({
@@ -371,12 +442,14 @@ function createResources() {
 }
 
 function reconcilerResult(overrides: {
+  historyCleanupHasMore?: boolean;
   nextConsistencyRunCursor?: string | null;
   nextConsistencyTaskCursor?: string | null;
   nextCursor?: string | null;
 } = {}) {
   return {
     cancelled: 0,
+    historyCleanupHasMore: false,
     inboxDeleted: 0,
     inconsistentRunsFailed: 0,
     nextConsistencyRunCursor: null,
@@ -408,8 +481,12 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
     pulsar: { serviceUrl: null, token: null },
     roles,
     runtime: {
+      actionMaxRetryDelayMs: 300_000,
+      actionRetryDelayMs: 5_000,
       batchSize: 100,
       dispatchTimeoutMs: 300_000,
+      historyCleanupBatchSize: 1_000,
+      historyCleanupIntervalMs: 3_600_000,
       inboxCleanupBatchSize: 1_000,
       leaseDurationMs: 60_000,
       maxOutboxAttempts: 100,
@@ -419,8 +496,10 @@ function config(roles = new Set(["entry-consumer", "task-consumer"] as const)) {
       reconcileIntervalMs: 30_000,
       readinessIntervalMs: 30_000,
       retryDelayMs: 5_000,
+      runRetentionDays: 180,
       schedulerIntervalMs: 1_000,
       shardIds: Array.from({ length: 256 }, (_, index) => index),
+      taskOutboxRetentionDays: 30,
     },
     subscriptionType: "Shared" as const,
     subscriptions: { entry: "entry-sub", task: "task-sub" },

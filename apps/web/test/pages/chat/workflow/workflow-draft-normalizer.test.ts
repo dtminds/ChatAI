@@ -93,6 +93,36 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
 }
 
 describe("workflow draft normalizer", () => {
+  it("clamps legacy rolling entry windows to 90 days during hydration", () => {
+    const startData = createDefaultNodeData("start");
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          ...startData,
+          entryPolicy: {
+            maxEntries: 2,
+            mode: "rolling_window",
+            windowSize: 365,
+            windowUnit: "day",
+          },
+        },
+        id: "start",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toMatchObject({
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 90,
+        windowUnit: "day",
+      },
+    });
+  });
+
   it("removes runtime-only node and edge state from persistable drafts", () => {
     const sanitizedDraft = sanitizeDraft(createRuntimeDraft());
 

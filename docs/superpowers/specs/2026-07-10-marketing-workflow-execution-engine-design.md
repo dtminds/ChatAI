@@ -923,13 +923,15 @@ Reconciler 至少负责：
 
 1.0 不引入 ClickHouse，必须主动限制执行库历史增长：
 
-- 活跃 Run 全量保留。
-- 已结束 Run 的默认保留期由产品确认，建议先按 30 天设计。
-- Node Execution 仅保留产品需要的近期明细，建议 7 至 30 天。
-- Inbox、已发送 Outbox 和已完成 Task 使用独立保留策略。
-- 大表按时间分区或可快速清理的物理结构设计。
-- 基础节点指标异步写入 `workflow_daily_metric`。
-- 禁止请求时扫描 Node Execution 全表计算看板指标。
+- 活跃 Run（`queued`、`running`、`waiting`）全量保留，不按年龄清理。
+- 已结束 Run（`completed`、`failed`、`cancelled`）与 Node Execution 从 `completed_at` 起保留 180 天；运行记录产品页只承诺展示最近 180 天。
+- 所属 Run 结束 30 天后清理 Task 和对应 Outbox；Inbox 继续按消息去重过期时间独立清理。
+- `entry_guard.total_entries` 和累计节点指标长期保留，不随 Run 清理回退。
+- Reconciler 每小时启动一次有索引、有限批次的清理；存在积压时按常规 Reconciler 间隔追赶。Node Execution 与 Run 在同一事务删除，仍存在 Task 的 Run 不得删除。
+- 1.0 不提供历史归档、恢复或按租户配置不同保留期。
+- Start 重复进入规则的滚动窗口最多为 90 天（或 2160 小时），因此 180 天 Run 保留期覆盖完整判定窗口。真实 Entry Source 的允许重放窗口必须短于 Run 保留期，首期按不超过 30 天约束。
+- 大表使用适合有限批次清理的索引；是否分区由上线后的实际容量决定，不作为 1.0 前置条件。
+- 基础节点指标异步写入 `xy_wap_embed_workflow_node_metric`，禁止请求时扫描 Node Execution 全表计算看板指标。
 
 当近期明细、运行检索或统计需求超过 MySQL 能力时，再引入 ClickHouse 和 COS 归档，不提前成为 1.0 发布依赖。
 
@@ -1107,7 +1109,6 @@ idempotencyKey
 - Message、Tag、Coupon、Handoff 的具体配置和 Java API。
 - 各动作节点的重试分类和最大重试策略。
 - 下游业务接口的幂等协议。
-- Run 和 Node Execution 的产品查询保留期。
 - 1.0 实际目标日进入量、峰值倍数和最长运行周期。
 
 这些字段确认后通过 Node Definition、共享契约和 Executor Registry 扩展，不改变本 Spec 确定的控制面、状态机、可靠性和基础设施边界。
@@ -1125,6 +1126,7 @@ idempotencyKey
 - 暂停不创建新 Run、不派发新任务，恢复后可继续执行。
 - 停止在控制面立即生效并向用户展示“已停止”；活跃 Run 由后台异步取消，不阻塞 HTTP 请求，取消积压仅供内部运维检查。
 - 删除只更新 `biz_status`，Worker 在每个执行边界校验并取消未执行任务，不物理删除数据。
+- 活跃 Run 不清理；已结束 Run 与 Node Execution 保留 180 天，Task 与对应 Outbox 保留 30 天，并通过有索引的有限批次后台清理。
 - Scheduler 可多实例运行且不会重复认领导致状态破坏。
 - Outbox 积压、Task Lag、数据库重试、最终失败和租约恢复具有可观测信号；真实 Entry Source 上线前必须补齐 Entry DLQ 积压告警和恢复流程。
 - 核心正确性不依赖 Redis、进程内状态或 MQ 长延迟消息。

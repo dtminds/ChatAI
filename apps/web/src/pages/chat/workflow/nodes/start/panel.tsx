@@ -1,6 +1,8 @@
-import type {
-  WorkflowEntryPolicy,
-  WorkflowStartTrigger,
+import {
+  WORKFLOW_ENTRY_WINDOW_MAX_DAYS,
+  WORKFLOW_ENTRY_WINDOW_MAX_HOURS,
+  type WorkflowEntryPolicy,
+  type WorkflowStartTrigger,
 } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import {
@@ -175,7 +177,7 @@ export function StartConfig({
                 <div className="ml-6 grid grid-cols-[70px_1fr_70px] items-center gap-2">
                   <NumberInput
                     ariaLabel="时间范围"
-                    max={365}
+                    max={getRollingWindowMaximum(entryPolicy.windowUnit)}
                     onChange={(windowSize) => updateStartConfig({
                       entryPolicy: { ...entryPolicy, windowSize },
                     })}
@@ -183,7 +185,14 @@ export function StartConfig({
                   />
                   <Select
                     onValueChange={(windowUnit: "hour" | "day") => updateStartConfig({
-                      entryPolicy: { ...entryPolicy, windowUnit },
+                      entryPolicy: {
+                        ...entryPolicy,
+                        windowSize: Math.min(
+                          entryPolicy.windowSize,
+                          getRollingWindowMaximum(windowUnit),
+                        ),
+                        windowUnit,
+                      },
                     })}
                     value={entryPolicy.windowUnit}
                   >
@@ -297,6 +306,10 @@ function createEntryPolicy(mode: string): WorkflowEntryPolicy {
     return { maxEntries: 2, mode: "rolling_window", windowSize: 7, windowUnit: "day" };
   }
   return { maxEntries: 2, mode: "lifetime_limit" };
+}
+
+function getRollingWindowMaximum(unit: "hour" | "day") {
+  return unit === "hour" ? WORKFLOW_ENTRY_WINDOW_MAX_HOURS : WORKFLOW_ENTRY_WINDOW_MAX_DAYS;
 }
 
 function toggleValue(values: string[], value: string, checked: boolean) {

@@ -71,10 +71,27 @@ describe("database schema document", () => {
     expect(runTable.match(/^  KEY .+$/gm)).toEqual([
       "  KEY idx_workflow_run_records (uid, workflow_id, revision, id),",
       "  KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),",
+      "  KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id),",
       "  KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),",
       "  KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),",
-      "  KEY idx_workflow_run_status_reconcile (status, id)",
+      "  KEY idx_workflow_run_status_reconcile (status, id),",
+      "  KEY idx_workflow_run_history_cleanup (status, completed_at, id)",
     ]);
+  });
+
+  it("keeps the indexes required by bounded workflow history cleanup", () => {
+    const nodeExecutionTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_workflow_node_execution",
+    );
+    const outboxTable = extractCreateTable(schemaSql, "xy_wap_embed_workflow_outbox");
+
+    expect(nodeExecutionTable).toContain(
+      "KEY idx_workflow_node_execution_run_cleanup (run_id, id)",
+    );
+    expect(outboxTable).toContain(
+      "KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)",
+    );
   });
 });
 

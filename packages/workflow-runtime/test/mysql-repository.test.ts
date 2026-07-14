@@ -304,6 +304,80 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(compiled.parameters).toEqual([-1]);
   });
 
+  it("cleans terminal history in bounded batches without repeatedly selecting taskless runs", async () => {
+    const db = createHistoryCleanupDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 1,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: true,
+      nodeExecutionsDeleted: 1,
+      outboxDeleted: 1,
+      runsDeleted: 1,
+      tasksDeleted: 1,
+    });
+
+    expect(db.usedTaskExistenceFilter).toBe(true);
+    expect(db.taskExistenceWhereRefs).toEqual([
+      ["cleanup_task.run_id", "=", "xy_wap_embed_workflow_run.id"],
+    ]);
+    expect(db.lockOrder).toEqual(["run", "task", "outbox", "run"]);
+    expect(db.deleteOrder).toEqual(["outbox", "task", "execution", "run"]);
+    expect(db.runWhereCalls).toEqual(expect.arrayContaining([
+      ["status", "in", ["cancelled", "completed", "failed"]],
+      ["completed_at", "is not", null],
+      ["completed_at", "<", new Date("2026-01-14T00:00:00.000Z")],
+      ["completed_at", "<", new Date("2026-06-13T00:00:00.000Z")],
+    ]));
+  });
+
+  it("keeps an expired run while it still owns a task", async () => {
+    const db = createHistoryCleanupDbMock({
+      remainingTasks: [{ run_id: "1" }],
+      technicalRuns: [],
+      userRuns: [{ id: "1" }],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: true,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 0,
+      runsDeleted: 0,
+      tasksDeleted: 0,
+    });
+    expect(db.deleteOrder).toEqual([]);
+  });
+
+  it("keeps task history while its outbox row is leased", async () => {
+    const db = createHistoryCleanupDbMock({
+      taskOutbox: [{ aggregate_id: "10", status: "leased" }],
+      technicalRuns: [{ id: "1" }],
+      userRuns: [],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.cleanupWorkflowHistory({
+      limit: 100,
+      runBefore: new Date("2026-01-14T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-13T00:00:00.000Z"),
+    })).resolves.toEqual({
+      hasMore: true,
+      nodeExecutionsDeleted: 0,
+      outboxDeleted: 0,
+      runsDeleted: 0,
+      tasksDeleted: 0,
+    });
+    expect(db.deleteOrder).toEqual([]);
+  });
+
   it("reads only active current-revision trigger bindings through the definition join", async () => {
     const db = createTriggerBindingDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -877,6 +951,96 @@ function createMetricAggregationDbMock() {
         async executeTakeFirstOrThrow() { return {}; },
       };
       return builder;
+    },
+  };
+  return db;
+}
+
+function createHistoryCleanupDbMock(options: {
+  remainingTasks?: Array<{ run_id: string }>;
+  taskOutbox?: Array<{ aggregate_id: string; status: string }>;
+  technicalRuns?: Array<{ id: string }>;
+  userRuns?: Array<{ id: string }>;
+} = {}) {
+  const technicalRuns = options.technicalRuns ?? [{ id: "1" }, { id: "2" }];
+  const userRuns = options.userRuns ?? [{ id: "1" }, { id: "2" }];
+  let runSelectCount = 0;
+  const db = {
+    deleteOrder: [] as string[],
+    lockOrder: [] as string[],
+    runWhereCalls: [] as unknown[][],
+    taskExistenceWhereRefs: [] as unknown[][],
+    usedTaskExistenceFilter: false,
+    deleteFrom(table: string) {
+      const builder = {
+        where() { return builder; },
+        async executeTakeFirst() {
+          const label = table === "xy_wap_embed_workflow_outbox"
+            ? "outbox"
+            : table === "xy_wap_embed_workflow_task"
+              ? "task"
+              : table === "xy_wap_embed_workflow_node_execution"
+                ? "execution"
+                : "run";
+          db.deleteOrder.push(label);
+          return { numDeletedRows: 1n };
+        },
+      };
+      return builder;
+    },
+    selectFrom(table: string) {
+      const builder = {
+        forUpdate() {
+          db.lockOrder.push(table === "xy_wap_embed_workflow_run"
+            ? "run"
+            : table === "xy_wap_embed_workflow_task"
+              ? "task"
+              : "outbox");
+          return builder;
+        },
+        limit() { return builder; },
+        orderBy() { return builder; },
+        select() { return builder; },
+        skipLocked() { return builder; },
+        where(...args: unknown[]) {
+          if (table === "xy_wap_embed_workflow_run" && typeof args[0] === "function") {
+            const subquery = {
+              select() { return subquery; },
+              whereRef(...whereRefArgs: unknown[]) {
+                db.taskExistenceWhereRefs.push(whereRefArgs);
+                return subquery;
+              },
+            };
+            (args[0] as (helpers: Record<string, unknown>) => unknown)({
+              exists: (value: unknown) => {
+                db.usedTaskExistenceFilter = true;
+                return value;
+              },
+              selectFrom: () => subquery,
+            });
+          } else if (table === "xy_wap_embed_workflow_run") {
+            db.runWhereCalls.push(args);
+          }
+          return builder;
+        },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_run") {
+            runSelectCount += 1;
+            return runSelectCount === 1 ? technicalRuns : userRuns;
+          }
+          if (table === "xy_wap_embed_workflow_task" && runSelectCount === 1) {
+            return [{ id: "10", run_id: "1" }];
+          }
+          if (table === "xy_wap_embed_workflow_outbox") return options.taskOutbox ?? [];
+          return options.remainingTasks ?? [];
+        },
+      };
+      return builder;
+    },
+    transaction() {
+      return {
+        execute: async (operation: (transaction: typeof db) => unknown) => operation(db),
+      };
     },
   };
   return db;

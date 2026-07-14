@@ -4,6 +4,7 @@ import type {
   WorkflowStartConfig,
   WorkflowStartTrigger,
 } from "@chatai/contracts";
+import { normalizeWorkflowEntryPolicy } from "@chatai/contracts";
 
 export type WorkflowTriggerBindingSpec = {
   eventType: WorkflowEntryEventType;
@@ -13,7 +14,7 @@ export type WorkflowTriggerBindingSpec = {
 export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): WorkflowStartConfig {
   return {
     accountIds: unique(config.accountIds.map(value => value.trim()).filter(Boolean)),
-    entryPolicy: structuredClone(config.entryPolicy),
+    entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
     triggers: config.triggers.map(normalizeTrigger),
   };
 }

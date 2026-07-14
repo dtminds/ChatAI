@@ -8,6 +8,13 @@ describe("workflow reconciler", () => {
       cleanupProcessedNodeMetricEvents: vi.fn(async () => 8),
       cancelUnavailableRuns: vi.fn(async () => ({ cancelled: 4, done: false, nextCursor: "88" })),
       cleanupExpiredInbox: vi.fn(async () => 5),
+      cleanupWorkflowHistory: vi.fn(async () => ({
+        hasMore: false,
+        nodeExecutionsDeleted: 10,
+        outboxDeleted: 11,
+        runsDeleted: 12,
+        tasksDeleted: 13,
+      })),
       recoverExpiredLeases: vi.fn(async () => ({ dead: 1, recovered: 2 })),
       reconcileRunTaskConsistency: vi.fn(async () => ({
         hasMoreRuns: true,
@@ -31,13 +38,20 @@ describe("workflow reconciler", () => {
       consistencyGraceMs: 60_000,
       dispatchTimeoutMs: 300_000,
       inboxCleanupBatchSize: 1_000,
+      historyRetention: {
+        runBefore: new Date("2026-01-12T00:00:00.000Z"),
+        taskOutboxBefore: new Date("2026-06-11T00:00:00.000Z"),
+      },
+      historyCleanupBatchSize: 1_000,
       limit: 100,
       maxTaskAttempts: 5,
       now: new Date("2026-07-11T00:00:00.000Z"),
       reconciler,
     })).resolves.toEqual({
       cancelled: 4,
+      historyCleanupHasMore: false,
       inboxDeleted: 5,
+      nodeExecutionsDeleted: 10,
       nextCursor: "88",
       nextConsistencyRunCursor: "91",
       nextConsistencyTaskCursor: null,
@@ -45,8 +59,11 @@ describe("workflow reconciler", () => {
       nodeMetricEventsDeleted: 8,
       stalledTasksRepublished: 6,
       outboxLeasesRecovered: 3,
+      outboxDeleted: 11,
+      runsDeleted: 12,
       taskLeasesDead: 1,
       taskLeasesRecovered: 2,
+      tasksDeleted: 13,
       inconsistentRunsFailed: 1,
       runsChecked: 9,
       staleTasksCancelled: 2,
@@ -64,6 +81,11 @@ describe("workflow reconciler", () => {
       inconsistentBefore: new Date("2026-07-10T23:59:00.000Z"),
       limit: 100,
       now: new Date("2026-07-11T00:00:00.000Z"),
+    });
+    expect(reconciler.cleanupWorkflowHistory).toHaveBeenCalledWith({
+      limit: 1_000,
+      runBefore: new Date("2026-01-12T00:00:00.000Z"),
+      taskOutboxBefore: new Date("2026-06-11T00:00:00.000Z"),
     });
   });
 });

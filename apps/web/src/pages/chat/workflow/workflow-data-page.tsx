@@ -6,11 +6,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  WorkflowDataOverview,
-  WorkflowEntryRecord,
-  WorkflowEntryRecordDetail,
-  WorkflowEntryRecordPage,
+import {
+  WORKFLOW_RUN_RETENTION_DAYS,
+  type WorkflowDataOverview,
+  type WorkflowEntryRecord,
+  type WorkflowEntryRecordDetail,
+  type WorkflowEntryRecordPage,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import {
@@ -274,7 +275,10 @@ function WorkflowRecordsView({ document, nodeId, onClose, refreshVersion, reposi
       <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{title}</h2>
-          <div className="mt-1 text-xs text-muted-foreground">共显示 {page?.items.length ?? 0} 条进入记录</div>
+          <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+            <span>共显示 {page?.items.length ?? 0} 条进入记录</span>
+            <span>已结束记录仅保留最近 {WORKFLOW_RUN_RETENTION_DAYS} 天</span>
+          </div>
         </div>
         <Button aria-label="关闭进入记录" className="size-8" onClick={onClose} size="icon" type="button" variant="ghost">
           <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />

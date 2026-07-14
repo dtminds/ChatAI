@@ -16,6 +16,7 @@ import { WorkflowStartConfigSchema } from "@chatai/contracts";
 import {
   compileWorkflowDraft,
   getWorkflowTriggerBindings,
+  normalizeWorkflowDraft,
   WorkflowCompilationError,
 } from "@chatai/workflow-engine";
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
@@ -56,7 +57,7 @@ export class WorkflowService {
   async saveDraft(scope: WorkflowOperatorScope, workflowId: string, input: WorkflowSaveDraftRequest) {
     assertWorkflowAccess(scope);
     return toDefinition(this.unwrapMutation(await this.repository.saveDraft({
-      draft: input.draft,
+      draft: normalizeWorkflowDraft(input.draft),
       expectedDraftVersion: input.expectedDraftVersion,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -111,9 +112,13 @@ export class WorkflowService {
     const definition = await this.requireDefinition(scope.uid, workflowId);
     this.assertNotStopped(definition);
     if (definition.draftVersion !== input.expectedDraftVersion) throw conflictError();
+    const normalizedDefinition = {
+      ...definition,
+      draft: normalizeWorkflowDraft(definition.draft),
+    };
 
     if (definition.publishedRevision === null) {
-      this.compile(definition, 1);
+      this.compile(normalizedDefinition, 1);
       const validated = this.unwrapMutation(await this.repository.markValidated({
         expectedDraftVersion: input.expectedDraftVersion,
         opSubUserId: scope.subUserId,
@@ -124,7 +129,7 @@ export class WorkflowService {
     }
 
     const nextRevision = definition.publishedRevision + 1;
-    const executionSpec = this.compile(definition, nextRevision);
+    const executionSpec = this.compile(normalizedDefinition, nextRevision);
     const specHash = hashExecutionSpec(executionSpec);
     const currentRevision = await this.repository.findRevision(
       scope.uid,
@@ -133,13 +138,13 @@ export class WorkflowService {
     );
     if (currentRevision && hashExecutionSpec(currentRevision.executionSpec) === specHash) {
       return {
-        definition: toDefinition(definition),
+        definition: toDefinition(normalizedDefinition),
         revision: toRevision(currentRevision),
         validatedOnly: false,
       };
     }
     const published = this.unwrapMutation(await this.repository.publishRevision({
-      draft: definition.draft,
+      draft: normalizedDefinition.draft,
       executionSpec,
       expectedDraftVersion: input.expectedDraftVersion,
       expectedPublishedRevision: definition.publishedRevision,
@@ -165,9 +170,10 @@ export class WorkflowService {
     if (definition.validatedDraftVersion !== definition.draftVersion) {
       throw new AppError("WORKFLOW_DRAFT_NOT_VALIDATED", "请先发布检查当前草稿", 409);
     }
-    const executionSpec = this.compile(definition, 1);
+    const normalizedDraft = normalizeWorkflowDraft(definition.draft);
+    const executionSpec = this.compile({ ...definition, draft: normalizedDraft }, 1);
     const enabled = this.unwrapMutation(await this.repository.enable({
-      draft: definition.draft,
+      draft: normalizedDraft,
       executionSpec,
       expectedDraftVersion: definition.draftVersion,
       opSubUserId: scope.subUserId,
@@ -214,7 +220,7 @@ export class WorkflowService {
       throw new NotFoundError("WORKFLOW_REVISION_NOT_FOUND", "Workflow Revision 不存在");
     }
     return toDefinition(this.unwrapMutation(await this.repository.restoreDraft({
-      draft: revisionRecord.draft,
+      draft: normalizeWorkflowDraft(revisionRecord.draft),
       expectedDraftVersion: input.expectedDraftVersion,
       opSubUserId: scope.subUserId,
       uid: scope.uid,
@@ -270,7 +276,7 @@ function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
   return {
     createdAt: record.createdAt.toISOString(),
     description: record.description,
-    draft: structuredClone(record.draft),
+    draft: normalizeWorkflowDraft(record.draft),
     draftVersion: record.draftVersion,
     id: record.id,
     name: record.name,
@@ -290,7 +296,7 @@ function toDefinition(record: WorkflowDefinitionRecord): WorkflowDefinition {
 
 function toRevision(record: WorkflowRevisionRecord): WorkflowRevision {
   return {
-    draft: structuredClone(record.draft),
+    draft: normalizeWorkflowDraft(record.draft),
     id: record.id,
     publishedAt: record.publishedAt.toISOString(),
     revision: record.revision,

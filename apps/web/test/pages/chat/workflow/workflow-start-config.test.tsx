@@ -114,4 +114,38 @@ describe("workflow start configuration", () => {
       entryPolicy: { maxEntries: 3, mode: "lifetime_limit" },
     }));
   });
+
+  it("clamps rolling windows to 90 days when changing units", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createDefaultNodeData("start"),
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 2_160,
+        windowUnit: "hour",
+      },
+    });
+    render(
+      <StartConfig
+        edges={[]}
+        node={node}
+        nodes={[node]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "时间单位" }));
+    await user.click(screen.getByRole("option", { name: "天" }));
+
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entryPolicy: {
+        maxEntries: 2,
+        mode: "rolling_window",
+        windowSize: 90,
+        windowUnit: "day",
+      },
+    }));
+  });
 });

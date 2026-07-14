@@ -633,9 +633,11 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_run (
   UNIQUE KEY uk_workflow_run_entry_event (uid, workflow_id, entry_event_id),
   KEY idx_workflow_run_records (uid, workflow_id, revision, id),
   KEY idx_workflow_run_status_records (uid, workflow_id, status, revision, id),
+  KEY idx_workflow_run_retained_records (uid, workflow_id, revision, completed_at, id),
   KEY idx_workflow_run_node_records (uid, workflow_id, revision, current_node_id, id),
   KEY idx_workflow_run_entry_window (uid, workflow_id, subject_id, create_time, id),
-  KEY idx_workflow_run_status_reconcile (status, id)
+  KEY idx_workflow_run_status_reconcile (status, id),
+  KEY idx_workflow_run_history_cleanup (status, completed_at, id)
 ) COMMENT='营销Workflow运行实例表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_task (
@@ -688,7 +690,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_execution (
   PRIMARY KEY (id),
   UNIQUE KEY uk_workflow_node_execution_run_sequence (uid, run_id, sequence),
   UNIQUE KEY uk_workflow_node_execution_idempotency (uid, idempotency_key),
-  KEY idx_workflow_node_execution_run_time (uid, run_id, create_time, id)
+  KEY idx_workflow_node_execution_run_time (uid, run_id, create_time, id),
+  KEY idx_workflow_node_execution_run_cleanup (run_id, id)
 ) COMMENT='营销Workflow节点执行账本表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
@@ -711,7 +714,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_outbox (
   KEY idx_workflow_outbox_dispatch (status, next_attempt_at, id),
   KEY idx_workflow_outbox_lease (status, lease_expires_at, id),
   KEY idx_workflow_outbox_delivery_reconcile (status, sent_at, aggregate_type, aggregate_id, task_version, id),
-  KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id)
+  KEY idx_workflow_outbox_aggregate (uid, aggregate_type, aggregate_id, id),
+  KEY idx_workflow_outbox_task_cleanup (aggregate_type, aggregate_id, id)
 ) COMMENT='营销Workflow事务Outbox表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inbox (

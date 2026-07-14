@@ -43,6 +43,8 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly nodeMetrics: import("./types.js").WorkflowNodeMetricRecord[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
+  private readonly runCompletedAt = new Map<string, Date>();
+  private readonly totalEntries = new Map<string, number>();
   private readonly runUpdatedAt = new Map<string, Date>();
   private nextId = 1n;
 
@@ -78,7 +80,9 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       && run.workflowId === input.workflowId
       && run.subjectId === input.subjectId,
     );
-    if (!canEnterWorkflow(input.entryPolicy, previousRuns, admittedAt)) {
+    const entryGuardKey = `${input.uid}:${input.workflowId}:${input.subjectId}`;
+    const totalEntries = this.totalEntries.get(entryGuardKey) ?? 0;
+    if (!canEnterWorkflow(input.entryPolicy, previousRuns, totalEntries, admittedAt)) {
       return { kind: "entry-policy-rejected" as const };
     }
 
@@ -106,6 +110,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       taskType: "execute",
     });
     this.runs.push(run);
+    this.totalEntries.set(entryGuardKey, totalEntries + 1);
     this.runUpdatedAt.set(run.id, admittedAt);
     this.tasks.push(task);
     this.outbox.push(createOutbox(this.createId(), task, admittedAt));
@@ -574,6 +579,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       run.status = "failed";
       run.lockVersion += 1;
       run.nextExecuteAt = null;
+      this.runCompletedAt.set(run.id, input.now);
       this.runUpdatedAt.set(run.id, input.now);
       inconsistentRunsFailed += 1;
     }
@@ -638,6 +644,75 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const expiredKeys = new Set(expired.map(item => `${item.consumer}\0${item.messageId}`));
     this.inbox = this.inbox.filter(item => !expiredKeys.has(`${item.consumer}\0${item.messageId}`));
     return expired.length;
+  }
+
+  async cleanupWorkflowHistory(
+    input: Parameters<WorkflowRuntimeRepository["cleanupWorkflowHistory"]>[0],
+  ) {
+    if (input.limit <= 0) {
+      return {
+        hasMore: false,
+        nodeExecutionsDeleted: 0,
+        outboxDeleted: 0,
+        runsDeleted: 0,
+        tasksDeleted: 0,
+      };
+    }
+    const terminal = new Set(["cancelled", "completed", "failed"]);
+    const technicalRuns = this.runs
+      .filter(run => terminal.has(run.status))
+      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) < input.taskOutboxBefore)
+      .filter(run => this.tasks.some(task => task.runId === run.id))
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selectedTechnicalRuns = technicalRuns.slice(0, input.limit);
+    const blockedTechnicalRunIds = new Set(selectedTechnicalRuns
+      .filter(run => this.tasks.some(task => task.runId === run.id
+        && this.outbox.some(item => item.payload.taskId === task.id && item.status === "leased")))
+      .map(run => run.id));
+    const technicalRunIds = new Set(selectedTechnicalRuns
+      .filter(run => !blockedTechnicalRunIds.has(run.id))
+      .map(run => run.id));
+    const taskIds = new Set(this.tasks
+      .filter(task => technicalRunIds.has(task.runId))
+      .map(task => task.id));
+    const outboxDeleted = this.outbox.filter(item => taskIds.has(item.payload.taskId)).length;
+    const tasksDeleted = this.tasks.filter(task => technicalRunIds.has(task.runId)).length;
+    this.outbox = this.outbox.filter(item => !taskIds.has(item.payload.taskId));
+    for (let index = this.tasks.length - 1; index >= 0; index -= 1) {
+      if (technicalRunIds.has(this.tasks[index]!.runId)) this.tasks.splice(index, 1);
+    }
+
+    const expiredRuns = this.runs
+      .filter(run => terminal.has(run.status))
+      .filter(run => (this.runCompletedAt.get(run.id) ?? run.createdAt) < input.runBefore)
+      .sort(compareById)
+      .slice(0, Math.max(0, input.limit) + 1);
+    const selectedExpiredRuns = expiredRuns.slice(0, input.limit);
+    const expiredRunIds = new Set(selectedExpiredRuns
+      .filter(run => !this.tasks.some(task => task.runId === run.id))
+      .map(run => run.id));
+    const nodeExecutionsDeleted = this.nodeExecutions.filter(item => expiredRunIds.has(item.runId)).length;
+    for (let index = this.nodeExecutions.length - 1; index >= 0; index -= 1) {
+      if (expiredRunIds.has(this.nodeExecutions[index]!.runId)) this.nodeExecutions.splice(index, 1);
+    }
+    for (let index = this.runs.length - 1; index >= 0; index -= 1) {
+      const run = this.runs[index]!;
+      if (!expiredRunIds.has(run.id)) continue;
+      this.runs.splice(index, 1);
+      this.runCompletedAt.delete(run.id);
+      this.runUpdatedAt.delete(run.id);
+    }
+    return {
+      hasMore: blockedTechnicalRunIds.size > 0
+        || selectedExpiredRuns.some(run => this.tasks.some(task => task.runId === run.id))
+        || technicalRuns.length > input.limit
+        || expiredRuns.length > input.limit,
+      nodeExecutionsDeleted,
+      outboxDeleted,
+      runsDeleted: expiredRunIds.size,
+      tasksDeleted,
+    };
   }
 
   async aggregateNodeMetricEvents(input: Parameters<WorkflowRuntimeRepository["aggregateNodeMetricEvents"]>[0]) {
@@ -842,7 +917,11 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   private touchRun(run: WorkflowRunRecord) {
-    this.runUpdatedAt.set(run.id, this.now());
+    const now = this.now();
+    this.runUpdatedAt.set(run.id, now);
+    if (run.status === "cancelled" || run.status === "completed" || run.status === "failed") {
+      this.runCompletedAt.set(run.id, now);
+    }
   }
 
   private appendNodeMetricEvents(
@@ -887,10 +966,11 @@ function sameDate(first: Date, second: Date | null) {
 function canEnterWorkflow(
   policy: WorkflowCreateRunInput["entryPolicy"],
   runs: WorkflowRunRecord[],
+  totalEntries: number,
   now: Date,
 ) {
-  if (policy.mode === "never") return runs.length === 0;
-  if (policy.mode === "lifetime_limit") return runs.length < policy.maxEntries;
+  if (policy.mode === "never") return totalEntries === 0;
+  if (policy.mode === "lifetime_limit") return totalEntries < policy.maxEntries;
   const windowMilliseconds = policy.windowSize
     * (policy.windowUnit === "hour" ? 3_600_000 : 86_400_000);
   const cutoff = now.getTime() - windowMilliseconds;

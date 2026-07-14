@@ -5,7 +5,10 @@ import type {
   WorkflowStartConfig,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
-import { WorkflowStartConfigSchema } from "@chatai/contracts";
+import {
+  normalizeWorkflowEntryPolicy,
+  WorkflowStartConfigSchema,
+} from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
   createWorkflowActionIdempotencyKey,
@@ -310,10 +313,17 @@ function requireExecutionNode(spec: WorkflowExecutionSpec, nodeId: string) {
 }
 
 function requireStartConfig(node: WorkflowExecutionNode): WorkflowStartConfig {
-  if (node.kind !== "start" || !Value.Check(WorkflowStartConfigSchema, node.config)) {
+  if (node.kind !== "start") {
     throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
   }
-  return structuredClone(node.config) as WorkflowStartConfig;
+  const normalizedConfig = {
+    ...node.config,
+    entryPolicy: normalizeWorkflowEntryPolicy(node.config.entryPolicy),
+  };
+  if (!Value.Check(WorkflowStartConfigSchema, normalizedConfig)) {
+    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+  }
+  return structuredClone(normalizedConfig) as WorkflowStartConfig;
 }
 
 function parseOccurredAt(trigger: Record<string, unknown>) {

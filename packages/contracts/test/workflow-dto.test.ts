@@ -10,6 +10,7 @@ import {
   WorkflowEntryRecordPageSchema,
   WorkflowEntryRecordDetailSchema,
 } from "../src/workflow/dto.js";
+import { normalizeWorkflowEntryPolicy } from "../src/workflow/retention.js";
 import {
   WorkflowEntryCommandSchema,
   WorkflowStartConfigSchema,
@@ -94,6 +95,44 @@ describe("workflow contracts", () => {
     })).toBe(false);
     expect(Value.Check(WorkflowWaitConfigSchema, { duration: 15, unit: "minute" })).toBe(true);
     expect(Value.Check(WorkflowWaitConfigSchema, { duration: 0, unit: "day" })).toBe(false);
+  });
+
+  it("limits rolling entry windows to 90 days by actual duration", () => {
+    const createConfig = (windowSize: number, windowUnit: "day" | "hour") => ({
+      accountIds: ["account-a"],
+      entryPolicy: { maxEntries: 2, mode: "rolling_window", windowSize, windowUnit },
+      triggers: [{ type: "contact.friend_added" }],
+    });
+
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(90, "day"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(91, "day"))).toBe(false);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_160, "hour"))).toBe(true);
+    expect(Value.Check(WorkflowStartConfigSchema, createConfig(2_161, "hour"))).toBe(false);
+  });
+
+  it("normalizes legacy rolling entry windows to the current maximum", () => {
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 365,
+      windowUnit: "day",
+    })).toEqual({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 90,
+      windowUnit: "day",
+    });
+    expect(normalizeWorkflowEntryPolicy({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 8_760,
+      windowUnit: "hour",
+    })).toEqual({
+      maxEntries: 2,
+      mode: "rolling_window",
+      windowSize: 2_160,
+      windowUnit: "hour",
+    });
   });
 
   it("validates standard entry commands by event payload", () => {

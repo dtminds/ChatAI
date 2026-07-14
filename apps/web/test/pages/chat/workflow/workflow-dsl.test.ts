@@ -304,6 +304,12 @@ describe("workflow DSL", () => {
         ...handoffNode,
         data: {
           ...handoffNode.data,
+          customerMessage: [{ type: "text", value: "正在为您转接客服" }],
+          operatorMessage: [
+            { type: "text", value: "客户 " },
+            { selector: ["customer", "name"], type: "variable" },
+            { type: "text", value: " 需要人工处理" },
+          ],
           title: "会员运营接管",
         },
       }),
@@ -321,6 +327,11 @@ describe("workflow DSL", () => {
 
     expect(parsed.draft.nodes.find((node) => node.id === "start")?.data.entryPolicy).toEqual({ mode: "never" });
     expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.title).toBe("会员运营接管");
+    expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.operatorMessage).toEqual([
+      { type: "text", value: "客户 " },
+      { selector: ["customer", "name"], type: "variable" },
+      { type: "text", value: " 需要人工处理" },
+    ]);
   });
 
   it("keeps execution config limited to runtime-facing node parameters", () => {
@@ -353,7 +364,10 @@ describe("workflow DSL", () => {
       branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
     expect(configByKind.get("message")).toEqual({ content: [] });
-    expect(configByKind.get("handoff")).toEqual({});
+    expect(configByKind.get("handoff")).toEqual({
+      customerMessage: [],
+      operatorMessage: [],
+    });
     expect(configByKind.get("end")).toEqual({});
 
     graph.nodes.forEach((node) => {

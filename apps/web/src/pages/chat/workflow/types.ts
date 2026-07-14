@@ -80,16 +80,19 @@ export type WorkflowNodeOutputDefinition = {
   type: WorkflowVariableValueType;
 };
 
-export type WorkflowMessageContentSegment =
+export type WorkflowVariableContentSegment =
   | { type: "text"; value: string }
   | { selector: WorkflowVariableSelector; type: "variable" };
 
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
-  content?: WorkflowMessageContentSegment[];
+  content?: WorkflowVariableContentSegment[];
 };
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
-export type HandoffNodeData = WorkflowNodeDataBase<"handoff">;
+export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & {
+  customerMessage?: WorkflowVariableContentSegment[];
+  operatorMessage?: WorkflowVariableContentSegment[];
+};
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;
 export type LlmNodeData = WorkflowNodeDataBase<"llm">;
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
@@ -131,6 +134,7 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
   WorkflowNodeConfigPatchFor<WorkflowNodeData<TKind>>;
 
 export type WorkflowNodeRuntimeData = {
+  availableVariables?: WorkflowVariableDefinition[];
   dataMetric?: WorkflowNodeMetric;
   insertMenuOpen?: boolean;
   insertMenuSourceHandle?: string;

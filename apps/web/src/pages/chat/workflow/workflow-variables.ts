@@ -2,7 +2,7 @@ import { getNodeDefinitionCore } from "./node-definition-core";
 import { findWorkflowEntryNode } from "./node-catalog";
 import type {
   WorkflowEdge,
-  WorkflowMessageContentSegment,
+  WorkflowVariableContentSegment,
   WorkflowNode,
   WorkflowNodeOutputDefinition,
   WorkflowVariableDefinition,
@@ -118,8 +118,8 @@ export function resolveWorkflowVariable(
   );
 }
 
-export function getInvalidMessageVariableSelectors(
-  segments: WorkflowMessageContentSegment[] | undefined,
+export function getInvalidVariableContentSelectors(
+  segments: WorkflowVariableContentSegment[] | undefined,
   availableVariables: WorkflowVariableDefinition[],
 ) {
   const availableKeys = new Set(availableVariables.map((variable) =>
@@ -127,7 +127,7 @@ export function getInvalidMessageVariableSelectors(
   ));
 
   return (segments ?? [])
-    .filter((segment): segment is Extract<WorkflowMessageContentSegment, { type: "variable" }> =>
+    .filter((segment): segment is Extract<WorkflowVariableContentSegment, { type: "variable" }> =>
       segment.type === "variable")
     .map((segment) => segment.selector)
     .filter((selector) => !availableKeys.has(getWorkflowVariableSelectorKey(selector)));

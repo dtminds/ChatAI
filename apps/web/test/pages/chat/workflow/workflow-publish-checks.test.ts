@@ -189,12 +189,47 @@ describe("buildPublishChecks", () => {
       },
     ]);
 
-    for (const kind of ["message", "tag", "coupon", "handoff", "end"] as const) {
+    for (const kind of ["message", "tag", "coupon", "end"] as const) {
       const node = kind === "end"
         ? nodes.find((item) => item.data.kind === "end")!
         : createNodeFromKind(kind, `${kind}-contract`, nodes.length);
       expect(validateWorkflowNodeConfig(node, [...nodes, node], createInitialEdges())).toEqual([]);
     }
+
+    const handoffNode = createNodeFromKind("handoff", "handoff-contract", nodes.length);
+    expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], createInitialEdges())).toContainEqual({
+      code: "handoff-operator-message-required",
+      message: "转人工节点需要配置对客服转发话术",
+      severity: "warning",
+      source: "config",
+    });
+    expect(validateWorkflowNodeConfig({
+      ...handoffNode,
+      data: {
+        ...handoffNode.data,
+        operatorMessage: [{ type: "text", value: "   " }],
+      },
+    }, [...nodes, handoffNode], createInitialEdges())).toContainEqual(expect.objectContaining({
+      code: "handoff-operator-message-required",
+    }));
+  });
+
+  it("validates handoff message variables and length", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges();
+    const handoffNode: WorkflowNode<"handoff"> = {
+      ...createNodeFromKind("handoff", "handoff-contract", nodes.length),
+      data: {
+        ...createDefaultNodeData("handoff"),
+        customerMessage: [{ type: "text", value: "正".repeat(101) }],
+        operatorMessage: [{ selector: ["node", "deleted-node", "result"], type: "variable" }],
+      },
+    };
+
+    expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], edges)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "handoff-operator-message-variable-invalid" }),
+      expect.objectContaining({ code: "handoff-customer-message-too-long" }),
+    ]));
   });
 
   it("validates branch path labels separately from the branch expression", () => {

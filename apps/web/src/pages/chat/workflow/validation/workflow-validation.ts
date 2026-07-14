@@ -11,7 +11,8 @@ import type {
   WorkflowNodeKind,
   WorkflowNodeValidationIssue,
 } from "../types";
-import { getAvailableVariablesForNode, getInvalidMessageVariableSelectors } from "../workflow-variables";
+import { getVariableContentText } from "../nodes/variable-content/content";
+import { getAvailableVariablesForNode, getInvalidVariableContentSelectors } from "../workflow-variables";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -78,24 +79,62 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
   const definition = getNodeDefinitionCore(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
   const definitionIssues = definition.validate?.(node, { edges, nodes }) ?? [];
-  const variableIssues: WorkflowNodeValidationIssue[] = node.data.kind === "message"
-    && getInvalidMessageVariableSelectors(
-      node.data.content,
-      getAvailableVariablesForNode(node.id, nodes, edges),
-    ).length
-    ? [{
-        code: "message-variable-invalid",
-        message: "消息内容引用了不可用变量",
-        severity: "warning",
-        source: "config",
-      }]
-    : [];
+  const variableIssues = validateNodeVariableContent(node, nodes, edges);
 
   return [
     ...configIssues,
     ...definitionIssues,
     ...variableIssues,
   ];
+}
+
+function validateNodeVariableContent(
+  node: WorkflowNode,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowNodeValidationIssue[] {
+  const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+
+  if (node.data.kind === "message") {
+    return getInvalidVariableContentSelectors(node.data.content, availableVariables).length
+      ? [createVariableContentIssue("message-variable-invalid", "消息内容引用了不可用变量")]
+      : [];
+  }
+
+  if (node.data.kind !== "handoff") {
+    return [];
+  }
+
+  const fields = [
+    ["operator", node.data.operatorMessage],
+    ["customer", node.data.customerMessage],
+  ] as const;
+
+  return fields.flatMap(([field, content]) => {
+    const issues: WorkflowNodeValidationIssue[] = [];
+    if (getInvalidVariableContentSelectors(content, availableVariables).length) {
+      issues.push(createVariableContentIssue(
+        `handoff-${field}-message-variable-invalid`,
+        "转发话术引用了不可用变量",
+      ));
+    }
+    if (getVariableContentText(content, availableVariables).length > 100) {
+      issues.push(createVariableContentIssue(
+        `handoff-${field}-message-too-long`,
+        "转发话术不能超过 100 字",
+      ));
+    }
+    return issues;
+  });
+}
+
+function createVariableContentIssue(code: string, message: string): WorkflowNodeValidationIssue {
+  return {
+    code,
+    message,
+    severity: "warning",
+    source: "config",
+  };
 }
 
 export function validateWorkflowNodeGraphState(

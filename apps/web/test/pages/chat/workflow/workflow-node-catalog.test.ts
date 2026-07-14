@@ -216,14 +216,13 @@ describe("workflow node catalog", () => {
       "ai-intent",
       "coupon",
       "customer-update",
-      "handoff",
       "llm",
       "order-query",
       "tag",
       "tag-query",
       "wait",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "message", "start"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "start"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -366,6 +365,7 @@ describe("workflow node catalog", () => {
     const startBody = workflowNodeUiBindings.start.body;
     const waitBody = workflowNodeUiBindings.wait.body;
     const messageBody = workflowNodeUiBindings.message.body;
+    const handoffBody = workflowNodeUiBindings.handoff.body;
 
     expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
       .toEqual(expect.arrayContaining([
@@ -383,6 +383,17 @@ describe("workflow node catalog", () => {
       .toEqual([
         expect.objectContaining({
           id: "content",
+          value: { kind: "empty" },
+        }),
+      ]);
+    expect(handoffBody.kind === "fields" ? handoffBody.getFields(createDefaultNodeData("handoff")) : [])
+      .toEqual([
+        expect.objectContaining({
+          id: "operator-message",
+          value: { kind: "empty" },
+        }),
+        expect.objectContaining({
+          id: "customer-message",
           value: { kind: "empty" },
         }),
       ]);

@@ -950,6 +950,39 @@ describe("Agent workflow page", () => {
     expect(within(panel).queryByLabelText("节点说明")).not.toBeInTheDocument();
   });
 
+  it("configures operator and customer handoff messages", async () => {
+    const user = setupCanvasUser();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    const operatorMessage = within(panel).getByRole("textbox", { name: "对客服转发话术" });
+    const customerMessage = within(panel).getByRole("textbox", { name: "对客户转发话术" });
+
+    expect(within(panel).getAllByText("0/100")).toHaveLength(2);
+
+    const operatorSection = operatorMessage.closest("section")!;
+    await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
+    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+
+    const customerSection = customerMessage.closest("section")!;
+    await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
+    await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
+
+    await waitFor(() => {
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服话术：{客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客户话术：{客户昵称}");
+    });
+    expect(within(panel).queryByText("0/100")).not.toBeInTheDocument();
+  });
+
   it("does not create workflow history entries for unchanged repeated layout results", async () => {
     const user = setupCanvasUser();
 

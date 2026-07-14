@@ -1048,7 +1048,8 @@ function connectBranchOutlets(draft: WorkflowDraft) {
   };
 }
 
-function connectHandoffSupportNode(draft: WorkflowDraft) {
+function connectHandoffSupportNode(draft: WorkflowDraft): WorkflowDraft {
+  const handoffNode = createNodeFromKind("handoff", "handoff-support", 12);
 
   return {
     ...draft,
@@ -1060,7 +1061,13 @@ function connectHandoffSupportNode(draft: WorkflowDraft) {
     nodes: [
       ...draft.nodes,
       {
-        ...createNodeFromKind("handoff", "handoff-support", 12),
+        ...handoffNode,
+        data: {
+          ...handoffNode.data,
+          metric: "客户需要人工处理",
+          operatorMessage: [{ type: "text", value: "客户需要人工处理" }],
+          status: "ready",
+        },
         position: { x: 1240, y: -94 },
       },
     ],

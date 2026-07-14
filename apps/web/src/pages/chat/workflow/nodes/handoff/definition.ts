@@ -1,14 +1,47 @@
 import { UserSwitchIcon } from "@hugeicons/core-free-icons";
+import type { WorkflowNodeDefinition } from "../definition-types";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
+import {
+  getVariableContentPreview,
+  normalizeVariableContent,
+} from "../variable-content/content";
 
-export const handoffNodeDefinition = createStandardNodeDefinition({
+const baseHandoffNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-slate-600 text-white ring-slate-600/20",
   accentRgb: "71 85 105",
   description: "将客户转交给人工或指定团队",
   icon: UserSwitchIcon,
   kind: "handoff",
   label: "转人工",
-  metric: "待配置接管目标",
+  metric: "待配置客服话术",
   paletteGroup: "message",
   sort: 110,
 });
+
+export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
+  ...baseHandoffNodeDefinition,
+  createDefaultData: () => ({
+    ...baseHandoffNodeDefinition.createDefaultData(),
+    customerMessage: [],
+    metric: "待配置客服话术",
+    operatorMessage: [],
+    status: "warning",
+  }),
+  createExecutionConfig: (data) => ({
+    customerMessage: normalizeVariableContent(data.customerMessage),
+    operatorMessage: normalizeVariableContent(data.operatorMessage),
+  }),
+  sanitizeData: (data) => ({
+    ...data,
+    customerMessage: normalizeVariableContent(data.customerMessage),
+    operatorMessage: normalizeVariableContent(data.operatorMessage),
+  }),
+  validate: (node) => getVariableContentPreview(node.data.operatorMessage)
+    ? []
+    : [{
+        code: "handoff-operator-message-required",
+        message: "转人工节点需要配置对客服转发话术",
+        severity: "warning",
+        source: "config",
+      }],
+};

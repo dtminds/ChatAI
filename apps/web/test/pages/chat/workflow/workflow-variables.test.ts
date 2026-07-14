@@ -3,7 +3,7 @@ import { createEdge, createInitialEdges, createInitialNodes } from "@/pages/chat
 import {
   getAvailableVariablesForNode,
   getGuaranteedUpstreamNodes,
-  getInvalidMessageVariableSelectors,
+  getInvalidVariableContentSelectors,
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
   resolveWorkflowVariable,
@@ -67,7 +67,7 @@ describe("workflow variables", () => {
       variables,
       ["customer", "name"],
     )!)).toBe("客户昵称");
-    expect(getInvalidMessageVariableSelectors([
+    expect(getInvalidVariableContentSelectors([
       { selector: ["customer", "name"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
     ], variables)).toEqual([["node", "missing", "result"]]);

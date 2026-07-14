@@ -1,7 +1,7 @@
 import { Message01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
-import { normalizeMessageContent } from "./content";
+import { normalizeVariableContent } from "../variable-content/content";
 
 const baseMessageNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-sky-500 text-white ring-sky-500/20",
@@ -22,10 +22,10 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     content: [],
   }),
   createExecutionConfig: (data) => ({
-    content: normalizeMessageContent(data.content),
+    content: normalizeVariableContent(data.content),
   }),
   sanitizeData: (data) => ({
     ...data,
-    content: normalizeMessageContent(data.content),
+    content: normalizeVariableContent(data.content),
   }),
 };

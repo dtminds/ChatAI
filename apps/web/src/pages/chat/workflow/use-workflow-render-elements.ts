@@ -8,6 +8,7 @@ import type {
   QuickInsertTarget,
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
+import { getAvailableVariablesForNode } from "./workflow-variables";
 
 type WorkflowRenderElementHandlers = {
   onDeleteNode: (nodeId: string) => void;
@@ -47,6 +48,7 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   };
 
 type WorkflowRenderNodeCacheEntry = {
+  availableVariableKey: string;
   insertMenuOpen: boolean;
   insertMenuSourceHandle?: string;
   onDeleteNode: WorkflowRenderElementHandlers["onDeleteNode"];
@@ -196,6 +198,7 @@ function createWorkflowRenderEdges({
 }
 
 function createWorkflowRenderNodes({
+  edges,
   nodes,
   onDeleteNode,
   onDuplicateNode,
@@ -210,6 +213,13 @@ function createWorkflowRenderNodes({
 }: CreateWorkflowRenderElementsOptions, cache?: Map<string, WorkflowRenderNodeCacheEntry>): WorkflowRenderNode[] {
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
+    const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+    const availableVariableKey = availableVariables.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|");
     const isSelected = selectedNodeIdSet.has(node.id);
     const insertMenuOpen = !readOnly && node.id === quickInsertTarget?.nodeId;
     const insertMenuSourceHandle = insertMenuOpen
@@ -220,6 +230,7 @@ function createWorkflowRenderNodes({
     const cachedNode = cache?.get(node.id);
     if (
       cachedNode
+      && cachedNode.availableVariableKey === availableVariableKey
       && cachedNode.sourceNode === node
       && cachedNode.selected === isSelected
       && cachedNode.insertMenuOpen === insertMenuOpen
@@ -242,6 +253,7 @@ function createWorkflowRenderNodes({
       zIndex: isSelected ? 20 : undefined,
       data: {
         ...node.data,
+        availableVariables,
         insertMenuOpen,
         insertMenuSourceHandle,
         onDelete: readOnly ? undefined : onDeleteNode,
@@ -262,6 +274,7 @@ function createWorkflowRenderNodes({
     };
 
     cache?.set(node.id, {
+      availableVariableKey,
       insertMenuOpen,
       insertMenuSourceHandle,
       onDeleteNode,

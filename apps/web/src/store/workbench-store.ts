@@ -1516,7 +1516,7 @@ function shouldPreserveExistingSmartReplySuggestion(
   }
 
   return (
-    suggestion.content.trim().length > 0 &&
+    (suggestion.content?.trim() ?? "").length > 0 &&
     !isSmartReplyGenerationFailed(suggestion) &&
     !isSmartReplyKnowledgeMiss(suggestion)
   );

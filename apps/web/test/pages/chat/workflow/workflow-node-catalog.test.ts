@@ -215,7 +215,6 @@ describe("workflow node catalog", () => {
     const schemaNodeKinds: WorkflowNodeKind[] = [
       "agent",
       "ai-collect",
-      "ai-intent",
       "coupon",
       "customer-update",
       "llm",
@@ -223,7 +222,7 @@ describe("workflow node catalog", () => {
       "tag",
       "tag-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "message-query", "start", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "handoff", "message", "message-query", "start", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -328,7 +327,6 @@ describe("workflow node catalog", () => {
     const fieldNodeKinds: WorkflowNodeKind[] = [
       "agent",
       "ai-collect",
-      "ai-intent",
       "coupon",
       "customer-update",
       "handoff",
@@ -349,6 +347,7 @@ describe("workflow node catalog", () => {
       component: BranchNodeBody,
       kind: "custom",
     });
+    expect(workflowNodeUiBindings["ai-intent"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings["wait-event"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();

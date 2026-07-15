@@ -14,6 +14,7 @@ import type {
 import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
 import {
+  getAvailableIntentInputOutputsForNode,
   getAvailableMessageContentOutputsForNode,
   getAvailableTimeReferenceOutputsForNode,
   getAvailableTimeReferenceNodesForNode,
@@ -21,6 +22,7 @@ import {
   getInvalidVariableContentSelectors,
   resolveWorkflowVariable,
 } from "../workflow-variables";
+import { normalizeAiIntentInputSelector } from "../nodes/ai-intent/config";
 import {
   normalizeWorkflowMessageContentMode,
   normalizeWorkflowMessageOutputSelector,
@@ -187,6 +189,23 @@ function validateNodeVariableContent(
       ));
     }
     return issues;
+  }
+
+  if (node.data.kind === "ai-intent") {
+    const selector = normalizeAiIntentInputSelector(node.data.inputSelector);
+    if (
+      selector
+      && !resolveWorkflowVariable(
+        getAvailableIntentInputOutputsForNode(node.id, nodes, edges),
+        selector,
+      )
+    ) {
+      return [createVariableContentIssue(
+        "ai-intent-input-invalid",
+        "识别内容引用了不可用的前序节点输出",
+      )];
+    }
+    return [];
   }
 
   if (node.data.kind !== "handoff") {

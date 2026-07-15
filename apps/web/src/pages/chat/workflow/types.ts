@@ -157,7 +157,16 @@ export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">;
 export type AiCollectNodeData = WorkflowNodeDataBase<"ai-collect">;
-export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent">;
+export type WorkflowIntentOption = {
+  description: string;
+  id: string;
+};
+export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & {
+  inputSelector?: WorkflowVariableSelector;
+  intents: WorkflowIntentOption[];
+  mode: "advanced" | "quick";
+  prompt: string;
+};
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
@@ -194,6 +203,7 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
   WorkflowNodeConfigPatchFor<WorkflowNodeData<TKind>>;
 
 export type WorkflowNodeRuntimeData = {
+  availableIntentInputs?: WorkflowVariableDefinition[];
   availableTimeReferences?: {
     nodes: Array<{ id: string; title: string }>;
     outputs: WorkflowVariableDefinition[];

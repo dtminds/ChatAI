@@ -182,6 +182,7 @@ function hydrateWorkflowNodeData<TKind extends WorkflowNodeKind>(
   data: Record<string, unknown>,
 ): WorkflowNodeData<TKind> {
   const {
+    availableIntentInputs: _availableIntentInputs,
     availableTimeReferences: _availableTimeReferences,
     availableVariables: _availableVariables,
     insertMenuOpen: _insertMenuOpen,

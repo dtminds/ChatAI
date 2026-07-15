@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
 import {
+  getAvailableIntentInputOutputsForNode,
   getAvailableTimeReferenceNodesForNode,
   getAvailableTimeReferenceOutputsForNode,
   getAvailableVariablesForNode,
@@ -52,6 +53,7 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   };
 
 type WorkflowRenderNodeCacheEntry = {
+  availableIntentInputKey: string;
   availableTimeReferenceKey: string;
   availableVariableKey: string;
   insertMenuOpen: boolean;
@@ -219,6 +221,9 @@ function createWorkflowRenderNodes({
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
     const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+    const availableIntentInputs = node.data.kind === "ai-intent"
+      ? getAvailableIntentInputOutputsForNode(node.id, nodes, edges)
+      : undefined;
     const availableTimeReferences = node.data.kind === "message-query"
       ? {
           nodes: getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((sourceNode) => ({
@@ -244,6 +249,12 @@ function createWorkflowRenderNodes({
       variable.label,
     ].join(":"))
       .join("|");
+    const availableIntentInputKey = availableIntentInputs?.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|") ?? "";
     const isSelected = selectedNodeIdSet.has(node.id);
     const insertMenuOpen = !readOnly && node.id === quickInsertTarget?.nodeId;
     const insertMenuSourceHandle = insertMenuOpen
@@ -254,6 +265,7 @@ function createWorkflowRenderNodes({
     const cachedNode = cache?.get(node.id);
     if (
       cachedNode
+      && cachedNode.availableIntentInputKey === availableIntentInputKey
       && cachedNode.availableTimeReferenceKey === availableTimeReferenceKey
       && cachedNode.availableVariableKey === availableVariableKey
       && cachedNode.sourceNode === node
@@ -278,6 +290,7 @@ function createWorkflowRenderNodes({
       zIndex: isSelected ? 20 : undefined,
       data: {
         ...node.data,
+        availableIntentInputs,
         availableTimeReferences,
         availableVariables,
         insertMenuOpen,
@@ -300,6 +313,7 @@ function createWorkflowRenderNodes({
     };
 
     cache?.set(node.id, {
+      availableIntentInputKey,
       availableTimeReferenceKey,
       availableVariableKey,
       insertMenuOpen,

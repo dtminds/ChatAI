@@ -11,7 +11,7 @@ import {
 
 type StandardNodeKind = Exclude<
   WorkflowNodeKind,
-  "start" | "wait" | "wait-event" | "branch" | "message-query" | "end"
+  "start" | "wait" | "wait-event" | "branch" | "message-query" | "ai-intent" | "end"
 >;
 
 export function createStandardNodeDefinition<TKind extends StandardNodeKind>({

@@ -207,7 +207,7 @@ describe("buildPublishChecks", () => {
 
   it("validates only fields that are part of the current node contract", () => {
     const nodes = createInitialNodes();
-    const waitNode = nodes.find((node) => node.id === "wait-2d")!;
+    const waitNode = nodes.find((node) => node.id === "wait-2d") as WorkflowNode<"wait">;
 
     expect(validateWorkflowNodeConfig({
       ...waitNode,

@@ -7,7 +7,8 @@ export function getWorkflowNodeWidth(node: WorkflowNode) {
 }
 
 export function getWorkflowNodeEstimatedHeight(node: WorkflowNode) {
-  return getNodeDefinitionCore(node.data.kind).layout.estimatedHeight;
+  const definition = getNodeDefinitionCore(node.data.kind);
+  return definition.getEstimatedHeight?.(node.data) ?? definition.layout.estimatedHeight;
 }
 
 export function getInsertMenuHandleTop(node: WorkflowNode, sourceHandle?: string) {

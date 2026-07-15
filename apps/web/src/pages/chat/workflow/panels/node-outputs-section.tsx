@@ -1,12 +1,7 @@
-import { ArrowDown01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   HoverCard,
   HoverCardContent,
@@ -23,37 +18,27 @@ export function NodeOutputsSection({ node }: { node: WorkflowNode }) {
   }
 
   return (
-    <Collapsible className="group/output-section" defaultOpen>
-      <section className="rounded-lg border bg-background">
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
-          <span className="text-sm font-medium">节点输出</span>
-          <HugeiconsIcon
-            className="text-muted-foreground transition-transform group-data-[state=open]/output-section:rotate-180"
-            icon={ArrowDown01Icon}
-            size={14}
-            strokeWidth={1.8}
-          />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="space-y-1 px-3 pb-3">
-            {outputs.map((output) => (
-              <OutputRow key={output.key} output={output} />
-            ))}
-          </div>
-        </CollapsibleContent>
-      </section>
-    </Collapsible>
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold text-foreground">节点输出</h3>
+      <div className="space-y-1 rounded-lg border bg-background p-2">
+        {outputs.map((output) => (
+          <OutputRow key={output.key} output={output} />
+        ))}
+      </div>
+    </section>
   );
 }
 
 function OutputRow({ output }: { output: WorkflowNodeOutputDefinition }) {
   return (
-    <div className="flex min-h-8 items-center gap-2 rounded px-2 text-sm">
-      <span className="min-w-0 flex-1 truncate">{output.label}</span>
+    <div className="flex min-h-8 items-center justify-between gap-3 rounded px-2 text-sm">
+      <div className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{output.label}</span>
+        {output.description ? <OutputDescription output={output} /> : null}
+      </div>
       <span className="shrink-0 text-xs text-muted-foreground">
         {getWorkflowOutputTypeLabel(output.valueType)}
       </span>
-      {output.description ? <OutputDescription output={output} /> : null}
     </div>
   );
 }

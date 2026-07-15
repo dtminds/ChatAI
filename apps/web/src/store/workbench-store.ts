@@ -2125,12 +2125,12 @@ function canReconcileOptimisticOwnTextMessage(left: Message, right: Message) {
     return false;
   }
 
-  const optimisticTime = parseWorkbenchTimestamp(optimistic.sentAt);
-  const syncedTime = parseWorkbenchTimestamp(synced.sentAt);
-
-  if (!Number.isFinite(optimisticTime) || !Number.isFinite(syncedTime)) {
-    return true;
-  }
+  const optimisticTime = Number.isFinite(parseWorkbenchTimestamp(optimistic.sentAt))
+    ? parseWorkbenchTimestamp(optimistic.sentAt)
+    : Date.now();
+  const syncedTime = Number.isFinite(parseWorkbenchTimestamp(synced.sentAt))
+    ? parseWorkbenchTimestamp(synced.sentAt)
+    : Date.now();
 
   return Math.abs(optimisticTime - syncedTime) <= 120_000;
 }

@@ -65,6 +65,12 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
   }),
   schemaVersion: 2,
+  getOutputVariables: () => [{
+    key: "sentAt",
+    label: "发送成功时间",
+    type: "datetime",
+    usages: ["time-reference", "variable"],
+  }],
   validate: (node) => {
     const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);
     const contentText = getVariableContentText(node.data.content).trim();

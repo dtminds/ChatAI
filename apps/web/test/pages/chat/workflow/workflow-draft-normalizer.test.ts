@@ -356,6 +356,46 @@ describe("workflow draft normalizer", () => {
     }
   });
 
+  it("keeps normalized message query time expressions in persisted drafts", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          kind: "message-query",
+          limit: 99,
+          timeRange: {
+            end: { field: "enteredAt", kind: "current-node-lifecycle" },
+            mode: "dynamic",
+            start: {
+              kind: "node-output",
+              selector: ["node", "message-source", "sentAt"],
+            },
+          },
+          take: "earliest",
+          title: "查询邀约后的消息",
+        },
+        id: "message-query-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      kind: "message-query",
+      limit: 50,
+      metric: "最早 50 条消息",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: {
+          kind: "node-output",
+          selector: ["node", "message-source", "sentAt"],
+        },
+      },
+      take: "earliest",
+    }));
+  });
+
   it("does not downgrade node data created by a newer schema", () => {
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [],

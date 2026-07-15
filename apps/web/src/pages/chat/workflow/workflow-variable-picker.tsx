@@ -247,6 +247,7 @@ const scopeIcons = {
 
 const variableTypeLabels: Record<WorkflowVariableDefinition["type"], string> = {
   boolean: "布尔",
+  "conversation-messages": "消息列表",
   datetime: "时间",
   number: "数字",
   object: "对象",

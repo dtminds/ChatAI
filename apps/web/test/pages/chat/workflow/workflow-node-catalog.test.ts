@@ -183,6 +183,7 @@ describe("workflow node catalog", () => {
       "handoff",
       "llm",
       "message",
+      "message-query",
       "order-query",
       "start",
       "tag",
@@ -221,7 +222,7 @@ describe("workflow node catalog", () => {
       "tag",
       "tag-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "start", "wait"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "message-query", "start", "wait"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -332,6 +333,7 @@ describe("workflow node catalog", () => {
       "handoff",
       "llm",
       "message",
+      "message-query",
       "order-query",
       "start",
       "tag",
@@ -437,6 +439,7 @@ describe("workflow node catalog", () => {
       "message",
       "message",
       "message",
+      "message",
       "benefit",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
@@ -460,7 +463,7 @@ describe("workflow node catalog", () => {
     }))).toEqual([
       { id: "flow", items: ["wait", "branch", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "tag", "customer-update"] },
-      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "message", items: ["message", "message-query", "handoff", "agent"] },
       { id: "benefit", items: ["coupon"] },
     ]);
     expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({

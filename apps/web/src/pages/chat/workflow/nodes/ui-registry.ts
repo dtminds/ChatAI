@@ -9,6 +9,7 @@ import { endNodeUi } from "./end/ui";
 import { handoffNodeUi } from "./handoff/ui";
 import { llmNodeUi } from "./llm/ui";
 import { messageNodeUi } from "./message/ui";
+import { messageQueryNodeUi } from "./message-query/ui";
 import { orderQueryNodeUi } from "./order-query/ui";
 import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
@@ -27,6 +28,7 @@ export const workflowNodeUiRegistry = {
   handoff: handoffNodeUi,
   llm: llmNodeUi,
   message: messageNodeUi,
+  "message-query": messageQueryNodeUi,
   "order-query": orderQueryNodeUi,
   start: startNodeUi,
   tag: tagNodeUi,

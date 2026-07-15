@@ -9,7 +9,7 @@ import {
   targetNodeKinds,
 } from "./definition-shared";
 
-type StandardNodeKind = Exclude<WorkflowNodeKind, "start" | "wait" | "branch" | "end">;
+type StandardNodeKind = Exclude<WorkflowNodeKind, "start" | "wait" | "branch" | "message-query" | "end">;
 
 export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
   accentClassName,

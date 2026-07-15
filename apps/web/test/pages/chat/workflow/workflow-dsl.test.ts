@@ -166,6 +166,48 @@ describe("workflow DSL", () => {
     expect(messageConfig).not.toHaveProperty("content");
   });
 
+  it("emits message query time expressions without canvas-only metadata", () => {
+    const draft = createInitialDraft();
+    const queryNode = createNodeFromKind("message-query", "query-replies", 0);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("message-welcome", queryNode.id),
+      ],
+      nodes: [
+        ...draft.nodes,
+        {
+          ...queryNode,
+          data: {
+            ...queryNode.data,
+            timeRange: {
+              end: { field: "enteredAt", kind: "current-node-lifecycle" },
+              mode: "dynamic",
+              start: {
+                kind: "node-output",
+                selector: ["node", "message-welcome", "sentAt"],
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(graph.nodes.find((node) => node.id === queryNode.id)?.config).toEqual({
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: {
+          kind: "node-output",
+          selector: ["node", "message-welcome", "sentAt"],
+        },
+      },
+    });
+  });
+
   it("round-trips exported workflow DSL text through the import boundary", () => {
     const document = createWorkflowDslDocument({
       draft: createInitialDraft(),

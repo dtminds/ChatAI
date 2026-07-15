@@ -44,6 +44,58 @@ describe("workflow routes", () => {
     });
   });
 
+  it("saves drafts containing frontend-only message query nodes", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: {},
+      url: "/api/server/workflows",
+    })).json().data;
+    const messageQueryNode = {
+      data: {
+        kind: "message-query",
+        label: "消息查询",
+        limit: 10,
+        metric: "最新 10 条消息",
+        schemaVersion: 1,
+        status: "ready",
+        take: "latest",
+        timeRange: {
+          end: { field: "enteredAt", kind: "current-node-lifecycle" },
+          mode: "dynamic",
+          start: { field: "occurredAt", kind: "workflow-trigger" },
+        },
+        title: "消息查询",
+      },
+      id: "message-query-1",
+      position: { x: 360, y: 240 },
+      type: "workflowNode",
+    };
+    const draft = {
+      ...created.draft,
+      edges: [
+        { id: "edge-start-message-query-1", source: "start", target: messageQueryNode.id, type: "workflowEdge" },
+        { id: "edge-message-query-1-end", source: messageQueryNode.id, target: "end", type: "workflowEdge" },
+      ],
+      nodes: [
+        ...created.draft.nodes.filter((node: { id: string }) => node.id !== "end"),
+        messageQueryNode,
+        created.draft.nodes.find((node: { id: string }) => node.id === "end"),
+      ],
+    };
+
+    const saved = await app.inject({
+      method: "PUT",
+      payload: { draft, expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    });
+
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().data.draft.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ data: expect.objectContaining({ kind: "message-query" }) }),
+    ]));
+  });
+
 
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");

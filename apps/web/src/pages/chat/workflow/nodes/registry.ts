@@ -10,6 +10,7 @@ import { endNodeDefinition } from "./end/definition";
 import { handoffNodeDefinition } from "./handoff/definition";
 import { llmNodeDefinition } from "./llm/definition";
 import { messageNodeDefinition } from "./message/definition";
+import { messageQueryNodeDefinition } from "./message-query/definition";
 import { orderQueryNodeDefinition } from "./order-query/definition";
 import { startNodeDefinition } from "./start/definition";
 import { tagNodeDefinition } from "./tag/definition";
@@ -27,6 +28,7 @@ export const workflowNodeDefinitions = {
   handoff: handoffNodeDefinition,
   llm: llmNodeDefinition,
   message: messageNodeDefinition,
+  "message-query": messageQueryNodeDefinition,
   "order-query": orderQueryNodeDefinition,
   start: startNodeDefinition,
   tag: tagNodeDefinition,

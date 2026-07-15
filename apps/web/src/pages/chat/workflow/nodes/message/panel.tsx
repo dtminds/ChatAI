@@ -87,6 +87,7 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
           <h3 className="text-sm font-semibold text-foreground">消息内容</h3>
           <SegmentedControl
             aria-label="消息来源"
+            className="h-9 rounded-full p-1"
             onValueChange={(value) => {
               if (value === "custom" || value === "node-output") {
                 updateMessage({ contentMode: value });
@@ -95,10 +96,16 @@ export function MessageConfig({ edges, node, nodes, onNodeChange }: NodeSettings
             type="single"
             value={contentMode}
           >
-            <SegmentedControlItem className="w-auto px-3 text-xs" value="custom">
+            <SegmentedControlItem
+              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+              value="custom"
+            >
               自定义消息
             </SegmentedControlItem>
-            <SegmentedControlItem className="w-auto px-3 text-xs" value="node-output">
+            <SegmentedControlItem
+              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+              value="node-output"
+            >
               节点输出
             </SegmentedControlItem>
           </SegmentedControl>

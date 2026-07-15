@@ -2130,6 +2130,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "wait",
     "branch",
     "message",
+    "message-query",
     "tag",
     "coupon",
     "handoff",

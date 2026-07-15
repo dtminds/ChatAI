@@ -39,6 +39,24 @@ export function getAvailableMessageContentOutputsForNode(
   );
 }
 
+export function getAvailableTimeReferenceOutputsForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return getAvailableNodeOutputsForNode(nodeId, nodes, edges).filter((variable) =>
+    variable.type === "datetime" && variable.usages?.includes("time-reference"),
+  );
+}
+
+export function getAvailableTimeReferenceNodesForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return getGuaranteedUpstreamNodes(nodeId, nodes, edges);
+}
+
 export function getGuaranteedUpstreamNodes(
   nodeId: string,
   nodes: WorkflowNode[],

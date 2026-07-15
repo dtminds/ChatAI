@@ -7,6 +7,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("wait"),
   Type.Literal("branch"),
   Type.Literal("message"),
+  Type.Literal("message-query"),
   Type.Literal("tag"),
   Type.Literal("coupon"),
   Type.Literal("handoff"),

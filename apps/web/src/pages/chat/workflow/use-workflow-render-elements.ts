@@ -8,7 +8,11 @@ import type {
   QuickInsertTarget,
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
-import { getAvailableVariablesForNode } from "./workflow-variables";
+import {
+  getAvailableTimeReferenceNodesForNode,
+  getAvailableTimeReferenceOutputsForNode,
+  getAvailableVariablesForNode,
+} from "./workflow-variables";
 
 type WorkflowRenderElementHandlers = {
   onDeleteNode: (nodeId: string) => void;
@@ -48,6 +52,7 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   };
 
 type WorkflowRenderNodeCacheEntry = {
+  availableTimeReferenceKey: string;
   availableVariableKey: string;
   insertMenuOpen: boolean;
   insertMenuSourceHandle?: string;
@@ -214,6 +219,25 @@ function createWorkflowRenderNodes({
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
     const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+    const availableTimeReferences = node.data.kind === "message-query"
+      ? {
+          nodes: getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((sourceNode) => ({
+            id: sourceNode.id,
+            title: sourceNode.data.title,
+          })),
+          outputs: getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges),
+        }
+      : undefined;
+    const availableTimeReferenceKey = availableTimeReferences
+      ? [
+          ...availableTimeReferences.nodes.map((sourceNode) => `${sourceNode.id}:${sourceNode.title}`),
+          ...availableTimeReferences.outputs.map((output) => [
+            output.selector.join("."),
+            output.sourceNodeTitle,
+            output.label,
+          ].join(":")),
+        ].join("|")
+      : "";
     const availableVariableKey = availableVariables.map((variable) => [
       variable.selector.join("."),
       variable.sourceNodeTitle,
@@ -230,6 +254,7 @@ function createWorkflowRenderNodes({
     const cachedNode = cache?.get(node.id);
     if (
       cachedNode
+      && cachedNode.availableTimeReferenceKey === availableTimeReferenceKey
       && cachedNode.availableVariableKey === availableVariableKey
       && cachedNode.sourceNode === node
       && cachedNode.selected === isSelected
@@ -253,6 +278,7 @@ function createWorkflowRenderNodes({
       zIndex: isSelected ? 20 : undefined,
       data: {
         ...node.data,
+        availableTimeReferences,
         availableVariables,
         insertMenuOpen,
         insertMenuSourceHandle,
@@ -274,6 +300,7 @@ function createWorkflowRenderNodes({
     };
 
     cache?.set(node.id, {
+      availableTimeReferenceKey,
       availableVariableKey,
       insertMenuOpen,
       insertMenuSourceHandle,

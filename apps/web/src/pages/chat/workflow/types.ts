@@ -16,6 +16,7 @@ export type WorkflowNodeKind =
   | "wait"
   | "branch"
   | "message"
+  | "message-query"
   | "tag"
   | "coupon"
   | "handoff"
@@ -61,9 +62,40 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
 };
 
 export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
-export type WorkflowVariableValueType = "boolean" | "datetime" | "number" | "object" | "string";
+export type WorkflowVariableValueType = "boolean" | "conversation-messages" | "datetime" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
-export type WorkflowNodeOutputUsage = "message-content" | "variable";
+export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
+
+export type WorkflowDynamicTimeReference =
+  | {
+      field: "occurredAt";
+      kind: "workflow-trigger";
+    }
+  | {
+      field: "enteredAt";
+      kind: "current-node-lifecycle";
+    }
+  | {
+      field: "enteredAt" | "exitedAt";
+      kind: "node-lifecycle";
+      nodeId: string;
+    }
+  | {
+      kind: "node-output";
+      selector: WorkflowVariableSelector;
+    };
+
+export type WorkflowTimeRange =
+  | {
+      endAt: string;
+      mode: "fixed";
+      startAt: string;
+    }
+  | {
+      end: WorkflowDynamicTimeReference;
+      mode: "dynamic";
+      start: WorkflowDynamicTimeReference;
+    };
 
 export type WorkflowVariableDefinition = {
   key: string;
@@ -94,6 +126,11 @@ export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
   contentMode: "custom" | "node-output";
   outputSelector?: WorkflowVariableSelector;
 };
+export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & {
+  limit: number;
+  take: "earliest" | "latest";
+  timeRange: WorkflowTimeRange;
+};
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & {
@@ -120,6 +157,7 @@ export type WorkflowNodeDataMap = {
   handoff: HandoffNodeData;
   llm: LlmNodeData;
   message: MessageNodeData;
+  "message-query": MessageQueryNodeData;
   "order-query": OrderQueryNodeData;
   start: StartNodeData;
   tag: TagNodeData;
@@ -141,6 +179,10 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
   WorkflowNodeConfigPatchFor<WorkflowNodeData<TKind>>;
 
 export type WorkflowNodeRuntimeData = {
+  availableTimeReferences?: {
+    nodes: Array<{ id: string; title: string }>;
+    outputs: WorkflowVariableDefinition[];
+  };
   availableVariables?: WorkflowVariableDefinition[];
   dataMetric?: WorkflowNodeMetric;
   insertMenuOpen?: boolean;

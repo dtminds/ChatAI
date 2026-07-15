@@ -75,6 +75,7 @@ describe("createWorkflowRenderElements", () => {
       "tag",
       "customer-update",
       "message",
+      "message-query",
       "handoff",
       "agent",
       "coupon",

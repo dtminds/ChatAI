@@ -15,6 +15,8 @@ import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
 import {
   getAvailableMessageContentOutputsForNode,
+  getAvailableTimeReferenceOutputsForNode,
+  getAvailableTimeReferenceNodesForNode,
   getAvailableVariablesForNode,
   getInvalidVariableContentSelectors,
   resolveWorkflowVariable,
@@ -23,6 +25,8 @@ import {
   normalizeWorkflowMessageContentMode,
   normalizeWorkflowMessageOutputSelector,
 } from "../nodes/message/content-source";
+import type { WorkflowDynamicTimeReference } from "../types";
+import { normalizeMessageQueryTimeRange } from "../nodes/message-query/config";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -145,6 +149,46 @@ function validateNodeVariableContent(
     return issues;
   }
 
+  if (node.data.kind === "message-query") {
+    const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
+    const availableTimeOutputs = getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges);
+    const availableTimeSelectorKeys = new Set(availableTimeOutputs.map((output) =>
+      output.selector.join("."),
+    ));
+    const availableNodeIds = new Set(
+      getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((candidate) => candidate.id),
+    );
+    const issues = timeRange.mode === "dynamic"
+      ? [
+          ...validateMessageQueryTimeReference(
+            "start",
+            timeRange.start,
+            availableNodeIds,
+            availableTimeSelectorKeys,
+          ),
+          ...validateMessageQueryTimeReference(
+            "end",
+            timeRange.end,
+            availableNodeIds,
+            availableTimeSelectorKeys,
+          ),
+        ]
+      : [];
+
+    if (
+      timeRange.mode === "fixed"
+      && timeRange.startAt
+      && timeRange.endAt
+      && timeRange.startAt >= timeRange.endAt
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-query-time-range-invalid",
+        "消息查询的结束时间需要晚于开始时间",
+      ));
+    }
+    return issues;
+  }
+
   if (node.data.kind !== "handoff") {
     return [];
   }
@@ -170,6 +214,25 @@ function validateNodeVariableContent(
     }
     return issues;
   });
+}
+
+function validateMessageQueryTimeReference(
+  field: "end" | "start",
+  reference: WorkflowDynamicTimeReference,
+  availableNodeIds: Set<string>,
+  availableSelectorKeys: Set<string>,
+) {
+  const valid = reference.kind === "workflow-trigger"
+    || reference.kind === "current-node-lifecycle"
+    || (reference.kind === "node-lifecycle" && availableNodeIds.has(reference.nodeId))
+    || (reference.kind === "node-output"
+      && availableSelectorKeys.has(reference.selector.join(".")));
+  if (valid) return [];
+
+  return [createVariableContentIssue(
+    `message-query-${field}-time-invalid`,
+    `${field === "start" ? "开始" : "结束"}时间引用了不可用的前序节点时间`,
+  )];
 }
 
 function createVariableContentIssue(code: string, message: string): WorkflowNodeValidationIssue {

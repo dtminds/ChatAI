@@ -25,6 +25,7 @@ describe("workflow contracts", () => {
       "branch",
       "wait",
       "message",
+      "message-query",
       "handoff",
       "agent",
       "llm",

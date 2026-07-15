@@ -71,7 +71,7 @@ describe("workflow variables", () => {
   });
 
   it("resolves stable selectors and rejects unavailable message references", () => {
-    const variables = getAvailableVariablesForNode("message-welcome", createInitialNodes(), createInitialEdges());
+    const variables = getAvailableVariablesForNode("end", createInitialNodes(), createInitialEdges());
 
     expect(getWorkflowVariableSelectorKey(["customer", "name"])).toBe("customer.name");
     expect(resolveWorkflowVariable(variables, ["customer", "name"])).toEqual(expect.objectContaining({
@@ -79,17 +79,17 @@ describe("workflow variables", () => {
       scope: "customer",
     }));
     expect(resolveWorkflowVariable(variables, ["node", "missing", "result"])).toBeUndefined();
-    expect(resolveWorkflowVariable(variables, ["node", "branch-intent", "matchedPathLabel"]))
+    expect(resolveWorkflowVariable(variables, ["node", "message-welcome", "sentAt"]))
       .toEqual(expect.objectContaining({
-        label: "命中分支名称",
+        label: "发送成功时间",
         scope: "node",
-        sourceNodeId: "branch-intent",
-        sourceNodeTitle: "意向判断",
+        sourceNodeId: "message-welcome",
+        sourceNodeTitle: "发送欢迎消息",
       }));
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
-      ["node", "branch-intent", "matchedPathLabel"],
-    )!)).toBe("意向判断.命中分支名称");
+      ["node", "message-welcome", "sentAt"],
+    )!)).toBe("发送欢迎消息.发送成功时间");
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["customer", "name"],
@@ -104,11 +104,13 @@ describe("workflow variables", () => {
     const waitNode = createInitialNodes().find((node) => node.id === "wait-2d")!;
 
     expect(scopeWorkflowNodeOutputs(waitNode, [{
+      description: "节点完成等待的时间。",
       key: "resumedAt",
       label: "继续时间",
-      type: "datetime",
       usages: ["variable"],
+      valueType: { kind: "datetime" },
     }])).toEqual([{
+      description: "节点完成等待的时间。",
       key: "resumedAt",
       label: "继续时间",
       scope: "node",
@@ -118,6 +120,7 @@ describe("workflow variables", () => {
       sourceNodeTitle: "观察期",
       type: "datetime",
       usages: ["variable"],
+      valueType: { kind: "datetime" },
     }]);
   });
 

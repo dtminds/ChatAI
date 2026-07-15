@@ -43,20 +43,6 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   }),
   description: "根据前序变量按顺序匹配分支",
   getEstimatedHeight: getWorkflowBranchEstimatedHeight,
-  getOutputVariables: () => [
-    {
-      key: "matchedPathId",
-      label: "命中分支ID",
-      type: "string",
-      usages: ["variable"],
-    },
-    {
-      key: "matchedPathLabel",
-      label: "命中分支名称",
-      type: "string",
-      usages: ["variable"],
-    },
-  ],
   getSourceHandles: createBranchSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
   insertable: true,

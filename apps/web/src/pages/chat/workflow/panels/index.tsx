@@ -2,6 +2,7 @@ import type { WorkflowEdge, WorkflowNodeConfigPatch, WorkflowNode } from "../typ
 import { BasePanel } from "./base-panel";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
+import { NodeOutputsSection } from "./node-outputs-section";
 
 export function NodeConfigPanel({
   edges,
@@ -33,6 +34,7 @@ export function NodeConfigPanel({
   return (
     <BasePanel key={node.id} node={node} onClose={onClose} onRenameNode={onRenameNode}>
       <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
+      <NodeOutputsSection node={node} />
     </BasePanel>
   );
 }

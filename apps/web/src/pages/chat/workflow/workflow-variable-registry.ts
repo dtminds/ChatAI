@@ -1,4 +1,7 @@
-import type { WorkflowVariableDefinition, WorkflowVariableValueType } from "./types";
+import type {
+  WorkflowOutputValueType,
+  WorkflowVariableDefinition,
+} from "./types";
 
 export const workflowContextVariables: WorkflowVariableDefinition[] = [
   createContextVariable("system", "employeeId", "员工ID", "string"),
@@ -11,13 +14,15 @@ function createContextVariable(
   scope: "customer" | "system" | "trigger",
   key: string,
   label: string,
-  type: WorkflowVariableValueType,
+  type: "datetime" | "string",
 ): WorkflowVariableDefinition {
+  const valueType: WorkflowOutputValueType = { kind: type };
   return {
     key,
     label,
     scope,
     selector: [scope, key],
     type,
+    valueType,
   };
 }

@@ -1,4 +1,3 @@
-import { getNodeDefinitionCore } from "./node-definition-core";
 import type {
   WorkflowEdge,
   WorkflowVariableContentSegment,
@@ -7,6 +6,10 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableSelector,
 } from "./types";
+import {
+  getWorkflowNodeOutputDefinitions,
+  getWorkflowVariableValueType,
+} from "./workflow-node-outputs";
 import { getWorkflowVariableSelectorKey } from "./workflow-variable-selector";
 import { workflowContextVariables } from "./workflow-variable-registry";
 
@@ -132,7 +135,7 @@ export function getGuaranteedUpstreamNodes(
 export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariableDefinition[] {
   return scopeWorkflowNodeOutputs(
     node,
-    getNodeDefinitionCore(node.data.kind).getOutputVariables?.(node) ?? [],
+    getWorkflowNodeOutputDefinitions(node),
   );
 }
 
@@ -165,6 +168,7 @@ export function scopeWorkflowNodeOutputs(
     sourceNodeId: node.id,
     sourceNodeKind: node.data.kind,
     sourceNodeTitle: node.data.title,
+    type: getWorkflowVariableValueType(output.valueType),
   }));
 }
 

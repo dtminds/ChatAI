@@ -23,6 +23,7 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableScope,
 } from "./types";
+import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
 
 export function WorkflowVariablePicker({
   children,
@@ -196,7 +197,7 @@ function VariableGroupSubMenu({
           >
             <span className="min-w-0 flex-1 truncate">{variable.label}</span>
             <span className="shrink-0 text-[11px] text-muted-foreground">
-              {variableTypeLabels[variable.type]}
+              {getWorkflowOutputTypeLabel(variable.valueType)}
             </span>
           </DropdownMenuItem>
         ))}
@@ -244,12 +245,3 @@ const scopeIcons = {
   system: Settings03Icon,
   trigger: ZapIcon,
 } satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof Settings03Icon>;
-
-const variableTypeLabels: Record<WorkflowVariableDefinition["type"], string> = {
-  boolean: "布尔",
-  datetime: "时间",
-  "message-id-list": "消息列表",
-  number: "数字",
-  object: "对象",
-  string: "文本",
-};

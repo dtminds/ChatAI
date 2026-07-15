@@ -46,8 +46,8 @@ describe("workflow wait event", () => {
       expect.objectContaining({
         availableOnSourceHandles: [WAIT_EVENT_TRIGGERED_HANDLE_ID],
         key: "messageIds",
-        type: "message-id-list",
         usages: ["intent-input"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
       }),
       expect.objectContaining({
         key: "textContent",
@@ -55,8 +55,8 @@ describe("workflow wait event", () => {
       }),
       expect.objectContaining({
         key: "lastMessageAt",
-        type: "datetime",
         usages: ["time-reference", "variable"],
+        valueType: { kind: "datetime" },
       }),
     ]));
   });

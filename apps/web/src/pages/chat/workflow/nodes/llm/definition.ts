@@ -18,9 +18,10 @@ const baseLlmNodeDefinition = createStandardNodeDefinition({
 export const llmNodeDefinition: WorkflowNodeDefinition<"llm"> = {
   ...baseLlmNodeDefinition,
   getOutputVariables: () => [{
+    description: "大模型根据当前节点配置生成的文本结果。",
     key: "text",
     label: "生成文本",
-    type: "string",
     usages: ["variable", "message-content"],
+    valueType: { kind: "string" },
   }],
 };

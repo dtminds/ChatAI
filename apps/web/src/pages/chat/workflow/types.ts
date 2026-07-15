@@ -94,6 +94,24 @@ export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
+export type WorkflowOutputValueType =
+  | { kind: "boolean" }
+  | { kind: "datetime" }
+  | { kind: "number" }
+  | { kind: "string" }
+  | {
+      kind: "reference";
+      semantic: "customer" | "message" | "order" | "tag";
+    }
+  | {
+      itemType: "bigint" | "number" | "string";
+      kind: "array";
+      semantic?: "message" | "order" | "tag";
+    }
+  | {
+      kind: "object";
+      schemaRef: string;
+    };
 
 export type WorkflowDynamicTimeReference =
   | {
@@ -128,8 +146,10 @@ export type WorkflowTimeRange =
 
 export type WorkflowVariableDefinition = {
   availableOnSourceHandles?: string[];
+  description?: string;
   key: string;
   label: string;
+  optional?: boolean;
   scope: WorkflowVariableScope;
   selector: WorkflowVariableSelector;
   sourceNodeId?: string;
@@ -137,14 +157,17 @@ export type WorkflowVariableDefinition = {
   sourceNodeTitle?: string;
   type: WorkflowVariableValueType;
   usages?: WorkflowNodeOutputUsage[];
+  valueType: WorkflowOutputValueType;
 };
 
 export type WorkflowNodeOutputDefinition = {
   availableOnSourceHandles?: string[];
+  description?: string;
   key: string;
   label: string;
-  type: WorkflowVariableValueType;
+  optional?: boolean;
   usages: WorkflowNodeOutputUsage[];
+  valueType: WorkflowOutputValueType;
 };
 
 export type WorkflowVariableContentSegment =

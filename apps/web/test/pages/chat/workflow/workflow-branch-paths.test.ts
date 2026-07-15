@@ -156,6 +156,7 @@ describe("workflow branch paths", () => {
       scope: "node",
       selector: ["node", "order-query", "amount"],
       type: "number",
+      valueType: { kind: "number" },
     }])).toBe(false);
   });
 

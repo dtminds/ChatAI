@@ -1172,20 +1172,37 @@ describe("Agent workflow page", () => {
 
   it("inserts variables from nested context and upstream node menus", async () => {
     const user = setupCanvasUser();
+    const draft = createInitialDraft();
+    const llmNode = createNodeFromKind("llm", "llm-variable-source", 0);
+    importWorkflowDraft("newcomer-conversion", {
+      ...draft,
+      edges: [
+        ...draft.edges.filter((edge) => edge.target !== "message-welcome"),
+        createEdge("branch-intent", llmNode.id, undefined, { sourceHandle: "branch-high" }),
+        createEdge(llmNode.id, "message-welcome"),
+      ],
+      nodes: [
+        ...draft.nodes,
+        {
+          ...llmNode,
+          data: { ...llmNode.data, title: "生成营销文案" },
+        },
+      ],
+    });
 
-    renderWorkflowPage();
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
     await user.click(within(canvas).getByRole("button", { name: "发送欢迎消息" }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
-    expect(screen.queryByRole("menuitem", { name: /命中分支名称/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: "意向判断" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /命中分支名称/ }));
+    expect(screen.queryByRole("menuitem", { name: /生成文本/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "生成营销文案" }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /生成文本/ }));
 
     await waitFor(() => {
-      expect(within(panel).getByText("意向判断.命中分支名称")).toBeInTheDocument();
+      expect(within(panel).getByText("生成营销文案.生成文本")).toBeInTheDocument();
     });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
@@ -1195,7 +1212,7 @@ describe("Agent workflow page", () => {
       expect(within(panel).getByText("客户昵称")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{意向判断.命中分支名称} {客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.生成文本} {客户昵称}");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });

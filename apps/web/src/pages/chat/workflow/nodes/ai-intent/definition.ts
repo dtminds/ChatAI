@@ -60,22 +60,24 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
   getEstimatedHeight: getAiIntentEstimatedHeight,
   getOutputVariables: () => [
     {
+      description: "命中意图的稳定标识，即使意图描述被修改也不会变化。",
       key: "matchedIntentId",
-      label: "命中意图 ID",
-      type: "string",
+      label: "命中意图",
       usages: ["variable"],
+      valueType: { kind: "string" },
     },
     {
       key: "matchedIntentDescription",
       label: "命中意图描述",
-      type: "string",
       usages: ["variable"],
+      valueType: { kind: "string" },
     },
     {
+      description: "模型判断当前内容属于该意图的简要依据。",
       key: "reason",
       label: "判断原因",
-      type: "string",
       usages: ["variable"],
+      valueType: { kind: "string" },
     },
   ],
   getSourceHandles: (data) => {

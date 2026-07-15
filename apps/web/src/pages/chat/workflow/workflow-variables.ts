@@ -1,5 +1,4 @@
 import { getNodeDefinitionCore } from "./node-definition-core";
-import { findWorkflowEntryNode } from "./node-catalog";
 import type {
   WorkflowEdge,
   WorkflowVariableContentSegment,
@@ -72,26 +71,33 @@ export function getGuaranteedUpstreamNodes(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ) {
-  const entryNode = findWorkflowEntryNode(nodes);
-
-  if (!entryNode || !nodes.some((node) => node.id === nodeId)) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  if (!nodeIds.has(nodeId)) {
     return [];
   }
 
-  const reachableNodeIds = getReachableNodeIds(entryNode.id, edges);
+  const ancestorIds = getAncestorNodeIds(nodeId, edges, nodeIds);
+  const ancestorNodes = nodes.filter((node) => ancestorIds.has(node.id));
+  const predecessorIds = new Map<string, string[]>();
+  ancestorNodes.forEach((node) => predecessorIds.set(node.id, []));
+  edges.forEach((edge) => {
+    if (!ancestorIds.has(edge.source) || !ancestorIds.has(edge.target)) return;
+    predecessorIds.get(edge.target)?.push(edge.source);
+  });
+  const rootIds = new Set(ancestorNodes
+    .filter((node) => predecessorIds.get(node.id)?.length === 0)
+    .map((node) => node.id));
 
-  if (!reachableNodeIds.has(nodeId)) {
+  if (!rootIds.size) {
     return [];
   }
 
-  const reachableNodes = nodes.filter((node) => reachableNodeIds.has(node.id));
-  const allReachableIds = new Set(reachableNodes.map((node) => node.id));
   const dominators = new Map<string, Set<string>>();
 
-  reachableNodes.forEach((node) => {
+  ancestorNodes.forEach((node) => {
     dominators.set(
       node.id,
-      node.id === entryNode.id ? new Set([entryNode.id]) : new Set(allReachableIds),
+      rootIds.has(node.id) ? new Set([node.id]) : new Set(ancestorIds),
     );
   });
 
@@ -99,15 +105,12 @@ export function getGuaranteedUpstreamNodes(
   while (changed) {
     changed = false;
 
-    for (const node of reachableNodes) {
-      if (node.id === entryNode.id) {
+    for (const node of ancestorNodes) {
+      if (rootIds.has(node.id)) {
         continue;
       }
 
-      const predecessorIds = edges
-        .filter((edge) => edge.target === node.id && reachableNodeIds.has(edge.source))
-        .map((edge) => edge.source);
-      const predecessorDominators = predecessorIds
+      const predecessorDominators = (predecessorIds.get(node.id) ?? [])
         .map((predecessorId) => dominators.get(predecessorId))
         .filter((value): value is Set<string> => Boolean(value));
       const next = predecessorDominators.length
@@ -123,7 +126,7 @@ export function getGuaranteedUpstreamNodes(
   }
 
   const guaranteedIds = dominators.get(nodeId) ?? new Set<string>();
-  return reachableNodes.filter((node) => node.id !== nodeId && guaranteedIds.has(node.id));
+  return ancestorNodes.filter((node) => node.id !== nodeId && guaranteedIds.has(node.id));
 }
 
 export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariableDefinition[] {
@@ -206,6 +209,29 @@ function getReachableNodeIds(entryNodeId: string, edges: WorkflowEdge[]) {
   }
 
   return reachable;
+}
+
+function getAncestorNodeIds(
+  nodeId: string,
+  edges: WorkflowEdge[],
+  existingNodeIds: Set<string>,
+) {
+  const incoming = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (!existingNodeIds.has(edge.source) || !existingNodeIds.has(edge.target)) return;
+    incoming.set(edge.target, [...incoming.get(edge.target) ?? [], edge.source]);
+  });
+  const ancestors = new Set<string>();
+  const queue = [nodeId];
+
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (ancestors.has(current)) continue;
+    ancestors.add(current);
+    queue.push(...incoming.get(current) ?? []);
+  }
+
+  return ancestors;
 }
 
 function isOutputAvailableOnSourceHandles(

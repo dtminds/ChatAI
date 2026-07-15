@@ -9,6 +9,7 @@ import { getWorkflowNodeEstimatedHeight } from "@/pages/chat/workflow/layout";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
 import {
   AI_INTENT_DESCRIPTION_MAX_LENGTH,
+  AI_INTENT_DESCRIPTION_COUNT_THRESHOLD,
   AI_INTENT_FALLBACK_HANDLE_ID,
   AI_INTENT_MAX_COUNT,
   AI_INTENT_PROMPT_MAX_LENGTH,
@@ -36,6 +37,7 @@ describe("workflow AI intent", () => {
       edges: [],
       nodes: [{
         data: {
+          advancedEnabled: "invalid",
           inputSelector: ["node", "message-query", "messageIds"],
           availableIntentInputs: [{
             key: "messageIds",
@@ -49,7 +51,6 @@ describe("workflow AI intent", () => {
             { description: "x".repeat(AI_INTENT_DESCRIPTION_MAX_LENGTH + 20), id: "stable-intent" },
           ],
           kind: "ai-intent",
-          mode: "invalid",
           prompt: "x".repeat(AI_INTENT_PROMPT_MAX_LENGTH + 20),
           title: "识别活动意向",
         },
@@ -64,7 +65,8 @@ describe("workflow AI intent", () => {
 
     expect(data.inputSelector).toEqual(["node", "message-query", "messageIds"]);
     expect(data).not.toHaveProperty("availableIntentInputs");
-    expect(data.mode).toBe("quick");
+    expect(data.advancedEnabled).toBe(false);
+    expect(data).not.toHaveProperty("mode");
     expect(data.prompt).toHaveLength(AI_INTENT_PROMPT_MAX_LENGTH);
     expect(data.intents).toHaveLength(2);
     expect(data.intents[0]).toEqual({ description: "愿意参加活动", id: "stable-intent" });
@@ -87,16 +89,19 @@ describe("workflow AI intent", () => {
         id: "intent:intent-accept",
         label: "愿意参加活动",
         outletKind: "outcome",
+        top: 96,
       }),
       expect.objectContaining({
         id: "intent:intent-reject",
         label: "明确拒绝活动",
         outletKind: "outcome",
+        top: 138,
       }),
       expect.objectContaining({
         id: AI_INTENT_FALLBACK_HANDLE_ID,
         label: "其他意图",
         outletKind: "outcome",
+        top: 180,
       }),
     ]);
     expect(definition.createExecutionConfig({
@@ -109,8 +114,15 @@ describe("workflow AI intent", () => {
         { description: "愿意参加活动", id: "intent-accept", modelCode: "I1" },
         { description: "明确拒绝活动", id: "intent-reject", modelCode: "I2" },
       ],
-      mode: "quick",
     });
+    expect(definition.createExecutionConfig({
+      ...node.data,
+      advancedEnabled: true,
+      inputSelector: ["node", "message-query", "messageIds"],
+      prompt: "优先参考客户最近一条消息",
+    })).toEqual(expect.objectContaining({
+      prompt: "优先参考客户最近一条消息",
+    }));
     expect(definition.getOutputVariables?.(node)).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "matchedIntentId", type: "string" }),
       expect.objectContaining({ key: "matchedIntentDescription", type: "string" }),
@@ -138,7 +150,7 @@ describe("workflow AI intent", () => {
       }),
     ];
 
-    expect(getWorkflowNodeEstimatedHeight(intentNode)).toBe(248);
+    expect(getWorkflowNodeEstimatedHeight(intentNode)).toBe(222);
     expect(validateWorkflowGraph(nodes, missingFallbackEdges).graphIssues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "source-handle-unconnected",
@@ -157,7 +169,7 @@ describe("workflow AI intent", () => {
     )).toBe(false);
   });
 
-  it("selects a guaranteed upstream input and preserves the advanced prompt across mode switches", async () => {
+  it("selects a guaranteed upstream input and preserves the prompt across advanced toggle changes", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const startNode = createStartNode();
@@ -180,20 +192,20 @@ describe("workflow AI intent", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "识别内容" }));
+    await user.click(screen.getByRole("button", { name: "输入" }));
     await user.click(screen.getByRole("menuitem", { name: /消息查询/ }));
     fireEvent.pointerDown(screen.getByRole("menuitem", { name: /消息列表/ }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       inputSelector: ["node", queryNode.id, "messageIds"],
     }));
 
-    await user.click(screen.getByRole("radio", { name: "完整模式" }));
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
     const prompt = screen.getByRole("textbox", { name: "提示词" });
     expect(prompt).toHaveAttribute("maxlength", String(AI_INTENT_PROMPT_MAX_LENGTH));
     await user.type(prompt, "优先根据客户最后一条消息判断");
-    await user.click(screen.getByRole("radio", { name: "极速模式" }));
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
     expect(screen.queryByRole("textbox", { name: "提示词" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "完整模式" }));
+    await user.click(screen.getByRole("switch", { name: "高级调教" }));
     expect(screen.getByRole("textbox", { name: "提示词" })).toHaveValue("优先根据客户最后一条消息判断");
   });
 
@@ -255,10 +267,22 @@ describe("workflow AI intent", () => {
 
     expect(screen.getByRole("textbox", { name: "意图 1" }))
       .toHaveAttribute("maxlength", String(AI_INTENT_DESCRIPTION_MAX_LENGTH));
+    expect(screen.getByRole("textbox", { name: "意图 1" })).toHaveAttribute("rows", "1");
+    fireEvent.change(screen.getByRole("textbox", { name: "意图 1" }), {
+      target: { value: "x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD) },
+    });
+    expect(screen.queryByText(`${AI_INTENT_DESCRIPTION_COUNT_THRESHOLD}/${AI_INTENT_DESCRIPTION_MAX_LENGTH}`))
+      .not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "意图 1" }), {
+      target: { value: "x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1) },
+    });
+    expect(screen.getByText(`${AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1}/${AI_INTENT_DESCRIPTION_MAX_LENGTH}`))
+      .toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "删除意图 1" }));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
-    expect(screen.queryByDisplayValue("愿意参加活动")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("x".repeat(AI_INTENT_DESCRIPTION_COUNT_THRESHOLD + 1)))
+      .not.toBeInTheDocument();
 
     for (let count = 1; count < AI_INTENT_MAX_COUNT; count += 1) {
       await user.click(screen.getByRole("button", { name: "添加意图" }));
@@ -338,7 +362,7 @@ describe("workflow AI intent", () => {
     }));
   });
 
-  it("validates input, intent descriptions and complete-mode prompt limits", () => {
+  it("validates input, intent descriptions and advanced prompt limits", () => {
     const node = createAiIntentNode([
       { description: "", id: "intent-empty" },
       { description: "重复意图", id: "intent-one" },
@@ -349,7 +373,7 @@ describe("workflow AI intent", () => {
       ...node,
       data: {
         ...node.data,
-        mode: "advanced",
+        advancedEnabled: true,
         prompt: "x".repeat(AI_INTENT_PROMPT_MAX_LENGTH + 1),
       },
     };
@@ -363,6 +387,12 @@ describe("workflow AI intent", () => {
       "ai-intent-description-too-long",
       "ai-intent-prompt-too-long",
     ]));
+
+    expect(validateWorkflowNodeConfig({
+      ...invalidNode,
+      data: { ...invalidNode.data, advancedEnabled: false },
+    }, [invalidNode], []).map((issue) => issue.code))
+      .not.toContain("ai-intent-prompt-too-long");
 
     const invalidInputNode: WorkflowNode<"ai-intent"> = {
       ...createAiIntentNode([{ description: "愿意参加活动", id: "intent-accept" }]),

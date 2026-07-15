@@ -21,8 +21,8 @@ import {
   getAiIntentHandleTop,
   getAiIntentMetric,
   getAiIntentStatus,
+  normalizeAiIntentAdvancedEnabled,
   normalizeAiIntentInputSelector,
-  normalizeAiIntentMode,
   normalizeAiIntentOptions,
   normalizeAiIntentPrompt,
 } from "./config";
@@ -36,28 +36,26 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
   canRename: true,
   configSections: [],
   createDefaultData: () => createNodeData("ai-intent", 1, {
+    advancedEnabled: false,
     inputSelector: undefined,
     intents: [createWorkflowIntentOption()],
     label: "意图识别",
     metric: "待配置意图识别",
-    mode: "quick",
     prompt: "",
     status: "warning",
     title: "意图识别",
   }),
-  createExecutionConfig: (data) => {
-    const mode = normalizeAiIntentMode(data.mode);
-    return pickDefinedWorkflowConfig({
-      fallback: { id: AI_INTENT_FALLBACK_HANDLE_ID },
-      inputSelector: normalizeAiIntentInputSelector(data.inputSelector),
-      intents: normalizeAiIntentOptions(data.intents).map((intent, index) => ({
-        ...intent,
-        modelCode: `I${index + 1}`,
-      })),
-      mode,
-      prompt: mode === "advanced" ? normalizeAiIntentPrompt(data.prompt) : undefined,
-    });
-  },
+  createExecutionConfig: (data) => pickDefinedWorkflowConfig({
+    fallback: { id: AI_INTENT_FALLBACK_HANDLE_ID },
+    inputSelector: normalizeAiIntentInputSelector(data.inputSelector),
+    intents: normalizeAiIntentOptions(data.intents).map((intent, index) => ({
+      ...intent,
+      modelCode: `I${index + 1}`,
+    })),
+    prompt: normalizeAiIntentAdvancedEnabled(data.advancedEnabled)
+      ? normalizeAiIntentPrompt(data.prompt)
+      : undefined,
+  }),
   description: "使用 AI 将前序消息匹配到预设意图",
   getEstimatedHeight: getAiIntentEstimatedHeight,
   getOutputVariables: () => [
@@ -102,7 +100,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
   insertable: true,
   kind: "ai-intent",
   layout: {
-    estimatedHeight: 206,
+    estimatedHeight: 180,
     width: 320,
   },
   paletteGroup: "flow",
@@ -110,9 +108,9 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
   sanitizeData: (data) => {
     const nextData = {
       ...data,
+      advancedEnabled: normalizeAiIntentAdvancedEnabled(data.advancedEnabled),
       inputSelector: normalizeAiIntentInputSelector(data.inputSelector),
       intents: normalizeAiIntentOptions(data.intents),
-      mode: normalizeAiIntentMode(data.mode),
       prompt: normalizeAiIntentPrompt(data.prompt),
     };
 
@@ -131,7 +129,7 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
     const rawIntents = Array.isArray(node.data.intents) ? node.data.intents : [];
 
     if (!normalizeAiIntentInputSelector(node.data.inputSelector)) {
-      issues.push(createCatalogIssue("ai-intent-input-required", "意图识别需要选择识别内容"));
+      issues.push(createCatalogIssue("ai-intent-input-required", "意图识别需要选择输入"));
     }
     if (rawIntents.length < AI_INTENT_MIN_COUNT || rawIntents.length > AI_INTENT_MAX_COUNT) {
       issues.push(createCatalogIssue(
@@ -155,6 +153,8 @@ export const aiIntentNodeDefinition: WorkflowNodeDefinition<"ai-intent"> = {
       issues.push(createCatalogIssue("ai-intent-description-duplicate", "意图描述不能重复"));
     }
     if (
+      normalizeAiIntentAdvancedEnabled(node.data.advancedEnabled)
+      &&
       typeof node.data.prompt === "string"
       && node.data.prompt.length > AI_INTENT_PROMPT_MAX_LENGTH
     ) {

@@ -7,6 +7,7 @@ import {
 } from "@/pages/chat/workflow/graph";
 import {
   getAvailableMessageContentOutputsForNode,
+  getAvailableIntentInputOutputsForNode,
   getAvailableVariablesForNode,
   getGuaranteedUpstreamNodes,
   getInvalidVariableContentSelectors,
@@ -47,6 +48,26 @@ describe("workflow variables", () => {
       "wait-2d",
       "branch-intent",
     ]);
+  });
+
+  it("exposes guaranteed predecessor outputs while a local chain is not connected to start", () => {
+    const startNode = createInitialNodes().find((node) => node.id === "start")!;
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const intentNode = createNodeFromKind("ai-intent", "ai-intent", 2);
+    const nodes = [startNode, queryNode, intentNode];
+    const edges = [createEdge(queryNode.id, intentNode.id)];
+
+    expect(getGuaranteedUpstreamNodes(intentNode.id, nodes, edges).map((node) => node.id))
+      .toEqual([queryNode.id]);
+    expect(getAvailableIntentInputOutputsForNode(intentNode.id, nodes, edges))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "messageIds"],
+        }),
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "textContent"],
+        }),
+      ]));
   });
 
   it("resolves stable selectors and rejects unavailable message references", () => {

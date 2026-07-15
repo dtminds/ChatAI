@@ -162,9 +162,9 @@ export type WorkflowIntentOption = {
   id: string;
 };
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & {
+  advancedEnabled: boolean;
   inputSelector?: WorkflowVariableSelector;
   intents: WorkflowIntentOption[];
-  mode: "advanced" | "quick";
   prompt: string;
 };
 export type EndNodeData = WorkflowNodeDataBase<"end">;

@@ -7,11 +7,12 @@ import type {
 export const AI_INTENT_MIN_COUNT = 1;
 export const AI_INTENT_MAX_COUNT = 10;
 export const AI_INTENT_DESCRIPTION_MAX_LENGTH = 200;
+export const AI_INTENT_DESCRIPTION_COUNT_THRESHOLD = 150;
 export const AI_INTENT_PROMPT_MAX_LENGTH = 2000;
 export const AI_INTENT_FALLBACK_HANDLE_ID = "fallback";
-export const AI_INTENT_FIRST_HANDLE_TOP = 130;
+export const AI_INTENT_FIRST_HANDLE_TOP = 96;
 export const AI_INTENT_HANDLE_ROW_GAP = 42;
-export const AI_INTENT_NODE_BASE_HEIGHT = 122;
+export const AI_INTENT_NODE_BASE_HEIGHT = 96;
 
 let workflowIntentIdSequence = 0;
 
@@ -44,8 +45,8 @@ export function createWorkflowIntentOption(
   };
 }
 
-export function normalizeAiIntentMode(value: unknown): AiIntentNodeData["mode"] {
-  return value === "advanced" ? "advanced" : "quick";
+export function normalizeAiIntentAdvancedEnabled(value: unknown) {
+  return value === true;
 }
 
 export function normalizeAiIntentInputSelector(
@@ -130,18 +131,18 @@ export function getAiIntentEstimatedHeight(data: Pick<AiIntentNodeData, "intents
     + (normalizeAiIntentOptions(data.intents).length + 1) * AI_INTENT_HANDLE_ROW_GAP;
 }
 
-export function getAiIntentMetric(data: Pick<AiIntentNodeData, "intents" | "mode">) {
+export function getAiIntentMetric(data: Pick<AiIntentNodeData, "intents">) {
   const configuredCount = normalizeAiIntentOptions(data.intents)
     .filter((intent) => intent.description.trim()).length;
 
   return configuredCount > 0
-    ? `${configuredCount} 个意图 · ${normalizeAiIntentMode(data.mode) === "advanced" ? "完整模式" : "极速模式"}`
+    ? `${configuredCount} 个意图`
     : "待配置意图识别";
 }
 
 export function getAiIntentStatus(data: Pick<
   AiIntentNodeData,
-  "inputSelector" | "intents" | "mode" | "prompt"
+  "inputSelector" | "intents"
 >) {
   const intents = normalizeAiIntentOptions(data.intents);
   const descriptions = intents.map((intent) => intent.description.trim());

@@ -2,13 +2,13 @@ import { NodeFieldList } from "../node-field-list";
 import type { NodeBodyProps } from "../types";
 import {
   normalizeAiIntentInputSelector,
-  normalizeAiIntentMode,
   normalizeAiIntentOptions,
 } from "./config";
 import {
   getWorkflowVariableDisplayLabel,
   resolveWorkflowVariable,
 } from "../../workflow-variables";
+import { cn } from "@/lib/utils";
 
 export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
   const selector = normalizeAiIntentInputSelector(data.inputSelector);
@@ -23,18 +23,10 @@ export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
         fields={[
           {
             id: "input",
-            label: "识别内容",
+            label: "输入",
             value: selectedInput
               ? { kind: "text", text: getWorkflowVariableDisplayLabel(selectedInput) }
               : { kind: "empty" },
-          },
-          {
-            id: "mode",
-            label: "识别模式",
-            value: {
-              kind: "text",
-              text: normalizeAiIntentMode(data.mode) === "advanced" ? "完整模式" : "极速模式",
-            },
           },
         ]}
       />
@@ -45,7 +37,12 @@ export function AiIntentNodeBody({ data }: NodeBodyProps<"ai-intent">) {
             key={intent.id}
             title={intent.description || undefined}
           >
-            <span className="truncate">{intent.description || "未配置意图"}</span>
+            <span className={cn(
+              "truncate",
+              !intent.description.trim() && "text-muted-foreground",
+            )}>
+              {intent.description || "未配置意图"}
+            </span>
           </span>
         ))}
         <span className="flex h-9 items-center rounded-lg bg-[var(--workflow-param-bg)] px-2.5 text-xs font-medium text-foreground">

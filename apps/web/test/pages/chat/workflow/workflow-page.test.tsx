@@ -441,6 +441,7 @@ describe("Agent workflow page", () => {
       "tag",
       "tag-query",
       "wait",
+      "wait-event",
     ]);
 
     for (const kind of nodeKinds) {
@@ -461,6 +462,7 @@ describe("Agent workflow page", () => {
 
     expect(insertableNodeKinds).toEqual([
       "wait",
+      "wait-event",
       "branch",
       "ai-intent",
       "llm",
@@ -479,6 +481,7 @@ describe("Agent workflow page", () => {
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
       "start",
       "wait",
+      "wait-event",
       "branch",
       "ai-intent",
       "llm",
@@ -1503,7 +1506,7 @@ describe("Agent workflow page", () => {
     expect(getRedoButton(canvas)).toBeEnabled();
 
     await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
-    await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
+    await user.click(within(canvas).getByRole("menuitem", { name: "添加 等待节点" }));
 
     expect(getRedoButton(canvas)).toBeDisabled();
     expect(within(canvas).queryByRole("button", { name: "转人工" })).not.toBeInTheDocument();
@@ -1605,7 +1608,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的默认路径分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /转人工/ }));
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的普通客户分支后添加节点" }));
-    await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
+    await user.click(within(canvas).getByRole("menuitem", { name: "添加 等待节点" }));
     await user.click(within(canvas).getByRole("button", { name: "在意向判断的高意向客户分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /发券/ }));
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));

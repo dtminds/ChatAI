@@ -396,6 +396,30 @@ describe("workflow draft normalizer", () => {
     }));
   });
 
+  it("normalizes wait event type and timeout without persisting invalid values", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          event: { type: "unknown-event" },
+          kind: "wait-event",
+          timeout: { duration: 999, unit: "day" },
+          title: "等待客户动作",
+        },
+        id: "wait-event-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      event: { type: "customer.message.received" },
+      kind: "wait-event",
+      metric: "等待新消息 · 最长 45 天",
+      timeout: { duration: 45, unit: "day" },
+    }));
+  });
+
   it("does not downgrade node data created by a newer schema", () => {
     const hydratedDraft = hydrateWorkflowDraft({
       edges: [],

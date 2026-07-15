@@ -24,6 +24,7 @@ describe("workflow contracts", () => {
       "start",
       "branch",
       "wait",
+      "wait-event",
       "message",
       "message-query",
       "handoff",

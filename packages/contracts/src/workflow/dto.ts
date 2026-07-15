@@ -5,6 +5,7 @@ export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
 export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("start"),
   Type.Literal("wait"),
+  Type.Literal("wait-event"),
   Type.Literal("branch"),
   Type.Literal("message"),
   Type.Literal("message-query"),

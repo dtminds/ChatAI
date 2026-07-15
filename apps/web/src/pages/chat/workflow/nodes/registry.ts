@@ -16,6 +16,7 @@ import { startNodeDefinition } from "./start/definition";
 import { tagNodeDefinition } from "./tag/definition";
 import { tagQueryNodeDefinition } from "./tag-query/definition";
 import { waitNodeDefinition } from "./wait/definition";
+import { waitEventNodeDefinition } from "./wait-event/definition";
 
 export const workflowNodeDefinitions = {
   agent: agentNodeDefinition,
@@ -34,6 +35,7 @@ export const workflowNodeDefinitions = {
   tag: tagNodeDefinition,
   "tag-query": tagQueryNodeDefinition,
   wait: waitNodeDefinition,
+  "wait-event": waitEventNodeDefinition,
 } satisfies {
   [TKind in WorkflowNodeKind]: WorkflowNodeDefinition<TKind>;
 };

@@ -10,7 +10,7 @@ import type {
 export type WorkflowSourceHandleDefinition = {
   id?: string;
   label?: string;
-  outletKind: "branch-path" | "default";
+  outletKind: "branch-path" | "default" | "outcome";
   top: number;
 };
 

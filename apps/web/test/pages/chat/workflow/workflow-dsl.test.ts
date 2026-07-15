@@ -208,6 +208,42 @@ describe("workflow DSL", () => {
     });
   });
 
+  it("emits wait event outcomes and execution config with stable outlet ids", () => {
+    const draft = createInitialDraft();
+    const waitEventNode = createNodeFromKind("wait-event", "wait-for-message", 0);
+    const triggeredNode = createNodeFromKind("message-query", "query-context", 1);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("message-welcome", waitEventNode.id),
+        createEdge(waitEventNode.id, triggeredNode.id, undefined, { sourceHandle: "triggered" }),
+        createEdge(waitEventNode.id, "end", undefined, { sourceHandle: "timeout" }),
+      ],
+      nodes: [...draft.nodes, waitEventNode, triggeredNode],
+    });
+
+    expect(graph.nodes.find((node) => node.id === waitEventNode.id)?.config).toEqual({
+      event: {
+        collectWindowSeconds: 10,
+        type: "customer.message.received",
+      },
+      timeout: { duration: 24, unit: "hour" },
+    });
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: waitEventNode.id,
+        sourceHandle: "triggered",
+        sourceOutlet: expect.objectContaining({ id: "triggered", kind: "outcome" }),
+      }),
+      expect.objectContaining({
+        source: waitEventNode.id,
+        sourceHandle: "timeout",
+        sourceOutlet: expect.objectContaining({ id: "timeout", kind: "outcome" }),
+      }),
+    ]));
+  });
+
   it("round-trips exported workflow DSL text through the import boundary", () => {
     const document = createWorkflowDslDocument({
       draft: createInitialDraft(),

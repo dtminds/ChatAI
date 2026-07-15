@@ -66,6 +66,7 @@ describe("createWorkflowRenderElements", () => {
     expect(rendered.edges[1].data?.insertMenuOpen).toBe(true);
     expect(rendered.edges[1].data?.insertableNodeKinds).toEqual([
       "wait",
+      "wait-event",
       "branch",
       "ai-intent",
       "llm",

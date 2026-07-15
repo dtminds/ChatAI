@@ -183,6 +183,7 @@ function parseKnownNodeKind(value: string): WorkflowNodeKind | null {
   if ([
     "start",
     "wait",
+    "wait-event",
     "branch",
     "message",
     "message-query",
@@ -248,6 +249,7 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     "tag-query": "标签查询",
     unknown: "未知节点",
     wait: "等待",
+    "wait-event": "等待事件",
   } satisfies Record<WorkflowEntryRecordStepNodeKind, string>;
   return titles[kind];
 }

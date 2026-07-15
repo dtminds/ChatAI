@@ -43,16 +43,16 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
   description: "查询当前客户在指定时间范围内的历史消息",
   getOutputVariables: () => [
     {
-      key: "messages",
+      key: "messageIds",
       label: "消息列表",
-      type: "conversation-messages",
+      type: "message-id-list",
       usages: ["intent-input"],
     },
     {
-      key: "transcript",
-      label: "会话文本",
+      key: "textContent",
+      label: "文本内容",
       type: "string",
-      usages: ["intent-input", "variable"],
+      usages: ["intent-input", "message-content", "variable"],
     },
     {
       key: "messageCount",

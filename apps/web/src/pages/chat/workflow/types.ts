@@ -14,6 +14,7 @@ import type {
 export type WorkflowNodeKind =
   | "start"
   | "wait"
+  | "wait-event"
   | "branch"
   | "message"
   | "message-query"
@@ -62,7 +63,7 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
 };
 
 export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
-export type WorkflowVariableValueType = "boolean" | "conversation-messages" | "datetime" | "number" | "object" | "string";
+export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
 
@@ -98,6 +99,7 @@ export type WorkflowTimeRange =
     };
 
 export type WorkflowVariableDefinition = {
+  availableOnSourceHandles?: string[];
   key: string;
   label: string;
   scope: WorkflowVariableScope;
@@ -110,6 +112,7 @@ export type WorkflowVariableDefinition = {
 };
 
 export type WorkflowNodeOutputDefinition = {
+  availableOnSourceHandles?: string[];
   key: string;
   label: string;
   type: WorkflowVariableValueType;
@@ -130,6 +133,17 @@ export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & {
   limit: number;
   take: "earliest" | "latest";
   timeRange: WorkflowTimeRange;
+};
+export type WorkflowWaitEventType = "customer.message.received";
+export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
+export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & {
+  event: {
+    type: WorkflowWaitEventType;
+  };
+  timeout: {
+    duration: number;
+    unit: WorkflowWaitEventTimeoutUnit;
+  };
 };
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
@@ -163,6 +177,7 @@ export type WorkflowNodeDataMap = {
   tag: TagNodeData;
   "tag-query": TagQueryNodeData;
   wait: WaitNodeData;
+  "wait-event": WaitEventNodeData;
 };
 
 export type WorkflowNodeData<TKind extends WorkflowNodeKind = WorkflowNodeKind> =

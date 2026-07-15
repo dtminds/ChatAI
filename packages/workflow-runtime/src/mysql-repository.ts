@@ -2128,6 +2128,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
   if ([
     "start",
     "wait",
+    "wait-event",
     "branch",
     "message",
     "message-query",

@@ -39,6 +39,16 @@ export function getAvailableMessageContentOutputsForNode(
   );
 }
 
+export function getAvailableIntentInputOutputsForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return getAvailableNodeOutputsForNode(nodeId, nodes, edges).filter((variable) =>
+    variable.usages?.includes("intent-input"),
+  );
+}
+
 export function getAvailableTimeReferenceOutputsForNode(
   nodeId: string,
   nodes: WorkflowNode[],
@@ -128,7 +138,17 @@ function getAvailableNodeOutputsForNode(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
 ) {
-  return getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap(getNodeOutputVariables);
+  return getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap((sourceNode) =>
+    getNodeOutputVariables(sourceNode).filter((output) =>
+      !output.availableOnSourceHandles?.length
+      || isOutputAvailableOnSourceHandles(
+        sourceNode.id,
+        nodeId,
+        output.availableOnSourceHandles,
+        edges,
+      ),
+    ),
+  );
 }
 
 export function scopeWorkflowNodeOutputs(
@@ -186,6 +206,29 @@ function getReachableNodeIds(entryNodeId: string, edges: WorkflowEdge[]) {
   }
 
   return reachable;
+}
+
+function isOutputAvailableOnSourceHandles(
+  sourceNodeId: string,
+  targetNodeId: string,
+  allowedSourceHandles: string[],
+  edges: WorkflowEdge[],
+) {
+  const allowedHandles = new Set(allowedSourceHandles);
+  const sourceEdges = edges.filter((edge) => edge.source === sourceNodeId);
+  const reachesTarget = (edge: WorkflowEdge) =>
+    edge.target === targetNodeId || getReachableNodeIds(edge.target, edges).has(targetNodeId);
+  const hasAllowedPath = sourceEdges.some((edge) =>
+    edge.sourceHandle
+    && allowedHandles.has(edge.sourceHandle)
+    && reachesTarget(edge),
+  );
+  const hasDisallowedPath = sourceEdges.some((edge) =>
+    (!edge.sourceHandle || !allowedHandles.has(edge.sourceHandle))
+    && reachesTarget(edge),
+  );
+
+  return hasAllowedPath && !hasDisallowedPath;
 }
 
 function intersectSets(sets: Set<string>[]) {

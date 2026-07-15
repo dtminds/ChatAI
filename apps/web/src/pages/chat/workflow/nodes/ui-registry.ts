@@ -15,6 +15,7 @@ import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
 import { tagQueryNodeUi } from "./tag-query/ui";
 import { waitNodeUi } from "./wait/ui";
+import { waitEventNodeUi } from "./wait-event/ui";
 import type { WorkflowNodeUiBinding } from "./ui-types";
 
 export const workflowNodeUiRegistry = {
@@ -34,6 +35,7 @@ export const workflowNodeUiRegistry = {
   tag: tagNodeUi,
   "tag-query": tagQueryNodeUi,
   wait: waitNodeUi,
+  "wait-event": waitEventNodeUi,
 } satisfies {
   [TKind in WorkflowNodeKind]: WorkflowNodeUiBinding<TKind>;
 };

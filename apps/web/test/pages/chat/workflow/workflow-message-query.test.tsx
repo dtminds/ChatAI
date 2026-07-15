@@ -25,8 +25,8 @@ describe("workflow message query", () => {
       },
     });
     expect(definition.getOutputVariables?.(createMessageQueryNode())).toEqual([
-      expect.objectContaining({ key: "messages", type: "conversation-messages", usages: ["intent-input"] }),
-      expect.objectContaining({ key: "transcript", type: "string", usages: ["intent-input", "variable"] }),
+      expect.objectContaining({ key: "messageIds", type: "message-id-list", usages: ["intent-input"] }),
+      expect.objectContaining({ key: "textContent", type: "string", usages: ["intent-input", "message-content", "variable"] }),
       expect.objectContaining({ key: "messageCount", type: "number" }),
       expect.objectContaining({ key: "rangeStart", type: "datetime", usages: ["time-reference", "variable"] }),
       expect.objectContaining({ key: "rangeEnd", type: "datetime", usages: ["time-reference", "variable"] }),

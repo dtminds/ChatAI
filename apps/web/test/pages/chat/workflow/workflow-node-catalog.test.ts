@@ -189,6 +189,7 @@ describe("workflow node catalog", () => {
       "tag",
       "tag-query",
       "wait",
+      "wait-event",
     ]);
     expect(workflowNodeCatalog).toBe(workflowNodeDefinitions);
     expect(orderedWorkflowNodeCatalog).toBe(orderedWorkflowNodeDefinitions);
@@ -222,7 +223,7 @@ describe("workflow node catalog", () => {
       "tag",
       "tag-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "message-query", "start", "wait"];
+    const customNodeKinds: WorkflowNodeKind[] = ["branch", "handoff", "message", "message-query", "start", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -348,6 +349,7 @@ describe("workflow node catalog", () => {
       component: BranchNodeBody,
       kind: "custom",
     });
+    expect(workflowNodeUiBindings["wait-event"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
     expect(workflowNodeUiBindings.start.settings).toBe(StartConfig);
@@ -430,6 +432,7 @@ describe("workflow node catalog", () => {
       "flow",
       "flow",
       "flow",
+      "flow",
       "data",
       "data",
       "data",
@@ -461,7 +464,7 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait", "branch", "ai-intent"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "tag", "customer-update"] },
       { id: "message", items: ["message", "message-query", "handoff", "agent"] },
       { id: "benefit", items: ["coupon"] },

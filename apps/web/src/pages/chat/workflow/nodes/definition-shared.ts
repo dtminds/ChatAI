@@ -34,6 +34,7 @@ type NodeDataInput<TKind extends WorkflowNodeKind> = Omit<
 export const sourceNodeKinds: WorkflowNodeKind[] = [
   "start",
   "wait",
+  "wait-event",
   "branch",
   "message",
   "message-query",
@@ -50,6 +51,7 @@ export const sourceNodeKinds: WorkflowNodeKind[] = [
 ];
 export const targetNodeKinds: WorkflowNodeKind[] = [
   "wait",
+  "wait-event",
   "branch",
   "message",
   "message-query",

@@ -96,6 +96,71 @@ describe("workflow routes", () => {
     ]));
   });
 
+  it("saves drafts containing frontend-only wait event nodes", async () => {
+    const app = await createApp("owner");
+    const created = (await app.inject({
+      method: "POST",
+      payload: {},
+      url: "/api/server/workflows",
+    })).json().data;
+    const waitEventNode = {
+      data: {
+        event: { type: "customer.message.received" },
+        kind: "wait-event",
+        label: "等待事件",
+        metric: "等待新消息 · 最长 24 小时",
+        schemaVersion: 1,
+        status: "ready",
+        timeout: { duration: 24, unit: "hour" },
+        title: "等待事件",
+      },
+      id: "wait-event-1",
+      position: { x: 360, y: 240 },
+      type: "workflowNode",
+    };
+    const draft = {
+      ...created.draft,
+      edges: [
+        { id: "edge-start-wait-event-1", source: "start", target: waitEventNode.id, type: "workflowEdge" },
+        {
+          id: "edge-wait-event-1-triggered-end",
+          source: waitEventNode.id,
+          sourceHandle: "triggered",
+          target: "end",
+          type: "workflowEdge",
+        },
+        {
+          id: "edge-wait-event-1-timeout-end",
+          source: waitEventNode.id,
+          sourceHandle: "timeout",
+          target: "end",
+          type: "workflowEdge",
+        },
+      ],
+      nodes: [
+        ...created.draft.nodes.filter((node: { id: string }) => node.id !== "end"),
+        waitEventNode,
+        created.draft.nodes.find((node: { id: string }) => node.id === "end"),
+      ],
+    };
+
+    const saved = await app.inject({
+      method: "PUT",
+      payload: { draft, expectedDraftVersion: created.draftVersion },
+      url: `/api/server/workflows/${created.id}/draft`,
+    });
+
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().data.draft).toMatchObject({
+      edges: expect.arrayContaining([
+        expect.objectContaining({ sourceHandle: "triggered" }),
+        expect.objectContaining({ sourceHandle: "timeout" }),
+      ]),
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ data: expect.objectContaining({ kind: "wait-event" }) }),
+      ]),
+    });
+  });
 
   it("serves the control-plane lifecycle to owners and admins", async () => {
     const app = await createApp("owner");

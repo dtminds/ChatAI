@@ -334,7 +334,7 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return true;
   }
 
-  const content = suggestion.content.trim();
+  const content = suggestion.content?.trim() ?? "";
 
   // 群聊历史误走单聊接口时，可能带着「仅支持单聊」失败但仍有可用文案，仍展示推荐卡片
   if (isSmartReplySingleChatOnlyFailure(suggestion) && content.length > 0) {

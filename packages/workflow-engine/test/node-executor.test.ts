@@ -91,9 +91,9 @@ describe("core node executors", () => {
     });
 
     await expect(registry.execute(branch, context({ matchingPathIds: new Set(["returning"]) })))
-      .resolves.toMatchObject({ sourceOutletId: "returning", type: "advance" });
+      .resolves.toEqual({ output: {}, sourceOutletId: "returning", type: "advance" });
     await expect(registry.execute(branch, context()))
-      .resolves.toMatchObject({ sourceOutletId: "else", type: "advance" });
+      .resolves.toEqual({ output: {}, sourceOutletId: "else", type: "advance" });
   });
 
   it("requires deadline metadata before executing an action", async () => {

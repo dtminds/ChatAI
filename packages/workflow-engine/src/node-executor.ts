@@ -174,10 +174,7 @@ function executeBranch(
     throw new WorkflowNodeExecutionError("Branch node requires one default path");
   }
   return {
-    output: {
-      matchedPathId: matchedPath.id,
-      ...(matchedPath.label ? { matchedPathLabel: matchedPath.label } : {}),
-    },
+    output: {},
     sourceOutletId: matchedPath.id,
     type: "advance",
   };

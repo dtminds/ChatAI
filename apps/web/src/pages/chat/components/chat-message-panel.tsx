@@ -125,12 +125,11 @@ export function ChatMessagePanel({
         state.smartReplyByMessageIdByConversationId[conversationId],
     })),
   );
+  const supportsSmartReplyUi =
+    (conversationMode === "single" || conversationMode === "group") &&
+    smartReplyCanDisplay;
   const smartReplyByMessageId = useMemo(() => {
-    if (
-      conversationMode !== "single" ||
-      !smartReplyCanDisplay ||
-      !smartReplySuggestionsByMessageId
-    ) {
+    if (!supportsSmartReplyUi || !smartReplySuggestionsByMessageId) {
       return {};
     }
 
@@ -155,14 +154,12 @@ export function ChatMessagePanel({
       ),
     );
   }, [
-    conversationMode,
     messages,
-    smartReplyCanDisplay,
     smartReplyHiddenMessageKeys,
     smartReplySuggestionsByMessageId,
+    supportsSmartReplyUi,
   ]) satisfies Record<string, SmartReplySuggestion>;
-  const canUseSmartReplyActions =
-    conversationMode === "single" && smartReplyCanDisplay;
+  const canUseSmartReplyActions = supportsSmartReplyUi;
 
   return (
     <section className="relative min-h-0 flex-1 bg-surface">

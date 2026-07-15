@@ -171,6 +171,7 @@ export type WorkbenchJavaClient = {
     chatType: number;
     msgIds: number[];
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyPollResponse>;
@@ -179,6 +180,7 @@ export type WorkbenchJavaClient = {
     msgId: number;
     questionImgs: string[];
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
@@ -186,6 +188,7 @@ export type WorkbenchJavaClient = {
     chatType: number;
     msgId: number;
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
@@ -392,6 +395,7 @@ export function createWorkbenchJavaClient(
           chatType: input.chatType,
           msgIds: input.msgIds,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
           withCacheSeat: true,
@@ -412,6 +416,7 @@ export function createWorkbenchJavaClient(
           msgId: input.msgId,
           questionImgs: input.questionImgs,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
         },
@@ -432,6 +437,7 @@ export function createWorkbenchJavaClient(
           chatType: input.chatType,
           msgId: input.msgId,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
         },
@@ -1265,6 +1271,11 @@ function buildJavaLogContext(body: unknown) {
   }
 
   return context;
+}
+
+function withOptionalThirdGroupId(thirdGroupId?: string) {
+  const normalized = thirdGroupId?.trim();
+  return normalized ? { thirdGroupId: normalized } : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

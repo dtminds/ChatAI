@@ -787,8 +787,18 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("rejects smart reply polling for group conversations", async () => {
+  it("polls smart replies for group conversations with thirdGroupId", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "群聊推荐",
+          messageId: "321",
+          pollComplete: true,
+        },
+      ],
+    });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -811,24 +821,35 @@ describe("MysqlWorkbenchService", () => {
         conversationId: "88",
         msgIds: [],
       }),
-    ).rejects.toMatchObject({
-      code: "SMART_REPLY_SCOPE_INVALID",
-      statusCode: 400,
-    });
+    ).resolves.toEqual({ suggestions: [] });
     await expect(
       service.pollSmartReplies("101", {
         conversationId: "88",
         msgIds: [321],
       }),
-    ).rejects.toMatchObject({
-      code: "SMART_REPLY_SCOPE_INVALID",
-      statusCode: 400,
+    ).resolves.toMatchObject({
+      suggestions: [{ messageId: "321" }],
     });
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 2,
+      msgIds: [321],
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
-  it("rejects manual smart reply generation for group conversations", async () => {
+  it("requests manual smart reply generation for group conversations with thirdGroupId", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.requestGeneralAnswer).mockResolvedValue({
+      suggestion: {
+        assistantName: "智能助手",
+        content: "群聊推荐",
+        messageId: "321",
+        status: "thinking",
+      },
+    });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -851,15 +872,23 @@ describe("MysqlWorkbenchService", () => {
         conversationId: "88",
         msgId: 321,
       }),
-    ).rejects.toMatchObject({
-      code: "SMART_REPLY_SCOPE_INVALID",
-      statusCode: 400,
+    ).resolves.toMatchObject({
+      suggestion: { messageId: "321" },
     });
-    expect(javaClient.requestGeneralAnswer).not.toHaveBeenCalled();
+    expect(javaClient.requestGeneralAnswer).toHaveBeenCalledWith({
+      chatType: 2,
+      msgId: 321,
+      questionImgs: [],
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
-  it("rejects automatic smart reply generation for group conversations", async () => {
+  it("requests automatic smart reply generation for group conversations with thirdGroupId", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.requestAutoGeneralAnswer).mockResolvedValue({ id: "567" });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -882,15 +911,87 @@ describe("MysqlWorkbenchService", () => {
         conversationId: "88",
         msgId: 321,
       }),
-    ).rejects.toMatchObject({
-      code: "SMART_REPLY_SCOPE_INVALID",
-      statusCode: 400,
+    ).resolves.toEqual({ id: "567" });
+    expect(javaClient.requestAutoGeneralAnswer).toHaveBeenCalledWith({
+      chatType: 2,
+      msgId: 321,
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
     });
-    expect(javaClient.requestAutoGeneralAnswer).not.toHaveBeenCalled();
   });
 
-  it("rejects smart reply auxiliary actions for group conversations", async () => {
+  it("loads page smart replies for group conversations with thirdGroupId", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "群聊推荐 7",
+          messageId: "7",
+          pollComplete: true,
+        },
+      ],
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          chatType: 2,
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
+          scannedCount: 1,
+          smartReplyScope: {
+            chatType: 2,
+            thirdExternalId: "",
+            thirdGroupId: "group-001",
+            thirdUserId: "seat-user-001",
+            uid: 9001,
+          },
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
+      smartReplies: [
+        {
+          content: "群聊推荐 7",
+          messageId: "7",
+        },
+      ],
+    });
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 2,
+      msgIds: [7],
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("allows smart reply auxiliary actions for group conversations", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.getAiHelperTemplate).mockResolvedValue(11);
+    vi.mocked(javaClient.submitAiHelperGenerateAsk).mockResolvedValue({
+      generateId: "gen-1",
+    });
+    vi.mocked(javaClient.streamAiHelperAsk).mockResolvedValue("简短回复");
+    vi.mocked(javaClient.sendRecommendAnswer).mockResolvedValue(undefined);
+    vi.mocked(javaClient.listAttachments).mockResolvedValue({ attachments: [] });
+    vi.mocked(javaClient.checkTextModerationPlus).mockResolvedValue({ result: null });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -907,56 +1008,49 @@ describe("MysqlWorkbenchService", () => {
       } as unknown as WorkbenchRepository,
       javaClient,
     );
-    const expectGroupRejected = async (action: Promise<unknown>) => {
-      await expect(action).rejects.toMatchObject({
-        code: "SMART_REPLY_SCOPE_INVALID",
-        statusCode: 400,
-      });
-    };
 
-    await expectGroupRejected(
+    await expect(
       service.requestSmartReplyMakeShorter("101", {
         content: "请简短一点",
         conversationId: "88",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ content: "简短回复" });
+    await expect(
       service.sendSmartReplyAnswer("101", {
         conversationId: "88",
         optNos: ["opt-1"],
-        realAnswer: "已发送的话术",
         recordId: "record-1",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ ok: true });
+    await expect(
       service.listSmartReplyAttachments("101", {
         conversationId: "88",
         ids: ["1"],
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ attachments: [] });
+    await expect(
       service.checkSmartReplyTextModeration("101", {
         content: "待检测内容",
         conversationId: "88",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ result: null });
+    await expect(
       service.listKnowledgePage("101", {
         conversationId: "88",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ list: [], total: 0 });
+    await expect(
       service.getKnowledgeConfig("101", {
         conversationId: "88",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({});
+    await expect(
       service.listKnowledgeDocPage("101", {
         conversationId: "88",
         knowledgeId: "1",
       }),
-    );
-    await expectGroupRejected(
+    ).resolves.toEqual({ list: [], total: 0 });
+    await expect(
       service.addKnowledgeFaq("101", {
         conversationId: "88",
         docId: "1",
@@ -969,16 +1063,20 @@ describe("MysqlWorkbenchService", () => {
           },
         ],
       }),
-    );
+    ).resolves.toEqual({ success: true });
 
-    expect(javaClient.getAiHelperTemplate).not.toHaveBeenCalled();
-    expect(javaClient.sendRecommendAnswer).not.toHaveBeenCalled();
-    expect(javaClient.listAttachments).not.toHaveBeenCalled();
-    expect(javaClient.checkTextModerationPlus).not.toHaveBeenCalled();
-    expect(javaClient.listKnowledgePage).not.toHaveBeenCalled();
-    expect(javaClient.getKnowledgeConfig).not.toHaveBeenCalled();
-    expect(javaClient.listKnowledgeDocPage).not.toHaveBeenCalled();
-    expect(javaClient.addKnowledgeFaq).not.toHaveBeenCalled();
+    expect(javaClient.getAiHelperTemplate).toHaveBeenCalled();
+    expect(javaClient.sendRecommendAnswer).toHaveBeenCalledWith({
+      optNos: ["opt-1"],
+      recordId: "record-1",
+      uid: 9001,
+    });
+    expect(javaClient.listAttachments).toHaveBeenCalled();
+    expect(javaClient.checkTextModerationPlus).toHaveBeenCalled();
+    expect(javaClient.listKnowledgePage).toHaveBeenCalled();
+    expect(javaClient.getKnowledgeConfig).toHaveBeenCalled();
+    expect(javaClient.listKnowledgeDocPage).toHaveBeenCalled();
+    expect(javaClient.addKnowledgeFaq).toHaveBeenCalled();
   });
 
   it("signs sidebar iframe params from hidden conversations", async () => {

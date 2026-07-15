@@ -126,45 +126,56 @@ export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsP
             </div>
           </div>
 
-          {path.conditions.length > 1 ? (
-            <Select
-              onValueChange={(value) => {
-                if (value === "all" || value === "any") {
-                  updatePath(updateWorkflowBranchLogic(path, value));
-                }
-              }}
-              value={path.logic}
-            >
-              <SelectTrigger aria-label={`${path.label}条件关系`} className="h-9 w-24 rounded-[8px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">且</SelectItem>
-                <SelectItem value="any">或</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : null}
+          <div className={path.conditions.length > 1 ? "relative pl-8" : undefined}>
+            {path.conditions.length > 1 ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-[18px] left-2 top-[18px] w-5 rounded-l-[8px] border-b border-l border-t border-border"
+                />
+                <Select
+                  onValueChange={(value) => {
+                    if (value === "all" || value === "any") {
+                      updatePath(updateWorkflowBranchLogic(path, value));
+                    }
+                  }}
+                  value={path.logic}
+                >
+                  <SelectTrigger
+                    aria-label={`${path.label}条件关系`}
+                    className="absolute left-2 top-1/2 z-10 size-6 -translate-x-1/2 -translate-y-1/2 justify-center rounded-[4px] bg-background p-0 text-xs shadow-none [&>svg]:hidden"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="center" className="min-w-16">
+                    <SelectItem value="all">且</SelectItem>
+                    <SelectItem value="any">或</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            ) : null}
 
-          <div className="space-y-2">
-            {path.conditions.map((condition, conditionIndex) => (
-              <BranchConditionRow
-                condition={condition}
-                index={conditionIndex}
-                key={condition.id}
-                onChange={(patch) => updatePath(updateWorkflowBranchCondition(path, condition.id, patch))}
-                onDelete={() => updatePath(removeWorkflowBranchCondition(path, condition.id))}
-                showDelete={path.conditions.length > 1}
-                variables={variables}
-              />
-            ))}
+            <div className="space-y-2">
+              {path.conditions.map((condition, conditionIndex) => (
+                <BranchConditionRow
+                  condition={condition}
+                  index={conditionIndex}
+                  key={condition.id}
+                  onChange={(patch) => updatePath(updateWorkflowBranchCondition(path, condition.id, patch))}
+                  onDelete={() => updatePath(removeWorkflowBranchCondition(path, condition.id))}
+                  showDelete={path.conditions.length > 1}
+                  variables={variables}
+                />
+              ))}
+            </div>
           </div>
 
           <Button
-            className="h-8 px-2 text-xs"
+            className="h-auto justify-start gap-1 rounded-none p-0 text-xs text-primary hover:no-underline"
             disabled={path.conditions.length >= WORKFLOW_BRANCH_CONDITION_MAX}
             onClick={() => updatePath(addWorkflowBranchCondition(path))}
             type="button"
-            variant="ghost"
+            variant="link"
           >
             <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
             添加条件
@@ -254,7 +265,7 @@ function BranchConditionRow({
         >
           <Button
             aria-label={`条件 ${index + 1} 变量`}
-            className="h-9 min-w-0 justify-between rounded-[8px] px-3 font-normal"
+            className="h-9 min-w-0 justify-between rounded-[8px] px-3 text-[13px] font-normal"
             type="button"
             variant="outline"
           >
@@ -278,7 +289,10 @@ function BranchConditionRow({
             ? condition.operator
             : undefined}
         >
-          <SelectTrigger aria-label={`条件 ${index + 1} 判断`} className="h-9 w-full rounded-[8px]">
+          <SelectTrigger
+            aria-label={`条件 ${index + 1} 判断`}
+            className="h-9 w-full rounded-[8px] text-[13px]"
+          >
             <SelectValue placeholder="选择判断" />
           </SelectTrigger>
           <SelectContent>
@@ -327,11 +341,13 @@ function ConditionValueField({
       <div className="grid grid-cols-2 gap-2">
         <DateTimePicker
           aria-label="开始时间"
+          className="text-[13px]"
           onValueChange={(nextValue) => onChange([nextValue, value[1]])}
           value={value[0]}
         />
         <DateTimePicker
           aria-label="结束时间"
+          className="text-[13px]"
           onValueChange={(nextValue) => onChange([value[0], nextValue])}
           value={value[1]}
         />
@@ -342,6 +358,7 @@ function ConditionValueField({
     return (
       <DateTimePicker
         aria-label="比较时间"
+        className="text-[13px]"
         onValueChange={onChange}
         value={typeof condition.value === "string" ? condition.value : ""}
       />
@@ -351,7 +368,7 @@ function ConditionValueField({
     return (
       <Input
         aria-label="比较值"
-        className="h-9 rounded-[8px] px-3"
+        className="h-9 rounded-[8px] px-3 text-[13px]"
         onChange={(event) => {
           const value = event.target.value;
           onChange(value === "" ? "" : Number(value));
@@ -365,7 +382,7 @@ function ConditionValueField({
   return (
     <Input
       aria-label="比较值"
-      className="h-9 rounded-[8px] px-3"
+      className="h-9 rounded-[8px] px-3 text-[13px]"
       onChange={(event) => onChange(event.target.value)}
       placeholder="输入比较值"
       value={typeof condition.value === "string" ? condition.value : ""}

@@ -107,4 +107,39 @@ describe("BranchConfig", () => {
       ],
     });
   });
+
+  it("updates the relation between multiple conditions", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+    branchNode.data.branchPaths[0] = {
+      ...branchNode.data.branchPaths[0],
+      conditions: [
+        ...branchNode.data.branchPaths[0].conditions,
+        {
+          id: "condition-second",
+          operator: "is-not-empty",
+          selector: ["customer", "id"],
+        },
+      ],
+    };
+
+    render(
+      <BranchConfig
+        edges={[]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "如果条件关系" }));
+    await user.click(screen.getByRole("option", { name: "或" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: expect.arrayContaining([
+        expect.objectContaining({ id: "branch-high", logic: "any" }),
+      ]),
+    });
+  });
 });

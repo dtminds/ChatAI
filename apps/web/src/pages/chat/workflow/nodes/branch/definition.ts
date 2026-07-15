@@ -32,7 +32,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
   configSections: [],
   createDefaultData: () => createNodeData("branch", 1, {
     branchPaths: createDefaultBranchPaths(),
-    label: "条件",
+    label: "条件分支",
     metric: "待配置条件分支",
     status: "warning",
     title: "条件分支",
@@ -85,7 +85,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
     accentClassName: "bg-amber-500 text-white ring-amber-500/20",
     accentRgb: "245 158 11",
     icon: GitBranchIcon,
-    label: "条件",
+    label: "条件分支",
   },
 };
 

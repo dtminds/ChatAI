@@ -6,6 +6,7 @@ import {
   createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import {
+  getAvailableLlmInputVariablesForNode,
   getAvailableMessageContentOutputsForNode,
   getAvailableIntentInputOutputsForNode,
   getAvailableVariablesForNode,
@@ -54,8 +55,12 @@ describe("workflow variables", () => {
     const startNode = createInitialNodes().find((node) => node.id === "start")!;
     const queryNode = createNodeFromKind("message-query", "message-query", 1);
     const intentNode = createNodeFromKind("ai-intent", "ai-intent", 2);
-    const nodes = [startNode, queryNode, intentNode];
-    const edges = [createEdge(queryNode.id, intentNode.id)];
+    const llmNode = createNodeFromKind("llm", "llm", 3);
+    const nodes = [startNode, queryNode, intentNode, llmNode];
+    const edges = [
+      createEdge(queryNode.id, intentNode.id),
+      createEdge(queryNode.id, llmNode.id),
+    ];
 
     expect(getGuaranteedUpstreamNodes(intentNode.id, nodes, edges).map((node) => node.id))
       .toEqual([queryNode.id]);
@@ -67,6 +72,20 @@ describe("workflow variables", () => {
         expect.objectContaining({
           selector: ["node", queryNode.id, "textContent"],
         }),
+      ]));
+    expect(getAvailableLlmInputVariablesForNode(llmNode.id, nodes, edges))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "messageIds"],
+          valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+        }),
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "textContent"],
+        }),
+      ]));
+    expect(getAvailableVariablesForNode(llmNode.id, nodes, edges))
+      .not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ selector: ["node", queryNode.id, "messageIds"] }),
       ]));
   });
 
@@ -133,6 +152,9 @@ describe("workflow variables", () => {
         title: "生成营销文案",
       },
     };
+    const outputId = llmNode.data.output.format === "json"
+      ? llmNode.data.output.fields[0]!.id
+      : llmNode.data.output.field.id;
     const nodes = [...createInitialNodes(), llmNode];
     const edges = [
       ...createInitialEdges().filter((edge) => edge.target !== "message-welcome"),
@@ -142,8 +164,8 @@ describe("workflow variables", () => {
 
     expect(getAvailableMessageContentOutputsForNode("message-welcome", nodes, edges)).toEqual([
       expect.objectContaining({
-        label: "生成文本",
-        selector: ["node", "llm-copy", "text"],
+        label: "output",
+        selector: ["node", "llm-copy", outputId],
         sourceNodeTitle: "生成营销文案",
       }),
     ]);

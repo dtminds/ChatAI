@@ -63,6 +63,20 @@ export function getVariableContentPreview(
   return getVariableContentText(segments, variables).trim();
 }
 
+export function downgradeVariableContentSelector(
+  segments: WorkflowVariableContentSegment[] | undefined,
+  selector: string[],
+  fallbackText: string,
+) {
+  const selectorKey = getWorkflowVariableSelectorKey(selector);
+
+  return normalizeVariableContent((segments ?? []).map((segment) =>
+    segment.type === "variable"
+      && getWorkflowVariableSelectorKey(segment.selector) === selectorKey
+      ? { type: "text" as const, value: fallbackText }
+      : segment));
+}
+
 export function truncateVariableContent(
   segments: WorkflowVariableContentSegment[] | undefined,
   variables: WorkflowVariableDefinition[],

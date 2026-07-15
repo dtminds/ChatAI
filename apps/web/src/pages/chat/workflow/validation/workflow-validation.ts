@@ -15,6 +15,7 @@ import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
 import {
   getAvailableIntentInputOutputsForNode,
+  getAvailableLlmInputVariablesForNode,
   getAvailableMessageContentOutputsForNode,
   getAvailableTimeReferenceOutputsForNode,
   getAvailableTimeReferenceNodesForNode,
@@ -22,12 +23,14 @@ import {
   getInvalidVariableContentSelectors,
   resolveWorkflowVariable,
 } from "../workflow-variables";
+import { normalizeLlmInputs } from "../nodes/llm/config";
 import { normalizeAiIntentInputSelector } from "../nodes/ai-intent/config";
 import {
   normalizeWorkflowMessageContentMode,
   normalizeWorkflowMessageOutputSelector,
 } from "../nodes/message/content-source";
 import type { WorkflowDynamicTimeReference } from "../types";
+import { isWorkflowOutputValueTypeEqual } from "../workflow-node-outputs";
 import {
   areDynamicTimeReferencesEqual,
   normalizeMessageQueryTimeRange,
@@ -220,6 +223,21 @@ function validateNodeVariableContent(
       return [createVariableContentIssue(
         "ai-intent-input-invalid",
         "识别内容引用了不可用的前序节点输出",
+      )];
+    }
+    return [];
+  }
+
+  if (node.data.kind === "llm") {
+    const availableInputs = getAvailableLlmInputVariablesForNode(node.id, nodes, edges);
+    if (normalizeLlmInputs(node.data.inputs).some((input) => {
+      if (input.value.kind !== "variable") return false;
+      const variable = resolveWorkflowVariable(availableInputs, input.value.selector);
+      return !variable || !isWorkflowOutputValueTypeEqual(input.value.valueType, variable.valueType);
+    })) {
+      return [createVariableContentIssue(
+        "llm-input-variable-invalid",
+        "输入参数引用了不可用或类型已变化的变量",
       )];
     }
     return [];

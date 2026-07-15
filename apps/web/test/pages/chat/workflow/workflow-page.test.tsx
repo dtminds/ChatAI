@@ -41,6 +41,7 @@ import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
   getAiHostingQuota: vi.fn(),
+  listAiHostingModels: vi.fn(),
 }));
 
 const reactFlowControlMock = vi.hoisted(() => ({
@@ -412,6 +413,7 @@ describe("Agent workflow page", () => {
         used: 4,
       },
     });
+    agentServiceMock.listAiHostingModels.mockResolvedValue({ models: [] });
   });
 
   it("splits multiple workflow triggers into separate labels", () => {
@@ -1197,12 +1199,12 @@ describe("Agent workflow page", () => {
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
-    expect(screen.queryByRole("menuitem", { name: /生成文本/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /output/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "生成营销文案" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /生成文本/ }));
+    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /output/ }));
 
     await waitFor(() => {
-      expect(within(panel).getByText("生成营销文案.生成文本")).toBeInTheDocument();
+      expect(within(panel).getByText("生成营销文案.output")).toBeInTheDocument();
     });
     await user.click(within(panel).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "客户变量" }));
@@ -1212,7 +1214,7 @@ describe("Agent workflow page", () => {
       expect(within(panel).getByText("客户昵称")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.生成文本} {客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("{生成营销文案.output} {客户昵称}");
     });
     expect(within(panel).queryByRole("tab", { name: "变量" })).not.toBeInTheDocument();
   });
@@ -1294,15 +1296,15 @@ describe("Agent workflow page", () => {
     await user.click(within(panel).getByRole("radio", { name: "节点输出" }));
     expect(within(panel).getByRole("button", { name: "添加附件" })).toBeInTheDocument();
     await user.click(within(panel).getByRole("combobox", { name: "节点输出" }));
-    await user.click(await screen.findByRole("option", { name: "生成文本" }));
+    await user.click(await screen.findByRole("option", { name: "output" }));
 
     await waitFor(() => {
-      expect(messageNode).toHaveTextContent("生成营销文案.生成文本");
+      expect(messageNode).toHaveTextContent("生成营销文案.output");
     });
     await user.click(within(panel).getByRole("radio", { name: "自定义消息" }));
     expect(messageNode).toHaveTextContent("欢迎加入，这是为你准备的新人活动");
     await user.click(within(panel).getByRole("radio", { name: "节点输出" }));
-    expect(within(panel).getByRole("combobox", { name: "节点输出" })).toHaveTextContent("生成文本");
+    expect(within(panel).getByRole("combobox", { name: "节点输出" })).toHaveTextContent("output");
   });
 
   it("closes and reopens the node config panel from canvas selection", async () => {

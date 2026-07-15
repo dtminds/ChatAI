@@ -343,9 +343,9 @@ function NodeTimeSubMenu({ current = false, node, onSelect, outputs }: {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <span
-          className="flex size-5 shrink-0 items-center justify-center"
+          className="workflow-variable-source-icon flex size-5 shrink-0 items-center justify-center"
           data-node-icon={node.data.kind}
-          style={{ color: `rgb(${visual.accentRgb})` } as CSSProperties}
+          style={{ "--workflow-variable-icon-rgb": visual.accentRgb } as CSSProperties}
         >
           <HugeiconsIcon icon={visual.icon} size={13} strokeWidth={1.8} />
         </span>

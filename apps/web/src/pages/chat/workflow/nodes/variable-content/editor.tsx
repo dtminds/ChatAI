@@ -35,6 +35,9 @@ import { WorkflowVariableNode } from "./variable-node";
 
 export function VariableContentEditor({
   ariaLabel,
+  className,
+  contentEditableClassName,
+  editorClassName,
   maxLength,
   onChange,
   placeholder,
@@ -42,6 +45,9 @@ export function VariableContentEditor({
   variables,
 }: {
   ariaLabel: string;
+  className?: string;
+  contentEditableClassName?: string;
+  editorClassName?: string;
   maxLength?: number;
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
   placeholder: string;
@@ -70,11 +76,15 @@ export function VariableContentEditor({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-background">
-      <div className={cn("relative px-3 py-3 text-sm leading-6", maxLength ? "min-h-30" : "min-h-36")}>
+    <div className={cn("overflow-hidden rounded-lg border bg-background", className)}>
+      <div className={cn(
+        "relative px-3 py-3 text-sm leading-6",
+        maxLength ? "min-h-30" : "min-h-36",
+        editorClassName,
+      )}>
         <LexicalComposer initialConfig={editorConfig}>
           <PlainTextPlugin
-            contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" className={cn("whitespace-pre-wrap break-words outline-none", maxLength ? "min-h-24" : "min-h-30")} role="textbox" />}
+            contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" className={cn("whitespace-pre-wrap break-words outline-none", maxLength ? "min-h-24" : "min-h-30", contentEditableClassName)} role="textbox" />}
             ErrorBoundary={LexicalErrorBoundary}
             placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-3 top-3 text-muted-foreground/50">{placeholder}</span>}
           />

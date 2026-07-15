@@ -222,12 +222,11 @@ describe("workflow node catalog", () => {
       "ai-collect",
       "coupon",
       "customer-update",
-      "llm",
       "order-query",
       "tag",
       "tag-query",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "handoff", "message", "message-query", "start", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "handoff", "llm", "message", "message-query", "start", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);

@@ -151,7 +151,7 @@ describe("workflow DSL", () => {
             data: {
               ...node.data,
               contentMode: "node-output",
-              outputSelector: ["node", "llm-copy", "text"],
+              outputSelector: ["node", "llm-copy", "output-1"],
             },
           }
         : node),
@@ -161,7 +161,7 @@ describe("workflow DSL", () => {
     expect(messageConfig).toEqual({
       attachments: [],
       contentMode: "node-output",
-      outputSelector: ["node", "llm-copy", "text"],
+      outputSelector: ["node", "llm-copy", "output-1"],
     });
     expect(messageConfig).not.toHaveProperty("content");
   });

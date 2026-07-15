@@ -90,7 +90,7 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
   branchPaths: WorkflowBranchPath[];
 };
 
-export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
+export type WorkflowVariableScope = "customer" | "input" | "node" | "system" | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "message-id-list" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
 export type WorkflowNodeOutputUsage = "intent-input" | "message-content" | "time-reference" | "variable";
@@ -203,7 +203,46 @@ export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & {
   operatorMessage?: WorkflowVariableContentSegment[];
 };
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;
-export type LlmNodeData = WorkflowNodeDataBase<"llm">;
+export type WorkflowLlmInputValue =
+  | {
+      kind: "literal";
+      value: string;
+    }
+  | {
+      kind: "variable";
+      selector: WorkflowVariableSelector;
+      valueType: WorkflowOutputValueType;
+    };
+export type WorkflowLlmInputParameter = {
+  id: string;
+  name: string;
+  value: WorkflowLlmInputValue;
+};
+export type WorkflowLlmOutputFieldType = "boolean" | "number" | "string";
+export type WorkflowLlmOutputField = {
+  description: string;
+  id: string;
+  name: string;
+  type: WorkflowLlmOutputFieldType;
+};
+export type WorkflowLlmOutputConfig =
+  | {
+      field: WorkflowLlmOutputField;
+      format: "markdown" | "text";
+    }
+  | {
+      fields: WorkflowLlmOutputField[];
+      format: "json";
+    };
+export type LlmNodeData = WorkflowNodeDataBase<"llm"> & {
+  inputs: WorkflowLlmInputParameter[];
+  modelId: string;
+  modelLabel?: string;
+  modelName?: string;
+  output: WorkflowLlmOutputConfig;
+  systemPrompt: WorkflowVariableContentSegment[];
+  userPrompt: WorkflowVariableContentSegment[];
+};
 export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query">;
 export type CustomerUpdateNodeData = WorkflowNodeDataBase<"customer-update">;

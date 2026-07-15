@@ -31,6 +31,17 @@ export function getAvailableVariablesForNode(
   ];
 }
 
+export function getAvailableLlmInputVariablesForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowVariableDefinition[] {
+  return [
+    ...workflowContextVariables,
+    ...getAvailableNodeOutputsForNode(nodeId, nodes, edges),
+  ];
+}
+
 export function getAvailableMessageContentOutputsForNode(
   nodeId: string,
   nodes: WorkflowNode[],

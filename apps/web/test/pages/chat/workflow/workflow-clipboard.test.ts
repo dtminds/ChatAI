@@ -280,6 +280,7 @@ describe("workflow clipboard", () => {
     const intent = createNodeFromKind("ai-intent", "intent-target", 12);
     const message = createNodeFromKind("message", "message-target", 13);
     const branch = createNodeFromKind("branch", "branch-target", 14);
+    const llm = createNodeFromKind("llm", "llm-target", 15);
     query.data.timeRange = {
       end: { field: "enteredAt", kind: "current-node-lifecycle" },
       mode: "dynamic",
@@ -309,6 +310,16 @@ describe("workflow clipboard", () => {
       label: "否则",
       logic: "all",
     }];
+    llm.data.inputs = [{
+      id: "input-messages",
+      name: "message_ids",
+      value: {
+        kind: "variable",
+        selector: ["node", query.id, "messageIds"],
+        valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+      },
+    }];
+    llm.data.systemPrompt = [{ selector: ["input", "input-messages"], type: "variable" }];
     const sourceDraft = {
       ...draft,
       edges: [
@@ -317,8 +328,9 @@ describe("workflow clipboard", () => {
         createEdge(query.id, intent.id),
         createEdge(query.id, message.id),
         createEdge(query.id, branch.id),
+        createEdge(query.id, llm.id),
       ],
-      nodes: [...draft.nodes, wait, query, intent, message, branch],
+      nodes: [...draft.nodes, wait, query, intent, message, branch, llm],
     };
     const clipboardData = createWorkflowClipboardData(sourceDraft, [
       wait.id,
@@ -326,6 +338,7 @@ describe("workflow clipboard", () => {
       intent.id,
       message.id,
       branch.id,
+      llm.id,
     ])!;
     const operation = pasteWorkflowClipboardData(draft, clipboardData, {
       nodeIdFactory: (kind) => `${kind}-pasted`,
@@ -334,16 +347,19 @@ describe("workflow clipboard", () => {
     const pastedIntent = operation.draft.nodes.find((node) => node.id === "ai-intent-pasted")!;
     const pastedMessage = operation.draft.nodes.find((node) => node.id === "message-pasted")!;
     const pastedBranch = operation.draft.nodes.find((node) => node.id === "branch-pasted")!;
+    const pastedLlm = operation.draft.nodes.find((node) => node.id === "llm-pasted")!;
 
     expect(pastedQuery.data.kind).toBe("message-query");
     expect(pastedIntent.data.kind).toBe("ai-intent");
     expect(pastedMessage.data.kind).toBe("message");
     expect(pastedBranch.data.kind).toBe("branch");
+    expect(pastedLlm.data.kind).toBe("llm");
     if (
       pastedQuery.data.kind !== "message-query"
       || pastedIntent.data.kind !== "ai-intent"
       || pastedMessage.data.kind !== "message"
       || pastedBranch.data.kind !== "branch"
+      || pastedLlm.data.kind !== "llm"
     ) return;
 
     expect(pastedQuery.data.timeRange).toEqual({
@@ -359,6 +375,14 @@ describe("workflow clipboard", () => {
     ]);
     expect(pastedBranch.data.branchPaths[0]?.conditions[0]?.selector)
       .toEqual(["node", "message-query-pasted", "messageCount"]);
+    expect(pastedLlm.data.inputs[0]?.value).toEqual({
+      kind: "variable",
+      selector: ["node", "message-query-pasted", "messageIds"],
+      valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+    });
+    expect(pastedLlm.data.systemPrompt).toEqual([
+      { selector: ["input", "input-messages"], type: "variable" },
+    ]);
   });
 
   it("keeps pasted node ids unique when the id factory returns an existing id", () => {

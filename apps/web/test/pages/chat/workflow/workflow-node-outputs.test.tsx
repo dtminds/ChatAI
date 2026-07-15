@@ -5,6 +5,9 @@ import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { orderedWorkflowNodeDefinitions } from "@/pages/chat/workflow/nodes/registry";
 import {
+  NodeConfigPanel,
+} from "@/pages/chat/workflow/panels";
+import {
   NodeOutputsSection,
   WorkflowOutputDescription,
 } from "@/pages/chat/workflow/panels/node-outputs-section";
@@ -91,6 +94,22 @@ describe("workflow node outputs", () => {
 
     rerender(<NodeOutputsSection node={createNode("branch", 1)} />);
     expect(screen.queryByText("节点输出")).not.toBeInTheDocument();
+  });
+
+  it("lets nodes that own output configuration suppress the shared output section", () => {
+    render(
+      <NodeConfigPanel
+        edges={[]}
+        node={createNode("llm", 0)}
+        nodes={[createNode("llm", 0)]}
+        onClose={() => undefined}
+        onNodeChange={() => undefined}
+        onRenameNode={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "输出" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "节点输出" })).not.toBeInTheDocument();
   });
 
   it.each([

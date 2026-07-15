@@ -34,7 +34,9 @@ export function NodeConfigPanel({
   return (
     <BasePanel key={node.id} node={node} onClose={onClose} onRenameNode={onRenameNode}>
       <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
-      <NodeOutputsSection node={node} />
+      {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
+        ? <NodeOutputsSection node={node} />
+        : null}
     </BasePanel>
   );
 }

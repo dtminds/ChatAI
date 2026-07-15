@@ -57,6 +57,26 @@ export function getWorkflowVariableValueType(
   return "object";
 }
 
+export function isWorkflowOutputValueTypeEqual(
+  left: WorkflowOutputValueType,
+  right: WorkflowOutputValueType,
+) {
+  if (left.kind !== right.kind) return false;
+
+  if (left.kind === "reference") {
+    return right.kind === "reference" && left.semantic === right.semantic;
+  }
+  if (left.kind === "array") {
+    return right.kind === "array"
+      && left.itemType === right.itemType
+      && left.semantic === right.semantic;
+  }
+  if (left.kind === "object") {
+    return right.kind === "object" && left.schemaRef === right.schemaRef;
+  }
+  return true;
+}
+
 export function validateWorkflowNodeOutputDefinitions(
   node: WorkflowNode,
   outputs: WorkflowNodeOutputDefinition[],

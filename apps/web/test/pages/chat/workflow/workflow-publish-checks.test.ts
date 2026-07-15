@@ -493,6 +493,9 @@ describe("buildPublishChecks", () => {
 
   it("requires a valid guaranteed upstream output in node-output mode", () => {
     const llmNode = createNodeFromKind("llm", "llm-copy", 0);
+    const llmOutputId = llmNode.data.output.format === "json"
+      ? llmNode.data.output.fields[0]!.id
+      : llmNode.data.output.field.id;
     const initialNodes = createInitialNodes();
     const messageNode = initialNodes.find(
       (node): node is WorkflowNode<"message"> =>
@@ -531,7 +534,7 @@ describe("buildPublishChecks", () => {
     expect(validate({
       ...messageNode.data,
       contentMode: "node-output",
-      outputSelector: ["node", llmNode.id, "text"],
+      outputSelector: ["node", llmNode.id, llmOutputId],
     })).toEqual([]);
   });
 

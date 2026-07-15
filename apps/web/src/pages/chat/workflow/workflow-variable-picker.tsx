@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  InputCursorTextIcon,
   Search01Icon,
   Settings03Icon,
   UserIcon,
@@ -96,6 +97,7 @@ function VariableOptions({ variables, onSelect }: {
   }
 
   const contextScopes: Exclude<WorkflowVariableScope, "node">[] = [
+    "input",
     "system",
     "customer",
     "trigger",
@@ -236,12 +238,14 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 
 const scopeLabels: Record<Exclude<WorkflowVariableScope, "node">, string> = {
   customer: "客户变量",
+  input: "输入参数",
   system: "系统变量",
   trigger: "触发变量",
 };
 
 const scopeIcons = {
   customer: UserIcon,
+  input: InputCursorTextIcon,
   system: Settings03Icon,
   trigger: ZapIcon,
 } satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof Settings03Icon>;

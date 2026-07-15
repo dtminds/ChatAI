@@ -69,6 +69,7 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   getEstimatedHeight?: (data: WorkflowNodeData<TKind>) => number;
   getSourceHandles: (data: WorkflowNodeData<TKind>) => WorkflowSourceHandleDefinition[];
   getTargetHandles: (data: WorkflowNodeData<TKind>) => WorkflowTargetHandleDefinition[];
+  ownsOutputConfiguration?: boolean;
   sort: number;
   validate?: (
     node: WorkflowNode<TKind>,

@@ -272,7 +272,8 @@ function createWorkflowRenderNodes({
     const isSelected = selectedNodeIdSet.has(node.id);
     const derivesStatusFromGraph = node.data.kind === "branch"
       || node.data.kind === "ai-intent"
-      || node.data.kind === "message-query";
+      || node.data.kind === "message-query"
+      || node.data.kind === "llm";
     const effectiveStatus = derivesStatusFromGraph
       && validateWorkflowNodeConfig(node, nodes, edges).length > 0
       ? "warning" as const

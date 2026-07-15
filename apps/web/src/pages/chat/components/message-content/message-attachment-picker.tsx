@@ -211,7 +211,7 @@ export function MessageAttachmentPicker({
           ) : null}
         </div>
       </div>
-      <div className="w-full min-w-0 overflow-hidden min-h-[136px]">
+      <div className="w-full min-w-0 overflow-hidden">
         {attachments.length > 0 ? (
           <div className="w-full min-w-0 space-y-2">
             {attachments.map((attachment, index) => (

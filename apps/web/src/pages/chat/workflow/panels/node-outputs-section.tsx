@@ -31,7 +31,7 @@ export function NodeOutputsSection({ node }: { node: WorkflowNode }) {
 
 function OutputRow({ output }: { output: WorkflowNodeOutputDefinition }) {
   return (
-    <div className="flex min-h-8 items-center justify-between gap-3 rounded px-2 text-sm">
+    <div className="flex min-h-8 items-center justify-between gap-3 rounded px-2 text-xs">
       <div className="flex min-w-0 items-center gap-1">
         <span className="truncate">{output.label}</span>
         {output.description ? <OutputDescription output={output} /> : null}
@@ -60,7 +60,11 @@ function OutputDescription({ output }: { output: WorkflowNodeOutputDefinition })
           <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.8} />
         </button>
       </HoverCardTrigger>
-      <HoverCardContent align="end" className="w-72 p-3" side="left">
+      <HoverCardContent
+        align="end"
+        className="w-64 rounded-[10px] border-border p-3 text-xs leading-5 shadow-[0_10px_28px_var(--shadow-soft)]"
+        side="left"
+      >
         <WorkflowOutputDescription content={output.description ?? ""} />
       </HoverCardContent>
     </HoverCard>

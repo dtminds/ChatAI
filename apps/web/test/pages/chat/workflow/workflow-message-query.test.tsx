@@ -154,13 +154,17 @@ describe("workflow message query", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "开始时间时间点" }));
-    await user.hover(screen.getByRole("menuitem", { name: "开始" }));
+    const startMenuItem = screen.getByRole("menuitem", { name: "开始" });
+    expect(startMenuItem.querySelector('[data-node-icon="start"]')).toBeInTheDocument();
+    await user.hover(startMenuItem);
     expect(await screen.findByRole("menuitem", { name: "触发时间" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "进入时间" })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
-    await user.hover(screen.getByRole("menuitem", { name: "当前节点" }));
+    const currentNodeMenuItem = screen.getByRole("menuitem", { name: "当前节点" });
+    expect(currentNodeMenuItem.querySelector('[data-node-icon="message-query"]')).toBeInTheDocument();
+    await user.hover(currentNodeMenuItem);
     expect(await screen.findByRole("menuitem", { name: "进入时间" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "退出时间" })).not.toBeInTheDocument();
   });

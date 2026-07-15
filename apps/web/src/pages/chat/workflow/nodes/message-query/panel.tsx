@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -340,7 +340,11 @@ function NodeTimeSubMenu({ current = false, node, onSelect, outputs }: {
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <span className={`flex size-5 shrink-0 items-center justify-center rounded-md ${visual.accentClassName}`}>
+        <span
+          className="flex size-5 shrink-0 items-center justify-center"
+          data-node-icon={node.data.kind}
+          style={{ color: `rgb(${visual.accentRgb})` } as CSSProperties}
+        >
           <HugeiconsIcon icon={visual.icon} size={13} strokeWidth={1.8} />
         </span>
         <span className="min-w-0 flex-1 truncate">{current ? "当前节点" : node.data.title}</span>

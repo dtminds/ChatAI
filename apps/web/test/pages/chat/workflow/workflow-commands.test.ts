@@ -103,7 +103,7 @@ describe("workflow graph commands", () => {
       {
         connection: {
           source: "branch-intent",
-          sourceHandle: "branch-normal",
+          sourceHandle: "branch-default",
           target: "message-normal",
           targetHandle: null,
         },
@@ -192,7 +192,7 @@ describe("workflow graph commands", () => {
     const operation = runWorkflowGraphCommand(createDraft(), {
       kind: "wait",
       previousNodeId: "branch-intent",
-      sourceHandle: "branch-normal",
+      sourceHandle: "branch-default",
       type: "insert-node-after",
     });
 
@@ -203,7 +203,7 @@ describe("workflow graph commands", () => {
     expect(operation!.draft.edges).toEqual(expect.arrayContaining([
       expect.objectContaining({
         source: "branch-intent",
-        sourceHandle: "branch-normal",
+        sourceHandle: "branch-default",
         target: insertedNodeId,
       }),
     ]));

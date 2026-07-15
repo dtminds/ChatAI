@@ -326,7 +326,7 @@ describe("workflow DSL", () => {
         sourceOutlet: {
           id: "branch-high",
           kind: "branch-path",
-          label: "高意向客户",
+          label: "如果",
         },
         target: "message-welcome",
         targetHandle: null,
@@ -491,7 +491,6 @@ describe("workflow DSL", () => {
     });
     expect(configByKind.get("branch")).toEqual({
       branchPaths: expect.any(Array),
-      branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
     expect(configByKind.get("message")).toEqual({
       attachments: [],

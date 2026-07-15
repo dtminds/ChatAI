@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { NodeConfigTextareaField } from "@/pages/chat/workflow/node-config-schema";
 import {
   getNodeConfigSections,
   getWorkflowNodeConfigSchema,
@@ -20,14 +19,10 @@ describe("workflow node config schema", () => {
     expect(getWorkflowNodeConfigSchema("end").fields).toEqual([]);
   });
 
-  it("keeps custom settings out of the generic schema and maps branch settings", () => {
-    const branchField = getNodeConfigSections("branch")[0]!.fields[0] as NodeConfigTextareaField;
-
+  it("keeps custom settings out of the generic schema", () => {
     expect(getNodeConfigSections("wait")).toEqual([]);
-    expect(branchField.toPatch("", createDefaultNodeData("branch"))).toEqual({
-      branchRule: "",
-      metric: "未配置分支",
-      status: "warning",
-    });
+    expect(getNodeConfigSections("branch")).toEqual([]);
+    expect(getWorkflowNodeConfigSchema("branch").fields).toEqual([]);
+    expect(createDefaultNodeData("branch").branchPaths).toHaveLength(2);
   });
 });

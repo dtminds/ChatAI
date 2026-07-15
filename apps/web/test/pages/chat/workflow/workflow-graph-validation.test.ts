@@ -227,11 +227,8 @@ describe("workflow graph validation", () => {
     const edges = [
       ...createInitialEdges(),
       {
-        ...createEdge("branch-intent", "missing-node", "普通客户", { sourceHandle: "branch-normal" }),
-        id: "edge-branch-intent-branch-normal-missing-node",
-      },
-      {
-        ...createEdge("branch-intent", "end", "默认路径", { sourceHandle: "branch-default" }),
+        ...createEdge("branch-intent", "missing-node", "否则", { sourceHandle: "branch-default" }),
+        id: "edge-branch-intent-branch-default-missing-node",
       },
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
@@ -247,13 +244,11 @@ describe("workflow graph validation", () => {
   it("accepts branch nodes only when every branch path has a downstream node", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("message", "message-normal", 10),
       createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("branch-intent", "message-default", "否则", { sourceHandle: "branch-default" }),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
 

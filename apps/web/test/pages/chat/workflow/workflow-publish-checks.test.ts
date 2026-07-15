@@ -157,7 +157,17 @@ describe("buildPublishChecks", () => {
             ...node,
             data: {
               ...node.data,
-              branchRule: "",
+              branchPaths: node.data.kind === "branch"
+                ? node.data.branchPaths.map((path) => path.isDefault
+                    ? path
+                    : {
+                        ...path,
+                        conditions: path.conditions.map((condition) => ({
+                          ...condition,
+                          selector: undefined,
+                        })),
+                      })
+                : [],
             },
           }
         : node,
@@ -167,10 +177,10 @@ describe("buildPublishChecks", () => {
 
     expect(validation.nodeIssues.find((item) => item.node.id === "branch-intent")?.issues).toEqual([
       {
-        code: "branch-rule-required",
-        message: "条件分支需要配置条件表达式",
+        code: "branch-condition-invalid",
+        message: "条件分支存在未完成或不可用的条件",
         severity: "warning",
-        source: "config",
+        source: "catalog",
       },
     ]);
     expect(validation.nodeIssues.find((item) => item.node.id === "message-welcome")?.issues).toEqual([
@@ -296,7 +306,7 @@ describe("buildPublishChecks", () => {
     ]));
   });
 
-  it("validates branch path labels separately from the branch expression", () => {
+  it("validates structured branch conditions against available variables", () => {
     const nodes = createInitialNodes();
     const branchNode = nodes.find((node) => node.id === "branch-intent")!;
 
@@ -305,16 +315,30 @@ describe("buildPublishChecks", () => {
       data: {
         ...branchNode.data,
         branchPaths: [
-          { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-          { id: "branch-normal", label: "", operator: "ELIF", title: "CASE 2" },
-          { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+          {
+            conditions: [{
+              id: "condition-invalid",
+              operator: "greater-than",
+              selector: ["customer", "name"],
+              value: "10",
+            }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
-        branchRule: "按标签和会话意图拆分",
       },
     }, nodes, createInitialEdges())).toEqual([
       {
-        code: "branch-path-label-required",
-        message: "条件分支路径需要填写分支名称",
+        code: "branch-condition-invalid",
+        message: "条件分支存在未完成或不可用的条件",
         severity: "warning",
         source: "catalog",
       },
@@ -331,14 +355,24 @@ describe("buildPublishChecks", () => {
       ...branchNode,
       data: {
         ...branchNode.data,
-        branchRule: "",
+        branchPaths: branchNode.data.kind === "branch"
+          ? branchNode.data.branchPaths.map((path) => path.isDefault
+              ? path
+              : {
+                  ...path,
+                  conditions: path.conditions.map((condition) => ({
+                    ...condition,
+                    value: "",
+                  })),
+                })
+          : [],
       },
     }, nodes, edges)).toEqual([
       {
-        code: "branch-rule-required",
-        message: "条件分支需要配置条件表达式",
+        code: "branch-condition-invalid",
+        message: "条件分支存在未完成或不可用的条件",
         severity: "warning",
-        source: "config",
+        source: "catalog",
       },
     ]);
     expect(validateWorkflowNodeConfig(disconnectedNode, nodes, [])).toEqual([]);
@@ -712,14 +746,11 @@ describe("buildPublishChecks", () => {
   it("marks connectivity ready when every branch path is connected", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("message", "message-normal", 10),
       createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
-      createEdge("message-normal", "end"),
+      createEdge("branch-intent", "message-default", "否则", { sourceHandle: "branch-default" }),
       createEdge("message-default", "end"),
     ];
     const checklist = buildPublishChecklist(nodes, edges);

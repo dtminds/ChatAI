@@ -51,7 +51,33 @@ describe("workflow layout", () => {
   });
 
   it("keeps branch paths ordered by handle and centers merged targets", () => {
-    const branchNode = createNodeFromKind("branch", "branch", 0);
+    const branchNode = {
+      ...createNodeFromKind("branch", "branch", 0),
+      data: {
+        ...createDefaultNodeData("branch"),
+        branchPaths: [
+          {
+            conditions: [{ id: "condition-high", operator: "equals", value: "" }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [{ id: "condition-normal", operator: "equals", value: "" }],
+            id: "branch-normal",
+            label: "否则如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
+        ],
+      },
+    } satisfies WorkflowNode<"branch">;
     const highAction = createNodeFromKind("message", "high-message", 3);
     const normalAction = createNodeFromKind("message", "normal-message", 1);
     const defaultAction = createNodeFromKind("message", "default-message", 2);

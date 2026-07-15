@@ -51,9 +51,35 @@ describe("workflow clipboard", () => {
     const message = draft.nodes.find((node) => node.id === "message-welcome")!;
     const lowAction = createNodeFromKind("message", "message-low", 10);
     const branchPaths = [
-      { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-      { id: "branch-low", label: "低意向客户", operator: "ELIF", title: "CASE 2" },
-      { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+      {
+        conditions: [{
+          id: "condition-high",
+          operator: "equals",
+          selector: ["customer", "name"],
+          value: "高意向",
+        }],
+        id: "branch-high",
+        label: "如果",
+        logic: "all",
+      },
+      {
+        conditions: [{
+          id: "condition-low",
+          operator: "equals",
+          selector: ["customer", "name"],
+          value: "低意向",
+        }],
+        id: "branch-low",
+        label: "否则如果",
+        logic: "all",
+      },
+      {
+        conditions: [],
+        id: "branch-default",
+        isDefault: true,
+        label: "否则",
+        logic: "all",
+      },
     ] satisfies WorkflowBranchPath[];
     const clipboardData = createWorkflowClipboardData({
       ...draft,

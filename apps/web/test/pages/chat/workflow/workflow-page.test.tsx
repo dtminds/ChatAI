@@ -184,14 +184,14 @@ vi.mock("@xyflow/react", async () => {
         <button
           disabled={!nodesConnectable}
           onClick={() => {
-            const connection = { source: "branch-intent", sourceHandle: "branch-normal", target: "end", targetHandle: null };
+            const connection = { source: "branch-intent", sourceHandle: "branch-default", target: "end", targetHandle: null };
             if (isValidConnection?.(connection) ?? true) {
               onConnect?.(connection);
             }
           }}
           type="button"
         >
-          连接普通客户分支到结束
+          连接否则分支到结束
         </button>
         <button
           disabled={!nodesDraggable}
@@ -1077,7 +1077,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     const picker = screen.getByRole("menu", { name: "选择要添加的节点" });
     await user.click(
       within(picker).getByRole("menuitem", {
@@ -1103,13 +1103,13 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     expect(screen.getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
     expect(screen.queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
 
-    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     expect(screen.queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
   });
@@ -1120,7 +1120,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     expect(screen.getAllByRole("menu", { name: "选择要添加的节点" })).toHaveLength(1);
 
     const edgeInsertButtons = within(canvas).getAllByRole("button", { name: /连线上添加节点/ });
@@ -1136,14 +1136,12 @@ describe("Agent workflow page", () => {
 
     expect(sourceHandles.map((handle) => handle.dataset.handleId)).toEqual([
       "branch-high",
-      "branch-normal",
       "branch-default",
     ]);
 
     [
-      ["branch-high", "高意向客户"],
-      ["branch-normal", "普通客户"],
-      ["branch-default", "默认路径"],
+      ["branch-high", "如果"],
+      ["branch-default", "否则"],
     ].forEach(([handleId, label]) => {
       const branchPath = within(branchNode).getByTestId(`workflow-branch-path-${handleId}`);
 
@@ -1586,7 +1584,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在如果连线上添加节点" }));
     await user.click(screen.getByRole("menuitem", { name: /转人工/ }));
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
@@ -1605,20 +1603,16 @@ describe("Agent workflow page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
-    await user.click(within(canvas).getByRole("button", { name: "在意向判断的默认路径分支后添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在意向判断的否则分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /转人工/ }));
-    await user.click(within(canvas).getByRole("button", { name: "在意向判断的普通客户分支后添加节点" }));
-    await user.click(within(canvas).getByRole("menuitem", { name: "添加 等待节点" }));
-    await user.click(within(canvas).getByRole("button", { name: "在意向判断的高意向客户分支后添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "在意向判断的如果分支后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /发券/ }));
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
 
     const highY = workflowNodeYByButtonName(canvas, /^发券$/);
-    const normalY = workflowNodeYByButtonName(canvas, /^等待$/);
     const defaultY = workflowNodeYByButtonName(canvas, /^转人工$/);
 
-    expect(highY).toBeLessThan(normalY);
-    expect(normalY).toBeLessThan(defaultY);
+    expect(highY).toBeLessThan(defaultY);
   });
 
   it("highlights incoming and outgoing edges when hovering a workflow node", async () => {
@@ -1956,9 +1950,9 @@ describe("Agent workflow page", () => {
     await user.click(screen.getByTestId("workflow-edge-edge-message-welcome-end"));
     fireEvent.keyDown(window, { key: "Delete" });
 
-    await user.click(within(canvas).getByRole("button", { name: "连接普通客户分支到结束" }));
+    await user.click(within(canvas).getByRole("button", { name: "连接否则分支到结束" }));
 
-    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-normal-end")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-default-end")).toBeInTheDocument();
     expect(getUndoButton(canvas)).toBeEnabled();
   });
 

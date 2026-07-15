@@ -94,7 +94,11 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
 ): WorkflowNodeValidationIssue[] {
   const definition = getNodeDefinitionCore(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
-  const definitionIssues = definition.validate?.(node, { edges, nodes }) ?? [];
+  const definitionIssues = definition.validate?.(node, {
+    availableVariables: getAvailableVariablesForNode(node.id, nodes, edges),
+    edges,
+    nodes,
+  }) ?? [];
   const variableIssues = validateNodeVariableContent(node, nodes, edges);
 
   return [

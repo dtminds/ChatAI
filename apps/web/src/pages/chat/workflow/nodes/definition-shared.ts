@@ -1,6 +1,4 @@
 import {
-  WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
-  WORKFLOW_BRANCH_NODE_WIDTH,
   WORKFLOW_COMPACT_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -81,11 +79,6 @@ export const compactNodeLayout: WorkflowNodeLayoutMetrics = {
 export const terminalNodeLayout: WorkflowNodeLayoutMetrics = {
   estimatedHeight: WORKFLOW_TERMINAL_NODE_ESTIMATED_HEIGHT,
   width: WORKFLOW_NODE_WIDTH,
-};
-
-export const branchNodeLayout: WorkflowNodeLayoutMetrics = {
-  estimatedHeight: WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
-  width: WORKFLOW_BRANCH_NODE_WIDTH,
 };
 
 export function createNodeData<TKind extends WorkflowNodeKind>(

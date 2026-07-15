@@ -32,12 +32,40 @@ export type WorkflowNodeKind =
 export type WorkflowNodeStatus = "ready" | "running" | "warning";
 export type InsertableWorkflowNodeKind = Exclude<WorkflowNodeKind, "start" | "end">;
 
+export type WorkflowBranchLogic = "all" | "any";
+export type WorkflowBranchOperator =
+  | "contains"
+  | "datetime-after"
+  | "datetime-after-or-equal"
+  | "datetime-before"
+  | "datetime-before-or-equal"
+  | "datetime-between"
+  | "ends-with"
+  | "equals"
+  | "greater-than"
+  | "greater-than-or-equal"
+  | "is-empty"
+  | "is-false"
+  | "is-not-empty"
+  | "is-true"
+  | "less-than"
+  | "less-than-or-equal"
+  | "not-contains"
+  | "not-equals"
+  | "starts-with";
+export type WorkflowBranchConditionValue = boolean | number | string | [string, string];
+export type WorkflowBranchCondition = {
+  id: string;
+  operator: WorkflowBranchOperator;
+  selector?: WorkflowVariableSelector;
+  value?: WorkflowBranchConditionValue;
+};
 export type WorkflowBranchPath = {
+  conditions: WorkflowBranchCondition[];
   id: string;
   isDefault?: boolean;
   label: string;
-  operator: "ELIF" | "ELSE" | "IF";
-  title: string;
+  logic: WorkflowBranchLogic;
 };
 
 type WorkflowNodeDataBase<TKind extends WorkflowNodeKind> = Record<string, unknown> & {
@@ -58,8 +86,7 @@ export type StartNodeData = WorkflowNodeDataBase<"start"> & {
 export type WaitNodeData = WorkflowNodeDataBase<"wait"> & WorkflowWaitConfig;
 
 export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
-  branchPaths?: WorkflowBranchPath[];
-  branchRule?: string;
+  branchPaths: WorkflowBranchPath[];
 };
 
 export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
@@ -290,6 +317,7 @@ export type WorkflowNodeValidationIssue = {
 };
 
 export type WorkflowNodeValidationContext = {
+  availableVariables: WorkflowVariableDefinition[];
   edges: WorkflowEdge[];
   nodes: WorkflowNode[];
 };

@@ -60,8 +60,27 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("branch"),
-        branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
-        metric: "2 条分支",
+        branchPaths: [
+          {
+            conditions: [{
+              id: "condition-high-intent",
+              operator: "contains",
+              selector: ["customer", "name"],
+              value: "会员",
+            }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
+        ],
+        metric: "1 个条件分支",
         status: "ready",
         title: "意向判断",
       },
@@ -97,7 +116,7 @@ export function createInitialEdges(): WorkflowEdge[] {
   return [
     createEdge("start", "wait-2d"),
     createEdge("wait-2d", "branch-intent"),
-    createEdge("branch-intent", "message-welcome", "高意向", {
+    createEdge("branch-intent", "message-welcome", "如果", {
       sourceHandle: "branch-high",
     }),
     createEdge("message-welcome", "end"),

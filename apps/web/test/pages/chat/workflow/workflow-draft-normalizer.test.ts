@@ -552,8 +552,18 @@ describe("workflow draft normalizer", () => {
           data: {
             ...createDefaultNodeData("branch"),
             branchPaths: [
-              { id: "branch-custom", label: "自定义分支", operator: "ELIF", title: "错误标题" },
-              { id: "branch-custom", label: "重复分支", operator: "ELIF", title: "重复标题" },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-custom",
+                label: "自定义分支",
+                logic: "all",
+              },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-custom",
+                label: "重复分支",
+                logic: "all",
+              },
             ],
           },
           id: "branch-1",
@@ -564,7 +574,12 @@ describe("workflow draft normalizer", () => {
           data: {
             ...createDefaultNodeData("message"),
             branchPaths: [
-              { id: "branch-leaked", label: "不应保留", operator: "IF", title: "CASE 1" },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-leaked",
+                label: "不应保留",
+                logic: "all",
+              },
             ],
           },
           id: "message-1",
@@ -576,8 +591,27 @@ describe("workflow draft normalizer", () => {
 
     expect(hydratedDraft.nodes.find((node) => node.id === "branch-1")?.data.branchPaths)
       .toEqual([
-        { id: "branch-custom", isDefault: undefined, label: "自定义分支", operator: "IF", title: "CASE 1" },
-        { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+        {
+          conditions: [{ id: "condition-1", operator: "equals", selector: undefined, value: "" }],
+          id: "branch-custom",
+          isDefault: undefined,
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{ id: "condition-1", operator: "equals", selector: undefined, value: "" }],
+          id: "branch-2",
+          isDefault: undefined,
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-default",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
       ]);
     expect(hydratedDraft.nodes.find((node) => node.id === "message-1")?.data.branchPaths)
       .toBeUndefined();
@@ -643,8 +677,19 @@ describe("workflow draft normalizer", () => {
       data: {
         ...createDefaultNodeData("branch"),
         branchPaths: [
-          { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-          { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+          {
+            conditions: [{ id: "condition-high", operator: "equals", value: "" }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
       },
       id: "branch",

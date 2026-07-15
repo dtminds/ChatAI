@@ -52,7 +52,7 @@ describe("workflow connection policy", () => {
     })).toBe("source-handle-occupied");
     expect(getWorkflowConnectionPolicyViolation(draft, {
       source: "branch-intent",
-      sourceHandle: "branch-normal",
+      sourceHandle: "branch-default",
       target: "end",
       targetHandle: null,
     })).toBeUndefined();
@@ -61,13 +61,13 @@ describe("workflow connection policy", () => {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "end", undefined, { sourceHandle: "branch-normal" }),
+        createEdge("branch-intent", "end", undefined, { sourceHandle: "branch-default" }),
       ],
     };
 
     expect(getWorkflowConnectionPolicyViolation(reconnectableDraft, {
       source: "branch-intent",
-      sourceHandle: "branch-normal",
+      sourceHandle: "branch-default",
       target: "message-welcome",
       targetHandle: null,
     })).toBe("source-handle-occupied");

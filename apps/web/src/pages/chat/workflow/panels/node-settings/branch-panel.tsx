@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Add01Icon,
   ArrowDown01Icon,
@@ -5,125 +6,379 @@ import {
   Delete02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  addWorkflowBranchCondition,
   addWorkflowBranchPath,
+  branchOperatorNeedsValue,
+  getBranchOperatorOptions,
+  getDefaultBranchOperator,
   getWorkflowBranchPaths,
   moveWorkflowBranchPath,
+  removeWorkflowBranchCondition,
   removeWorkflowBranchPath,
-  renameWorkflowBranchPath,
+  updateWorkflowBranchCondition,
+  updateWorkflowBranchLogic,
+  WORKFLOW_BRANCH_CONDITION_MAX,
+  WORKFLOW_BRANCH_PATH_MAX,
 } from "../../branch-paths";
-import { FieldGroup } from "../field-group";
-import { SchemaNodeSettingsPanel } from "./schema-panel";
+import type {
+  WorkflowBranchCondition,
+  WorkflowBranchConditionValue,
+  WorkflowBranchPath,
+  WorkflowVariableDefinition,
+  WorkflowVariableValueType,
+} from "../../types";
+import { WorkflowVariablePicker } from "../../workflow-variable-picker";
+import {
+  getAvailableVariablesForNode,
+  getWorkflowVariableDisplayLabel,
+  resolveWorkflowVariable,
+} from "../../workflow-variables";
 import type { NodeSettingsProps } from "../types";
 
 export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProps<"branch">) {
+  const [pendingDeletePath, setPendingDeletePath] = useState<WorkflowBranchPath | null>(null);
   const branchPaths = getWorkflowBranchPaths(node.data);
-  const nonDefaultPathCount = branchPaths.filter((branch) => !branch.isDefault).length;
-  const connectedCountByHandle = new Map<string, number>();
+  const conditionalPaths = branchPaths.filter((path) => !path.isDefault);
+  const fallbackPath = branchPaths.find((path) => path.isDefault)!;
+  const variables = getAvailableVariablesForNode(node.id, nodes, edges)
+    .filter((variable) => variable.type !== "object");
 
-  edges.forEach((edge) => {
-    if (edge.source !== node.id || !edge.sourceHandle) {
+  const updateBranchPaths = (nextPaths: WorkflowBranchPath[]) => {
+    onNodeChange({ branchPaths: nextPaths });
+  };
+  const updatePath = (nextPath: WorkflowBranchPath) => {
+    updateBranchPaths(branchPaths.map((path) => path.id === nextPath.id ? nextPath : path));
+  };
+  const deletePath = (path: WorkflowBranchPath) => {
+    updateBranchPaths(removeWorkflowBranchPath(branchPaths, path.id));
+    setPendingDeletePath(null);
+  };
+  const requestDeletePath = (path: WorkflowBranchPath) => {
+    const connected = edges.some((edge) => edge.source === node.id && edge.sourceHandle === path.id);
+    if (connected) {
+      setPendingDeletePath(path);
       return;
     }
-
-    connectedCountByHandle.set(
-      edge.sourceHandle,
-      (connectedCountByHandle.get(edge.sourceHandle) ?? 0) + 1,
-    );
-  });
-
-  const updateBranchPaths = (nextBranchPaths: typeof branchPaths) => {
-    onNodeChange({ branchPaths: nextBranchPaths });
+    deletePath(path);
   };
 
   return (
-    <>
-      <SchemaNodeSettingsPanel node={node} nodes={nodes} onNodeChange={onNodeChange} edges={edges} />
-      <FieldGroup title="分支路径">
-        <div className="space-y-2">
-          {branchPaths.map((branch, index) => {
-            const connectedCount = connectedCountByHandle.get(branch.id) ?? 0;
-            const canMoveUp = !branch.isDefault && index > 0;
-            const canMoveDown = !branch.isDefault && index < nonDefaultPathCount - 1;
-            const canDelete = !branch.isDefault && nonDefaultPathCount > 1 && connectedCount === 0;
-            const branchActionLabel = branch.label || branch.title;
-
-            return (
-              <div
-                className="grid gap-2 rounded-[8px] border bg-card px-3 py-2"
-                key={branch.id}
+    <div className="space-y-4">
+      {conditionalPaths.map((path, index) => (
+        <section className="space-y-3 rounded-[8px] border p-3" key={path.id}>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-foreground">{path.label}</h3>
+            <div className="flex items-center gap-1">
+              <Button
+                aria-label={`上移${path.label} ${index + 1}`}
+                className="size-7 rounded-md"
+                disabled={index === 0}
+                onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, path.id, "up"))}
+                size="icon"
+                type="button"
+                variant="ghost"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="text-[11px] font-semibold text-muted-foreground">
-                      {branch.title} · {branch.operator}
-                    </span>
-                    {connectedCount > 0 ? (
-                      <span className="text-[11px] text-muted-foreground">已连接 {connectedCount} 条</span>
-                    ) : null}
-                  </div>
-                  {!branch.isDefault ? (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        aria-label={`上移${branchActionLabel}`}
-                        className="size-7 rounded-md"
-                        disabled={!canMoveUp}
-                        onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, branch.id, "up"))}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={1.8} />
-                      </Button>
-                      <Button
-                        aria-label={`下移${branchActionLabel}`}
-                        className="size-7 rounded-md"
-                        disabled={!canMoveDown}
-                        onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, branch.id, "down"))}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
-                      </Button>
-                      <Button
-                        aria-label={`删除${branchActionLabel}`}
-                        className="size-7 rounded-md text-destructive hover:text-destructive"
-                        disabled={!canDelete}
-                        onClick={() => updateBranchPaths(removeWorkflowBranchPath(branchPaths, branch.id))}
-                        size="icon"
-                        title={connectedCount > 0 ? "先删除该分支连线" : undefined}
-                        type="button"
-                        variant="ghost"
-                      >
-                        <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-                <Input
-                  aria-label={`${branch.title} 路径名称`}
-                  className="h-8 rounded-md px-2.5 text-xs"
-                  onChange={(event) =>
-                    updateBranchPaths(renameWorkflowBranchPath(branchPaths, branch.id, event.target.value))}
-                  value={branch.label}
-                />
-              </div>
-            );
-          })}
-        </div>
-        <Button
-          className="h-8 w-full rounded-md text-xs"
-          onClick={() => updateBranchPaths(addWorkflowBranchPath(branchPaths))}
-          type="button"
-          variant="outline"
-        >
-          <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
-          添加分支
-        </Button>
-      </FieldGroup>
-    </>
+                <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={1.8} />
+              </Button>
+              <Button
+                aria-label={`下移${path.label} ${index + 1}`}
+                className="size-7 rounded-md"
+                disabled={index === conditionalPaths.length - 1}
+                onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, path.id, "down"))}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+              </Button>
+              <Button
+                aria-label={`删除${path.label} ${index + 1}`}
+                className="size-7 rounded-md text-destructive hover:text-destructive"
+                disabled={conditionalPaths.length <= 1}
+                onClick={() => requestDeletePath(path)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+              </Button>
+            </div>
+          </div>
+
+          {path.conditions.length > 1 ? (
+            <Select
+              onValueChange={(value) => {
+                if (value === "all" || value === "any") {
+                  updatePath(updateWorkflowBranchLogic(path, value));
+                }
+              }}
+              value={path.logic}
+            >
+              <SelectTrigger aria-label={`${path.label}条件关系`} className="h-9 w-24 rounded-[8px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">且</SelectItem>
+                <SelectItem value="any">或</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : null}
+
+          <div className="space-y-2">
+            {path.conditions.map((condition, conditionIndex) => (
+              <BranchConditionRow
+                condition={condition}
+                index={conditionIndex}
+                key={condition.id}
+                onChange={(patch) => updatePath(updateWorkflowBranchCondition(path, condition.id, patch))}
+                onDelete={() => updatePath(removeWorkflowBranchCondition(path, condition.id))}
+                showDelete={path.conditions.length > 1}
+                variables={variables}
+              />
+            ))}
+          </div>
+
+          <Button
+            className="h-8 px-2 text-xs"
+            disabled={path.conditions.length >= WORKFLOW_BRANCH_CONDITION_MAX}
+            onClick={() => updatePath(addWorkflowBranchCondition(path))}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+            添加条件
+          </Button>
+        </section>
+      ))}
+
+      <Button
+        className="h-9 w-full rounded-[8px]"
+        disabled={conditionalPaths.length >= WORKFLOW_BRANCH_PATH_MAX}
+        onClick={() => updateBranchPaths(addWorkflowBranchPath(branchPaths))}
+        type="button"
+        variant="outline"
+      >
+        <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+        添加分支
+      </Button>
+
+      <section className="rounded-[8px] border px-3 py-3">
+        <h3 className="text-sm font-semibold text-foreground">{fallbackPath.label}</h3>
+        <p className="mt-1 text-xs text-muted-foreground">不满足以上条件</p>
+      </section>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setPendingDeletePath(null);
+        }}
+        open={Boolean(pendingDeletePath)}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除分支</AlertDialogTitle>
+            <AlertDialogDescription>删除后，该分支对应的下游连线也会被删除</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeletePath) deletePath(pendingDeletePath);
+              }}
+              variant="destructive"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
+}
+
+function BranchConditionRow({
+  condition,
+  index,
+  onChange,
+  onDelete,
+  showDelete,
+  variables,
+}: {
+  condition: WorkflowBranchCondition;
+  index: number;
+  onChange: (patch: Partial<WorkflowBranchCondition>) => void;
+  onDelete: () => void;
+  showDelete: boolean;
+  variables: WorkflowVariableDefinition[];
+}) {
+  const [variablePickerOpen, setVariablePickerOpen] = useState(false);
+  const variable = condition.selector ? resolveWorkflowVariable(variables, condition.selector) : undefined;
+  const operatorOptions = getBranchOperatorOptions(variable?.type);
+
+  return (
+    <div className="space-y-2 rounded-[8px] bg-secondary/50 p-2.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_8.5rem_2rem] gap-2">
+        <WorkflowVariablePicker
+          onOpenChange={setVariablePickerOpen}
+          onSelect={(nextVariable) => {
+            const operator = getDefaultBranchOperator(nextVariable.type);
+            onChange({
+              operator,
+              selector: nextVariable.selector,
+              value: getDefaultConditionValue(nextVariable.type, operator),
+            });
+            setVariablePickerOpen(false);
+          }}
+          open={variablePickerOpen}
+          variables={variables}
+        >
+          <Button
+            aria-label={`条件 ${index + 1} 变量`}
+            className="h-9 min-w-0 justify-between rounded-[8px] px-3 font-normal"
+            type="button"
+            variant="outline"
+          >
+            <span className={variable ? "truncate" : "truncate text-muted-foreground"}>
+              {variable ? getWorkflowVariableDisplayLabel(variable) : "选择变量"}
+            </span>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+          </Button>
+        </WorkflowVariablePicker>
+
+        <Select
+          disabled={!variable}
+          onValueChange={(value) => {
+            const operator = value as WorkflowBranchCondition["operator"];
+            onChange({
+              operator,
+              value: getDefaultConditionValue(variable?.type, operator),
+            });
+          }}
+          value={operatorOptions.some((option) => option.value === condition.operator)
+            ? condition.operator
+            : undefined}
+        >
+          <SelectTrigger aria-label={`条件 ${index + 1} 判断`} className="h-9 w-full rounded-[8px]">
+            <SelectValue placeholder="选择判断" />
+          </SelectTrigger>
+          <SelectContent>
+            {operatorOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          aria-label={`删除条件 ${index + 1}`}
+          className="size-8 rounded-md text-destructive hover:text-destructive"
+          disabled={!showDelete}
+          onClick={onDelete}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+        </Button>
+      </div>
+
+      {variable && branchOperatorNeedsValue(condition.operator) ? (
+        <ConditionValueField
+          condition={condition}
+          onChange={(value) => onChange({ value })}
+          type={variable.type}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ConditionValueField({
+  condition,
+  onChange,
+  type,
+}: {
+  condition: WorkflowBranchCondition;
+  onChange: (value: WorkflowBranchConditionValue) => void;
+  type: WorkflowVariableValueType;
+}) {
+  if (condition.operator === "datetime-between") {
+    const value = Array.isArray(condition.value) ? condition.value : ["", ""];
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <DateTimePicker
+          aria-label="开始时间"
+          onValueChange={(nextValue) => onChange([nextValue, value[1]])}
+          value={value[0]}
+        />
+        <DateTimePicker
+          aria-label="结束时间"
+          onValueChange={(nextValue) => onChange([value[0], nextValue])}
+          value={value[1]}
+        />
+      </div>
+    );
+  }
+  if (type === "datetime") {
+    return (
+      <DateTimePicker
+        aria-label="比较时间"
+        onValueChange={onChange}
+        value={typeof condition.value === "string" ? condition.value : ""}
+      />
+    );
+  }
+  if (type === "number") {
+    return (
+      <Input
+        aria-label="比较值"
+        className="h-9 rounded-[8px] px-3"
+        onChange={(event) => {
+          const value = event.target.value;
+          onChange(value === "" ? "" : Number(value));
+        }}
+        placeholder="输入数值"
+        type="number"
+        value={typeof condition.value === "number" ? condition.value : ""}
+      />
+    );
+  }
+  return (
+    <Input
+      aria-label="比较值"
+      className="h-9 rounded-[8px] px-3"
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="输入比较值"
+      value={typeof condition.value === "string" ? condition.value : ""}
+    />
+  );
+}
+
+function getDefaultConditionValue(
+  type: WorkflowVariableValueType | undefined,
+  operator: WorkflowBranchCondition["operator"],
+): WorkflowBranchConditionValue | undefined {
+  if (!branchOperatorNeedsValue(operator)) return undefined;
+  if (operator === "datetime-between") return ["", ""];
+  if (type === "number") return "";
+  return "";
 }

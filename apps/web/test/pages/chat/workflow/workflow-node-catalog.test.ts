@@ -70,6 +70,7 @@ import {
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/workflow/constants";
 import type { WorkflowNode, WorkflowNodeKind } from "@/pages/chat/workflow/types";
+import { workflowContextVariables } from "@/pages/chat/workflow/workflow-variables";
 
 function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind: TKind) {
   const catalogEntry = getWorkflowNodeCatalogEntry(kind);
@@ -163,7 +164,11 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
   }
   expect(definition.configSections).toEqual(getNodeConfigSections(kind));
   expect(definition.getOutputVariables?.(node) ?? []).toEqual(expect.any(Array));
-  expect(definition.validate?.(node, { edges: createInitialEdges(), nodes }) ?? []).toEqual(
+  expect(definition.validate?.(node, {
+    availableVariables: workflowContextVariables,
+    edges: createInitialEdges(),
+    nodes,
+  }) ?? []).toEqual(
     expect.any(Array),
   );
 }
@@ -244,7 +249,7 @@ describe("workflow node catalog", () => {
     expect(workflowNodeUiRegistry.end.settings).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
 
-    expect(workflowNodeCatalog.branch.cardClassName).toBe("workflow-node-card-branch");
+    expect(workflowNodeCatalog.branch.cardClassName).toBeUndefined();
     expect(workflowNodeCatalog.message.cardClassName).toBeUndefined();
   });
 
@@ -510,18 +515,50 @@ describe("workflow node catalog", () => {
     const customBranchHandles = getNodeSourceHandleDefinitions({
       ...createDefaultNodeData("branch"),
       branchPaths: [
-        { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-        { id: "branch-risk", label: "风险客户", operator: "ELIF", title: "CASE 2" },
-        { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
+        {
+          conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+          id: "branch-vip",
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{ id: "condition-risk", operator: "equals", value: "" }],
+          id: "branch-risk",
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-fallback",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
       ],
     });
     const customBranchNode: WorkflowNode = {
       data: {
         ...createDefaultNodeData("branch"),
         branchPaths: [
-          { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-          { id: "branch-risk", label: "风险客户", operator: "ELIF", title: "CASE 2" },
-          { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
+          {
+            conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+            id: "branch-vip",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [{ id: "condition-risk", operator: "equals", value: "" }],
+            id: "branch-risk",
+            label: "否则如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-fallback",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
       },
       id: "branch-node",
@@ -538,13 +575,11 @@ describe("workflow node catalog", () => {
     expect(branchHandles.every((handle) => handle.outletKind === "branch-path")).toBe(true);
     expect(branchHandles.map((handle) => handle.id)).toEqual([
       "branch-high",
-      "branch-normal",
       "branch-default",
     ]);
     expect(branchHandles.map((handle) => handle.label)).toEqual([
-      "高意向客户",
-      "普通客户",
-      "默认路径",
+      "如果",
+      "否则",
     ]);
     expect(getDefaultSourceHandleId("branch")).toBe("branch-high");
     expect(customBranchHandles.map((handle) => handle.id)).toEqual([
@@ -553,7 +588,7 @@ describe("workflow node catalog", () => {
       "branch-fallback",
     ]);
     expect(getNodeSourceHandleIndex(customBranchNode.data, "branch-risk")).toBe(1);
-    expect(getNodeSourceHandleLabel(customBranchNode.data, "branch-risk")).toBe("风险客户");
+    expect(getNodeSourceHandleLabel(customBranchNode.data, "branch-risk")).toBe("否则如果");
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-risk")).toBe(0);
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-vip")).toBe(-1);
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-fallback")).toBe(1);
@@ -562,7 +597,12 @@ describe("workflow node catalog", () => {
     expect(getDefaultSourceHandleId("branch", {
       ...createDefaultNodeData("branch"),
       branchPaths: [
-        { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
+        {
+          conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+          id: "branch-vip",
+          label: "如果",
+          logic: "all",
+        },
       ],
     })).toBe("branch-vip");
     expect(getDefaultSourceHandleId("wait")).toBeUndefined();
@@ -614,7 +654,6 @@ describe("workflow node catalog", () => {
     });
 
     expect(unconnectedHandles.map((handle) => handle.id)).toEqual([
-      "branch-normal",
       "branch-default",
     ]);
   });

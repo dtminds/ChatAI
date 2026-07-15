@@ -366,9 +366,9 @@ describe("workflow draft service", () => {
     expect(storedBranchPaths?.[0]).not.toBe(publishedBranchPaths?.[0]);
 
     sourceBranchPaths[0]!.label = "外部串改";
-    expect(publishedBranchPaths?.[0]?.label).toBe("VIP");
-    expect(versionBranchPaths?.[0]?.label).toBe("VIP");
-    expect(storedBranchPaths?.[0]?.label).toBe("VIP");
+    expect(publishedBranchPaths?.[0]?.label).toBe("如果");
+    expect(versionBranchPaths?.[0]?.label).toBe("如果");
+    expect(storedBranchPaths?.[0]?.label).toBe("如果");
   });
 
   it("imports a sanitized draft without overwriting the published snapshot", () => {
@@ -1282,9 +1282,35 @@ function createDraftWithBranchPaths(): WorkflowDraft {
             data: {
               ...node.data,
               branchPaths: [
-                { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-                { id: "branch-regular", label: "普通客户", operator: "ELIF", title: "CASE 2" },
-                { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+                {
+                  conditions: [{
+                    id: "condition-vip",
+                    operator: "equals",
+                    selector: ["customer", "name"],
+                    value: "VIP",
+                  }],
+                  id: "branch-vip",
+                  label: "如果",
+                  logic: "all",
+                },
+                {
+                  conditions: [{
+                    id: "condition-regular",
+                    operator: "equals",
+                    selector: ["customer", "name"],
+                    value: "普通客户",
+                  }],
+                  id: "branch-regular",
+                  label: "否则如果",
+                  logic: "all",
+                },
+                {
+                  conditions: [],
+                  id: "branch-default",
+                  isDefault: true,
+                  label: "否则",
+                  logic: "all",
+                },
               ],
             },
           }

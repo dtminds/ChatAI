@@ -49,6 +49,13 @@ const AgentSettingsPage = lazy(() =>
     default: AgentSettingsPage,
   })),
 );
+const AgentOptimizationSuggestionsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-optimization-suggestions-page").then(
+    ({ AgentOptimizationSuggestionsPage }) => ({
+      default: AgentOptimizationSuggestionsPage,
+    }),
+  ),
+);
 const KbListPage = lazy(() =>
   import("@/pages/chat/ai-hosting/kb-list-page").then(
     ({ KbListPage }) => ({
@@ -221,6 +228,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/agents/new",
         element: withRouteSuspense(<AgentSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/agents/:agentId/optimization-suggestions",
+        element: withRouteSuspense(<AgentOptimizationSuggestionsPage />),
       },
       {
         path: "chat/ai-hosting/agents/:agentId",

@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import {
   FileUploadDropzone,
   FileUploadSelectedFile,
@@ -55,11 +56,13 @@ async function readAllQaImportSheets(file: File): Promise<Sheet[]> {
 }
 
 export function ImportQaDialog({
+  defaultAddMethod = "file",
   kbId,
   onImportComplete,
   onOpenChange,
   open,
 }: {
+  defaultAddMethod?: "file" | "new";
   kbId: string;
   onImportComplete?: (result: {
     docId: string;
@@ -76,6 +79,7 @@ export function ImportQaDialog({
     useAsyncValidation();
   const isMountedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [addMethod, setAddMethod] = useState<"file" | "new">(defaultAddMethod);
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -88,6 +92,7 @@ export function ImportQaDialog({
   function reset() {
     abortControllerRef.current?.abort();
     invalidateValidation();
+    setAddMethod("file");
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);
@@ -106,8 +111,11 @@ export function ImportQaDialog({
   useEffect(() => {
     if (!open) {
       reset();
+      return;
     }
-  }, [open]);
+
+    setAddMethod(defaultAddMethod);
+  }, [defaultAddMethod, open]);
 
   async function handleImport() {
     if (!selectedFile || isImporting) {
@@ -309,13 +317,62 @@ export function ImportQaDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>批量导入问答</DialogTitle>
+          <DialogTitle>添加问答知识</DialogTitle>
           <DialogDescription className="sr-only">
             上传 Excel 文件批量导入问答
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">选择添加方式</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                className={cn(
+                  "h-auto items-start justify-start rounded-[8px] border p-4 text-left",
+                  addMethod === "file"
+                    ? "border-primary bg-primary/5 hover:bg-primary/5"
+                    : "border-border bg-background",
+                )}
+                onClick={() => {
+                  setAddMethod("file");
+                  clearSelectedFile();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-foreground">从本地文件导入</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    已有整理好的问答内容，可通过文件批量导入
+                  </span>
+                </span>
+              </Button>
+              <Button
+                className={cn(
+                  "h-auto items-start justify-start rounded-[8px] border p-4 text-left",
+                  addMethod === "new"
+                    ? "border-primary bg-primary/5 hover:bg-primary/5"
+                    : "border-border bg-background",
+                )}
+                onClick={() => {
+                  setAddMethod("new");
+                  clearSelectedFile();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-foreground">新建</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    先创建空的问答知识，创建后可随时添加内容
+                  </span>
+                </span>
+              </Button>
+            </div>
+          </div>
+          {addMethod === "file" ? (
+            <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted/60 text-sm">
@@ -422,6 +479,8 @@ export function ImportQaDialog({
               onClear={clearSelectedFile}
             />
           ) : null}
+            </>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -434,11 +493,18 @@ export function ImportQaDialog({
             取消
           </Button>
           <Button
-            disabled={!selectedFile || isCheckingFile || isImporting}
-            onClick={() => void handleImport()}
+            disabled={(addMethod === "file" && !selectedFile) || isCheckingFile || isImporting}
+            onClick={() => {
+              if (addMethod === "new") {
+                onOpenChange(false);
+                return;
+              }
+
+              void handleImport();
+            }}
             type="button"
           >
-            {isImporting ? "提交中" : "导入文档"}
+            {isImporting ? "提交中" : addMethod === "new" ? "确认创建" : "确认提交"}
           </Button>
         </DialogFooter>
       </DialogContent>

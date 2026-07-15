@@ -14,7 +14,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import ReactMarkdown from "react-markdown";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import {
@@ -28,7 +28,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import {
+  Spinner,
+} from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -176,6 +178,7 @@ const statusMeta: Record<
 
 export function KbDetailPage() {
   const { kbId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -184,6 +187,7 @@ export function KbDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
+  const [qaDialogDefaultAddMethod, setQaDialogDefaultAddMethod] = useState<"file" | "new">("file");
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
   // const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
@@ -209,6 +213,18 @@ export function KbDetailPage() {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("addKnowledge") !== "qa:new") {
+      return;
+    }
+
+    setQaDialogDefaultAddMethod("new");
+    setImportQaDialogOpen(true);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("addKnowledge");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
@@ -412,12 +428,9 @@ export function KbDetailPage() {
       }
 
       if (optionType === "qa") {
+        setQaDialogDefaultAddMethod("file");
         setImportQaDialogOpen(true);
       }
-
-      // if (optionType === "image") {
-      //   setImageDialogOpen(true);
-      // }
 
       if (optionType === "document") {
         setDocumentDialogOpen(true);
@@ -472,7 +485,7 @@ export function KbDetailPage() {
           <div className="flex flex-wrap items-center gap-5">
             <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="knowledge"
               >
                 <HugeiconsIcon
@@ -485,7 +498,7 @@ export function KbDetailPage() {
                 知识
               </TabsTrigger>
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="attachments"
               >
                 <HugeiconsIcon
@@ -569,12 +582,18 @@ export function KbDetailPage() {
       </div>
       </TooltipProvider>
       <ImportQaDialog
+        defaultAddMethod={qaDialogDefaultAddMethod}
         kbId={kbId}
         onImportComplete={() => {
           void loadDocs();
           notifyAiHostingQuotaChanged();
         }}
-        onOpenChange={setImportQaDialogOpen}
+        onOpenChange={(open) => {
+          setImportQaDialogOpen(open);
+          if (!open) {
+            setQaDialogDefaultAddMethod("file");
+          }
+        }}
         open={importQaDialogOpen}
       />
       {/* 图片添加入口暂时下线

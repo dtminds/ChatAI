@@ -139,6 +139,7 @@ export function ImportDocumentDialog({
     open,
   });
   const isMountedRef = useRef(false);
+  const [addMethod, setAddMethod] = useState<"file" | "new">("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [parseMode, setParseMode] =
@@ -152,6 +153,7 @@ export function ImportDocumentDialog({
   const [uploadProgress, setUploadProgress] = useState(0);
 
   function resetForm() {
+    setAddMethod("file");
     setSelectedFile(null);
     setFileError("");
     setParseMode("standard");
@@ -206,6 +208,11 @@ export function ImportDocumentDialog({
   };
 
   const handleSubmit = () => {
+    if (addMethod === "new") {
+      onOpenChange(false);
+      return;
+    }
+
     if (!selectedFile) {
       return;
     }
@@ -271,7 +278,7 @@ export function ImportDocumentDialog({
     });
   };
 
-  const canSubmit = Boolean(selectedFile) && !submitting;
+  const canSubmit = (addMethod === "new" || Boolean(selectedFile)) && !submitting;
   const submitLabel =
     parseMode === "enhanced" ? "确认提交（限免）" : "确认提交";
 
@@ -289,7 +296,7 @@ export function ImportDocumentDialog({
       >
         <DialogHeader className="space-y-0 text-left">
           <div className="flex min-w-0 items-start justify-between gap-4">
-            <DialogTitle>导入文档</DialogTitle>
+            <DialogTitle>添加文档</DialogTitle>
             <DocumentFileSizeLimitPopover />
           </div>
           <DialogDescription className="sr-only">
@@ -298,7 +305,31 @@ export function ImportDocumentDialog({
         </DialogHeader>
 
         <div className="space-y-5">
-          {selectedFile ? null : (
+          <div className="grid gap-2">
+            <Label>选择添加方式</Label>
+            <RadioGroup
+              aria-label="选择添加方式"
+              className="grid gap-3 md:grid-cols-2"
+              onValueChange={(value) => {
+                setAddMethod(value as "file" | "new");
+                setSelectedFile(null);
+                setFileError("");
+              }}
+              value={addMethod}
+            >
+              <RadioOptionCard
+                description="已有整理好的文档内容，可通过文件批量导入"
+                label="从本地文件导入"
+                value="file"
+              />
+              <RadioOptionCard
+                description="先创建空的文档知识，创建后可随时添加内容"
+                label="新建"
+                value="new"
+              />
+            </RadioGroup>
+          </div>
+          {addMethod === "file" && !selectedFile ? (
             <FileUploadDropzone
               accept={DOCUMENT_KNOWLEDGE_ACCEPT}
               ariaLabel="上传文档文件"
@@ -309,9 +340,9 @@ export function ImportDocumentDialog({
               onFilesRejected={handleFileReject}
               title="点击或拖拽上传文件"
             />
-          )}
+          ) : null}
 
-          {fileError ? (
+          {addMethod === "file" && fileError ? (
             <div className="flex items-center gap-2 text-sm text-destructive">
               <HugeiconsIcon
                 color="currentColor"
@@ -323,7 +354,7 @@ export function ImportDocumentDialog({
             </div>
           ) : null}
 
-          {selectedFile ? (
+          {addMethod === "file" && selectedFile ? (
             <>
               <FileUploadSelectedFile
                 clearDisabled={submitting}
@@ -512,7 +543,7 @@ function RadioOptionCard({
   value: string;
 }) {
   return (
-    <Label className="relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50 has-[[data-state=checked]]:border-primary/80 has-[[data-state=checked]]:bg-primary/[0.04]">
+    <Label className="relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40 has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50 has-data-[state=checked]:border-primary/80 has-data-[state=checked]:bg-primary/4">
       {recommended ? (
         <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-[8px] bg-primary px-2.5 py-1 text-xs font-medium leading-none text-primary-foreground">
           <HugeiconsIcon
@@ -573,7 +604,7 @@ function SegmentedOptionGroup({
     >
       {options.map((option) => (
         <SegmentedControlItem
-          className="h-10 w-auto min-w-24 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
+          className="h-10 w-auto min-w-24 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/6 data-[state=on]:text-primary data-[state=on]:shadow-none"
           key={option.value}
           value={option.value}
         >

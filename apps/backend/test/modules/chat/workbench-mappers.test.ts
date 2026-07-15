@@ -21,6 +21,7 @@ describe("workbench MySQL mappers", () => {
         expire_time: 1778240000,
         full_auto_auth: 1,
         full_auto_switch: 1,
+        group_semi_auto_auth: 1,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
@@ -42,6 +43,7 @@ describe("workbench MySQL mappers", () => {
       expireTime: 1778240000,
       seatAIHostingAuth: true,
       fullAutoSwitch: true,
+      groupSemiAutoAuth: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",
@@ -1008,6 +1010,56 @@ describe("workbench MySQL mappers", () => {
         senderType: "customer",
         thirdFromId: "group-member-1",
         thirdUserId: "seat-third-user-1",
+      },
+    ]);
+  });
+
+  it("maps shadow group own messages by reception third_userid, not origin partition", () => {
+    expect(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "reception-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "group-member-1",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "opening-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ].map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderType: "agent",
+        thirdFromId: "reception-seat-001",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "group-member-1",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "opening-seat-001",
+        thirdUserId: "opening-seat-001",
       },
     ]);
   });

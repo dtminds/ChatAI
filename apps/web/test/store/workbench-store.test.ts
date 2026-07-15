@@ -3908,6 +3908,386 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps a sent smart reply hidden when a later poll result arrives", async () => {
+    vi.useFakeTimers();
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        if (observedSmartReplyRequests.length === 1) {
+          return {
+            suggestions: [
+              {
+                assistantName: "智能助手",
+                content: "",
+                messageId: "9",
+                status: "processing",
+              },
+            ],
+          };
+        }
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "发送第一条推荐",
+              generateStatus: 2,
+              messageId: "9",
+              pollComplete: true,
+              recordId: "record-9",
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await Promise.resolve();
+
+    expect(observedSmartReplyRequests).toHaveLength(1);
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "发送第一条推荐",
+            generateStatus: 1,
+            pollComplete: false,
+            recordId: "record-9",
+            sent: true,
+            status: "processing",
+          },
+        },
+      },
+      smartReplyHiddenMessageKeysByConversationId: {
+        ...state.smartReplyHiddenMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(observedSmartReplyRequests.length).toBeGreaterThan(1);
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId["conv-001"],
+    ).toEqual({
+      "9": true,
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("does not auto-generate smart replies for group conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> =
+      [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages:
+            request.activeConversationId === "conv-001"
+              ? [
+                  createSmartReplyTextMessageDto({
+                    id: "msg-group-customer",
+                    seq: 11,
+                    text: "群里新客户问题",
+                  }),
+                ]
+              : [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "auto-88" };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "群聊推荐话术",
+            generateStatus: 2,
+            messageId: String(request.msgId),
+            pollComplete: true,
+            recordId: "record-group-11",
+            status: "ready",
+          },
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    observedAutoRequests.length = 0;
+    observedGeneralAnswerRequests.length = 0;
+
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupSemiAutoAuth: true,
+              seatAIAssistantEnabled: false,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 1,
+                conversationAIHostingSwitch: false,
+                mode: "group",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(observedAutoRequests).toEqual([]);
+    expect(observedGeneralAnswerRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "11"
+      ],
+    ).toBeUndefined();
+  });
+
+  it("allows manual smart reply trigger for group conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> =
+      [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "群聊手动推荐",
+            generateStatus: 2,
+            messageId: String(request.msgId),
+            pollComplete: true,
+            recordId: "record-group-manual-21",
+            status: "ready",
+          },
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupSemiAutoAuth: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 1,
+                mode: "group",
+              }
+            : conversation,
+        ),
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "群里客户问题", type: "text" },
+            conversationId: "conv-001",
+            isGroupConversation: true,
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户甲", groupMemberId: "member-1" },
+            senderDisplayName: "客户甲",
+            sentAt: "刚刚",
+            seq: 21,
+            status: "sent",
+            uiMessageKey: "21",
+          } satisfies Message,
+        ],
+      },
+    }));
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 21,
+      );
+
+    expect(message).toBeDefined();
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(observedGeneralAnswerRequests).toEqual([
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 21,
+      }),
+    ]);
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "21"
+      ],
+    ).toMatchObject({
+      content: "群聊手动推荐",
+    });
+  });
+
+  it("blocks manual smart reply trigger for group conversations without group script recommendation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> =
+      [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "不应生成",
+            generateStatus: 2,
+            messageId: String(request.msgId),
+            pollComplete: true,
+            status: "ready",
+          },
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupSemiAutoAuth: false,
+              seatAIAssistantEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 1,
+                mode: "group",
+              }
+            : conversation,
+        ),
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "群里客户问题", type: "text" },
+            conversationId: "conv-001",
+            isGroupConversation: true,
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户甲", groupMemberId: "member-1" },
+            senderDisplayName: "客户甲",
+            sentAt: "刚刚",
+            seq: 31,
+            status: "sent",
+            uiMessageKey: "31",
+          } satisfies Message,
+        ],
+      },
+    }));
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 31,
+      );
+
+    expect(message).toBeDefined();
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(observedGeneralAnswerRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "31"
+      ],
+    ).toBeUndefined();
+  });
+
   it("treats smart reply adoption marker failures as non-blocking after message send succeeds", async () => {
     const baseService = createMockWorkbenchService();
     const sendSmartReplyAnswer = vi.fn(async () => {

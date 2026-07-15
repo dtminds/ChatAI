@@ -808,6 +808,10 @@ export interface XyWapEmbedConversation {
    */
   third_group_id: Generated<string>;
   /**
+   * 开通群聊的原始第三方成员id(默认为空，代表非影子群会话；否则为接待成员的影子会话)
+   */
+  third_group_origin_userid: Generated<string>;
+  /**
    * 第三方成员id
    */
   third_userid: string;

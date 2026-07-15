@@ -92,6 +92,9 @@ import {
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
+  isSmartReplyReady,
+  isSmartReplySent,
+  isSmartReplySingleChatOnlyFailure,
   isSmartReplySemanticWait,
   isSmartReplySemanticWaitExpired,
   isSmartReplySupportedConversation,
@@ -828,6 +831,7 @@ function upsertMessageList(
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        optNo: nextMessage.optNo || currentMessage.optNo,
         revokePending: nextMessage.isRevoked
           ? false
           : currentMessage.revokePending,
@@ -943,10 +947,16 @@ function buildSmartReplyHiddenKeys(
 function omitSmartReplyHiddenKeysForSuggestions(
   hidden: Record<string, true>,
   suggestions: Record<string, SmartReplySuggestion>,
+  previousSuggestions: Record<string, SmartReplySuggestion> = {},
 ) {
   let nextHidden = hidden;
 
   for (const key of Object.keys(suggestions)) {
+    // 已发送后用户侧已收起，轮询结果不能把卡片重新翻出来
+    if (isSmartReplySent(previousSuggestions[key])) {
+      continue;
+    }
+
     nextHidden = omitSmartReplyHiddenKey(nextHidden, key);
   }
 
@@ -974,7 +984,16 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
-  return filterSmartReplyRecordByKeys(page.smartReplies, eligibleMessageKeys);
+  const filtered = filterSmartReplyRecordByKeys(
+    page.smartReplies,
+    eligibleMessageKeys,
+  );
+
+  return Object.fromEntries(
+    Object.entries(filtered).filter(
+      ([, suggestion]) => !isSmartReplySingleChatOnlyFailure(suggestion),
+    ),
+  );
 }
 
 function getPageSmartRepliesForConversation(
@@ -1078,6 +1097,11 @@ function shouldAutoGenerateSmartReply(input: {
   } = input;
 
   if (!message || message.role === "system" || !isSmartReplyEligibleMessage(message)) {
+    return undefined;
+  }
+
+  // 群聊半托管仅手动触发，不自动生成
+  if (message.isGroupConversation) {
     return undefined;
   }
 
@@ -1253,15 +1277,20 @@ export function canDisplaySmartReplyForConversation(
       return false;
     }
 
+    if (!isSmartReplySupportedConversation(conversation) || conversation.bizStatus !== 1) {
+      return false;
+    }
+
     const account = state.accounts.find(
       (item) => item.id === conversation.accountId,
     );
 
-    return (
-      isSmartReplySupportedConversation(conversation) &&
-      account?.seatAIAssistantEnabled === true &&
-      conversation.bizStatus === 1
-    );
+    // 群聊依赖群聊设置「允许话术推荐」，不依赖单聊席位 AI 模式开关
+    if (conversation.mode === "group") {
+      return account?.groupSemiAutoAuth === true;
+    }
+
+    return account?.seatAIAssistantEnabled === true;
   }
 
   return false;
@@ -1414,6 +1443,7 @@ function scheduleSmartReplyPoll(
             [conversationId]: omitSmartReplyHiddenKeysForSuggestions(
               previousHidden,
               smartReplyByMessageId,
+              previousSuggestions,
             ),
           },
         };
@@ -1449,6 +1479,49 @@ function scheduleSmartReplyPoll(
     });
 }
 
+function clearSmartReplyAutoPendingKey(
+  get: () => WorkbenchStore,
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  lookupKey: string,
+) {
+  set((currentState) => {
+    const autoPending =
+      currentState.smartReplyAutoPendingMessageKeysByConversationId[
+        conversationId
+      ] ?? {};
+
+    return {
+      smartReplyAutoPendingMessageKeysByConversationId: {
+        ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
+        [conversationId]: omitPendingSmartReplyKey(autoPending, lookupKey),
+      },
+    };
+  });
+}
+
+function shouldPreserveExistingSmartReplySuggestion(
+  suggestion?: SmartReplySuggestion,
+) {
+  if (!suggestion) {
+    return false;
+  }
+
+  if (isSmartReplySent(suggestion) || isSmartReplyReady(suggestion)) {
+    return true;
+  }
+
+  return (
+    (suggestion.content?.trim() ?? "").length > 0 &&
+    !isSmartReplyGenerationFailed(suggestion) &&
+    !isSmartReplyKnowledgeMiss(suggestion)
+  );
+}
+
 function triggerSmartReplyAutoGeneration(
   get: () => WorkbenchStore,
   set: (
@@ -1468,6 +1541,16 @@ function triggerSmartReplyAutoGeneration(
     ) => void;
   },
 ) {
+  const conversation = findConversationById(
+    get().conversationListsByScope,
+    conversationId,
+  );
+
+  // 群聊半托管仅手动触发，不自动生成
+  if (conversation?.mode === "group" || message.isGroupConversation) {
+    return;
+  }
+
   const lookupKey = getSmartReplyLookupKey(message);
   const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
 
@@ -1490,85 +1573,79 @@ function triggerSmartReplyAutoGeneration(
   });
   options.scheduleAutoPreviewTimeout(conversationId, lookupKey);
 
-  void requestSmartReplyAutoGeneralAnswer(message, conversationId)
-    .then(() => {
-      if (get().activeConversationId !== conversationId) {
-        options.clearAutoPreviewTimeout(conversationId, lookupKey);
-        set((currentState) => {
-          const autoPending =
-            currentState.smartReplyAutoPendingMessageKeysByConversationId[
-              conversationId
-            ] ?? {};
+  const requestPromise = requestSmartReplyAutoGeneralAnswer(
+    message,
+    conversationId,
+  ).then(() => {
+    if (get().activeConversationId !== conversationId) {
+      options.clearAutoPreviewTimeout(conversationId, lookupKey);
+      clearSmartReplyAutoPendingKey(get, set, conversationId, lookupKey);
+      return;
+    }
 
-          return {
-            smartReplyAutoPendingMessageKeysByConversationId: {
-              ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
-              [conversationId]: omitPendingSmartReplyKey(autoPending, lookupKey),
-            },
-          };
-        });
-        return;
-      }
+    let shouldSchedulePoll = false;
 
-      let shouldSchedulePoll = false;
+    set((currentState) => {
+      const autoPending =
+        currentState.smartReplyAutoPendingMessageKeysByConversationId[
+          conversationId
+        ] ?? {};
+      const suggestions =
+        currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
+      const pending =
+        currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ??
+        {};
+      const nextAutoPending = omitPendingSmartReplyKey(autoPending, lookupKey);
 
-      set((currentState) => {
-        const autoPending =
-          currentState.smartReplyAutoPendingMessageKeysByConversationId[
-            conversationId
-          ] ?? {};
-        const suggestions =
-          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
-        const pending =
-          currentState.smartReplyPendingMessageKeysByConversationId[
-            conversationId
-          ] ?? {};
-        const nextAutoPending = omitPendingSmartReplyKey(autoPending, lookupKey);
-
-        if (!autoPending[lookupKey] || suggestions[lookupKey] || pending[lookupKey]) {
-          return {
-            smartReplyAutoPendingMessageKeysByConversationId: {
-              ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
-              [conversationId]: nextAutoPending,
-            },
-          };
-        }
-
-        shouldSchedulePoll = true;
-
+      if (
+        !autoPending[lookupKey] ||
+        shouldPreserveExistingSmartReplySuggestion(suggestions[lookupKey]) ||
+        pending[lookupKey]
+      ) {
         return {
           smartReplyAutoPendingMessageKeysByConversationId: {
             ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
             [conversationId]: nextAutoPending,
           },
-          smartReplyByMessageIdByConversationId: {
-            ...currentState.smartReplyByMessageIdByConversationId,
-            [conversationId]: {
-              ...suggestions,
-              [lookupKey]: optimisticSuggestion,
-            },
-          },
-          smartReplyPendingMessageKeysByConversationId: {
-            ...currentState.smartReplyPendingMessageKeysByConversationId,
-            [conversationId]: {
-              ...pending,
-              [lookupKey]: true,
-            },
-          },
         };
-      });
-      options.clearAutoPreviewTimeout(conversationId, lookupKey);
-      if (!shouldSchedulePoll) {
-        return;
       }
 
-      options.syncRuntimeTimers(
-        conversationId,
-        get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
-      );
-      options.schedulePoll(conversationId, { force: true });
-    })
-    .catch((error) => {
+      shouldSchedulePoll = true;
+
+      return {
+        smartReplyAutoPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
+          [conversationId]: nextAutoPending,
+        },
+        smartReplyByMessageIdByConversationId: {
+          ...currentState.smartReplyByMessageIdByConversationId,
+          [conversationId]: {
+            ...suggestions,
+            [lookupKey]: optimisticSuggestion,
+          },
+        },
+        smartReplyPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyPendingMessageKeysByConversationId,
+          [conversationId]: {
+            ...pending,
+            [lookupKey]: true,
+          },
+        },
+      };
+    });
+    options.clearAutoPreviewTimeout(conversationId, lookupKey);
+    if (!shouldSchedulePoll) {
+      return;
+    }
+
+    options.syncRuntimeTimers(
+      conversationId,
+      get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+    );
+    options.schedulePoll(conversationId, { force: true });
+  });
+
+  void requestPromise.catch((error) => {
       const shouldSkipRecommendation = isSmartReplyContentIncompleteSkipError(error);
       options.clearAutoPreviewTimeout(conversationId, lookupKey);
 
@@ -1577,6 +1654,10 @@ function triggerSmartReplyAutoGeneration(
           return currentState;
         }
 
+        const existing =
+          currentState.smartReplyByMessageIdByConversationId[conversationId]?.[
+            lookupKey
+          ];
         const errorMessage =
           getRequestApiErrorMessage(error) ?? "智能回复生成失败，请稍后重试";
         const nextState: Partial<WorkbenchStore> = {
@@ -1600,6 +1681,11 @@ function triggerSmartReplyAutoGeneration(
           },
         };
 
+        // 已有可用推荐时，自动生成失败不能覆盖成失败卡片
+        if (shouldPreserveExistingSmartReplySuggestion(existing)) {
+          return nextState;
+        }
+
         if (shouldSkipRecommendation) {
           return {
             ...nextState,
@@ -1609,11 +1695,7 @@ function triggerSmartReplyAutoGeneration(
                 ...(currentState.smartReplyByMessageIdByConversationId[
                   conversationId
                 ] ?? {}),
-                [lookupKey]: createSkippedSmartReplySuggestion(
-                  currentState.smartReplyByMessageIdByConversationId[
-                    conversationId
-                  ]?.[lookupKey],
-                ),
+                [lookupKey]: createSkippedSmartReplySuggestion(existing),
               },
             },
             smartReplyAutoSkippedMessageKeysByConversationId: {
@@ -1985,8 +2067,72 @@ function isSameMessage(left: Message, right: Message) {
       !isInvalidMessageUiKey(left.uiMessageKey) &&
       !isInvalidMessageUiKey(right.uiMessageKey) &&
       left.uiMessageKey === right.uiMessageKey
-    )
+    ) ||
+    canReconcileOptimisticOwnTextMessage(left, right)
   );
+}
+
+function getComparableAgentText(message: Message) {
+  if (message.role !== "agent" || message.content.type !== "text") {
+    return "";
+  }
+
+  return message.content.text.trim();
+}
+
+function isOptimisticAcceptedAgentText(message: Message) {
+  return (
+    message.role === "agent" &&
+    message.isOwnMessage === true &&
+    message.status === "accepted" &&
+    Boolean(message.optNo?.trim()) &&
+    !isValidMessageSeq(message.seq) &&
+    message.content.type === "text" &&
+    message.content.text.trim().length > 0
+  );
+}
+
+/** 影子群同步回写可能丢 optNo：用同文案己方消息收口乐观「发送中」 */
+function canReconcileOptimisticOwnTextMessage(left: Message, right: Message) {
+  const optimistic = isOptimisticAcceptedAgentText(left)
+    ? left
+    : isOptimisticAcceptedAgentText(right)
+      ? right
+      : undefined;
+  const synced = optimistic === left ? right : left;
+
+  if (!optimistic || synced === optimistic) {
+    return false;
+  }
+
+  if (
+    synced.role !== "agent" ||
+    synced.isOwnMessage !== true ||
+    !isValidMessageSeq(synced.seq) ||
+    synced.conversationId !== optimistic.conversationId
+  ) {
+    return false;
+  }
+
+  if (synced.optNo && synced.optNo !== optimistic.optNo) {
+    return false;
+  }
+
+  const optimisticText = getComparableAgentText(optimistic);
+  const syncedText = getComparableAgentText(synced);
+
+  if (!optimisticText || optimisticText !== syncedText) {
+    return false;
+  }
+
+  const optimisticTime = Number.isFinite(parseWorkbenchTimestamp(optimistic.sentAt))
+    ? parseWorkbenchTimestamp(optimistic.sentAt)
+    : Date.now();
+  const syncedTime = Number.isFinite(parseWorkbenchTimestamp(synced.sentAt))
+    ? parseWorkbenchTimestamp(synced.sentAt)
+    : Date.now();
+
+  return Math.abs(optimisticTime - syncedTime) <= 120_000;
 }
 
 function parseWorkbenchTimestamp(value: unknown) {
@@ -3708,6 +3854,20 @@ export function createWorkbenchStore() {
         }
 
         const lookupKey = getSmartReplyLookupKey(message);
+
+        if (options?.force) {
+          set((currentState) => ({
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...currentState.smartReplyHiddenMessageKeysByConversationId,
+              [conversationId]: omitSmartReplyHiddenKey(
+                currentState.smartReplyHiddenMessageKeysByConversationId[
+                  conversationId
+                ] ?? {},
+                lookupKey,
+              ),
+            },
+          }));
+        }
 
         try {
           const revealedSuggestion = options?.force

@@ -153,6 +153,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      groupSemiAutoAuth: false,
       seatAIAssistantEnabled: true,
     });
 
@@ -160,6 +161,7 @@ describe("workbench adapter", () => {
       adaptAccount({
         avatar: "",
         description: "",
+        groupSemiAutoAuth: true,
         loginStatus: "online",
         name: "测试席位",
         operatorName: "测试席位",
@@ -171,6 +173,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      groupSemiAutoAuth: true,
       seatAIAssistantEnabled: true,
     });
 
@@ -509,6 +512,33 @@ describe("adaptMessage", () => {
     ).toMatchObject({
       isGroupConversation: true,
       isOwnMessage: true,
+      senderDisplayName: undefined,
+    });
+  });
+
+  it("marks shadow group reception sends as own even when message partition is origin", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderAvatar: "",
+          senderName: "护肤小助理-花花?",
+          senderType: "agent",
+          thirdFromId: "reception-seat-001",
+          thirdGroupId: "group-1",
+          thirdUserId: "opening-seat-001",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isGroupConversation: true,
+      isOwnMessage: true,
+      role: "agent",
+      sender: {
+        userId: "reception-seat-001",
+      },
       senderDisplayName: undefined,
     });
   });

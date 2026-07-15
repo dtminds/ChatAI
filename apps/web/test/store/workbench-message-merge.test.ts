@@ -318,6 +318,80 @@ describe("workbench message merge state", () => {
     });
   });
 
+  it("reconciles optimistic own text when the polled echo has seq but no optNo", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return {
+          optNo: "opt-shadow-text-001",
+          status: "accepted",
+        };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              content: {
+                text: "影子群回写文本",
+              },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              msgid: "remote-shadow-text-001",
+              rawMsgtype: "text",
+              seatId: "drc",
+              senderType: "agent",
+              seq: 1201,
+              status: "sent",
+              thirdFromId: "reception-seat-001",
+              thirdGroupId: "group-1",
+              thirdUserId: "opening-seat-001",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "影子群回写文本",
+        type: "text",
+      },
+    ]);
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) =>
+          message.optNo === "opt-shadow-text-001" && message.status === "accepted",
+      ),
+    ).toBe(true);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const matched = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].filter(
+        (message) =>
+          message.content.type === "text" &&
+          message.content.text === "影子群回写文本",
+      );
+
+    expect(matched).toHaveLength(1);
+    expect(matched[0]).toMatchObject({
+      msgid: "remote-shadow-text-001",
+      optNo: "opt-shadow-text-001",
+      seq: 1201,
+      status: "sent",
+    });
+  });
+
   it("keeps seed and pagination state untouched while reconciling message content", async () => {
     const baseService = createMockWorkbenchService();
 

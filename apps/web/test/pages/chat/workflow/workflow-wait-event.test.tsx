@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
 import { createEdge, createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
+import { WAIT_EVENT_TIMEOUT_MAX_BY_UNIT } from "@/pages/chat/workflow/nodes/wait-event/config";
 import { WaitEventConfig } from "@/pages/chat/workflow/nodes/wait-event/panel";
 import {
   WAIT_EVENT_TIMEOUT_HANDLE_ID,
@@ -85,7 +86,7 @@ describe("workflow wait event", () => {
     await user.click(screen.getByRole("combobox", { name: "最长等待时间单位" }));
     await user.click(screen.getByRole("option", { name: "天" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      timeout: { duration: 24, unit: "day" },
+      timeout: { duration: WAIT_EVENT_TIMEOUT_MAX_BY_UNIT.day, unit: "day" },
     }));
   });
 
@@ -134,7 +135,7 @@ describe("workflow wait event", () => {
       ...createWaitEventNode(),
       data: {
         ...createDefaultNodeData("wait-event"),
-        timeout: { duration: 46, unit: "day" as const },
+        timeout: { duration: 16, unit: "day" as const },
       },
     };
 

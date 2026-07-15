@@ -1,4 +1,3 @@
-import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,6 +16,7 @@ import {
   getWaitEventMetric,
   normalizeWaitEventTimeout,
   normalizeWaitEventType,
+  WAIT_EVENT_TIMEOUT_MAX_BY_UNIT,
 } from "./config";
 import { workflowWaitEventDefinitions } from "./events";
 
@@ -62,9 +62,9 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">最长等待</h3>
-        <div className="flex items-center gap-2 rounded-[8px] border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
           <BoundedTimeoutInput
-            max={WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[timeout.unit]}
+            max={WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[timeout.unit]}
             onValueChange={(duration) => updateConfig({
               timeout: { ...timeout, duration },
             })}
@@ -73,7 +73,7 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
           <Select
             onValueChange={(unit: WorkflowWaitEventTimeoutUnit) => updateConfig({
               timeout: {
-                duration: Math.min(timeout.duration, WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit]),
+                duration: Math.min(timeout.duration, WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[unit]),
                 unit,
               },
             })}
@@ -88,6 +88,7 @@ export function WaitEventConfig({ node, onNodeChange }: NodeSettingsProps<"wait-
               <SelectItem value="day">天</SelectItem>
             </SelectContent>
           </Select>
+          <span>后，执行后续节点</span>
         </div>
       </section>
     </div>
@@ -124,6 +125,7 @@ function BoundedTimeoutInput({ max, onValueChange, value }: {
           if (parsed >= 1 && parsed <= max) onValueChange(parsed);
         }
       }}
+      placeholder="请输入"
       step={1}
       type="number"
       value={draftValue}

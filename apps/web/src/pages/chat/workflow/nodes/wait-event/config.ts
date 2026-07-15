@@ -7,6 +7,10 @@ import type {
 import { getWorkflowWaitEventDefinition } from "./events";
 
 export const DEFAULT_WAIT_EVENT_TYPE: WorkflowWaitEventType = "customer.message.received";
+export const WAIT_EVENT_TIMEOUT_MAX_BY_UNIT = {
+  ...WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
+  day: 15,
+} as const;
 
 export function normalizeWaitEventType(value: unknown): WorkflowWaitEventType {
   return value === "customer.message.received"
@@ -28,7 +32,7 @@ export function normalizeWaitEventTimeout(
   const parsedDuration = Math.trunc(Number(timeout.duration));
   const duration = Number.isFinite(parsedDuration)
     ? Math.min(
-        WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit],
+        WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[unit],
         Math.max(1, parsedDuration),
       )
     : unit === "hour" ? 24 : 1;

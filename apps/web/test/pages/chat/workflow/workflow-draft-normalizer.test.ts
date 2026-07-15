@@ -415,8 +415,8 @@ describe("workflow draft normalizer", () => {
     expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
       event: { type: "customer.message.received" },
       kind: "wait-event",
-      metric: "等待新消息 · 最长 45 天",
-      timeout: { duration: 45, unit: "day" },
+      metric: "等待新消息 · 最长 15 天",
+      timeout: { duration: 15, unit: "day" },
     }));
   });
 

@@ -1,5 +1,4 @@
-import { MessageNotification02Icon } from "@hugeicons/core-free-icons";
-import { WORKFLOW_WAIT_DURATION_MAX_BY_UNIT } from "@chatai/contracts";
+import { BellDotIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createCatalogIssue,
@@ -14,6 +13,7 @@ import {
   getWaitEventUnitLabel,
   normalizeWaitEventTimeout,
   normalizeWaitEventType,
+  WAIT_EVENT_TIMEOUT_MAX_BY_UNIT,
 } from "./config";
 import {
   getWorkflowWaitEventDefinition,
@@ -53,13 +53,13 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
       id: WAIT_EVENT_TRIGGERED_HANDLE_ID,
       label: "事件到达（新消息）",
       outletKind: "outcome",
-      top: 142,
+      top: 122,
     },
     {
       id: WAIT_EVENT_TIMEOUT_HANDLE_ID,
       label: "等待超时",
       outletKind: "outcome",
-      top: 184,
+      top: 164,
     },
   ],
   getTargetHandles: createDefaultTargetHandles,
@@ -89,7 +89,7 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
     if (unit !== "minute" && unit !== "hour" && unit !== "day") {
       return [createCatalogIssue("wait-event-timeout-unit-invalid", "等待事件需要选择最长等待时间单位")];
     }
-    const maximum = WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit];
+    const maximum = WAIT_EVENT_TIMEOUT_MAX_BY_UNIT[unit];
     return Number.isInteger(duration) && duration >= 1 && duration <= maximum
       ? []
       : [createCatalogIssue(
@@ -100,7 +100,7 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
   visual: {
     accentClassName: "bg-rose-500 text-white ring-rose-500/20",
     accentRgb: "244 63 94",
-    icon: MessageNotification02Icon,
+    icon: BellDotIcon,
     label: "等待事件",
   },
 };

@@ -174,6 +174,30 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
+  it("keeps group AI auto-reply from blocking the composer", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          groupFullAutoAuth: true,
+          seatAIHostingEnabled: false,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }),
+    ).toMatchObject({
+      canSendMessage: true,
+      canToggleConversationAIHosting: false,
+      conversationAIHostingEnabled: true,
+      composerPlaceholder: "请输入消息……",
+    });
+  });
+
   it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({

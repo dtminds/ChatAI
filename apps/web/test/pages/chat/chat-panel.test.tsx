@@ -573,7 +573,7 @@ describe("ChatPanel", () => {
     expect(onChangeSeatAgentMode).toHaveBeenCalledWith("assistant");
   });
 
-  it("hides the AI dialog button in group conversations", () => {
+  it("hides the AI dialog button in group conversations without group AI reply auth", () => {
     render(
       <ChatPanel
         activeAccount={account}
@@ -634,7 +634,161 @@ describe("ChatPanel", () => {
     );
 
     expect(screen.queryByRole("button", { name: "AI 对话" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AI 对话")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "历史记录" })).toBeInTheDocument();
+  });
+
+  it("shows a group AI popover with auto-reply switch when group AI reply auth is enabled", async () => {
+    const user = userEvent.setup();
+    const onChangeFullAuto = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          groupFullAutoAuth: true,
+        }}
+        activeConversation={{
+          ...createConversation(),
+          mode: "group",
+        }}
+        activeHistoryStatus="idle"
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
+        canSendMessage
+        seatAIHostingEnabled
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={onChangeFullAuto}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+
+    expect(screen.getByTestId("group-ai-dialog-content")).toBeInTheDocument();
+    expect(screen.getByText("测试席位")).toBeInTheDocument();
+    expect(screen.getByText("AI自动回复")).toBeInTheDocument();
+    expect(
+      screen.getByText("开启后，当前企微号被@时，AI会自动处理"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: "AI自动回复" }));
+
+    expect(onChangeFullAuto).toHaveBeenCalledWith(true);
+    expect(
+      screen.queryByTestId("chat-agent-hosting-status-bar"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the single-chat agent hosting status bar for group conversations", () => {
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          groupFullAutoAuth: true,
+        }}
+        activeConversation={{
+          ...createConversation(),
+          agentHostingStatus: "thinking",
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }}
+        activeHistoryStatus="idle"
+        canSendMessage
+        conversationAIHostingEnabled
+        composerPlaceholder="请输入消息……"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={vi.fn()}
+        onCancelAgentHosting={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("chat-agent-hosting-status-bar"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer-editor")).toBeInTheDocument();
   });
 
   it("hides the AI dialog button in application-message conversations", () => {

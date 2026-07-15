@@ -2004,7 +2004,7 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
     });
     expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({
-      change: 2,
+      change: 0,
       conversationId: "88",
       operatorId: 101,
       platform: 5,
@@ -2014,8 +2014,13 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
   });
 
-  it("rejects full-auto changes for group conversations", async () => {
+  it("enables full-auto for group conversations through Java", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.insertSystemMessage).mockResolvedValue("9001");
+    const getLatestConversationMessageSummary = vi.fn().mockResolvedValue({
+      msgId: "audit-full-auto-group",
+      msgtime: 1_700_000_100_000,
+    });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -2029,19 +2034,26 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getLatestConversationMessageSummary: vi.fn(),
+        getLatestConversationMessageSummary,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
 
     await expect(
       service.changeConversationFullAuto("101", "88", { enabled: true }),
-    ).rejects.toMatchObject({
-      code: "FULL_AUTO_GROUP_UNSUPPORTED",
-      statusCode: 400,
+    ).resolves.toEqual({
+      conversationAIHostingSwitch: true,
+      conversationId: "88",
+      seatId: "12",
     });
-    expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
-    expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
+    expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({
+      change: 1,
+      conversationId: "88",
+      operatorId: 101,
+      platform: 5,
+      uid: 9001,
+    });
+    expect(javaClient.insertSystemMessage).toHaveBeenCalled();
   });
 
   it("updates the taken-over seat agent mode switch through Node storage", async () => {

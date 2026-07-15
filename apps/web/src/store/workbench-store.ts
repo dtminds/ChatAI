@@ -2294,6 +2294,7 @@ function isConversationAIHostingEnabledInState(
   return isConversationAIHostingEnabled(
     conversation,
     account?.seatAIHostingEnabled === true,
+    account?.groupFullAutoAuth === true,
   );
 }
 
@@ -5837,10 +5838,15 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation.accountId,
       );
 
+      const canToggleSingleFullAuto =
+        isConversationAIFeatureSupported(conversation) &&
+        account?.seatAIHostingEnabled === true;
+      const canToggleGroupFullAuto =
+        conversation.mode === "group" && account?.groupFullAutoAuth === true;
+
       if (
         !canUseConversationActions(state, account) ||
-        !isConversationAIFeatureSupported(conversation) ||
-        account?.seatAIHostingEnabled !== true
+        (!canToggleSingleFullAuto && !canToggleGroupFullAuto)
       ) {
         return;
       }

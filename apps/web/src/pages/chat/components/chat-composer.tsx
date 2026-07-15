@@ -37,11 +37,13 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -133,6 +135,8 @@ type ChatComposerProps = {
   isHistoryPanelOpen: boolean;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
+  /** 群聊设置「允许开启 AI回复」；仅用于展示同款 AI 标识，暂不接入交互 */
+  groupFullAutoAuth?: boolean;
   conversationAIHostingEnabled?: boolean;
   fullAutoSwitch?: boolean;
   semiAutoSwitch?: boolean;
@@ -209,6 +213,7 @@ export function ChatComposer({
   isHistoryPanelOpen,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
+  groupFullAutoAuth = false,
   conversationAIHostingEnabled = false,
   fullAutoSwitch = false,
   semiAutoSwitch = false,
@@ -241,6 +246,7 @@ export function ChatComposer({
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
+  const [isGroupAiPopoverOpen, setIsGroupAiPopoverOpen] = useState(false);
   const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
   const editorConfig = useMemo(
     () => ({
@@ -369,6 +375,23 @@ export function ChatComposer({
   const canOpenCollectedFiles = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
   const showAgentDialogButton = canUseConversationAIFeatures;
+  const showGroupAiIndicator = isGroupConversation && groupFullAutoAuth;
+  const groupAiDialogContent = (
+    <GroupAiDialogContent
+      accountAvatarUrl={accountAvatarUrl}
+      accountName={accountName}
+      conversationAIHostingEnabled={conversationAIHostingEnabled}
+      isPending={isFullAutoButtonPending}
+      onChangeFullAuto={async (enabled) => {
+        setIsFullAutoSubmitting(true);
+        try {
+          await onChangeFullAuto(enabled);
+        } finally {
+          setIsFullAutoSubmitting(false);
+        }
+      }}
+    />
+  );
   const mobileToolbarButtonClass = "size-9 rounded-[10px] p-0 shadow-none";
   const agentDialogContent = (
     <AgentDialogContent
@@ -808,6 +831,35 @@ export function ChatComposer({
                     {agentDialogContent}
                   </PopoverContent>
                 </Popover>
+              ) : showGroupAiIndicator ? (
+                <Popover
+                  open={isGroupAiPopoverOpen}
+                  onOpenChange={setIsGroupAiPopoverOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      aria-label="AI 对话"
+                      className={mobileToolbarButtonClass}
+                      disabled={isComposerActionDisabled}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        icon={AiChat02Icon}
+                        size={18}
+                        strokeWidth={2}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[min(22rem,calc(100vw-2rem))] p-0"
+                    side="top"
+                  >
+                    {groupAiDialogContent}
+                  </PopoverContent>
+                </Popover>
               ) : null}
 
               <Button
@@ -1092,6 +1144,36 @@ export function ChatComposer({
                   </ComposerActionTooltip>
                   <PopoverContent align="end" className="w-96 p-0" side="top">
                     {agentDialogContent}
+                  </PopoverContent>
+                </Popover>
+              ) : showGroupAiIndicator ? (
+                <Popover
+                  open={isGroupAiPopoverOpen}
+                  onOpenChange={setIsGroupAiPopoverOpen}
+                >
+                  <ComposerActionTooltip
+                    disabled={isComposerActionDisabled}
+                    label="AI 对话"
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        aria-label="AI 对话"
+                        className={composerActionButtonClass}
+                        disabled={isComposerActionDisabled}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon
+                          icon={AiChat02Icon}
+                          size={18}
+                          strokeWidth={2}
+                        />
+                      </Button>
+                    </PopoverTrigger>
+                  </ComposerActionTooltip>
+                  <PopoverContent align="end" className="w-96 p-0" side="top">
+                    {groupAiDialogContent}
                   </PopoverContent>
                 </Popover>
               ) : null}
@@ -1565,6 +1647,63 @@ function SeatAIModeOptionContent({
       <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">
         {option.description}
       </p>
+    </div>
+  );
+}
+
+function GroupAiDialogContent({
+  accountAvatarUrl,
+  accountName,
+  conversationAIHostingEnabled,
+  isPending,
+  onChangeFullAuto,
+}: {
+  accountAvatarUrl?: string;
+  accountName?: string;
+  conversationAIHostingEnabled: boolean;
+  isPending?: boolean;
+  onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
+}) {
+  return (
+    <div className="space-y-4 p-3.5" data-testid="group-ai-dialog-content">
+      <div className="flex items-center gap-2">
+        <Avatar className="size-8 rounded-[8px]">
+          {accountAvatarUrl ? (
+            <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
+          ) : null}
+          <AvatarFallback className="text-xs">
+            {accountName?.slice(0, 1)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-popover-foreground">
+            {accountName ?? "当前席位"}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-[8px] bg-surface-muted px-3 py-3">
+        <div className="min-w-0 space-y-1">
+          <Label
+            className="font-medium text-foreground"
+            htmlFor="group-ai-auto-reply"
+          >
+            AI自动回复
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            开启后，当前企微号被@时，AI会自动处理
+          </p>
+        </div>
+        <Switch
+          aria-label="AI自动回复"
+          checked={conversationAIHostingEnabled}
+          disabled={isPending}
+          id="group-ai-auto-reply"
+          onCheckedChange={(checked) => {
+            void onChangeFullAuto(checked);
+          }}
+        />
+      </div>
     </div>
   );
 }

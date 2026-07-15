@@ -1327,12 +1327,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
-    if (request.enabled && conversation.chatType !== CHAT_TYPE.SINGLE) {
-      throw new BadRequestError("FULL_AUTO_GROUP_UNSUPPORTED", "群聊暂不支持 AI 托管");
-    }
-
     await this.javaClient.changeConversationFullAuto({
-      change: request.enabled ? 1 : 2,
+      change: request.enabled ? 1 : 0,
       conversationId: conversation.id,
       operatorId: subUserNumericId,
       platform: conversation.platform,

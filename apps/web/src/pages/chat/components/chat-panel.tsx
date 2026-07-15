@@ -286,7 +286,9 @@ export function ChatPanel({
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
   const agentHostingStatus =
-    !conversationAIHostingEnabled || resolvedAgentHostingStatus === "exited"
+    activeConversation?.mode === "group" ||
+    !conversationAIHostingEnabled ||
+    resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
@@ -488,6 +490,7 @@ export function ChatPanel({
                       accountName={activeAccount?.name ?? accountName}
                       seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
                       seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
+                      groupFullAutoAuth={activeAccount?.groupFullAutoAuth === true}
                       fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
                       semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
                       conversationAIHostingEnabled={conversationAIHostingEnabled}

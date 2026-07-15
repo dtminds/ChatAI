@@ -413,7 +413,52 @@ describe("useWorkbenchStore", () => {
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
-  it("does not change full-auto for active group conversations", async () => {
+  it("changes full-auto for active group conversations when group AI reply auth is enabled", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: true,
+      conversationId: "group-001",
+      seatId: "drc",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupFullAutoAuth: true,
+              seatAIHostingEnabled: false,
+            }
+          : account,
+      ),
+      activeConversationId: "group-001",
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: [
+          ...(state.conversationListsByScope.drc ?? []),
+          {
+            ...state.conversationListsByScope.drc[0],
+            conversationAIHostingSwitch: false,
+            id: "group-001",
+            mode: "group",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("group-001", {
+      enabled: true,
+    });
+  });
+
+  it("does not change full-auto for active group conversations without group AI reply auth", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn();
 
@@ -427,6 +472,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
+              groupFullAutoAuth: false,
               seatAIHostingAuth: true,
               seatAIHostingEnabled: true,
             }

@@ -545,6 +545,74 @@ describe("ConversationListPanel", () => {
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });
 
+  it("shows the AI hosting badge on group conversations with auto-reply enabled", async () => {
+    const user = userEvent.setup();
+    const groupConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        customerName: "已开启自动回复群",
+        id: "group-hosting-1",
+        mode: "group",
+      }),
+      createConversation({
+        conversationAIHostingSwitch: false,
+        customerName: "未开启自动回复群",
+        id: "group-hosting-2",
+        mode: "group",
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={groupConversations}
+        isGroupFullAutoAuth
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={groupConversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    const enabledCard = screen.getByText("已开启自动回复群").closest("button");
+    const disabledCard = screen.getByText("未开启自动回复群").closest("button");
+
+    expect(enabledCard).not.toBeNull();
+    expect(disabledCard).not.toBeNull();
+    expect(within(enabledCard!).getByLabelText("AI托管")).toBeInTheDocument();
+    expect(within(disabledCard!).queryByLabelText("AI托管")).not.toBeInTheDocument();
+  });
+
+  it("hides the AI hosting badge on group conversations when seat group AI reply auth is off", async () => {
+    const user = userEvent.setup();
+    const groupConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        customerName: "无权限自动回复群",
+        id: "group-hosting-auth-off",
+        mode: "group",
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={groupConversations}
+        isGroupFullAutoAuth={false}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={groupConversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
+  });
+
   it("closes search results when clicking outside the dropdown", async () => {
     const user = userEvent.setup();
 

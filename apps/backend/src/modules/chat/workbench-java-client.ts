@@ -153,7 +153,8 @@ type JavaRevokeMessageResponse = {
 
 export type WorkbenchJavaClient = {
   changeConversationFullAuto(input: {
-    change: 1 | 2;
+    /** 0 关闭，1 开启 */
+    change: 0 | 1;
     conversationId: string;
     operatorId: number;
     platform: number;

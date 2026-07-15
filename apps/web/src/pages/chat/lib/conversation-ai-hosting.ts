@@ -14,10 +14,18 @@ export function isConversationAIFeatureSupported(
 export function isConversationAIHostingEnabled(
   conversation: Conversation | undefined,
   seatAIHostingEnabled: boolean,
+  groupFullAutoAuth = false,
 ): boolean {
+  if (conversation?.conversationAIHostingSwitch !== true) {
+    return false;
+  }
+
+  if (conversation.mode === "group") {
+    return groupFullAutoAuth === true;
+  }
+
   return (
     seatAIHostingEnabled === true &&
-    isConversationAIFeatureSupported(conversation) &&
-    conversation?.conversationAIHostingSwitch === true
+    isConversationAIFeatureSupported(conversation)
   );
 }

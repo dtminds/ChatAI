@@ -2064,6 +2064,7 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId={composerDraftsByConversationId}
       conversations={visibleSearchableConversations}
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
+      isGroupFullAutoAuth={activeAccount?.groupFullAutoAuth === true}
       isConversationActionDisabled={isConversationActionDisabled}
       isConversationLoading={isConversationLoading}
       onDeleteConversation={deleteConversation}

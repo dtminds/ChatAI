@@ -82,13 +82,19 @@ export function resolveWorkbenchPermissions({
     isAccountTakenOverByCurrentUser &&
     isConversationAIFeatureSupported(activeConversation) &&
     seatAIHostingEnabled;
-  const conversationAIHostingEnabled =
-    isConversationAIHostingEnabled(activeConversation, seatAIHostingEnabled);
+  const conversationAIHostingEnabled = isConversationAIHostingEnabled(
+    activeConversation,
+    seatAIHostingEnabled,
+    account?.groupFullAutoAuth === true,
+  );
+  // 群聊 AI 自动回复不占用输入框，也不走单聊 Agent 托管态
+  const blocksComposerForAIHosting =
+    conversationAIHostingEnabled && activeConversation?.mode !== "group";
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&
     !isConversationBizInactive &&
-    !conversationAIHostingEnabled;
+    !blocksComposerForAIHosting;
   const canUseMessageForward =
     canUseConversationActions &&
     !!activeConversation &&
@@ -176,7 +182,9 @@ function resolveComposerPlaceholder({
 }) {
   if (
     canSendMessage ||
-    (conversationAIHostingEnabled && isAccountTakenOverByCurrentUser)
+    (conversationAIHostingEnabled &&
+      activeConversation?.mode !== "group" &&
+      isAccountTakenOverByCurrentUser)
   ) {
     return "请输入消息……";
   }

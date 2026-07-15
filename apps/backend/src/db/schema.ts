@@ -776,7 +776,7 @@ export interface XyWapEmbedConversation {
    */
   create_time: Generated<Date>;
   /**
-   * 全自动-全托管开关（默认开启，有权限且席位开启时，开关才起效）
+   * 全自动-全托管开关：0 关闭，1 开启（默认开启，有权限且席位开启时，开关才起效）
    */
   full_auto_switch: Generated<number>;
   /**
@@ -2972,7 +2972,7 @@ export interface XyWapEmbedUserSeatAgent {
    */
   full_auto_auth: Generated<number>;
   /**
-   * 全自动-全托管开关（默认关闭，有权限时，开关才起效）
+   * 全自动-全托管开关：0 关闭，1 开启（默认关闭，有权限时，开关才起效）
    */
   full_auto_switch: Generated<number>;
   /**

@@ -4072,6 +4072,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
+              groupSemiAutoAuth: true,
               seatAIAssistantEnabled: false,
             }
           : account,
@@ -4134,6 +4135,14 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupSemiAutoAuth: true,
+            }
+          : account,
+      ),
       conversationListsByScope: {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
@@ -4191,6 +4200,92 @@ describe("useWorkbenchStore", () => {
     ).toMatchObject({
       content: "群聊手动推荐",
     });
+  });
+
+  it("blocks manual smart reply trigger for group conversations without group script recommendation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> =
+      [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "不应生成",
+            generateStatus: 2,
+            messageId: String(request.msgId),
+            pollComplete: true,
+            status: "ready",
+          },
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              groupSemiAutoAuth: false,
+              seatAIAssistantEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 1,
+                mode: "group",
+              }
+            : conversation,
+        ),
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "群里客户问题", type: "text" },
+            conversationId: "conv-001",
+            isGroupConversation: true,
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户甲", groupMemberId: "member-1" },
+            senderDisplayName: "客户甲",
+            sentAt: "刚刚",
+            seq: 31,
+            status: "sent",
+            uiMessageKey: "31",
+          } satisfies Message,
+        ],
+      },
+    }));
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 31,
+      );
+
+    expect(message).toBeDefined();
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(observedGeneralAnswerRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "31"
+      ],
+    ).toBeUndefined();
   });
 
   it("treats smart reply adoption marker failures as non-blocking after message send succeeds", async () => {

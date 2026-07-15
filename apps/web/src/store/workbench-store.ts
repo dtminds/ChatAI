@@ -1281,14 +1281,14 @@ export function canDisplaySmartReplyForConversation(
       return false;
     }
 
-    // 群聊默认半托管，不依赖席位 AI 模式开关
-    if (conversation.mode === "group") {
-      return true;
-    }
-
     const account = state.accounts.find(
       (item) => item.id === conversation.accountId,
     );
+
+    // 群聊依赖群聊设置「允许话术推荐」，不依赖单聊席位 AI 模式开关
+    if (conversation.mode === "group") {
+      return account?.groupSemiAutoAuth === true;
+    }
 
     return account?.seatAIAssistantEnabled === true;
   }

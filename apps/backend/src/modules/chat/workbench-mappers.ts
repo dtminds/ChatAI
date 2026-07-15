@@ -26,6 +26,7 @@ export type SeatRow = {
   id: number | string;
   is_online: number | null;
   last_message_time: Date | number | string | null;
+  group_semi_auto_auth?: number | string | boolean | null;
   group_unread_count?: number | string | null;
   semi_auto_auth?: number | string | boolean | null;
   semi_auto_switch?: number | string | boolean | null;
@@ -129,6 +130,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
   const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
   const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
+  const groupSemiAutoAuth = readBooleanFlag(row.group_semi_auto_auth);
 
   return {
     seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
@@ -139,6 +141,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
     seatAIHostingAuth,
     fullAutoSwitch,
+    groupSemiAutoAuth,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",

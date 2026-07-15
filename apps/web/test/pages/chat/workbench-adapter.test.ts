@@ -153,6 +153,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      groupSemiAutoAuth: false,
       seatAIAssistantEnabled: true,
     });
 
@@ -160,6 +161,7 @@ describe("workbench adapter", () => {
       adaptAccount({
         avatar: "",
         description: "",
+        groupSemiAutoAuth: true,
         loginStatus: "online",
         name: "测试席位",
         operatorName: "测试席位",
@@ -171,6 +173,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      groupSemiAutoAuth: true,
       seatAIAssistantEnabled: true,
     });
 

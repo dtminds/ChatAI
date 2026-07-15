@@ -227,6 +227,7 @@ type SeatBaseRow = {
   expire_time: number | string | null;
   full_auto_auth?: number | string | boolean | null;
   full_auto_switch?: number | string | boolean | null;
+  group_semi_auto_auth?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -2656,6 +2657,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "seat.id")
           .onRef("seat_agent.uid", "=", "seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
       .select([
         "seat.id as id",
         "seat.uid as uid",
@@ -2671,6 +2677,7 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
@@ -3287,6 +3294,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id")
           .onRef("seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id")
+          .onRef("seat_group_agent.uid", "=", "xy_wap_embed_user_seat.uid"),
+      )
       .select([
         "xy_wap_embed_user_seat.id as id",
         "xy_wap_embed_user_seat.uid as uid",
@@ -3302,6 +3314,7 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
       ])
       .where("xy_wap_embed_user_seat.id", "=", seatNumericId)
       .executeTakeFirst() as SeatBaseRow | undefined;
@@ -3330,6 +3343,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "seat.id")
           .onRef("seat_agent.uid", "=", "seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.third_userid", "=", "seat.third_userid")
@@ -3350,6 +3368,7 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
         expressionBuilder.fn
           .coalesce(
             expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
@@ -3398,6 +3417,7 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch",
         "seat_agent.semi_auto_auth",
         "seat_agent.semi_auto_switch",
+        "seat_group_agent.semi_auto_auth",
       ])
       .execute();
 

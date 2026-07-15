@@ -49,6 +49,7 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     expireTime: dto.expireTime,
     seatAIHostingAuth: dto.seatAIHostingAuth,
     fullAutoSwitch: dto.fullAutoSwitch,
+    groupSemiAutoAuth: dto.groupSemiAutoAuth === true,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,

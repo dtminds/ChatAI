@@ -51,9 +51,11 @@ function renderPanel({
 
 function enableSmartReplyDisplayContext({
   enabled = true,
+  groupSemiAutoAuth,
   mode = "single",
 }: {
   enabled?: boolean;
+  groupSemiAutoAuth?: boolean;
   mode?: "single" | "group";
 } = {}) {
   useWorkbenchStore.setState((state) => ({
@@ -61,6 +63,8 @@ function enableSmartReplyDisplayContext({
       {
         avatarUrl: "",
         description: "",
+        groupSemiAutoAuth:
+          groupSemiAutoAuth ?? (mode === "group" ? enabled : false),
         id: "seat-001",
         loginStatus: "online",
         metrics: {
@@ -157,8 +161,12 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(screen.queryByText("隐藏的话术")).not.toBeInTheDocument();
   });
 
-  it("shows smart replies in group conversations without seat AI assistant mode", () => {
-    enableSmartReplyDisplayContext({ enabled: false, mode: "group" });
+  it("shows smart replies in group conversations when group script recommendation is enabled", () => {
+    enableSmartReplyDisplayContext({
+      enabled: false,
+      groupSemiAutoAuth: true,
+      mode: "group",
+    });
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
@@ -186,6 +194,41 @@ describe("ChatMessagePanel smart reply state", () => {
 
     expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
     expect(screen.getByText("群聊可展示的话术")).toBeInTheDocument();
+  });
+
+  it("hides smart replies in group conversations when group script recommendation is disabled", () => {
+    enableSmartReplyDisplayContext({
+      enabled: true,
+      groupSemiAutoAuth: false,
+      mode: "group",
+    });
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "群聊不应展示的话术",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      conversationMode: "group",
+      messages: [
+        createCustomerMessage({
+          isGroupConversation: true,
+          senderDisplayName: "客户甲",
+        }),
+      ],
+    });
+
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("群聊不应展示的话术")).not.toBeInTheDocument();
   });
 
   it("hides cached smart replies immediately after seat AI assistant is disabled", () => {

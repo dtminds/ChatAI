@@ -6,6 +6,7 @@ import {
   getWorkflowBranchEstimatedHeight,
   getWorkflowBranchPaths,
   isWorkflowBranchConditionComplete,
+  isWorkflowBranchConditionLocallyComplete,
   normalizeWorkflowBranchPaths,
   WORKFLOW_BRANCH_CONDITION_MAX,
   WORKFLOW_BRANCH_CONDITION_MIN,
@@ -70,7 +71,7 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
     const branchPaths = normalizeWorkflowBranchPaths(data.branchPaths);
     const configured = branchPaths
       .filter((path) => !path.isDefault)
-      .every((path) => path.conditions.every((condition) => Boolean(condition.selector)));
+      .every((path) => path.conditions.every(isWorkflowBranchConditionLocallyComplete));
     return {
       ...data,
       branchPaths,

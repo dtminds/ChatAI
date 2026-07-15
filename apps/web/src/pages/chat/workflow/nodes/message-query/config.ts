@@ -4,6 +4,7 @@ import type {
   WorkflowTimeRange,
   WorkflowVariableSelector,
 } from "../../types";
+import { isValidLocalDateTime } from "@/lib/local-date-time";
 
 export const MESSAGE_QUERY_LIMIT_MIN = 1;
 export const MESSAGE_QUERY_LIMIT_MAX = 50;
@@ -56,6 +57,34 @@ export function normalizeMessageQueryTake(value: unknown): MessageQueryNodeData[
 
 export function getMessageQueryMetric(data: Pick<MessageQueryNodeData, "limit" | "take">) {
   return `${data.take === "latest" ? "最新" : "最早"} ${data.limit} 条消息`;
+}
+
+export function getMessageQueryStatus(data: Pick<MessageQueryNodeData, "timeRange">) {
+  const timeRange = normalizeMessageQueryTimeRange(data.timeRange);
+  const configured = timeRange.mode === "fixed"
+    ? isValidLocalDateTime(timeRange.startAt)
+      && isValidLocalDateTime(timeRange.endAt)
+      && timeRange.startAt < timeRange.endAt
+    : !areDynamicTimeReferencesEqual(timeRange.start, timeRange.end);
+
+  return configured ? "ready" as const : "warning" as const;
+}
+
+export function areDynamicTimeReferencesEqual(
+  first: WorkflowDynamicTimeReference,
+  second: WorkflowDynamicTimeReference,
+) {
+  if (first.kind !== second.kind) return false;
+  if (first.kind === "workflow-trigger") return true;
+  if (first.kind === "current-node-lifecycle") return true;
+  if (first.kind === "node-lifecycle" && second.kind === "node-lifecycle") {
+    return first.nodeId === second.nodeId && first.field === second.field;
+  }
+  if (first.kind === "node-output" && second.kind === "node-output") {
+    return first.selector.length === second.selector.length
+      && first.selector.every((part, index) => part === second.selector[index]);
+  }
+  return false;
 }
 
 export function getDynamicTimeReferenceLabel(

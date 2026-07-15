@@ -59,6 +59,7 @@ export type WorkflowBranchCondition = {
   operator: WorkflowBranchOperator;
   selector?: WorkflowVariableSelector;
   value?: WorkflowBranchConditionValue;
+  valueType?: Exclude<WorkflowVariableValueType, "object">;
 };
 export type WorkflowBranchPath = {
   conditions: WorkflowBranchCondition[];
@@ -231,6 +232,7 @@ export type WorkflowNodeConfigPatch<TKind extends WorkflowNodeKind = WorkflowNod
 
 export type WorkflowNodeRuntimeData = {
   availableIntentInputs?: WorkflowVariableDefinition[];
+  availableMessageContentOutputs?: WorkflowVariableDefinition[];
   availableTimeReferences?: {
     nodes: Array<{ id: string; title: string }>;
     outputs: WorkflowVariableDefinition[];

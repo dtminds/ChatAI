@@ -14,6 +14,7 @@ import {
   AI_INTENT_MAX_COUNT,
   AI_INTENT_PROMPT_MAX_LENGTH,
   getAiIntentHandleId,
+  normalizeAiIntentOptions,
 } from "@/pages/chat/workflow/nodes/ai-intent/config";
 import { AiIntentConfig } from "@/pages/chat/workflow/nodes/ai-intent/panel";
 import type {
@@ -28,6 +29,17 @@ import { hydrateWorkflowDraft } from "@/pages/chat/workflow/workflow-draft-norma
 import { createWorkflowRenderElements } from "@/pages/chat/workflow/use-workflow-render-elements";
 
 describe("workflow AI intent", () => {
+  it("normalizes missing intent data with stable handle ids", () => {
+    expect(normalizeAiIntentOptions(undefined)).toEqual([{
+      description: "",
+      id: "intent-1",
+    }]);
+    expect(normalizeAiIntentOptions([])).toEqual([{
+      description: "",
+      id: "intent-1",
+    }]);
+  });
+
   it("creates independent stable intent IDs and preserves valid IDs during hydration", () => {
     const first = createDefaultNodeData("ai-intent");
     const second = createDefaultNodeData("ai-intent");

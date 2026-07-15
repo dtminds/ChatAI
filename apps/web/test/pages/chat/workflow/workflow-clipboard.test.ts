@@ -273,6 +273,94 @@ describe("workflow clipboard", () => {
     ]));
   });
 
+  it("remaps internal node references while preserving external references on paste", () => {
+    const draft = createDraft();
+    const wait = createNodeFromKind("wait", "wait-source", 10);
+    const query = createNodeFromKind("message-query", "query-source", 11);
+    const intent = createNodeFromKind("ai-intent", "intent-target", 12);
+    const message = createNodeFromKind("message", "message-target", 13);
+    const branch = createNodeFromKind("branch", "branch-target", 14);
+    query.data.timeRange = {
+      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      mode: "dynamic",
+      start: { field: "exitedAt", kind: "node-lifecycle", nodeId: wait.id },
+    };
+    intent.data.inputSelector = ["node", query.id, "messageIds"];
+    message.data.content = [
+      { selector: ["node", query.id, "textContent"], type: "variable" },
+      { selector: ["node", "external-node", "name"], type: "variable" },
+    ];
+    message.data.contentMode = "node-output";
+    message.data.outputSelector = ["node", query.id, "textContent"];
+    branch.data.branchPaths = [{
+      conditions: [{
+        id: "condition-1",
+        operator: "greater-than",
+        selector: ["node", query.id, "messageCount"],
+        value: 1,
+      }],
+      id: "branch-1",
+      label: "如果",
+      logic: "all",
+    }, {
+      conditions: [],
+      id: "branch-default",
+      isDefault: true,
+      label: "否则",
+      logic: "all",
+    }];
+    const sourceDraft = {
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge(wait.id, query.id),
+        createEdge(query.id, intent.id),
+        createEdge(query.id, message.id),
+        createEdge(query.id, branch.id),
+      ],
+      nodes: [...draft.nodes, wait, query, intent, message, branch],
+    };
+    const clipboardData = createWorkflowClipboardData(sourceDraft, [
+      wait.id,
+      query.id,
+      intent.id,
+      message.id,
+      branch.id,
+    ])!;
+    const operation = pasteWorkflowClipboardData(draft, clipboardData, {
+      nodeIdFactory: (kind) => `${kind}-pasted`,
+    })!;
+    const pastedQuery = operation.draft.nodes.find((node) => node.id === "message-query-pasted")!;
+    const pastedIntent = operation.draft.nodes.find((node) => node.id === "ai-intent-pasted")!;
+    const pastedMessage = operation.draft.nodes.find((node) => node.id === "message-pasted")!;
+    const pastedBranch = operation.draft.nodes.find((node) => node.id === "branch-pasted")!;
+
+    expect(pastedQuery.data.kind).toBe("message-query");
+    expect(pastedIntent.data.kind).toBe("ai-intent");
+    expect(pastedMessage.data.kind).toBe("message");
+    expect(pastedBranch.data.kind).toBe("branch");
+    if (
+      pastedQuery.data.kind !== "message-query"
+      || pastedIntent.data.kind !== "ai-intent"
+      || pastedMessage.data.kind !== "message"
+      || pastedBranch.data.kind !== "branch"
+    ) return;
+
+    expect(pastedQuery.data.timeRange).toEqual({
+      end: { field: "enteredAt", kind: "current-node-lifecycle" },
+      mode: "dynamic",
+      start: { field: "exitedAt", kind: "node-lifecycle", nodeId: "wait-pasted" },
+    });
+    expect(pastedIntent.data.inputSelector).toEqual(["node", "message-query-pasted", "messageIds"]);
+    expect(pastedMessage.data.outputSelector).toEqual(["node", "message-query-pasted", "textContent"]);
+    expect(pastedMessage.data.content).toEqual([
+      { selector: ["node", "message-query-pasted", "textContent"], type: "variable" },
+      { selector: ["node", "external-node", "name"], type: "variable" },
+    ]);
+    expect(pastedBranch.data.branchPaths[0]?.conditions[0]?.selector)
+      .toEqual(["node", "message-query-pasted", "messageCount"]);
+  });
+
   it("keeps pasted node ids unique when the id factory returns an existing id", () => {
     const draft = createDraft();
     const clipboardData = createWorkflowClipboardData(draft, ["message-welcome"])!;

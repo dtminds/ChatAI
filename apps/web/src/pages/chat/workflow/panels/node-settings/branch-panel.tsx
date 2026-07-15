@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Add01Icon,
   ArrowDown01Icon,
@@ -257,6 +257,7 @@ function BranchConditionRow({
               operator,
               selector: nextVariable.selector,
               value: getDefaultConditionValue(nextVariable.type, operator),
+              valueType: nextVariable.type === "object" ? undefined : nextVariable.type,
             });
             setVariablePickerOpen(false);
           }}
@@ -365,19 +366,7 @@ function ConditionValueField({
     );
   }
   if (type === "number") {
-    return (
-      <Input
-        aria-label="比较值"
-        className="h-9 rounded-[8px] px-3 text-[13px]"
-        onChange={(event) => {
-          const value = event.target.value;
-          onChange(value === "" ? "" : Number(value));
-        }}
-        placeholder="输入数值"
-        type="number"
-        value={typeof condition.value === "number" ? condition.value : ""}
-      />
-    );
+    return <NumberConditionValueField condition={condition} onChange={onChange} />;
   }
   return (
     <Input
@@ -386,6 +375,46 @@ function ConditionValueField({
       onChange={(event) => onChange(event.target.value)}
       placeholder="输入比较值"
       value={typeof condition.value === "string" ? condition.value : ""}
+    />
+  );
+}
+
+function NumberConditionValueField({
+  condition,
+  onChange,
+}: {
+  condition: WorkflowBranchCondition;
+  onChange: (value: WorkflowBranchConditionValue) => void;
+}) {
+  const committedValue = typeof condition.value === "number" && Number.isFinite(condition.value)
+    ? String(condition.value)
+    : "";
+  const [draftValue, setDraftValue] = useState(committedValue);
+
+  useEffect(() => setDraftValue(committedValue), [committedValue]);
+
+  return (
+    <Input
+      aria-label="比较值"
+      className="h-9 rounded-[8px] px-3 text-[13px]"
+      onBlur={() => {
+        if (draftValue && !Number.isFinite(Number(draftValue))) {
+          setDraftValue(committedValue);
+        }
+      }}
+      onChange={(event) => {
+        const value = event.target.value;
+        setDraftValue(value);
+        if (value === "") {
+          onChange("");
+          return;
+        }
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) onChange(parsed);
+      }}
+      placeholder="输入数值"
+      type="number"
+      value={draftValue}
     />
   );
 }

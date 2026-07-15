@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createEdge,
   createInitialNodes,
+  createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
+import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import {
   createWorkflowRenderElements,
   useWorkflowRenderElements,
@@ -170,5 +172,49 @@ describe("createWorkflowRenderElements", () => {
       .toBe("connected");
     expect(rendered.edges.find((edge) => edge.id === "edge-wait-2d-end")?.data?.highlightState)
       .toBe("dimmed");
+  });
+
+  it("derives warning status when an AI intent input becomes unavailable", () => {
+    const handlers = {
+      onDeleteNode: vi.fn(),
+      onDuplicateNode: vi.fn(),
+      onInsertNodeAfter: vi.fn(),
+      onInsertNodeBetween: vi.fn(),
+      onRenameNode: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleEdgeInsertMenu: vi.fn(),
+      onToggleNodeInsertMenu: vi.fn(),
+      onToggleNodeSelection: vi.fn(),
+    };
+    const start = createInitialNodes().find((node) => node.data.kind === "start")!;
+    const query = createNodeFromKind("message-query", "query", 1);
+    const intent = createNodeFromKind("ai-intent", "intent", 2);
+    intent.data = {
+      ...createDefaultNodeData("ai-intent"),
+      inputSelector: ["node", query.id, "messageIds"],
+      intents: [{ description: "愿意参加", id: "intent-1" }],
+      status: "ready",
+    };
+    const connectedEdges = [
+      createEdge(start.id, query.id),
+      createEdge(query.id, intent.id),
+    ];
+    const options = {
+      ...handlers,
+      activeEdgeInsertMenuId: null,
+      nodes: [start, query, intent],
+      quickInsertTarget: null,
+      selectedEdgeId: null,
+      selectedNodeIdSet: new Set<string>(),
+    };
+
+    expect(createWorkflowRenderElements({
+      ...options,
+      edges: connectedEdges,
+    }).nodes.find((node) => node.id === intent.id)?.data.status).toBe("ready");
+    expect(createWorkflowRenderElements({
+      ...options,
+      edges: [connectedEdges[0]],
+    }).nodes.find((node) => node.id === intent.id)?.data.status).toBe("warning");
   });
 });

@@ -28,7 +28,10 @@ import {
   normalizeWorkflowMessageOutputSelector,
 } from "../nodes/message/content-source";
 import type { WorkflowDynamicTimeReference } from "../types";
-import { normalizeMessageQueryTimeRange } from "../nodes/message-query/config";
+import {
+  areDynamicTimeReferencesEqual,
+  normalizeMessageQueryTimeRange,
+} from "../nodes/message-query/config";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -180,6 +183,16 @@ function validateNodeVariableContent(
           ),
         ]
       : [];
+
+    if (
+      timeRange.mode === "dynamic"
+      && areDynamicTimeReferencesEqual(timeRange.start, timeRange.end)
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-query-time-range-identical",
+        "消息查询的开始和结束时间不能相同",
+      ));
+    }
 
     if (
       timeRange.mode === "fixed"

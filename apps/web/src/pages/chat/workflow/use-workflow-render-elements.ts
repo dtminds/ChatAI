@@ -10,10 +10,12 @@ import type {
 import { getInsertableNodeKindsBetween } from "./node-catalog";
 import {
   getAvailableIntentInputOutputsForNode,
+  getAvailableMessageContentOutputsForNode,
   getAvailableTimeReferenceNodesForNode,
   getAvailableTimeReferenceOutputsForNode,
   getAvailableVariablesForNode,
 } from "./workflow-variables";
+import { validateWorkflowNodeConfig } from "./validation/workflow-validation";
 
 type WorkflowRenderElementHandlers = {
   onDeleteNode: (nodeId: string) => void;
@@ -54,8 +56,10 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
 
 type WorkflowRenderNodeCacheEntry = {
   availableIntentInputKey: string;
+  availableMessageContentOutputKey: string;
   availableTimeReferenceKey: string;
   availableVariableKey: string;
+  effectiveStatus: WorkflowNode["data"]["status"];
   insertMenuOpen: boolean;
   insertMenuSourceHandle?: string;
   onDeleteNode: WorkflowRenderElementHandlers["onDeleteNode"];
@@ -84,6 +88,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.selectedEdgeId,
   ]);
   const nodes = useMemo(() => createWorkflowRenderNodes(options, nodeRenderCacheRef.current), [
+    options.edges,
     options.nodes,
     options.onDeleteNode,
     options.onDuplicateNode,
@@ -224,6 +229,9 @@ function createWorkflowRenderNodes({
     const availableIntentInputs = node.data.kind === "ai-intent"
       ? getAvailableIntentInputOutputsForNode(node.id, nodes, edges)
       : undefined;
+    const availableMessageContentOutputs = node.data.kind === "message"
+      ? getAvailableMessageContentOutputsForNode(node.id, nodes, edges)
+      : undefined;
     const availableTimeReferences = node.data.kind === "message-query"
       ? {
           nodes: getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((sourceNode) => ({
@@ -249,6 +257,12 @@ function createWorkflowRenderNodes({
       variable.label,
     ].join(":"))
       .join("|");
+    const availableMessageContentOutputKey = availableMessageContentOutputs?.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|") ?? "";
     const availableIntentInputKey = availableIntentInputs?.map((variable) => [
       variable.selector.join("."),
       variable.sourceNodeTitle,
@@ -256,6 +270,13 @@ function createWorkflowRenderNodes({
     ].join(":"))
       .join("|") ?? "";
     const isSelected = selectedNodeIdSet.has(node.id);
+    const derivesStatusFromGraph = node.data.kind === "branch"
+      || node.data.kind === "ai-intent"
+      || node.data.kind === "message-query";
+    const effectiveStatus = derivesStatusFromGraph
+      && validateWorkflowNodeConfig(node, nodes, edges).length > 0
+      ? "warning" as const
+      : node.data.status;
     const insertMenuOpen = !readOnly && node.id === quickInsertTarget?.nodeId;
     const insertMenuSourceHandle = insertMenuOpen
       ? quickInsertTarget.sourceHandle
@@ -266,8 +287,10 @@ function createWorkflowRenderNodes({
     if (
       cachedNode
       && cachedNode.availableIntentInputKey === availableIntentInputKey
+      && cachedNode.availableMessageContentOutputKey === availableMessageContentOutputKey
       && cachedNode.availableTimeReferenceKey === availableTimeReferenceKey
       && cachedNode.availableVariableKey === availableVariableKey
+      && cachedNode.effectiveStatus === effectiveStatus
       && cachedNode.sourceNode === node
       && cachedNode.selected === isSelected
       && cachedNode.insertMenuOpen === insertMenuOpen
@@ -291,6 +314,7 @@ function createWorkflowRenderNodes({
       data: {
         ...node.data,
         availableIntentInputs,
+        availableMessageContentOutputs,
         availableTimeReferences,
         availableVariables,
         insertMenuOpen,
@@ -309,13 +333,16 @@ function createWorkflowRenderNodes({
         },
         onToggleInsertMenu: readOnly ? undefined : onToggleNodeInsertMenu,
         selected: isSelected,
+        status: effectiveStatus,
       },
     };
 
     cache?.set(node.id, {
       availableIntentInputKey,
+      availableMessageContentOutputKey,
       availableTimeReferenceKey,
       availableVariableKey,
+      effectiveStatus,
       insertMenuOpen,
       insertMenuSourceHandle,
       onDeleteNode,

@@ -9,6 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { TimePicker } from "@/components/ui/time-picker";
+import { parseLocalDateTime } from "@/lib/local-date-time";
 import { cn } from "@/lib/utils";
 
 export function DateTimePicker({
@@ -24,14 +25,14 @@ export function DateTimePicker({
   onValueChange(value: string): void;
   value: string;
 }) {
-  const parsedValue = parseDateTimeValue(value);
+  const parsedValue = parseLocalDateTime(value);
   const [open, setOpen] = useState(false);
   const [draftDate, setDraftDate] = useState<Date | undefined>(parsedValue?.date);
   const [draftTime, setDraftTime] = useState(parsedValue?.time ?? "00:00");
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
-      const nextValue = parseDateTimeValue(value);
+      const nextValue = parseLocalDateTime(value);
       setDraftDate(nextValue?.date);
       setDraftTime(nextValue?.time ?? "00:00");
     }
@@ -106,21 +107,4 @@ function formatDateValue(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function parseDateTimeValue(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
-  if (!match) return undefined;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
-  ) return undefined;
-
-  return { date, time: match[4] };
 }

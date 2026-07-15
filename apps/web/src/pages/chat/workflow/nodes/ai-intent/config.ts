@@ -66,7 +66,7 @@ export function normalizeAiIntentInputSelector(
 
 export function normalizeAiIntentOptions(value: unknown): WorkflowIntentOption[] {
   if (!Array.isArray(value)) {
-    return [createWorkflowIntentOption()];
+    return [createNormalizedIntentOption(0)];
   }
 
   const normalized: WorkflowIntentOption[] = [];
@@ -90,7 +90,14 @@ export function normalizeAiIntentOptions(value: unknown): WorkflowIntentOption[]
     });
   }
 
-  return normalized.length > 0 ? normalized : [createWorkflowIntentOption()];
+  return normalized.length > 0 ? normalized : [createNormalizedIntentOption(0)];
+}
+
+function createNormalizedIntentOption(index: number): WorkflowIntentOption {
+  return {
+    description: "",
+    id: `intent-${index + 1}`,
+  };
 }
 
 function createNormalizedIntentId(index: number, seenIds: Set<string>) {

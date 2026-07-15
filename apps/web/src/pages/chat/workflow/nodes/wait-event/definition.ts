@@ -48,20 +48,23 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
   getOutputVariables: (node) =>
     getWorkflowWaitEventDefinition(normalizeWaitEventType(node.data.event?.type))
       .outputDefinitions,
-  getSourceHandles: () => [
-    {
-      id: WAIT_EVENT_TRIGGERED_HANDLE_ID,
-      label: "事件到达（新消息）",
-      outletKind: "outcome",
-      top: 122,
-    },
-    {
-      id: WAIT_EVENT_TIMEOUT_HANDLE_ID,
-      label: "等待超时",
-      outletKind: "outcome",
-      top: 164,
-    },
-  ],
+  getSourceHandles: (data) => {
+    const event = getWorkflowWaitEventDefinition(normalizeWaitEventType(data.event?.type));
+    return [
+      {
+        id: WAIT_EVENT_TRIGGERED_HANDLE_ID,
+        label: `事件到达（${event.shortLabel}）`,
+        outletKind: "outcome",
+        top: 122,
+      },
+      {
+        id: WAIT_EVENT_TIMEOUT_HANDLE_ID,
+        label: "等待超时",
+        outletKind: "outcome",
+        top: 164,
+      },
+    ];
+  },
   getTargetHandles: createDefaultTargetHandles,
   insertable: true,
   kind: "wait-event",

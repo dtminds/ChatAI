@@ -8,6 +8,7 @@ import {
   getWorkflowBranchEstimatedHeight,
   getWorkflowBranchPaths,
   isWorkflowBranchConditionComplete,
+  isWorkflowBranchConditionLocallyComplete,
   moveWorkflowBranchPath,
   normalizeWorkflowBranchPaths,
   removeWorkflowBranchCondition,
@@ -71,6 +72,20 @@ describe("workflow branch paths", () => {
     expect(second).toEqual(first);
     expect(new Set(first.map((path) => path.id)).size).toBe(first.length);
     expect(first.at(-1)).toEqual(expect.objectContaining({ isDefault: true, label: "否则" }));
+  });
+
+  it("drops non-finite numeric condition values during normalization", () => {
+    const [path] = normalizeWorkflowBranchPaths([{
+      ...createPath("invalid-number"),
+      conditions: [{
+        id: "condition-invalid-number",
+        operator: "greater-than",
+        selector: ["node", "order-query", "amount"],
+        value: Number.POSITIVE_INFINITY,
+      }],
+    }, createFallback()]);
+
+    expect(path.conditions[0]).not.toHaveProperty("value");
   });
 
   it("adds and reorders paths while preserving ids and recomputing fixed labels", () => {
@@ -142,6 +157,30 @@ describe("workflow branch paths", () => {
       selector: ["node", "order-query", "amount"],
       type: "number",
     }])).toBe(false);
+  });
+
+  it("validates local equals values using the selected variable type", () => {
+    expect(isWorkflowBranchConditionLocallyComplete({
+      id: "valid-date",
+      operator: "equals",
+      selector: ["trigger", "occurredAt"],
+      value: "2026-07-15T09:30",
+      valueType: "datetime",
+    })).toBe(true);
+    expect(isWorkflowBranchConditionLocallyComplete({
+      id: "invalid-date",
+      operator: "equals",
+      selector: ["trigger", "occurredAt"],
+      value: "2026-02-30T09:30",
+      valueType: "datetime",
+    })).toBe(false);
+    expect(isWorkflowBranchConditionLocallyComplete({
+      id: "valid-string",
+      operator: "equals",
+      selector: ["customer", "name"],
+      value: "foo",
+      valueType: "string",
+    })).toBe(true);
   });
 
   it("builds readable summaries and aligns dynamic handles with path rows", () => {

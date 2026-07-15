@@ -43,6 +43,7 @@ import {
   createDefaultMessageQueryTimeRange,
   getDynamicTimeReferenceLabel,
   getMessageQueryMetric,
+  getMessageQueryStatus,
   MESSAGE_QUERY_LIMIT_MAX,
   MESSAGE_QUERY_LIMIT_MIN,
   normalizeMessageQueryTake,
@@ -66,11 +67,12 @@ export function MessageQueryConfig({
     const next = {
       limit: patch.limit ?? node.data.limit,
       take: patch.take ?? node.data.take,
+      timeRange: patch.timeRange ?? node.data.timeRange,
     };
     onNodeChange({
       ...patch,
       metric: getMessageQueryMetric(next),
-      status: "ready",
+      status: getMessageQueryStatus(next),
     });
   };
 

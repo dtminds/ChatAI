@@ -1,4 +1,5 @@
 import { MessageSearch01Icon } from "@hugeicons/core-free-icons";
+import { isValidLocalDateTime } from "@/lib/local-date-time";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   compactNodeLayout,
@@ -12,6 +13,7 @@ import {
 import {
   createDefaultMessageQueryTimeRange,
   getMessageQueryMetric,
+  getMessageQueryStatus,
   MESSAGE_QUERY_LIMIT_MAX,
   MESSAGE_QUERY_LIMIT_MIN,
   normalizeMessageQueryLimit,
@@ -88,6 +90,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
       ...data,
       limit,
       metric: getMessageQueryMetric({ limit, take }),
+      status: getMessageQueryStatus({ timeRange: data.timeRange }),
       take,
       timeRange: normalizeMessageQueryTimeRange(data.timeRange),
     };
@@ -130,7 +133,3 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
     label: "消息查询",
   },
 };
-
-function isValidLocalDateTime(value: string) {
-  return /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
-}

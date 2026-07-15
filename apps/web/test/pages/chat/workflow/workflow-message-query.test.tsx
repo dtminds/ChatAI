@@ -185,6 +185,7 @@ describe("workflow message query", () => {
 
     await user.click(screen.getByRole("radio", { name: "固定时间" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      status: "warning",
       timeRange: { endAt: "", mode: "fixed", startAt: "" },
     }));
 
@@ -250,6 +251,42 @@ describe("workflow message query", () => {
       [createStartNode(), queryNode],
       [createEdge("start", queryNode.id)],
     )).toContainEqual(expect.objectContaining({ code: "message-query-time-range-invalid" }));
+  });
+
+  it("rejects impossible fixed dates and identical dynamic references", () => {
+    const impossibleDateNode = {
+      ...createMessageQueryNode(),
+      data: {
+        ...createDefaultNodeData("message-query"),
+        timeRange: {
+          endAt: "2026-03-01T09:30",
+          mode: "fixed" as const,
+          startAt: "2026-02-30T09:30",
+        },
+      },
+    };
+    const identicalRangeNode = {
+      ...createMessageQueryNode(),
+      data: {
+        ...createDefaultNodeData("message-query"),
+        timeRange: {
+          end: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+          mode: "dynamic" as const,
+          start: { field: "occurredAt" as const, kind: "workflow-trigger" as const },
+        },
+      },
+    };
+
+    expect(validateWorkflowNodeConfig(
+      impossibleDateNode,
+      [createStartNode(), impossibleDateNode],
+      [createEdge("start", impossibleDateNode.id)],
+    )).toContainEqual(expect.objectContaining({ code: "message-query-start-time-required" }));
+    expect(validateWorkflowNodeConfig(
+      identicalRangeNode,
+      [createStartNode(), identicalRangeNode],
+      [createEdge("start", identicalRangeNode.id)],
+    )).toContainEqual(expect.objectContaining({ code: "message-query-time-range-identical" }));
   });
 });
 

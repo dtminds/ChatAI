@@ -12,6 +12,8 @@ import {
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
 } from "./workflow-variable-selector";
+import { workflowContextVariables } from "./workflow-variable-registry";
+import { isValidLocalDateTime } from "@/lib/local-date-time";
 
 export const WORKFLOW_BRANCH_PATH_MIN = 1;
 export const WORKFLOW_BRANCH_PATH_MAX = 10;
@@ -69,6 +71,9 @@ export const branchOperatorOptionsByType: Record<
     { label: "结尾为", value: "ends-with" },
   ],
 };
+const workflowBranchOperators = new Set(Object.values(branchOperatorOptionsByType)
+  .flat()
+  .map((option) => option.value));
 
 export function createDefaultBranchPaths(): WorkflowBranchPath[] {
   return [
@@ -201,12 +206,17 @@ export function normalizeWorkflowBranchConditions(value: unknown): WorkflowBranc
     if (!isRecord(item) || normalized.length >= WORKFLOW_BRANCH_CONDITION_MAX) continue;
     const rawId = typeof item.id === "string" ? item.id.trim() : "";
     const id = rawId && !seenIds.has(rawId) ? rawId : createNormalizedConditionId(index, seenIds);
+    const selector = normalizeSelector(item.selector);
+    const conditionValue = normalizeConditionValue(item.value);
+    const valueType = normalizeWorkflowBranchConditionValueType(item.valueType)
+      ?? resolveContextVariableType(selector);
     seenIds.add(id);
     normalized.push({
       id,
       operator: isWorkflowBranchOperator(item.operator) ? item.operator : "equals",
-      selector: normalizeSelector(item.selector),
-      value: normalizeConditionValue(item.value),
+      selector,
+      ...(conditionValue !== undefined ? { value: conditionValue } : {}),
+      ...(valueType ? { valueType } : {}),
     });
   }
 
@@ -349,16 +359,45 @@ export function isWorkflowBranchConditionComplete(
   if (condition.operator === "datetime-between") {
     return Array.isArray(condition.value)
       && condition.value.length === 2
-      && condition.value.every(isValidDateTimeValue)
+      && condition.value.every(isValidLocalDateTime)
       && condition.value[0] <= condition.value[1];
   }
   if (variable.type === "number") {
     return typeof condition.value === "number" && Number.isFinite(condition.value);
   }
   if (variable.type === "datetime") {
-    return typeof condition.value === "string" && isValidDateTimeValue(condition.value);
+    return typeof condition.value === "string" && isValidLocalDateTime(condition.value);
   }
   return variable.type === "string"
+    && typeof condition.value === "string"
+    && condition.value.trim().length > 0;
+}
+
+export function isWorkflowBranchConditionLocallyComplete(
+  condition: WorkflowBranchCondition,
+) {
+  const valueType = normalizeWorkflowBranchConditionValueType(condition.valueType)
+    ?? resolveContextVariableType(condition.selector);
+  if (!condition.selector?.length || !valueType || !workflowBranchOperators.has(condition.operator)) {
+    return false;
+  }
+  if (!getBranchOperatorOptions(valueType).some((option) => option.value === condition.operator)) {
+    return false;
+  }
+  if (!branchOperatorNeedsValue(condition.operator)) return true;
+  if (condition.operator === "datetime-between") {
+    return Array.isArray(condition.value)
+      && condition.value.length === 2
+      && condition.value.every(isValidLocalDateTime)
+      && condition.value[0] <= condition.value[1];
+  }
+  if (valueType === "number") {
+    return typeof condition.value === "number" && Number.isFinite(condition.value);
+  }
+  if (valueType === "datetime") {
+    return typeof condition.value === "string" && isValidLocalDateTime(condition.value);
+  }
+  return valueType === "string"
     && typeof condition.value === "string"
     && condition.value.trim().length > 0;
 }
@@ -388,18 +427,6 @@ function formatDateTime(value: string) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? value.replace("T", " ") : value;
 }
 
-function isValidDateTimeValue(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year
-    && date.getMonth() === month - 1
-    && date.getDate() === day;
-}
-
 function normalizeWorkflowBranchLogic(value: unknown): WorkflowBranchLogic {
   return value === "any" ? "any" : "all";
 }
@@ -411,11 +438,34 @@ function normalizeSelector(value: unknown) {
 }
 
 function normalizeConditionValue(value: unknown): WorkflowBranchConditionValue | undefined {
-  if (typeof value === "boolean" || typeof value === "number" || typeof value === "string") return value;
+  if (typeof value === "boolean" || typeof value === "string") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
   if (Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === "string")) {
     return [value[0], value[1]];
   }
   return undefined;
+}
+
+function normalizeWorkflowBranchConditionValueType(
+  value: unknown,
+): Exclude<WorkflowVariableValueType, "object"> | undefined {
+  return value === "boolean"
+    || value === "datetime"
+    || value === "message-id-list"
+    || value === "number"
+    || value === "string"
+    ? value
+    : undefined;
+}
+
+function resolveContextVariableType(
+  selector: WorkflowBranchCondition["selector"],
+): Exclude<WorkflowVariableValueType, "object"> | undefined {
+  if (!selector) return undefined;
+  const selectorKey = getWorkflowVariableSelectorKey(selector);
+  const type = workflowContextVariables.find((variable) =>
+    getWorkflowVariableSelectorKey(variable.selector) === selectorKey)?.type;
+  return type && type !== "object" ? type : undefined;
 }
 
 function createNormalizedConditionId(index: number, seenIds: Set<string>) {

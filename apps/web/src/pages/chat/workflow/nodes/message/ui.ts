@@ -17,7 +17,7 @@ export const messageNodeUi: WorkflowNodeUiBinding<"message"> = {
       const contentMode = normalizeWorkflowMessageContentMode(data.contentMode);
       const outputSelector = normalizeWorkflowMessageOutputSelector(data.outputSelector);
       const resolvedOutput = outputSelector
-        ? resolveWorkflowVariable(data.availableVariables ?? [], outputSelector)
+        ? resolveWorkflowVariable(data.availableMessageContentOutputs ?? [], outputSelector)
         : undefined;
       const selectedOutput = resolvedOutput?.type === "string"
         && resolvedOutput.usages?.includes("message-content")

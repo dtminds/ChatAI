@@ -7,7 +7,7 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
     getFields: (data) => [
       {
         id: "operator-message",
-        label: "客服话术",
+        label: "客服提示",
         value: data.operatorMessage?.length
           ? {
               kind: "text",
@@ -18,7 +18,7 @@ export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
       },
       {
         id: "customer-message",
-        label: "客户话术",
+        label: "对客话术",
         value: data.customerMessage?.length
           ? {
               kind: "text",

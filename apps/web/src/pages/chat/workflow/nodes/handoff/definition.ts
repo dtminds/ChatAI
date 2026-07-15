@@ -13,7 +13,7 @@ const baseHandoffNodeDefinition = createStandardNodeDefinition({
   icon: UserSwitchIcon,
   kind: "handoff",
   label: "转人工",
-  metric: "待配置客服话术",
+  metric: "待配置客服提示",
   paletteGroup: "message",
   sort: 110,
 });
@@ -23,7 +23,7 @@ export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
   createDefaultData: () => ({
     ...baseHandoffNodeDefinition.createDefaultData(),
     customerMessage: [],
-    metric: "待配置客服话术",
+    metric: "待配置客服提示",
     operatorMessage: [],
     status: "warning",
   }),
@@ -40,7 +40,7 @@ export const handoffNodeDefinition: WorkflowNodeDefinition<"handoff"> = {
     ? []
     : [{
         code: "handoff-operator-message-required",
-        message: "转人工节点需要配置对客服转发话术",
+        message: "转人工节点需要配置给客服的转发提示",
         severity: "warning",
         source: "config",
       }],

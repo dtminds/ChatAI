@@ -263,7 +263,7 @@ describe("buildPublishChecks", () => {
     const handoffNode = createNodeFromKind("handoff", "handoff-contract", nodes.length);
     expect(validateWorkflowNodeConfig(handoffNode, [...nodes, handoffNode], createInitialEdges())).toContainEqual({
       code: "handoff-operator-message-required",
-      message: "转人工节点需要配置对客服转发话术",
+      message: "转人工节点需要配置给客服的转发提示",
       severity: "warning",
       source: "config",
     });

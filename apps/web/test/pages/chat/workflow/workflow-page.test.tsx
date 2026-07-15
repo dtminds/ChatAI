@@ -974,8 +974,8 @@ describe("Agent workflow page", () => {
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
-    const operatorMessage = within(panel).getByRole("textbox", { name: "对客服转发话术" });
-    const customerMessage = within(panel).getByRole("textbox", { name: "对客户转发话术" });
+    const operatorMessage = within(panel).getByRole("textbox", { name: "给客服的转发提示" });
+    const customerMessage = within(panel).getByRole("textbox", { name: "对客话术" });
 
     expect(within(panel).getAllByText("0/100")).toHaveLength(2);
 
@@ -990,8 +990,8 @@ describe("Agent workflow page", () => {
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /客户昵称/ }));
 
     await waitFor(() => {
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服话术：{客户昵称}");
-      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客户话术：{客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("客服提示：{客户昵称}");
+      expect(within(canvas).getByRole("button", { name: "转人工" })).toHaveTextContent("对客话术：{客户昵称}");
     });
     expect(within(panel).queryByText("0/100")).not.toBeInTheDocument();
   });

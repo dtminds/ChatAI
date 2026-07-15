@@ -23,28 +23,28 @@ export function HandoffConfig({ edges, node, nodes, onNodeChange }: NodeSettings
   return (
     <div className="space-y-6">
       <HandoffMessageField
-        ariaLabel="对客服转发话术"
+        ariaLabel="给客服的转发提示"
         help="向接管客服说明客户需求和当前背景"
         onChange={(operatorMessage) => {
           const preview = getVariableContentPreview(operatorMessage, variables);
           onNodeChange({
-            metric: preview || "待配置客服话术",
+            metric: preview || "待配置客服提示",
             operatorMessage,
             status: preview ? "ready" : "warning",
           });
         }}
-        placeholder="填写客户需求与背景，例如：客户因【需求】需人工处理"
+        placeholder="用于告诉对应的接待人员，本次转人工的原因或背景"
         required
         segments={node.data.operatorMessage}
-        title="对客服转发话术"
+        title="给客服的转发提示"
         variables={variables}
       />
       <HandoffMessageField
-        ariaLabel="对客户转发话术"
+        ariaLabel="对客话术"
         onChange={(customerMessage) => onNodeChange({ customerMessage })}
-        placeholder="缓解客户等待焦虑，例如：您的问题正在处理中，请稍作等待"
+        placeholder="转人工的同时自动先发一条消息，用于缓解客户等待焦虑，例如：请稍等.."
         segments={node.data.customerMessage}
-        title="对客户转发话术"
+        title="对客话术"
         variables={variables}
       />
     </div>

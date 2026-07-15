@@ -76,7 +76,7 @@ export function VariableContentEditor({
           <PlainTextPlugin
             contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" className={cn("whitespace-pre-wrap break-words outline-none", maxLength ? "min-h-24" : "min-h-30")} role="textbox" />}
             ErrorBoundary={LexicalErrorBoundary}
-            placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-3 top-3 text-muted-foreground">{placeholder}</span>}
+            placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-3 top-3 text-muted-foreground/50">{placeholder}</span>}
           />
           <VariableContentEditorPlugin
             maxLength={maxLength}

@@ -63,6 +63,7 @@ export type BranchNodeData = WorkflowNodeDataBase<"branch"> & {
 export type WorkflowVariableScope = "customer" | "node" | "system" | "trigger";
 export type WorkflowVariableValueType = "boolean" | "datetime" | "number" | "object" | "string";
 export type WorkflowVariableSelector = string[];
+export type WorkflowNodeOutputUsage = "message-content" | "variable";
 
 export type WorkflowVariableDefinition = {
   key: string;
@@ -73,12 +74,14 @@ export type WorkflowVariableDefinition = {
   sourceNodeKind?: WorkflowNodeKind;
   sourceNodeTitle?: string;
   type: WorkflowVariableValueType;
+  usages?: WorkflowNodeOutputUsage[];
 };
 
 export type WorkflowNodeOutputDefinition = {
   key: string;
   label: string;
   type: WorkflowVariableValueType;
+  usages: WorkflowNodeOutputUsage[];
 };
 
 export type WorkflowVariableContentSegment =
@@ -88,6 +91,8 @@ export type WorkflowVariableContentSegment =
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & {
   attachments: WorkbenchQuickReplyAttachment[];
   content: WorkflowVariableContentSegment[];
+  contentMode: "custom" | "node-output";
+  outputSelector?: WorkflowVariableSelector;
 };
 export type TagNodeData = WorkflowNodeDataBase<"tag">;
 export type CouponNodeData = WorkflowNodeDataBase<"coupon">;

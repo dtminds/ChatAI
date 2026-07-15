@@ -13,7 +13,16 @@ import type {
 } from "../types";
 import { getVariableContentText } from "../nodes/variable-content/content";
 import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
-import { getAvailableVariablesForNode, getInvalidVariableContentSelectors } from "../workflow-variables";
+import {
+  getAvailableMessageContentOutputsForNode,
+  getAvailableVariablesForNode,
+  getInvalidVariableContentSelectors,
+  resolveWorkflowVariable,
+} from "../workflow-variables";
+import {
+  normalizeWorkflowMessageContentMode,
+  normalizeWorkflowMessageOutputSelector,
+} from "../nodes/message/content-source";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -98,16 +107,39 @@ function validateNodeVariableContent(
 
   if (node.data.kind === "message") {
     const issues: WorkflowNodeValidationIssue[] = [];
-    if (getInvalidVariableContentSelectors(node.data.content, availableVariables).length) {
+    const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);
+
+    if (
+      contentMode === "custom"
+      && getInvalidVariableContentSelectors(node.data.content, availableVariables).length
+    ) {
       issues.push(createVariableContentIssue(
         "message-variable-invalid",
         "消息内容引用了不可用变量",
       ));
     }
-    if (getVariableContentText(node.data.content, availableVariables).length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH) {
+    if (
+      contentMode === "custom"
+      && getVariableContentText(node.data.content, availableVariables).length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH
+    ) {
       issues.push(createVariableContentIssue(
         "message-content-too-long",
         `消息内容不能超过 ${QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH} 字`,
+      ));
+    }
+
+    const outputSelector = normalizeWorkflowMessageOutputSelector(node.data.outputSelector);
+    if (
+      contentMode === "node-output"
+      && outputSelector
+      && !resolveWorkflowVariable(
+        getAvailableMessageContentOutputsForNode(node.id, nodes, edges),
+        outputSelector,
+      )
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-output-invalid",
+        "消息内容引用了不可用的节点输出",
       ));
     }
     return issues;

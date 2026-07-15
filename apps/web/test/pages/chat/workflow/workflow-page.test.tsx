@@ -19,10 +19,16 @@ import {
   orderedNodeDefinitions,
   paletteItems,
 } from "@/pages/chat/workflow/node-definitions";
+import {
+  createEdge,
+  createInitialDraft,
+  createNodeFromKind,
+} from "@/pages/chat/workflow/graph";
 import type { WorkflowNodeKind } from "@/pages/chat/workflow/types";
 import {
   getWorkflowDocument,
   getWorkflowDraftRepository,
+  importWorkflowDraft,
   resetWorkflowDocumentsForTest,
 } from "@/pages/chat/workflow/workflow-draft-service";
 import {
@@ -1236,6 +1242,46 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: "发送欢迎消息" })).toHaveTextContent("附件：1 个");
     await user.click(within(panel).getByRole("button", { name: "删除附件 新人活动图" }));
     expect(within(panel).queryByText("新人活动图")).not.toBeInTheDocument();
+  });
+
+  it("uses a guaranteed upstream message output without discarding custom content", async () => {
+    const user = setupCanvasUser();
+    const draft = createInitialDraft();
+    const llmNode = createNodeFromKind("llm", "llm-copy", 0);
+    importWorkflowDraft("newcomer-conversion", {
+      ...draft,
+      edges: [
+        ...draft.edges.filter((edge) => edge.target !== "message-welcome"),
+        createEdge("branch-intent", llmNode.id, undefined, { sourceHandle: "branch-high" }),
+        createEdge(llmNode.id, "message-welcome"),
+      ],
+      nodes: [
+        ...draft.nodes,
+        {
+          ...llmNode,
+          data: { ...llmNode.data, title: "生成营销文案" },
+        },
+      ],
+    });
+
+    renderWorkflowPage("/chat/workflows/newcomer-conversion");
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const messageNode = within(canvas).getByRole("button", { name: "发送欢迎消息" });
+    await user.click(messageNode);
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+
+    await user.click(within(panel).getByRole("radio", { name: "节点输出" }));
+    expect(within(panel).getByRole("button", { name: "添加附件" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("combobox", { name: "节点输出" }));
+    await user.click(await screen.findByRole("option", { name: "生成文本" }));
+
+    await waitFor(() => {
+      expect(messageNode).toHaveTextContent("生成营销文案.生成文本");
+    });
+    await user.click(within(panel).getByRole("radio", { name: "自定义消息" }));
+    expect(messageNode).toHaveTextContent("欢迎加入，这是为你准备的新人活动");
+    await user.click(within(panel).getByRole("radio", { name: "节点输出" }));
+    expect(within(panel).getByRole("combobox", { name: "节点输出" })).toHaveTextContent("生成文本");
   });
 
   it("closes and reopens the node config panel from canvas selection", async () => {

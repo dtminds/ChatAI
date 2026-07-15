@@ -32,12 +32,16 @@ export function hasInvalidWorkflowMessageAttachments(attachments: unknown) {
 export function getWorkflowMessageNodeStatus({
   attachments,
   hasContent,
+  requiresContent = false,
 }: {
   attachments: unknown;
   hasContent: boolean;
+  requiresContent?: boolean;
 }): WorkflowNodeStatus {
   const normalizedAttachments = normalizeWorkflowMessageAttachments(attachments);
-  const configured = hasContent || normalizedAttachments.length > 0;
+  const configured = requiresContent
+    ? hasContent
+    : hasContent || normalizedAttachments.length > 0;
 
   return configured && !hasInvalidWorkflowMessageAttachments(attachments)
     ? "ready"

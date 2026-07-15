@@ -24,8 +24,19 @@ export function getAvailableVariablesForNode(
 ): WorkflowVariableDefinition[] {
   return [
     ...workflowContextVariables,
-    ...getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap(getNodeOutputVariables),
+    ...getAvailableNodeOutputsForNode(nodeId, nodes, edges)
+      .filter((variable) => variable.usages?.includes("variable")),
   ];
+}
+
+export function getAvailableMessageContentOutputsForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return getAvailableNodeOutputsForNode(nodeId, nodes, edges).filter((variable) =>
+    variable.type === "string" && variable.usages?.includes("message-content"),
+  );
 }
 
 export function getGuaranteedUpstreamNodes(
@@ -92,6 +103,14 @@ export function getNodeOutputVariables(node: WorkflowNode): WorkflowVariableDefi
     node,
     getNodeDefinitionCore(node.data.kind).getOutputVariables?.(node) ?? [],
   );
+}
+
+function getAvailableNodeOutputsForNode(
+  nodeId: string,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+) {
+  return getGuaranteedUpstreamNodes(nodeId, nodes, edges).flatMap(getNodeOutputVariables);
 }
 
 export function scopeWorkflowNodeOutputs(

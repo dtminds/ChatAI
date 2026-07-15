@@ -457,6 +457,50 @@ describe("buildPublishChecks", () => {
     })).toEqual([]);
   });
 
+  it("requires a valid guaranteed upstream output in node-output mode", () => {
+    const llmNode = createNodeFromKind("llm", "llm-copy", 0);
+    const initialNodes = createInitialNodes();
+    const messageNode = initialNodes.find(
+      (node): node is WorkflowNode<"message"> =>
+        node.id === "message-welcome" && node.data.kind === "message",
+    )!;
+    const nodes = [
+      ...initialNodes,
+      {
+        ...llmNode,
+        data: { ...llmNode.data, title: "生成营销文案" },
+      },
+    ];
+    const edges = [
+      ...createInitialEdges().filter((edge) => edge.target !== messageNode.id),
+      createEdge("branch-intent", llmNode.id, undefined, { sourceHandle: "branch-high" }),
+      createEdge(llmNode.id, messageNode.id),
+    ];
+    const validate = (data: WorkflowNode<"message">["data"]) =>
+      validateWorkflowNodeConfig(
+        { ...messageNode, data },
+        nodes.map((node) => node.id === messageNode.id ? { ...messageNode, data } : node),
+        edges,
+      );
+
+    expect(validate({
+      ...messageNode.data,
+      attachments: [],
+      contentMode: "node-output",
+      outputSelector: undefined,
+    })).toContainEqual(expect.objectContaining({ code: "message-output-required" }));
+    expect(validate({
+      ...messageNode.data,
+      contentMode: "node-output",
+      outputSelector: ["node", "branch-intent", "matchedPathLabel"],
+    })).toContainEqual(expect.objectContaining({ code: "message-output-invalid" }));
+    expect(validate({
+      ...messageNode.data,
+      contentMode: "node-output",
+      outputSelector: ["node", llmNode.id, "text"],
+    })).toEqual([]);
+  });
+
   it("validates message length, attachment count and attachment payloads", () => {
     const nodes = createInitialNodes();
     const edges = createInitialEdges();

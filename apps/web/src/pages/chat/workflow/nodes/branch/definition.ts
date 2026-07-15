@@ -77,11 +77,13 @@ export const branchNodeDefinition: WorkflowNodeDefinition<"branch"> = {
       key: "matchedPathId",
       label: "命中分支ID",
       type: "string",
+      usages: ["variable"],
     },
     {
       key: "matchedPathLabel",
       label: "命中分支名称",
       type: "string",
+      usages: ["variable"],
     },
   ],
   sanitizeData: (data) => ({

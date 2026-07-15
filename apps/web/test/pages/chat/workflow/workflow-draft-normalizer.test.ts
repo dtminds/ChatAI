@@ -323,7 +323,9 @@ describe("workflow draft normalizer", () => {
             { content: {}, type: "unsupported" },
           ],
           content: [{ type: "text", value: "查看商品图" }],
+          contentMode: "node-output",
           kind: "message",
+          outputSelector: ["node", "llm-copy", "text"],
           title: "外部消息节点",
         },
         id: "message-1",
@@ -343,7 +345,9 @@ describe("workflow draft normalizer", () => {
         type: "image",
       }],
       content: [{ type: "text", value: "查看商品图" }],
+      contentMode: "node-output",
       kind: "message",
+      outputSelector: ["node", "llm-copy", "text"],
     });
     const messageNode = draft.nodes[0];
     expect(messageNode?.data.kind).toBe("message");

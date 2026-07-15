@@ -1,12 +1,31 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
+import {
+  getWorkflowVariableDisplayLabel,
+  resolveWorkflowVariable,
+} from "../../workflow-variables";
 import { getVariableContentPreview } from "../variable-content/content";
 import { normalizeWorkflowMessageAttachments } from "./attachments";
+import {
+  normalizeWorkflowMessageContentMode,
+  normalizeWorkflowMessageOutputSelector,
+} from "./content-source";
 import { MessageConfig } from "./panel";
 
 export const messageNodeUi: WorkflowNodeUiBinding<"message"> = {
   body: {
     getFields: (data) => {
-      const contentPreview = getVariableContentPreview(data.content, data.availableVariables);
+      const contentMode = normalizeWorkflowMessageContentMode(data.contentMode);
+      const outputSelector = normalizeWorkflowMessageOutputSelector(data.outputSelector);
+      const resolvedOutput = outputSelector
+        ? resolveWorkflowVariable(data.availableVariables ?? [], outputSelector)
+        : undefined;
+      const selectedOutput = resolvedOutput?.type === "string"
+        && resolvedOutput.usages?.includes("message-content")
+        ? resolvedOutput
+        : undefined;
+      const contentPreview = contentMode === "node-output"
+        ? selectedOutput ? getWorkflowVariableDisplayLabel(selectedOutput) : ""
+        : getVariableContentPreview(data.content, data.availableVariables);
       const attachmentCount = normalizeWorkflowMessageAttachments(data.attachments).length;
 
       return [{
@@ -14,7 +33,12 @@ export const messageNodeUi: WorkflowNodeUiBinding<"message"> = {
         label: "消息内容",
         value: contentPreview
           ? { kind: "text", maxLines: 3, text: contentPreview }
-          : { kind: "empty" },
+          : {
+              kind: "empty",
+              text: contentMode === "node-output" && outputSelector
+                ? "输出不可用"
+                : undefined,
+            },
       },
       {
         id: "attachments",

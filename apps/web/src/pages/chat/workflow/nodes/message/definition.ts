@@ -3,6 +3,7 @@ import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
 } from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
+import { pickDefinedWorkflowConfig } from "../definition-shared";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import {
   getVariableContentText,
@@ -12,6 +13,10 @@ import {
   hasInvalidWorkflowMessageAttachments,
   normalizeWorkflowMessageAttachments,
 } from "./attachments";
+import {
+  normalizeWorkflowMessageContentMode,
+  normalizeWorkflowMessageOutputSelector,
+} from "./content-source";
 
 const baseMessageNodeDefinition = createStandardNodeDefinition({
   accentClassName: "bg-sky-500 text-white ring-sky-500/20",
@@ -31,27 +36,55 @@ export const messageNodeDefinition: WorkflowNodeDefinition<"message"> = {
     ...baseMessageNodeDefinition.createDefaultData(),
     attachments: [],
     content: [],
+    contentMode: "custom",
     metric: "待配置消息内容",
+    schemaVersion: 2,
     status: "warning",
   }),
-  createExecutionConfig: (data) => ({
-    attachments: normalizeWorkflowMessageAttachments(data.attachments),
-    content: normalizeVariableContent(data.content),
-  }),
+  createExecutionConfig: (data) => {
+    const attachments = normalizeWorkflowMessageAttachments(data.attachments);
+    const contentMode = normalizeWorkflowMessageContentMode(data.contentMode);
+
+    return contentMode === "node-output"
+      ? pickDefinedWorkflowConfig({
+          attachments,
+          contentMode,
+          outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
+        })
+      : {
+          attachments,
+          content: normalizeVariableContent(data.content),
+          contentMode,
+        };
+  },
   sanitizeData: (data) => ({
     ...data,
     attachments: normalizeWorkflowMessageAttachments(data.attachments),
     content: normalizeVariableContent(data.content),
+    contentMode: normalizeWorkflowMessageContentMode(data.contentMode),
+    outputSelector: normalizeWorkflowMessageOutputSelector(data.outputSelector),
   }),
+  schemaVersion: 2,
   validate: (node) => {
+    const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);
     const contentText = getVariableContentText(node.data.content).trim();
     const attachments = normalizeWorkflowMessageAttachments(node.data.attachments);
     const issues = [];
 
-    if (!contentText && attachments.length === 0) {
+    if (contentMode === "custom" && !contentText && attachments.length === 0) {
       issues.push(createMessageIssue(
         "message-content-required",
         "消息节点需要配置消息内容或附件",
+      ));
+    }
+
+    if (
+      contentMode === "node-output"
+      && !normalizeWorkflowMessageOutputSelector(node.data.outputSelector)
+    ) {
+      issues.push(createMessageIssue(
+        "message-output-required",
+        "消息节点需要选择一个节点输出",
       ));
     }
 

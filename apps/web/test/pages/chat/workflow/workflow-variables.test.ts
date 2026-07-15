@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createEdge, createInitialEdges, createInitialNodes } from "@/pages/chat/workflow/graph";
 import {
+  createEdge,
+  createInitialEdges,
+  createInitialNodes,
+  createNodeFromKind,
+} from "@/pages/chat/workflow/graph";
+import {
+  getAvailableMessageContentOutputsForNode,
   getAvailableVariablesForNode,
   getGuaranteedUpstreamNodes,
   getInvalidVariableContentSelectors,
@@ -80,6 +86,7 @@ describe("workflow variables", () => {
       key: "resumedAt",
       label: "继续时间",
       type: "datetime",
+      usages: ["variable"],
     }])).toEqual([{
       key: "resumedAt",
       label: "继续时间",
@@ -89,6 +96,33 @@ describe("workflow variables", () => {
       sourceNodeKind: "wait",
       sourceNodeTitle: "观察期",
       type: "datetime",
+      usages: ["variable"],
     }]);
+  });
+
+  it("only exposes guaranteed upstream outputs explicitly declared as message content", () => {
+    const baseLlmNode = createNodeFromKind("llm", "llm-copy", 0);
+    const llmNode = {
+      ...baseLlmNode,
+      data: {
+        ...baseLlmNode.data,
+        title: "生成营销文案",
+      },
+    };
+    const nodes = [...createInitialNodes(), llmNode];
+    const edges = [
+      ...createInitialEdges().filter((edge) => edge.target !== "message-welcome"),
+      createEdge("branch-intent", "llm-copy", undefined, { sourceHandle: "branch-high" }),
+      createEdge("llm-copy", "message-welcome"),
+    ];
+
+    expect(getAvailableMessageContentOutputsForNode("message-welcome", nodes, edges)).toEqual([
+      expect.objectContaining({
+        label: "生成文本",
+        selector: ["node", "llm-copy", "text"],
+        sourceNodeTitle: "生成营销文案",
+      }),
+    ]);
+    expect(getAvailableMessageContentOutputsForNode("llm-copy", nodes, edges)).toEqual([]);
   });
 });

@@ -45,5 +45,10 @@ describe("workflow message attachments", () => {
       attachments: [validImageAttachment],
       hasContent: false,
     })).toBe("ready");
+    expect(getWorkflowMessageNodeStatus({
+      attachments: [validImageAttachment],
+      hasContent: false,
+      requiresContent: true,
+    })).toBe("warning");
   });
 });

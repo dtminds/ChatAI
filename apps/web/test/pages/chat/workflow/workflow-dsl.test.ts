@@ -118,6 +118,7 @@ describe("workflow DSL", () => {
         { type: "text", value: "你好，" },
         { selector: ["customer", "name"], type: "variable" },
       ],
+      contentMode: "custom",
     });
     expect(executionNode.config.kind).toBeUndefined();
     expect(executionNode.config.title).toBeUndefined();
@@ -138,6 +139,31 @@ describe("workflow DSL", () => {
       "message-welcome",
       "end",
     ]);
+  });
+
+  it("emits only the active message content source in execution config", () => {
+    const draft = createInitialDraft();
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "message-welcome"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              contentMode: "node-output",
+              outputSelector: ["node", "llm-copy", "text"],
+            },
+          }
+        : node),
+    });
+    const messageConfig = graph.nodes.find((node) => node.id === "message-welcome")?.config;
+
+    expect(messageConfig).toEqual({
+      attachments: [],
+      contentMode: "node-output",
+      outputSelector: ["node", "llm-copy", "text"],
+    });
+    expect(messageConfig).not.toHaveProperty("content");
   });
 
   it("round-trips exported workflow DSL text through the import boundary", () => {
@@ -392,6 +418,7 @@ describe("workflow DSL", () => {
     expect(configByKind.get("message")).toEqual({
       attachments: [],
       content: [{ type: "text", value: "欢迎加入，这是为你准备的新人活动" }],
+      contentMode: "custom",
     });
     expect(configByKind.get("handoff")).toEqual({
       customerMessage: [],

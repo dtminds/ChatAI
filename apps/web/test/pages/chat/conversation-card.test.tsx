@@ -136,6 +136,76 @@ describe("ConversationCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows a red takeover reminder prefix when waitManual is true", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          mode: "group",
+          preview:
+            "Agent 转人工处理：客户明确要求转人工，同时存在不满情绪，符合handoff规则",
+          waitManual: true,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("conversation-handoff-takeover-prefix"),
+    ).toHaveTextContent("[接管提醒]");
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "[接管提醒]客户明确要求转人工，同时存在不满情绪，符合handoff规则",
+    );
+  });
+
+  it("hides takeover reminder prefix when waitManual is false", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          preview: "Agent 转人工处理：客户明确要求转人工",
+          waitManual: false,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("conversation-handoff-takeover-prefix"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "Agent 转人工处理：客户明确要求转人工",
+    );
+  });
+
+  it("prefers draft preview over waitManual takeover reminder", () => {
+    render(
+      <ConversationCard
+        composerDraft={{
+          draft: "还没发出去",
+          quotedMessage: null,
+          segments: [{ text: "还没发出去", type: "text" }],
+        }}
+        conversation={{
+          ...conversation,
+          preview: "Agent 转人工处理：客户明确要求转人工",
+          waitManual: true,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-draft-prefix")).toHaveTextContent(
+      "[草稿]",
+    );
+    expect(
+      screen.queryByTestId("conversation-handoff-takeover-prefix"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {
     const user = userEvent.setup();
     const { rerender } = render(

@@ -2751,6 +2751,7 @@ function buildInitialState(): MockState {
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
           conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
+          waitManual: conversation.waitManual === true,
           customerAvatar: conversation.customerAvatarUrl,
           customerBindType:
             conversation.mode === "single"

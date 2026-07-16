@@ -68,6 +68,7 @@ describe("workbench MySQL mappers", () => {
         customer_bind_type: 1,
         customer_name: "客户备注",
         full_auto_switch: 1,
+        wait_manual: 1,
         group_avatar: "",
         group_name: "",
         id: 88,
@@ -86,6 +87,7 @@ describe("workbench MySQL mappers", () => {
     expect(conversation).toMatchObject({
       conversationId: "88",
       conversationAIHostingSwitch: true,
+      waitManual: true,
       customerAvatar: "https://example.com/customer.png",
       customerBindType: 1,
       customerId: "external-1",
@@ -1217,6 +1219,7 @@ describe("workbench MySQL mappers", () => {
         last_message_content: "",
         last_message_type: "text",
         full_auto_switch: 0,
+        wait_manual: 0,
         last_msgtime: "2026-05-09T08:31:00.000Z",
         pinned_time: 0,
         seat_id: 12,
@@ -1227,6 +1230,7 @@ describe("workbench MySQL mappers", () => {
       }),
     ).toMatchObject({
       conversationAIHostingSwitch: false,
+      waitManual: false,
       lastMessageTime: 1778315460000,
     });
 

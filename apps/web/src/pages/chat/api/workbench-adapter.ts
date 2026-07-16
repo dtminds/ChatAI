@@ -79,6 +79,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
   return {
     accountId: dto.seatId,
     conversationAIHostingSwitch: dto.conversationAIHostingSwitch,
+    waitManual: dto.waitManual === true,
     bizStatus: dto.bizStatus ?? 0,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,

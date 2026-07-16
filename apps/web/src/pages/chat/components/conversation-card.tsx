@@ -27,6 +27,7 @@ import {
   hasConversationComposerDraftContent,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { getConversationHandoffTakeoverPreviewParts } from "@/pages/chat/lib/conversation-handoff-preview";
 
 export function ConversationCard({
   composerDraft,
@@ -58,6 +59,11 @@ export function ConversationCard({
     composerDraft && hasConversationComposerDraftContent(composerDraft)
       ? getConversationComposerDraftPreviewParts(composerDraft)
       : null;
+  const handoffPreviewParts =
+    !draftPreviewParts && conversation.waitManual === true
+      ? getConversationHandoffTakeoverPreviewParts(conversation.preview)
+      : null;
+  const taggedPreviewParts = draftPreviewParts ?? handoffPreviewParts;
   const conversationMenuItems = [
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
@@ -142,16 +148,20 @@ export function ConversationCard({
               )}
               data-testid="conversation-preview"
             >
-              {draftPreviewParts ? (
+              {taggedPreviewParts ? (
                 <>
                   <span
                     className="shrink-0 text-destructive"
-                    data-testid="conversation-draft-prefix"
+                    data-testid={
+                      draftPreviewParts
+                        ? "conversation-draft-prefix"
+                        : "conversation-handoff-takeover-prefix"
+                    }
                   >
-                    {draftPreviewParts.prefix}
+                    {taggedPreviewParts.prefix}
                   </span>
-                  {draftPreviewParts.body ? (
-                    <span className="truncate">{draftPreviewParts.body}</span>
+                  {taggedPreviewParts.body ? (
+                    <span className="truncate">{taggedPreviewParts.body}</span>
                   ) : null}
                 </>
               ) : (

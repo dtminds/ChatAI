@@ -780,6 +780,10 @@ export interface XyWapEmbedConversation {
    */
   full_auto_switch: Generated<number>;
   /**
+   * 是否待人工处理：0 不需要，1 需要（用于会话列表「接管提醒」）
+   */
+  wait_manual: Generated<number>;
+  /**
    * id
    */
   id: Generated<number>;

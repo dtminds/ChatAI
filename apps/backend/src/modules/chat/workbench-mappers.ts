@@ -45,6 +45,7 @@ export type ConversationRow = {
   customer_name: string | null;
   contact_original_name: string | null;
   full_auto_switch?: number | string | boolean | null;
+  wait_manual?: number | string | boolean | null;
   group_avatar: string | null;
   group_name: string | null;
   group_remark: string | null;
@@ -201,6 +202,7 @@ export function mapConversationRow(
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
+    waitManual: readBooleanFlag(row.wait_manual),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerBindType,

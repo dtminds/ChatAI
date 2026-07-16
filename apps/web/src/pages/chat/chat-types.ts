@@ -67,6 +67,11 @@ export type Conversation = {
   id: string;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
+  /**
+   * 是否待人工处理，对应 `xy_wap_embed_conversation.wait_manual`；
+   * 为 true 时会话列表展示红色「[接管提醒]」
+   */
+  waitManual?: boolean;
   /** 托管状态栏展示状态 */
   agentHostingStatus?:
     | "active"

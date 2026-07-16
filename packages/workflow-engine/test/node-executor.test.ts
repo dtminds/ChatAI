@@ -75,7 +75,7 @@ describe("core node executors", () => {
   });
 
   it("resumes fixed-time waits on the configured local day and time", async () => {
-    const expectedDueAt = new Date(2025, 2, 26, 9, 0, 0).toISOString();
+    const expectedDueAt = "2025-03-26T01:00:00.000Z";
     const fixedTimeNode = node("wait", {
       dayOffset: 1,
       mode: "fixed-time",
@@ -83,14 +83,21 @@ describe("core node executors", () => {
     });
 
     await expect(registry.execute(fixedTimeNode, context({
-      now: new Date(2025, 2, 25, 9, 30, 0),
+      now: new Date("2025-03-25T01:30:00.000Z"),
     }))).resolves.toEqual({
       dueAt: expectedDueAt,
       output: { dueAt: expectedDueAt },
       type: "wait",
     });
     await expect(registry.execute(fixedTimeNode, context({
-      now: new Date(2025, 2, 25, 23, 59, 0),
+      now: new Date("2025-03-25T15:59:00.000Z"),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date("2025-03-24T16:30:00.000Z"),
     }))).resolves.toEqual({
       dueAt: expectedDueAt,
       output: { dueAt: expectedDueAt },

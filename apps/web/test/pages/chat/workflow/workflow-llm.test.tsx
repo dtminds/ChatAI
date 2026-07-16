@@ -12,9 +12,12 @@ import {
 } from "@/pages/chat/workflow/nodes/llm/config";
 import { LlmConfig } from "@/pages/chat/workflow/nodes/llm/panel";
 import { llmNodeUi } from "@/pages/chat/workflow/nodes/llm/ui";
+import { BasePanel } from "@/pages/chat/workflow/panels/base-panel";
 import {
   SettingWorkspace,
+  SettingWorkspaceEditorContent,
   SettingWorkspaceProvider,
+  useSettingWorkspace,
 } from "@/pages/chat/workflow/panels/setting-workspace";
 import type {
   LlmNodeData,
@@ -445,6 +448,31 @@ describe("workflow LLM node", () => {
     expect(screen.queryByRole("region", { name: "用户提示词展开编辑" })).not.toBeInTheDocument();
   });
 
+  it("keeps the expanded editor open when Escape cancels settings rename", async () => {
+    const user = userEvent.setup();
+    const node = createLlmNode({ title: "生成营销文案" });
+
+    render(
+      <SettingWorkspaceProvider>
+        <SettingWorkspace>
+          <BasePanel node={node} onClose={vi.fn()} onRenameNode={vi.fn()}>
+            <ExpandedEditorFixture />
+          </BasePanel>
+        </SettingWorkspace>
+      </SettingWorkspaceProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "展开编辑" }));
+    expect(screen.getByRole("region", { name: "测试展开编辑" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+    await user.type(await screen.findByRole("textbox", { name: "节点名称" }), "{Escape}");
+
+    expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "测试展开编辑" })).toBeInTheDocument();
+  });
+
   it("switches output formats without changing the stable field ID and limits JSON fields", async () => {
     const user = userEvent.setup();
     const node = createLlmNode({ modelId: model.id });
@@ -522,6 +550,21 @@ function StatefulLlmConfig({
         </aside>
       </SettingWorkspace>
     </SettingWorkspaceProvider>
+  );
+}
+
+function ExpandedEditorFixture() {
+  const { openEditor } = useSettingWorkspace();
+
+  return (
+    <>
+      <button onClick={() => openEditor({ id: "test", title: "测试" })} type="button">
+        展开编辑
+      </button>
+      <SettingWorkspaceEditorContent id="test">
+        <div data-testid="expanded-editor-content" />
+      </SettingWorkspaceEditorContent>
+    </>
   );
 }
 

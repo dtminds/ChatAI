@@ -85,6 +85,7 @@ function PanelHeader({
                   }
                   if (event.key === "Escape") {
                     event.preventDefault();
+                    event.stopPropagation();
                     renameCancelledRef.current = true;
                     setRenameValue(node.data.title);
                     setIsRenaming(false);

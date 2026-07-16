@@ -51,6 +51,7 @@ type WorkflowBranchPathConfig = {
 
 // Published v1 wait specs omitted mode and used one shared duration limit.
 const LEGACY_WORKFLOW_WAIT_DURATION_MAX = 525_600;
+const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
 
 export class WorkflowNodeExecutorRegistry {
   private readonly executors = new Map<WorkflowNodeKind, WorkflowNodeExecutor>();
@@ -161,10 +162,15 @@ function getFixedTimeWaitDueAt(config: Record<string, unknown>, enteredAt: Date)
     throw new WorkflowNodeExecutionError("Wait node requires a valid day offset and fixed time");
   }
   const [hour, minute] = time.split(":").map(Number) as [number, number];
-  const dueAt = new Date(enteredAt);
-  dueAt.setDate(dueAt.getDate() + dayOffset);
-  dueAt.setHours(hour, minute, 0, 0);
-  return dueAt.toISOString();
+  const enteredAtUtc8 = new Date(enteredAt.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
+  const dueAtUtc8WallClock = Date.UTC(
+    enteredAtUtc8.getUTCFullYear(),
+    enteredAtUtc8.getUTCMonth(),
+    enteredAtUtc8.getUTCDate() + dayOffset,
+    hour,
+    minute,
+  );
+  return new Date(dueAtUtc8WallClock - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS).toISOString();
 }
 
 function executeBranch(

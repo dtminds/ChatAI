@@ -47,7 +47,8 @@ COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=builder /app/packages/workflow-engine/dist ./packages/workflow-engine/dist
 COPY --from=builder /app/packages/workflow-runtime/dist ./packages/workflow-runtime/dist
 
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+  TZ=Asia/Shanghai
 EXPOSE 3002
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

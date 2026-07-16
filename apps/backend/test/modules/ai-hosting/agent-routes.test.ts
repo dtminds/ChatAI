@@ -740,7 +740,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("saves group hosting settings with reply rule config", async () => {
+  it("upserts group hosting settings with reply rule config", async () => {
     const { app, authorization, db } = await createAiHostingApp(["admin"], {
       bulkHostingSeats: true,
       dataUid: 272,
@@ -798,6 +798,26 @@ describe("AI hosting agent routes", () => {
         }),
       ]),
     );
+    expect(db.insertedGroupHostingConfigBatches).toEqual([
+      [
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          full_auto_config: JSON.stringify({ replyMode: 2 }),
+          semi_auto_auth: 1,
+          uid: 272,
+          user_seat_id: 101,
+        },
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          full_auto_config: JSON.stringify({ replyMode: 2 }),
+          semi_auto_auth: 1,
+          uid: 272,
+          user_seat_id: 102,
+        },
+      ],
+    ]);
     expect(db.updatedGroupHostingConfigs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -815,7 +835,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("saves hosting settings with bulk writes after checking existing seat-agent rows", async () => {
+  it("upserts hosting settings in one bulk write after checking existing seat-agent rows", async () => {
     const { app, authorization, db } = await createAiHostingApp(["admin"], {
       bulkHostingSeats: true,
       dataUid: 272,
@@ -886,14 +906,40 @@ describe("AI hosting agent routes", () => {
           full_auto_auth: 1,
           semi_auto_auth: 1,
           uid: 272,
+          user_seat_id: 102,
+        },
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          uid: 272,
           user_seat_id: 103,
+        },
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          uid: 272,
+          user_seat_id: 104,
         },
       ],
     ]);
-    expect(db.insertedHostingConfigs).toEqual(db.insertedHostingConfigBatches[0]);
+    expect(db.insertedHostingConfigs).toEqual([
+      expect.objectContaining({ user_seat_id: 101 }),
+      expect.objectContaining({ user_seat_id: 103 }),
+    ]);
     expect(db.updatedHostingConfigs).toEqual([
       {
-        userSeatIds: [102, 104],
+        userSeatIds: [102],
+        values: {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          update_time: expect.any(Date),
+        },
+      },
+      {
+        userSeatIds: [104],
         values: {
           agent_id: 301,
           full_auto_auth: 1,
@@ -2050,8 +2096,82 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       return builder;
     },
     insertInto(table: string) {
+      let duplicateUpdateValues: Record<string, unknown> | undefined;
+      let pendingRows: Array<Record<string, unknown>> = [];
       const builder = {
+        execute: async () => {
+          if (table === "xy_wap_embed_user_seat_agent") {
+            for (const row of pendingRows) {
+              const config = hostingConfigs.find(
+                (item) =>
+                  item.uid === Number(row.uid) &&
+                  item.user_seat_id === Number(row.user_seat_id),
+              );
+
+              if (config) {
+                Object.assign(config, duplicateUpdateValues);
+                state.updatedHostingConfigs.push({
+                  userSeatIds: [Number(row.user_seat_id)],
+                  values: duplicateUpdateValues ?? {},
+                });
+                continue;
+              }
+
+              state.insertedHostingConfigs.push(row);
+              hostingConfigs.push({
+                agent_id: Number(row.agent_id),
+                full_auto_auth: Number(row.full_auto_auth),
+                full_auto_switch: Number(row.full_auto_switch ?? 0),
+                id: 802 + state.insertedHostingConfigs.length,
+                semi_auto_auth: Number(row.semi_auto_auth),
+                semi_auto_switch: Number(row.semi_auto_switch ?? 0),
+                uid: Number(row.uid),
+                user_seat_id: Number(row.user_seat_id),
+              });
+            }
+
+            return [];
+          }
+
+          if (table === "xy_wap_embed_user_seat_group_agent") {
+            for (const row of pendingRows) {
+              const config = groupHostingConfigs.find(
+                (item) =>
+                  item.uid === Number(row.uid) &&
+                  item.user_seat_id === Number(row.user_seat_id),
+              );
+
+              if (config) {
+                Object.assign(config, duplicateUpdateValues);
+                state.updatedGroupHostingConfigs.push({
+                  userSeatIds: [Number(row.user_seat_id)],
+                  values: duplicateUpdateValues ?? {},
+                });
+                continue;
+              }
+
+              state.insertedGroupHostingConfigs.push(row);
+              groupHostingConfigs.push({
+                agent_id: Number(row.agent_id),
+                full_auto_auth: Number(row.full_auto_auth),
+                full_auto_config: String(row.full_auto_config ?? ""),
+                id: 902 + state.insertedGroupHostingConfigs.length,
+                semi_auto_auth: Number(row.semi_auto_auth),
+                uid: Number(row.uid),
+                user_seat_id: Number(row.user_seat_id),
+              });
+            }
+
+            return [];
+          }
+
+          throw new Error(`Unexpected insert execute table: ${table}`);
+        },
         executeTakeFirstOrThrow: async () => ({ insertId: table === "xy_wap_embed_agent" ? 302 : 702 }),
+        onDuplicateKeyUpdate: (values: Record<string, unknown>) => {
+          duplicateUpdateValues = values;
+          return builder;
+        },
         values: (values: Record<string, unknown> | Array<Record<string, unknown>>) => {
           if (table === "xy_wap_embed_agent") {
             if (Array.isArray(values)) {
@@ -2077,39 +2197,14 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           if (table === "xy_wap_embed_user_seat_agent") {
             const rows = Array.isArray(values) ? values : [values];
             state.insertedHostingConfigBatches.push(rows);
-
-            for (const row of rows) {
-              state.insertedHostingConfigs.push(row);
-              hostingConfigs.push({
-                agent_id: Number(row.agent_id),
-                full_auto_auth: Number(row.full_auto_auth),
-                full_auto_switch: Number(row.full_auto_switch ?? 0),
-                id: 802 + state.insertedHostingConfigs.length,
-                semi_auto_auth: Number(row.semi_auto_auth),
-                semi_auto_switch: Number(row.semi_auto_switch ?? 0),
-                uid: Number(row.uid),
-                user_seat_id: Number(row.user_seat_id),
-              });
-            }
+            pendingRows = rows;
             return builder;
           }
 
           if (table === "xy_wap_embed_user_seat_group_agent") {
             const rows = Array.isArray(values) ? values : [values];
             state.insertedGroupHostingConfigBatches.push(rows);
-
-            for (const row of rows) {
-              state.insertedGroupHostingConfigs.push(row);
-              groupHostingConfigs.push({
-                agent_id: Number(row.agent_id),
-                full_auto_auth: Number(row.full_auto_auth),
-                full_auto_config: String(row.full_auto_config ?? ""),
-                id: 902 + state.insertedGroupHostingConfigs.length,
-                semi_auto_auth: Number(row.semi_auto_auth),
-                uid: Number(row.uid),
-                user_seat_id: Number(row.user_seat_id),
-              });
-            }
+            pendingRows = rows;
             return builder;
           }
 

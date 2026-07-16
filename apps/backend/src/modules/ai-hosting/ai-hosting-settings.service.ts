@@ -105,46 +105,25 @@ export class AiHostingSettingsService {
 
     const currentConfigs = await this.listUserSeatAgentRows(scope, userSeatIds);
     assertFullAutoAuthUpdateAllowed(scope.uid, payload, userSeatIds, currentConfigs);
-    const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
-    const insertRows: UserSeatAgentInsert[] = [];
-    const updateSeatIds: number[] = [];
     const values = {
       agent_id: agentId,
       full_auto_auth: payload.fullAutoAuth ? 1 : 0,
       semi_auto_auth: payload.semiAutoAuth ? 1 : 0,
     };
+    const rows: UserSeatAgentInsert[] = userSeatIds.map((userSeatId) => ({
+      ...values,
+      uid: scope.uid,
+      user_seat_id: userSeatId,
+    }));
 
-    for (const userSeatId of userSeatIds) {
-      if (existingSeatIds.has(userSeatId)) {
-        updateSeatIds.push(userSeatId);
-        continue;
-      }
-
-      insertRows.push({
+    await this.db
+      .insertInto("xy_wap_embed_user_seat_agent")
+      .values(rows)
+      .onDuplicateKeyUpdate({
         ...values,
-        uid: scope.uid,
-        user_seat_id: userSeatId,
-      });
-    }
-
-    if (insertRows.length > 0) {
-      await this.db
-        .insertInto("xy_wap_embed_user_seat_agent")
-        .values(insertRows)
-        .executeTakeFirstOrThrow();
-    }
-
-    if (updateSeatIds.length > 0) {
-      await this.db
-        .updateTable("xy_wap_embed_user_seat_agent")
-        .set({
-          ...values,
-          update_time: new Date(),
-        })
-        .where("uid", "=", scope.uid)
-        .where("user_seat_id", "in", updateSeatIds)
-        .execute();
-    }
+        update_time: new Date(),
+      })
+      .execute();
 
     return this.listHostingSettings(scope);
   }
@@ -169,47 +148,26 @@ export class AiHostingSettingsService {
 
     const currentConfigs = await this.listUserSeatGroupAgentRows(scope, userSeatIds);
     assertGroupFullAutoAuthUpdateAllowed(scope.uid, payload, userSeatIds, currentConfigs);
-    const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
-    const insertRows: UserSeatGroupAgentInsert[] = [];
-    const updateSeatIds: number[] = [];
     const values = {
       agent_id: agentId,
       full_auto_auth: payload.fullAutoAuth ? 1 : 0,
       full_auto_config: serializeGroupFullAutoConfig(payload.replyMode),
       semi_auto_auth: payload.semiAutoAuth ? 1 : 0,
     };
+    const rows: UserSeatGroupAgentInsert[] = userSeatIds.map((userSeatId) => ({
+      ...values,
+      uid: scope.uid,
+      user_seat_id: userSeatId,
+    }));
 
-    for (const userSeatId of userSeatIds) {
-      if (existingSeatIds.has(userSeatId)) {
-        updateSeatIds.push(userSeatId);
-        continue;
-      }
-
-      insertRows.push({
+    await this.db
+      .insertInto("xy_wap_embed_user_seat_group_agent")
+      .values(rows)
+      .onDuplicateKeyUpdate({
         ...values,
-        uid: scope.uid,
-        user_seat_id: userSeatId,
-      });
-    }
-
-    if (insertRows.length > 0) {
-      await this.db
-        .insertInto("xy_wap_embed_user_seat_group_agent")
-        .values(insertRows)
-        .executeTakeFirstOrThrow();
-    }
-
-    if (updateSeatIds.length > 0) {
-      await this.db
-        .updateTable("xy_wap_embed_user_seat_group_agent")
-        .set({
-          ...values,
-          update_time: new Date(),
-        })
-        .where("uid", "=", scope.uid)
-        .where("user_seat_id", "in", updateSeatIds)
-        .execute();
-    }
+        update_time: new Date(),
+      })
+      .execute();
 
     return this.listHostingSettings(scope);
   }

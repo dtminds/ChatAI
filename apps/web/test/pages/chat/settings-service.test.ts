@@ -141,13 +141,13 @@ describe("settings service", () => {
     });
 
     await updateGroupChatReception({
-      groupChatIds: ["501"],
+      groupChatId: "501",
       hostUserSeatIds: ["102"],
     });
 
     expect(mock.history.put[0]?.url).toBe("/server/settings/group-chats/reception");
     expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
-      groupChatIds: ["501"],
+      groupChatId: "501",
       hostUserSeatIds: ["102"],
     });
   });

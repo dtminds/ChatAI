@@ -149,7 +149,7 @@ describe("GroupChatSettingsService", () => {
     expect(result.availableManagedAccounts).toEqual([]);
   });
 
-  it("updates reception seats through Java API and ignores seats outside each group", async () => {
+  it("updates one group reception setting through one Java API call", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
     const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
 
@@ -157,23 +157,17 @@ describe("GroupChatSettingsService", () => {
       service.updateReception(
         { platform: 5, uid: 9001 },
         {
-          groupChatIds: ["501", "502"],
+          groupChatId: "501",
           hostUserSeatIds: ["101", "102"],
         },
         { setGroupSeatHostUserSeatIds } as never,
       ),
     ).resolves.toEqual({ updated: true });
 
-    expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledTimes(2);
-    expect(setGroupSeatHostUserSeatIds).toHaveBeenNthCalledWith(1, {
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledTimes(1);
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledWith({
       groupSeatId: 501,
       hostUserSeatIds: [102],
-      platform: 5,
-      uid: 9001,
-    });
-    expect(setGroupSeatHostUserSeatIds).toHaveBeenNthCalledWith(2, {
-      groupSeatId: 502,
-      hostUserSeatIds: [101],
       platform: 5,
       uid: 9001,
     });

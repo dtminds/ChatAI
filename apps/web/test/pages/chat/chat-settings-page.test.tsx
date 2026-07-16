@@ -24,6 +24,8 @@ vi.mock("sonner", async (importOriginal) => {
 });
 
 const mock = new MockAdapter(requestInstance);
+const groupChatReceptionUpdateGates = new Map<string, Promise<void>>();
+const groupChatReceptionUpdateStatuses = new Map<string, number>();
 
 function createDomRect(rect: Partial<DOMRect>): DOMRect {
   return {
@@ -86,6 +88,8 @@ describe("Chat settings pages", () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
+    groupChatReceptionUpdateGates.clear();
+    groupChatReceptionUpdateStatuses.clear();
     resetWorkbenchService();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
@@ -283,9 +287,19 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
-    mock.onPut("/server/settings/group-chats/reception").reply(200, {
-      data: { updated: true },
-      success: true,
+    mock.onPut("/server/settings/group-chats/reception").reply(async (config) => {
+      const { groupChatId } = JSON.parse(config.data ?? "{}") as { groupChatId?: string };
+      const gate = groupChatId ? groupChatReceptionUpdateGates.get(groupChatId) : undefined;
+
+      if (gate) {
+        await gate;
+      }
+
+      const status = groupChatId ? groupChatReceptionUpdateStatuses.get(groupChatId) ?? 200 : 400;
+
+      return status === 200
+        ? [200, { data: { updated: true }, success: true }]
+        : [status, { error: { message: "设置失败" }, success: false }];
     });
     mock.onPost("/server/settings/group-chats/reception-options").reply((config) => {
       const groupChatIds = (JSON.parse(config.data ?? "{}") as { groupChatIds?: string[] })
@@ -346,6 +360,19 @@ describe("Chat settings pages", () => {
           receptionSeatCount: 0,
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
+        ...Array.from({ length: 9 }, (_, index) => ({
+          avatarUrl: "",
+          id: String(503 + index),
+          name: `测试群聊${index + 3}`,
+          openingManagedAccount: {
+            avatarUrl: "https://example.com/drc.png",
+            id: "101",
+            name: "德瑞可",
+          },
+          receptionManagedAccounts: [],
+          receptionSeatCount: 0,
+          thirdGroupId: `GROUP-${index + 3}`,
+        })),
       ].filter((groupChat) => {
         const matchesKeyword =
           !keyword ||
@@ -497,6 +524,22 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("clears selected group chats when changing pages", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 护肤交流群" }));
+    expect(screen.getByRole("button", { name: "批量设置" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(await screen.findByText("测试群聊11")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+    expect(await screen.findByRole("checkbox", { name: "选择 护肤交流群" })).not.toBeChecked();
+  });
+
   it("opens single and batch group chat reception dialogs from the same component", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
@@ -547,6 +590,97 @@ describe("Chat settings pages", () => {
     expect(within(batchDialog).queryByText("护肤交流群")).not.toBeInTheDocument();
     expect(within(batchDialog).getByText("0/5")).toBeInTheDocument();
     expect(within(batchDialog).getByText("暂无已选择账号")).toBeInTheDocument();
+  });
+
+  it("updates selected group chats sequentially and shows progress", async () => {
+    const user = userEvent.setup();
+    let releaseFirstRequest = () => {};
+    let releaseSecondRequest = () => {};
+    groupChatReceptionUpdateGates.set(
+      "501",
+      new Promise<void>((resolve) => {
+        releaseFirstRequest = resolve;
+      }),
+    );
+    groupChatReceptionUpdateGates.set(
+      "502",
+      new Promise<void>((resolve) => {
+        releaseSecondRequest = resolve;
+      }),
+    );
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 护肤交流群" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 售后答疑群" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "已选中 2 个群聊" });
+    const submitButton = within(dialog).getByRole("button", { name: "确认提交" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(
+        mock.history.put.filter(
+          (request) => request.url === "/server/settings/group-chats/reception",
+        ),
+      ).toHaveLength(1);
+    });
+    expect(within(dialog).getByText("0/2")).toBeInTheDocument();
+
+    releaseFirstRequest();
+    await waitFor(() => {
+      expect(
+        mock.history.put.filter(
+          (request) => request.url === "/server/settings/group-chats/reception",
+        ),
+      ).toHaveLength(2);
+    });
+    expect(within(dialog).getByText("1/2")).toBeInTheDocument();
+    expect(within(dialog).getByRole("progressbar", { name: "设置进度" })).toHaveAttribute(
+      "aria-valuenow",
+      "50",
+    );
+
+    releaseSecondRequest();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "已选中 2 个群聊" })).not.toBeInTheDocument();
+    });
+
+    expect(
+      mock.history.put
+        .filter((request) => request.url === "/server/settings/group-chats/reception")
+        .map((request) => JSON.parse(request.data ?? "{}")),
+    ).toEqual([
+      { groupChatId: "501", hostUserSeatIds: [] },
+      { groupChatId: "502", hostUserSeatIds: [] },
+    ]);
+  });
+
+  it("stops batch updates after a failure and reports completed progress", async () => {
+    const user = userEvent.setup();
+    groupChatReceptionUpdateStatuses.set("502", 500);
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 护肤交流群" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 售后答疑群" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "已选中 2 个群聊" });
+    const submitButton = within(dialog).getByRole("button", { name: "确认提交" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    await user.click(submitButton);
+
+    expect(await within(dialog).findByText(/已完成 1\/2 个群聊/)).toBeInTheDocument();
+    expect(within(dialog).getByText("1/2")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(
+      mock.history.put.filter(
+        (request) => request.url === "/server/settings/group-chats/reception",
+      ),
+    ).toHaveLength(2);
   });
 
   it("copies the group chat id from the row action menu", async () => {

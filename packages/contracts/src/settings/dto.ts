@@ -113,7 +113,7 @@ export const SettingsGroupChatsQuerySchema = Type.Object({
 }, { additionalProperties: false });
 
 export const SettingsGroupChatReceptionOptionsRequestSchema = Type.Object({
-  groupChatIds: Type.Array(Type.String(), { minItems: 1 }),
+  groupChatIds: Type.Array(Type.String(), { minItems: 1, maxItems: 50 }),
 }, { additionalProperties: false });
 
 export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
@@ -121,7 +121,7 @@ export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
 });
 
 export const SettingsGroupChatReceptionUpdateRequestSchema = Type.Object({
-  groupChatIds: Type.Array(Type.String(), { minItems: 1 }),
+  groupChatId: Type.String(),
   hostUserSeatIds: Type.Array(Type.String()),
 }, { additionalProperties: false });
 

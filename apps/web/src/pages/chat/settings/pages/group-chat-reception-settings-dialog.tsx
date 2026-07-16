@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   Popover,
   PopoverAnchor,
@@ -42,6 +43,11 @@ export type GroupChatReceptionDialogState = {
   optionsError: string;
 };
 
+type GroupChatReceptionSaveProgress = {
+  completed: number;
+  total: number;
+};
+
 export function GroupChatReceptionSettingsDialog({
   onOpenChange,
   onSave,
@@ -49,7 +55,11 @@ export function GroupChatReceptionSettingsDialog({
   state,
 }: {
   onOpenChange: (open: boolean) => void;
-  onSave: (groupChatIds: string[], hostUserSeatIds: string[]) => void | Promise<void>;
+  onSave: (
+    groupChatIds: string[],
+    hostUserSeatIds: string[],
+    onProgress: (progress: GroupChatReceptionSaveProgress) => void,
+  ) => void | Promise<void>;
   open: boolean;
   state: GroupChatReceptionDialogState | null;
 }) {
@@ -59,6 +69,7 @@ export function GroupChatReceptionSettingsDialog({
   const [query, setQuery] = useState("");
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<GroupChatReceptionSaveProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const pickerAnchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -117,11 +128,12 @@ export function GroupChatReceptionSettingsDialog({
     setIsPickerOpen(false);
     setQuery("");
     setSaving(false);
+    setSaveProgress(null);
     setErrorMessage("");
   }, [open, state]);
 
   function toggleManagedAccount(managedAccountId: string) {
-    if (isLoadingOptions) {
+    if (isLoadingOptions || saving) {
       return;
     }
 
@@ -146,12 +158,14 @@ export function GroupChatReceptionSettingsDialog({
     }
 
     setSaving(true);
+    setSaveProgress({ completed: 0, total: groupChats.length });
     setErrorMessage("");
 
     try {
       await onSave(
         groupChats.map((groupChat) => groupChat.id),
         selectedManagedAccountIds,
+        setSaveProgress,
       );
       onOpenChange(false);
     } catch (error) {
@@ -162,9 +176,19 @@ export function GroupChatReceptionSettingsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && saving) {
+          return;
+        }
+
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent
         className="sm:max-w-[34rem]"
+        closeButtonDisabled={saving}
         onOpenAutoFocus={(event) => event.preventDefault()}
         ref={setContentElement}
       >
@@ -208,7 +232,7 @@ export function GroupChatReceptionSettingsDialog({
                 <div ref={pickerAnchorRef}>
                   <Input
                     aria-label="搜索并选择接待账号"
-                    disabled={isLoadingOptions || !!optionsError}
+                    disabled={isLoadingOptions || saving || !!optionsError}
                     id={pickerInputId}
                     onChange={(event) => {
                       setQuery(event.target.value);
@@ -245,7 +269,7 @@ export function GroupChatReceptionSettingsDialog({
                         filteredManagedAccounts.map((account) => {
                           const isSelected = selectedManagedAccountIdSet.has(account.id);
                           const isDisabled =
-                            isLoadingOptions || (!isSelected && isSelectionLimitReached);
+                            isLoadingOptions || saving || (!isSelected && isSelectionLimitReached);
 
                           return (
                             <label
@@ -293,7 +317,7 @@ export function GroupChatReceptionSettingsDialog({
                       <Button
                         aria-label={`移除 ${account.name}`}
                         className="h-7 rounded-[8px] px-2 text-xs text-muted-foreground"
-                        disabled={isLoadingOptions}
+                        disabled={isLoadingOptions || saving}
                         onClick={() => toggleManagedAccount(account.id)}
                         type="button"
                         variant="ghost"
@@ -319,6 +343,9 @@ export function GroupChatReceptionSettingsDialog({
                 {errorMessage}
               </p>
             ) : null}
+            {saveProgress ? (
+              <SaveProgress progress={saveProgress} saving={saving} />
+            ) : null}
           </section>
 
           <DialogFooter>
@@ -330,17 +357,44 @@ export function GroupChatReceptionSettingsDialog({
             <Button disabled={saving || isLoadingOptions || !!optionsError} type="submit">
               {saving ? (
                 <>
-                  <Spinner aria-hidden="true" size={14} />
+                  <Spinner
+                    aria-hidden="true"
+                    className="text-current"
+                    size={14}
+                    variant="classic"
+                  />
                   <span>保存中</span>
                 </>
               ) : (
-                "确认提交"
+                isBatchMode && errorMessage ? "重试" : "确认提交"
               )}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SaveProgress({
+  progress,
+  saving,
+}: {
+  progress: GroupChatReceptionSaveProgress;
+  saving: boolean;
+}) {
+  const percentage = progress.total > 0
+    ? Math.round((progress.completed / progress.total) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-2" role="status">
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <span>{saving ? "正在设置" : "设置进度"}</span>
+        <span>{progress.completed}/{progress.total}</span>
+      </div>
+      <Progress aria-label="设置进度" value={percentage} />
+    </div>
   );
 }
 

@@ -102,12 +102,8 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
           }
           setSelectedGroupChats((current) => {
             const selectedIds = new Set(current.map((groupChat) => groupChat.id));
-            const currentPageIds = new Set(response.groupChats.map((groupChat) => groupChat.id));
 
-            return [
-              ...current.filter((groupChat) => !currentPageIds.has(groupChat.id)),
-              ...response.groupChats.filter((groupChat) => selectedIds.has(groupChat.id)),
-            ];
+            return response.groupChats.filter((groupChat) => selectedIds.has(groupChat.id));
           });
         }
       } catch (error) {
@@ -155,12 +151,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
   }
 
   function toggleVisibleSelection(checked: boolean) {
-    setSelectedGroupChats((current) => {
-      const visibleIds = new Set(visibleGroupChatIds);
-      const offPageSelections = current.filter((groupChat) => !visibleIds.has(groupChat.id));
-
-      return checked ? [...offPageSelections, ...data.groupChats] : offPageSelections;
-    });
+    setSelectedGroupChats(checked ? data.groupChats : []);
   }
 
   async function openReceptionDialog(groupChats: SettingsGroupChat[]) {
@@ -202,22 +193,45 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
     }
   }
 
-  async function handleSaveReception(groupChatIds: string[], hostUserSeatIds: string[]) {
-    await updateGroupChatReception({
-      groupChatIds,
-      hostUserSeatIds,
-    });
+  async function handleSaveReception(
+    groupChatIds: string[],
+    hostUserSeatIds: string[],
+    onProgress: (progress: { completed: number; total: number }) => void,
+  ) {
+    let completed = 0;
 
-    const response = await listGroupChats({
-      keyword: keyword.trim() || undefined,
-      managedAccountId:
-        managedAccountFilter === allManagedAccountsFilterValue
-          ? undefined
-          : managedAccountFilter,
-      page,
-      pageSize,
-    });
-    setData(response);
+    for (const groupChatId of groupChatIds) {
+      try {
+        await updateGroupChatReception({
+          groupChatId,
+          hostUserSeatIds,
+        });
+      } catch (error) {
+        throw new Error(
+          completed > 0
+            ? `已完成 ${completed}/${groupChatIds.length} 个群聊，${getErrorMessage(error)}，可重试`
+            : getErrorMessage(error),
+        );
+      }
+
+      completed += 1;
+      onProgress({ completed, total: groupChatIds.length });
+    }
+
+    try {
+      const response = await listGroupChats({
+        keyword: keyword.trim() || undefined,
+        managedAccountId:
+          managedAccountFilter === allManagedAccountsFilterValue
+            ? undefined
+            : managedAccountFilter,
+        page,
+        pageSize,
+      });
+      setData(response);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
     setSelectedGroupChats([]);
   }
 
@@ -343,7 +357,10 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       {!isLoading ? (
         <TablePagination
           className="mt-4 border-t-0 py-0"
-          onPageChange={setPage}
+          onPageChange={(nextPage) => {
+            setSelectedGroupChats([]);
+            setPage(nextPage);
+          }}
           onPageSizeChange={(nextPageSize) => {
             setPage(1);
             setPageSize(nextPageSize);

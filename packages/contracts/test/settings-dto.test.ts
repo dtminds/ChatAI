@@ -7,6 +7,7 @@ import {
 } from "../src/auth/dto";
 import {
   SettingsGroupChatReceptionOptionsRequestSchema,
+  SettingsGroupChatReceptionUpdateRequestSchema,
   SettingsGroupChatsQuerySchema,
   SettingsGroupChatsResponseSchema,
   SettingsSidebarItemCreateRequestSchema,
@@ -46,9 +47,26 @@ describe("settings sub-account DTOs", () => {
       }),
     ).toBe(true);
     expect(
+      Value.Check(SettingsGroupChatReceptionUpdateRequestSchema, {
+        groupChatId: "501",
+        hostUserSeatIds: ["102"],
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SettingsGroupChatReceptionUpdateRequestSchema, {
+        groupChatIds: ["501", "502"],
+        hostUserSeatIds: ["102"],
+      }),
+    ).toBe(false);
+    expect(
       Value.Check(SettingsGroupChatsQuerySchema, {
         page: 1,
         pageSize: 100,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(SettingsGroupChatReceptionOptionsRequestSchema, {
+        groupChatIds: Array.from({ length: 51 }, (_, index) => String(index + 1)),
       }),
     ).toBe(false);
   });

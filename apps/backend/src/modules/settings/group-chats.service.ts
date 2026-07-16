@@ -118,9 +118,9 @@ export class GroupChatSettingsService {
     payload: SettingsGroupChatReceptionUpdateRequest,
     javaClient: WorkbenchJavaClient,
   ): Promise<SettingsGroupChatReceptionUpdateResponse> {
-    const groupSeatIds = uniquePositiveIds(payload.groupChatIds);
+    const groupSeatId = parseMySqlId(payload.groupChatId);
 
-    if (groupSeatIds.length === 0) {
+    if (groupSeatId == null) {
       throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
     }
 
@@ -132,32 +132,35 @@ export class GroupChatSettingsService {
     }
 
     const requestedHostUserSeatIds = uniquePositiveIds(payload.hostUserSeatIds);
-    const groupChatRows = await this.listGroupChatRowsByIds(scope, groupSeatIds);
+    const groupChatRows = await this.listGroupChatRowsByIds(scope, [groupSeatId]);
 
-    if (groupChatRows.length !== groupSeatIds.length) {
+    if (groupChatRows.length !== 1) {
       throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
     }
 
     const selectableByGroupSeatId =
       await this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
+    const groupChat = groupChatRows[0];
 
-    for (const groupChat of groupChatRows) {
-      const selectableIds = new Set(
-        (selectableByGroupSeatId.get(groupChat.group_seat_id) ?? []).map(
-          (account) => account.id,
-        ),
-      );
-      const hostUserSeatIds = requestedHostUserSeatIds.filter((seatId) =>
-        selectableIds.has(String(seatId)),
-      );
-
-      await javaClient.setGroupSeatHostUserSeatIds({
-        groupSeatId: groupChat.group_seat_id,
-        hostUserSeatIds,
-        platform: scope.platform,
-        uid: scope.uid,
-      });
+    if (!groupChat) {
+      throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
     }
+
+    const selectableIds = new Set(
+      (selectableByGroupSeatId.get(groupChat.group_seat_id) ?? []).map(
+        (account) => account.id,
+      ),
+    );
+    const hostUserSeatIds = requestedHostUserSeatIds.filter((seatId) =>
+      selectableIds.has(String(seatId)),
+    );
+
+    await javaClient.setGroupSeatHostUserSeatIds({
+      groupSeatId: groupChat.group_seat_id,
+      hostUserSeatIds,
+      platform: scope.platform,
+      uid: scope.uid,
+    });
 
     return { updated: true };
   }

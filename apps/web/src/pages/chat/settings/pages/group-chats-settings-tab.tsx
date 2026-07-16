@@ -63,6 +63,7 @@ const emptyData: SettingsGroupChatsResponse = {
 
 const allManagedAccountsFilterValue = "all";
 const groupChatPageSizeOptions = [10, 20, 50] as const;
+const groupChatSearchDebounceMs = 300;
 
 export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNode }) {
   const { canManageManagedAccounts } = useSettingsPermissions();
@@ -76,8 +77,15 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
   const [selectedGroupChats, setSelectedGroupChats] = useState<SettingsGroupChat[]>([]);
   const [dialogState, setDialogState] = useState<GroupChatReceptionDialogState | null>(null);
   const receptionOptionsRequestIdRef = useRef(0);
+  const normalizedKeyword = keyword.trim();
+  const debouncedKeyword = useDebouncedValue(normalizedKeyword, groupChatSearchDebounceMs);
+  const isKeywordDebouncing = normalizedKeyword !== debouncedKeyword;
 
   useEffect(() => {
+    if (isKeywordDebouncing) {
+      return;
+    }
+
     let ignore = false;
 
     async function load() {
@@ -86,7 +94,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
 
       try {
         const response = await listGroupChats({
-          keyword: keyword.trim() || undefined,
+          keyword: debouncedKeyword || undefined,
           managedAccountId:
             managedAccountFilter === allManagedAccountsFilterValue
               ? undefined
@@ -122,7 +130,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
     return () => {
       ignore = true;
     };
-  }, [keyword, managedAccountFilter, page, pageSize]);
+  }, [debouncedKeyword, isKeywordDebouncing, managedAccountFilter, page, pageSize]);
 
   const selectedGroupChatIdSet = useMemo(
     () => new Set(selectedGroupChats.map((groupChat) => groupChat.id)),
@@ -135,6 +143,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
   const someVisibleSelected =
     visibleGroupChatIds.some((groupChatId) => selectedGroupChatIdSet.has(groupChatId)) &&
     !allVisibleSelected;
+  const isListLoading = isLoading || isKeywordDebouncing;
 
   function toggleGroupChatSelection(groupChatId: string) {
     const groupChat = data.groupChats.find((item) => item.id === groupChatId);
@@ -220,7 +229,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
 
     try {
       const response = await listGroupChats({
-        keyword: keyword.trim() || undefined,
+        keyword: debouncedKeyword || undefined,
         managedAccountId:
           managedAccountFilter === allManagedAccountsFilterValue
             ? undefined
@@ -252,6 +261,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
               aria-label="搜索群聊"
               className="h-10 rounded-[8px] pl-9"
               onChange={(event) => {
+                setErrorMessage("");
                 setKeyword(event.target.value);
                 setPage(1);
                 setSelectedGroupChats([]);
@@ -307,7 +317,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
                   <Checkbox
                     aria-label="全选当前页群聊"
                     checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
-                    disabled={isLoading || data.groupChats.length === 0}
+                    disabled={isListLoading || data.groupChats.length === 0}
                     onCheckedChange={(checked) => toggleVisibleSelection(checked === true)}
                   />
                 </TableHead>
@@ -318,7 +328,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {isListLoading ? (
                 <TableRow>
                   <TableCell className="px-5 py-10" colSpan={5}>
                     <div
@@ -354,7 +364,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
         </section>
       )}
 
-      {!isLoading ? (
+      {!isListLoading ? (
         <TablePagination
           className="mt-4 border-t-0 py-0"
           onPageChange={(nextPage) => {
@@ -387,6 +397,18 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       />
     </>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }
 
 function GroupChatRow({

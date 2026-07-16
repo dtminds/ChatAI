@@ -524,6 +524,35 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("debounces group chat keyword searches and resets the result page", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("button", { name: "下一页" }));
+    expect(await screen.findByText("测试群聊11")).toBeInTheDocument();
+
+    const groupChatRequests = () =>
+      mock.history.get.filter((request) => request.url === "/server/settings/group-chats");
+    const requestCountBeforeSearch = groupChatRequests().length;
+    const searchInput = screen.getByRole("textbox", { name: "搜索群聊" });
+
+    fireEvent.change(searchInput, { target: { value: "护" } });
+    fireEvent.change(searchInput, { target: { value: "护肤" } });
+
+    expect(groupChatRequests()).toHaveLength(requestCountBeforeSearch);
+
+    await waitFor(() => {
+      expect(groupChatRequests()).toHaveLength(requestCountBeforeSearch + 1);
+    });
+    expect(groupChatRequests().at(-1)?.params).toMatchObject({
+      keyword: "护肤",
+      page: 1,
+      pageSize: 10,
+    });
+    expect(await screen.findByText("护肤交流群")).toBeInTheDocument();
+  });
+
   it("clears selected group chats when changing pages", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");

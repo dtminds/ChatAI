@@ -528,14 +528,22 @@ export class AiHostingAgentService {
   }
 
   private async assertAgentNotUsedByHostingSettings(scope: AgentTenantScope, agentId: number) {
-    const usedConfig = await this.db
-      .selectFrom("xy_wap_embed_user_seat_agent")
-      .select("id")
-      .where("uid", "=", scope.uid)
-      .where("agent_id", "=", agentId)
-      .executeTakeFirst();
+    const [usedSeatConfig, usedGroupConfig] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_user_seat_agent")
+        .select("id")
+        .where("uid", "=", scope.uid)
+        .where("agent_id", "=", agentId)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("xy_wap_embed_user_seat_group_agent")
+        .select("id")
+        .where("uid", "=", scope.uid)
+        .where("agent_id", "=", agentId)
+        .executeTakeFirst(),
+    ]);
 
-    if (usedConfig) {
+    if (usedSeatConfig || usedGroupConfig) {
       throw new BadRequestError("AGENT_IN_USE", "Agent 已被托管设置引用，不能删除");
     }
   }

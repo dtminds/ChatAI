@@ -1066,8 +1066,34 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("prevents deleting agents referenced by hosting settings", async () => {
-    const { app, authorization, db } = await createAiHostingApp();
+  it("prevents deleting agents referenced by single-chat hosting settings", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      includeDefaultGroupHostingConfig: false,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_IN_USE",
+        message: "Agent 已被托管设置引用，不能删除",
+      },
+      success: false,
+    });
+    expect(db.deletedAgent).toBeUndefined();
+
+    await app.close();
+  });
+
+  it("prevents deleting agents referenced only by group-chat hosting settings", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      includeDefaultHostingConfig: false,
+    });
 
     const response = await app.inject({
       headers: { authorization },
@@ -1422,6 +1448,8 @@ type CreateAiHostingDbMockOptions = {
   deletedAgentCount?: number;
   deletedKbCount?: number;
   docSizeBytes?: number[];
+  includeDefaultGroupHostingConfig?: boolean;
+  includeDefaultHostingConfig?: boolean;
   uid?: number;
 };
 
@@ -1594,16 +1622,20 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       : []),
   ];
   const hostingConfigs = [
-    {
-      agent_id: 301,
-      full_auto_auth: 1,
-      full_auto_switch: 1,
-      id: 801,
-      semi_auto_auth: 0,
-      semi_auto_switch: 1,
-      uid: dataUid,
-      user_seat_id: 102,
-    },
+    ...(options.includeDefaultHostingConfig === false
+      ? []
+      : [
+          {
+            agent_id: 301,
+            full_auto_auth: 1,
+            full_auto_switch: 1,
+            id: 801,
+            semi_auto_auth: 0,
+            semi_auto_switch: 1,
+            uid: dataUid,
+            user_seat_id: 102,
+          },
+        ]),
     ...(options.bulkHostingSeats
       ? [
           {
@@ -1620,15 +1652,19 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       : []),
   ];
   const groupHostingConfigs = [
-    {
-      agent_id: 301,
-      full_auto_auth: 1,
-      full_auto_config: JSON.stringify({ replyMode: 1 }),
-      id: 901,
-      semi_auto_auth: 0,
-      uid: dataUid,
-      user_seat_id: 102,
-    },
+    ...(options.includeDefaultGroupHostingConfig === false
+      ? []
+      : [
+          {
+            agent_id: 301,
+            full_auto_auth: 1,
+            full_auto_config: JSON.stringify({ replyMode: 1 }),
+            id: 901,
+            semi_auto_auth: 0,
+            uid: dataUid,
+            user_seat_id: 102,
+          },
+        ]),
     ...(options.bulkHostingSeats
       ? [
           {

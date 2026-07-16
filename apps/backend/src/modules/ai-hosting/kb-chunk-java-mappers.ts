@@ -9,6 +9,8 @@ import {
 } from "./kb-read-mappers.js";
 
 export type AgentKbJavaChunkPageItem = {
+  attachmentIds?: number[] | null;
+  attachmentTypes?: number[] | null;
   content: string | null;
   createTime: string;
   docId: number;
@@ -60,7 +62,7 @@ export function mapJavaChunkPageItem(
 
 export const parseJavaChunkContent = parseKbChunkContent;
 
-function normalizeJavaChunkDisplayTime(value: string | null | undefined) {
+export function normalizeJavaChunkDisplayTime(value: string | null | undefined) {
   if (!value) {
     return "";
   }

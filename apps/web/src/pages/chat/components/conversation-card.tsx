@@ -64,6 +64,7 @@ export function ConversationCard({
       ? getConversationHandoffTakeoverPreviewParts(conversation.preview)
       : null;
   const taggedPreviewParts = draftPreviewParts ?? handoffPreviewParts;
+  const previewParts = draftPreviewParts ? null : conversation.previewParts;
   const conversationMenuItems = [
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
@@ -164,6 +165,23 @@ export function ConversationCard({
                     <span className="truncate">{taggedPreviewParts.body}</span>
                   ) : null}
                 </>
+              ) : previewParts?.length ? (
+                previewParts.map((part, index) => (
+                  <span
+                    className={cn(
+                      index === previewParts.length - 1 ? "truncate" : "shrink-0",
+                      part.tone === "danger" && !isActive && "text-destructive",
+                    )}
+                    data-testid={
+                      part.kind
+                        ? `conversation-preview-part-${part.kind}`
+                        : `conversation-preview-part-${index}`
+                    }
+                    key={`${part.kind ?? "text"}-${index}`}
+                  >
+                    {part.text}
+                  </span>
+                ))
               ) : (
                 conversation.preview
               )}

@@ -1,4 +1,4 @@
-const PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
+import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 
 export function normalizeMediaAssetUrl(value: string) {
   const url = value.trim();
@@ -18,6 +18,6 @@ export function normalizeMediaAssetUrl(value: string) {
       return "";
     }
 
-    return `https://${PLAYABLE_MEDIA_HOST}/${normalizedPath}`;
+    return buildMediaAssetUrl(normalizedPath);
   }
 }

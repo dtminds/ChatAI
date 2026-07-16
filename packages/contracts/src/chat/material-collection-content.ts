@@ -252,7 +252,7 @@ export function resolveMaterialMiniProgramCollectFields(
   const titleResult = validateBoundedMaterialText(
     titleSource,
     MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
-    "小程序标题",
+    "小程序备注",
   );
 
   if (isMaterialCollectFieldError(titleResult)) {
@@ -260,7 +260,7 @@ export function resolveMaterialMiniProgramCollectFields(
   }
 
   if (!titleResult) {
-    return { errorMsg: "小程序标题不能为空" };
+    return { errorMsg: "小程序备注不能为空" };
   }
 
   return { title: titleResult };
@@ -342,14 +342,9 @@ export function buildMaterialImageContentJson(
 
 export function buildMaterialMiniProgramContentJson(
   rawContent: string | null | undefined,
-  fields: MaterialMiniProgramCollectFields,
+  _fields: MaterialMiniProgramCollectFields,
 ) {
-  const content = {
-    ...parseMaterialRawContent(rawContent),
-    title: fields.title,
-  };
-
-  return JSON.stringify(content);
+  return JSON.stringify(parseMaterialRawContent(rawContent));
 }
 
 export function buildMaterialVideoContentJson(

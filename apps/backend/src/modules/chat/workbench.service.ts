@@ -132,7 +132,6 @@ import {
   normalizeQuickReplyAttachments,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
-  patchMaterialMiniProgramContentJson,
   patchMaterialVideoContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
@@ -2568,6 +2567,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("MATERIAL_COLLECTION_NOT_EDITABLE", "当前素材不支持编辑");
     }
 
+    if (scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+      const title = normalizeMaterialCollectionTitle(request.title ?? "");
+
+      await this.repository.updateMaterialCollectionTitle({
+        id: collectionId,
+        subUid: scope.subUid,
+        title,
+        uid: me.uid,
+      });
+
+      return { ok: true };
+    }
+
     const record = await this.repository.findMaterialCollectionRecord({
       id: collectionId,
       subUid: scope.subUid,
@@ -4848,6 +4860,23 @@ function normalizeMaterialGroupTitle(title: string) {
   return normalizedTitle;
 }
 
+function normalizeMaterialCollectionTitle(title: string) {
+  const normalizedTitle = title.trim();
+
+  if (!normalizedTitle) {
+    throw new BadRequestError("MATERIAL_COLLECTION_TITLE_REQUIRED", "素材标题不能为空");
+  }
+
+  if (normalizedTitle.length > MATERIAL_COLLECTION_TITLE_MAX_LENGTH) {
+    throw new BadRequestError(
+      "MATERIAL_COLLECTION_TITLE_TOO_LONG",
+      "素材标题不能超过64个字",
+    );
+  }
+
+  return normalizedTitle;
+}
+
 function parseMaterialSubUserId(subUserId: string) {
   const subUserNumericId = parseMySqlId(subUserId);
 
@@ -5002,10 +5031,6 @@ function buildMaterialCollectionPatch(
       description: request.description,
       title: request.title ?? "",
     });
-  }
-
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-    return patchMaterialMiniProgramContentJson(rawContent, request.title ?? "");
   }
 
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {

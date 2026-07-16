@@ -1019,8 +1019,38 @@ describe("SmartReplyCard", () => {
 
     expect(document.querySelector('img[src*="s5/msg/cover.png"]')).toHaveAttribute(
       "src",
-      "https://b1.dtminds.com/s5/msg/cover.png",
+      "https://b5.bokr.com.cn/s5/msg/cover.png",
     );
+  });
+
+  it("shows link label and cover image for h5 recommended attachments", () => {
+    render(
+      <SmartReplyRecommendedAttachmentsSection
+        onSelectedAttachmentIdsChange={() => undefined}
+        recommendedAttachments={[
+          {
+            coverUrl: "https://example.com/article.png",
+            defaultSelected: true,
+            fileName: "图文素材",
+            fileType: "4",
+            id: "105",
+          },
+          {
+            coverUrl: "https://example.com/mini.png",
+            defaultSelected: false,
+            fileName: "品牌小程序",
+            fileType: "7",
+            id: "106",
+          },
+        ]}
+        selectedAttachmentIds={["105"]}
+      />,
+    );
+
+    expect(document.querySelector('img[src="https://example.com/article.png"]')).toBeInTheDocument();
+    expect(screen.getByText("链接")).toBeInTheDocument();
+    expect(screen.getByText("小程序")).toBeInTheDocument();
+    expect(document.querySelectorAll("img")).toHaveLength(1);
   });
 
   it("does not show stale FAQ save toast after unmounting during a request", async () => {

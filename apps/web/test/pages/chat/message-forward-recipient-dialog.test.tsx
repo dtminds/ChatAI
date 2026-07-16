@@ -108,7 +108,7 @@ describe("MessageForwardRecipientDialog", () => {
     await act(() => Promise.resolve());
 
     expect(screen.getByText("客户备注（客户原名）")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "群备注" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "群备注" })).toBeInTheDocument();
   });
 
   it("enables send only after selecting a recipient and submits selected recipients", async () => {
@@ -118,7 +118,7 @@ describe("MessageForwardRecipientDialog", () => {
 
     expect(sendButton).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "客户1" }));
+    await user.click(screen.getByRole("radio", { name: "客户1" }));
 
     expect(sendButton).toBeEnabled();
 
@@ -137,20 +137,28 @@ describe("MessageForwardRecipientDialog", () => {
     });
   });
 
-  it("keeps unselected recipients disabled after reaching the recipient limit", async () => {
+  it("replaces the selected recipient when choosing another one", async () => {
     const user = userEvent.setup();
-    const conversations = Array.from({ length: 10 }, (_, index) =>
+    const conversations = Array.from({ length: 3 }, (_, index) =>
       createConversation(index + 1),
     );
+    const props = renderRecipientDialog({ recentConversations: conversations });
 
-    renderRecipientDialog({ recentConversations: conversations });
+    await user.click(screen.getByRole("radio", { name: "客户1" }));
+    await user.click(screen.getByRole("radio", { name: "客户2" }));
 
-    for (let index = 1; index <= 9; index += 1) {
-      await user.click(screen.getByRole("button", { name: `客户${index}` }));
-    }
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.getByRole("button", { name: "客户10" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "客户1" })).toBeEnabled();
+    expect(props.onSend).toHaveBeenCalledWith({
+      comment: undefined,
+      recipients: [
+        expect.objectContaining({
+          mode: "single",
+          name: "客户2",
+          thirdExternalUserId: "ext-2",
+        }),
+      ],
+    });
   });
 
   it("resets search, selected recipients, comment, and active tab when closed", async () => {
@@ -168,7 +176,7 @@ describe("MessageForwardRecipientDialog", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "群聊" }));
-    await user.click(screen.getByRole("button", { name: "群聊2" }));
+    await user.click(screen.getByRole("radio", { name: "群聊2" }));
     await user.type(screen.getByRole("textbox", { name: "搜索联系人或群聊" }), "客户");
     await user.type(screen.getByRole("textbox", { name: "留言" }), "留言内容");
 

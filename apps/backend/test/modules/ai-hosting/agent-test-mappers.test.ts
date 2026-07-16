@@ -132,4 +132,50 @@ describe("mapJavaAgentTestResponse", () => {
       reply: [],
     });
   });
+
+  it("maps attachment reply items with chunkId and leaves attachments empty", () => {
+    expect(
+      mapJavaAgentTestResponse({
+        action: "reply",
+        reply: [
+          { type: "text", content: "发送给客户的文本消息" },
+          { type: "attachment", chunkId: 1234 },
+        ],
+      }),
+    ).toEqual({
+      action: "reply",
+      reply: [
+        { type: "text", content: "发送给客户的文本消息" },
+        { type: "attachment", chunkId: "1234", attachments: [] },
+      ],
+    });
+  });
+
+  it("accepts string chunkId for attachment reply items", () => {
+    expect(
+      mapJavaAgentTestResponse({
+        action: "reply",
+        reply: [{ type: "attachment", chunkId: "56" }],
+      }),
+    ).toEqual({
+      action: "reply",
+      reply: [{ type: "attachment", chunkId: "56", attachments: [] }],
+    });
+  });
+
+  it("drops attachment items without a valid chunkId", () => {
+    expect(
+      mapJavaAgentTestResponse({
+        action: "reply",
+        reply: [
+          { type: "attachment" },
+          { type: "attachment", chunkId: "abc" },
+          { type: "text", content: "保留文本" },
+        ],
+      }),
+    ).toEqual({
+      action: "reply",
+      reply: [{ type: "text", content: "保留文本" }],
+    });
+  });
 });

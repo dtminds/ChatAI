@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { getFileExtension } from "@/pages/chat/lib/composer-file-files";
 
@@ -20,23 +21,17 @@ export type SmartReplyRecommendedAttachment = {
   slocalPath?: string;
   content?: string;
   coverUrl?: string;
+  jumpUrl?: string;
+  transMsgInfoId?: string;
 };
 
 type RecommendedAttachmentUiType = "image" | "video" | "link" | "file";
-
-const ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
-
-function joinAttachmentMediaCdnUrl(path: string) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  return ATTACHMENT_MEDIA_CDN_PREFIX + normalizedPath;
-}
 
 const ATTACHMENT_FILE_TYPE_LABELS: Record<number, string> = {
   1: "图片",
   2: "音频",
   3: "视频",
-  4: "图文",
+  4: "链接",
   5: "文件",
   6: "文本",
   7: "小程序",
@@ -202,23 +197,14 @@ function getAttachmentTypeLabel(fileType: string) {
 }
 
 function resolveAttachmentMediaUrl(path?: string) {
-  const trimmed = path?.trim();
-
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-
-  return joinAttachmentMediaCdnUrl(trimmed);
+  return resolveMediaAssetUrl(path);
 }
 
 function getAttachmentPreviewUrl(attachment: SmartReplyRecommendedAttachment) {
   const uiType = getAttachmentUiType(attachment.fileType);
+  const numericType = parseAttachmentFileType(attachment.fileType);
 
-  if (uiType !== "file") {
+  if (uiType === "image" || uiType === "video" || numericType === 4) {
     return (
       resolveAttachmentMediaUrl(attachment.coverUrl) ??
       resolveAttachmentMediaUrl(attachment.localPath) ??

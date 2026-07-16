@@ -124,6 +124,8 @@ const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 const APPLICATION_MESSAGE_AVATAR_URL = "https://b5.bokr.com.cn/dist/app-avatar.png";
+const AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX = "Agent 转人工处理";
+const TAKEOVER_REMINDER_PREVIEW_PREFIX = "[接管提醒]";
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -165,6 +167,10 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
 export function mapConversationRow(
   row: ConversationRow,
 ): WorkbenchConversationSummaryDto {
+  const lastMessagePreview = formatConversationMessagePreview(
+    row.last_message_type,
+    row.last_message_content,
+  );
   const mode = row.chat_type === 2 ? "group" : "single";
   const customerBindType =
     mode === "group" || row.customer_bind_type == null
@@ -216,7 +222,10 @@ export function mapConversationRow(
     contactOriginalName,
     groupOriginalName,
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
-    lastMessage: formatMessagePreview(row.last_message_type, row.last_message_content),
+    lastMessage: lastMessagePreview.text,
+    ...(lastMessagePreview.parts
+      ? { lastMessagePreviewParts: lastMessagePreview.parts }
+      : {}),
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,
     priority: "medium",
@@ -654,8 +663,12 @@ function formatMessagePreview(
 
   const parsed = parseContent(rawContent);
 
-  if (msgtype === "text" || msgtype === "system") {
+  if (msgtype === "text") {
     return readSystemMessageText(parsed, rawContent);
+  }
+
+  if (msgtype === "system") {
+    return formatSystemMessagePreview(readSystemMessageText(parsed, rawContent));
   }
 
   switch (msgtype) {
@@ -692,6 +705,58 @@ function formatMessagePreview(
     default:
       return "[新消息]";
   }
+}
+
+function formatConversationMessagePreview(
+  msgtype: string | null | undefined,
+  rawContent: string | null,
+): {
+  parts?: WorkbenchConversationSummaryDto["lastMessagePreviewParts"];
+  text: string;
+} {
+  if (msgtype !== "system") {
+    return {
+      text: formatMessagePreview(msgtype, rawContent),
+    };
+  }
+
+  const parsed = parseContent(rawContent);
+  const text = readSystemMessageText(parsed, rawContent);
+
+  if (!text.startsWith(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX)) {
+    return { text };
+  }
+
+  const body = getAgentHandoffPreviewBody(text);
+
+  return {
+    parts: [
+      {
+        kind: "takeover-reminder",
+        text: TAKEOVER_REMINDER_PREVIEW_PREFIX,
+        tone: "danger",
+      },
+      ...(body ? [{ text: body }] : []),
+    ],
+    text: `${TAKEOVER_REMINDER_PREVIEW_PREFIX}${body}`,
+  };
+}
+
+function formatSystemMessagePreview(text: string) {
+  if (!text.startsWith(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX)) {
+    return text;
+  }
+
+  const body = getAgentHandoffPreviewBody(text);
+
+  return `${TAKEOVER_REMINDER_PREVIEW_PREFIX}${body}`;
+}
+
+function getAgentHandoffPreviewBody(text: string) {
+  return text
+    .slice(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX.length)
+    .replace(/^\s*[:：]\s*/, "")
+    .trim();
 }
 
 function readSystemMessageText(parsed: unknown, rawContent: string | null) {

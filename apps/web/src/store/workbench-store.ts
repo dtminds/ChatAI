@@ -1274,7 +1274,12 @@ export function canDisplaySmartReplyForConversation(
   );
 
   if (conversation) {
-    if (isConversationAIHostingEnabledInState(state, conversation)) {
+    // 单聊：会话全自动托管开启时不展示话术推荐
+    // 群聊：AI 自动回复与话术推荐相互独立，只看 groupSemiAutoAuth
+    if (
+      conversation.mode !== "group" &&
+      isConversationAIHostingEnabledInState(state, conversation)
+    ) {
       return false;
     }
 

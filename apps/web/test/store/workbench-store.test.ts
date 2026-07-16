@@ -4224,6 +4224,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
+              groupFullAutoAuth: true,
               groupSemiAutoAuth: true,
             }
           : account,
@@ -4235,6 +4236,7 @@ describe("useWorkbenchStore", () => {
             ? {
                 ...conversation,
                 bizStatus: 1,
+                conversationAIHostingSwitch: true,
                 mode: "group",
               }
             : conversation,

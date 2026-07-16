@@ -2,7 +2,7 @@ import { memo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   Copy01Icon,
-  Delete02Icon,
+  Delete01Icon,
   Edit03Icon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
@@ -307,7 +307,7 @@ function NodeActionMenu({
                   data.onDelete?.(id);
                 }}
               >
-                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
                 删除节点
               </DropdownMenuItem>
             </>

@@ -15,10 +15,10 @@ import type {
 import { getVariableContentText, normalizeVariableContent } from "../variable-content/content";
 
 export const LLM_INPUT_MAX_COUNT = 10;
-export const LLM_INPUT_NAME_MAX_LENGTH = 50;
+export const LLM_INPUT_NAME_MAX_LENGTH = 15;
 export const LLM_PROMPT_MAX_LENGTH = 10_000;
 export const LLM_OUTPUT_FIELD_MAX_COUNT = 10;
-export const LLM_OUTPUT_NAME_MAX_LENGTH = 50;
+export const LLM_OUTPUT_NAME_MAX_LENGTH = 15;
 export const LLM_OUTPUT_DESCRIPTION_MAX_LENGTH = 200;
 export const LLM_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

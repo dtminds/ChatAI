@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import {
   Add01Icon,
   ArrowDown01Icon,
+  ArrowDown02Icon,
   ArrowUp02Icon,
-  Delete02Icon,
+  Delete01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -92,10 +93,10 @@ export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsP
             <div className="flex items-center gap-1">
               <Button
                 aria-label={`上移${path.label} ${index + 1}`}
-                className="size-7 rounded-md"
+                className="size-7 p-0"
                 disabled={index === 0}
                 onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, path.id, "up"))}
-                size="icon"
+                size="sm"
                 type="button"
                 variant="ghost"
               >
@@ -103,25 +104,25 @@ export function BranchConfig({ edges, node, nodes, onNodeChange }: NodeSettingsP
               </Button>
               <Button
                 aria-label={`下移${path.label} ${index + 1}`}
-                className="size-7 rounded-md"
+                className="size-7 p-0"
                 disabled={index === conditionalPaths.length - 1}
                 onClick={() => updateBranchPaths(moveWorkflowBranchPath(branchPaths, path.id, "down"))}
-                size="icon"
+                size="sm"
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+                <HugeiconsIcon icon={ArrowDown02Icon} size={14} strokeWidth={1.8} />
               </Button>
               <Button
                 aria-label={`删除${path.label} ${index + 1}`}
-                className="size-7 rounded-md text-destructive hover:text-destructive"
+                className="size-7 p-0 text-destructive hover:text-destructive"
                 disabled={conditionalPaths.length <= 1}
                 onClick={() => requestDeletePath(path)}
-                size="icon"
+                size="sm"
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
               </Button>
             </div>
           </div>
@@ -305,14 +306,14 @@ function BranchConditionRow({
 
         <Button
           aria-label={`删除条件 ${index + 1}`}
-          className="size-8 rounded-md text-destructive hover:text-destructive"
+          className="size-8 p-0 text-destructive hover:text-destructive"
           disabled={!showDelete}
           onClick={onDelete}
-          size="icon"
+          size="sm"
           type="button"
           variant="ghost"
         >
-          <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+          <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
         </Button>
       </div>
 

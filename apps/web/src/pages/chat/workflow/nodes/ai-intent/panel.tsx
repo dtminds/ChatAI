@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   ArrowDown01Icon,
-  Delete02Icon,
+  Delete01Icon,
   DragDropVerticalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -135,12 +135,12 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
           <h3 className="text-sm font-semibold text-foreground">意图匹配</h3>
           <Button
             aria-label="添加意图"
-            className="size-8 rounded-md"
+            className="size-8 p-0"
             disabled={intents.length >= AI_INTENT_MAX_COUNT}
             onClick={() => updateConfig({
               intents: [...intents, createWorkflowIntentOption(intents)],
             })}
-            size="icon"
+            size="sm"
             type="button"
             variant="ghost"
           >
@@ -161,7 +161,7 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
                   <div className="grid grid-cols-[28px_minmax(0,1fr)_32px] items-start gap-2">
                     <SortableItemHandle
                       aria-label={`拖动意图 ${index + 1}`}
-                      className="mt-2 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="mt-2 flex size-7 items-center justify-center rounded-[8px] text-muted-foreground hover:bg-accent hover:text-foreground"
                     >
                       <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
                     </SortableItemHandle>
@@ -176,14 +176,14 @@ export function AiIntentConfig({ edges, node, nodes, onNodeChange }: NodeSetting
                     />
                     <Button
                       aria-label={`删除意图 ${index + 1}`}
-                      className="mt-2 size-8 rounded-md text-destructive hover:text-destructive"
+                      className="mt-2 size-8 p-0 text-destructive hover:text-destructive"
                       disabled={intents.length <= AI_INTENT_MIN_COUNT}
                       onClick={() => requestDeleteIntent(intent)}
-                      size="icon"
+                      size="sm"
                       type="button"
                       variant="ghost"
                     >
-                      <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
+                      <HugeiconsIcon icon={Delete01Icon} size={15} strokeWidth={1.8} />
                     </Button>
                   </div>
                 </SortableItem>

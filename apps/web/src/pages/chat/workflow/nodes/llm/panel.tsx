@@ -3,24 +3,22 @@ import type { AiHostingModel } from "@chatai/contracts";
 import {
   Add01Icon,
   Cancel01Icon,
-  Delete02Icon,
+  Delete01Icon,
+  ExpandIcon,
+  MinusSignIcon,
+  Settings03Icon,
   SquareArrowExpand01Icon,
-  VariableIcon,
+  SquareArrowShrink01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AgentModelBadge } from "@/pages/chat/ai-hosting/agent-model-badge";
 import { listAiHostingModels } from "@/pages/chat/ai-hosting/agent-service";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -36,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { WorkflowExpandedEditorPortal } from "../../panels/expanded-editor-portal";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   LlmNodeData,
@@ -79,10 +78,12 @@ import {
 } from "./config";
 
 const outputFormatLabels: Record<WorkflowLlmOutputConfig["format"], string> = {
-  json: "JSON",
-  markdown: "Markdown",
   text: "Text",
+  markdown: "Markdown",
+  json: "JSON",
 };
+
+const outputFormatOrder: WorkflowLlmOutputConfig["format"][] = ["text", "markdown", "json"];
 
 const outputTypeLabels: Record<WorkflowLlmOutputFieldType, string> = {
   boolean: "Boolean",
@@ -94,6 +95,7 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState(false);
+  const [expandedPrompt, setExpandedPrompt] = useState<"system" | "user" | null>(null);
   const inputs = normalizeLlmInputs(node.data.inputs);
   const systemPrompt = normalizeLlmPrompt(node.data.systemPrompt);
   const userPrompt = normalizeLlmPrompt(node.data.userPrompt);
@@ -153,10 +155,30 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
     });
   };
 
+  const updateSystemPrompt = (nextPrompt: WorkflowVariableContentSegment[]) => {
+    if (!variableContentEqual(systemPrompt, nextPrompt)) {
+      updateConfig({ systemPrompt: nextPrompt });
+    }
+  };
+
+  const updateUserPrompt = (nextPrompt: WorkflowVariableContentSegment[]) => {
+    if (!variableContentEqual(userPrompt, nextPrompt)) {
+      updateConfig({ userPrompt: nextPrompt });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <SectionTitle required>模型</SectionTitle>
+        <div className="flex h-5 items-center justify-between gap-3">
+          <SectionTitle required>模型</SectionTitle>
+          {modelsLoading ? (
+            <span className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground" role="status">
+              <Spinner size={14} />
+              正在加载
+            </span>
+          ) : null}
+        </div>
         <Select
           disabled={modelsLoading || modelsError}
           onValueChange={(nextModelId) => {
@@ -172,14 +194,18 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
         >
           <SelectTrigger aria-label="模型" className="w-full">
             {selectedModel ? (
-              <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
+              <div className="min-w-0">
+                <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
+              </div>
             ) : modelId ? (
-              <AgentModelBadge
-                label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
-                model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
-              />
+              <div className="min-w-0">
+                <AgentModelBadge
+                  label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
+                  model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
+                />
+              </div>
             ) : (
-              <SelectValue placeholder={modelsLoading ? "正在加载" : "请选择模型"} />
+              <SelectValue placeholder="请选择模型" />
             )}
           </SelectTrigger>
           <SelectContent>
@@ -193,12 +219,6 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
             ))}
           </SelectContent>
         </Select>
-        {modelsLoading ? (
-          <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-            <Spinner size={14} />
-            正在加载
-          </p>
-        ) : null}
         {modelsError ? (
           <p className="text-xs text-destructive" role="alert">模型加载失败</p>
         ) : null}
@@ -258,11 +278,8 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
       <PromptSection
         ariaLabel="系统提示词"
         inputVariables={inputVariables}
-        onChange={(nextPrompt) => {
-          if (!variableContentEqual(systemPrompt, nextPrompt)) {
-            updateConfig({ systemPrompt: nextPrompt });
-          }
-        }}
+        onChange={updateSystemPrompt}
+        onExpand={() => setExpandedPrompt("system")}
         placeholder="请输入系统提示词"
         required
         segments={systemPrompt}
@@ -271,11 +288,8 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
       <PromptSection
         ariaLabel="用户提示词"
         inputVariables={inputVariables}
-        onChange={(nextPrompt) => {
-          if (!variableContentEqual(userPrompt, nextPrompt)) {
-            updateConfig({ userPrompt: nextPrompt });
-          }
-        }}
+        onChange={updateUserPrompt}
+        onExpand={() => setExpandedPrompt("user")}
         placeholder="请输入用户提示词"
         segments={userPrompt}
         title="用户提示词"
@@ -285,6 +299,18 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
         onChange={(nextOutput) => updateConfig({ output: nextOutput })}
         output={output}
       />
+
+      {expandedPrompt ? (
+        <ExpandedPromptEditor
+          ariaLabel={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
+          inputVariables={inputVariables}
+          onChange={expandedPrompt === "system" ? updateSystemPrompt : updateUserPrompt}
+          onClose={() => setExpandedPrompt(null)}
+          placeholder={expandedPrompt === "system" ? "请输入系统提示词" : "请输入用户提示词"}
+          segments={expandedPrompt === "system" ? systemPrompt : userPrompt}
+          title={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
+        />
+      ) : null}
     </div>
   );
 }
@@ -340,8 +366,9 @@ function LlmInputRow({
         {input.value.kind === "variable" ? (
           <Button
             aria-label="改为固定文本"
-            className="absolute right-8 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="absolute right-8 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
             onClick={() => onChange({ ...input, value: { kind: "literal", value: "" } })}
+            size="sm"
             type="button"
             variant="ghost"
           >
@@ -366,22 +393,24 @@ function LlmInputRow({
         >
           <Button
             aria-label="引用变量"
-            className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="absolute right-1 top-1/2 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
+            size="sm"
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={VariableIcon} size={14} strokeWidth={1.8} />
+            <HugeiconsIcon icon={Settings03Icon} size={14} strokeWidth={1.8} />
           </Button>
         </WorkflowVariablePicker>
       </div>
       <Button
         aria-label="删除输入参数"
-        className="size-8 rounded-md p-0 text-muted-foreground hover:text-destructive"
+        className="size-8 p-0 text-muted-foreground hover:text-destructive"
         onClick={onDelete}
+        size="sm"
         type="button"
         variant="ghost"
       >
-        <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+        <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
       </Button>
     </div>
   );
@@ -391,6 +420,7 @@ function PromptSection({
   ariaLabel,
   inputVariables,
   onChange,
+  onExpand,
   placeholder,
   required = false,
   segments,
@@ -399,27 +429,20 @@ function PromptSection({
   ariaLabel: string;
   inputVariables: WorkflowVariableDefinition[];
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
+  onExpand: () => void;
   placeholder: string;
   required?: boolean;
   segments: WorkflowVariableContentSegment[];
   title: string;
 }) {
-  const [fullscreenOpen, setFullscreenOpen] = useState(false);
-  const [draft, setDraft] = useState(segments);
-
-  const openFullscreen = () => {
-    setDraft(normalizeLlmPrompt(segments));
-    setFullscreenOpen(true);
-  };
-
   return (
-    <section className="space-y-3">
+    <section className="space-y-0.5">
       <div className="flex items-center justify-between gap-3">
         <SectionTitle required={required}>{title}</SectionTitle>
         <IconButton
           ariaLabel={`全屏编辑${title}`}
           icon={SquareArrowExpand01Icon}
-          onClick={openFullscreen}
+          onClick={onExpand}
           tooltip="全屏编辑"
         />
       </div>
@@ -431,61 +454,57 @@ function PromptSection({
         segments={segments}
         variables={inputVariables}
       />
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open) setFullscreenOpen(false);
-        }}
-        open={fullscreenOpen}
-      >
-        <DialogContent
-          className="flex h-[calc(100dvh-3rem)] w-[calc(100vw-3rem)] max-w-none flex-col gap-0 overflow-hidden p-0"
-          closeButtonVisible={false}
-        >
-          <DialogHeader className="flex-row items-center justify-between border-b px-6 py-4 text-left">
-            <div className="space-y-1">
-              <DialogTitle className="text-base">{title}</DialogTitle>
-              <DialogDescription className="sr-only">编辑大模型节点的{title}</DialogDescription>
-            </div>
-            <Button
-              aria-label="关闭全屏编辑"
-              className="size-8 rounded-lg p-0"
-              onClick={() => setFullscreenOpen(false)}
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
-            </Button>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 p-6">
-            <VariableContentEditor
-              ariaLabel={`${ariaLabel}全屏编辑`}
-              className="flex min-h-0 flex-1 flex-col"
-              contentEditableClassName="h-full min-h-full overflow-y-auto"
-              editorClassName="min-h-0 flex-1 overflow-y-auto"
-              maxLength={LLM_PROMPT_MAX_LENGTH}
-              onChange={setDraft}
-              placeholder={placeholder}
-              segments={draft}
-              variables={inputVariables}
-            />
-          </div>
-          <DialogFooter className="border-t px-6 py-4">
-            <Button onClick={() => setFullscreenOpen(false)} type="button" variant="outline">
-              取消
-            </Button>
-            <Button
-              onClick={() => {
-                onChange(draft);
-                setFullscreenOpen(false);
-              }}
-              type="button"
-            >
-              确定
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
+  );
+}
+
+function ExpandedPromptEditor({
+  ariaLabel,
+  inputVariables,
+  onChange,
+  onClose,
+  placeholder,
+  segments,
+  title,
+}: {
+  ariaLabel: string;
+  inputVariables: WorkflowVariableDefinition[];
+  onChange: (segments: WorkflowVariableContentSegment[]) => void;
+  onClose: () => void;
+  placeholder: string;
+  segments: WorkflowVariableContentSegment[];
+  title: string;
+}) {
+  return (
+    <WorkflowExpandedEditorPortal>
+      <section
+        aria-label={`${title}展开编辑`}
+        className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--workflow-border)] bg-background"
+      >
+        <header className="flex h-12 shrink-0 items-center justify-between px-4">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <IconButton
+            ariaLabel={`收起${title}`}
+            icon={SquareArrowShrink01Icon}
+            onClick={onClose}
+            tooltip="收起"
+          />
+        </header>
+        <div className="flex min-h-0 flex-1 px-4 pb-4">
+          <VariableContentEditor
+            ariaLabel={`${ariaLabel}展开编辑`}
+            className="flex min-h-0 flex-1 flex-col"
+            contentEditableClassName="h-full min-h-full overflow-y-auto"
+            editorClassName="min-h-0 flex-1 overflow-y-auto"
+            maxLength={LLM_PROMPT_MAX_LENGTH}
+            onChange={onChange}
+            placeholder={placeholder}
+            segments={segments}
+            variables={inputVariables}
+          />
+        </div>
+      </section>
+    </WorkflowExpandedEditorPortal>
   );
 }
 
@@ -517,19 +536,32 @@ function OutputSection({
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <SectionTitle>输出</SectionTitle>
-        <Select
-          onValueChange={(value) => changeFormat(value as WorkflowLlmOutputConfig["format"])}
+        <SegmentedControl
+          aria-label="输出格式"
+          className="h-9 rounded-full p-1"
+          onValueChange={(format) => {
+            if (format === "text" || format === "markdown" || format === "json") {
+              changeFormat(format);
+            }
+          }}
+          type="single"
           value={output.format}
         >
-          <SelectTrigger aria-label="输出格式" className="h-8 w-32 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(outputFormatLabels) as WorkflowLlmOutputConfig["format"][]).map((format) => (
-              <SelectItem key={format} value={format}>{outputFormatLabels[format]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          {outputFormatOrder.map((format) => (
+            <SegmentedControlItem
+              className="h-7 w-auto rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+              key={format}
+              value={format}
+            >
+              {outputFormatLabels[format]}
+            </SegmentedControlItem>
+          ))}
+        </SegmentedControl>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_5rem_4.125rem] gap-2 px-0.5 text-xs text-muted-foreground">
+        <span>变量名</span>
+        <span>参数类型</span>
       </div>
 
       {output.format === "json" ? (
@@ -578,24 +610,39 @@ function SingleOutputField({
   field: WorkflowLlmOutputField;
   onChange: (field: WorkflowLlmOutputField) => void;
 }) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_5rem] gap-2">
-        <FieldControl label="变量名">
-          <IdentifierInput
-            ariaLabel="输出变量名"
-            maxLength={LLM_OUTPUT_NAME_MAX_LENGTH}
-            onChange={(name) => onChange({ ...field, name })}
-            value={field.name}
+    <div className="space-y-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_5rem_4.125rem] items-start gap-2">
+        <IdentifierInput
+          ariaLabel="输出变量名"
+          maxLength={LLM_OUTPUT_NAME_MAX_LENGTH}
+          onChange={(name) => onChange({ ...field, name })}
+          value={field.name}
+        />
+        <div className="flex h-9 items-center rounded-[8px] bg-secondary px-3 text-xs text-muted-foreground">
+          String
+        </div>
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            ariaExpanded={descriptionExpanded}
+            ariaLabel={descriptionExpanded ? "收起输出描述" : "展开输出描述"}
+            className={descriptionExpanded ? "bg-accent text-foreground" : undefined}
+            icon={ExpandIcon}
+            onClick={() => setDescriptionExpanded((expanded) => !expanded)}
+            tooltip={descriptionExpanded ? "收起描述" : "展开描述"}
           />
-        </FieldControl>
-        <FieldControl label="变量类型">
-          <div className="flex h-10 items-center rounded-[8px] bg-secondary px-3 text-xs text-muted-foreground">
-            String
-          </div>
-        </FieldControl>
+          <IconButton
+            ariaLabel="删除输出参数"
+            className="text-muted-foreground hover:text-destructive"
+            disabled
+            icon={MinusSignIcon}
+            tooltip="删除参数"
+          />
+        </div>
       </div>
-      <FieldControl label="描述">
+      {descriptionExpanded ? (
         <Input
           aria-label="输出描述"
           className="h-9 text-xs"
@@ -604,7 +651,7 @@ function SingleOutputField({
           placeholder="请输入输出描述"
           value={field.description}
         />
-      </FieldControl>
+      ) : null}
     </div>
   );
 }
@@ -620,6 +667,7 @@ function JsonOutputFieldRow({
   onChange: (field: WorkflowLlmOutputField) => void;
   onDelete: () => void;
 }) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const nameDuplicate = Boolean(field.name.trim()) && fields.some((item) =>
     item.id !== field.id && item.name.trim() === field.name.trim());
   const nameInvalid = Boolean(field.name) && (!LLM_IDENTIFIER_PATTERN.test(field.name)
@@ -627,8 +675,8 @@ function JsonOutputFieldRow({
     || nameDuplicate);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-start gap-2">
-      <div className="space-y-2">
+    <div className="space-y-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_5rem_4.125rem] items-start gap-2">
         <Input
           aria-label="JSON 字段名"
           aria-invalid={nameInvalid}
@@ -638,6 +686,39 @@ function JsonOutputFieldRow({
           placeholder="字段名"
           value={field.name}
         />
+        <Select
+          onValueChange={(type) => onChange({ ...field, type: type as WorkflowLlmOutputFieldType })}
+          value={field.type}
+        >
+          <SelectTrigger aria-label={`${field.name || "JSON 字段"}类型`} className="h-9 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(outputTypeLabels) as WorkflowLlmOutputFieldType[]).map((type) => (
+              <SelectItem key={type} value={type}>{outputTypeLabels[type]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            ariaExpanded={descriptionExpanded}
+            ariaLabel={descriptionExpanded ? "收起 JSON 字段描述" : "展开 JSON 字段描述"}
+            className={descriptionExpanded ? "bg-accent text-foreground" : undefined}
+            icon={ExpandIcon}
+            onClick={() => setDescriptionExpanded((expanded) => !expanded)}
+            tooltip={descriptionExpanded ? "收起描述" : "展开描述"}
+          />
+          <IconButton
+            ariaLabel="删除 JSON 字段"
+            className="text-muted-foreground hover:text-destructive"
+            disabled={fields.length <= 1}
+            icon={MinusSignIcon}
+            onClick={onDelete}
+            tooltip="删除参数"
+          />
+        </div>
+      </div>
+      {descriptionExpanded ? (
         <Input
           aria-label={`${field.name || "JSON 字段"}描述`}
           className="h-9 text-xs"
@@ -646,30 +727,7 @@ function JsonOutputFieldRow({
           placeholder="描述（可选）"
           value={field.description}
         />
-      </div>
-      <Select
-        onValueChange={(type) => onChange({ ...field, type: type as WorkflowLlmOutputFieldType })}
-        value={field.type}
-      >
-        <SelectTrigger aria-label={`${field.name || "JSON 字段"}类型`} className="h-9 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {(Object.keys(outputTypeLabels) as WorkflowLlmOutputFieldType[]).map((type) => (
-            <SelectItem key={type} value={type}>{outputTypeLabels[type]}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        aria-label="删除 JSON 字段"
-        className="size-8 rounded-md p-0 text-muted-foreground hover:text-destructive"
-        disabled={fields.length <= 1}
-        onClick={onDelete}
-        type="button"
-        variant="ghost"
-      >
-        <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
-      </Button>
+      ) : null}
     </div>
   );
 }
@@ -699,15 +757,6 @@ function IdentifierInput({
   );
 }
 
-function FieldControl({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="space-y-2">
-      <Label className="text-xs font-normal text-muted-foreground">{label}</Label>
-      {children}
-    </div>
-  );
-}
-
 function SectionTitle({ children, required = false }: {
   children: ReactNode;
   required?: boolean;
@@ -720,11 +769,13 @@ function SectionTitle({ children, required = false }: {
   );
 }
 
-function IconButton({ ariaLabel, disabled, icon, onClick, tooltip }: {
+function IconButton({ ariaExpanded, ariaLabel, className, disabled, icon, onClick, tooltip }: {
+  ariaExpanded?: boolean;
   ariaLabel: string;
+  className?: string;
   disabled?: boolean;
   icon: typeof Add01Icon;
-  onClick: () => void;
+  onClick?: () => void;
   tooltip: string;
 }) {
   return (
@@ -732,10 +783,12 @@ function IconButton({ ariaLabel, disabled, icon, onClick, tooltip }: {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            aria-expanded={ariaExpanded}
             aria-label={ariaLabel}
-            className="size-8 rounded-lg p-0"
+            className={cn("size-8 p-0", className)}
             disabled={disabled}
             onClick={onClick}
+            size="sm"
             type="button"
             variant="ghost"
           >

@@ -11,6 +11,11 @@ import {
   normalizeLlmOutput,
 } from "@/pages/chat/workflow/nodes/llm/config";
 import { LlmConfig } from "@/pages/chat/workflow/nodes/llm/panel";
+import { llmNodeUi } from "@/pages/chat/workflow/nodes/llm/ui";
+import {
+  WorkflowExpandedEditorHost,
+  WorkflowExpandedEditorProvider,
+} from "@/pages/chat/workflow/panels/expanded-editor-portal";
 import type {
   LlmNodeData,
   WorkflowEdge,
@@ -139,6 +144,126 @@ describe("workflow LLM node", () => {
       expect.objectContaining({ key: "field-title", valueType: { kind: "string" } }),
       expect.objectContaining({ key: "field-score", usages: ["variable"], valueType: { kind: "number" } }),
     ]);
+  });
+
+  it("shows model, input and output names in the node body", () => {
+    const node = createLlmNode({
+      inputs: [
+        { id: "input-topic", name: "topic", value: { kind: "literal", value: "活动" } },
+        { id: "input-tone", name: "tone", value: { kind: "literal", value: "亲切" } },
+      ],
+      modelId: model.id,
+      modelLabel: model.label,
+      modelName: model.model,
+      output: {
+        fields: [
+          { description: "", id: "output-title", name: "title", type: "string" },
+          { description: "", id: "output-score", name: "score", type: "number" },
+        ],
+        format: "json",
+      },
+    });
+
+    if (llmNodeUi.body.kind !== "fields") return;
+    expect(llmNodeUi.body.getFields(node.data)).toEqual([
+      {
+        id: "model",
+        label: "模型",
+        value: { kind: "model", label: model.label, model: model.model },
+      },
+      {
+        id: "inputs",
+        label: "输入",
+        value: {
+          items: [
+            { text: "topic", tone: "default" },
+            { text: "tone", tone: "default" },
+          ],
+          kind: "tags",
+          singleLine: true,
+        },
+      },
+      {
+        id: "output",
+        label: "输出",
+        value: {
+          items: [
+            { text: "title", tone: "default" },
+            { text: "score", tone: "default" },
+          ],
+          kind: "tags",
+          singleLine: true,
+        },
+      },
+    ]);
+  });
+
+  it("marks incomplete and duplicate node-body parameters as warnings", () => {
+    const node = createLlmNode({
+      inputs: [
+        { id: "input-1", name: "", value: { kind: "literal", value: "" } },
+        { id: "input-2", name: "duplicate", value: { kind: "literal", value: "value" } },
+        { id: "input-3", name: "duplicate", value: { kind: "literal", value: "value" } },
+      ],
+      output: {
+        fields: [
+          { description: "", id: "output-1", name: "", type: "string" },
+          { description: "", id: "output-2", name: "duplicate", type: "string" },
+          { description: "", id: "output-3", name: "duplicate", type: "number" },
+        ],
+        format: "json",
+      },
+    });
+
+    if (llmNodeUi.body.kind !== "fields") return;
+    const fields = llmNodeUi.body.getFields(node.data);
+    expect(fields.find((field) => field.id === "inputs")?.value).toEqual({
+      items: [
+        { text: "未配置", tone: "warning" },
+        { text: "duplicate", tone: "warning" },
+        { text: "duplicate", tone: "warning" },
+      ],
+      kind: "tags",
+      singleLine: true,
+    });
+    expect(fields.find((field) => field.id === "output")?.value).toEqual({
+      items: [
+        { text: "未配置", tone: "warning" },
+        { text: "duplicate", tone: "warning" },
+        { text: "duplicate", tone: "warning" },
+      ],
+      kind: "tags",
+      singleLine: true,
+    });
+  });
+
+  it("limits input and output names to 15 characters", () => {
+    const validName = "abcdefghijklmno";
+    const invalidName = `${validName}p`;
+    const validNode = createLlmNode({
+      inputs: [{ id: "input-1", name: validName, value: { kind: "literal", value: "value" } }],
+      modelId: model.id,
+      output: {
+        field: { description: "", id: "output-1", name: validName, type: "string" },
+        format: "text",
+      },
+      systemPrompt: [{ type: "text", value: "生成内容" }],
+    });
+    expect(validateWorkflowNodeConfig(validNode, [validNode], [])).toEqual([]);
+
+    const invalidNode = createLlmNode({
+      ...validNode.data,
+      inputs: [{ id: "input-1", name: invalidName, value: { kind: "literal", value: "value" } }],
+      output: {
+        field: { description: "", id: "output-1", name: invalidName, type: "string" },
+        format: "text",
+      },
+    });
+    expect(validateWorkflowNodeConfig(invalidNode, [invalidNode], []).map((issue) => issue.code))
+      .toEqual(expect.arrayContaining([
+        "llm-input-name-too-long",
+        "llm-output-name-too-long",
+      ]));
   });
 
   it("validates model, inputs, prompts, outputs, and unavailable upstream variables", () => {
@@ -276,7 +401,7 @@ describe("workflow LLM node", () => {
     }));
   });
 
-  it("keeps fullscreen prompt edits local until confirmation", async () => {
+  it("keeps settings visible and synchronizes expanded prompt edits immediately", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const input = createInput("input-topic", "topic");
@@ -287,23 +412,13 @@ describe("workflow LLM node", () => {
 
     await screen.findByRole("combobox", { name: "模型" });
     await user.click(screen.getByRole("button", { name: "全屏编辑系统提示词" }));
-    let dialog = screen.getByRole("dialog", { name: "系统提示词" });
-    await user.click(within(dialog).getByRole("button", { name: "插入变量" }));
-    await user.click(screen.getByRole("menuitem", { name: "输入参数" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /topic/ }));
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(onNodeChange).not.toHaveBeenCalledWith(expect.objectContaining({
-      systemPrompt: expect.arrayContaining([
-        { selector: ["input", input.id], type: "variable" },
-      ]),
-    }));
+    const expandedEditor = screen.getByRole("region", { name: "系统提示词展开编辑" });
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "全屏编辑系统提示词" }));
-    dialog = screen.getByRole("dialog", { name: "系统提示词" });
-    await user.click(within(dialog).getByRole("button", { name: "插入变量" }));
+    await user.click(within(expandedEditor).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "输入参数" }));
     fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /topic/ }));
-    await user.click(within(dialog).getByRole("button", { name: "确定" }));
     await waitFor(() => {
       expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
         systemPrompt: expect.arrayContaining([
@@ -311,6 +426,10 @@ describe("workflow LLM node", () => {
         ]),
       }));
     });
+
+    await user.click(within(expandedEditor).getByRole("button", { name: "收起系统提示词" }));
+    expect(screen.queryByRole("region", { name: "系统提示词展开编辑" })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
   });
 
   it("switches output formats without changing the stable field ID and limits JSON fields", async () => {
@@ -324,24 +443,34 @@ describe("workflow LLM node", () => {
     const onNodeChange = vi.fn();
     render(<StatefulLlmConfig initialNode={node} onNodeChange={onNodeChange} />);
     await screen.findByRole("combobox", { name: "模型" });
-    await user.click(screen.getByRole("combobox", { name: "输出格式" }));
-    await user.click(await screen.findByRole("option", { name: "JSON" }));
+    expect(screen.queryByRole("textbox", { name: "输出描述" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除输出参数" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "展开输出描述" }));
+    expect(screen.getByRole("textbox", { name: "输出描述" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "JSON" }));
 
     expect(screen.getByRole("textbox", { name: "JSON 字段名" })).toHaveValue("output");
+    expect(screen.queryByRole("textbox", { name: "output描述" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除 JSON 字段" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "展开 JSON 字段描述" }));
+    expect(screen.getByRole("textbox", { name: "output描述" })).toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       output: {
         fields: [expect.objectContaining({ id: stableId })],
         format: "json",
       },
     }));
-    for (let index = 1; index < LLM_OUTPUT_FIELD_MAX_COUNT; index += 1) {
+    await user.click(screen.getByRole("button", { name: "+ 添加字段" }));
+    screen.getAllByRole("button", { name: "删除 JSON 字段" })
+      .forEach((button) => expect(button).toBeEnabled());
+    for (let index = 2; index < LLM_OUTPUT_FIELD_MAX_COUNT; index += 1) {
       await user.click(screen.getByRole("button", { name: "+ 添加字段" }));
     }
     expect(screen.getAllByRole("textbox", { name: "JSON 字段名" })).toHaveLength(LLM_OUTPUT_FIELD_MAX_COUNT);
     expect(screen.getByRole("button", { name: "+ 添加字段" })).toBeDisabled();
 
-    await user.click(screen.getByRole("combobox", { name: "输出格式" }));
-    await user.click(await screen.findByRole("option", { name: "Markdown" }));
+    await user.click(screen.getByRole("radio", { name: "Markdown" }));
     expect(screen.getByRole("textbox", { name: "输出变量名" })).toHaveValue("output");
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       output: {
@@ -365,15 +494,20 @@ function StatefulLlmConfig({
 }) {
   const [node, setNode] = useState(initialNode);
   return (
-    <LlmConfig
-      edges={edges}
-      node={node}
-      nodes={nodes?.map((candidate) => candidate.id === node.id ? node : candidate) ?? [node]}
-      onNodeChange={(patch) => {
-        onNodeChange(patch);
-        setNode((current) => ({ ...current, data: { ...current.data, ...patch } }));
-      }}
-    />
+    <WorkflowExpandedEditorProvider>
+      <WorkflowExpandedEditorHost />
+      <aside aria-label="节点配置" role="complementary">
+        <LlmConfig
+          edges={edges}
+          node={node}
+          nodes={nodes?.map((candidate) => candidate.id === node.id ? node : candidate) ?? [node]}
+          onNodeChange={(patch) => {
+            onNodeChange(patch);
+            setNode((current) => ({ ...current, data: { ...current.data, ...patch } }));
+          }}
+        />
+      </aside>
+    </WorkflowExpandedEditorProvider>
   );
 }
 

@@ -67,6 +67,7 @@ const edgeTypes = {
 const workflowNodeOrigin: [number, number] = [0, 0.5];
 const workflowPanOnDrag = true;
 const workflowPaneClickDistance = 8;
+const workflowNodePointerThreshold = 4;
 const workflowPaletteNodeGap = 24;
 
 export function WorkflowCanvas({
@@ -214,6 +215,8 @@ export function WorkflowCanvas({
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
         multiSelectionKeyCode={null}
+        nodeClickDistance={workflowNodePointerThreshold}
+        nodeDragThreshold={workflowNodePointerThreshold}
         nodeOrigin={workflowNodeOrigin}
         nodeTypes={nodeTypes}
         nodes={flowNodes}

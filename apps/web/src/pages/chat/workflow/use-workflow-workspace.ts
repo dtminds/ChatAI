@@ -202,7 +202,7 @@ export function useWorkflowWorkspace(
 
     if (options.workflowEdited) {
       dispatchViewState({
-        openInspector: Boolean(options.selectNode && result.nodeId),
+        openInspector: options.selectNode && result.nodeId ? true : undefined,
         type: "workflow-edited",
       });
     }

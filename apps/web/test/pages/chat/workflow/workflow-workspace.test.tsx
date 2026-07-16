@@ -312,6 +312,7 @@ describe("useWorkflowWorkspace", () => {
       edge.source === handoffNode?.id || edge.target === handoffNode?.id,
     )).toBe(false);
     expect(handoffNode?.position).toEqual({ x: 1280, y: 420 });
+    expect(result.current.inspector.isOpen).toBe(true);
     expect(result.current.inspector.node?.id).toBe("message-welcome");
     expect(result.current.canvas.paletteOpen).toBe(true);
   });

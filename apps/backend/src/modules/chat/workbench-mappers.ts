@@ -27,6 +27,7 @@ export type SeatRow = {
   id: number | string;
   is_online: number | null;
   last_message_time: Date | number | string | null;
+  group_semi_auto_auth?: number | string | boolean | null;
   group_unread_count?: number | string | null;
   semi_auto_auth?: number | string | boolean | null;
   semi_auto_switch?: number | string | boolean | null;
@@ -68,6 +69,8 @@ export type MessageRow = {
   conversation_external_id: string;
   conversation_group_id: string;
   conversation_group_seat_id?: number | string | null;
+  /** 会话接待号 third_userid；影子群读分区可能是开通号，归属判断应用接待号 */
+  conversation_third_userid?: string | null;
   conversation_id: number | string;
   from_type: number | null;
   id: number | string;
@@ -130,6 +133,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
   const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
   const groupFullAutoAuth = readBooleanFlag(row.group_full_auto_auth);
+  const groupSemiAutoAuth = readBooleanFlag(row.group_semi_auto_auth);
 
   return {
     seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
@@ -141,6 +145,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     seatAIHostingAuth,
     fullAutoSwitch,
     groupFullAutoAuth,
+    groupSemiAutoAuth,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -353,9 +358,16 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
 
   if (row.chat_type === 2) {
     const thirdFromId = (row.third_from_id || "").trim();
-    const thirdUserId = (row.third_user_id || "").trim();
+    // 影子群消息分区可能是开通号，己方发送方是接待号
+    const ownershipThirdUserId = (
+      row.conversation_third_userid ||
+      row.third_user_id ||
+      ""
+    ).trim();
 
-    return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
+    return thirdFromId && ownershipThirdUserId && thirdFromId === ownershipThirdUserId
+      ? "agent"
+      : "customer";
   }
 
   switch (row.from_type) {

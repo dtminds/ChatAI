@@ -57,6 +57,8 @@ export type Account = {
   seatAIAssistantEnabled?: boolean;
   /** 席位群聊是否允许开启 AI 回复，对应群聊设置「允许开启 AI回复」 */
   groupFullAutoAuth?: boolean;
+  /** 席位群聊是否开通话术推荐，对应群聊设置「允许话术推荐」 */
+  groupSemiAutoAuth?: boolean;
   /** 席位业务状态：1 已绑定，0 已注销 */
   bizStatus?: number;
   /** 过期时间戳，单位：秒 */

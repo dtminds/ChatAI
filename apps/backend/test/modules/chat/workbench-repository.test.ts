@@ -663,6 +663,7 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
     seat_id: 12,
     third_external_userid: "customer-001",
     third_group_id: "",
+    third_group_origin_userid: "",
     third_userid: "seat-user-001",
     unread_cnt: 0,
     verified: 1,
@@ -2626,7 +2627,7 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_user_seat_sub_relation as relation",
       "xy_wap_embed_conversation",
     ]);
-    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin"]);
+    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin", "leftJoin"]);
     expect(queries[0]?.query.joinConditions).toEqual([
       {
         conditions: [
@@ -2643,6 +2644,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "seat.id"],
+          ["seat_group_agent.uid", "=", "seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -2709,7 +2718,7 @@ describe("WorkbenchRepository", () => {
       unreadCount: 3,
     });
 
-    expect(queryBuilders[0]?.joins).toEqual(["leftJoin"]);
+    expect(queryBuilders[0]?.joins).toEqual(["leftJoin", "leftJoin"]);
     expect(queryBuilders[0]?.joinConditions).toEqual([
       {
         conditions: [
@@ -2717,6 +2726,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id"],
+          ["seat_group_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -4284,6 +4301,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: true,
         fullAutoSwitch: true,
+        groupFullAutoAuth: false,
+        groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
@@ -4307,6 +4326,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: false,
         fullAutoSwitch: false,
+        groupFullAutoAuth: false,
+        groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
@@ -5216,6 +5237,7 @@ describe("WorkbenchRepository", () => {
               biz_status: 0,
               name: "失效群聊",
               third_group_id: "group-001",
+              third_userid: "seat-user-001",
             });
             observedGroupSeatQueries.push(query);
 
@@ -5250,6 +5272,78 @@ describe("WorkbenchRepository", () => {
       conversationId: "89",
       customerAvatar: "https://example.com/inactive-group.png",
       customerName: "失效群聊",
+    });
+  });
+
+  it("hydrates shadow group conversations from the opening seat group profile", async () => {
+    const observedGroupSeatQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "reception-seat-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 90,
+                third_external_userid: "",
+                third_group_id: "group-001",
+                third_group_origin_userid: "opening-seat-001",
+                third_userid: "reception-seat-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/opening-group.png",
+              biz_status: 1,
+              name: "开通号群聊",
+              remark: "开通号备注",
+              third_group_id: "group-001",
+              third_userid: "opening-seat-001",
+            });
+            observedGroupSeatQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(observedGroupSeatQueries[0]?.wheres).toContainEqual([
+      "third_userid",
+      "in",
+      ["opening-seat-001"],
+    ]);
+    expect(page.items[0]).toMatchObject({
+      conversationId: "90",
+      customerAvatar: "https://example.com/opening-group.png",
+      customerName: "开通号备注",
+      mode: "group",
     });
   });
 
@@ -6705,6 +6799,53 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+  });
+
+  it("loads shadow group messages with the opening seat third user id", async () => {
+    const db = createMessagesDb(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          from_type: 2,
+          id: 201,
+          msgid: "shadow-msg-201",
+          third_external_id: null,
+          third_from_id: "member-1",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+        group_seat_id: 7788,
+        third_group_origin_userid: "opening-seat-001",
+        third_userid: "reception-seat-001",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          msgid: "shadow-msg-201",
+        }),
+      ],
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_group_id",
+      "=",
+      "group-1",
+    ]);
   });
 
   it("hydrates group message senders from the conversation group seat without active-status filters", async () => {

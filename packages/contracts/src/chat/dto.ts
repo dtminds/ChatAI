@@ -279,6 +279,10 @@ export type WorkbenchSeatDto = {
    * 席位群聊是否允许开启 AI 回复，对应 `xy_wap_embed_user_seat_group_agent.full_auto_auth`
    */
   groupFullAutoAuth?: boolean;
+  /**
+   * 席位群聊是否开通话术推荐，对应 `xy_wap_embed_user_seat_group_agent.semi_auto_auth`
+   */
+  groupSemiAutoAuth?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;

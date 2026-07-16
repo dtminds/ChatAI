@@ -1382,6 +1382,78 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts group smart reply history and general-answer with thirdGroupId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const okResponse = () =>
+      new Response(
+        JSON.stringify({
+          data: [],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(okResponse());
+    const client = createWorkbenchJavaClient();
+
+    await client.listUserHistoryAnswers({
+      chatType: 2,
+      msgIds: [2001],
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    await client.requestGeneralAnswer({
+      chatType: 2,
+      msgId: 2001,
+      questionImgs: [],
+      thirdExternalId: "",
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 2,
+          msgIds: [2001],
+          thirdExternalId: "",
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          withCacheSeat: true,
+        }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/general-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 2,
+          msgId: 2001,
+          questionImgs: [],
+          thirdExternalId: "",
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("preserves Java errorMsg when general-answer request fails", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

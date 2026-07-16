@@ -2818,6 +2818,7 @@ function buildInitialState(): MockState {
     semiAutoSwitch: true,
     seatAIAssistantEnabled: true,
     groupFullAutoAuth: true,
+    groupSemiAutoAuth: true,
     unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 

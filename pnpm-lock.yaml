@@ -21,7 +21,7 @@ importers:
         version: 7.0.0
       '@fastify/jwt':
         specifier: ^10.0.0
-        version: 10.1.0
+        version: 10.2.0
       '@sinclair/typebox':
         specifier: ^0.34.41
         version: 0.34.52
@@ -1056,8 +1056,8 @@ packages:
   '@fastify/forwarded@3.0.1':
     resolution: {integrity: sha512-JqDochHFqXs3C3Ml3gOY58zM7OqO9ENqPo0UqAjAjH8L01fRZqwX9iLeX34//kiJubF7r2ZQHtBRU36vONbLlw==}
 
-  '@fastify/jwt@10.1.0':
-    resolution: {integrity: sha512-U1y8ZbxoH1Pjon3euzPJmbCkuYBM+hrQlFWLQWvKmJGCNT6mVsAolnVJdEWfXeQOKpgmuRVCIsPll5RLZxj10A==}
+  '@fastify/jwt@10.2.0':
+    resolution: {integrity: sha512-4f5aBnXORARG+6I+sVNqLoPCvLlEqi9VymliB+QRG4EUuZy0a+NjnGL7bt+Uyi09KOVjj6GmdEXXOhWbdqyYZA==}
 
   '@fastify/merge-json-schemas@0.2.1':
     resolution: {integrity: sha512-OA3KGBCy6KtIvLf8DINC5880o5iBlDX4SxzLQS8HorJAbqluzLRn80UXU0bxZn7UOFhFgpRJDasfwn9nG4FG4A==}
@@ -2415,8 +2415,8 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
-  bn.js@4.12.3:
-    resolution: {integrity: sha512-fGTi3gxV/23FTYdAoUtLYp6qySe2KE3teyZitipKNRuVYcBkoP/bB3guXN/XVKUe9mxCHXnc9C4ocyz8OmgN0g==}
+  bn.js@4.12.5:
+    resolution: {integrity: sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==}
 
   border-beam@1.2.0:
     resolution: {integrity: sha512-WDcuwqVgd0SqIw1VQhXoSzXS4r3YhGBdd1pb+RqDmBe7+umydR9GrnazJkRs+7ngQV/PSP/4lZHhwu36DE2+bQ==}
@@ -4780,12 +4780,12 @@ snapshots:
 
   '@fastify/forwarded@3.0.1': {}
 
-  '@fastify/jwt@10.1.0':
+  '@fastify/jwt@10.2.0':
     dependencies:
       '@fastify/error': 4.2.0
       '@lukeed/ms': 2.0.2
       fast-jwt: 6.2.4
-      fastify-plugin: 5.1.0
+      fastify-plugin: 6.0.0
       steed: 1.1.3
 
   '@fastify/merge-json-schemas@0.2.1':
@@ -6096,7 +6096,7 @@ snapshots:
 
   asn1.js@5.4.1:
     dependencies:
-      bn.js: 4.12.3
+      bn.js: 4.12.5
       inherits: 2.0.4
       minimalistic-assert: 1.0.1
       safer-buffer: 2.1.2
@@ -6174,7 +6174,7 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  bn.js@4.12.3: {}
+  bn.js@4.12.5: {}
 
   border-beam@1.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:

@@ -204,6 +204,7 @@ export function WorkflowCanvas({
       role="application"
     >
       <ReactFlow
+        connectionRadius={32}
         defaultViewport={initialViewport}
         deleteKeyCode={null}
         edges={edges}

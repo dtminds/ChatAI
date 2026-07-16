@@ -2627,7 +2627,7 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_user_seat_sub_relation as relation",
       "xy_wap_embed_conversation",
     ]);
-    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin"]);
+    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin", "leftJoin"]);
     expect(queries[0]?.query.joinConditions).toEqual([
       {
         conditions: [
@@ -2644,6 +2644,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "seat.id"],
+          ["seat_group_agent.uid", "=", "seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -2710,7 +2718,7 @@ describe("WorkbenchRepository", () => {
       unreadCount: 3,
     });
 
-    expect(queryBuilders[0]?.joins).toEqual(["leftJoin"]);
+    expect(queryBuilders[0]?.joins).toEqual(["leftJoin", "leftJoin"]);
     expect(queryBuilders[0]?.joinConditions).toEqual([
       {
         conditions: [
@@ -2718,6 +2726,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id"],
+          ["seat_group_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -4285,6 +4301,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: true,
         fullAutoSwitch: true,
+        groupFullAutoAuth: false,
+        groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
@@ -4308,6 +4326,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: false,
         fullAutoSwitch: false,
+        groupFullAutoAuth: false,
+        groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),

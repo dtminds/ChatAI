@@ -129,6 +129,46 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
+  it("submits attachment chunk add with attachmentIds and attachmentTypes", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: 601,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().addKbChunk({
+      attachmentIds: [1],
+      attachmentTypes: [2],
+      chunkType: "text",
+      content: "附件描述",
+      docId: 26,
+      operatorId: "19",
+      title: "产品说明书.pdf",
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      attachmentIds: [1],
+      attachmentTypes: [2],
+      chunkType: "text",
+      content: "附件描述",
+      docId: 26,
+      operatorId: "19",
+      title: "产品说明书.pdf",
+      uid: 9001,
+    });
+  });
+
   it("submits chunk page query as JSON", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -219,6 +259,42 @@ describe("createAgentKbJavaClient", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+  });
+
+  it("submits attachmentType filter on chunk page query", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().listKbChunks({
+      attachmentType: 2,
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      attachmentType: 2,
       docId: 1001,
       page: 1,
       pageSize: 10,
@@ -494,6 +570,53 @@ describe("createAgentKbJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           id: 37,
+          operatorId: "19",
+          uid: 9001,
+        }),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("submits chunk batch delete as JSON with ids", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            failCount: 0,
+            successCount: 2,
+          },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const result = await createAgentKbJavaClient().batchDeleteKbChunks({
+      chunkIds: [37, 38],
+      operatorId: "19",
+      uid: 9001,
+    });
+
+    expect(result).toEqual({
+      failCount: 0,
+      successCount: 2,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/delBatch",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ids: [37, 38],
           operatorId: "19",
           uid: 9001,
         }),

@@ -5979,14 +5979,14 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("material: collects mini-program with submitted title", async () => {
+  it("material: collects mini-program with table title without changing content title", async () => {
     const repository = createMaterialRepository({
       createMaterialCollection: vi.fn().mockResolvedValue("188"),
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({
-          appName: "商城",
+          description: "【王知之周一答题】",
           fileUrl: "mini-program/cover.png",
-          title: "旧小程序标题",
+          title: "王知之自习室",
         }),
         id: 9108,
         msgid: "msg-mini-program-1",
@@ -6001,7 +6001,7 @@ describe("MysqlWorkbenchService", () => {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
         groupId: "9",
         msgInfoId: "9108",
-        title: " 新小程序标题 ",
+        title: " 搜索标题 ",
       }),
     ).resolves.toEqual({ success: true });
 
@@ -6011,7 +6011,7 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         msgInfoId: "9108",
         subUid: 0,
-        title: "新小程序标题",
+        title: "搜索标题",
       }),
     );
     expect(
@@ -6020,8 +6020,9 @@ describe("MysqlWorkbenchService", () => {
           "{}",
       ),
     ).toMatchObject({
-      appName: "商城",
-      title: "新小程序标题",
+      description: "【王知之周一答题】",
+      fileUrl: "mini-program/cover.png",
+      title: "王知之自习室",
     });
   });
 
@@ -6541,16 +6542,8 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("material: updates mini-program and video collection titles when edited", async () => {
+  it("material: updates mini-program table title without changing content", async () => {
     const miniProgramRepository = createMaterialRepository({
-      findMaterialCollectionRecord: vi.fn().mockResolvedValue({
-        content: JSON.stringify({
-          appName: "商城",
-          fileUrl: "mini-program/cover.png",
-          title: "旧小程序标题",
-        }),
-        id: "88",
-      }),
       findMaterialCollectionScope: vi.fn().mockResolvedValue({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
         subUid: 0,
@@ -6567,18 +6560,17 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).resolves.toEqual({ ok: true });
 
-    expect(miniProgramRepository.updateMaterialCollectionContent).toHaveBeenCalledWith({
-      content: JSON.stringify({
-        appName: "商城",
-        fileUrl: "mini-program/cover.png",
-        title: "新小程序标题",
-      }),
+    expect(miniProgramRepository.updateMaterialCollectionTitle).toHaveBeenCalledWith({
       id: "88",
       subUid: 0,
       title: "新小程序标题",
       uid: 9001,
     });
+    expect(miniProgramRepository.findMaterialCollectionRecord).not.toHaveBeenCalled();
+    expect(miniProgramRepository.updateMaterialCollectionContent).not.toHaveBeenCalled();
+  });
 
+  it("material: updates video collection titles when edited", async () => {
     const videoRepository = createMaterialRepository({
       findMaterialCollectionRecord: vi.fn().mockResolvedValue({
         content: JSON.stringify({
@@ -8355,6 +8347,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     topQuickReply: vi.fn().mockResolvedValue(true),
     topQuickReplyCategory: vi.fn().mockResolvedValue(true),
     updateMaterialCollectionContent: vi.fn().mockResolvedValue(undefined),
+    updateMaterialCollectionTitle: vi.fn().mockResolvedValue(undefined),
     updateQuickReply: vi.fn().mockResolvedValue(true),
     ...overrides,
   } as unknown as WorkbenchRepository;

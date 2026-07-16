@@ -127,7 +127,6 @@ import {
   isOwnVideoMaterialUrl,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
-  patchMaterialMiniProgramContentJson,
   patchMaterialVideoContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
@@ -671,11 +670,28 @@ export function createMockWorkbenchService(): WorkbenchService {
                 description: request.description,
                 title: request.title ?? "",
               })
-            : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-              ? patchMaterialMiniProgramContentJson(rawContent, request.title ?? "")
-              : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
-                ? patchMaterialVideoContentJson(rawContent, request.title ?? "")
-                : null;
+            : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+              ? patchMaterialVideoContentJson(rawContent, request.title ?? "")
+              : null;
+
+      if (item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        const title = request.title?.trim() ?? "";
+
+        if (!title) {
+          throw new Error("素材标题不能为空");
+        }
+
+        state.materialItems = state.materialItems.map((materialItem) =>
+          materialItem.id === collectionId
+            ? {
+                ...materialItem,
+                title,
+              }
+            : materialItem,
+        );
+
+        return { ok: true };
+      }
 
       if (!patchResult) {
         return { ok: true };

@@ -3,6 +3,7 @@ import {
   buildMediaAssetUrl,
   encodeCosObjectKey,
   getPlayableMediaHost,
+  resolveMediaAssetUrl,
 } from "@/lib/media-asset-url";
 
 describe("media-asset-url", () => {
@@ -28,5 +29,18 @@ describe("media-asset-url", () => {
 
   it("encodes each path segment for COS object keys", () => {
     expect(encodeCosObjectKey("folder/a b/c+d.txt")).toBe("folder/a%20b/c%2Bd.txt");
+  });
+
+  it("resolves relative media paths to playable host URLs", () => {
+    expect(resolveMediaAssetUrl("files/spec.pdf")).toBe(
+      "https://b5.bokr.com.cn/files/spec.pdf",
+    );
+    expect(resolveMediaAssetUrl("/files/guide.pdf")).toBe(
+      "https://b5.bokr.com.cn/files/guide.pdf",
+    );
+    expect(resolveMediaAssetUrl("https://example.com/cover.png")).toBe(
+      "https://example.com/cover.png",
+    );
+    expect(resolveMediaAssetUrl("  ")).toBeUndefined();
   });
 });

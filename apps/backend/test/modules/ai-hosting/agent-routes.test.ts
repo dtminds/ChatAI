@@ -1037,7 +1037,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("allows development uid 272 and production uid 101 to enable full-auto hosting auth", async () => {
+  it("allows development uid 272 to enable full-auto hosting auth", async () => {
     process.env.NODE_ENV = "development";
     const developmentApp = await createAiHostingApp(["admin"], {
       dataUid: 272,
@@ -1059,29 +1059,34 @@ describe("AI hosting agent routes", () => {
     expect(developmentResponse.statusCode).toBe(200);
     expect(developmentResponse.json().data.fullAutoAuthAvailable).toBe(true);
     await developmentApp.app.close();
-
-    process.env.NODE_ENV = "production";
-    const productionApp = await createAiHostingApp(["admin"], {
-      dataUid: 101,
-      uid: 101,
-    });
-
-    const productionResponse = await productionApp.app.inject({
-      headers: { authorization: productionApp.authorization },
-      method: "PUT",
-      payload: {
-        agentId: "301",
-        fullAutoAuth: true,
-        semiAutoAuth: true,
-        userSeatIds: ["101"],
-      },
-      url: "/api/server/ai-hosting/hosting-settings",
-    });
-
-    expect(productionResponse.statusCode).toBe(200);
-    expect(productionResponse.json().data.fullAutoAuthAvailable).toBe(true);
-    await productionApp.app.close();
   });
+
+  it.each([101, 975, 3865])(
+    "allows production uid %i to enable full-auto hosting auth",
+    async (uid) => {
+      process.env.NODE_ENV = "production";
+      const productionApp = await createAiHostingApp(["admin"], {
+        dataUid: uid,
+        uid,
+      });
+
+      const productionResponse = await productionApp.app.inject({
+        headers: { authorization: productionApp.authorization },
+        method: "PUT",
+        payload: {
+          agentId: "301",
+          fullAutoAuth: true,
+          semiAutoAuth: true,
+          userSeatIds: ["101"],
+        },
+        url: "/api/server/ai-hosting/hosting-settings",
+      });
+
+      expect(productionResponse.statusCode).toBe(200);
+      expect(productionResponse.json().data.fullAutoAuthAvailable).toBe(true);
+      await productionApp.app.close();
+    },
+  );
 
   it("rejects hosting settings saves for unpublished agents", async () => {
     const { app, authorization, db } = await createAiHostingApp();

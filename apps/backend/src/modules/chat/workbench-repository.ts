@@ -790,6 +790,17 @@ export class WorkbenchRepository {
     });
   }
 
+  async updateMaterialCollectionTitle(input: {
+    id: string;
+    subUid: number;
+    title: string;
+    uid: number;
+  }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+      title: input.title,
+    });
+  }
+
   async isMaterialGroupEmpty(input: {
     bizType: number;
     groupId: string;

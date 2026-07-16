@@ -304,6 +304,12 @@ export type WorkbenchSeatDto = {
   expireTime?: number;
 };
 
+export type WorkbenchConversationPreviewPart = {
+  kind?: "takeover-reminder";
+  text: string;
+  tone?: "danger";
+};
+
 export type WorkbenchConversationSummaryDto = {
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
@@ -332,6 +338,7 @@ export type WorkbenchConversationSummaryDto = {
   /** 群原始名称（当使用备注展示时） */
   groupOriginalName?: string;
   lastMessage: string;
+  lastMessagePreviewParts?: WorkbenchConversationPreviewPart[];
   lastMessageTime?: number;
   unreadCount: number;
   mode: "single" | "group";

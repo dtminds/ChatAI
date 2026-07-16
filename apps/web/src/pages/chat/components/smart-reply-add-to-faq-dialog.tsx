@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
 import { createKbChunk } from "@/pages/chat/ai-hosting/api/kb-chunk-service";
 import { listKbDocs, listKbs } from "@/pages/chat/ai-hosting/api/kb-service";
-import {
-  SmartReplyRecommendedAttachmentsSection,
-  type SmartReplyRecommendedAttachment,
-} from "@/pages/chat/components/smart-reply-recommended-attachments";
 
 const FAQ_DIALOG_KB_LIST_PAGE_SIZE = 200;
 const FAQ_DIALOG_DOC_LIST_PAGE_SIZE = 100;
@@ -40,9 +36,6 @@ export type SmartReplyAddToFaqDialogProps = {
   onOpenChange: (open: boolean) => void;
   initialQuestion?: string;
   initialAnswer?: string;
-  recommendedAttachments?: SmartReplyRecommendedAttachment[];
-  isRecommendedAttachmentsLoading?: boolean;
-  initialSelectedAttachmentIds?: string[];
   onSaved?: () => void;
 };
 
@@ -51,9 +44,6 @@ export function SmartReplyAddToFaqDialog({
   onOpenChange,
   initialQuestion = "",
   initialAnswer = "",
-  recommendedAttachments = [],
-  isRecommendedAttachmentsLoading = false,
-  initialSelectedAttachmentIds = [],
   onSaved,
 }: SmartReplyAddToFaqDialogProps) {
   const isMountedRef = useRef(false);
@@ -65,9 +55,6 @@ export function SmartReplyAddToFaqDialog({
   const [docId, setDocId] = useState("");
   const [question, setQuestion] = useState(initialQuestion);
   const [answer, setAnswer] = useState(initialAnswer);
-  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>(
-    initialSelectedAttachmentIds,
-  );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -85,7 +72,6 @@ export function SmartReplyAddToFaqDialog({
 
     setQuestion(initialQuestion);
     setAnswer(initialAnswer);
-    setSelectedAttachmentIds(initialSelectedAttachmentIds);
     setKnowledgeSets([]);
     setKbId("");
     setFaqOptions([]);
@@ -122,7 +108,7 @@ export function SmartReplyAddToFaqDialog({
     return () => {
       cancelled = true;
     };
-  }, [initialAnswer, initialQuestion, initialSelectedAttachmentIds, open]);
+  }, [initialAnswer, initialQuestion, open]);
 
   useEffect(() => {
     if (!open || !kbId) {
@@ -169,18 +155,6 @@ export function SmartReplyAddToFaqDialog({
       cancelled = true;
     };
   }, [kbId, open]);
-
-  const handleToggleAttachment = useCallback((attachmentId: string, checked: boolean) => {
-    setSelectedAttachmentIds((current) => {
-      if (checked) {
-        return current.includes(attachmentId)
-          ? current
-          : [...current, attachmentId];
-      }
-
-      return current.filter((id) => id !== attachmentId);
-    });
-  }, []);
 
   const handleSave = () => {
     const trimmedQuestion = question.trim();
@@ -279,20 +253,6 @@ export function SmartReplyAddToFaqDialog({
                 rows={6}
                 value={answer}
               />
-              {isRecommendedAttachmentsLoading ? (
-                <SmartReplyRecommendedAttachmentsSection
-                  isLoading
-                  onSelectedAttachmentIdsChange={() => undefined}
-                  recommendedAttachments={[]}
-                  selectedAttachmentIds={[]}
-                />
-              ) : recommendedAttachments.length > 0 ? (
-                <SmartReplyRecommendedAttachmentsSection
-                  onSelectedAttachmentIdsChange={handleToggleAttachment}
-                  recommendedAttachments={recommendedAttachments}
-                  selectedAttachmentIds={selectedAttachmentIds}
-                />
-              ) : null}
             </div>
           </div>
         </div>

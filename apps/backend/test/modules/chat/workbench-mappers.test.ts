@@ -413,6 +413,78 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("formats agent handoff system previews as takeover reminders", () => {
+    const conversationRow = (
+      overrides: Partial<Parameters<typeof mapConversationRow>[0]>,
+    ) =>
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        id: 95,
+        last_message_content: "Agent 转人工处理：请及时接管",
+        last_message_type: "system",
+        last_msgtime: 1778240100000,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+        verified: 0,
+        ...overrides,
+      });
+
+    const reminderPart = {
+      kind: "takeover-reminder",
+      text: "[接管提醒]",
+      tone: "danger",
+    };
+
+    for (const content of [
+      "Agent 转人工处理：请及时接管",
+      "Agent 转人工处理：请及时接管\n",
+    ]) {
+      expect(
+        conversationRow({
+          last_message_content: content,
+          last_message_type: "system",
+        }),
+      ).toMatchObject({
+        lastMessage: "[接管提醒]请及时接管",
+        lastMessagePreviewParts: [
+          reminderPart,
+          {
+            text: "请及时接管",
+          },
+        ],
+      });
+    }
+
+    expect(
+      conversationRow({
+        last_message_content: "Agent 转人工处理： \n",
+        last_message_type: "system",
+      }),
+    ).toMatchObject({
+      lastMessage: "[接管提醒]",
+      lastMessagePreviewParts: [reminderPart],
+    });
+
+    const textPreviewConversation = conversationRow({
+      last_message_content: "Agent 转人工处理：请及时接管",
+      last_message_type: "text",
+    });
+
+    expect(textPreviewConversation).toMatchObject({
+      lastMessage: "Agent 转人工处理：请及时接管",
+    });
+    expect(textPreviewConversation).not.toHaveProperty("lastMessagePreviewParts");
+  });
+
   it("does not coerce conversations without a last message time to epoch", () => {
     expect(
       mapConversationRow({

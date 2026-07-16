@@ -17,6 +17,7 @@ import type {
 import { useNullableMaterialSelection } from "@/pages/chat/components/material-collection/use-nullable-material-selection";
 
 type MaterialImageGridProps = {
+  actionLabel?: string;
   groups: MaterialCollectionGroup[];
   hasMoreItems: boolean;
   isBusy: boolean;
@@ -25,14 +26,15 @@ type MaterialImageGridProps = {
   isSending?: boolean;
   items: MaterialCollectionItem[];
   onCancel: () => void;
-  onDeleteMaterial: (item: MaterialCollectionItem) => void;
+  onDeleteMaterial?: (item: MaterialCollectionItem) => void;
   onLoadMoreItems?: () => void;
-  onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
+  onMoveMaterial?: (item: MaterialCollectionItem, groupId: string) => void;
   onSendMaterial: (item: MaterialCollectionItem) => void;
-  onTopMaterial: (item: MaterialCollectionItem) => void;
+  onTopMaterial?: (item: MaterialCollectionItem) => void;
 };
 
 export function MaterialImageGrid({
+  actionLabel,
   groups,
   hasMoreItems,
   isBusy,
@@ -103,6 +105,7 @@ export function MaterialImageGrid({
       </ScrollArea>
 
       <MaterialLibraryFooter
+        actionLabel={actionLabel}
         canSend={selectedItem != null}
         isBusy={isBusy}
         isMobileLayout={isMobileLayout}
@@ -141,11 +144,11 @@ function MaterialImageTile({
   groups: MaterialCollectionGroup[];
   isMobileLayout: boolean;
   item: MaterialCollectionItem;
-  onDelete: (item: MaterialCollectionItem) => void;
-  onMove: (item: MaterialCollectionItem, groupId: string) => void;
+  onDelete?: (item: MaterialCollectionItem) => void;
+  onMove?: (item: MaterialCollectionItem, groupId: string) => void;
   onPreview: () => void;
   onToggleSelect: () => void;
-  onTop: (item: MaterialCollectionItem) => void;
+  onTop?: (item: MaterialCollectionItem) => void;
   selected: boolean;
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(

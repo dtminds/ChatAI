@@ -2314,8 +2314,79 @@ describe("AI hosting pages", () => {
     expect(
       await screen.findByText("当前知识库已关联8个Agent，不支持删除"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("是否确认删除？")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除"),
+    ).not.toBeInTheDocument();
     expect(kbService.deleteKb).not.toHaveBeenCalled();
+  });
+
+  it("requires typing the knowledge base name before deleting a kb with documents", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
+      hasDocuments: true,
+      linkedAgentCount: 0,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+
+    expect(
+      await screen.findByText(
+        "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除",
+      ),
+    ).toBeInTheDocument();
+
+    const deleteButton = screen.getByRole("button", { name: "删除" });
+    expect(deleteButton).toBeDisabled();
+
+    await user.type(
+      screen.getByRole("textbox", { name: "输入知识库名称确认删除" }),
+      "华为产品知识",
+    );
+
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(kbService.deleteKb).toHaveBeenCalledWith("W7zU2fWkVSp65OTAjDd3-w");
+    });
+  });
+
+  it("requires typing the knowledge base name before deleting an empty kb", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
+      hasDocuments: false,
+      linkedAgentCount: 0,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+
+    expect(await screen.findByText("是否确认删除？")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除",
+      ),
+    ).not.toBeInTheDocument();
+
+    const deleteButton = screen.getByRole("button", { name: "删除" });
+    expect(deleteButton).toBeDisabled();
+
+    await user.type(
+      screen.getByRole("textbox", { name: "输入知识库名称确认删除" }),
+      "华为产品知识",
+    );
+
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(kbService.deleteKb).toHaveBeenCalledWith("W7zU2fWkVSp65OTAjDd3-w");
+    });
   });
 
   it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {

@@ -1882,6 +1882,10 @@ export interface XyWapEmbedMaterialCollection {
    */
   sub_uid: Generated<number>;
   /**
+   * 来源类型，0-收藏、1-知识库
+   */
+  source_type: Generated<number>;
+  /**
    * 标题
    */
   title: Generated<string>;

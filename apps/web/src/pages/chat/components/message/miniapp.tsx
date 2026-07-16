@@ -8,18 +8,32 @@ import {
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
 
+const MINI_PROGRAM_APP_NAME_MAX_LENGTH = 18;
+const MINI_PROGRAM_TITLE_MAX_CHARS_PER_LINE = 16;
+
 type MiniAppMessageCardProps = {
   className?: string;
   content: MiniProgramMessageContent;
+  footerNote?: string;
   titleLines?: 1 | 2;
 };
 
 export function MiniAppMessageCard({
   className,
   content,
+  footerNote,
   titleLines = 2,
 }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
+  const normalizedFooterNote = footerNote?.trim();
+  const displayAppName = truncateMiniProgramText(
+    content.appName,
+    MINI_PROGRAM_APP_NAME_MAX_LENGTH,
+  );
+  const displayTitle = truncateMiniProgramText(
+    content.title,
+    titleLines * MINI_PROGRAM_TITLE_MAX_CHARS_PER_LINE,
+  );
 
   return (
     <div
@@ -45,8 +59,9 @@ export function MiniAppMessageCard({
         <span
           className="min-w-0 truncate font-medium"
           data-testid="mini-program-app-name"
+          title={content.appName}
         >
-          {content.appName}
+          {displayAppName}
         </span>
       </div>
 
@@ -56,8 +71,9 @@ export function MiniAppMessageCard({
             "text-[14px] font-medium leading-5 text-foreground",
             titleLines === 1 ? "line-clamp-1" : "line-clamp-2",
           )}
+          title={content.title}
         >
-          {content.title}
+          {displayTitle}
         </p>
       </div>
 
@@ -75,12 +91,30 @@ export function MiniAppMessageCard({
         )}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
-        <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />
-        <span>{content.sourceLabel ?? "小程序"}</span>
+      <div className="mt-2.5 flex min-w-0 items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
+        {normalizedFooterNote ? (
+          <span className="min-w-0 truncate" title={normalizedFooterNote}>
+            {normalizedFooterNote}
+          </span>
+        ) : (
+          <>
+            <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />
+            <span className="min-w-0 truncate">{content.sourceLabel ?? "小程序"}</span>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function truncateMiniProgramText(value: string, maxLength: number) {
+  const characters = Array.from(value);
+
+  if (characters.length <= maxLength) {
+    return value;
+  }
+
+  return `${characters.slice(0, Math.max(0, maxLength - 3)).join("")}...`;
 }
 
 function MiniProgramCoverFallback({ title }: { title: string }) {

@@ -1,5 +1,5 @@
 type WhereClause =
-  | { type: "eq"; column: string; value: unknown }
+  | { type: "eq"; column: string; operator: string; value: unknown }
   | { type: "or"; clauses: Array<{ column: string; operator: string; value: unknown }> };
 
 type QueryExecutionEvent = {
@@ -18,12 +18,16 @@ type KbReadDbMockOptions = {
     status?: number;
     uid?: number;
   }>;
+  attachmentDocSyncStatus?: number;
+  attachmentDocType?: number;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   docSizeBytes?: number[];
   deletedDocCount?: number;
   deletedKbCount?: number;
+  includeAttachmentDoc?: boolean;
   includeFaqDoc?: boolean;
   includeSecondKbWithoutDocs?: boolean;
+  materialCollections?: Array<Record<string, unknown>>;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -50,7 +54,7 @@ function createExpressionBuilder() {
 
 function matchesWhere(row: Record<string, unknown>, where: WhereClause) {
   if (where.type === "eq") {
-    return row[where.column] === where.value;
+    return matchesColumn(row, where);
   }
 
   return where.clauses.some((clause) => matchesColumn(row, clause));
@@ -64,9 +68,18 @@ function matchesColumn(
     return row[clause.column] === clause.value;
   }
 
+  if (clause.operator === "!=") {
+    return row[clause.column] !== clause.value;
+  }
+
   if (clause.operator === "like") {
     const pattern = String(clause.value).replace(/^%/, "").replace(/%$/, "");
     return String(row[clause.column] ?? "").includes(pattern);
+  }
+
+  if (clause.operator === "in") {
+    const values = Array.isArray(clause.value) ? clause.value : [clause.value];
+    return values.includes(row[clause.column]);
   }
 
   return true;
@@ -251,6 +264,36 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_strategy_resource_id: null,
     });
   }
+  if (options.includeAttachmentDoc) {
+    docs.push({
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-16 15:22:22"),
+      doc_process_time: null,
+      doc_size: 0,
+      doc_summary: null,
+      doc_suffix: "txt",
+      doc_type: options.attachmentDocType ?? 4,
+      doc_update_time: null,
+      doc_url: "https://b5.bokr.com.cn/dist/demo.txt",
+      id: 1005,
+      kb_id: 1,
+      last_operator_id: 1,
+      last_sync_time: null,
+      name: "__kb_attachment__",
+      operator_id: 1,
+      point_num: 0,
+      remark: null,
+      status: 1,
+      sync_error_msg: null,
+      sync_status: options.attachmentDocSyncStatus ?? 0,
+      tokens: null,
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-16 15:22:22"),
+      volc_doc_id: "volc-doc-5",
+      volc_resource_id: null,
+      volc_strategy_resource_id: null,
+    });
+  }
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
       brief_summary: null,
@@ -321,6 +364,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
   const chunks = [
     {
+      attachment_type: 0,
       content: "切片正文",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
@@ -345,6 +389,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_resource_id: null,
     },
     {
+      attachment_type: 0,
       content: "系统切片正文",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
@@ -368,7 +413,59 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_doc_id: null,
       volc_resource_id: null,
     },
+    {
+      attachment_type: 2,
+      content: "附件描述",
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
+      description: null,
+      doc_id: 1005,
+      html_content: null,
+      id: 503,
+      kb_id: 1,
+      last_sync_time: null,
+      md_content: null,
+      point_process_time: null,
+      point_update_time: null,
+      source: 1,
+      status: 1,
+      sync_status: 0,
+      title: "产品说明书.pdf",
+      tokens: null,
+      type: "text",
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-18 15:22:22"),
+      volc_chunk_id: null,
+      volc_doc_id: null,
+      volc_resource_id: null,
+    },
+    {
+      attachment_type: 2,
+      content: "系统附件描述",
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
+      description: null,
+      doc_id: 1005,
+      html_content: null,
+      id: 504,
+      kb_id: 1,
+      last_sync_time: null,
+      md_content: null,
+      point_process_time: null,
+      point_update_time: null,
+      source: 2,
+      status: 1,
+      sync_status: 0,
+      title: "系统附件",
+      tokens: null,
+      type: "text",
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-18 15:22:22"),
+      volc_chunk_id: null,
+      volc_doc_id: null,
+      volc_resource_id: null,
+    },
   ];
+
+  const materialCollections = options.materialCollections ?? [];
 
   return {
     insertInto(table: string) {
@@ -441,7 +538,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           if (typeof columnOrFn === "function") {
             wheres.push(columnOrFn(createExpressionBuilder()));
           } else {
-            wheres.push({ type: "eq", column: columnOrFn, value: _value });
+            wheres.push({ type: "eq", column: columnOrFn, operator: _operator ?? "=", value: _value });
           }
 
           return builder;
@@ -521,6 +618,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent") {
             return projectRows(filterRows(agents));
+          }
+
+          if (table === "xy_wap_embed_material_collection") {
+            return projectRows(filterRows(materialCollections));
           }
 
           return [];
@@ -616,7 +717,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           if (typeof columnOrFn === "function") {
             wheres.push(columnOrFn(createExpressionBuilder()));
           } else {
-            wheres.push({ type: "eq", column: columnOrFn, value });
+            wheres.push({ type: "eq", column: columnOrFn, operator: operator ?? "=", value });
           }
 
           return builder;

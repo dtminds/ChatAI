@@ -3,10 +3,8 @@ import {
   Cancel01Icon,
   Male02Icon,
   Search01Icon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { toast } from "sonner";
 import type {
   WorkbenchSearchContactResultDto,
   WorkbenchSearchGroupResultDto,
@@ -20,6 +18,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -36,7 +36,6 @@ import {
   buildMessageForwardRecipientId,
   buildRecentForwardSearchResults,
   getMessageForwardPreview,
-  MESSAGE_FORWARD_MAX_RECIPIENTS,
   MESSAGE_FORWARD_SEND_HINT,
   type MessageForwardMode,
   type MessageForwardRecipient,
@@ -98,10 +97,33 @@ export function MessageForwardRecipientDialog({
     [excludeConversationId, recentConversations],
   );
   const isSearching = normalizedKeyword.length > 0;
-  const selectedRecipientIds = useMemo(
-    () => new Set(selectedRecipients.map((recipient) => recipient.id)),
-    [selectedRecipients],
-  );
+  const selectedRecipientId = selectedRecipients[0]?.id ?? "";
+  const availableRecipientsById = useMemo(() => {
+    const recipientsById = new Map<string, MessageForwardRecipient>();
+
+    const addContacts = (contacts: WorkbenchSearchContactResultDto[]) => {
+      for (const contact of contacts) {
+        const recipient = buildContactRecipient(contact);
+        recipientsById.set(recipient.id, recipient);
+      }
+    };
+    const addGroups = (groups: WorkbenchSearchGroupResultDto[]) => {
+      for (const group of groups) {
+        const recipient = buildGroupRecipient(group);
+        recipientsById.set(recipient.id, recipient);
+      }
+    };
+
+    if (isSearching && searchResults) {
+      addContacts(searchResults.contacts);
+      addGroups(searchResults.groups);
+      return recipientsById;
+    }
+
+    addContacts(recentResults.contacts);
+    addGroups(recentResults.groups);
+    return recipientsById;
+  }, [isSearching, recentResults, searchResults]);
 
   useEffect(() => {
     if (!open) {
@@ -169,34 +191,22 @@ export function MessageForwardRecipientDialog({
     onOpenChange(nextOpen);
   };
 
-  const toggleContactSelection = (contact: WorkbenchSearchContactResultDto) => {
-    const recipient = buildContactRecipient(contact);
+  const handleRecipientSelect = (recipientId: string) => {
+    const recipient = availableRecipientsById.get(recipientId);
 
-    setSelectedRecipients((currentRecipients) =>
-      toggleForwardRecipientSelection(currentRecipients, recipient),
-    );
+    if (recipient) {
+      setSelectedRecipients([recipient]);
+    }
   };
 
-  const toggleGroupSelection = (group: WorkbenchSearchGroupResultDto) => {
-    const recipient = buildGroupRecipient(group);
-
-    setSelectedRecipients((currentRecipients) =>
-      toggleForwardRecipientSelection(currentRecipients, recipient),
-    );
-  };
-
-  const handleRemoveRecipient = (recipientId: string) => {
-    setSelectedRecipients((currentRecipients) =>
-      currentRecipients.filter((item) => item.id !== recipientId),
-    );
+  const handleRemoveRecipient = () => {
+    setSelectedRecipients([]);
   };
 
   const canSend =
     selectedRecipients.length > 0 &&
-    selectedRecipients.length <= MESSAGE_FORWARD_MAX_RECIPIENTS &&
     messages.length > 0 &&
     !isSending;
-  const hasReachedRecipientLimit = selectedRecipients.length >= MESSAGE_FORWARD_MAX_RECIPIENTS;
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -260,80 +270,75 @@ export function MessageForwardRecipientDialog({
               </div>
             </div>
 
-            {isSearching ? (
-              <ForwardRecipientSearchPanel
-                contacts={searchResults?.contacts ?? []}
-                disabled={isSending}
-                expandedSection={expandedListSection}
-                isLoading={isSearchLoading || searchResults === null}
-                keyword={normalizedKeyword}
-                onCollapse={() => setExpandedListSection(null)}
-                onExpand={setExpandedListSection}
-                onToggleContact={toggleContactSelection}
-                onToggleGroup={toggleGroupSelection}
-                recipientLimitReached={hasReachedRecipientLimit}
-                groups={searchResults?.groups ?? []}
-                selectedRecipientIds={selectedRecipientIds}
-              />
-            ) : (
-              <Tabs
-                className="flex min-h-0 flex-1 flex-col"
-                onValueChange={(value) => {
-                  setActiveMode(value as ChatMode);
-                }}
-                value={activeMode}
-              >
-                <div className="border-b border-divider px-4">
-                  <TabsList className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0">
-                    {FORWARD_RECIPIENT_MODES.map((mode) => (
-                      <TabsTrigger
-                        className={forwardRecipientModeTabClassName}
+            <RadioGroup
+              aria-label="转发对象"
+              className="flex min-h-0 flex-1 flex-col"
+              onValueChange={handleRecipientSelect}
+              value={selectedRecipientId}
+            >
+              {isSearching ? (
+                <ForwardRecipientSearchPanel
+                  contacts={searchResults?.contacts ?? []}
+                  disabled={isSending}
+                  expandedSection={expandedListSection}
+                  isLoading={isSearchLoading || searchResults === null}
+                  keyword={normalizedKeyword}
+                  onCollapse={() => setExpandedListSection(null)}
+                  onExpand={setExpandedListSection}
+                  groups={searchResults?.groups ?? []}
+                />
+              ) : (
+                <Tabs
+                  className="flex min-h-0 flex-1 flex-col"
+                  onValueChange={(value) => {
+                    setActiveMode(value as ChatMode);
+                  }}
+                  value={activeMode}
+                >
+                  <div className="border-b border-divider px-4">
+                    <TabsList className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0">
+                      {FORWARD_RECIPIENT_MODES.map((mode) => (
+                        <TabsTrigger
+                          className={forwardRecipientModeTabClassName}
+                          key={mode}
+                          value={mode}
+                        >
+                          {getForwardRecipientModeLabel(mode)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+
+                  {FORWARD_RECIPIENT_MODES.map((mode) => {
+                    const items =
+                      mode === "single" ? recentResults.contacts : recentResults.groups;
+
+                    return (
+                      <TabsContent
+                        className={cn(
+                          "mt-0 flex min-h-0 flex-1 flex-col overflow-hidden",
+                          mode !== activeMode && "hidden",
+                        )}
                         key={mode}
                         value={mode}
                       >
-                        {getForwardRecipientModeLabel(mode)}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </div>
-
-                {FORWARD_RECIPIENT_MODES.map((mode) => {
-                  const items =
-                    mode === "single" ? recentResults.contacts : recentResults.groups;
-
-                  return (
-                    <TabsContent
-                      className={cn(
-                        "mt-0 flex min-h-0 flex-1 flex-col overflow-hidden",
-                        mode !== activeMode && "hidden",
-                      )}
-                      key={mode}
-                      value={mode}
-                    >
-                      <ForwardRecipientRecentPanel
-                        disabled={isSending}
-                        items={items}
-                        mode={mode}
-                        onToggleContact={toggleContactSelection}
-                        onToggleGroup={toggleGroupSelection}
-                        recipientLimitReached={hasReachedRecipientLimit}
-                        selectedRecipientIds={selectedRecipientIds}
-                      />
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            )}
+                        <ForwardRecipientRecentPanel
+                          disabled={isSending}
+                          items={items}
+                          mode={mode}
+                        />
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              )}
+            </RadioGroup>
           </section>
 
           <section className="flex min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 px-4 py-3">
-                <p className="text-sm font-medium text-foreground">
-                  {selectedRecipients.length > 0
-                    ? `已选择 ${selectedRecipients.length}/${MESSAGE_FORWARD_MAX_RECIPIENTS} 个聊天`
-                    : "已选对象"}
-                </p>
+                <p className="text-sm font-medium text-foreground">已选对象</p>
               </div>
 
               <ScrollArea
@@ -352,7 +357,7 @@ export function MessageForwardRecipientDialog({
                         disabled={isSending}
                         key={recipient.id}
                         recipient={recipient}
-                        onRemove={() => handleRemoveRecipient(recipient.id)}
+                        onRemove={handleRemoveRecipient}
                       />
                     ))}
                   </div>
@@ -445,22 +450,6 @@ function MessageForwardSinglePreview({
   );
 }
 
-function toggleForwardRecipientSelection(
-  currentRecipients: MessageForwardRecipient[],
-  recipient: MessageForwardRecipient,
-) {
-  if (currentRecipients.some((item) => item.id === recipient.id)) {
-    return currentRecipients.filter((item) => item.id !== recipient.id);
-  }
-
-  if (currentRecipients.length >= MESSAGE_FORWARD_MAX_RECIPIENTS) {
-    toast.warning(`最多选择 ${MESSAGE_FORWARD_MAX_RECIPIENTS} 个聊天`);
-    return currentRecipients;
-  }
-
-  return [...currentRecipients, recipient];
-}
-
 function getForwardRecipientModeLabel(mode: ChatMode) {
   return mode === "single" ? "单聊" : "群聊";
 }
@@ -474,10 +463,6 @@ function ForwardRecipientSearchPanel({
   keyword,
   onCollapse,
   onExpand,
-  onToggleContact,
-  onToggleGroup,
-  recipientLimitReached = false,
-  selectedRecipientIds,
 }: {
   contacts: WorkbenchSearchContactResultDto[];
   disabled?: boolean;
@@ -487,10 +472,6 @@ function ForwardRecipientSearchPanel({
   keyword: string;
   onCollapse: () => void;
   onExpand: (section: ChatMode) => void;
-  onToggleContact: (contact: WorkbenchSearchContactResultDto) => void;
-  onToggleGroup: (group: WorkbenchSearchGroupResultDto) => void;
-  recipientLimitReached?: boolean;
-  selectedRecipientIds: Set<string>;
 }) {
   const isShowingCustomers = expandedSection === null || expandedSection === "single";
   const isShowingGroups = expandedSection === null || expandedSection === "group";
@@ -538,32 +519,16 @@ function ForwardRecipientSearchPanel({
                   <ForwardRecipientContactItem
                     contact={contact}
                     disabled={disabled}
-                    isSelected={selectedRecipientIds.has(
-                      buildMessageForwardRecipientId({
-                        mode: "single",
-                        thirdExternalUserId: contact.thirdExternalUserId,
-                      }),
-                    )}
                     key={contact.thirdExternalUserId}
                     keyword={keyword}
-                    onToggle={() => onToggleContact(contact)}
-                    recipientLimitReached={recipientLimitReached}
                   />
                 ))
               : groups.map((group) => (
                   <ForwardRecipientGroupItem
                     disabled={disabled}
                     group={group}
-                    isSelected={selectedRecipientIds.has(
-                      buildMessageForwardRecipientId({
-                        mode: "group",
-                        thirdGroupId: group.thirdGroupId,
-                      }),
-                    )}
                     key={group.thirdGroupId}
                     keyword={keyword}
-                    onToggle={() => onToggleGroup(group)}
-                    recipientLimitReached={recipientLimitReached}
                   />
                 ))}
           </div>
@@ -595,16 +560,8 @@ function ForwardRecipientSearchPanel({
                 <ForwardRecipientContactItem
                   contact={contact}
                   disabled={disabled}
-                  isSelected={selectedRecipientIds.has(
-                    buildMessageForwardRecipientId({
-                      mode: "single",
-                      thirdExternalUserId: contact.thirdExternalUserId,
-                    }),
-                  )}
                   key={contact.thirdExternalUserId}
                   keyword={keyword}
-                  onToggle={() => onToggleContact(contact)}
-                  recipientLimitReached={recipientLimitReached}
                 />
               ))}
             </div>
@@ -633,16 +590,8 @@ function ForwardRecipientSearchPanel({
                 <ForwardRecipientGroupItem
                   disabled={disabled}
                   group={group}
-                  isSelected={selectedRecipientIds.has(
-                    buildMessageForwardRecipientId({
-                      mode: "group",
-                      thirdGroupId: group.thirdGroupId,
-                    }),
-                  )}
                   key={group.thirdGroupId}
                   keyword={keyword}
-                  onToggle={() => onToggleGroup(group)}
-                  recipientLimitReached={recipientLimitReached}
                 />
               ))}
             </div>
@@ -667,18 +616,10 @@ function ForwardRecipientRecentPanel({
   disabled = false,
   items,
   mode,
-  onToggleContact,
-  onToggleGroup,
-  recipientLimitReached = false,
-  selectedRecipientIds,
 }: {
   disabled?: boolean;
   items: WorkbenchSearchContactResultDto[] | WorkbenchSearchGroupResultDto[];
   mode: ChatMode;
-  onToggleContact: (contact: WorkbenchSearchContactResultDto) => void;
-  onToggleGroup: (group: WorkbenchSearchGroupResultDto) => void;
-  recipientLimitReached?: boolean;
-  selectedRecipientIds: Set<string>;
 }) {
   if (items.length === 0) {
     return (
@@ -698,32 +639,16 @@ function ForwardRecipientRecentPanel({
               <ForwardRecipientContactItem
                 contact={contact}
                 disabled={disabled}
-                isSelected={selectedRecipientIds.has(
-                  buildMessageForwardRecipientId({
-                    mode: "single",
-                    thirdExternalUserId: contact.thirdExternalUserId,
-                  }),
-                )}
                 key={contact.thirdExternalUserId}
                 keyword=""
-                onToggle={() => onToggleContact(contact)}
-                recipientLimitReached={recipientLimitReached}
               />
             ))
           : (items as WorkbenchSearchGroupResultDto[]).map((group) => (
               <ForwardRecipientGroupItem
                 disabled={disabled}
                 group={group}
-                isSelected={selectedRecipientIds.has(
-                  buildMessageForwardRecipientId({
-                    mode: "group",
-                    thirdGroupId: group.thirdGroupId,
-                  }),
-                )}
                 key={group.thirdGroupId}
                 keyword=""
-                onToggle={() => onToggleGroup(group)}
-                recipientLimitReached={recipientLimitReached}
               />
             ))}
       </div>
@@ -734,27 +659,24 @@ function ForwardRecipientRecentPanel({
 function ForwardRecipientContactItem({
   contact,
   disabled = false,
-  isSelected,
   keyword,
-  onToggle,
-  recipientLimitReached = false,
 }: {
   contact: WorkbenchSearchContactResultDto;
   disabled?: boolean;
-  isSelected: boolean;
   keyword: string;
-  onToggle: () => void;
-  recipientLimitReached?: boolean;
 }) {
+  const recipientId = buildMessageForwardRecipientId({
+    mode: "single",
+    thirdExternalUserId: contact.thirdExternalUserId,
+  });
+
   return (
     <ForwardRecipientPickerItem
       avatar={contact.avatar}
       disabled={disabled}
-      isSelected={isSelected}
       keyword={keyword}
       label={formatContactDisplayName(contact)}
-      onToggle={onToggle}
-      selectionDisabled={!isSelected && recipientLimitReached}
+      recipientId={recipientId}
     />
   );
 }
@@ -762,27 +684,24 @@ function ForwardRecipientContactItem({
 function ForwardRecipientGroupItem({
   disabled = false,
   group,
-  isSelected,
   keyword,
-  onToggle,
-  recipientLimitReached = false,
 }: {
   disabled?: boolean;
   group: WorkbenchSearchGroupResultDto;
-  isSelected: boolean;
   keyword: string;
-  onToggle: () => void;
-  recipientLimitReached?: boolean;
 }) {
+  const recipientId = buildMessageForwardRecipientId({
+    mode: "group",
+    thirdGroupId: group.thirdGroupId,
+  });
+
   return (
     <ForwardRecipientPickerItem
       avatar={group.avatar}
       disabled={disabled}
-      isSelected={isSelected}
       keyword={keyword}
       label={formatGroupDisplayName(group)}
-      onToggle={onToggle}
-      selectionDisabled={!isSelected && recipientLimitReached}
+      recipientId={recipientId}
     />
   );
 }
@@ -839,51 +758,23 @@ function SelectedRecipientItem({
 function ForwardRecipientPickerItem({
   avatar,
   disabled = false,
-  isSelected,
   keyword,
   label,
-  onToggle,
-  selectionDisabled = false,
+  recipientId,
 }: {
   avatar: string;
   disabled?: boolean;
-  isSelected: boolean;
   keyword: string;
   label: string;
-  onToggle: () => void;
-  selectionDisabled?: boolean;
+  recipientId: string;
 }) {
-  const isInteractionDisabled = disabled || selectionDisabled;
-
   return (
-    <Button
-      aria-pressed={isSelected}
+    <Label
       className={cn(
-        "grid h-auto w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center justify-normal gap-3 rounded-none px-4 py-1.5 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20",
-        isSelected && "bg-surface-muted hover:bg-surface-muted",
-        selectionDisabled && "opacity-50",
+        "grid h-auto w-full cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-none px-4 py-1.5 text-left font-normal hover:bg-surface-hover has-[[data-state=checked]]:bg-surface-muted has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50",
       )}
-      disabled={isInteractionDisabled}
-      onClick={onToggle}
-      type="button"
-      variant="ghost"
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "grid size-4 shrink-0 place-content-center rounded-[4px] border border-input bg-transparent text-primary-foreground shadow-xs",
-          isSelected && "border-primary bg-primary",
-        )}
-      >
-        {isSelected ? (
-          <HugeiconsIcon
-            color="currentColor"
-            icon={Tick02Icon}
-            size={12}
-            strokeWidth={2}
-          />
-        ) : null}
-      </span>
+      <RadioGroupItem className="shrink-0" disabled={disabled} value={recipientId} />
       <Avatar className="size-8 rounded-[7px]">
         <AvatarImage alt={label} src={avatar} />
         <AvatarFallback className="rounded-[7px]">
@@ -901,7 +792,7 @@ function ForwardRecipientPickerItem({
           <HighlightedText keyword={keyword} text={label} />
         </p>
       </div>
-    </Button>
+    </Label>
   );
 }
 

@@ -366,5 +366,5 @@ function isFullAutoAuthAvailable(uid: number) {
 }
 
 function getFullAutoAuthAllowlist() {
-  return new Set(process.env.NODE_ENV === "production" ? [101] : [272]);
+  return new Set(process.env.NODE_ENV === "production" ? [101, 975, 3865] : [272]);
 }

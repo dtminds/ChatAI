@@ -57,6 +57,37 @@ describe("workbench adapter", () => {
     });
   });
 
+  it("adapts conversation preview kind for takeover reminder display", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        lastMessage: "[接管提醒]请及时接管",
+        lastMessagePreviewParts: [
+          {
+            kind: "takeover-reminder",
+            text: "[接管提醒]",
+            tone: "danger",
+          },
+          {
+            text: "请及时接管",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      preview: "[接管提醒]请及时接管",
+      previewParts: [
+        {
+          kind: "takeover-reminder",
+          text: "[接管提醒]",
+          tone: "danger",
+        },
+        {
+          text: "请及时接管",
+        },
+      ],
+    });
+  });
+
   it("adapts conversation customer bind type for AI capability checks", () => {
     expect(
       adaptConversation({

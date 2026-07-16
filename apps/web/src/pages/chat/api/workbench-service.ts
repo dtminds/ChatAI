@@ -15,6 +15,7 @@ import {
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
   type WorkbenchConversationClearWaitManualResponse,
+  type WorkbenchConversationClearWaitManualRequest,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
@@ -232,6 +233,7 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchConversationFullAutoResponse>;
   clearConversationWaitManual: (
     conversationId: string,
+    request: WorkbenchConversationClearWaitManualRequest,
   ) => Promise<WorkbenchConversationClearWaitManualResponse>;
   updateSeatAgentMode: (
     seatId: string,
@@ -1664,25 +1666,31 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
-    async clearConversationWaitManual(conversationId) {
+    async clearConversationWaitManual(conversationId, request) {
       const conversation = findConversation(state, conversationId);
 
       if (!conversation) {
         throw new Error("Conversation not found");
       }
 
-      const nextConversation = {
-        ...conversation,
-        waitManual: false,
-      };
+      const cleared =
+        conversation.waitManual === true &&
+        conversation.lastMessageId === request.expectedLastMessageId;
 
-      upsertConversation(state, nextConversation);
-      pushConversationEvent(state, nextConversation);
+      if (cleared) {
+        const nextConversation = {
+          ...conversation,
+          waitManual: false,
+        };
+
+        upsertConversation(state, nextConversation);
+        pushConversationEvent(state, nextConversation);
+      }
 
       return {
+        cleared,
         conversationId,
-        seatId: nextConversation.seatId,
-        waitManual: false as const,
+        seatId: conversation.seatId,
       };
     },
     async updateSeatAgentMode(seatId, request) {
@@ -2465,9 +2473,13 @@ export function createHttpWorkbenchService(): WorkbenchService {
         request,
       );
     },
-    clearConversationWaitManual(conversationId) {
-      return http.post<WorkbenchConversationClearWaitManualResponse>(
+    clearConversationWaitManual(conversationId, request) {
+      return http.post<
+        WorkbenchConversationClearWaitManualResponse,
+        WorkbenchConversationClearWaitManualRequest
+      >(
         `/server/conversations/${conversationId}/wait-manual/clear`,
+        request,
       );
     },
     updateSeatAgentMode(seatId, request) {
@@ -2789,6 +2801,7 @@ function buildInitialState(): MockState {
               : undefined,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
+          lastMessageId: `1${conversation.id.replace(/\D/g, "") || "0"}`,
           lastMessage: conversation.preview,
           lastMessageTime: new Date(conversation.updatedAt.replace(" ", "T")).getTime(),
           isPinned: conversation.isPinned,

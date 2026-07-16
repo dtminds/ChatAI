@@ -2282,13 +2282,15 @@ function applyConversationWaitManualCleared(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
+  expectedLastMessageId: string,
 ) {
   return {
     conversationListsByScope: {
       ...state.conversationListsByScope,
       [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
         (conversation): Conversation =>
-          conversation.id === conversationId
+          conversation.id === conversationId &&
+          conversation.lastMessageId === expectedLastMessageId
             ? {
                 ...conversation,
                 waitManual: false,
@@ -2702,6 +2704,7 @@ export function createWorkbenchStore() {
   let latestGroupMembersRequestId = 0;
   let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
+  let latestWaitManualClearRequestId = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2713,6 +2716,7 @@ export function createWorkbenchStore() {
   const fullAutoPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const fullAutoResetTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
+  const waitManualClearRequestIdByKey = new Map<string, number>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
@@ -2987,6 +2991,7 @@ export function createWorkbenchStore() {
 
     pendingVoicePlaybackConfirmKeys.clear();
     pendingRevokeRequestMessageIds.clear();
+    waitManualClearRequestIdByKey.clear();
 
     for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
       delete latestTakeoverRequestIdByAccountId[accountId];
@@ -6378,21 +6383,46 @@ export function createWorkbenchStore() {
           (item) => item.id === currentConversation.accountId,
         );
 
-        if (account?.takenOverEmployeeId === state.me?.id) {
+        const expectedLastMessageId = currentConversation.lastMessageId;
+
+        if (
+          account?.takenOverEmployeeId === state.me?.id &&
+          expectedLastMessageId
+        ) {
           const accountId = currentConversation.accountId;
-          void clearConversationWaitManual(conversationId)
-            .then(() => {
-              set((currentState) =>
-                applyConversationWaitManualCleared(
-                  currentState,
-                  conversationId,
-                  accountId,
-                ),
-              );
+          const requestKey = `${conversationId}:${expectedLastMessageId}`;
+
+          if (!waitManualClearRequestIdByKey.has(requestKey)) {
+            latestWaitManualClearRequestId += 1;
+            const requestId = latestWaitManualClearRequestId;
+            waitManualClearRequestIdByKey.set(requestKey, requestId);
+
+            void clearConversationWaitManual(conversationId, {
+              expectedLastMessageId,
             })
-            .catch(() => {
-              // 保留接管提醒，等待后续轮询或再次打开时重试
-            });
+              .then((response) => {
+                if (!response.cleared) {
+                  return;
+                }
+
+                set((currentState) =>
+                  applyConversationWaitManualCleared(
+                    currentState,
+                    conversationId,
+                    accountId,
+                    expectedLastMessageId,
+                  ),
+                );
+              })
+              .catch(() => {
+                // 保留接管提醒，等待后续轮询或再次打开时重试
+              })
+              .finally(() => {
+                if (waitManualClearRequestIdByKey.get(requestKey) === requestId) {
+                  waitManualClearRequestIdByKey.delete(requestKey);
+                }
+              });
+          }
         }
       }
 

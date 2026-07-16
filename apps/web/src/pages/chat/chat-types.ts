@@ -67,6 +67,8 @@ export type Account = {
 
 export type Conversation = {
   id: string;
+  /** 当前会话最后一条审计消息 ID */
+  lastMessageId?: string;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
   /**

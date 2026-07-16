@@ -92,6 +92,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     id: dto.conversationId,
     isPinned: dto.isPinned,
     isVerified: dto.verified,
+    lastMessageId: dto.lastMessageId,
     mode: dto.mode,
     preview: dto.lastMessage,
     priority: dto.priority,

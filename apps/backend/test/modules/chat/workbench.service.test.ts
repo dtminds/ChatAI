@@ -2221,7 +2221,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("clears conversation wait_manual when acknowledging takeover reminder", async () => {
-    const clearConversationWaitManual = vi.fn().mockResolvedValue(undefined);
+    const clearConversationWaitManual = vi.fn().mockResolvedValue(true);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -2240,21 +2240,54 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.clearConversationWaitManual("101", "88"),
+      service.clearConversationWaitManual("101", "88", {
+        expectedLastMessageId: "9001",
+      }),
     ).resolves.toEqual({
+      cleared: true,
       conversationId: "88",
       seatId: "12",
-      waitManual: false,
     });
     expect(clearConversationWaitManual).toHaveBeenCalledWith({
       conversationId: "88",
+      expectedLastMessageId: "9001",
       platform: 5,
       uid: 9001,
     });
   });
 
+  it("reports a stale wait_manual clear without clearing a newer reminder", async () => {
+    const clearConversationWaitManual = vi.fn().mockResolvedValue(false);
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        clearConversationWaitManual,
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      service.clearConversationWaitManual("101", "88", {
+        expectedLastMessageId: "9001",
+      }),
+    ).resolves.toEqual({
+      cleared: false,
+      conversationId: "88",
+      seatId: "12",
+    });
+  });
+
   it("rejects clearing conversation wait_manual when the seat is not taken over", async () => {
-    const clearConversationWaitManual = vi.fn().mockResolvedValue(undefined);
+    const clearConversationWaitManual = vi.fn().mockResolvedValue(true);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -2273,7 +2306,9 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.clearConversationWaitManual("101", "88"),
+      service.clearConversationWaitManual("101", "88", {
+        expectedLastMessageId: "9001",
+      }),
     ).rejects.toMatchObject({
       code: "SEAT_NOT_TAKEN_OVER",
       statusCode: 403,

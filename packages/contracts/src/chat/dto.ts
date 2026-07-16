@@ -316,6 +316,8 @@ export type WorkbenchConversationSummaryDto = {
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;
+  /** 当前会话最后一条审计消息 ID，用于保护基于消息状态的条件更新 */
+  lastMessageId?: string;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -807,10 +809,15 @@ export type WorkbenchConversationFullAutoResponse = {
 };
 
 /** 打开会话后清除「待人工处理 / 接管提醒」 */
+export type WorkbenchConversationClearWaitManualRequest = {
+  /** 仅清除仍属于该消息的提醒，避免旧请求覆盖新一轮提醒 */
+  expectedLastMessageId: string;
+};
+
 export type WorkbenchConversationClearWaitManualResponse = {
+  cleared: boolean;
   conversationId: string;
   seatId: string;
-  waitManual: false;
 };
 
 export type WorkbenchSeatAgentMode = "assistant" | "autoReply" | "off";

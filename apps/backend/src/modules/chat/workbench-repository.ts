@@ -3993,16 +3993,18 @@ export class WorkbenchRepository {
 
   async clearConversationWaitManual(input: {
     conversationId: string;
+    expectedLastMessageId: string;
     platform: number;
     uid: number;
   }) {
     const conversationNumericId = parseMySqlId(input.conversationId);
+    const expectedLastMessageId = uniqueIds([input.expectedLastMessageId])[0];
 
-    if (conversationNumericId == null) {
-      return;
+    if (conversationNumericId == null || !expectedLastMessageId) {
+      return false;
     }
 
-    await this.db
+    const result = (await this.db
       .updateTable("xy_wap_embed_conversation")
       .set({
         wait_manual: 0,
@@ -4012,7 +4014,10 @@ export class WorkbenchRepository {
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("wait_manual", "=", 1)
-      .execute();
+      .where("last_audit_info_id", "=", asSchemaBigIntId(expectedLastMessageId))
+      .execute()) as UpdateResult[];
+
+    return getAffectedRows(result) > 0;
   }
 
   async hideConversation(input: {

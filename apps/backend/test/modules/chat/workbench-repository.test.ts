@@ -6653,6 +6653,79 @@ describe("WorkbenchRepository", () => {
     expect(updates).toEqual([{ pinned_time: 0 }]);
   });
 
+  it("clears wait_manual only for the expected last message", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const wheres: Array<[string, string, unknown]> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation");
+
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+              return this;
+            },
+            execute() {
+              return Promise.resolve([{ numUpdatedRows: 1n }]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.clearConversationWaitManual({
+        conversationId: "88",
+        expectedLastMessageId: "9007199254740995",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe(true);
+    expect(updates).toEqual([{ wait_manual: 0 }]);
+    expect(wheres).toEqual([
+      ["id", "=", 88],
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["biz_status", "=", 1],
+      ["wait_manual", "=", 1],
+      ["last_audit_info_id", "=", "9007199254740995"],
+    ]);
+  });
+
+  it("does not report wait_manual cleared when the last message changed", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        updateTable() {
+          return {
+            set() {
+              return this;
+            },
+            where() {
+              return this;
+            },
+            execute() {
+              return Promise.resolve([{ numUpdatedRows: 0n }]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.clearConversationWaitManual({
+        conversationId: "88",
+        expectedLastMessageId: "9001",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+  });
+
   it("hides a conversation in tenant scope", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];

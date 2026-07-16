@@ -52,6 +52,7 @@ export type ConversationRow = {
   group_remark: string | null;
   id: number | string;
   last_message_content: string | null;
+  last_audit_info_id?: number | string | null;
   last_message_type: string | null;
   last_msgtime: Date | number | string | null;
   pinned_time: number | string;
@@ -216,6 +217,8 @@ export function mapConversationRow(
     contactOriginalName,
     groupOriginalName,
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
+    lastMessageId:
+      row.last_audit_info_id == null ? undefined : String(row.last_audit_info_id),
     lastMessage: formatMessagePreview(row.last_message_type, row.last_message_content),
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,

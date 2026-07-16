@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationClearWaitManualRequest,
   WorkbenchConversationClearWaitManualResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
@@ -347,6 +348,7 @@ export type WorkbenchService = {
   clearConversationWaitManual(
     subUserId: string,
     conversationId: string,
+    request: WorkbenchConversationClearWaitManualRequest,
   ):
     | Promise<WorkbenchConversationClearWaitManualResponse>
     | WorkbenchConversationClearWaitManualResponse;
@@ -1435,6 +1437,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async clearConversationWaitManual(
     subUserId: string,
     conversationId: string,
+    request: WorkbenchConversationClearWaitManualRequest,
   ): Promise<WorkbenchConversationClearWaitManualResponse> {
     const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
     const conversation = await this.getOperableConversation(
@@ -1443,16 +1446,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
-    await this.repository.clearConversationWaitManual({
+    const cleared = await this.repository.clearConversationWaitManual({
       conversationId: conversation.id,
+      expectedLastMessageId: request.expectedLastMessageId,
       platform: conversation.platform,
       uid: conversation.uid,
     });
 
     return {
+      cleared,
       conversationId: conversation.id,
       seatId: conversation.seatId,
-      waitManual: false,
     };
   }
 

@@ -278,9 +278,9 @@ describe("useWorkbenchStore", () => {
   it("clears waitManual takeover reminder when opening a conversation", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationWaitManual = vi.fn().mockResolvedValue({
+      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
-      waitManual: false,
     });
 
     setWorkbenchService({
@@ -301,6 +301,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
+                lastMessageId: "9001",
                 waitManual: true,
               }
             : conversation,
@@ -310,7 +311,9 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().setActiveConversation("conv-001");
 
-    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001");
+    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001", {
+      expectedLastMessageId: "9001",
+    });
     expect(
       useWorkbenchStore
         .getState()
@@ -339,7 +342,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, waitManual: true }
+            ? { ...conversation, lastMessageId: "9001", waitManual: true }
             : conversation,
         ),
       },
@@ -347,7 +350,9 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().setActiveConversation("conv-001");
 
-    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001");
+    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001", {
+      expectedLastMessageId: "9001",
+    });
     expect(
       useWorkbenchStore
         .getState()
@@ -376,7 +381,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, waitManual: true }
+            ? { ...conversation, lastMessageId: "9001", waitManual: true }
             : conversation,
         ),
       },
@@ -391,6 +396,115 @@ describe("useWorkbenchStore", () => {
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.waitManual,
     ).toBe(true);
+  });
+
+  it("keeps a newer waitManual reminder when an older clear request finishes later", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearResult = createDeferred<{
+      cleared: boolean;
+      conversationId: string;
+      seatId: string;
+    }>();
+    const clearConversationWaitManual = vi.fn(() => clearResult.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationWaitManual,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeConversationId: undefined,
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, lastMessageId: "9002", waitManual: true }
+            : conversation,
+        ),
+      },
+    }));
+
+    clearResult.resolve({
+      cleared: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    await clearResult.promise;
+    await Promise.resolve();
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
+    ).toMatchObject({
+      lastMessageId: "9002",
+      waitManual: true,
+    });
+  });
+
+  it("deduplicates an in-flight waitManual clear and allows retry after it settles", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearResult = createDeferred<{
+      cleared: boolean;
+      conversationId: string;
+      seatId: string;
+    }>();
+    const clearConversationWaitManual = vi.fn(() => clearResult.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationWaitManual,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeConversationId: "conv-001",
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationWaitManual).toHaveBeenCalledTimes(1);
+
+    clearResult.resolve({
+      cleared: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationWaitManual).toHaveBeenCalledTimes(2);
   });
 
   it("patches active conversation full-auto from API response instead of request input", async () => {

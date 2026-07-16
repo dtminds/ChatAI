@@ -11,6 +11,7 @@ import type {
   WorkbenchHistoryMessageQuery,
   WorkbenchConversationFullAutoResponse,
   WorkbenchConversationClearWaitManualResponse,
+  WorkbenchConversationClearWaitManualRequest,
   WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
@@ -511,8 +512,9 @@ export async function changeConversationFullAuto(
 
 export async function clearConversationWaitManual(
   conversationId: string,
+  request: WorkbenchConversationClearWaitManualRequest,
 ): Promise<WorkbenchConversationClearWaitManualResponse> {
-  return getWorkbenchService().clearConversationWaitManual(conversationId);
+  return getWorkbenchService().clearConversationWaitManual(conversationId, request);
 }
 
 export async function updateSeatAgentMode(

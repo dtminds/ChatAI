@@ -1,5 +1,6 @@
 import type {
   WorkbenchPollRequest,
+  WorkbenchConversationClearWaitManualRequest,
   WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
@@ -70,6 +71,10 @@ const ConversationFullAutoRequestSchema = Type.Object({
 });
 
 type ConversationFullAutoRequest = Static<typeof ConversationFullAutoRequestSchema>;
+
+const ConversationClearWaitManualRequestSchema = Type.Object({
+  expectedLastMessageId: NumericStringSchema,
+});
 
 const SeatAgentModeSwitchRequestSchema = Type.Object({
   mode: Type.Union([
@@ -1049,11 +1054,15 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: ConversationParams }>(
+  app.post<{
+    Body: WorkbenchConversationClearWaitManualRequest;
+    Params: ConversationParams;
+  }>(
     "/api/server/conversations/:conversationId/wait-manual/clear",
     {
       preHandler: app.authenticate,
       schema: {
+        body: ConversationClearWaitManualRequestSchema,
         params: ConversationParamsSchema,
       },
     },
@@ -1062,6 +1071,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).clearConversationWaitManual(
         getSubUserId(request),
         request.params.conversationId,
+        request.body,
       );
     },
   );

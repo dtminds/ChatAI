@@ -29,10 +29,6 @@ import { WorkflowChecks } from "./canvas/workflow-checks";
 import { WorkflowTopBar } from "./canvas/workflow-topbar";
 import { WorkflowVersionHistoryPanel } from "./canvas/workflow-version-history";
 import { NodeConfigPanel } from "./panels";
-import {
-  WorkflowExpandedEditorHost,
-  WorkflowExpandedEditorProvider,
-} from "./panels/expanded-editor-portal";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
 import { getWorkflowDraftRepository } from "./workflow-draft-service";
 import type {
@@ -268,13 +264,12 @@ function WorkflowWorkspaceContent({
           />
         </div>
       ) : (
-        <WorkflowExpandedEditorProvider>
-          <div
-            className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
-            data-inspector-open={inspector.isOpen ? "true" : undefined}
-          >
-            <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
-              <WorkflowCanvas
+        <div
+          className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
+          data-inspector-open={inspector.isOpen ? "true" : undefined}
+        >
+          <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
+            <WorkflowCanvas
                 canRedo={canvas.canRedo}
                 canUndo={canvas.canUndo}
                 edges={canvas.edges}
@@ -302,33 +297,29 @@ function WorkflowWorkspaceContent({
                 onViewportChangeEnd={canvas.onViewportChangeEnd}
                 paletteOpen={canvas.paletteOpen}
                 viewport={canvas.viewport}
-              />
-              {checks.isOpen ? (
-                <WorkflowChecks
+            />
+            {checks.isOpen ? (
+              <WorkflowChecks
                   checks={checks.checks}
                   onClose={checks.onClose}
                   onNavigateToNode={checks.onNavigateToNode}
                   publishAttempted={checks.publishAttempted}
                   publishReady={checks.publishReady}
-                />
-              ) : null}
-              <WorkflowExpandedEditorHost
-                className="pointer-events-none absolute inset-y-0 left-0 right-[calc(26.25rem+0.75rem)] z-30 max-xl:right-[calc(23.5rem+0.75rem)] max-lg:right-0"
               />
-            </section>
+            ) : null}
+          </section>
 
-            {inspector.isOpen && !versionHistory.isPreviewing ? (
-              <NodeConfigPanel
+          {inspector.isOpen && !versionHistory.isPreviewing ? (
+            <NodeConfigPanel
                 edges={inspector.edges}
                 node={inspector.node}
                 nodes={inspector.nodes}
                 onClose={inspector.onClose}
                 onNodeChange={inspector.onNodeChange}
                 onRenameNode={inspector.onRenameNode}
-              />
-            ) : null}
-          </div>
-        </WorkflowExpandedEditorProvider>
+            />
+          ) : null}
+        </div>
       )}
       <WorkflowLeaveGuard enabled={topBar.saveState !== "saved"} />
     </>

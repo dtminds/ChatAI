@@ -13,9 +13,9 @@ import {
 import { LlmConfig } from "@/pages/chat/workflow/nodes/llm/panel";
 import { llmNodeUi } from "@/pages/chat/workflow/nodes/llm/ui";
 import {
-  WorkflowExpandedEditorHost,
-  WorkflowExpandedEditorProvider,
-} from "@/pages/chat/workflow/panels/expanded-editor-portal";
+  SettingWorkspace,
+  SettingWorkspaceProvider,
+} from "@/pages/chat/workflow/panels/setting-workspace";
 import type {
   LlmNodeData,
   WorkflowEdge,
@@ -413,8 +413,13 @@ describe("workflow LLM node", () => {
     await screen.findByRole("combobox", { name: "模型" });
     await user.click(screen.getByRole("button", { name: "全屏编辑系统提示词" }));
     const expandedEditor = screen.getByRole("region", { name: "系统提示词展开编辑" });
-    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    const originalEditor = screen.getByRole("textbox", { name: "系统提示词" });
+    const settingsPanel = screen.getByRole("complementary", { name: "节点配置" });
+    expect(expandedEditor.parentElement).toContainElement(settingsPanel);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(originalEditor).toHaveAttribute("aria-readonly", "true");
+    expect(screen.getAllByRole("button", { name: "插入变量" }).filter((button) => button.hasAttribute("disabled")))
+      .toHaveLength(1);
 
     await user.click(within(expandedEditor).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "输入参数" }));
@@ -430,6 +435,14 @@ describe("workflow LLM node", () => {
     await user.click(within(expandedEditor).getByRole("button", { name: "收起系统提示词" }));
     expect(screen.queryByRole("region", { name: "系统提示词展开编辑" })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "系统提示词" })).toHaveAttribute("aria-readonly", "false");
+    screen.getAllByRole("button", { name: "插入变量" })
+      .forEach((button) => expect(button).toBeEnabled());
+
+    await user.click(screen.getByRole("button", { name: "全屏编辑用户提示词" }));
+    expect(screen.getByRole("region", { name: "用户提示词展开编辑" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "用户提示词展开编辑" })).not.toBeInTheDocument();
   });
 
   it("switches output formats without changing the stable field ID and limits JSON fields", async () => {
@@ -494,20 +507,21 @@ function StatefulLlmConfig({
 }) {
   const [node, setNode] = useState(initialNode);
   return (
-    <WorkflowExpandedEditorProvider>
-      <WorkflowExpandedEditorHost />
-      <aside aria-label="节点配置" role="complementary">
-        <LlmConfig
-          edges={edges}
-          node={node}
-          nodes={nodes?.map((candidate) => candidate.id === node.id ? node : candidate) ?? [node]}
-          onNodeChange={(patch) => {
-            onNodeChange(patch);
-            setNode((current) => ({ ...current, data: { ...current.data, ...patch } }));
-          }}
-        />
-      </aside>
-    </WorkflowExpandedEditorProvider>
+    <SettingWorkspaceProvider>
+      <SettingWorkspace>
+        <aside aria-label="节点配置" role="complementary">
+          <LlmConfig
+            edges={edges}
+            node={node}
+            nodes={nodes?.map((candidate) => candidate.id === node.id ? node : candidate) ?? [node]}
+            onNodeChange={(patch) => {
+              onNodeChange(patch);
+              setNode((current) => ({ ...current, data: { ...current.data, ...patch } }));
+            }}
+          />
+        </aside>
+      </SettingWorkspace>
+    </SettingWorkspaceProvider>
   );
 }
 

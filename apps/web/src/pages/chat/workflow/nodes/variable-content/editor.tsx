@@ -41,6 +41,7 @@ export function VariableContentEditor({
   maxLength,
   onChange,
   placeholder,
+  readOnly = false,
   segments,
   variables,
 }: {
@@ -51,6 +52,7 @@ export function VariableContentEditor({
   maxLength?: number;
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
   placeholder: string;
+  readOnly?: boolean;
   segments: WorkflowVariableContentSegment[];
   variables: WorkflowVariableDefinition[];
 }) {
@@ -70,6 +72,7 @@ export function VariableContentEditor({
   }, []);
 
   function insertVariable(variable: WorkflowVariableDefinition) {
+    if (readOnly) return;
     setOpen(false);
     editorRef.current?.update(() => $insertVariableContentToken(variable, selectionRef.current));
     editorRef.current?.focus();
@@ -84,13 +87,14 @@ export function VariableContentEditor({
       )}>
         <LexicalComposer initialConfig={editorConfig}>
           <PlainTextPlugin
-            contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" className={cn("whitespace-pre-wrap break-words outline-none", maxLength ? "min-h-24" : "min-h-30", contentEditableClassName)} role="textbox" />}
+            contentEditable={<ContentEditable aria-label={ariaLabel} aria-multiline="true" aria-readonly={readOnly} className={cn("whitespace-pre-wrap break-words outline-none", readOnly && "cursor-default", maxLength ? "min-h-24" : "min-h-30", contentEditableClassName)} role="textbox" />}
             ErrorBoundary={LexicalErrorBoundary}
             placeholder={normalizedSegments.length ? null : <span className="pointer-events-none absolute left-3 top-3 text-muted-foreground/50">{placeholder}</span>}
           />
           <VariableContentEditorPlugin
             maxLength={maxLength}
             onChange={onChange}
+            readOnly={readOnly}
             registerEditor={registerEditor}
             registerSelection={(selection) => {
               selectionRef.current = selection;
@@ -102,13 +106,16 @@ export function VariableContentEditor({
       </div>
       <div className="flex h-8 items-center justify-between px-2">
         <WorkflowVariablePicker
-          onOpenChange={setOpen}
+          onOpenChange={(nextOpen) => {
+            if (!readOnly) setOpen(nextOpen);
+          }}
           onSelect={insertVariable}
-          open={open}
+          open={!readOnly && open}
           variables={variables}
         >
           <Button
             className="h-6 gap-1.5 px-2 text-xs"
+            disabled={readOnly}
             onPointerDown={() => {
               editorRef.current?.getEditorState().read(() => {
                 const selection = $getSelection();
@@ -135,6 +142,7 @@ export function VariableContentEditor({
 function VariableContentEditorPlugin({
   maxLength,
   onChange,
+  readOnly,
   registerEditor,
   registerSelection,
   segments,
@@ -142,6 +150,7 @@ function VariableContentEditorPlugin({
 }: {
   maxLength?: number;
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
+  readOnly: boolean;
   registerEditor: (editor: LexicalEditor | null) => void;
   registerSelection: (selection: RangeSelection | null) => void;
   segments: WorkflowVariableContentSegment[];
@@ -159,6 +168,9 @@ function VariableContentEditorPlugin({
     return () => registerEditor(null);
   }, [editor, registerEditor]);
   useEffect(() => {
+    editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
+  useEffect(() => {
     editor.update(() => {
       const current = $exportVariableContent();
       if (
@@ -174,6 +186,7 @@ function VariableContentEditorPlugin({
   return (
     <OnChangePlugin
       onChange={() => {
+        if (readOnly) return;
         let content: WorkflowVariableContentSegment[] = [];
         let selection: RangeSelection | null = null;
         editor.getEditorState().read(() => {

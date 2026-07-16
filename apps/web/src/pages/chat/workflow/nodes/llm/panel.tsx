@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AiHostingModel } from "@chatai/contracts";
 import {
   Add01Icon,
+  ArrowExpand02Icon,
   Cancel01Icon,
   Delete01Icon,
   ExpandIcon,
   MinusSignIcon,
   Settings03Icon,
-  SquareArrowExpand01Icon,
-  SquareArrowShrink01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AgentModelBadge } from "@/pages/chat/ai-hosting/agent-model-badge";
@@ -34,7 +33,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { WorkflowExpandedEditorPortal } from "../../panels/expanded-editor-portal";
+import {
+  SettingWorkspaceEditorContent,
+  useSettingWorkspace,
+} from "../../panels/setting-workspace";
 import type { NodeSettingsProps } from "../../panels/types";
 import type {
   LlmNodeData,
@@ -95,7 +97,14 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState(false);
-  const [expandedPrompt, setExpandedPrompt] = useState<"system" | "user" | null>(null);
+  const settingWorkspace = useSettingWorkspace();
+  const systemPromptEditorId = `${node.id}:system-prompt`;
+  const userPromptEditorId = `${node.id}:user-prompt`;
+  const expandedPrompt = settingWorkspace.activeEditor?.id === systemPromptEditorId
+    ? "system"
+    : settingWorkspace.activeEditor?.id === userPromptEditorId
+      ? "user"
+      : null;
   const inputs = normalizeLlmInputs(node.data.inputs);
   const systemPrompt = normalizeLlmPrompt(node.data.systemPrompt);
   const userPrompt = normalizeLlmPrompt(node.data.userPrompt);
@@ -279,8 +288,9 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
         ariaLabel="系统提示词"
         inputVariables={inputVariables}
         onChange={updateSystemPrompt}
-        onExpand={() => setExpandedPrompt("system")}
+        onExpand={() => settingWorkspace.openEditor({ id: systemPromptEditorId, title: "系统提示词" })}
         placeholder="请输入系统提示词"
+        readOnly={expandedPrompt === "system"}
         required
         segments={systemPrompt}
         title="系统提示词"
@@ -289,8 +299,9 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
         ariaLabel="用户提示词"
         inputVariables={inputVariables}
         onChange={updateUserPrompt}
-        onExpand={() => setExpandedPrompt("user")}
+        onExpand={() => settingWorkspace.openEditor({ id: userPromptEditorId, title: "用户提示词" })}
         placeholder="请输入用户提示词"
+        readOnly={expandedPrompt === "user"}
         segments={userPrompt}
         title="用户提示词"
       />
@@ -303,12 +314,11 @@ export function LlmConfig({ edges, node, nodes, onNodeChange }: NodeSettingsProp
       {expandedPrompt ? (
         <ExpandedPromptEditor
           ariaLabel={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
+          editorId={expandedPrompt === "system" ? systemPromptEditorId : userPromptEditorId}
           inputVariables={inputVariables}
           onChange={expandedPrompt === "system" ? updateSystemPrompt : updateUserPrompt}
-          onClose={() => setExpandedPrompt(null)}
           placeholder={expandedPrompt === "system" ? "请输入系统提示词" : "请输入用户提示词"}
           segments={expandedPrompt === "system" ? systemPrompt : userPrompt}
-          title={expandedPrompt === "system" ? "系统提示词" : "用户提示词"}
         />
       ) : null}
     </div>
@@ -422,6 +432,7 @@ function PromptSection({
   onChange,
   onExpand,
   placeholder,
+  readOnly,
   required = false,
   segments,
   title,
@@ -431,6 +442,7 @@ function PromptSection({
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
   onExpand: () => void;
   placeholder: string;
+  readOnly: boolean;
   required?: boolean;
   segments: WorkflowVariableContentSegment[];
   title: string;
@@ -441,7 +453,7 @@ function PromptSection({
         <SectionTitle required={required}>{title}</SectionTitle>
         <IconButton
           ariaLabel={`全屏编辑${title}`}
-          icon={SquareArrowExpand01Icon}
+          icon={ArrowExpand02Icon}
           onClick={onExpand}
           tooltip="全屏编辑"
         />
@@ -451,6 +463,7 @@ function PromptSection({
         maxLength={LLM_PROMPT_MAX_LENGTH}
         onChange={onChange}
         placeholder={placeholder}
+        readOnly={readOnly}
         segments={segments}
         variables={inputVariables}
       />
@@ -460,51 +473,35 @@ function PromptSection({
 
 function ExpandedPromptEditor({
   ariaLabel,
+  editorId,
   inputVariables,
   onChange,
-  onClose,
   placeholder,
   segments,
-  title,
 }: {
   ariaLabel: string;
+  editorId: string;
   inputVariables: WorkflowVariableDefinition[];
   onChange: (segments: WorkflowVariableContentSegment[]) => void;
-  onClose: () => void;
   placeholder: string;
   segments: WorkflowVariableContentSegment[];
-  title: string;
 }) {
   return (
-    <WorkflowExpandedEditorPortal>
-      <section
-        aria-label={`${title}展开编辑`}
-        className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--workflow-border)] bg-background"
-      >
-        <header className="flex h-12 shrink-0 items-center justify-between px-4">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <IconButton
-            ariaLabel={`收起${title}`}
-            icon={SquareArrowShrink01Icon}
-            onClick={onClose}
-            tooltip="收起"
-          />
-        </header>
-        <div className="flex min-h-0 flex-1 px-4 pb-4">
-          <VariableContentEditor
-            ariaLabel={`${ariaLabel}展开编辑`}
-            className="flex min-h-0 flex-1 flex-col"
-            contentEditableClassName="h-full min-h-full overflow-y-auto"
-            editorClassName="min-h-0 flex-1 overflow-y-auto"
-            maxLength={LLM_PROMPT_MAX_LENGTH}
-            onChange={onChange}
-            placeholder={placeholder}
-            segments={segments}
-            variables={inputVariables}
-          />
-        </div>
-      </section>
-    </WorkflowExpandedEditorPortal>
+    <SettingWorkspaceEditorContent id={editorId}>
+      <div className="flex min-h-0 flex-1 px-4 pb-4">
+        <VariableContentEditor
+          ariaLabel={`${ariaLabel}展开编辑`}
+          className="flex min-h-0 flex-1 flex-col"
+          contentEditableClassName="h-full min-h-full overflow-y-auto"
+          editorClassName="min-h-0 flex-1 overflow-y-auto"
+          maxLength={LLM_PROMPT_MAX_LENGTH}
+          onChange={onChange}
+          placeholder={placeholder}
+          segments={segments}
+          variables={inputVariables}
+        />
+      </div>
+    </SettingWorkspaceEditorContent>
   );
 }
 

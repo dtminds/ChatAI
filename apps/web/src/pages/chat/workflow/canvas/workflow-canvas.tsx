@@ -408,7 +408,7 @@ function WorkflowBottomToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         aria-label="画布工具"
-        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground shadow-[0_1px_2px_var(--shadow-soft),0_18px_44px_var(--shadow-medium)] backdrop-blur-xl max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
+        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-foreground/15 bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
         onClick={(event) => event.stopPropagation()}
         ref={menuRef}
       >

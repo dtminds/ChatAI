@@ -56,7 +56,7 @@ function WorkflowBaseNodeComponent({
     <div
       className={cn(
         "workflow-node-shell",
-        isSelected && "workflow-node-shell-selected",
+        isSelected ? "border-[var(--workflow-blue)]" : "border-border/70",
       )}
     >
       <div

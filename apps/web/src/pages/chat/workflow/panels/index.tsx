@@ -3,6 +3,7 @@ import { BasePanel } from "./base-panel";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
 import { NodeOutputsSection } from "./node-outputs-section";
+import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
 
 export function NodeConfigPanel({
   edges,
@@ -32,12 +33,16 @@ export function NodeConfigPanel({
   }
 
   return (
-    <BasePanel key={node.id} node={node} onClose={onClose} onRenameNode={onRenameNode}>
-      <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
-      {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
-        ? <NodeOutputsSection node={node} />
-        : null}
-    </BasePanel>
+    <SettingWorkspaceProvider key={node.id}>
+      <SettingWorkspace>
+        <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
+          <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
+          {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
+            ? <NodeOutputsSection node={node} />
+            : null}
+        </BasePanel>
+      </SettingWorkspace>
+    </SettingWorkspaceProvider>
   );
 }
 

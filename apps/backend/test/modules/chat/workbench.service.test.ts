@@ -886,9 +886,8 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("requests automatic smart reply generation for group conversations with thirdGroupId", async () => {
+  it("rejects automatic smart reply generation for group conversations", async () => {
     const javaClient = createJavaClient();
-    vi.mocked(javaClient.requestAutoGeneralAnswer).mockResolvedValue({ id: "567" });
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -911,15 +910,12 @@ describe("MysqlWorkbenchService", () => {
         conversationId: "88",
         msgId: 321,
       }),
-    ).resolves.toEqual({ id: "567" });
-    expect(javaClient.requestAutoGeneralAnswer).toHaveBeenCalledWith({
-      chatType: 2,
-      msgId: 321,
-      thirdExternalId: "",
-      thirdGroupId: "group-001",
-      thirdUserId: "seat-user-001",
-      uid: 9001,
+    ).rejects.toMatchObject({
+      code: "SMART_REPLY_AUTO_GENERAL_ANSWER_UNSUPPORTED",
+      message: "群聊不支持自动生成智能回复",
+      statusCode: 400,
     });
+    expect(javaClient.requestAutoGeneralAnswer).not.toHaveBeenCalled();
   });
 
   it("loads page smart replies for group conversations with thirdGroupId", async () => {

@@ -1671,6 +1671,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
+    if (conversation.chatType === CHAT_TYPE.GROUP) {
+      throw new BadRequestError(
+        "SMART_REPLY_AUTO_GENERAL_ANSWER_UNSUPPORTED",
+        "群聊不支持自动生成智能回复",
+      );
+    }
+
     if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }

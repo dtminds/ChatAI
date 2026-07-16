@@ -1,6 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { AccountRoleSchema } from "../auth/dto.js";
 
+const PositiveIntegerStringSchema = Type.String({ pattern: "^[1-9]\\d*$" });
+
 export const SettingsSubAccountStatusSchema = Type.Union([
   Type.Literal("active"),
   Type.Literal("disabled"),
@@ -107,13 +109,13 @@ export const SettingsGroupChatsResponseSchema = Type.Object({
 
 export const SettingsGroupChatsQuerySchema = Type.Object({
   keyword: Type.Optional(Type.String()),
-  managedAccountId: Type.Optional(Type.String()),
+  managedAccountId: Type.Optional(PositiveIntegerStringSchema),
   page: Type.Optional(Type.Integer({ minimum: 1 })),
   pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 }, { additionalProperties: false });
 
 export const SettingsGroupChatReceptionOptionsRequestSchema = Type.Object({
-  groupChatIds: Type.Array(Type.String(), { minItems: 1, maxItems: 50 }),
+  groupChatIds: Type.Array(PositiveIntegerStringSchema, { minItems: 1, maxItems: 50 }),
 }, { additionalProperties: false });
 
 export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
@@ -121,8 +123,8 @@ export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
 });
 
 export const SettingsGroupChatReceptionUpdateRequestSchema = Type.Object({
-  groupChatId: Type.String(),
-  hostUserSeatIds: Type.Array(Type.String()),
+  groupChatId: PositiveIntegerStringSchema,
+  hostUserSeatIds: Type.Array(PositiveIntegerStringSchema),
 }, { additionalProperties: false });
 
 export const SettingsGroupChatReceptionUpdateResponseSchema = Type.Object({

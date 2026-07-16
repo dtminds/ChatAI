@@ -69,6 +69,23 @@ describe("settings sub-account DTOs", () => {
         groupChatIds: Array.from({ length: 51 }, (_, index) => String(index + 1)),
       }),
     ).toBe(false);
+    expect(
+      Value.Check(SettingsGroupChatReceptionOptionsRequestSchema, {
+        groupChatIds: ["501abc"],
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(SettingsGroupChatReceptionUpdateRequestSchema, {
+        groupChatId: "501.9",
+        hostUserSeatIds: ["102"],
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(SettingsGroupChatReceptionUpdateRequestSchema, {
+        groupChatId: "501",
+        hostUserSeatIds: ["0"],
+      }),
+    ).toBe(false);
   });
 
   it("accepts sub-account list responses with related seats", () => {

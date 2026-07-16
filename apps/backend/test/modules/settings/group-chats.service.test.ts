@@ -106,6 +106,17 @@ describe("GroupChatSettingsService", () => {
     expect(result).toMatchObject({ page: 1, pageSize: 10, total: 1, totalPages: 1 });
   });
 
+  it("excludes disabled managed accounts from filter options", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+
+    const result = await service.list({ platform: 5, uid: 9001 });
+
+    expect(result.filterManagedAccounts).toEqual([
+      { id: "101", name: "德瑞可" },
+      { id: "102", name: "念都堂" },
+    ]);
+  });
+
   it("paginates group chats in the database before hydrating reception seats", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
 
@@ -148,6 +159,27 @@ describe("GroupChatSettingsService", () => {
 
     expect(result.availableManagedAccounts).toEqual([]);
   });
+
+  it.each(["501abc", "501.9", "9007199254740992"])(
+    "rejects invalid group chat id %s before loading reception options",
+    async (groupChatId) => {
+      const onGroupMemberQuery = vi.fn();
+      const service = new GroupChatSettingsService(
+        createDbMock({ onGroupMemberQuery }) as never,
+      );
+
+      await expect(
+        service.listReceptionOptions(
+          { platform: 5, uid: 9001 },
+          { groupChatIds: [groupChatId] },
+        ),
+      ).rejects.toMatchObject({
+        code: "INVALID_GROUP_CHAT",
+        statusCode: 400,
+      });
+      expect(onGroupMemberQuery).not.toHaveBeenCalled();
+    },
+  );
 
   it("updates one group reception setting through one Java API call", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
@@ -194,6 +226,52 @@ describe("GroupChatSettingsService", () => {
     expect(setGroupSeatHostUserSeatIds).not.toHaveBeenCalled();
   });
 
+  it.each(["501abc", "501.9", "9007199254740992"])(
+    "rejects invalid group chat id %s before updating reception settings",
+    async (groupChatId) => {
+      const service = new GroupChatSettingsService(createDbMock() as never);
+      const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
+
+      await expect(
+        service.updateReception(
+          { platform: 5, uid: 9001 },
+          {
+            groupChatId,
+            hostUserSeatIds: ["102"],
+          },
+          { setGroupSeatHostUserSeatIds } as never,
+        ),
+      ).rejects.toMatchObject({
+        code: "INVALID_GROUP_CHAT",
+        statusCode: 400,
+      });
+      expect(setGroupSeatHostUserSeatIds).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["102abc", "102.9", "9007199254740992"])(
+    "rejects invalid reception account id %s before updating reception settings",
+    async (hostUserSeatId) => {
+      const service = new GroupChatSettingsService(createDbMock() as never);
+      const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
+
+      await expect(
+        service.updateReception(
+          { platform: 5, uid: 9001 },
+          {
+            groupChatId: "501",
+            hostUserSeatIds: [hostUserSeatId],
+          },
+          { setGroupSeatHostUserSeatIds } as never,
+        ),
+      ).rejects.toMatchObject({
+        code: "INVALID_RECEPTION_SEAT",
+        statusCode: 400,
+      });
+      expect(setGroupSeatHostUserSeatIds).not.toHaveBeenCalled();
+    },
+  );
+
   it("allows explicitly clearing all reception accounts", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
     const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
@@ -239,6 +317,15 @@ function createDbMock({
       third_avatar: "https://example.com/ndt.png",
       third_user_name: "念都堂",
       third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 2,
+      id: 103,
+      platform: 5,
+      third_avatar: "https://example.com/disabled.png",
+      third_user_name: "已停用账号",
+      third_userid: "user-103",
       uid: 9001,
     },
   ];

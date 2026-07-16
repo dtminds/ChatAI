@@ -11,6 +11,7 @@ import type {
 import { type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError } from "../../shared/errors.js";
+import { parseMySqlId } from "../../shared/id-utils.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 
@@ -91,7 +92,10 @@ export class GroupChatSettingsService {
   ): Promise<SettingsGroupChatReceptionOptionsResponse> {
     const groupSeatIds = uniquePositiveIds(payload.groupChatIds);
 
-    if (groupSeatIds.length === 0) {
+    if (
+      groupSeatIds.length === 0 ||
+      groupSeatIds.length !== payload.groupChatIds.length
+    ) {
       throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
     }
 
@@ -184,6 +188,7 @@ export class GroupChatSettingsService {
       .select(["seat.id", "seat.third_user_name as name"])
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform)
+      .where("seat.biz_status", "=", dbActiveStatus)
       .orderBy("seat.id", "desc")
       .execute() as Promise<ManagedAccountFilterRow[]>;
   }
@@ -505,20 +510,6 @@ function firstNonEmptyString(...values: Array<string | null | undefined>) {
 
 function escapeLikeKeyword(keyword: string) {
   return keyword.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
-
-function parseMySqlId(value: string | number | null | undefined) {
-  if (value == null || value === "") {
-    return undefined;
-  }
-
-  const numericValue = typeof value === "number" ? value : Number.parseInt(String(value), 10);
-
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return undefined;
-  }
-
-  return numericValue;
 }
 
 function normalizePositiveInteger(value: number | undefined, fallback: number) {

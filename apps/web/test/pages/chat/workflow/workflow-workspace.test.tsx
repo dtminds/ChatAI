@@ -288,12 +288,18 @@ describe("useWorkflowWorkspace", () => {
       .toEqual(messageNode.position);
   });
 
-  it("adds palette nodes without auto-connecting them to the current graph", () => {
+  it("adds palette nodes without changing the current selection or closing the palette", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialEdges = result.current.canvas.edges.map((edge) => edge.id);
 
     act(() => {
-      result.current.canvas.onAddNode("handoff");
+      result.current.canvas.onSelectNode("message-welcome");
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+
+    act(() => {
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
     });
 
     const handoffNode = result.current.canvas.nodes.find((node) =>
@@ -305,7 +311,9 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.canvas.edges.some((edge) =>
       edge.source === handoffNode?.id || edge.target === handoffNode?.id,
     )).toBe(false);
-    expect(result.current.inspector.node?.id).toBe(handoffNode?.id);
+    expect(handoffNode?.position).toEqual({ x: 1280, y: 420 });
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+    expect(result.current.canvas.paletteOpen).toBe(true);
   });
 
   it("persists manual connections through the workspace boundary and supports undo", async () => {
@@ -498,7 +506,7 @@ describe("useWorkflowWorkspace", () => {
       const initialNodeIds = result.current.canvas.nodes.map((node) => node.id);
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
 
       expect(result.current.topBar.saveState).toBe("saving");
@@ -661,9 +669,11 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const addedNodeId = result.current.inspector.node?.id ?? "";
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
 
       expect(addedNodeId).toMatch(/^handoff-/);
       expect(result.current.topBar.publishState).toBe("idle");
@@ -722,7 +732,7 @@ describe("useWorkflowWorkspace", () => {
     expect(getCanvasStartKeyword(result.current.canvas)).toBe("历史版本人群");
 
     act(() => {
-      result.current.canvas.onAddNode("handoff");
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     });
 
@@ -810,9 +820,11 @@ describe("useWorkflowWorkspace", () => {
       const versionId = publishedDocument.currentVersion?.id ?? "";
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const addedNodeId = result.current.inspector.node?.id ?? "";
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -902,9 +914,15 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const handoffNodeId = result.current.inspector.node?.id ?? "";
+      const handoffNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
+
+      act(() => {
+        result.current.canvas.onSelectNode(handoffNodeId);
+      });
 
       act(() => {
         result.current.inspector.onNodeChange({ title: "会员运营接管" });

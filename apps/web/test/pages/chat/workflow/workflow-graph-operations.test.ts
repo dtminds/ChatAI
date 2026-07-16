@@ -38,8 +38,8 @@ describe("workflow graph operations", () => {
   it("does not add or delete the unique start and end kinds", () => {
     const draft = createDraft();
 
-    expect(addNodeOperation(draft, "start", "another-start")).toBeUndefined();
-    expect(addNodeOperation(draft, "end", "another-end")).toBeUndefined();
+    expect(addNodeOperation(draft, "start", "another-start", { x: 0, y: 0 })).toBeUndefined();
+    expect(addNodeOperation(draft, "end", "another-end", { x: 0, y: 0 })).toBeUndefined();
     expect(deleteNodeOperation(draft, "start")).toBeUndefined();
     expect(deleteNodeOperation(draft, "end")).toBeUndefined();
   });
@@ -208,18 +208,27 @@ describe("workflow graph operations", () => {
   });
 
   it("adds only insertable node kinds as unconnected floating nodes", () => {
-    expect(addNodeOperation(createDraft(), "start", "start-copy")).toBeUndefined();
-    expect(addNodeOperation(createDraft(), "handoff", "wait-2d")).toBeUndefined();
+    expect(addNodeOperation(createDraft(), "start", "start-copy", { x: 0, y: 0 })).toBeUndefined();
+    expect(addNodeOperation(createDraft(), "handoff", "wait-2d", { x: 0, y: 0 })).toBeUndefined();
 
     const draft = createDraft();
-    const operation = addNodeOperation(draft, "handoff", "handoff-tail");
+    const operation = addNodeOperation(draft, "handoff", "handoff-tail", { x: 1280, y: 420 });
 
     expect(operation?.event).toBe("node:add");
     expect(operation?.draft.edges.map((edge) => edge.id)).toEqual(draft.edges.map((edge) => edge.id));
     expect(operation?.draft.edges.some((edge) => edge.source === "handoff-tail" || edge.target === "handoff-tail"))
       .toBe(false);
     expect(operation?.draft.nodes.find((node) => node.id === "handoff-tail")?.position)
-      .toEqual({ x: 395, y: -293 });
+      .toEqual({ x: 1280, y: 420 });
+
+    const overlappingOperation = addNodeOperation(
+      operation!.draft,
+      "wait",
+      "wait-floating",
+      { x: 1280, y: 420 },
+    );
+    expect(overlappingOperation?.draft.nodes.find((node) => node.id === "wait-floating")?.position)
+      .toEqual({ x: 1296, y: 452 });
   });
 
   it("connects valid handles once and rejects invalid or occupied handles", () => {

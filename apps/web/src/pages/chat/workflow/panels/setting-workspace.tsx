@@ -56,7 +56,13 @@ export function useSettingWorkspace() {
   return context;
 }
 
-export function SettingWorkspace({ children }: { children: ReactNode }) {
+export function SettingWorkspace({
+  animateOnMount = false,
+  children,
+}: {
+  animateOnMount?: boolean;
+  children: ReactNode;
+}) {
   const { activeEditor, closeEditor, setEditorHost } = useSettingWorkspace();
 
   useEffect(() => {
@@ -75,6 +81,7 @@ export function SettingWorkspace({ children }: { children: ReactNode }) {
     <div
       className={cn(
         "absolute bottom-3 right-3 top-3 z-20 flex min-h-0 overflow-hidden rounded-2xl border border-foreground/15 bg-[var(--workflow-panel-bg-blur)] shadow-[0_4px_12px_var(--shadow-soft)] backdrop-blur-[10px]",
+        animateOnMount && "animate-in fade-in-0 slide-in-from-right-4 duration-200 ease-out motion-reduce:animate-none",
         activeEditor
           ? "left-3 z-30"
           : "w-[26.25rem] max-xl:w-[23.5rem] max-lg:left-3 max-lg:w-auto",

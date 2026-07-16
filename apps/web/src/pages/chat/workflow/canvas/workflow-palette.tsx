@@ -15,6 +15,11 @@ import type {
 } from "../node-definitions";
 import type { InsertableWorkflowNodeKind } from "../types";
 
+export type WorkflowNodePickerAddContext = {
+  clientY: number;
+  pickerRight: number;
+};
+
 export function WorkflowNodePicker({
   className,
   kinds,
@@ -24,7 +29,7 @@ export function WorkflowNodePicker({
 }: {
   className?: string;
   kinds?: InsertableWorkflowNodeKind[];
-  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind, context?: WorkflowNodePickerAddContext) => void;
   role?: "menu" | "region";
   style?: React.CSSProperties;
 }) {
@@ -59,7 +64,7 @@ function WorkflowNodePickerGroups({
 }: {
   groups: WorkflowPaletteItemGroup[];
   itemRole?: "menuitem";
-  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind, context?: WorkflowNodePickerAddContext) => void;
 }) {
   return (
     <div className="workflow-node-picker-groups min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5">
@@ -93,7 +98,7 @@ function WorkflowNodePickerItem({
 }: {
   item: WorkflowPaletteItem;
   itemRole?: "menuitem";
-  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind, context?: WorkflowNodePickerAddContext) => void;
   tooltipSide: "left" | "right";
 }) {
   return (
@@ -104,7 +109,14 @@ function WorkflowNodePickerItem({
           className="workflow-node-picker-item flex h-[30px] min-w-0 items-center gap-[7px] rounded-[7px] border-0 bg-transparent px-1.5 text-left text-foreground transition-colors hover:bg-[var(--workflow-panel-section)]"
           onClick={(event) => {
             event.stopPropagation();
-            onAddNode(item.id);
+            const picker = event.currentTarget.closest<HTMLElement>(".workflow-node-picker");
+            const itemRect = event.currentTarget.getBoundingClientRect();
+            onAddNode(item.id, {
+              clientY: event.detail > 0
+                ? event.clientY
+                : itemRect.top + itemRect.height / 2,
+              pickerRight: picker?.getBoundingClientRect().right ?? itemRect.right,
+            });
           }}
           role={itemRole}
           type="button"

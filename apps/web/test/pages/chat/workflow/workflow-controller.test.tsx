@@ -368,7 +368,7 @@ describe("useWorkflowController", () => {
 
     let addedNodeId = "";
     act(() => {
-      addedNodeId = result.current.addNode("handoff")?.nodeId ?? "";
+      addedNodeId = result.current.addNode("handoff", { x: 1280, y: 420 })?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("添加节点");
@@ -424,7 +424,7 @@ describe("useWorkflowController", () => {
     resetController();
     let connectTargetNodeId = "";
     act(() => {
-      connectTargetNodeId = result.current.addNode("message")?.nodeId ?? "";
+      connectTargetNodeId = result.current.addNode("message", { x: 1280, y: 420 })?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     undo();
@@ -509,7 +509,7 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     rerender({ draft: initialDraft });
 
@@ -518,7 +518,7 @@ describe("useWorkflowController", () => {
     )?.id;
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     rerender({ draft: initialDraft });
 
@@ -550,7 +550,7 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     expect(result.current.canUndo).toBe(true);
 

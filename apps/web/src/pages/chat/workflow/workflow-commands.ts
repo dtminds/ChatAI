@@ -30,6 +30,7 @@ import { createUniqueWorkflowNodeIdFactory } from "./workflow-id";
 export type WorkflowGraphCommand =
   | {
     kind: InsertableWorkflowNodeKind;
+    position: { x: number; y: number };
     type: "add-node";
   }
   | {
@@ -100,7 +101,7 @@ export function runWorkflowGraphCommand(
 
   switch (command.type) {
     case "add-node":
-      return addNodeOperation(draft, command.kind, createNodeId(command.kind));
+      return addNodeOperation(draft, command.kind, createNodeId(command.kind), command.position);
 
     case "insert-node-after":
       return insertNodeAfterOperation(

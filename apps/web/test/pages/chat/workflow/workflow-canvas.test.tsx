@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -8,6 +8,7 @@ import { WorkflowCanvas } from "@/pages/chat/workflow/canvas/workflow-canvas";
 
 const reactFlowProps = vi.hoisted(() => ({
   latest: undefined as Record<string, unknown> | undefined,
+  screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x: x - 10, y: y - 20 })),
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -23,6 +24,7 @@ vi.mock("@xyflow/react", async () => {
     },
     useReactFlow: () => ({
       fitView: vi.fn(),
+      screenToFlowPosition: reactFlowProps.screenToFlowPosition,
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
       zoomTo: vi.fn(),
@@ -126,5 +128,37 @@ describe("WorkflowCanvas", () => {
       id: "wait-2d",
       type: "remove",
     }]);
+  });
+
+  it("keeps the bottom palette open and anchors added nodes beside the clicked item", () => {
+    const onAddNode = vi.fn();
+    const onPaletteOpenChange = vi.fn();
+    renderWorkflowCanvas({
+      onAddNode,
+      onPaletteOpenChange,
+      paletteOpen: true,
+    });
+    const picker = screen.getByRole("region", { name: "节点库" });
+    vi.spyOn(picker, "getBoundingClientRect").mockReturnValue({
+      bottom: 500,
+      height: 400,
+      left: 40,
+      right: 400,
+      top: 100,
+      width: 360,
+      x: 40,
+      y: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "添加 等待节点" }), {
+      clientY: 240,
+      detail: 1,
+    });
+
+    expect(reactFlowProps.screenToFlowPosition).toHaveBeenCalledWith({ x: 424, y: 240 });
+    expect(onAddNode).toHaveBeenCalledWith("wait", { x: 414, y: 220 });
+    expect(onPaletteOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "节点库" })).toBeInTheDocument();
   });
 });

@@ -46,6 +46,7 @@ const agentServiceMock = vi.hoisted(() => ({
 
 const reactFlowControlMock = vi.hoisted(() => ({
   fitView: vi.fn(),
+  screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y })),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
   zoomTo: vi.fn(),
@@ -395,6 +396,7 @@ describe("Agent workflow page", () => {
     resetWorkflowDocumentsForTest();
     resetWorkbenchService();
     reactFlowControlMock.fitView.mockClear();
+    reactFlowControlMock.screenToFlowPosition.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();
     reactFlowControlMock.zoomTo.mockClear();
@@ -963,7 +965,11 @@ describe("Agent workflow page", () => {
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
 
-    expect(within(canvas).getByRole("button", { name: "转人工" })).toBeInTheDocument();
+    const handoffNode = within(canvas).getByRole("button", { name: "转人工" });
+    expect(handoffNode).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "节点配置" })).not.toBeInTheDocument();
+
+    await user.click(handoffNode);
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     expect(within(panel).getAllByText("转人工")).toHaveLength(1);
@@ -980,6 +986,7 @@ describe("Agent workflow page", () => {
     await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 转人工节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "转人工" }));
 
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     const operatorMessage = within(panel).getByRole("textbox", { name: "给客服的转发提示" });
@@ -1451,7 +1458,7 @@ describe("Agent workflow page", () => {
     const insertedNode = within(canvas).getByRole("button", { name: "转人工" });
     const insertedNodeWrapper = insertedNode.closest("[data-testid^='workflow-node-']");
 
-    expect(insertedNodeWrapper).toHaveAttribute("data-selected", "true");
+    expect(insertedNodeWrapper).not.toHaveAttribute("data-selected", "true");
 
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     expect(insertedNodeWrapper).not.toHaveAttribute("data-selected", "true");

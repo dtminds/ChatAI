@@ -6,6 +6,7 @@ import { NodeOutputsSection } from "./node-outputs-section";
 import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
 
 export function NodeConfigPanel({
+  animateOnMount,
   edges,
   node,
   nodes,
@@ -13,6 +14,7 @@ export function NodeConfigPanel({
   onNodeChange,
   onRenameNode,
 }: {
+  animateOnMount?: boolean;
   edges: WorkflowEdge[];
   node?: WorkflowNode;
   nodes: WorkflowNode[];
@@ -34,7 +36,7 @@ export function NodeConfigPanel({
 
   return (
     <SettingWorkspaceProvider key={node.id}>
-      <SettingWorkspace>
+      <SettingWorkspace animateOnMount={animateOnMount}>
         <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
           <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
           {!getNodeDefinition(node.data.kind).ownsOutputConfiguration

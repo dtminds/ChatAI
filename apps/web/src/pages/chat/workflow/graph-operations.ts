@@ -69,11 +69,11 @@ export type WorkflowNodePositionUpdate = {
   position: WorkflowNode["position"];
 };
 
-const FLOATING_NODE_SCREEN_X = 360;
-const FLOATING_NODE_SCREEN_Y = 180;
-const FLOATING_NODE_COLLISION_X = 260;
-const FLOATING_NODE_COLLISION_Y = 120;
-const FLOATING_NODE_OFFSET_Y = 140;
+const FLOATING_NODE_COLLISION_X = 12;
+const FLOATING_NODE_COLLISION_Y = 24;
+const FLOATING_NODE_OFFSET_X = 16;
+const FLOATING_NODE_OFFSET_Y = 32;
+const FLOATING_NODE_MAX_OFFSET_ATTEMPTS = 20;
 
 function finalizeWorkflowGraphOperation(
   operation: WorkflowGraphOperation,
@@ -88,14 +88,20 @@ export function addNodeOperation(
   draft: WorkflowDraft,
   kind: WorkflowNodeKind,
   nodeId: string,
+  position: WorkflowNode["position"],
 ): WorkflowGraphOperation | undefined {
-  if (!canInsertNodeKind(kind) || hasNodeId(draft, nodeId)) {
+  if (
+    !canInsertNodeKind(kind)
+    || hasNodeId(draft, nodeId)
+    || !Number.isFinite(position.x)
+    || !Number.isFinite(position.y)
+  ) {
     return undefined;
   }
 
   const node = {
     ...createNodeFromKind(kind, nodeId, draft.nodes.length),
-    position: resolveFloatingNodePosition(draft),
+    position: resolveFloatingNodePosition(draft.nodes, position),
   };
 
   return finalizeWorkflowGraphOperation({
@@ -114,18 +120,22 @@ export function addNodeOperation(
   });
 }
 
-function resolveFloatingNodePosition(draft: WorkflowDraft) {
-  const zoom = draft.viewport.zoom || 1;
-  const position = {
-    x: Math.round((FLOATING_NODE_SCREEN_X - draft.viewport.x) / zoom),
-    y: Math.round((FLOATING_NODE_SCREEN_Y - draft.viewport.y) / zoom),
-  };
-
-  while (hasNearbyNode(draft.nodes, position)) {
-    position.y += FLOATING_NODE_OFFSET_Y;
+function resolveFloatingNodePosition(
+  nodes: WorkflowNode[],
+  anchor: WorkflowNode["position"],
+) {
+  for (let index = 0; index < FLOATING_NODE_MAX_OFFSET_ATTEMPTS; index += 1) {
+    const position = {
+      x: Math.round(anchor.x + index * FLOATING_NODE_OFFSET_X),
+      y: Math.round(anchor.y + index * FLOATING_NODE_OFFSET_Y),
+    };
+    if (!hasNearbyNode(nodes, position)) return position;
   }
 
-  return position;
+  return {
+    x: Math.round(anchor.x + FLOATING_NODE_MAX_OFFSET_ATTEMPTS * FLOATING_NODE_OFFSET_X),
+    y: Math.round(anchor.y + FLOATING_NODE_MAX_OFFSET_ATTEMPTS * FLOATING_NODE_OFFSET_Y),
+  };
 }
 
 function hasNearbyNode(

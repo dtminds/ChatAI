@@ -1,4 +1,4 @@
-import { StopCircleIcon } from "@hugeicons/core-free-icons";
+import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createDefaultTargetHandles,
@@ -34,7 +34,7 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   visual: {
     accentClassName: "bg-slate-700 text-white ring-slate-700/20",
     accentRgb: "51 65 85",
-    icon: StopCircleIcon,
+    icon: LogoutCircle01Icon,
     label: "结束",
   },
 };

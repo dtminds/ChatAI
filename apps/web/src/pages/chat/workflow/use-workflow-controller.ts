@@ -382,9 +382,12 @@ export function useWorkflowController(initialDraft: WorkflowDraft, resetKey = "d
     });
   }, [commitGraphCommand, flushConfigHistory]);
 
-  const addNode = useCallback((kind: InsertableWorkflowNodeKind): WorkflowControllerActionResult | undefined => {
+  const addNode = useCallback((
+    kind: InsertableWorkflowNodeKind,
+    position: WorkflowNode["position"],
+  ): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphCommand({ kind, type: "add-node" });
+    return commitGraphCommand({ kind, position, type: "add-node" });
   }, [commitGraphCommand, flushConfigHistory]);
 
   const connectNodes = useCallback((connection: Connection): WorkflowControllerActionResult | undefined => {

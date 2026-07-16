@@ -10,6 +10,7 @@ export const WORKFLOW_TERMINAL_NODE_ESTIMATED_HEIGHT = 60;
 export const WORKFLOW_NODE_HANDLE_TOP = 16;
 export const WORKFLOW_LAYOUT_X_GAP = 390;
 export const WORKFLOW_LAYOUT_Y_GAP = 118;
+export const WORKFLOW_AI_BADGE_URL = "https://b5.bokr.com.cn/dist/ai_icon.png";
 
 export const workflowZoomOptions = [
   { label: "200%", value: 2 },

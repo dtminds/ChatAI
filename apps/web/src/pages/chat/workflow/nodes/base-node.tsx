@@ -7,7 +7,6 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import aiIconUrl from "@/assets/workflow/ai-icon.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
@@ -231,7 +231,7 @@ function NodeAiBadge({ visual }: { visual: NodeVisual }) {
       alt=""
       aria-hidden="true"
       className="h-3 w-auto shrink-0"
-      src={aiIconUrl}
+      src={WORKFLOW_AI_BADGE_URL}
     />
   );
 }

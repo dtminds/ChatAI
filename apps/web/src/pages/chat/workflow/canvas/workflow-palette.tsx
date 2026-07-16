@@ -1,6 +1,5 @@
 import type React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import aiIconUrl from "@/assets/workflow/ai-icon.png";
 import {
   Tooltip,
   TooltipContent,
@@ -8,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import { getWorkflowPaletteItemGroups } from "../node-definitions";
 import type {
   WorkflowPaletteItem,
@@ -136,7 +136,7 @@ function WorkflowNodePickerItem({
                 alt=""
                 aria-hidden="true"
                 className="h-3 w-auto shrink-0"
-                src={aiIconUrl}
+                src={WORKFLOW_AI_BADGE_URL}
               />
             ) : null}
           </span>

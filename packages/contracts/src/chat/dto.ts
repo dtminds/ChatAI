@@ -801,6 +801,13 @@ export type WorkbenchConversationFullAutoResponse = {
   seatId: string;
 };
 
+/** 打开会话后清除「待人工处理 / 接管提醒」 */
+export type WorkbenchConversationClearWaitManualResponse = {
+  conversationId: string;
+  seatId: string;
+  waitManual: false;
+};
+
 export type WorkbenchSeatAgentMode = "assistant" | "autoReply" | "off";
 
 export type WorkbenchSeatAgentModeSwitchRequest = {

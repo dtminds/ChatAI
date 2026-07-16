@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationClearWaitManualResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
   WorkbenchConversationListResponse,
@@ -298,6 +299,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchConversationFullAutoResponse>
     | WorkbenchConversationFullAutoResponse;
+  clearConversationWaitManual(
+    subUserId: string,
+    conversationId: string,
+  ):
+    | Promise<WorkbenchConversationClearWaitManualResponse>
+    | WorkbenchConversationClearWaitManualResponse;
   deleteConversation(
     subUserId: string,
     conversationId: string,
@@ -1352,6 +1359,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
       conversationAIHostingSwitch: request.enabled,
       conversationId: conversation.id,
       seatId: conversation.seatId,
+    };
+  }
+
+  async clearConversationWaitManual(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationClearWaitManualResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
+
+    await this.repository.clearConversationWaitManual({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+      waitManual: false,
     };
   }
 

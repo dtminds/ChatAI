@@ -275,6 +275,45 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
+  it("clears waitManual takeover reminder when opening a conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationWaitManual = vi.fn().mockResolvedValue({
+      conversationId: "conv-001",
+      seatId: "drc",
+      waitManual: false,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationWaitManual,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeConversationId: undefined,
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                waitManual: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001");
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.waitManual,
+    ).toBe(false);
+  });
+
   it("patches active conversation full-auto from API response instead of request input", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn().mockResolvedValue({

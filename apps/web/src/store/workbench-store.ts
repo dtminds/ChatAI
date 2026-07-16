@@ -14,6 +14,7 @@ import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   changeConversationFullAuto,
+  clearConversationWaitManual,
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
@@ -2124,6 +2125,27 @@ function applyConversationAIHostingSwitchResult(
     fullAutoStatusByConversationId: enabled
       ? state.fullAutoStatusByConversationId
       : omitByKeys(state.fullAutoStatusByConversationId, [conversationId]),
+  };
+}
+
+function applyConversationWaitManualCleared(
+  state: WorkbenchStore,
+  conversationId: string,
+  accountId: string,
+) {
+  return {
+    conversationListsByScope: {
+      ...state.conversationListsByScope,
+      [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
+        (conversation): Conversation =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                waitManual: false,
+              }
+            : conversation,
+      ),
+    },
   };
 }
 
@@ -6183,16 +6205,31 @@ export function createWorkbenchStore() {
     async setActiveConversation(conversationId) {
       const state = get();
 
-      if (
-        !conversationId ||
-        !state.activeAccountId ||
-        state.activeConversationId === conversationId
-      ) {
+      if (!conversationId || !state.activeAccountId) {
+        return;
+      }
+
+      const currentConversation = getConversationById(state, conversationId);
+
+      if (currentConversation?.waitManual === true) {
+        const accountId = currentConversation.accountId;
+        set((currentState) =>
+          applyConversationWaitManualCleared(
+            currentState,
+            conversationId,
+            accountId,
+          ),
+        );
+        void clearConversationWaitManual(conversationId).catch(() => {
+          // 打开会话后清除接管提醒是 best-effort；失败时保留本地已隐藏状态
+        });
+      }
+
+      if (state.activeConversationId === conversationId) {
         return;
       }
 
       const requestId = issueScopeRequestId();
-      const currentConversation = getConversationById(state, conversationId);
       clearSmartReplyRuntimeTimers(state.activeConversationId);
       clearSmartReplyRuntimeTimers(conversationId);
       clearFullAutoRuntime(state.activeConversationId);

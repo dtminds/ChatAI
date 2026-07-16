@@ -2014,6 +2014,39 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
   });
 
+  it("clears conversation wait_manual when acknowledging takeover reminder", async () => {
+    const clearConversationWaitManual = vi.fn().mockResolvedValue(undefined);
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        clearConversationWaitManual,
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      service.clearConversationWaitManual("101", "88"),
+    ).resolves.toEqual({
+      conversationId: "88",
+      seatId: "12",
+      waitManual: false,
+    });
+    expect(clearConversationWaitManual).toHaveBeenCalledWith({
+      conversationId: "88",
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
   it("enables full-auto for group conversations through Java", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.insertSystemMessage).mockResolvedValue("9001");

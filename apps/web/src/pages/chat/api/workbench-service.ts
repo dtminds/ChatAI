@@ -14,6 +14,7 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
+  type WorkbenchConversationClearWaitManualResponse,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
@@ -229,6 +230,9 @@ export type WorkbenchService = {
     conversationId: string,
     request: { enabled: boolean },
   ) => Promise<WorkbenchConversationFullAutoResponse>;
+  clearConversationWaitManual: (
+    conversationId: string,
+  ) => Promise<WorkbenchConversationClearWaitManualResponse>;
   updateSeatAgentMode: (
     seatId: string,
     request: WorkbenchSeatAgentModeSwitchRequest,
@@ -1660,6 +1664,27 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
+    async clearConversationWaitManual(conversationId) {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new Error("Conversation not found");
+      }
+
+      const nextConversation = {
+        ...conversation,
+        waitManual: false,
+      };
+
+      upsertConversation(state, nextConversation);
+      pushConversationEvent(state, nextConversation);
+
+      return {
+        conversationId,
+        seatId: nextConversation.seatId,
+        waitManual: false as const,
+      };
+    },
     async updateSeatAgentMode(seatId, request) {
       const seat = state.seats.find((item) => item.seatId === seatId);
 
@@ -2438,6 +2463,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchConversationFullAutoResponse, { enabled: boolean }>(
         `/server/conversations/${conversationId}/full-auto`,
         request,
+      );
+    },
+    clearConversationWaitManual(conversationId) {
+      return http.post<WorkbenchConversationClearWaitManualResponse>(
+        `/server/conversations/${conversationId}/wait-manual/clear`,
       );
     },
     updateSeatAgentMode(seatId, request) {

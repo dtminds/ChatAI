@@ -3903,6 +3903,30 @@ export class WorkbenchRepository {
       .execute();
   }
 
+  async clearConversationWaitManual(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+
+    if (conversationNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_conversation")
+      .set({
+        wait_manual: 0,
+      })
+      .where("id", "=", conversationNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("wait_manual", "=", 1)
+      .execute();
+  }
+
   async hideConversation(input: {
     conversationId: string;
     platform: number;

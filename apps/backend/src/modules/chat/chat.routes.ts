@@ -1049,6 +1049,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/wait-manual/clear",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).clearConversationWaitManual(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
+    },
+  );
+
   app.get<{ Params: ConversationParams }>(
     "/api/server/conversations/:conversationId/full-auto/answer-status",
     {

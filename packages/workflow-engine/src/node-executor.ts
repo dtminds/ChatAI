@@ -49,6 +49,9 @@ type WorkflowBranchPathConfig = {
   label?: string;
 };
 
+// Published v1 wait specs omitted mode and used one shared duration limit.
+const LEGACY_WORKFLOW_WAIT_DURATION_MAX = 525_600;
+
 export class WorkflowNodeExecutorRegistry {
   private readonly executors = new Map<WorkflowNodeKind, WorkflowNodeExecutor>();
 
@@ -127,14 +130,18 @@ function executeWait(
 function getDurationWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {
   const duration = config.duration;
   const unit = config.unit;
-  if (config.mode !== "duration"
+  const legacyDurationConfig = config.mode === undefined;
+  if ((!legacyDurationConfig && config.mode !== "duration")
     || typeof duration !== "number"
     || !Number.isSafeInteger(duration)
     || duration <= 0
     || (unit !== "minute" && unit !== "hour" && unit !== "day")) {
     throw new WorkflowNodeExecutionError("Wait node requires a positive duration and supported unit");
   }
-  if (duration > WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit]) {
+  const maximumDuration = legacyDurationConfig
+    ? LEGACY_WORKFLOW_WAIT_DURATION_MAX
+    : WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit];
+  if (duration > maximumDuration) {
     throw new WorkflowNodeExecutionError("Wait node duration exceeds the supported unit limit");
   }
   const unitMilliseconds = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;

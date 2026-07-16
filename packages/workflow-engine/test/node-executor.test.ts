@@ -39,6 +39,23 @@ describe("core node executors", () => {
       .resolves.toMatchObject({ dueAt: "2026-07-10T01:30:00.000Z" });
   });
 
+  it("continues executing legacy duration waits without mode", async () => {
+    await expect(registry.execute(node("wait", {
+      duration: 46,
+      unit: "day",
+    }), context()))
+      .resolves.toEqual({
+        dueAt: "2026-08-25T00:00:00.000Z",
+        output: { dueAt: "2026-08-25T00:00:00.000Z" },
+        type: "wait",
+      });
+
+    await expect(registry.execute(node("wait", {
+      duration: 525_601,
+      unit: "minute",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+  });
+
   it("rejects regular waits above the selected unit limit", async () => {
     await expect(registry.execute(node("wait", {
       duration: 361,

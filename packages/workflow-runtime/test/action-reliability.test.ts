@@ -1,5 +1,8 @@
 import type { WorkflowExecutionSpec } from "@chatai/contracts";
-import { WorkflowActionExecutionError } from "@chatai/workflow-engine";
+import {
+  WorkflowActionExecutionError,
+  WorkflowNodeExecutorRegistry,
+} from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryWorkflowRuntimeRepository,
@@ -190,30 +193,29 @@ describe("workflow action reliability", () => {
 
   it("fails a core node whose output exceeds 4 KiB", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const executors = new WorkflowNodeExecutorRegistry().register("start", {
+      execute: () => ({
+        output: { value: "x".repeat(4 * 1024) },
+        sourceOutletId: "default",
+        type: "advance",
+      }),
+    });
     const service = createService(runtime, async () => ({}), {
-      spec: branchSpec("x".repeat(4 * 1024)),
+      executors,
+      spec: coreOutputSpec(),
     });
     const started = await service.startRun({
-      entryEventId: "large-branch-output",
+      entryEventId: "large-core-output",
       expectedRevision: 1,
       subjectId: "customer-1",
       trigger: {},
       uid: 9,
       workflowId: "31",
     });
-    const advanced = await service.executeTask({
+    const result = await service.executeTask({
       now,
       taskId: started.task.id,
       taskVersion: started.task.taskVersion,
-      uid: 9,
-      workerId: "worker-1",
-    });
-    if (!("nextTask" in advanced) || !advanced.nextTask) throw new Error("branch task was not created");
-
-    const result = await service.executeTask({
-      now,
-      taskId: advanced.nextTask.id,
-      taskVersion: advanced.nextTask.taskVersion,
       uid: 9,
       workerId: "worker-1",
     });
@@ -221,15 +223,15 @@ describe("workflow action reliability", () => {
     expect(result).toMatchObject({
       errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
       kind: "node-failed",
-      nodeId: "branch",
-      nodeKind: "branch",
+      nodeId: "start",
+      nodeKind: "start",
       run: { status: "failed" },
     });
     expect(runtime.tasks.some(task => task.nodeId === "end")).toBe(false);
     expect(runtime.nodeExecutions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         errorCode: "WORKFLOW_NODE_OUTPUT_TOO_LARGE",
-        nodeId: "branch",
+        nodeId: "start",
         output: {},
         status: "failed",
       }),
@@ -774,6 +776,7 @@ function createService(
   options: {
     actionTimeoutMs?: number;
     clock?: () => Date;
+    executors?: WorkflowNodeExecutorRegistry;
     maxTaskAttempts?: number;
     spec?: WorkflowExecutionSpec;
     taskLeaseDurationMs?: number;
@@ -784,6 +787,7 @@ function createService(
     actionRetryDelayMs: 5_000,
     actionTimeoutMs: options.actionTimeoutMs ?? 15_000,
     clock: options.clock ?? (() => now),
+    executors: options.executors,
     maxTaskAttempts: options.maxTaskAttempts ?? 3,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
   });
@@ -823,21 +827,14 @@ function createControlReader(spec = actionSpec()) {
   };
 }
 
-function branchSpec(label: string): WorkflowExecutionSpec {
+function coreOutputSpec(): WorkflowExecutionSpec {
   return {
     edges: [
-      { id: "start-branch", source: "start", sourceOutletId: "default", target: "branch" },
-      { id: "branch-end", source: "branch", sourceOutletId: "large", target: "end" },
+      { id: "start-end", source: "start", sourceOutletId: "default", target: "end" },
     ],
     entryNodeId: "start",
     nodes: [
       { config: startConfig(), id: "start", kind: "start", nodeSchemaVersion: 1 },
-      {
-        config: { branchPaths: [{ id: "large", isDefault: true, label }] },
-        id: "branch",
-        kind: "branch",
-        nodeSchemaVersion: 1,
-      },
       { config: {}, id: "end", kind: "end", nodeSchemaVersion: 1 },
     ],
     revision: 1,

@@ -14,6 +14,7 @@ import {
   createWorkflowActionIdempotencyKey,
   isWorkflowActionNodeKind,
   WorkflowActionExecutionError,
+  type WorkflowNodeExecutorRegistry,
   type WorkflowNodeExecutionContext,
 } from "@chatai/workflow-engine";
 import { WorkflowRuntimeError } from "./errors.js";
@@ -37,7 +38,7 @@ export class WorkflowRuntimeService {
   private readonly actionRetryDelayMs: number;
   private readonly actionTimeoutMs: number;
   private readonly clock: () => Date;
-  private readonly executors = createCoreNodeExecutorRegistry();
+  private readonly executors: WorkflowNodeExecutorRegistry;
   private readonly maxTaskAttempts: number;
   private readonly taskLeaseDurationMs: number;
 
@@ -50,6 +51,7 @@ export class WorkflowRuntimeService {
       actionRetryDelayMs?: number;
       actionTimeoutMs?: number;
       clock?: () => Date;
+      executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
       taskLeaseDurationMs?: number;
     } = {},
@@ -58,6 +60,7 @@ export class WorkflowRuntimeService {
     this.actionRetryDelayMs = options.actionRetryDelayMs ?? 5_000;
     this.actionTimeoutMs = options.actionTimeoutMs ?? 15_000;
     this.clock = options.clock ?? (() => new Date());
+    this.executors = options.executors ?? createCoreNodeExecutorRegistry();
     this.maxTaskAttempts = options.maxTaskAttempts ?? 5;
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
     if (!Number.isSafeInteger(this.actionTimeoutMs) || this.actionTimeoutMs <= 0) {

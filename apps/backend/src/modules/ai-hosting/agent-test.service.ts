@@ -7,6 +7,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { hydrateAgentTestAttachmentReplies } from "./agent-test-attachment-resolver.js";
 import { mapJavaAgentTestResponse } from "./agent-test-mappers.js";
 
 const AGENT_TEST_MESSAGE_LIMIT = 20;
@@ -40,7 +41,13 @@ export class AgentTestService {
       uid,
     });
 
-    return mapJavaAgentTestResponse(response);
+    const mapped = mapJavaAgentTestResponse(response);
+    const reply = await hydrateAgentTestAttachmentReplies(this.db, uid, mapped.reply);
+
+    return {
+      ...mapped,
+      reply,
+    };
   }
 
   private async resolveUid(subUserId: string) {

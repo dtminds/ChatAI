@@ -6074,6 +6074,57 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("loads conversation full-auto capability in seat and active binding scope", async () => {
+    let capabilityQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_user_seat as seat");
+          capabilityQuery = createQueryBuilder({
+            customer_bind_type: 1,
+            full_auto_auth: 1,
+            full_auto_switch: 1,
+            group_full_auto_auth: 0,
+          });
+          return capabilityQuery;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getConversationFullAutoCapability({
+        platform: 5,
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      customerBindType: 1,
+      groupFullAutoAuth: false,
+      seatFullAutoAuth: true,
+      seatFullAutoSwitch: true,
+    });
+    expect(capabilityQuery?.wheres).toEqual([
+      ["seat.id", "=", 12],
+      ["seat.uid", "=", 9001],
+      ["seat.platform", "=", 5],
+      ["seat.third_userid", "=", "seat-user-001"],
+    ]);
+    expect(capabilityQuery?.joinConditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          conditions: expect.arrayContaining([
+            ["bind.third_external_userid", "=", "external-001"],
+            ["bind.biz_status", "=", 1],
+          ]),
+          table: "xy_wap_embed_customer_bind_relation as bind",
+          type: "leftJoin",
+        }),
+      ]),
+    );
+  });
+
   it("returns group name from group seat lookup for sidebar iframe params", async () => {
     const repository = new WorkbenchRepository(
       {

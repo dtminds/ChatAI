@@ -1787,6 +1787,12 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
+        getConversationFullAutoCapability: vi.fn().mockResolvedValue({
+          customerBindType: 1,
+          groupFullAutoAuth: false,
+          seatFullAutoAuth: true,
+          seatFullAutoSwitch: true,
+        }),
         getLatestConversationMessageSummary,
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
@@ -1979,9 +1985,11 @@ describe("MysqlWorkbenchService", () => {
   it("does not insert a system message when disabling full-auto", async () => {
     const javaClient = createJavaClient();
     const getLatestConversationMessageSummary = vi.fn();
+    const getConversationFullAutoCapability = vi.fn();
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationFullAutoCapability,
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
           platform: 5,
@@ -2011,7 +2019,107 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(getLatestConversationMessageSummary).not.toHaveBeenCalled();
+    expect(getConversationFullAutoCapability).not.toHaveBeenCalled();
     expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      capability: {
+        customerBindType: 1,
+        groupFullAutoAuth: false,
+        seatFullAutoAuth: false,
+        seatFullAutoSwitch: true,
+      },
+      label: "seat authorization is disabled",
+    },
+    {
+      capability: {
+        customerBindType: 1,
+        groupFullAutoAuth: false,
+        seatFullAutoAuth: true,
+        seatFullAutoSwitch: false,
+      },
+      label: "seat switch is disabled",
+    },
+    {
+      capability: {
+        customerBindType: 2,
+        groupFullAutoAuth: false,
+        seatFullAutoAuth: true,
+        seatFullAutoSwitch: true,
+      },
+      label: "customer binding is not normal",
+    },
+    {
+      capability: {
+        customerBindType: undefined,
+        groupFullAutoAuth: false,
+        seatFullAutoAuth: true,
+        seatFullAutoSwitch: true,
+      },
+      label: "active customer binding is missing",
+    },
+  ])("rejects enabling single-chat full-auto when $label", async ({ capability }) => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationFullAutoCapability: vi.fn().mockResolvedValue(capability),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          chatType: 1,
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_FULL_AUTO_NOT_AVAILABLE",
+      statusCode: 403,
+    });
+    expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("rejects enabling group full-auto without group authorization", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationFullAutoCapability: vi.fn().mockResolvedValue({
+          groupFullAutoAuth: false,
+          seatFullAutoAuth: true,
+          seatFullAutoSwitch: true,
+        }),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          chatType: 2,
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_FULL_AUTO_NOT_AVAILABLE",
+      statusCode: 403,
+    });
+    expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
   it("clears conversation wait_manual when acknowledging takeover reminder", async () => {
@@ -2066,6 +2174,11 @@ describe("MysqlWorkbenchService", () => {
           thirdGroupId: "group-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
+        }),
+        getConversationFullAutoCapability: vi.fn().mockResolvedValue({
+          groupFullAutoAuth: true,
+          seatFullAutoAuth: false,
+          seatFullAutoSwitch: false,
         }),
         getLatestConversationMessageSummary,
       } as unknown as WorkbenchRepository,
@@ -8000,6 +8113,12 @@ function createWorkbenchService(
   },
 ) {
   const repositoryWithActiveSubUser = {
+    getConversationFullAutoCapability: vi.fn().mockResolvedValue({
+      customerBindType: 1,
+      groupFullAutoAuth: true,
+      seatFullAutoAuth: true,
+      seatFullAutoSwitch: true,
+    }),
     getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
     ...repository,
   } as WorkbenchRepository;

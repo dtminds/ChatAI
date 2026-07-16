@@ -1334,6 +1334,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
+    if (request.enabled) {
+      const capability = await this.repository.getConversationFullAutoCapability({
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        thirdExternalUserId: conversation.thirdExternalUserId,
+        thirdUserId: conversation.thirdUserId,
+        uid: conversation.uid,
+      });
+      const canEnable =
+        conversation.chatType === CHAT_TYPE.GROUP
+          ? capability?.groupFullAutoAuth === true
+          : conversation.chatType === CHAT_TYPE.SINGLE &&
+            capability?.seatFullAutoAuth === true &&
+            capability.seatFullAutoSwitch === true &&
+            capability.customerBindType === 1;
+
+      if (!canEnable) {
+        throw new ForbiddenError(
+          "CONVERSATION_FULL_AUTO_NOT_AVAILABLE",
+          "当前会话未开通 AI 托管能力",
+        );
+      }
+    }
+
     await this.javaClient.changeConversationFullAuto({
       change: request.enabled ? 1 : 0,
       conversationId: conversation.id,

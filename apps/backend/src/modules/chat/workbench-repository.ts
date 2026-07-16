@@ -105,6 +105,13 @@ export type ConversationLookup = {
   unreadCount: number;
 };
 
+export type ConversationFullAutoCapability = {
+  customerBindType?: number;
+  groupFullAutoAuth: boolean;
+  seatFullAutoAuth: boolean;
+  seatFullAutoSwitch: boolean;
+};
+
 type FullAutoAnswerStatusScope = {
   thirdExternalUserId: string;
   thirdUserId: string;
@@ -3800,6 +3807,64 @@ export class WorkbenchRepository {
           unreadCount: Number(row.unread_cnt ?? 0),
         }
       : undefined;
+  }
+
+  async getConversationFullAutoCapability(input: {
+    platform: number;
+    seatId: string;
+    thirdExternalUserId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<ConversationFullAutoCapability | undefined> {
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (seatNumericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
+      .leftJoin("xy_wap_embed_customer_bind_relation as bind", (join) =>
+        join
+          .onRef("bind.third_userid", "=", "seat.third_userid")
+          .onRef("bind.uid", "=", "seat.uid")
+          .onRef("bind.platform", "=", "seat.platform")
+          .on("bind.third_external_userid", "=", input.thirdExternalUserId ?? "")
+          .on("bind.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select([
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_group_agent.full_auto_auth as group_full_auto_auth",
+        "bind.bind_type as customer_bind_type",
+      ])
+      .where("seat.id", "=", seatNumericId)
+      .where("seat.uid", "=", input.uid)
+      .where("seat.platform", "=", input.platform)
+      .where("seat.third_userid", "=", input.thirdUserId)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      customerBindType:
+        row.customer_bind_type == null ? undefined : Number(row.customer_bind_type),
+      groupFullAutoAuth: readBooleanFlag(row.group_full_auto_auth),
+      seatFullAutoAuth: readBooleanFlag(row.full_auto_auth),
+      seatFullAutoSwitch: readBooleanFlag(row.full_auto_switch),
+    };
   }
 
   async getLatestFullAutoAnswerStatus(

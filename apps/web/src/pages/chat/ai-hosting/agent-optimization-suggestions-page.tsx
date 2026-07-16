@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { AiHostingLearningCandidateItem } from "@chatai/contracts";
 import {
   AiIdeaIcon,
   AiMagicIcon,
@@ -9,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,13 +41,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
+import { isRequestError } from "@/lib/request";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout } from "./ai-hosting-layout";
+import {
+  approveAgentLearningCandidate,
+  batchApproveAgentLearningCandidates,
+  batchRejectAgentLearningCandidates,
+  listAgentLearningCandidates,
+  rejectAgentLearningCandidate,
+} from "./api/agent-learning-service";
 import {
   listKbDocs,
   listKbs,
@@ -54,9 +65,10 @@ import {
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem } from "./kb-types";
 
-type SuggestionStatus = "pending" | "adopted" | "ignored" | "filtered";
+type SuggestionStatus = AiHostingLearningCandidateItem["status"];
 type IngestMode = "batch" | "single";
 const ADD_KNOWLEDGE_OPTION_VALUE = "__add_knowledge__";
+const PAGE_SIZE = 10;
 
 const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "待处理", value: "pending" },
@@ -65,30 +77,25 @@ const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "智能过滤", value: "filtered" },
 ];
 
-const mockSuggestions = [
-  {
-    answer:
-      "您好，这款商品是否有货需要以当前小程序或商品链接页面显示为准。如果页面可正常下单，一般表示当前有库存；如果显示售罄或无法购买，说明暂时无货",
-    id: "suggestion-1",
-    rationale: "这是一段理由说明这是一段理由说明这是一段理由说明这是一段理由说明",
-    title: "这个商品现在还有货吗？",
-  },
-  {
-    answer:
-      "您好，这款商品是否有货需要以当前小程序或商品链接页面显示为准。如果页面可正常下单，一般表示当前有库存；如果显示售罄或无法购买，说明暂时无货",
-    id: "suggestion-2",
-    rationale: "这是一段理由说明这是一段理由说明这是一段理由说明这是一段理由说明",
-    title: "这个商品现在还有货吗？",
-  },
-] as const;
 export function AgentOptimizationSuggestionsPage() {
   const navigate = useNavigate();
-  const { agentId } = useParams();
+  const { agentId = "" } = useParams();
   const [activeStatus, setActiveStatus] = useState<SuggestionStatus>("pending");
   const [batchMode, setBatchMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [candidates, setCandidates] = useState<AiHostingLearningCandidateItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [listVersion, setListVersion] = useState(0);
   const [ingestMode, setIngestMode] = useState<IngestMode | null>(null);
+  const [ingestTargetIds, setIngestTargetIds] = useState<string[]>([]);
+  const [ingestQuestion, setIngestQuestion] = useState("");
+  const [ingestAnswer, setIngestAnswer] = useState("");
+  const [ingestSubmitting, setIngestSubmitting] = useState(false);
   const [ignoreConfirmationOpen, setIgnoreConfirmationOpen] = useState(false);
+  const [ignoreTargetIds, setIgnoreTargetIds] = useState<string[]>([]);
+  const [ignoreSubmitting, setIgnoreSubmitting] = useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KbListViewItem[]>([]);
   const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(true);
   const [knowledgeItems, setKnowledgeItems] = useState<KbDocViewItem[]>([]);
@@ -98,8 +105,8 @@ export function AgentOptimizationSuggestionsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
-    pageSize: 10,
-    total: 24,
+    pageSize: PAGE_SIZE,
+    total,
   });
   const canBatchOperate = activeStatus !== "adopted";
   const canSelect = canBatchOperate && batchMode;
@@ -110,10 +117,18 @@ export function AgentOptimizationSuggestionsPage() {
     );
   }
 
-  function openIngestDialog(mode: IngestMode) {
+  function openIngestDialog(mode: IngestMode, ids: string[]) {
+    const first = candidates.find((item) => item.id === ids[0]);
     setIngestMode(mode);
+    setIngestTargetIds(ids);
+    setIngestQuestion(first?.question ?? "");
+    setIngestAnswer(first?.answer ?? "");
     setSelectedKnowledgeBaseId("");
     setSelectedKnowledgeId("");
+  }
+
+  function refreshList() {
+    setListVersion((value) => value + 1);
   }
 
   const selectedKnowledgeBase = knowledgeBases.find(
@@ -151,6 +166,48 @@ export function AgentOptimizationSuggestionsPage() {
   }, []);
 
   useEffect(() => {
+    if (!agentId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadCandidates() {
+      setLoading(true);
+      setErrorMessage("");
+
+      try {
+        const response = await listAgentLearningCandidates(agentId, {
+          page: activePage,
+          pageSize: PAGE_SIZE,
+          status: activeStatus,
+        });
+
+        if (!cancelled) {
+          setCandidates(response.candidates);
+          setTotal(response.pagination.total);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCandidates([]);
+          setTotal(0);
+          setErrorMessage(isRequestError(error) ? error.message : "加载失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePage, activeStatus, agentId, listVersion]);
+
+  useEffect(() => {
     if (!ingestMode || !selectedKnowledgeBaseId) {
       setKnowledgeItems([]);
       return;
@@ -168,7 +225,9 @@ export function AgentOptimizationSuggestionsPage() {
         });
 
         if (!cancelled) {
-          setKnowledgeItems(response.docs.map(toKbDocViewItem));
+          setKnowledgeItems(
+            response.docs.map(toKbDocViewItem).filter((item) => item.type === "qa"),
+          );
         }
       } catch {
         if (!cancelled) {
@@ -188,13 +247,98 @@ export function AgentOptimizationSuggestionsPage() {
     };
   }, [ingestMode, selectedKnowledgeBaseId]);
 
+  async function handleConfirmIngest() {
+    if (
+      !agentId ||
+      !selectedKnowledgeBaseId ||
+      !selectedKnowledgeId ||
+      ingestTargetIds.length === 0 ||
+      ingestSubmitting
+    ) {
+      return;
+    }
+
+    setIngestSubmitting(true);
+
+    try {
+      if (ingestMode === "single") {
+        const question = ingestQuestion.trim();
+        const answer = ingestAnswer.trim();
+
+        if (!question || !answer) {
+          toast.error("请填写问题和答案");
+          return;
+        }
+
+        await approveAgentLearningCandidate(agentId, ingestTargetIds[0], {
+          answer,
+          question,
+          targetDocId: selectedKnowledgeId,
+          targetKbId: selectedKnowledgeBaseId,
+        });
+        toast.success("已入库");
+      } else {
+        const result = await batchApproveAgentLearningCandidates(agentId, {
+          ids: ingestTargetIds,
+          targetDocId: selectedKnowledgeId,
+          targetKbId: selectedKnowledgeBaseId,
+        });
+
+        if (result.failDetails.length > 0) {
+          toast.error(`成功 ${result.successCount} 条，失败 ${result.failDetails.length} 条`);
+        } else {
+          toast.success(`已入库 ${result.successCount} 条`);
+        }
+      }
+
+      setIngestMode(null);
+      setSelectedIds([]);
+      setBatchMode(false);
+      refreshList();
+    } catch (error) {
+      toast.error(isRequestError(error) ? error.message : "入库失败");
+    } finally {
+      setIngestSubmitting(false);
+    }
+  }
+
+  async function handleConfirmIgnore() {
+    if (!agentId || ignoreTargetIds.length === 0 || ignoreSubmitting) {
+      return;
+    }
+
+    setIgnoreSubmitting(true);
+
+    try {
+      if (ignoreTargetIds.length === 1 && !batchMode) {
+        await rejectAgentLearningCandidate(agentId, ignoreTargetIds[0]);
+        toast.success("已忽略");
+      } else {
+        const result = await batchRejectAgentLearningCandidates(agentId, {
+          ids: ignoreTargetIds,
+        });
+        toast.success(`已忽略 ${result.updatedCount} 条`);
+      }
+
+      setIgnoreConfirmationOpen(false);
+      setIgnoreTargetIds([]);
+      setSelectedIds([]);
+      setBatchMode(false);
+      refreshList();
+    } catch (error) {
+      toast.error(isRequestError(error) ? error.message : "忽略失败");
+    } finally {
+      setIgnoreSubmitting(false);
+    }
+  }
+
   return (
     <AiHostingLayout title="AI 优化建议">
       <div className="space-y-6">
         <div className="space-y-3">
           <Link
             className="inline-flex items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground"
-            to={`/chat/ai-hosting/agents/${agentId ?? ""}`}
+            to={`/chat/ai-hosting/agents/${agentId}`}
           >
             <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} size={16} strokeWidth={1.8} />
             返回 Agent 管理
@@ -232,7 +376,7 @@ export function AgentOptimizationSuggestionsPage() {
               <div className="flex items-center gap-3">
                 <Button
                   disabled={selectedIds.length === 0}
-                  onClick={() => openIngestDialog("batch")}
+                  onClick={() => openIngestDialog("batch", selectedIds)}
                   type="button"
                   variant="outline"
                 >
@@ -241,7 +385,10 @@ export function AgentOptimizationSuggestionsPage() {
                 {activeStatus === "pending" ? (
                   <Button
                     disabled={selectedIds.length === 0}
-                    onClick={() => setIgnoreConfirmationOpen(true)}
+                    onClick={() => {
+                      setIgnoreTargetIds(selectedIds);
+                      setIgnoreConfirmationOpen(true);
+                    }}
                     type="button"
                     variant="outline"
                   >
@@ -273,35 +420,51 @@ export function AgentOptimizationSuggestionsPage() {
           </div>
 
           {activeStatus === "filtered" ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 rounded-[8px] bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-                <HugeiconsIcon aria-hidden="true" className="text-primary" icon={AiMagicIcon} size={16} strokeWidth={1.8} />
-                Agent在使用过程中会自主学习并提炼出有价值的知识，再经过AI评判功能，智能过滤掉重复或冲突的知识
-              </div>
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {mockSuggestions.map((suggestion) => (
-                  <SuggestionCard
-                    checked={selectedIds.includes(suggestion.id)}
-                    key={suggestion.id}
-                    onAdopt={() => openIngestDialog("single")}
-                    onCheckedChange={(checked) => toggleSuggestion(suggestion.id, checked)}
-                    onIgnore={() => setIgnoreConfirmationOpen(true)}
-                    selectable={canSelect}
-                    status={activeStatus}
-                    suggestion={suggestion}
-                  />
-                ))}
-              </div>
+            <div className="flex items-center gap-2 rounded-[8px] bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="text-primary"
+                icon={AiMagicIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              Agent在使用过程中会自主学习并提炼出有价值的知识，再经过AI评判功能，智能过滤掉重复或冲突的知识
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div
+              className="flex min-h-[240px] items-center justify-center gap-2 text-sm text-muted-foreground"
+              role="status"
+            >
+              <Spinner />
+              正在加载
+            </div>
+          ) : errorMessage ? (
+            <div className="flex min-h-[240px] items-center justify-center text-sm text-destructive">
+              {errorMessage}
+            </div>
+          ) : candidates.length === 0 ? (
+            <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+              暂无数据
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              {mockSuggestions.map((suggestion) => (
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-4",
+                activeStatus === "filtered" ? "xl:grid-cols-2" : "xl:grid-cols-2",
+              )}
+            >
+              {candidates.map((suggestion) => (
                 <SuggestionCard
                   checked={selectedIds.includes(suggestion.id)}
                   key={suggestion.id}
-                  onAdopt={() => openIngestDialog("single")}
+                  onAdopt={() => openIngestDialog("single", [suggestion.id])}
                   onCheckedChange={(checked) => toggleSuggestion(suggestion.id, checked)}
-                  onIgnore={() => setIgnoreConfirmationOpen(true)}
+                  onIgnore={() => {
+                    setIgnoreTargetIds([suggestion.id]);
+                    setIgnoreConfirmationOpen(true);
+                  }}
                   selectable={canSelect}
                   status={activeStatus}
                   suggestion={suggestion}
@@ -315,14 +478,15 @@ export function AgentOptimizationSuggestionsPage() {
           className="border-t-0"
           onPageChange={setCurrentPage}
           page={activePage}
-          total={24}
+          total={total}
           totalPages={totalPages}
         />
       </div>
       <AlertDialog
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !ignoreSubmitting) {
             setIgnoreConfirmationOpen(false);
+            setIgnoreTargetIds([]);
           }
         }}
         open={ignoreConfirmationOpen}
@@ -335,8 +499,14 @@ export function AgentOptimizationSuggestionsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => setIgnoreConfirmationOpen(false)}>
+            <AlertDialogCancel disabled={ignoreSubmitting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={ignoreSubmitting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmIgnore();
+              }}
+            >
               确认
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -344,7 +514,7 @@ export function AgentOptimizationSuggestionsPage() {
       </AlertDialog>
       <Dialog
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !ingestSubmitting) {
             setIngestMode(null);
           }
         }}
@@ -363,7 +533,7 @@ export function AgentOptimizationSuggestionsPage() {
                 选择知识库 <span className="text-destructive">*</span>
               </Label>
               <Select
-                disabled={knowledgeBasesLoading}
+                disabled={knowledgeBasesLoading || ingestSubmitting}
                 onValueChange={(value) => {
                   setSelectedKnowledgeBaseId(value);
                   setSelectedKnowledgeId("");
@@ -389,7 +559,7 @@ export function AgentOptimizationSuggestionsPage() {
                 选择知识 <span className="text-destructive">*</span>
               </Label>
               <Select
-                disabled={!selectedKnowledgeBase || knowledgeItemsLoading}
+                disabled={!selectedKnowledgeBase || knowledgeItemsLoading || ingestSubmitting}
                 onValueChange={(value) => {
                   if (value === ADD_KNOWLEDGE_OPTION_VALUE && selectedKnowledgeBase) {
                     setIngestMode(null);
@@ -434,9 +604,10 @@ export function AgentOptimizationSuggestionsPage() {
                     问题 <span className="text-destructive">*</span>
                   </Label>
                   <Input
+                    disabled={ingestSubmitting}
                     id="optimization-question"
-                    readOnly
-                    value={mockSuggestions[0].title}
+                    onChange={(event) => setIngestQuestion(event.target.value)}
+                    value={ingestQuestion}
                   />
                 </div>
                 <div className="space-y-2">
@@ -445,21 +616,34 @@ export function AgentOptimizationSuggestionsPage() {
                   </Label>
                   <Textarea
                     className="min-h-24 resize-none"
+                    disabled={ingestSubmitting}
                     id="optimization-answer"
-                    readOnly
-                    value={mockSuggestions[0].answer}
+                    onChange={(event) => setIngestAnswer(event.target.value)}
+                    value={ingestAnswer}
                   />
                 </div>
               </>
             ) : null}
           </div>
           <DialogFooter>
-            <Button onClick={() => setIngestMode(null)} type="button" variant="outline">
+            <Button
+              disabled={ingestSubmitting}
+              onClick={() => setIngestMode(null)}
+              type="button"
+              variant="outline"
+            >
               取消
             </Button>
             <Button
-              disabled={!selectedKnowledgeBaseId || !selectedKnowledgeId}
-              onClick={() => setIngestMode(null)}
+              disabled={
+                !selectedKnowledgeBaseId ||
+                !selectedKnowledgeId ||
+                ingestSubmitting ||
+                (ingestMode === "single" && (!ingestQuestion.trim() || !ingestAnswer.trim()))
+              }
+              onClick={() => {
+                void handleConfirmIngest();
+              }}
               type="button"
             >
               确认入库
@@ -486,7 +670,7 @@ function SuggestionCard({
   onIgnore?: () => void;
   selectable?: boolean;
   status?: SuggestionStatus;
-  suggestion: (typeof mockSuggestions)[number];
+  suggestion: AiHostingLearningCandidateItem;
 }) {
   return (
     <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
@@ -495,11 +679,11 @@ function SuggestionCard({
           <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-warning-muted text-warning">
             <HugeiconsIcon aria-hidden="true" icon={AiIdeaIcon} size={13} strokeWidth={1.8} />
           </span>
-          <h2 className="truncate text-sm font-medium text-foreground">{suggestion.title}</h2>
+          <h2 className="truncate text-sm font-medium text-foreground">{suggestion.question}</h2>
         </div>
         {selectable ? (
           <Checkbox
-            aria-label={`选择建议：${suggestion.title}`}
+            aria-label={`选择建议：${suggestion.question}`}
             checked={checked}
             onCheckedChange={(nextChecked) => onCheckedChange?.(nextChecked === true)}
           />
@@ -543,13 +727,20 @@ function SuggestionCard({
         </p>
         <p className="mt-1 line-clamp-1 text-sm text-foreground">{suggestion.rationale}</p>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <span className="size-4 rounded-full bg-success-muted" />
-          <span className="size-4 rounded-full bg-warning-muted" />
-        </span>
-        <time>2026-07-09 12:09:00</time>
-      </div>
+      {suggestion.createdAt ? (
+        <div className="mt-auto flex items-center justify-end gap-3 pt-3 text-xs text-muted-foreground">
+          <time dateTime={new Date(suggestion.createdAt).toISOString()}>
+            {formatDateTime(suggestion.createdAt)}
+          </time>
+        </div>
+      ) : null}
     </article>
   );
+}
+
+function formatDateTime(value: number) {
+  const date = new Date(value);
+  const pad = (input: number) => String(input).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

@@ -17,10 +17,13 @@ import type {
 import { normalizeMediaAssetUrl, parseJsonRecord } from "../chat/workbench-content-utils.js";
 import { parseKbChunkContent, type ParsedKbChunkContent } from "./kb-chunk-content-parser.js";
 import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
-
-const KB_DOC_TYPE_FAQ = 1;
-const KB_DOC_TYPE_DOCUMENT = 2;
-const KB_DOC_TYPE_IMAGE = 3;
+import {
+  KB_DOC_TYPE_BLANK_DOCUMENT,
+  KB_DOC_TYPE_BLANK_FAQ,
+  KB_DOC_TYPE_DOCUMENT,
+  KB_DOC_TYPE_FAQ,
+  KB_DOC_TYPE_IMAGE,
+} from "./kb-doc-type.constants.js";
 
 export { KB_DOC_TYPE_ATTACHMENT };
 
@@ -215,7 +218,7 @@ export function resolveKbChunkContent(
 }
 
 export function mapDocType(docType: number): KbDocType {
-  if (docType === KB_DOC_TYPE_FAQ) {
+  if (docType === KB_DOC_TYPE_FAQ || docType === KB_DOC_TYPE_BLANK_FAQ) {
     return "qa";
   }
 
@@ -225,6 +228,10 @@ export function mapDocType(docType: number): KbDocType {
 
   if (docType === KB_DOC_TYPE_ATTACHMENT) {
     return "attachment";
+  }
+
+  if (docType === KB_DOC_TYPE_DOCUMENT || docType === KB_DOC_TYPE_BLANK_DOCUMENT) {
+    return "document";
   }
 
   return "document";
@@ -244,6 +251,18 @@ export function mapDocTypeToDb(docType: KbDocType): number {
   }
 
   return KB_DOC_TYPE_DOCUMENT;
+}
+
+export function mapDocTypeFilterValues(docType: KbDocType): number[] {
+  if (docType === "qa") {
+    return [KB_DOC_TYPE_FAQ, KB_DOC_TYPE_BLANK_FAQ];
+  }
+
+  if (docType === "document") {
+    return [KB_DOC_TYPE_DOCUMENT, KB_DOC_TYPE_BLANK_DOCUMENT];
+  }
+
+  return [mapDocTypeToDb(docType)];
 }
 
 export function mapSyncStatus(syncStatus: number): KbDocStatus {

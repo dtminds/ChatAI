@@ -29,7 +29,13 @@ import {
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
-import { importKbQaDoc, getKbQaDocSuffix } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  createBlankKbFaqDoc,
+  importKbQaDoc,
+  getKbQaDocSuffix,
+} from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -80,6 +86,7 @@ export function ImportQaDialog({
   const isMountedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [addMethod, setAddMethod] = useState<"file" | "new">(defaultAddMethod);
+  const [blankName, setBlankName] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -92,7 +99,8 @@ export function ImportQaDialog({
   function reset() {
     abortControllerRef.current?.abort();
     invalidateValidation();
-    setAddMethod("file");
+    setAddMethod(defaultAddMethod);
+    setBlankName("");
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);
@@ -115,7 +123,50 @@ export function ImportQaDialog({
     }
 
     setAddMethod(defaultAddMethod);
+    setBlankName("");
   }, [defaultAddMethod, open]);
+
+  async function handleCreateBlank() {
+    const name = blankName.trim();
+
+    if (!name || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const result = await createBlankKbFaqDoc({
+        kbId,
+        name,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success("已创建");
+      onImportComplete?.({
+        docId: result.docId,
+        docSuffix: "faq.xlsx",
+        docUrl: "",
+        entries: [],
+        name,
+        url: "",
+      });
+      onOpenChange(false);
+    } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.error(isRequestError(error) ? error.message : "创建失败");
+    } finally {
+      if (isMountedRef.current) {
+        setIsImporting(false);
+      }
+    }
+  }
 
   async function handleImport() {
     if (!selectedFile || isImporting) {
@@ -336,6 +387,7 @@ export function ImportQaDialog({
                 )}
                 onClick={() => {
                   setAddMethod("file");
+                  setBlankName("");
                   clearSelectedFile();
                 }}
                 type="button"
@@ -357,6 +409,7 @@ export function ImportQaDialog({
                 )}
                 onClick={() => {
                   setAddMethod("new");
+                  setBlankName("");
                   clearSelectedFile();
                 }}
                 type="button"
@@ -481,6 +534,20 @@ export function ImportQaDialog({
           ) : null}
             </>
           ) : null}
+          {addMethod === "new" ? (
+            <div className="space-y-2">
+              <Label htmlFor="qa-blank-name">
+                知识名称 <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="qa-blank-name"
+                maxLength={100}
+                onChange={(event) => setBlankName(event.target.value)}
+                placeholder="请输入知识名称"
+                value={blankName}
+              />
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -493,10 +560,14 @@ export function ImportQaDialog({
             取消
           </Button>
           <Button
-            disabled={(addMethod === "file" && !selectedFile) || isCheckingFile || isImporting}
+            disabled={
+              isCheckingFile ||
+              isImporting ||
+              (addMethod === "file" ? !selectedFile : !blankName.trim())
+            }
             onClick={() => {
               if (addMethod === "new") {
-                onOpenChange(false);
+                void handleCreateBlank();
                 return;
               }
 

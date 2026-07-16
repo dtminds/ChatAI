@@ -13,10 +13,12 @@ import {
 } from "../../shared/errors.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import {
+  KB_DOC_TYPE_BLANK_DOCUMENT,
+  KB_DOC_TYPE_BLANK_FAQ,
   KB_DOC_TYPE_DOCUMENT,
   KB_DOC_TYPE_FAQ,
   KB_DOC_TYPE_IMAGE,
-} from "./kb-doc.service.js";
+} from "./kb-doc-type.constants.js";
 import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
 
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
@@ -147,11 +149,17 @@ export class KbChunkService {
       throw new BadRequestError("INVALID_KB_CHUNK_TYPE", "当前文档不支持手动新增切片");
     }
 
-    if (docType === KB_DOC_TYPE_FAQ && request.chunkType !== "faq") {
+    if (
+      (docType === KB_DOC_TYPE_FAQ || docType === KB_DOC_TYPE_BLANK_FAQ) &&
+      request.chunkType !== "faq"
+    ) {
       throw new BadRequestError("INVALID_KB_CHUNK_TYPE", "当前文档仅支持 FAQ 切片");
     }
 
-    if (docType === KB_DOC_TYPE_DOCUMENT && request.chunkType !== "text") {
+    if (
+      (docType === KB_DOC_TYPE_DOCUMENT || docType === KB_DOC_TYPE_BLANK_DOCUMENT) &&
+      request.chunkType !== "text"
+    ) {
       throw new BadRequestError("INVALID_KB_CHUNK_TYPE", "当前文档仅支持文本切片");
     }
 

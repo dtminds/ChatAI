@@ -1,10 +1,12 @@
 import {
+  AiHostingAgentAutoLearnUpdateRequestSchema,
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
+  type AiHostingAgentAutoLearnUpdateRequest,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
@@ -189,6 +191,30 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
           getAgentWriteContext(request),
           request.params.agentId,
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{
+    Body: AiHostingAgentAutoLearnUpdateRequest;
+    Params: AgentParams;
+  }>(
+    "/api/server/ai-hosting/agents/:agentId/auto-learn",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingAgentAutoLearnUpdateRequestSchema,
+        params: AgentParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingAgentService(app.db).updateAutoLearn(
+          getAgentWriteContext(request),
+          request.params.agentId,
+          request.body.enabled,
         ),
       );
     },

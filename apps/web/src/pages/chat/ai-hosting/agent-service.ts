@@ -1,4 +1,6 @@
 import type {
+  AiHostingAgentAutoLearnUpdateRequest,
+  AiHostingAgentAutoLearnUpdateResponse,
   AiHostingAgentDetail,
   AiHostingAgentListResponse,
   AiHostingAgentRenameRequest,
@@ -114,6 +116,18 @@ export async function renameAiHostingAgent(
     ApiSuccessEnvelope<AiHostingAgentDetail>,
     AiHostingAgentRenameRequest
   >(`/server/ai-hosting/agents/${agentId}/name`, payload);
+
+  return response.data;
+}
+
+export async function updateAiHostingAgentAutoLearn(
+  agentId: string,
+  payload: AiHostingAgentAutoLearnUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<AiHostingAgentAutoLearnUpdateResponse>,
+    AiHostingAgentAutoLearnUpdateRequest
+  >(`/server/ai-hosting/agents/${agentId}/auto-learn`, payload);
 
   return response.data;
 }

@@ -1,4 +1,5 @@
 import type {
+  AiHostingAgentAutoLearnUpdateResponse,
   AiHostingAgentDetail,
   AiHostingAgentKbSummary,
   AiHostingAgentListItem,
@@ -42,6 +43,7 @@ export type AgentRow = {
 };
 
 type AgentListRow = {
+  auto_learn_enabled?: number | string | null;
   available_kb_ids?: string | number[] | null;
   id: number;
   last_publish_time?: number | string | null;
@@ -74,6 +76,7 @@ type AgentKbRow = {
 
 const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
+const dbPendingLearningStatus = 0;
 const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
@@ -99,9 +102,15 @@ export class AiHostingAgentService {
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
     const kbMap = await this.getAgentKbMap(scope, rows);
+    const pendingCountMap = await this.getPendingSuggestionCountMap(
+      scope,
+      rows.map((row) => row.id),
+    );
 
     return {
-      agents: rows.map((row) => this.mapAgentListItem(row, modelMap, kbMap)),
+      agents: rows.map((row) =>
+        this.mapAgentListItem(row, modelMap, kbMap, pendingCountMap.get(row.id) ?? 0),
+      ),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
@@ -235,6 +244,44 @@ export class AiHostingAgentService {
       .execute();
 
     return this.getAgentDetailOrThrow(scope, numericAgentId);
+  }
+
+  async updateAutoLearn(
+    context: AgentWriteContext,
+    agentId: string,
+    enabled: boolean,
+  ): Promise<AiHostingAgentAutoLearnUpdateResponse> {
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
+    const numericAgentId = parseMySqlId(agentId);
+
+    if (operatorId == null) {
+      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
+    }
+
+    if (numericAgentId == null) {
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
+    }
+
+    await this.assertAgentInScope(scope, numericAgentId);
+    await this.db
+      .updateTable("xy_wap_embed_agent")
+      .set({
+        auto_learn_enabled: enabled ? 1 : 0,
+        last_operator_id: operatorId,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericAgentId)
+      .where("uid", "=", scope.uid)
+      .where("status", "=", dbActiveStatus)
+      .execute();
+
+    const pendingCountMap = await this.getPendingSuggestionCountMap(scope, [numericAgentId]);
+
+    return {
+      autoLearnEnabled: enabled,
+      pendingSuggestionCount: pendingCountMap.get(numericAgentId) ?? 0,
+    };
   }
 
   async publishAgent(context: AgentWriteContext, agentId: string): Promise<AiHostingAgentDetail> {
@@ -388,6 +435,7 @@ export class AiHostingAgentService {
     let builder = this.db
       .selectFrom("xy_wap_embed_agent as agent")
       .select([
+        "agent.auto_learn_enabled as auto_learn_enabled",
         "agent.id as id",
         "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
@@ -575,16 +623,44 @@ export class AiHostingAgentService {
     row: AgentListRow,
     modelMap: Map<string, AiHostingAgentModelSummary>,
     kbMap: Map<number, AiHostingAgentKbSummary>,
+    pendingSuggestionCount: number,
   ): AiHostingAgentListItem {
     return {
+      autoLearnEnabled: Number(row.auto_learn_enabled) === 1,
       id: String(row.id),
       kbList: uniquePositiveIds(parseAvailableKbIds(row.available_kb_ids))
         .map((kbId) => kbMap.get(kbId))
         .filter((kb): kb is AiHostingAgentKbSummary => Boolean(kb)),
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
       name: row.name,
+      pendingSuggestionCount,
       updatedAt: toOptionalTimestamp(row.update_time),
     };
+  }
+
+  private async getPendingSuggestionCountMap(
+    scope: AgentTenantScope,
+    agentIds: number[],
+  ): Promise<Map<number, number>> {
+    if (agentIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_learning_candidate")
+      .select(["agent_id", ({ fn }) => fn.countAll<number | string | bigint>().as("total")])
+      .where("uid", "=", scope.uid)
+      .where("agent_id", "in", agentIds)
+      .where("status", "=", dbPendingLearningStatus)
+      .groupBy("agent_id")
+      .execute();
+
+    return new Map(
+      rows.map((row) => [
+        Number((row as { agent_id: number }).agent_id),
+        parseCount((row as { total?: number | string | bigint }).total),
+      ]),
+    );
   }
 
   private async getAgentKbMap(

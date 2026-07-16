@@ -58,6 +58,7 @@ import { useAuthStore } from "@/store/auth-store";
 import {
   listAiHostingAgents,
   removeAiHostingAgent,
+  updateAiHostingAgentAutoLearn,
 } from "./agent-service";
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
@@ -81,11 +82,6 @@ const MAX_INLINE_KB_COUNT = 2;
 const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
-const mockSelfLearningStates = [
-  { status: "disabled" as const },
-  { status: "enabled" as const },
-  { recommendationCount: 6, status: "recommendation" as const },
-] as const;
 const AI_SELF_LEARNING_BANNER_URL =
   "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png";
 const agentIntroSteps = [
@@ -127,6 +123,7 @@ export function AgentManagementPage() {
   const [checkingQuota, setCheckingQuota] = useState(false);
   const [selfLearningTarget, setSelfLearningTarget] = useState<AgentRecord | null>(null);
   const [selfLearningEnabled, setSelfLearningEnabled] = useState(false);
+  const [selfLearningSaving, setSelfLearningSaving] = useState(false);
   const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
 
@@ -218,6 +215,33 @@ export function AgentManagementPage() {
     }
   }
 
+  async function handleSelfLearningConfirm() {
+    if (!canManage || !selfLearningTarget || selfLearningSaving) {
+      return;
+    }
+
+    setSelfLearningSaving(true);
+
+    try {
+      await updateAiHostingAgentAutoLearn(selfLearningTarget.id, {
+        enabled: selfLearningEnabled,
+      });
+      setSelfLearningTarget(null);
+      toast.success("已保存");
+      const response = await listAiHostingAgents({
+        page: activePage,
+        pageSize: AGENT_PAGE_SIZE,
+        query: debouncedAgentSearchQuery,
+      });
+      setAgents(response.agents);
+      setTotalAgents(response.pagination.total);
+    } catch (error) {
+      toast.error(isRequestError(error) ? error.message : "保存失败");
+    } finally {
+      setSelfLearningSaving(false);
+    }
+  }
+
   async function handleAddAgent() {
     if (!canManage || checkingQuota) {
       return;
@@ -305,7 +329,7 @@ export function AgentManagementPage() {
               loading={loading}
               onOpenSelfLearning={(agent) => {
                 setSelfLearningTarget(agent);
-                setSelfLearningEnabled(false);
+                setSelfLearningEnabled(agent.autoLearnEnabled);
               }}
               onRemove={setRemoveTarget}
             />
@@ -400,14 +424,26 @@ export function AgentManagementPage() {
               <Switch
                 aria-label="开启 AI 自主学习"
                 checked={selfLearningEnabled}
+                disabled={!canManage || selfLearningSaving}
                 onCheckedChange={setSelfLearningEnabled}
               />
             </div>
             <DialogFooter>
-              <Button onClick={() => setSelfLearningTarget(null)} type="button" variant="outline">
+              <Button
+                disabled={selfLearningSaving}
+                onClick={() => setSelfLearningTarget(null)}
+                type="button"
+                variant="outline"
+              >
                 取消
               </Button>
-              <Button onClick={() => setSelfLearningTarget(null)} type="button">
+              <Button
+                disabled={!canManage || selfLearningSaving}
+                onClick={() => {
+                  void handleSelfLearningConfirm();
+                }}
+                type="button"
+              >
                 确定
               </Button>
             </DialogFooter>
@@ -458,14 +494,13 @@ function AgentCardGrid({
       className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
       role="list"
     >
-      {agents.map((agent, index) => (
+        {agents.map((agent) => (
         <AgentCard
           agent={agent}
           canManage={canManage}
           key={agent.id}
           onOpenSelfLearning={onOpenSelfLearning}
           onRemove={onRemove}
-          selfLearningState={mockSelfLearningStates[index % mockSelfLearningStates.length]}
         />
       ))}
     </div>
@@ -477,13 +512,11 @@ function AgentCard({
   canManage,
   onOpenSelfLearning,
   onRemove,
-  selfLearningState,
 }: {
   agent: AgentRecord;
   canManage: boolean;
   onOpenSelfLearning: (agent: AgentRecord) => void;
   onRemove: (agent: AgentRecord) => void;
-  selfLearningState: (typeof mockSelfLearningStates)[number];
 }) {
   return (
     <article
@@ -552,7 +585,11 @@ function AgentCard({
           <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
         </AgentCardMetaRow>
         <AgentCardMetaRow label="AI 自主学习">
-          <AgentSelfLearningPreview agentId={agent.id} state={selfLearningState} />
+          <AgentSelfLearningPreview
+            agentId={agent.id}
+            autoLearnEnabled={agent.autoLearnEnabled}
+            pendingSuggestionCount={agent.pendingSuggestionCount}
+          />
         </AgentCardMetaRow>
       </dl>
     </article>
@@ -576,29 +613,31 @@ function AgentCardMetaRow({
 
 function AgentSelfLearningPreview({
   agentId,
-  state,
+  autoLearnEnabled,
+  pendingSuggestionCount,
 }: {
   agentId: string;
-  state: (typeof mockSelfLearningStates)[number];
+  autoLearnEnabled: boolean;
+  pendingSuggestionCount: number;
 }) {
-  if (state.status === "enabled") {
-    return (
-      <span className="inline-flex items-center gap-1 text-success">
-        <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={15} strokeWidth={1.8} />
-        已开启
-      </span>
-    );
-  }
-
-  if (state.status === "recommendation") {
+  if (pendingSuggestionCount > 0) {
     return (
       <Link
         className="inline-flex items-center gap-1 text-warning no-underline hover:text-warning"
         to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
       >
-        您有 {state.recommendationCount} 条优化建议
+        您有 {pendingSuggestionCount} 条优化建议
         <HugeiconsIcon aria-hidden="true" icon={ArrowRight01Icon} size={14} strokeWidth={1.8} />
       </Link>
+    );
+  }
+
+  if (autoLearnEnabled) {
+    return (
+      <span className="inline-flex items-center gap-1 text-success">
+        <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={15} strokeWidth={1.8} />
+        已开启
+      </span>
     );
   }
 

@@ -58,7 +58,7 @@ export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
   docSize: number;
-  docType: 1 | 2 | 3 | 4;
+  docType: 1 | 2 | 3 | 4 | 5 | 6;
   docUrl: string;
   kbId: number;
   name: string;

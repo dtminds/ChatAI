@@ -38,7 +38,8 @@ import {
 } from "@/components/ui/table";
 import { isRequestError } from "@/lib/request";
 import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
-import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { createBlankKbDoc, importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { Input } from "@/components/ui/input";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -140,6 +141,7 @@ export function ImportDocumentDialog({
   });
   const isMountedRef = useRef(false);
   const [addMethod, setAddMethod] = useState<"file" | "new">("file");
+  const [blankName, setBlankName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [parseMode, setParseMode] =
@@ -154,6 +156,7 @@ export function ImportDocumentDialog({
 
   function resetForm() {
     setAddMethod("file");
+    setBlankName("");
     setSelectedFile(null);
     setFileError("");
     setParseMode("standard");
@@ -209,7 +212,38 @@ export function ImportDocumentDialog({
 
   const handleSubmit = () => {
     if (addMethod === "new") {
-      onOpenChange(false);
+      const name = blankName.trim();
+
+      if (!name) {
+        return;
+      }
+
+      void runSubmit(async () => {
+        try {
+          const result = await createBlankKbDoc({
+            kbId,
+            name,
+          });
+
+          if (!isMountedRef.current) {
+            return false;
+          }
+
+          toast.success("已创建");
+          onCreated?.({
+            docId: result.docId,
+            docSuffix: "txt",
+            name,
+          });
+        } catch (error) {
+          if (!isMountedRef.current) {
+            return false;
+          }
+
+          toast.error(isRequestError(error) ? error.message : "创建失败");
+          return false;
+        }
+      });
       return;
     }
 
@@ -278,9 +312,15 @@ export function ImportDocumentDialog({
     });
   };
 
-  const canSubmit = (addMethod === "new" || Boolean(selectedFile)) && !submitting;
+  const canSubmit =
+    !submitting &&
+    (addMethod === "new" ? Boolean(blankName.trim()) : Boolean(selectedFile));
   const submitLabel =
-    parseMode === "enhanced" ? "确认提交（限免）" : "确认提交";
+    addMethod === "new"
+      ? "确认创建"
+      : parseMode === "enhanced"
+        ? "确认提交（限免）"
+        : "确认提交";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -314,6 +354,7 @@ export function ImportDocumentDialog({
                 setAddMethod(value as "file" | "new");
                 setSelectedFile(null);
                 setFileError("");
+                setBlankName("");
               }}
               value={addMethod}
             >
@@ -455,6 +496,19 @@ export function ImportDocumentDialog({
                 </div>
               ) : null}
             </>
+          ) : null}
+
+          {addMethod === "new" ? (
+            <div className="grid gap-2">
+              <RequiredLabel htmlFor="document-blank-name">知识名称</RequiredLabel>
+              <Input
+                id="document-blank-name"
+                maxLength={100}
+                onChange={(event) => setBlankName(event.target.value)}
+                placeholder="请输入知识名称"
+                value={blankName}
+              />
+            </div>
           ) : null}
         </div>
 

@@ -132,7 +132,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
   const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
   const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
-  const groupFullAutoAuth = readBooleanFlag(row.group_full_auto_auth);
+  const seatGroupAIHostingEnabled = readBooleanFlag(row.group_full_auto_auth);
   const groupSemiAutoAuth = readBooleanFlag(row.group_semi_auto_auth);
 
   return {
@@ -144,7 +144,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
     seatAIHostingAuth,
     fullAutoSwitch,
-    groupFullAutoAuth,
+    seatGroupAIHostingEnabled,
     groupSemiAutoAuth,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),

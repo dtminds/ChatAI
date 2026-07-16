@@ -109,7 +109,7 @@ export type ConversationLookup = {
 
 export type ConversationFullAutoCapability = {
   customerBindType?: number;
-  groupFullAutoAuth: boolean;
+  seatGroupAIHostingEnabled: boolean;
   seatFullAutoAuth: boolean;
   seatFullAutoSwitch: boolean;
 };
@@ -3884,7 +3884,7 @@ export class WorkbenchRepository {
     return {
       customerBindType:
         row.customer_bind_type == null ? undefined : Number(row.customer_bind_type),
-      groupFullAutoAuth: readBooleanFlag(row.group_full_auto_auth),
+      seatGroupAIHostingEnabled: readBooleanFlag(row.group_full_auto_auth),
       seatFullAutoAuth: readBooleanFlag(row.full_auto_auth),
       seatFullAutoSwitch: readBooleanFlag(row.full_auto_switch),
     };

@@ -22,6 +22,9 @@ type HostingAgentOption = {
   name: string;
 };
 
+export const FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE =
+  "该功能内测中，如需开通请联系客服";
+
 export function PermissionSettingRow({
   checked,
   className,

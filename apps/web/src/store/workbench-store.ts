@@ -66,8 +66,7 @@ import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import {
-  isConversationAIFeatureSupported,
-  isConversationAIHostingEnabled,
+  resolveConversationAIHostingPolicy,
 } from "@/pages/chat/lib/conversation-ai-hosting";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
@@ -2464,11 +2463,11 @@ function isConversationAIHostingEnabledInState(
     (item) => item.id === conversation?.accountId,
   );
 
-  return isConversationAIHostingEnabled(
+  return resolveConversationAIHostingPolicy({
+    account,
+    canUseConversationActions: false,
     conversation,
-    account?.seatAIHostingEnabled === true,
-    account?.groupFullAutoAuth === true,
-  );
+  }).isEffective;
 }
 
 function getLatestCustomerMessage(messages: Message[]) {
@@ -6025,16 +6024,14 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation.accountId,
       );
 
-      const canToggleSingleFullAuto =
-        isConversationAIFeatureSupported(conversation) &&
-        account?.seatAIHostingEnabled === true;
-      const canToggleGroupFullAuto =
-        conversation.mode === "group" && account?.groupFullAutoAuth === true;
+      const policy = resolveConversationAIHostingPolicy({
+        account,
+        canUseConversationActions: canUseConversationActions(state, account),
+        conversation,
+      });
+      const canChange = enabled ? policy.canEnable : policy.canDisable;
 
-      if (
-        !canUseConversationActions(state, account) ||
-        (!canToggleSingleFullAuto && !canToggleGroupFullAuto)
-      ) {
+      if (!canChange) {
         return;
       }
 
@@ -6377,17 +6374,26 @@ export function createWorkbenchStore() {
       const currentConversation = getConversationById(state, conversationId);
 
       if (currentConversation?.waitManual === true) {
-        const accountId = currentConversation.accountId;
-        set((currentState) =>
-          applyConversationWaitManualCleared(
-            currentState,
-            conversationId,
-            accountId,
-          ),
+        const account = state.accounts.find(
+          (item) => item.id === currentConversation.accountId,
         );
-        void clearConversationWaitManual(conversationId).catch(() => {
-          // 打开会话后清除接管提醒是 best-effort；失败时保留本地已隐藏状态
-        });
+
+        if (account?.takenOverEmployeeId === state.me?.id) {
+          const accountId = currentConversation.accountId;
+          void clearConversationWaitManual(conversationId)
+            .then(() => {
+              set((currentState) =>
+                applyConversationWaitManualCleared(
+                  currentState,
+                  conversationId,
+                  accountId,
+                ),
+              );
+            })
+            .catch(() => {
+              // 保留接管提醒，等待后续轮询或再次打开时重试
+            });
+        }
       }
 
       if (state.activeConversationId === conversationId) {

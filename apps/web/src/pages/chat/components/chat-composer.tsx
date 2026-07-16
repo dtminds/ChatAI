@@ -113,7 +113,7 @@ type ChatComposerProps = {
   canConfigureSeatSemiAuto: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
-  canUseConversationAIFeatures: boolean;
+  shouldShowConversationAIHostingControl: boolean;
   accountAvatarUrl?: string;
   accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
@@ -135,9 +135,8 @@ type ChatComposerProps = {
   isHistoryPanelOpen: boolean;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
-  /** 群聊设置「允许开启 AI回复」；仅用于展示同款 AI 标识，暂不接入交互 */
-  groupFullAutoAuth?: boolean;
-  conversationAIHostingEnabled?: boolean;
+  /** 当前会话的 AI 托管开关配置状态 */
+  conversationAIHostingConfigured?: boolean;
   fullAutoSwitch?: boolean;
   semiAutoSwitch?: boolean;
   onClearQuotedMessage: () => void;
@@ -191,7 +190,7 @@ export function ChatComposer({
   canConfigureSeatSemiAuto,
   canToggleConversationAIHosting,
   canSendMessage,
-  canUseConversationAIFeatures,
+  shouldShowConversationAIHostingControl,
   accountAvatarUrl,
   accountName,
   collectedExpressions = [],
@@ -213,8 +212,7 @@ export function ChatComposer({
   isHistoryPanelOpen,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
-  groupFullAutoAuth = false,
-  conversationAIHostingEnabled = false,
+  conversationAIHostingConfigured = false,
   fullAutoSwitch = false,
   semiAutoSwitch = false,
   onClearQuotedMessage,
@@ -301,8 +299,7 @@ export function ChatComposer({
       seatSemiAutoAuth,
     ],
   );
-  const canUseCurrentConversationHosting =
-    canToggleConversationAIHosting && seatAIMode === "autoReply";
+  const canUseCurrentConversationHosting = canToggleConversationAIHosting;
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -374,13 +371,16 @@ export function ChatComposer({
     canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const canOpenCollectedFiles = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
-  const showAgentDialogButton = canUseConversationAIFeatures;
-  const showGroupAiIndicator = isGroupConversation && groupFullAutoAuth;
+  const showAgentDialogButton =
+    !isGroupConversation && shouldShowConversationAIHostingControl;
+  const showGroupAiIndicator =
+    isGroupConversation && shouldShowConversationAIHostingControl;
   const groupAiDialogContent = (
     <GroupAiDialogContent
       accountAvatarUrl={accountAvatarUrl}
       accountName={accountName}
-      conversationAIHostingEnabled={conversationAIHostingEnabled}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
+      canToggleConversationAIHosting={canToggleConversationAIHosting}
       isPending={isFullAutoButtonPending}
       onChangeFullAuto={async (enabled) => {
         setIsFullAutoSubmitting(true);
@@ -398,7 +398,7 @@ export function ChatComposer({
       accountAvatarUrl={accountAvatarUrl}
       accountName={accountName}
       canUseCurrentConversationHosting={canUseCurrentConversationHosting}
-      conversationAIHostingEnabled={conversationAIHostingEnabled}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
       isFullAutoButtonPending={isFullAutoButtonPending}
       isSeatAIModeOptionDisabled={isSeatAIModeOptionDisabled}
       onChangeFullAuto={onChangeFullAuto}
@@ -1378,7 +1378,7 @@ function AgentDialogContent({
   accountAvatarUrl,
   accountName,
   canUseCurrentConversationHosting,
-  conversationAIHostingEnabled,
+  conversationAIHostingConfigured,
   isFullAutoButtonPending,
   isSeatAIModeOptionDisabled,
   onChangeFullAuto,
@@ -1392,7 +1392,7 @@ function AgentDialogContent({
   accountAvatarUrl?: string;
   accountName?: string;
   canUseCurrentConversationHosting: boolean;
-  conversationAIHostingEnabled: boolean;
+  conversationAIHostingConfigured: boolean;
   isFullAutoButtonPending?: boolean;
   isSeatAIModeOptionDisabled: (mode: WorkbenchSeatAgentMode) => boolean;
   onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
@@ -1468,7 +1468,7 @@ function AgentDialogContent({
           onClick={async () => {
             onSubmittingChange(true);
             try {
-              await onChangeFullAuto(!conversationAIHostingEnabled);
+              await onChangeFullAuto(!conversationAIHostingConfigured);
             } finally {
               onSubmittingChange(false);
               onSubmitted();
@@ -1484,12 +1484,12 @@ function AgentDialogContent({
               size={14}
               variant="classic"
             />
-          ) : conversationAIHostingEnabled ? null : (
+          ) : conversationAIHostingConfigured ? null : (
             <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
           )}
-          {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+          {conversationAIHostingConfigured ? "关闭当前会话托管" : "托管当前会话"}
         </Button>
-        {seatAIMode !== "autoReply" ? (
+        {!conversationAIHostingConfigured && seatAIMode !== "autoReply" ? (
           <p className="text-center text-xs text-muted-foreground">
             切换 AI 模式为自动回复后，可托管此会话
           </p>
@@ -1654,13 +1654,15 @@ function SeatAIModeOptionContent({
 function GroupAiDialogContent({
   accountAvatarUrl,
   accountName,
-  conversationAIHostingEnabled,
+  canToggleConversationAIHosting,
+  conversationAIHostingConfigured,
   isPending,
   onChangeFullAuto,
 }: {
   accountAvatarUrl?: string;
   accountName?: string;
-  conversationAIHostingEnabled: boolean;
+  canToggleConversationAIHosting: boolean;
+  conversationAIHostingConfigured: boolean;
   isPending?: boolean;
   onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
 }) {
@@ -1696,8 +1698,8 @@ function GroupAiDialogContent({
         </div>
         <Switch
           aria-label="AI自动回复"
-          checked={conversationAIHostingEnabled}
-          disabled={isPending}
+          checked={conversationAIHostingConfigured}
+          disabled={!canToggleConversationAIHosting || isPending}
           id="group-ai-auto-reply"
           onCheckedChange={(checked) => {
             void onChangeFullAuto(checked);

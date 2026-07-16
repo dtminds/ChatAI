@@ -44,7 +44,7 @@ describe("workbench MySQL mappers", () => {
       expireTime: 1778240000,
       seatAIHostingAuth: true,
       fullAutoSwitch: true,
-      groupFullAutoAuth: true,
+      seatGroupAIHostingEnabled: true,
       groupSemiAutoAuth: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,

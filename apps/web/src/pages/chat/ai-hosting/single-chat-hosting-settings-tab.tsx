@@ -43,6 +43,7 @@ import {
 } from "./group-chat-settings-dialog";
 import {
   AgentAssociationField,
+  FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE,
   HostingAgentCapabilityCell,
   PermissionSettingRow,
   getErrorMessage,
@@ -58,8 +59,6 @@ type HostingSettingsDraft = {
 };
 
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
-const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
-
 export function SingleChatHostingSettingsTab() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<HostingAgent[]>([]);
@@ -449,7 +448,7 @@ function SingleChatHostingSettingsDialog({
                 id="hosting-settings-auto-hosting"
                 onCheckedChange={setFullAutoAuth}
                 title="允许开启 AI 回复"
-                tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
+                tooltip={fullAutoAuthDisabled ? FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE : undefined}
               />
               <PermissionSettingRow
                 checked={semiAutoAuth}

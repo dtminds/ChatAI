@@ -132,6 +132,11 @@ export class GroupChatSettingsService {
     }
 
     const requestedHostUserSeatIds = uniquePositiveIds(payload.hostUserSeatIds);
+
+    if (requestedHostUserSeatIds.length !== payload.hostUserSeatIds.length) {
+      throw new BadRequestError("INVALID_RECEPTION_SEAT", "可接待企微号无效");
+    }
+
     const groupChatRows = await this.listGroupChatRowsByIds(scope, [groupSeatId]);
 
     if (groupChatRows.length !== 1) {
@@ -151,13 +156,21 @@ export class GroupChatSettingsService {
         (account) => account.id,
       ),
     );
-    const hostUserSeatIds = requestedHostUserSeatIds.filter((seatId) =>
-      selectableIds.has(String(seatId)),
+    const unavailableHostUserSeatIds = requestedHostUserSeatIds.filter(
+      (seatId) => !selectableIds.has(String(seatId)),
     );
+
+    if (unavailableHostUserSeatIds.length > 0) {
+      throw new BadRequestError(
+        "RECEPTION_SEAT_NOT_SELECTABLE",
+        "可接待企微号已发生变化，请重新确认",
+        { hostUserSeatIds: unavailableHostUserSeatIds.map(String) },
+      );
+    }
 
     await javaClient.setGroupSeatHostUserSeatIds({
       groupSeatId: groupChat.group_seat_id,
-      hostUserSeatIds,
+      hostUserSeatIds: requestedHostUserSeatIds,
       platform: scope.platform,
       uid: scope.uid,
     });

@@ -46,7 +46,6 @@ import {
   resolveAgentHostingStatus,
   type AgentHostingStatus,
 } from "@/pages/chat/lib/chat-agent-hosting-status";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -65,7 +64,9 @@ type ChatPanelProps = {
   fullAutoDisplayStatus?: AgentHostingStatus;
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
+  conversationAIHostingConfigured?: boolean;
   conversationAIHostingEnabled?: boolean;
+  shouldShowConversationAIHostingControl?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -194,7 +195,9 @@ export function ChatPanel({
   fullAutoDisplayStatus,
   activeAccount,
   seatAIHostingEnabled = false,
+  conversationAIHostingConfigured = false,
   conversationAIHostingEnabled = false,
+  shouldShowConversationAIHostingControl = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -293,8 +296,6 @@ export function ChatPanel({
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
-  const canUseConversationAIFeatures =
-    isConversationAIFeatureSupported(activeConversation);
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -472,7 +473,9 @@ export function ChatPanel({
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
-                      canUseConversationAIFeatures={canUseConversationAIFeatures}
+                      shouldShowConversationAIHostingControl={
+                        shouldShowConversationAIHostingControl
+                      }
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
                       seatAgentModeActionPending={seatAgentModeActionPending}
@@ -490,10 +493,9 @@ export function ChatPanel({
                       accountName={activeAccount?.name ?? accountName}
                       seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
                       seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
-                      groupFullAutoAuth={activeAccount?.groupFullAutoAuth === true}
+                      conversationAIHostingConfigured={conversationAIHostingConfigured}
                       fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
                       semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
-                      conversationAIHostingEnabled={conversationAIHostingEnabled}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={

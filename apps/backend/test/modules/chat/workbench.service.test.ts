@@ -1887,7 +1887,7 @@ describe("MysqlWorkbenchService", () => {
         }),
         getConversationFullAutoCapability: vi.fn().mockResolvedValue({
           customerBindType: 1,
-          groupFullAutoAuth: false,
+          seatGroupAIHostingEnabled: false,
           seatFullAutoAuth: true,
           seatFullAutoSwitch: true,
         }),
@@ -2125,7 +2125,7 @@ describe("MysqlWorkbenchService", () => {
     {
       capability: {
         customerBindType: 1,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         seatFullAutoAuth: false,
         seatFullAutoSwitch: true,
       },
@@ -2134,7 +2134,7 @@ describe("MysqlWorkbenchService", () => {
     {
       capability: {
         customerBindType: 1,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         seatFullAutoAuth: true,
         seatFullAutoSwitch: false,
       },
@@ -2143,7 +2143,7 @@ describe("MysqlWorkbenchService", () => {
     {
       capability: {
         customerBindType: 2,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         seatFullAutoAuth: true,
         seatFullAutoSwitch: true,
       },
@@ -2152,7 +2152,7 @@ describe("MysqlWorkbenchService", () => {
     {
       capability: {
         customerBindType: undefined,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         seatFullAutoAuth: true,
         seatFullAutoSwitch: true,
       },
@@ -2193,7 +2193,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationFullAutoCapability: vi.fn().mockResolvedValue({
-          groupFullAutoAuth: false,
+          seatGroupAIHostingEnabled: false,
           seatFullAutoAuth: true,
           seatFullAutoSwitch: true,
         }),
@@ -2253,6 +2253,34 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects clearing conversation wait_manual when the seat is not taken over", async () => {
+    const clearConversationWaitManual = vi.fn().mockResolvedValue(undefined);
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        clearConversationWaitManual,
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      service.clearConversationWaitManual("101", "88"),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(clearConversationWaitManual).not.toHaveBeenCalled();
+  });
+
   it("enables full-auto for group conversations through Java", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.insertSystemMessage).mockResolvedValue("9001");
@@ -2274,7 +2302,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getConversationFullAutoCapability: vi.fn().mockResolvedValue({
-          groupFullAutoAuth: true,
+          seatGroupAIHostingEnabled: true,
           seatFullAutoAuth: false,
           seatFullAutoSwitch: false,
         }),
@@ -8213,7 +8241,7 @@ function createWorkbenchService(
   const repositoryWithActiveSubUser = {
     getConversationFullAutoCapability: vi.fn().mockResolvedValue({
       customerBindType: 1,
-      groupFullAutoAuth: true,
+      seatGroupAIHostingEnabled: true,
       seatFullAutoAuth: true,
       seatFullAutoSwitch: true,
     }),

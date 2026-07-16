@@ -4301,7 +4301,7 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: true,
         fullAutoSwitch: true,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "101",
@@ -4326,7 +4326,7 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: false,
         fullAutoSwitch: false,
-        groupFullAutoAuth: false,
+        seatGroupAIHostingEnabled: false,
         groupSemiAutoAuth: false,
         groupUnreadCount: 0,
         hostSubUserId: "202",
@@ -6195,7 +6195,7 @@ describe("WorkbenchRepository", () => {
       }),
     ).resolves.toEqual({
       customerBindType: 1,
-      groupFullAutoAuth: false,
+      seatGroupAIHostingEnabled: false,
       seatFullAutoAuth: true,
       seatFullAutoSwitch: true,
     });

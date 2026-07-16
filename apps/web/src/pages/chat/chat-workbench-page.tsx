@@ -717,7 +717,9 @@ function ChatWorkbenchContent({
     canUseConversationActions,
     canUseMessageForward,
     composerPlaceholder,
+    conversationAIHostingConfigured,
     conversationAIHostingEnabled,
+    shouldShowConversationAIHostingControl,
     seatAIHostingEnabled,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
@@ -2064,7 +2066,7 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId={composerDraftsByConversationId}
       conversations={visibleSearchableConversations}
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
-      isGroupFullAutoAuth={activeAccount?.groupFullAutoAuth === true}
+      seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
       isConversationLoading={isConversationLoading}
       onDeleteConversation={deleteConversation}
@@ -2117,6 +2119,10 @@ function ChatWorkbenchContent({
       isEmojiPickerOpen={isEmojiPickerOpen}
       isSendingDraft={isSendingDraft}
       conversationAIHostingEnabled={conversationAIHostingEnabled}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
+      shouldShowConversationAIHostingControl={
+        shouldShowConversationAIHostingControl
+      }
       isResizingCustomerPanel={isResizingCustomerPanel}
       fileUploadQueue={fileUploadQueue}
       collectedExpressions={collectedExpressions}

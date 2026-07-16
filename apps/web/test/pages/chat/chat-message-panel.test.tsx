@@ -52,13 +52,13 @@ function renderPanel({
 function enableSmartReplyDisplayContext({
   conversationAIHostingSwitch = false,
   enabled = true,
-  groupFullAutoAuth,
+  seatGroupAIHostingEnabled,
   groupSemiAutoAuth,
   mode = "single",
 }: {
   conversationAIHostingSwitch?: boolean;
   enabled?: boolean;
-  groupFullAutoAuth?: boolean;
+  seatGroupAIHostingEnabled?: boolean;
   groupSemiAutoAuth?: boolean;
   mode?: "single" | "group";
 } = {}) {
@@ -67,8 +67,8 @@ function enableSmartReplyDisplayContext({
       {
         avatarUrl: "",
         description: "",
-        groupFullAutoAuth:
-          groupFullAutoAuth ?? (mode === "group" ? conversationAIHostingSwitch : false),
+        seatGroupAIHostingEnabled:
+          seatGroupAIHostingEnabled ?? (mode === "group" ? conversationAIHostingSwitch : false),
         groupSemiAutoAuth:
           groupSemiAutoAuth ?? (mode === "group" ? enabled : false),
         id: "seat-001",
@@ -241,7 +241,7 @@ describe("ChatMessagePanel smart reply state", () => {
   it("keeps group smart replies available when AI auto-reply is enabled", () => {
     enableSmartReplyDisplayContext({
       conversationAIHostingSwitch: true,
-      groupFullAutoAuth: true,
+      seatGroupAIHostingEnabled: true,
       groupSemiAutoAuth: true,
       mode: "group",
     });

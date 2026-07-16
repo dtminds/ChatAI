@@ -567,7 +567,7 @@ describe("ConversationListPanel", () => {
         activeMode="group"
         activeView="all"
         conversations={groupConversations}
-        isGroupFullAutoAuth
+        seatGroupAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         searchableConversations={groupConversations}
@@ -601,7 +601,7 @@ describe("ConversationListPanel", () => {
         activeMode="group"
         activeView="all"
         conversations={groupConversations}
-        isGroupFullAutoAuth={false}
+        seatGroupAIHostingEnabled={false}
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         searchableConversations={groupConversations}

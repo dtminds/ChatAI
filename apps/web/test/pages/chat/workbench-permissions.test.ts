@@ -62,6 +62,7 @@ describe("resolveWorkbenchPermissions", () => {
     ).toMatchObject({
       canToggleConversationAIHosting: true,
       conversationAIHostingEnabled: false,
+      shouldShowConversationAIHostingControl: true,
     });
 
     expect(
@@ -151,7 +152,7 @@ describe("resolveWorkbenchPermissions", () => {
         me,
         subUser: operator,
       }).canToggleConversationAIHosting,
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       resolveWorkbenchPermissions({
@@ -169,7 +170,7 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }),
     ).toMatchObject({
-      canToggleConversationAIHosting: false,
+      canToggleConversationAIHosting: true,
       conversationAIHostingEnabled: false,
     });
   });
@@ -178,7 +179,7 @@ describe("resolveWorkbenchPermissions", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          groupFullAutoAuth: true,
+          seatGroupAIHostingEnabled: true,
           seatAIHostingEnabled: false,
           takenOverEmployeeId: me.id,
         }),
@@ -192,9 +193,11 @@ describe("resolveWorkbenchPermissions", () => {
       }),
     ).toMatchObject({
       canSendMessage: true,
-      canToggleConversationAIHosting: false,
+      canToggleConversationAIHosting: true,
+      conversationAIHostingConfigured: true,
       conversationAIHostingEnabled: true,
       composerPlaceholder: "请输入消息……",
+      shouldShowConversationAIHostingControl: true,
     });
   });
 

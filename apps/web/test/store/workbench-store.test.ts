@@ -290,6 +290,11 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
       activeConversationId: undefined,
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
       conversationListsByScope: {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
@@ -312,6 +317,80 @@ describe("useWorkbenchStore", () => {
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.waitManual,
     ).toBe(false);
+  });
+
+  it("keeps waitManual visible when clearing the takeover reminder fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationWaitManual = vi.fn().mockRejectedValue(new Error("request failed"));
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationWaitManual,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeConversationId: undefined,
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, waitManual: true }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001");
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.waitManual,
+    ).toBe(true);
+  });
+
+  it("does not clear waitManual when the account is taken over by another operator", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationWaitManual = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationWaitManual,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeConversationId: undefined,
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: "another-operator" }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, waitManual: true }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationWaitManual).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.waitManual,
+    ).toBe(true);
   });
 
   it("patches active conversation full-auto from API response instead of request input", async () => {
@@ -470,7 +549,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              groupFullAutoAuth: true,
+              seatGroupAIHostingEnabled: true,
               seatAIHostingEnabled: false,
             }
           : account,
@@ -511,7 +590,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              groupFullAutoAuth: false,
+              seatGroupAIHostingEnabled: false,
               seatAIHostingAuth: true,
               seatAIHostingEnabled: true,
             }
@@ -535,6 +614,47 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
 
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("allows disabling configured group full-auto after group capability is revoked", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "group-001",
+      seatId: "drc",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, seatGroupAIHostingEnabled: false }
+          : account,
+      ),
+      activeConversationId: "group-001",
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: [
+          ...(state.conversationListsByScope.drc ?? []),
+          {
+            ...state.conversationListsByScope.drc[0],
+            conversationAIHostingSwitch: true,
+            id: "group-001",
+            mode: "group",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("group-001", {
+      enabled: false,
+    });
   });
 
   it("does not change full-auto for application-message conversations", async () => {
@@ -844,6 +964,14 @@ describe("useWorkbenchStore", () => {
           : account,
       ),
       readReceiptError: "标记已读失败",
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, conversationAIHostingSwitch: true }
+            : conversation,
+        ),
+      },
     }));
 
     await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
@@ -4224,7 +4352,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              groupFullAutoAuth: true,
+              seatGroupAIHostingEnabled: true,
               groupSemiAutoAuth: true,
             }
           : account,

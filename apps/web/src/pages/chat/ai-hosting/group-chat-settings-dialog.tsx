@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
+  AiHostingGroupChatReplyMode,
   AiHostingSettingsAccount,
   AiHostingSettingsAgentOption,
 } from "@chatai/contracts";
@@ -22,6 +23,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   AgentAssociationField,
+  FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE,
   PermissionSettingRow,
   getErrorMessage,
   getInitial,
@@ -30,18 +32,14 @@ import {
 export type GroupChatSettingsDraft = {
   agentId: string;
   fullAutoAuth: boolean;
-  replyMode: GroupChatReplyMode;
+  replyMode: AiHostingGroupChatReplyMode;
   semiAutoAuth: boolean;
 };
-
-type GroupChatReplyMode = 1 | 2;
 
 type HostingAccount = AiHostingSettingsAccount;
 type HostingAgent = AiHostingSettingsAgentOption;
 
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
-const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
-
 export function GroupChatSettingsDialog({
   accounts,
   agents,
@@ -64,7 +62,7 @@ export function GroupChatSettingsDialog({
   const navigate = useNavigate();
   const [agentId, setAgentId] = useState<string | undefined>(undefined);
   const [fullAutoAuth, setFullAutoAuth] = useState(false);
-  const [replyMode, setReplyMode] = useState<GroupChatReplyMode>(1);
+  const [replyMode, setReplyMode] = useState<AiHostingGroupChatReplyMode>(1);
   const [semiAutoAuth, setSemiAutoAuth] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
@@ -202,7 +200,7 @@ export function GroupChatSettingsDialog({
                 id="group-chat-settings-auto-hosting"
                 onCheckedChange={setFullAutoAuth}
                 title="允许开启 AI回复"
-                tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
+                tooltip={fullAutoAuthDisabled ? FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE : undefined}
               />
               {fullAutoAuth ? (
                 <div className="px-4 pb-3 pt-1">
@@ -250,8 +248,8 @@ function ReplyRuleSelector({
   onValueChange,
   value,
 }: {
-  onValueChange: (value: GroupChatReplyMode) => void;
-  value: GroupChatReplyMode;
+  onValueChange: (value: AiHostingGroupChatReplyMode) => void;
+  value: AiHostingGroupChatReplyMode;
 }) {
   return (
     <SegmentedControl

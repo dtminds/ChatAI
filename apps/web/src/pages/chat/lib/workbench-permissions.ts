@@ -6,8 +6,7 @@ import type {
 } from "@/pages/chat/chat-types";
 import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
 import {
-  isConversationAIFeatureSupported,
-  isConversationAIHostingEnabled,
+  resolveConversationAIHostingPolicy,
 } from "@/pages/chat/lib/conversation-ai-hosting";
 import {
   resolveSidebarIframeSendStatus,
@@ -43,7 +42,9 @@ export type WorkbenchPermissions = {
   isAccountSeatExpired: boolean;
   isAccountOffline: boolean;
   isAccountTakenOverByCurrentUser: boolean;
+  shouldShowConversationAIHostingControl: boolean;
   conversationAIHostingEnabled: boolean;
+  conversationAIHostingConfigured: boolean;
   seatAIHostingEnabled: boolean;
   seatAIAssistantEnabled: boolean;
   isConversationActionDisabled: boolean;
@@ -78,15 +79,15 @@ export function resolveWorkbenchPermissions({
     isAccountTakenOverByCurrentUser &&
     account?.semiAutoAuth === true;
   const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
-  const canToggleConversationAIHosting =
-    isAccountTakenOverByCurrentUser &&
-    isConversationAIFeatureSupported(activeConversation) &&
-    seatAIHostingEnabled;
-  const conversationAIHostingEnabled = isConversationAIHostingEnabled(
-    activeConversation,
-    seatAIHostingEnabled,
-    account?.groupFullAutoAuth === true,
-  );
+  const conversationAIHostingPolicy = resolveConversationAIHostingPolicy({
+    account,
+    canUseConversationActions,
+    conversation: activeConversation,
+  });
+  const canToggleConversationAIHosting = conversationAIHostingPolicy.canToggle;
+  const conversationAIHostingConfigured =
+    conversationAIHostingPolicy.isConfiguredOn;
+  const conversationAIHostingEnabled = conversationAIHostingPolicy.isEffective;
   // 群聊 AI 自动回复不占用输入框，也不走单聊 Agent 托管态
   const blocksComposerForAIHosting =
     conversationAIHostingEnabled && activeConversation?.mode !== "group";
@@ -123,7 +124,10 @@ export function resolveWorkbenchPermissions({
     isAccountSeatExpired,
     isAccountOffline,
     isAccountTakenOverByCurrentUser,
+    conversationAIHostingConfigured,
     conversationAIHostingEnabled,
+    shouldShowConversationAIHostingControl:
+      conversationAIHostingPolicy.shouldShowControl,
     seatAIHostingEnabled,
     seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,

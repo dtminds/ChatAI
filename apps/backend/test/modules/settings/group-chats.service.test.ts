@@ -158,7 +158,7 @@ describe("GroupChatSettingsService", () => {
         { platform: 5, uid: 9001 },
         {
           groupChatId: "501",
-          hostUserSeatIds: ["101", "102"],
+          hostUserSeatIds: ["102"],
         },
         { setGroupSeatHostUserSeatIds } as never,
       ),
@@ -168,6 +168,49 @@ describe("GroupChatSettingsService", () => {
     expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledWith({
       groupSeatId: 501,
       hostUserSeatIds: [102],
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("rejects the whole reception update when a requested account is no longer selectable", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+    const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      service.updateReception(
+        { platform: 5, uid: 9001 },
+        {
+          groupChatId: "501",
+          hostUserSeatIds: ["101", "102"],
+        },
+        { setGroupSeatHostUserSeatIds } as never,
+      ),
+    ).rejects.toMatchObject({
+      code: "RECEPTION_SEAT_NOT_SELECTABLE",
+      details: { hostUserSeatIds: ["101"] },
+      statusCode: 400,
+    });
+    expect(setGroupSeatHostUserSeatIds).not.toHaveBeenCalled();
+  });
+
+  it("allows explicitly clearing all reception accounts", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+    const setGroupSeatHostUserSeatIds = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      service.updateReception(
+        { platform: 5, uid: 9001 },
+        {
+          groupChatId: "501",
+          hostUserSeatIds: [],
+        },
+        { setGroupSeatHostUserSeatIds } as never,
+      ),
+    ).resolves.toEqual({ updated: true });
+    expect(setGroupSeatHostUserSeatIds).toHaveBeenCalledWith({
+      groupSeatId: 501,
+      hostUserSeatIds: [],
       platform: 5,
       uid: 9001,
     });

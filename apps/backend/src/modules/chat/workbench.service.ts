@@ -1390,7 +1390,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       });
       const canEnable =
         conversation.chatType === CHAT_TYPE.GROUP
-          ? capability?.groupFullAutoAuth === true
+          ? capability?.seatGroupAIHostingEnabled === true
           : conversation.chatType === CHAT_TYPE.SINGLE &&
             capability?.seatFullAutoAuth === true &&
             capability.seatFullAutoSwitch === true &&
@@ -1437,7 +1437,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
   ): Promise<WorkbenchConversationClearWaitManualResponse> {
     const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    const conversation = await this.getOperableConversation(
       subUserId,
       conversationId,
       scope,

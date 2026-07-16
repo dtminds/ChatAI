@@ -66,8 +66,8 @@ type ConversationListPanelProps = {
   composerDraftsByConversationId?: Record<string, ConversationComposerDraft>;
   conversations: Conversation[];
   isSeatAIHostingEnabled?: boolean;
-  /** 席位群聊是否允许开启 AI 回复；用于群聊列表头像 AI 托管角标 */
-  isGroupFullAutoAuth?: boolean;
+  /** 席位群聊 AI 托管能力；用于群聊列表头像 AI 托管角标 */
+  seatGroupAIHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
   isConversationLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
@@ -93,7 +93,7 @@ export function ConversationListPanel({
   composerDraftsByConversationId = {},
   conversations,
   isSeatAIHostingEnabled = false,
-  isGroupFullAutoAuth = false,
+  seatGroupAIHostingEnabled = false,
   isConversationActionDisabled = false,
   isConversationLoading = false,
   onMarkConversationRead,
@@ -395,7 +395,7 @@ export function ConversationListPanel({
                           isAIHostingEnabled={isConversationAIHostingEnabled(
                             conversation,
                             isSeatAIHostingEnabled,
-                            isGroupFullAutoAuth,
+                            seatGroupAIHostingEnabled,
                           )}
                           key={conversation.id}
                           onDelete={() => {

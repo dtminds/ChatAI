@@ -1,4 +1,5 @@
 import type {
+  AiHostingGroupChatReplyMode,
   AiHostingGroupSettingsUpdateRequest,
   AiHostingSettingsAccount,
   AiHostingSettingsGroupChat,
@@ -17,8 +18,6 @@ import {
 import { normalizeIdList, parseMySqlId } from "./ai-hosting-id-utils.js";
 
 type SettingsScope = AuthenticatedWorkbenchScope;
-
-type GroupChatReplyMode = 1 | 2;
 
 type HostingSettingsSeatRow = {
   avatarUrl: string | null;
@@ -46,7 +45,7 @@ type UserSeatGroupAgentInsert = Insertable<Database["xy_wap_embed_user_seat_grou
 
 const hostingSettingsSeatLimit = 200;
 const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
-const defaultGroupChatReplyMode: GroupChatReplyMode = 1;
+const defaultGroupChatReplyMode: AiHostingGroupChatReplyMode = 1;
 
 export class AiHostingSettingsService {
   private readonly agentService: AiHostingAgentService;
@@ -331,7 +330,7 @@ function assertGroupFullAutoAuthUpdateAllowed(
 }
 
 function parseGroupFullAutoConfig(raw: string | null | undefined): {
-  replyMode: GroupChatReplyMode;
+  replyMode: AiHostingGroupChatReplyMode;
 } {
   if (!raw?.trim()) {
     return { replyMode: defaultGroupChatReplyMode };
@@ -358,7 +357,7 @@ function parseGroupFullAutoConfig(raw: string | null | undefined): {
   return { replyMode: defaultGroupChatReplyMode };
 }
 
-function serializeGroupFullAutoConfig(replyMode: GroupChatReplyMode) {
+function serializeGroupFullAutoConfig(replyMode: AiHostingGroupChatReplyMode) {
   return JSON.stringify({ replyMode });
 }
 

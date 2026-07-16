@@ -760,8 +760,7 @@ workflow-task
 1. 从 Runtime Context 解析系统变量、客户变量、触发变量和前序节点输出。
 2. 按配置顺序计算分支条件。
 3. 选择第一个命中路径，否则选择唯一默认路径。
-4. 将 `matchedPathId` 和 `matchedPathLabel` 写入节点输出。
-5. 通过 Source Outlet 定位下一节点。
+4. 通过 Source Outlet 定位下一节点。分支结果仅用于路由，不作为节点输出暴露。
 
 同一输入、同一 Revision 的分支计算必须确定性一致。
 

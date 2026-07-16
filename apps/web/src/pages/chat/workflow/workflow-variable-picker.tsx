@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  InputCursorTextIcon,
   Search01Icon,
   Settings03Icon,
   UserIcon,
@@ -23,6 +24,7 @@ import type {
   WorkflowVariableDefinition,
   WorkflowVariableScope,
 } from "./types";
+import { getWorkflowOutputTypeLabel } from "./workflow-node-outputs";
 
 export function WorkflowVariablePicker({
   children,
@@ -95,6 +97,7 @@ function VariableOptions({ variables, onSelect }: {
   }
 
   const contextScopes: Exclude<WorkflowVariableScope, "node">[] = [
+    "input",
     "system",
     "customer",
     "trigger",
@@ -196,7 +199,7 @@ function VariableGroupSubMenu({
           >
             <span className="min-w-0 flex-1 truncate">{variable.label}</span>
             <span className="shrink-0 text-[11px] text-muted-foreground">
-              {variableTypeLabels[variable.type]}
+              {getWorkflowOutputTypeLabel(variable.valueType)}
             </span>
           </DropdownMenuItem>
         ))}
@@ -235,20 +238,14 @@ function groupNodeVariables(variables: WorkflowVariableDefinition[]) {
 
 const scopeLabels: Record<Exclude<WorkflowVariableScope, "node">, string> = {
   customer: "客户变量",
+  input: "输入参数",
   system: "系统变量",
   trigger: "触发变量",
 };
 
 const scopeIcons = {
   customer: UserIcon,
+  input: InputCursorTextIcon,
   system: Settings03Icon,
   trigger: ZapIcon,
 } satisfies Record<Exclude<WorkflowVariableScope, "node">, typeof Settings03Icon>;
-
-const variableTypeLabels: Record<WorkflowVariableDefinition["type"], string> = {
-  boolean: "布尔",
-  datetime: "时间",
-  number: "数字",
-  object: "对象",
-  string: "文本",
-};

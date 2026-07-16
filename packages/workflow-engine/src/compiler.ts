@@ -72,7 +72,9 @@ function createExecutionConfig(kind: WorkflowNodeKind, data: Record<string, unkn
     }) as Record<string, unknown>;
   }
   if (kind === "wait") {
-    return cloneJsonValue({ duration: data.duration, unit: data.unit }) as Record<string, unknown>;
+    return data.mode === "fixed-time"
+      ? cloneJsonValue({ dayOffset: data.dayOffset, mode: data.mode, time: data.time }) as Record<string, unknown>
+      : cloneJsonValue({ duration: data.duration, mode: data.mode, unit: data.unit }) as Record<string, unknown>;
   }
   if (kind === "end") return {};
   return {};

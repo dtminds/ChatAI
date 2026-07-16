@@ -1,6 +1,4 @@
 import {
-  WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
-  WORKFLOW_BRANCH_NODE_WIDTH,
   WORKFLOW_COMPACT_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_ESTIMATED_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -34,19 +32,37 @@ type NodeDataInput<TKind extends WorkflowNodeKind> = Omit<
 export const sourceNodeKinds: WorkflowNodeKind[] = [
   "start",
   "wait",
+  "wait-event",
   "branch",
   "message",
+  "message-query",
   "tag",
   "coupon",
   "handoff",
+  "agent",
+  "llm",
+  "order-query",
+  "tag-query",
+  "customer-update",
+  "ai-collect",
+  "ai-intent",
 ];
 export const targetNodeKinds: WorkflowNodeKind[] = [
   "wait",
+  "wait-event",
   "branch",
   "message",
+  "message-query",
   "tag",
   "coupon",
   "handoff",
+  "agent",
+  "llm",
+  "order-query",
+  "tag-query",
+  "customer-update",
+  "ai-collect",
+  "ai-intent",
   "end",
 ];
 
@@ -63,11 +79,6 @@ export const compactNodeLayout: WorkflowNodeLayoutMetrics = {
 export const terminalNodeLayout: WorkflowNodeLayoutMetrics = {
   estimatedHeight: WORKFLOW_TERMINAL_NODE_ESTIMATED_HEIGHT,
   width: WORKFLOW_NODE_WIDTH,
-};
-
-export const branchNodeLayout: WorkflowNodeLayoutMetrics = {
-  estimatedHeight: WORKFLOW_BRANCH_NODE_ESTIMATED_HEIGHT,
-  width: WORKFLOW_BRANCH_NODE_WIDTH,
 };
 
 export function createNodeData<TKind extends WorkflowNodeKind>(

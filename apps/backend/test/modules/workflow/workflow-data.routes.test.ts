@@ -113,6 +113,29 @@ describe("workflow data routes", () => {
     })]);
   });
 
+  it.each([
+    ["agent", "转 Agent"],
+    ["ai-collect", "资料收集"],
+    ["ai-intent", "意图识别"],
+    ["customer-update", "修改客户资料"],
+    ["llm", "大模型"],
+    ["order-query", "订单查询"],
+    ["tag-query", "标签查询"],
+  ])("falls back to the product title for %s records", async (nodeKind, title) => {
+    const reader = new MysqlWorkflowDataReader(createRecordDbMock({
+      draftJson: "{not-json",
+      executionKind: nodeKind,
+      runCurrentNodeId: `${nodeKind}-1`,
+    }) as never);
+
+    const detail = await reader.getRecord({ recordId: "31", uid: 9, workflowId: "12" });
+
+    expect(detail.steps).toEqual([expect.objectContaining({
+      nodeKind,
+      title,
+    })]);
+  });
+
   it("preserves titles and returns an unknown kind for unrecognized revision and ledger nodes", async () => {
     const reader = new MysqlWorkflowDataReader(createRecordDbMock({
       draftJson: JSON.stringify({

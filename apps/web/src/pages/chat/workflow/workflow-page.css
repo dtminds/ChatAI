@@ -6,8 +6,8 @@
  */
 
 .workflow-page {
-  --workflow-canvas-bg: #f3f4f6;
-  --workflow-grid: rgba(16, 24, 40, 0.13);
+  --workflow-canvas-bg: #EFEFEF;
+  --workflow-grid: rgba(16, 24, 40, 0.36);
   --workflow-edge: #9aa4b2;
   --workflow-border: rgba(15, 23, 42, 0.12);
   --workflow-soft: #f4f6f8;
@@ -16,7 +16,7 @@
   --workflow-panel-section: #f7f8fa;
   --workflow-param-bg: #f5f7fb;
   --workflow-text-tertiary: #667085;
-  --workflow-blue: #528bff;
+  --workflow-blue: #155DFB;
 }
 
 .workflow-page .react-flow {
@@ -86,12 +86,9 @@
   display: flex;
   width: auto;
   height: auto;
-  border: 1px solid transparent;
+  border-width: 1.5px;
+  border-style: solid;
   border-radius: 16px;
-}
-
-.workflow-node-shell-selected {
-  border-color: var(--workflow-blue);
 }
 
 .workflow-node-card {
@@ -102,8 +99,7 @@
   background: var(--workflow-panel-bg);
   padding-bottom: 4px;
   box-shadow:
-    0 0 0 0.5px rgba(15, 23, 42, 0.06),
-    0 2px 8px rgba(15, 23, 42, 0.06);
+    0 6px 14px -12px var(--shadow-strong)
 }
 
 .workflow-node-card::before {
@@ -113,8 +109,8 @@
   border-radius: 14px 14px 0 0;
   background: linear-gradient(
     180deg,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.045) 0%,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.02) 48%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.07) 0%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.03) 48%,
     rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0) 100%
   );
   content: "";
@@ -202,23 +198,31 @@
 
 .workflow-node-handle::after {
   position: absolute;
-  top: 4px;
+  top: 50%;
+  left: 50%;
   z-index: 0;
-  width: 2px;
-  height: 8px;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #fff;
   border-radius: 999px;
-  background: #98a2b3;
+  background: var(--workflow-blue);
   content: "";
+  transform: translate(-50%, -50%);
+  transition:
+    width 150ms ease,
+    height 150ms ease;
+}
+
+.react-flow__node:hover .workflow-node-handle::after {
+  width: 16px;
+  height: 16px;
 }
 
 .workflow-node-handle-target {
   left: -9px !important;
   top: 16px !important;
   transform: none !important;
-}
-
-.workflow-node-handle-target::after {
-  left: 6px;
 }
 
 .workflow-node-handle-source {
@@ -230,8 +234,9 @@
   z-index: 60 !important;
 }
 
-.workflow-node-handle-source::after {
-  right: 6px;
+.workflow-node-handle-source:hover::after {
+  width: 20px;
+  height: 20px;
 }
 
 .workflow-branch-path-handle {
@@ -290,7 +295,8 @@
   transform: none;
   transition:
     opacity 150ms ease,
-    background 150ms ease;
+    background 150ms ease,
+    transform 150ms ease;
 }
 
 .workflow-node-insert svg,
@@ -312,6 +318,7 @@
 .workflow-node-insert:hover {
   background: #3d7dff;
   color: #fff;
+  transform: scale(1.125);
 }
 
 .agent-workflow-canvas-dragging .workflow-edge-action {

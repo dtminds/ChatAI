@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
   WorkflowDefinitionSchema,
   WorkflowCreateRequestSchema,
   WorkflowDraftSchema,
@@ -19,10 +20,40 @@ import {
 
 describe("workflow contracts", () => {
   it("accepts the production node kinds and rejects legacy kinds", () => {
-    const draft = createDraft("branch");
+    const nodeKinds = [
+      "start",
+      "branch",
+      "wait",
+      "wait-event",
+      "message",
+      "message-query",
+      "handoff",
+      "agent",
+      "llm",
+      "order-query",
+      "tag-query",
+      "tag",
+      "customer-update",
+      "coupon",
+      "ai-collect",
+      "ai-intent",
+      "end",
+    ];
 
-    expect(Value.Check(WorkflowDraftSchema, draft)).toBe(true);
+    nodeKinds.forEach((kind) => {
+      expect(Value.Check(WorkflowDraftSchema, createDraft(kind))).toBe(true);
+    });
     expect(Value.Check(WorkflowDraftSchema, createDraft("action"))).toBe(false);
+  });
+
+  it("exposes the node kinds currently supported by the runtime", () => {
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toEqual([
+      "start",
+      "wait",
+      "end",
+    ]);
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).toContain("wait");
+    expect(WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS).not.toContain("message");
   });
 
   it("keeps database identifiers as decimal strings", () => {
@@ -93,8 +124,66 @@ describe("workflow contracts", () => {
       entryPolicy: { maxEntries: 0, mode: "lifetime_limit" },
       triggers: [],
     })).toBe(false);
-    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 15, unit: "minute" })).toBe(true);
-    expect(Value.Check(WorkflowWaitConfigSchema, { duration: 0, unit: "day" })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 15,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 360,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 361,
+      mode: "duration",
+      unit: "minute",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 96,
+      mode: "duration",
+      unit: "hour",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 97,
+      mode: "duration",
+      unit: "hour",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 45,
+      mode: "duration",
+      unit: "day",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 46,
+      mode: "duration",
+      unit: "day",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 45,
+      mode: "fixed-time",
+      time: "09:00",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 46,
+      mode: "fixed-time",
+      time: "09:00",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "17:58",
+    })).toBe(true);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      duration: 0,
+      mode: "duration",
+      unit: "day",
+    })).toBe(false);
+    expect(Value.Check(WorkflowWaitConfigSchema, {
+      dayOffset: 1,
+      mode: "fixed-time",
+      time: "24:00",
+    })).toBe(false);
   });
 
   it("limits rolling entry windows to 90 days by actual duration", () => {
@@ -233,7 +322,6 @@ function createDraft(kind: string) {
           metric: "",
           schemaVersion: 1,
           status: "ready",
-          summary: "",
           title: "条件分支",
         },
         id: "node-1",

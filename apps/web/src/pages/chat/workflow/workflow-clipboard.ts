@@ -214,14 +214,19 @@ export function pasteWorkflowClipboardData(
   const idMapping = new Map<string, string>();
   const offset = options.offset ?? { x: PASTE_OFFSET, y: PASTE_OFFSET };
 
-  const pastedNodes = sourceNodes.map((node, index) => {
+  sourceNodes.forEach((node, index) => {
     const nodeId = getUniquePastedNodeId(options.nodeIdFactory(node.data.kind, index), reservedNodeIds);
     idMapping.set(node.id, nodeId);
+  });
+
+  const pastedNodes = sourceNodes.map((node) => {
+    const nodeId = idMapping.get(node.id)!;
+    const remappedData = remapWorkflowNodeReferences(node.data, idMapping) as WorkflowNode["data"];
 
     return {
       ...node,
       data: {
-        ...node.data,
+        ...remappedData,
         title: getUniqueDuplicatedNodeTitle(node.data.title, reservedTitles),
       },
       id: nodeId,
@@ -269,6 +274,30 @@ export function pasteWorkflowClipboardData(
       nodeId: firstPastedNode.id,
     },
   };
+}
+
+function remapWorkflowNodeReferences(value: unknown, idMapping: Map<string, string>): unknown {
+  if (Array.isArray(value)) {
+    if (
+      value.length >= 2
+      && value[0] === "node"
+      && typeof value[1] === "string"
+      && idMapping.has(value[1])
+    ) {
+      return [value[0], idMapping.get(value[1]), ...value.slice(2).map((item) =>
+        remapWorkflowNodeReferences(item, idMapping))];
+    }
+    return value.map((item) => remapWorkflowNodeReferences(item, idMapping));
+  }
+
+  if (!isPlainObject(value)) return value;
+
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (key === "nodeId" && typeof item === "string" && idMapping.has(item)) {
+      return [key, idMapping.get(item)];
+    }
+    return [key, remapWorkflowNodeReferences(item, idMapping)];
+  }));
 }
 
 function getUniquePastedNodeId(nodeId: string, reservedNodeIds: Set<string>) {

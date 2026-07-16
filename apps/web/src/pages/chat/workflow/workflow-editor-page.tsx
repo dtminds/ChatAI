@@ -162,12 +162,17 @@ function WorkflowWorkspaceContent({
   const location = useLocation();
   const workspace = useWorkflowWorkspace(document.id, repository, document);
   const { canvas, checks, document: currentDocument, inspector, topBar, versionHistory } = workspace;
+  const previousInspectorOpenRef = useRef(false);
+  const animateInspectorOnMount = inspector.isOpen && !previousInspectorOpenRef.current;
   const mode = location.pathname.endsWith("/data") ? "data" : "design";
   const [dataRevision, setDataRevision] = useState(currentDocument.publishedRevision);
   const [followPublishedDataRevision, setFollowPublishedDataRevision] = useState(true);
   const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
   const selectedDataVersion = currentDocument.versionHistory.find(item => item.revision === dataRevision)
     ?? currentDocument.currentVersion;
+  useEffect(() => {
+    previousInspectorOpenRef.current = inspector.isOpen;
+  }, [inspector.isOpen]);
   useEffect(() => {
     if (currentDocument.publishedRevision === null) return;
     const selectedRevisionExists = currentDocument.versionHistory
@@ -263,61 +268,65 @@ function WorkflowWorkspaceContent({
             revision={dataRevision ?? undefined}
           />
         </div>
-      ) : <div
-        className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
-        data-inspector-open={inspector.isOpen ? "true" : undefined}
-      >
-        <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
-          <WorkflowCanvas
-            canRedo={canvas.canRedo}
-            canUndo={canvas.canUndo}
-            edges={canvas.edges}
-            isReadOnly={canvas.isReadOnly}
-            nodes={canvas.nodes}
-            nextRedoLabel={canvas.nextRedoLabel}
-            nextUndoLabel={canvas.nextUndoLabel}
-            onAddNode={canvas.onAddNode}
-            onArrange={canvas.onArrange}
-            onConnect={canvas.onConnect}
-            onEdgesChange={canvas.onEdgesChange}
-            onIsValidConnection={canvas.onIsValidConnection}
-            onNodeDrag={canvas.onNodeDrag}
-            onNodeDragStart={canvas.onNodeDragStart}
-            onNodeDragStop={canvas.onNodeDragStop}
-            onNodeHoverEnd={canvas.onNodeHoverEnd}
-            onNodeHoverStart={canvas.onNodeHoverStart}
-            onNodesChange={canvas.onNodesChange}
-            onPaletteOpenChange={canvas.onPaletteOpenChange}
-            onPaneClick={canvas.onPaneClick}
-            onRedo={canvas.onRedo}
-            onSelectEdge={canvas.onSelectEdge}
-            onSelectNode={canvas.onSelectNode}
-            onUndo={canvas.onUndo}
-            onViewportChangeEnd={canvas.onViewportChangeEnd}
-            paletteOpen={canvas.paletteOpen}
-            viewport={canvas.viewport}
-          />
-          {checks.isOpen ? (
-            <WorkflowChecks
-              checks={checks.checks}
-              onClose={checks.onClose}
-              onNavigateToNode={checks.onNavigateToNode}
-              publishAttempted={checks.publishAttempted}
-              publishReady={checks.publishReady}
+      ) : (
+        <div
+          className="workflow-editor-body relative min-h-0 flex-1 overflow-hidden bg-[var(--workflow-canvas-bg)]"
+          data-inspector-open={inspector.isOpen ? "true" : undefined}
+        >
+          <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
+            <WorkflowCanvas
+                canRedo={canvas.canRedo}
+                canUndo={canvas.canUndo}
+                edges={canvas.edges}
+                isReadOnly={canvas.isReadOnly}
+                nodes={canvas.nodes}
+                nextRedoLabel={canvas.nextRedoLabel}
+                nextUndoLabel={canvas.nextUndoLabel}
+                onAddNode={canvas.onAddNode}
+                onArrange={canvas.onArrange}
+                onConnect={canvas.onConnect}
+                onEdgesChange={canvas.onEdgesChange}
+                onIsValidConnection={canvas.onIsValidConnection}
+                onNodeDrag={canvas.onNodeDrag}
+                onNodeDragStart={canvas.onNodeDragStart}
+                onNodeDragStop={canvas.onNodeDragStop}
+                onNodeHoverEnd={canvas.onNodeHoverEnd}
+                onNodeHoverStart={canvas.onNodeHoverStart}
+                onNodesChange={canvas.onNodesChange}
+                onPaletteOpenChange={canvas.onPaletteOpenChange}
+                onPaneClick={canvas.onPaneClick}
+                onRedo={canvas.onRedo}
+                onSelectEdge={canvas.onSelectEdge}
+                onSelectNode={canvas.onSelectNode}
+                onUndo={canvas.onUndo}
+                onViewportChangeEnd={canvas.onViewportChangeEnd}
+                paletteOpen={canvas.paletteOpen}
+                viewport={canvas.viewport}
+            />
+            {checks.isOpen ? (
+              <WorkflowChecks
+                  checks={checks.checks}
+                  onClose={checks.onClose}
+                  onNavigateToNode={checks.onNavigateToNode}
+                  publishAttempted={checks.publishAttempted}
+                  publishReady={checks.publishReady}
+              />
+            ) : null}
+          </section>
+
+          {inspector.isOpen && !versionHistory.isPreviewing ? (
+            <NodeConfigPanel
+                animateOnMount={animateInspectorOnMount}
+                edges={inspector.edges}
+                node={inspector.node}
+                nodes={inspector.nodes}
+                onClose={inspector.onClose}
+                onNodeChange={inspector.onNodeChange}
+                onRenameNode={inspector.onRenameNode}
             />
           ) : null}
-        </section>
-
-        {inspector.isOpen && !versionHistory.isPreviewing ? (
-          <NodeConfigPanel
-            edges={inspector.edges}
-            node={inspector.node}
-            nodes={inspector.nodes}
-            onClose={inspector.onClose}
-            onNodeChange={inspector.onNodeChange}
-          />
-        ) : null}
-      </div>}
+        </div>
+      )}
       <WorkflowLeaveGuard enabled={topBar.saveState !== "saved"} />
     </>
   );

@@ -177,15 +177,58 @@ describe("workflow graph validation", () => {
     ]));
   });
 
+  it("requires both wait event outcomes to connect to downstream nodes", () => {
+    const waitEventNode = createNodeFromKind("wait-event", "wait-event-1", 10);
+    const nodes = [
+      ...createInitialNodes(),
+      waitEventNode,
+    ];
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("message-welcome", waitEventNode.id),
+      createEdge(waitEventNode.id, "end", undefined, { sourceHandle: "triggered" }),
+    ];
+    const validation = validateWorkflowGraph(nodes, edges);
+
+    expect(validation.graphIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "source-handle-unconnected",
+        nodeId: waitEventNode.id,
+      }),
+    ]));
+  });
+
+  it("accepts a wait event node when both fixed outcomes are connected", () => {
+    const waitEventNode = createNodeFromKind("wait-event", "wait-event-1", 10);
+    const triggeredNode = createNodeFromKind("message", "triggered-message", 11);
+    const timeoutNode = createNodeFromKind("message", "timeout-message", 12);
+    const nodes = [
+      ...createInitialNodes(),
+      waitEventNode,
+      triggeredNode,
+      timeoutNode,
+    ];
+    const edges = [
+      ...createInitialEdges(),
+      createEdge("message-welcome", waitEventNode.id),
+      createEdge(waitEventNode.id, triggeredNode.id, undefined, { sourceHandle: "triggered" }),
+      createEdge(waitEventNode.id, timeoutNode.id, undefined, { sourceHandle: "timeout" }),
+      createEdge(triggeredNode.id, "end"),
+      createEdge(timeoutNode.id, "end"),
+    ];
+    const validation = validateWorkflowGraph(nodes, edges);
+
+    expect(validation.graphIssues.some((issue) =>
+      issue.code === "source-handle-unconnected" && issue.nodeId === waitEventNode.id,
+    )).toBe(false);
+  });
+
   it("does not treat branch edges to missing nodes as connected outlets", () => {
     const edges = [
       ...createInitialEdges(),
       {
-        ...createEdge("branch-intent", "missing-node", "普通客户", { sourceHandle: "branch-normal" }),
-        id: "edge-branch-intent-branch-normal-missing-node",
-      },
-      {
-        ...createEdge("branch-intent", "end", "默认路径", { sourceHandle: "branch-default" }),
+        ...createEdge("branch-intent", "missing-node", "否则", { sourceHandle: "branch-default" }),
+        id: "edge-branch-intent-branch-default-missing-node",
       },
     ];
     const validation = validateWorkflowGraph(createInitialNodes(), edges);
@@ -201,13 +244,11 @@ describe("workflow graph validation", () => {
   it("accepts branch nodes only when every branch path has a downstream node", () => {
     const nodes = [
       ...createInitialNodes(),
-      createNodeFromKind("message", "message-normal", 10),
       createNodeFromKind("message", "message-default", 11),
     ];
     const edges = [
       ...createInitialEdges(),
-      createEdge("branch-intent", "message-normal", "普通客户", { sourceHandle: "branch-normal" }),
-      createEdge("branch-intent", "message-default", "默认路径", { sourceHandle: "branch-default" }),
+      createEdge("branch-intent", "message-default", "否则", { sourceHandle: "branch-default" }),
     ];
     const validation = validateWorkflowGraph(nodes, edges);
 

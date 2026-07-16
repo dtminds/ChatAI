@@ -224,7 +224,11 @@ function createRuntimeRepository(control: InMemoryWorkflowRepository) {
 async function createEnabledWaitWorkflow(repository: InMemoryWorkflowRepository) {
   return createEnabledWorkflow(repository, {
     edges: [edge("start", "wait"), edge("wait", "end")],
-    nodes: [node("start", "start"), node("wait", "wait", { duration: 2, unit: "day" }), node("end", "end")],
+    nodes: [
+      node("start", "start"),
+      node("wait", "wait", { duration: 2, mode: "duration", unit: "day" }),
+      node("end", "end"),
+    ],
     viewport: { x: 0, y: 0, zoom: 1 },
   });
 }
@@ -266,7 +270,6 @@ function node(
       metric: "",
       schemaVersion: 1,
       status: "ready" as const,
-      summary: "",
       title: kind,
     },
     id,

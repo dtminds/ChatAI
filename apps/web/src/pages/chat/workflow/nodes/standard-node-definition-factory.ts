@@ -1,39 +1,41 @@
 import type { IconSvgElement } from "@hugeicons/react";
-import type { WorkflowNodeKind } from "../types";
-import type { WorkflowNodeData } from "../types";
+import type { WorkflowNodeData, WorkflowNodeKind } from "../types";
 import type { WorkflowNodeDefinition, WorkflowNodePaletteGroupId } from "./definition-types";
 import {
+  compactNodeLayout,
   createDefaultSourceHandles,
   createDefaultTargetHandles,
-  compactNodeLayout,
   sourceNodeKinds,
   targetNodeKinds,
 } from "./definition-shared";
 
-type ActionNodeKind = Extract<WorkflowNodeKind, "message" | "tag" | "coupon" | "handoff">;
+type StandardNodeKind = Exclude<
+  WorkflowNodeKind,
+  "start" | "wait" | "wait-event" | "branch" | "message-query" | "ai-intent" | "end"
+>;
 
-export function createActionNodeDefinition<TKind extends ActionNodeKind>({
+export function createStandardNodeDefinition<TKind extends StandardNodeKind>({
   accentClassName,
   accentRgb,
+  badge,
   description,
   icon,
   kind,
   label,
   metric,
-  paletteGroup = "engagement",
+  paletteGroup,
   sort,
-  summary,
 }: {
   accentClassName: string;
   accentRgb: string;
+  badge?: "ai";
   description: string;
   icon: IconSvgElement;
   kind: TKind;
   label: string;
   metric: string;
-  paletteGroup?: WorkflowNodePaletteGroupId;
+  paletteGroup: WorkflowNodePaletteGroupId;
   sort: number;
-  summary: string;
 }): WorkflowNodeDefinition<TKind> {
   return {
     availableNextKinds: targetNodeKinds,
@@ -49,7 +51,6 @@ export function createActionNodeDefinition<TKind extends ActionNodeKind>({
       metric,
       schemaVersion: 1,
       status: "ready",
-      summary,
       title: label,
     }) as WorkflowNodeData<TKind>,
     createExecutionConfig: () => ({}),
@@ -66,6 +67,7 @@ export function createActionNodeDefinition<TKind extends ActionNodeKind>({
     visual: {
       accentClassName,
       accentRgb,
+      badge,
       icon,
       label,
     },

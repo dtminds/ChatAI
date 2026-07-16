@@ -12,16 +12,16 @@ import {
   type LexicalNode,
   type RangeSelection,
 } from "lexical";
-import type { WorkflowMessageContentSegment, WorkflowVariableDefinition } from "../../types";
+import type { WorkflowVariableContentSegment, WorkflowVariableDefinition } from "../../types";
 import {
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
 } from "../../workflow-variable-selector";
-import { normalizeMessageContent } from "./content";
+import { normalizeVariableContent } from "./content";
 import { $createWorkflowVariableNode, $isWorkflowVariableNode } from "./variable-node";
 
-export function $restoreMessageContent(
-  segments: WorkflowMessageContentSegment[] | undefined,
+export function $restoreVariableContent(
+  segments: WorkflowVariableContentSegment[] | undefined,
   variables: WorkflowVariableDefinition[],
 ) {
   const root = $getRoot();
@@ -30,7 +30,7 @@ export function $restoreMessageContent(
   root.append(paragraph);
   const variableByKey = new Map(variables.map((variable) => [getWorkflowVariableSelectorKey(variable.selector), variable]));
 
-  normalizeMessageContent(segments).forEach((segment) => {
+  normalizeVariableContent(segments).forEach((segment) => {
     if (segment.type === "text") {
       paragraph.append($createTextNode(segment.value));
       return;
@@ -43,7 +43,7 @@ export function $restoreMessageContent(
   });
 }
 
-export function $insertMessageVariable(
+export function $insertVariableContentToken(
   variable: WorkflowVariableDefinition,
   selection?: RangeSelection | null,
 ) {
@@ -71,13 +71,13 @@ export function $insertMessageVariable(
   trailingSpace.select(1, 1);
 }
 
-export function $exportMessageContent() {
-  const segments: WorkflowMessageContentSegment[] = [];
+export function $exportVariableContent() {
+  const segments: WorkflowVariableContentSegment[] = [];
   $getRoot().getChildren().forEach((node) => collect(node, segments));
-  return normalizeMessageContent(segments);
+  return normalizeVariableContent(segments);
 }
 
-function collect(node: LexicalNode, segments: WorkflowMessageContentSegment[]) {
+function collect(node: LexicalNode, segments: WorkflowVariableContentSegment[]) {
   if ($isWorkflowVariableNode(node)) {
     segments.push({ selector: node.getSelector(), type: "variable" });
     return;
@@ -95,7 +95,7 @@ function collect(node: LexicalNode, segments: WorkflowMessageContentSegment[]) {
   }
 }
 
-function appendText(segments: WorkflowMessageContentSegment[], value: string) {
+function appendText(segments: WorkflowVariableContentSegment[], value: string) {
   if (!value) return;
   const previous = segments[segments.length - 1];
   if (previous?.type === "text") previous.value += value;

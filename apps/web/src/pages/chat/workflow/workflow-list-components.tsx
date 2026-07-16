@@ -1,6 +1,6 @@
 import {
   AlertCircleIcon,
-  Delete02Icon,
+  Delete01Icon,
   Edit02Icon,
   MoreHorizontalIcon,
   PauseIcon,
@@ -226,7 +226,7 @@ function WorkflowCardMenu({
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
-          <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
+          <HugeiconsIcon icon={Delete01Icon} size={16} strokeWidth={1.8} />
           删除
         </DropdownMenuItem>
       </DropdownMenuContent>

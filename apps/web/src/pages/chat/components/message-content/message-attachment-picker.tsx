@@ -32,36 +32,40 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply/quick-reply-attachment-preview";
+import { MessageAttachmentPreview } from "@/pages/chat/components/message-content/message-attachment-preview";
 import {
-  QuickReplyMaterialPickerDialog,
-  type QuickReplyAttachmentMaterialBizType,
-} from "@/pages/chat/components/quick-reply/quick-reply-material-picker-dialog";
+  MessageMaterialPickerDialog,
+  type MessageAttachmentMaterialBizType,
+} from "@/pages/chat/components/message-content/message-material-picker-dialog";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 
-type QuickReplyAttachmentPickerProps = {
-  attachments: QuickReplyDraftAttachment[];
+type MessageAttachmentPickerProps = {
+  allowVideoChannel?: boolean;
+  attachments: MessageDraftAttachment[];
+  imageSource: "local-upload" | "material-library";
   maxCount: number;
-  onChange: (attachments: QuickReplyDraftAttachment[]) => void;
+  onChange: (attachments: MessageDraftAttachment[]) => void;
 };
 
-export type QuickReplyLocalImageAttachment = WorkbenchQuickReplyAttachment & {
+export type MessageLocalImageAttachment = WorkbenchQuickReplyAttachment & {
   localFile: File;
 };
 
-export type QuickReplyDraftAttachment =
+export type MessageDraftAttachment =
   | WorkbenchQuickReplyAttachment
-  | QuickReplyLocalImageAttachment;
+  | MessageLocalImageAttachment;
 
-export function QuickReplyAttachmentPicker({
+export function MessageAttachmentPicker({
+  allowVideoChannel = !DISABLE_SPH_COLLECTION,
   attachments,
+  imageSource,
   maxCount,
   onChange,
-}: QuickReplyAttachmentPickerProps) {
+}: MessageAttachmentPickerProps) {
   const [activePickerBizType, setActivePickerBizType] =
-    useState<QuickReplyAttachmentMaterialBizType | null>(null);
+    useState<MessageAttachmentMaterialBizType | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const canAddMore = attachments.length < maxCount;
   const handleImageFile = (file: File | undefined) => {
@@ -119,7 +123,12 @@ export function QuickReplyAttachmentPicker({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
                         onSelect={() => {
-                          imageInputRef.current?.click();
+                          if (imageSource === "local-upload") {
+                            imageInputRef.current?.click();
+                            return;
+                          }
+
+                          setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE);
                         }}
                       >
                         <HugeiconsIcon
@@ -163,7 +172,7 @@ export function QuickReplyAttachmentPicker({
                         <MiniProgramMark className="!size-3.5" />
                         小程序
                       </DropdownMenuItem>
-                      {DISABLE_SPH_COLLECTION ? null : (
+                      {allowVideoChannel ? (
                         <DropdownMenuItem
                           onSelect={() =>
                             setActivePickerBizType(
@@ -174,7 +183,7 @@ export function QuickReplyAttachmentPicker({
                           <SphFeedMark className="size-4" />
                           视频号
                         </DropdownMenuItem>
-                      )}
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </span>
@@ -186,21 +195,23 @@ export function QuickReplyAttachmentPicker({
               ) : null}
             </Tooltip>
           </TooltipProvider>
-          <input
-            accept="image/*"
-            aria-label="上传图片"
-            className="sr-only"
-            disabled={!canAddMore}
-            onChange={(event) => {
-              handleImageFile(event.currentTarget.files?.[0]);
-              event.currentTarget.value = "";
-            }}
-            ref={imageInputRef}
-            type="file"
-          />
+          {imageSource === "local-upload" ? (
+            <input
+              accept="image/*"
+              aria-label="上传图片"
+              className="sr-only"
+              disabled={!canAddMore}
+              onChange={(event) => {
+                handleImageFile(event.currentTarget.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+              ref={imageInputRef}
+              type="file"
+            />
+          ) : null}
         </div>
       </div>
-      <div className="w-full min-w-0 overflow-hidden min-h-[136px]">
+      <div className="w-full min-w-0 overflow-hidden">
         {attachments.length > 0 ? (
           <div className="w-full min-w-0 space-y-2">
             {attachments.map((attachment, index) => (
@@ -221,7 +232,7 @@ export function QuickReplyAttachmentPicker({
           </div>
         )}
       </div>
-      <QuickReplyMaterialPickerDialog
+      <MessageMaterialPickerDialog
         bizType={activePickerBizType}
         onOpenChange={(open) => {
           if (!open) {
@@ -247,7 +258,7 @@ function AttachmentRow({
   attachment,
   onDelete,
 }: {
-  attachment: QuickReplyDraftAttachment;
+  attachment: MessageDraftAttachment;
   onDelete: () => void;
 }) {
   const title = getAttachmentTitle(attachment);
@@ -289,7 +300,7 @@ function AttachmentRow({
           side="top"
           sideOffset={8}
         >
-          <QuickReplyAttachmentPreview attachment={attachment} />
+          <MessageAttachmentPreview attachment={attachment} />
         </HoverCardContent>
       </HoverCard>
       <Button
@@ -332,6 +343,8 @@ function getAttachmentTypeFromBizType(
   bizType: WorkbenchMaterialCollectionItemDto["bizType"],
 ): WorkbenchQuickReplyAttachmentType | undefined {
   switch (bizType) {
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:

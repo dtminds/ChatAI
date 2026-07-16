@@ -1,4 +1,4 @@
-import { StopCircleIcon } from "@hugeicons/core-free-icons";
+import { LogoutCircle01Icon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createDefaultTargetHandles,
@@ -20,7 +20,6 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
     createNodeData("end", 1, {
       label: "结束",
       metric: "退出营销旅程",
-      summary: "客户到达后结束当前旅程",
       title: "结束",
     }),
   createExecutionConfig: () => ({}),
@@ -31,11 +30,11 @@ export const endNodeDefinition: WorkflowNodeDefinition<"end"> = {
   schemaVersion: 1,
   getSourceHandles: createNoSourceHandles,
   getTargetHandles: createDefaultTargetHandles,
-  sort: 100,
+  sort: 1000,
   visual: {
     accentClassName: "bg-slate-700 text-white ring-slate-700/20",
     accentRgb: "51 65 85",
-    icon: StopCircleIcon,
+    icon: LogoutCircle01Icon,
     label: "结束",
   },
 };

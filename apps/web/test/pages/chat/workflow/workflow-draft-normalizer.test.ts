@@ -36,7 +36,6 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
       onToggleInsertMenu: vi.fn(),
       selected: true,
       status: "ready",
-      summary: "发送消息",
       title: `发送消息 ${index}`,
       deliveryOptions: {
         _runtimePreview: "open",
@@ -249,6 +248,7 @@ describe("workflow draft normalizer", () => {
           data: {
             duration: 7,
             kind: "wait",
+            mode: "duration",
             selected: true,
             title: "外部等待节点",
             unit: "day",
@@ -284,6 +284,7 @@ describe("workflow draft normalizer", () => {
       duration: 7,
       kind: "wait",
       label: "等待",
+      mode: "duration",
       schemaVersion: 1,
       title: "外部等待节点",
     }));
@@ -297,6 +298,126 @@ describe("workflow draft normalizer", () => {
         type: WORKFLOW_EDGE_TYPE,
       }),
     ]);
+  });
+
+  it("keeps normalized message attachments in persisted workflow drafts", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          attachments: [
+            {
+              content: {
+                alt: "商品图",
+                fileUrl: "https://cdn.example.com/product.png",
+                localUrl: undefined,
+                preview: {
+                  fallbackUrl: "blob:https://example.com/temporary-preview",
+                },
+              },
+              localFile: { name: "should-not-survive.png" },
+              materialCollectionId: "material-image-1",
+              msgInfoId: "9001",
+              type: "image",
+            },
+            { content: {}, type: "unsupported" },
+          ],
+          content: [{ type: "text", value: "查看商品图" }],
+          contentMode: "node-output",
+          kind: "message",
+          outputSelector: ["node", "llm-copy", "output-1"],
+          title: "外部消息节点",
+        },
+        id: "message-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toMatchObject({
+      attachments: [{
+        content: {
+          alt: "商品图",
+          fileUrl: "https://cdn.example.com/product.png",
+        },
+        materialCollectionId: "material-image-1",
+        msgInfoId: "9001",
+        type: "image",
+      }],
+      content: [{ type: "text", value: "查看商品图" }],
+      contentMode: "node-output",
+      kind: "message",
+      outputSelector: ["node", "llm-copy", "output-1"],
+    });
+    const messageNode = draft.nodes[0];
+    expect(messageNode?.data.kind).toBe("message");
+    if (messageNode?.data.kind === "message") {
+      expect(messageNode.data.attachments[0]).not.toHaveProperty("localFile");
+    }
+  });
+
+  it("keeps normalized message query time expressions in persisted drafts", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          kind: "message-query",
+          limit: 99,
+          timeRange: {
+            end: { field: "enteredAt", kind: "current-node-lifecycle" },
+            mode: "dynamic",
+            start: {
+              kind: "node-output",
+              selector: ["node", "message-source", "sentAt"],
+            },
+          },
+          take: "earliest",
+          title: "查询邀约后的消息",
+        },
+        id: "message-query-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      kind: "message-query",
+      limit: 50,
+      metric: "最早 50 条消息",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: {
+          kind: "node-output",
+          selector: ["node", "message-source", "sentAt"],
+        },
+      },
+      take: "earliest",
+    }));
+  });
+
+  it("normalizes wait event type and timeout without persisting invalid values", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [{
+        data: {
+          event: { type: "unknown-event" },
+          kind: "wait-event",
+          timeout: { duration: 999, unit: "day" },
+          title: "等待客户动作",
+        },
+        id: "wait-event-1",
+        position: { x: 0, y: 0 },
+      }],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
+      event: { type: "customer.message.received" },
+      kind: "wait-event",
+      metric: "等待新消息 · 最长 15 天",
+      timeout: { duration: 15, unit: "day" },
+    }));
   });
 
   it("does not downgrade node data created by a newer schema", () => {
@@ -332,6 +453,7 @@ describe("workflow draft normalizer", () => {
     const migrateData = vi.fn(({ data }) => ({
       ...data,
       duration: 9,
+      mode: "duration",
     }));
     definition.migrateData = migrateData;
 
@@ -343,6 +465,7 @@ describe("workflow draft normalizer", () => {
             data: {
               duration: 2,
               kind: "wait",
+              mode: "duration",
               title: "待迁移节点",
             },
             id: "migrated-wait",
@@ -355,6 +478,7 @@ describe("workflow draft normalizer", () => {
         data: expect.objectContaining({
           duration: 2,
           kind: "wait",
+          mode: "duration",
           title: "待迁移节点",
         }),
         fromVersion: 0,
@@ -362,6 +486,7 @@ describe("workflow draft normalizer", () => {
       });
       expect(hydratedDraft.nodes[0]?.data).toEqual(expect.objectContaining({
         duration: 9,
+        mode: "duration",
         schemaVersion: 1,
         title: "待迁移节点",
       }));
@@ -427,8 +552,18 @@ describe("workflow draft normalizer", () => {
           data: {
             ...createDefaultNodeData("branch"),
             branchPaths: [
-              { id: "branch-custom", label: "自定义分支", operator: "ELIF", title: "错误标题" },
-              { id: "branch-custom", label: "重复分支", operator: "ELIF", title: "重复标题" },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-custom",
+                label: "自定义分支",
+                logic: "all",
+              },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-custom",
+                label: "重复分支",
+                logic: "all",
+              },
             ],
           },
           id: "branch-1",
@@ -439,7 +574,12 @@ describe("workflow draft normalizer", () => {
           data: {
             ...createDefaultNodeData("message"),
             branchPaths: [
-              { id: "branch-leaked", label: "不应保留", operator: "IF", title: "CASE 1" },
+              {
+                conditions: [{ id: "condition-1", operator: "equals", value: "" }],
+                id: "branch-leaked",
+                label: "不应保留",
+                logic: "all",
+              },
             ],
           },
           id: "message-1",
@@ -451,8 +591,27 @@ describe("workflow draft normalizer", () => {
 
     expect(hydratedDraft.nodes.find((node) => node.id === "branch-1")?.data.branchPaths)
       .toEqual([
-        { id: "branch-custom", isDefault: undefined, label: "自定义分支", operator: "IF", title: "CASE 1" },
-        { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+        {
+          conditions: [{ id: "condition-1", operator: "equals", selector: undefined, value: "" }],
+          id: "branch-custom",
+          isDefault: undefined,
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{ id: "condition-1", operator: "equals", selector: undefined, value: "" }],
+          id: "branch-2",
+          isDefault: undefined,
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-default",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
       ]);
     expect(hydratedDraft.nodes.find((node) => node.id === "message-1")?.data.branchPaths)
       .toBeUndefined();
@@ -465,7 +624,6 @@ describe("workflow draft normalizer", () => {
         label: "触发",
         metric: "进入 1 人",
         status: "ready",
-        summary: "进入流程",
         title: "触发节点",
       },
       id: "start",
@@ -478,7 +636,6 @@ describe("workflow draft normalizer", () => {
         label: "等待",
         metric: "等待 1 天",
         status: "ready",
-        summary: "等待后继续",
         title: "等待节点",
       },
       id: "wait",
@@ -491,7 +648,6 @@ describe("workflow draft normalizer", () => {
         label: "发送消息",
         metric: "欢迎语",
         status: "ready",
-        summary: "发送欢迎语",
         title: "消息节点",
       },
       id: "message",
@@ -521,8 +677,19 @@ describe("workflow draft normalizer", () => {
       data: {
         ...createDefaultNodeData("branch"),
         branchPaths: [
-          { id: "branch-high", label: "高意向客户", operator: "IF", title: "CASE 1" },
-          { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+          {
+            conditions: [{ id: "condition-high", operator: "equals", value: "" }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
       },
       id: "branch",

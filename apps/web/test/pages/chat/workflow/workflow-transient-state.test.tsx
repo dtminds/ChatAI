@@ -36,6 +36,17 @@ describe("useWorkflowTransientState", () => {
     expect(result.current.activeEdgeInsertMenuId).toBe("edge-1");
 
     act(() => {
+      result.current.toggleEdgeInsertMenu("edge-1", false);
+      result.current.toggleEdgeInsertMenu("edge-1", false);
+    });
+    expect(result.current.activeEdgeInsertMenuId).toBeNull();
+
+    act(() => {
+      result.current.toggleEdgeInsertMenu("edge-1", true);
+    });
+    expect(result.current.activeEdgeInsertMenuId).toBe("edge-1");
+
+    act(() => {
       result.current.closeCanvasMenus();
     });
 

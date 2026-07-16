@@ -28,7 +28,6 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
       label: "开始",
       metric: "待配置触发条件",
       status: "warning",
-      summary: "配置客户进入营销旅程的触发条件",
       title: "开始",
       triggers: [],
     }),

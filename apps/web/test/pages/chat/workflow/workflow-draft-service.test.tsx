@@ -354,10 +354,10 @@ describe("workflow draft service", () => {
     const publishedBranchPaths = getBranchPaths(publishedDocument.publishedDraft);
     const versionBranchPaths = getBranchPaths(publishedDocument.versionHistory[0]?.draft);
     const storedBranchPaths = getBranchPaths(storedDocument.publishedDraft);
+    const publishedSnapshot = structuredClone(publishedBranchPaths);
 
-    expect(publishedBranchPaths).toEqual(sourceBranchPaths);
-    expect(versionBranchPaths).toEqual(sourceBranchPaths);
-    expect(storedBranchPaths).toEqual(sourceBranchPaths);
+    expect(versionBranchPaths).toEqual(publishedSnapshot);
+    expect(storedBranchPaths).toEqual(publishedSnapshot);
     expect(publishedBranchPaths).not.toBe(sourceBranchPaths);
     expect(publishedBranchPaths?.[0]).not.toBe(sourceBranchPaths[0]);
     expect(versionBranchPaths).not.toBe(sourceBranchPaths);
@@ -366,9 +366,9 @@ describe("workflow draft service", () => {
     expect(storedBranchPaths?.[0]).not.toBe(publishedBranchPaths?.[0]);
 
     sourceBranchPaths[0]!.label = "外部串改";
-    expect(publishedBranchPaths?.[0]?.label).toBe("VIP");
-    expect(versionBranchPaths?.[0]?.label).toBe("VIP");
-    expect(storedBranchPaths?.[0]?.label).toBe("VIP");
+    expect(publishedBranchPaths).toEqual(publishedSnapshot);
+    expect(versionBranchPaths).toEqual(publishedSnapshot);
+    expect(storedBranchPaths).toEqual(publishedSnapshot);
   });
 
   it("imports a sanitized draft without overwriting the published snapshot", () => {
@@ -1282,9 +1282,35 @@ function createDraftWithBranchPaths(): WorkflowDraft {
             data: {
               ...node.data,
               branchPaths: [
-                { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-                { id: "branch-regular", label: "普通客户", operator: "ELIF", title: "CASE 2" },
-                { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 3" },
+                {
+                  conditions: [{
+                    id: "condition-vip",
+                    operator: "equals",
+                    selector: ["customer", "name"],
+                    value: "VIP",
+                  }],
+                  id: "branch-vip",
+                  label: "如果",
+                  logic: "all",
+                },
+                {
+                  conditions: [{
+                    id: "condition-regular",
+                    operator: "equals",
+                    selector: ["customer", "name"],
+                    value: "普通客户",
+                  }],
+                  id: "branch-regular",
+                  label: "否则如果",
+                  logic: "all",
+                },
+                {
+                  conditions: [],
+                  id: "branch-default",
+                  isDefault: true,
+                  label: "否则",
+                  logic: "all",
+                },
               ],
             },
           }

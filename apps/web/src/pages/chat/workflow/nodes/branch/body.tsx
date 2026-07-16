@@ -1,38 +1,38 @@
-import { getWorkflowBranchPaths } from "../../branch-paths";
-import { NodeFieldList } from "../node-field-list";
+import { cn } from "@/lib/utils";
+import {
+  getBranchConditionSummary,
+  getWorkflowBranchPaths,
+  isWorkflowBranchConditionComplete,
+} from "../../branch-paths";
 import type { NodeBodyProps } from "../types";
 
 export function BranchNodeBody({ data }: NodeBodyProps<"branch">) {
+  const variables = data.availableVariables ?? [];
+
   return (
-    <>
-      <NodeFieldList
-        fields={[
-          {
-            id: "rule",
-            label: "分支条件",
-            value: data.branchRule
-              ? { kind: "text", text: data.branchRule }
-              : { kind: "empty" },
-          },
-        ]}
-      />
-      <span className="workflow-branch-paths grid gap-1.5 px-3 pb-0.5" aria-label="条件分支出口">
-        {getWorkflowBranchPaths(data).map((branch) => (
+    <span aria-label="条件分支出口" className="mx-4 mb-3 grid gap-1.5">
+      {getWorkflowBranchPaths(data).map((path) => {
+        const summary = getBranchConditionSummary(path, variables);
+        const incomplete = !path.isDefault && path.conditions.some((condition) =>
+          !isWorkflowBranchConditionComplete(condition, variables));
+
+        return (
           <span
-            className="workflow-branch-path grid gap-1"
-            data-testid={`workflow-branch-path-${branch.id}`}
-            key={branch.id}
+            className="flex h-9 min-w-0 items-center rounded-lg bg-[var(--workflow-param-bg)] px-2.5 text-xs"
+            data-testid={`workflow-branch-path-${path.id}`}
+            key={path.id}
+            title={`${path.label}：${summary}`}
           >
-            <span className="workflow-branch-path-heading flex items-center justify-between text-[11px] font-bold leading-4 text-[var(--workflow-text-tertiary)]">
-              <span>{branch.title}</span>
-              <span>{branch.operator}</span>
-            </span>
-            <span className="workflow-branch-path-rule flex min-h-[34px] items-center rounded-lg bg-[var(--workflow-param-bg)] px-2.5 text-xs font-medium text-foreground">
-              <span className="truncate">{branch.label}</span>
+            <span className="shrink-0 font-medium text-foreground">{path.label}：</span>
+            <span className={cn(
+              "min-w-0 flex-1 truncate",
+              incomplete ? "text-muted-foreground" : "text-foreground",
+            )}>
+              {summary}
             </span>
           </span>
-        ))}
-      </span>
-    </>
+        );
+      })}
+    </span>
   );
 }

@@ -9,7 +9,40 @@ import type { WorkflowNode } from "@/pages/chat/workflow/types";
 
 function createBranchNode(): WorkflowNode<"branch"> {
   return {
-    data: createDefaultNodeData("branch"),
+    data: {
+      ...createDefaultNodeData("branch"),
+      branchPaths: [
+        {
+          conditions: [{
+            id: "condition-high",
+            operator: "equals",
+            selector: ["customer", "name"],
+            value: "高意向",
+          }],
+          id: "branch-high",
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{
+            id: "condition-normal",
+            operator: "equals",
+            selector: ["customer", "name"],
+            value: "普通客户",
+          }],
+          id: "branch-normal",
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-default",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
+      ],
+    },
     id: "branch-intent",
     position: { x: 0, y: 0 },
     type: WORKFLOW_NODE_TYPE,
@@ -17,33 +50,95 @@ function createBranchNode(): WorkflowNode<"branch"> {
 }
 
 describe("BranchConfig", () => {
-  it("prevents deleting connected branch paths and emits added branch paths", async () => {
+  it("confirms deletion of a connected path and removes it", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
 
     render(
       <BranchConfig
         edges={[
-          createEdge("branch-intent", "message-welcome", "高意向客户", {
+          createEdge("branch-intent", "message-welcome", "如果", {
             sourceHandle: "branch-high",
           }),
         ]}
-        node={createBranchNode()}
-        nodes={[createBranchNode()]}
+        node={branchNode}
+        nodes={[branchNode]}
         onNodeChange={onNodeChange}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "删除高意向客户" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "删除如果 1" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: [
+        expect.objectContaining({ id: "branch-normal", label: "如果" }),
+        expect.objectContaining({ id: "branch-default", isDefault: true, label: "否则" }),
+      ],
+    });
+  });
+
+  it("adds a fixed-label conditional path before the fallback", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+
+    render(
+      <BranchConfig
+        edges={[]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "添加分支" }));
 
     expect(onNodeChange).toHaveBeenCalledWith({
+      branchPaths: [
+        expect.objectContaining({ id: "branch-high", label: "如果" }),
+        expect.objectContaining({ id: "branch-normal", label: "否则如果" }),
+        expect.objectContaining({ label: "否则如果" }),
+        expect.objectContaining({ id: "branch-default", isDefault: true, label: "否则" }),
+      ],
+    });
+  });
+
+  it("updates the relation between multiple conditions", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const branchNode = createBranchNode();
+    branchNode.data.branchPaths[0] = {
+      ...branchNode.data.branchPaths[0],
+      conditions: [
+        ...branchNode.data.branchPaths[0].conditions,
+        {
+          id: "condition-second",
+          operator: "is-not-empty",
+          selector: ["customer", "id"],
+        },
+      ],
+    };
+
+    render(
+      <BranchConfig
+        edges={[]}
+        node={branchNode}
+        nodes={[branchNode]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "如果条件关系" }));
+    await user.click(screen.getByRole("option", { name: "或" }));
+
+    expect(onNodeChange).toHaveBeenCalledWith({
       branchPaths: expect.arrayContaining([
-        expect.objectContaining({ id: "branch-high" }),
-        expect.objectContaining({ id: "branch-normal" }),
-        expect.objectContaining({ id: "branch-default", isDefault: true }),
-        expect.objectContaining({ label: "新分支 3" }),
+        expect.objectContaining({ id: "branch-high", logic: "any" }),
       ]),
     });
   });

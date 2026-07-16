@@ -21,11 +21,14 @@ describe("workflow graph commands", () => {
   it("maps user graph intents to undoable operations with generated ids", () => {
     const addOperation = runWorkflowGraphCommand(createDraft(), {
       kind: "handoff",
+      position: { x: 1280, y: 420 },
       type: "add-node",
     });
 
     expect(addOperation?.event).toBe("node:add");
     expect(addOperation?.result?.nodeId).toMatch(/^handoff-/);
+    expect(addOperation?.draft.nodes.find((node) => node.id === addOperation.result?.nodeId)?.position)
+      .toEqual({ x: 1280, y: 420 });
 
     const duplicateOperation = runWorkflowGraphCommand(createDraft(), {
       nodeId: "message-welcome",
@@ -46,6 +49,7 @@ describe("workflow graph commands", () => {
 
     expect(runWorkflowGraphCommand(createDraft(), {
       kind: "start" as never,
+      position: { x: 0, y: 0 },
       type: "add-node",
     })).toBeUndefined();
 
@@ -85,6 +89,7 @@ describe("workflow graph commands", () => {
     const commands: WorkflowGraphCommand[] = [
       {
         kind: "handoff",
+        position: { x: 1280, y: 420 },
         type: "add-node",
       },
       {
@@ -103,7 +108,7 @@ describe("workflow graph commands", () => {
       {
         connection: {
           source: "branch-intent",
-          sourceHandle: "branch-normal",
+          sourceHandle: "branch-default",
           target: "message-normal",
           targetHandle: null,
         },
@@ -192,7 +197,7 @@ describe("workflow graph commands", () => {
     const operation = runWorkflowGraphCommand(createDraft(), {
       kind: "wait",
       previousNodeId: "branch-intent",
-      sourceHandle: "branch-normal",
+      sourceHandle: "branch-default",
       type: "insert-node-after",
     });
 
@@ -203,7 +208,7 @@ describe("workflow graph commands", () => {
     expect(operation!.draft.edges).toEqual(expect.arrayContaining([
       expect.objectContaining({
         source: "branch-intent",
-        sourceHandle: "branch-normal",
+        sourceHandle: "branch-default",
         target: insertedNodeId,
       }),
     ]));

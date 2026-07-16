@@ -304,8 +304,24 @@ describe("useWorkflowController", () => {
     act(() => {
       result.current.updateNodeData("branch-intent", {
         branchPaths: [
-          { id: "branch-normal", label: "普通客户", operator: "IF", title: "CASE 1" },
-          { id: "branch-default", isDefault: true, label: "默认路径", operator: "ELSE", title: "CASE 2" },
+          {
+            conditions: [{
+              id: "condition-normal",
+              operator: "equals",
+              selector: ["customer", "name"],
+              value: "普通客户",
+            }],
+            id: "branch-normal",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
       });
     });
@@ -352,7 +368,7 @@ describe("useWorkflowController", () => {
 
     let addedNodeId = "";
     act(() => {
-      addedNodeId = result.current.addNode("handoff")?.nodeId ?? "";
+      addedNodeId = result.current.addNode("handoff", { x: 1280, y: 420 })?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("添加节点");
@@ -408,7 +424,7 @@ describe("useWorkflowController", () => {
     resetController();
     let connectTargetNodeId = "";
     act(() => {
-      connectTargetNodeId = result.current.addNode("message")?.nodeId ?? "";
+      connectTargetNodeId = result.current.addNode("message", { x: 1280, y: 420 })?.nodeId ?? "";
     });
     rerender({ draft: currentDraftProp });
     undo();
@@ -417,20 +433,20 @@ describe("useWorkflowController", () => {
     act(() => {
       result.current.connectNodes({
         source: "branch-intent",
-        sourceHandle: "branch-normal",
+        sourceHandle: "branch-default",
         target: connectTargetNodeId,
         targetHandle: null,
       });
     });
     rerender({ draft: currentDraftProp });
     expect(result.current.nextUndoLabel).toBe("连接节点");
-    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-default-${connectTargetNodeId}`))
       .toBe(true);
     undo();
-    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-default-${connectTargetNodeId}`))
       .toBe(false);
     redo();
-    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-normal-${connectTargetNodeId}`))
+    expect(result.current.edges.some((edge) => edge.id === `edge-branch-intent-branch-default-${connectTargetNodeId}`))
       .toBe(true);
 
     resetController();
@@ -493,7 +509,7 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     rerender({ draft: initialDraft });
 
@@ -502,7 +518,7 @@ describe("useWorkflowController", () => {
     )?.id;
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     rerender({ draft: initialDraft });
 
@@ -534,7 +550,7 @@ describe("useWorkflowController", () => {
     );
 
     act(() => {
-      result.current.addNode("handoff");
+      result.current.addNode("handoff", { x: 1280, y: 420 });
     });
     expect(result.current.canUndo).toBe(true);
 

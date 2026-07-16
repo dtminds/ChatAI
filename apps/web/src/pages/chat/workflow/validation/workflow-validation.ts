@@ -11,7 +11,30 @@ import type {
   WorkflowNodeKind,
   WorkflowNodeValidationIssue,
 } from "../types";
-import { getAvailableVariablesForNode, getInvalidMessageVariableSelectors } from "../workflow-variables";
+import { getVariableContentText } from "../nodes/variable-content/content";
+import { QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH } from "@chatai/contracts";
+import {
+  getAvailableIntentInputOutputsForNode,
+  getAvailableLlmInputVariablesForNode,
+  getAvailableMessageContentOutputsForNode,
+  getAvailableTimeReferenceOutputsForNode,
+  getAvailableTimeReferenceNodesForNode,
+  getAvailableVariablesForNode,
+  getInvalidVariableContentSelectors,
+  resolveWorkflowVariable,
+} from "../workflow-variables";
+import { normalizeLlmInputs } from "../nodes/llm/config";
+import { normalizeAiIntentInputSelector } from "../nodes/ai-intent/config";
+import {
+  normalizeWorkflowMessageContentMode,
+  normalizeWorkflowMessageOutputSelector,
+} from "../nodes/message/content-source";
+import type { WorkflowDynamicTimeReference } from "../types";
+import { isWorkflowOutputValueTypeEqual } from "../workflow-node-outputs";
+import {
+  areDynamicTimeReferencesEqual,
+  normalizeMessageQueryTimeRange,
+} from "../nodes/message-query/config";
 import {
   validateWorkflowGraph,
 } from "./workflow-graph-validation";
@@ -77,25 +100,202 @@ export function validateWorkflowNodeConfig<TKind extends WorkflowNodeKind>(
 ): WorkflowNodeValidationIssue[] {
   const definition = getNodeDefinitionCore(node.data.kind);
   const configIssues = validateNodeConfigSections(node, getWorkflowNodeConfigSchema(node.data.kind).sections);
-  const definitionIssues = definition.validate?.(node, { edges, nodes }) ?? [];
-  const variableIssues: WorkflowNodeValidationIssue[] = node.data.kind === "message"
-    && getInvalidMessageVariableSelectors(
-      node.data.content,
-      getAvailableVariablesForNode(node.id, nodes, edges),
-    ).length
-    ? [{
-        code: "message-variable-invalid",
-        message: "消息内容引用了不可用变量",
-        severity: "warning",
-        source: "config",
-      }]
-    : [];
+  const definitionIssues = definition.validate?.(node, {
+    availableVariables: getAvailableVariablesForNode(node.id, nodes, edges),
+    edges,
+    nodes,
+  }) ?? [];
+  const variableIssues = validateNodeVariableContent(node, nodes, edges);
 
   return [
     ...configIssues,
     ...definitionIssues,
     ...variableIssues,
   ];
+}
+
+function validateNodeVariableContent(
+  node: WorkflowNode,
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+): WorkflowNodeValidationIssue[] {
+  const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+
+  if (node.data.kind === "message") {
+    const issues: WorkflowNodeValidationIssue[] = [];
+    const contentMode = normalizeWorkflowMessageContentMode(node.data.contentMode);
+
+    if (
+      contentMode === "custom"
+      && getInvalidVariableContentSelectors(node.data.content, availableVariables).length
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-variable-invalid",
+        "消息内容引用了不可用变量",
+      ));
+    }
+    if (
+      contentMode === "custom"
+      && getVariableContentText(node.data.content, availableVariables).length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-content-too-long",
+        `消息内容不能超过 ${QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH} 字`,
+      ));
+    }
+
+    const outputSelector = normalizeWorkflowMessageOutputSelector(node.data.outputSelector);
+    if (
+      contentMode === "node-output"
+      && outputSelector
+      && !resolveWorkflowVariable(
+        getAvailableMessageContentOutputsForNode(node.id, nodes, edges),
+        outputSelector,
+      )
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-output-invalid",
+        "消息内容引用了不可用的节点输出",
+      ));
+    }
+    return issues;
+  }
+
+  if (node.data.kind === "message-query") {
+    const timeRange = normalizeMessageQueryTimeRange(node.data.timeRange);
+    const availableTimeOutputs = getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges);
+    const availableTimeSelectorKeys = new Set(availableTimeOutputs.map((output) =>
+      output.selector.join("."),
+    ));
+    const availableNodeIds = new Set(
+      getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((candidate) => candidate.id),
+    );
+    const issues = timeRange.mode === "dynamic"
+      ? [
+          ...validateMessageQueryTimeReference(
+            "start",
+            timeRange.start,
+            availableNodeIds,
+            availableTimeSelectorKeys,
+          ),
+          ...validateMessageQueryTimeReference(
+            "end",
+            timeRange.end,
+            availableNodeIds,
+            availableTimeSelectorKeys,
+          ),
+        ]
+      : [];
+
+    if (
+      timeRange.mode === "dynamic"
+      && areDynamicTimeReferencesEqual(timeRange.start, timeRange.end)
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-query-time-range-identical",
+        "消息查询的开始和结束时间不能相同",
+      ));
+    }
+
+    if (
+      timeRange.mode === "fixed"
+      && timeRange.startAt
+      && timeRange.endAt
+      && timeRange.startAt >= timeRange.endAt
+    ) {
+      issues.push(createVariableContentIssue(
+        "message-query-time-range-invalid",
+        "消息查询的结束时间需要晚于开始时间",
+      ));
+    }
+    return issues;
+  }
+
+  if (node.data.kind === "ai-intent") {
+    const selector = normalizeAiIntentInputSelector(node.data.inputSelector);
+    if (
+      selector
+      && !resolveWorkflowVariable(
+        getAvailableIntentInputOutputsForNode(node.id, nodes, edges),
+        selector,
+      )
+    ) {
+      return [createVariableContentIssue(
+        "ai-intent-input-invalid",
+        "识别内容引用了不可用的前序节点输出",
+      )];
+    }
+    return [];
+  }
+
+  if (node.data.kind === "llm") {
+    const availableInputs = getAvailableLlmInputVariablesForNode(node.id, nodes, edges);
+    if (normalizeLlmInputs(node.data.inputs).some((input) => {
+      if (input.value.kind !== "variable") return false;
+      const variable = resolveWorkflowVariable(availableInputs, input.value.selector);
+      return !variable || !isWorkflowOutputValueTypeEqual(input.value.valueType, variable.valueType);
+    })) {
+      return [createVariableContentIssue(
+        "llm-input-variable-invalid",
+        "输入参数引用了不可用或类型已变化的变量",
+      )];
+    }
+    return [];
+  }
+
+  if (node.data.kind !== "handoff") {
+    return [];
+  }
+
+  const fields = [
+    ["operator", node.data.operatorMessage],
+    ["customer", node.data.customerMessage],
+  ] as const;
+
+  return fields.flatMap(([field, content]) => {
+    const issues: WorkflowNodeValidationIssue[] = [];
+    if (getInvalidVariableContentSelectors(content, availableVariables).length) {
+      issues.push(createVariableContentIssue(
+        `handoff-${field}-message-variable-invalid`,
+        "转发话术引用了不可用变量",
+      ));
+    }
+    if (getVariableContentText(content, availableVariables).length > 100) {
+      issues.push(createVariableContentIssue(
+        `handoff-${field}-message-too-long`,
+        "转发话术不能超过 100 字",
+      ));
+    }
+    return issues;
+  });
+}
+
+function validateMessageQueryTimeReference(
+  field: "end" | "start",
+  reference: WorkflowDynamicTimeReference,
+  availableNodeIds: Set<string>,
+  availableSelectorKeys: Set<string>,
+) {
+  const valid = reference.kind === "workflow-trigger"
+    || reference.kind === "current-node-lifecycle"
+    || (reference.kind === "node-lifecycle" && availableNodeIds.has(reference.nodeId))
+    || (reference.kind === "node-output"
+      && availableSelectorKeys.has(reference.selector.join(".")));
+  if (valid) return [];
+
+  return [createVariableContentIssue(
+    `message-query-${field}-time-invalid`,
+    `${field === "start" ? "开始" : "结束"}时间引用了不可用的前序节点时间`,
+  )];
+}
+
+function createVariableContentIssue(code: string, message: string): WorkflowNodeValidationIssue {
+  return {
+    code,
+    message,
+    severity: "warning",
+    source: "config",
+  };
 }
 
 export function validateWorkflowNodeGraphState(

@@ -54,6 +54,7 @@ import type {
 import { useWorkflowDismissableLayer } from "../workflow-hooks";
 import { WorkflowBezierEdge } from "./workflow-edge";
 import { WorkflowNodePicker } from "./workflow-palette";
+import type { WorkflowNodePickerAddContext } from "./workflow-palette";
 
 const nodeTypes = {
   [WORKFLOW_NODE_TYPE]: WorkflowNodeCard,
@@ -66,6 +67,8 @@ const edgeTypes = {
 const workflowNodeOrigin: [number, number] = [0, 0.5];
 const workflowPanOnDrag = true;
 const workflowPaneClickDistance = 8;
+const workflowNodePointerThreshold = 4;
+const workflowPaletteNodeGap = 24;
 
 export function WorkflowCanvas({
   canRedo,
@@ -105,7 +108,7 @@ export function WorkflowCanvas({
   nodes: WorkflowRenderNode[];
   nextRedoLabel?: string;
   nextUndoLabel?: string;
-  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind, position: { x: number; y: number }) => void;
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
   onEdgesChange: OnEdgesChange<WorkflowRenderEdge>;
@@ -127,7 +130,7 @@ export function WorkflowCanvas({
   viewport: Viewport;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(viewport), [viewport]);
-  const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
+  const { fitView, screenToFlowPosition, zoomIn, zoomOut, zoomTo } = useReactFlow<
     WorkflowRenderNode,
     WorkflowRenderEdge
   >();
@@ -204,6 +207,7 @@ export function WorkflowCanvas({
       role="application"
     >
       <ReactFlow
+        connectionRadius={32}
         defaultViewport={initialViewport}
         deleteKeyCode={null}
         edges={edges}
@@ -211,6 +215,8 @@ export function WorkflowCanvas({
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
         multiSelectionKeyCode={null}
+        nodeClickDistance={workflowNodePointerThreshold}
+        nodeDragThreshold={workflowNodePointerThreshold}
         nodeOrigin={workflowNodeOrigin}
         nodeTypes={nodeTypes}
         nodes={flowNodes}
@@ -249,6 +255,7 @@ export function WorkflowCanvas({
           nextRedoLabel={nextRedoLabel}
           nextUndoLabel={nextUndoLabel}
           onAddNode={onAddNode}
+          screenToFlowPosition={screenToFlowPosition}
           onArrange={onArrange}
           onPaletteOpenChange={onPaletteOpenChange}
           onRedo={onRedo}
@@ -364,6 +371,7 @@ function WorkflowBottomToolbar({
   paletteOpen,
   showMiniMap,
   showEditingTools,
+  screenToFlowPosition,
   zoom,
   zoomIn,
   zoomOut,
@@ -375,7 +383,7 @@ function WorkflowBottomToolbar({
   fitView: () => void;
   nextRedoLabel?: string;
   nextUndoLabel?: string;
-  onAddNode: (kind: InsertableWorkflowNodeKind) => void;
+  onAddNode: (kind: InsertableWorkflowNodeKind, position: { x: number; y: number }) => void;
   onArrange: () => void;
   onPaletteOpenChange: (open: boolean) => void;
   onRedo: () => void;
@@ -384,6 +392,7 @@ function WorkflowBottomToolbar({
   paletteOpen: boolean;
   showMiniMap: boolean;
   showEditingTools: boolean;
+  screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number };
   zoom: number;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -408,7 +417,7 @@ function WorkflowBottomToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         aria-label="画布工具"
-        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground shadow-[0_1px_2px_var(--shadow-soft),0_18px_44px_var(--shadow-medium)] backdrop-blur-xl max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
+        className="workflow-bottom-toolbar nodrag nopan absolute bottom-6 left-1/2 z-[12] flex h-11 max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-foreground/15 bg-background/95 py-[5px] pl-2.5 pr-[7px] text-foreground transition-[left] duration-200 ease-out motion-reduce:transition-none max-lg:bottom-16 max-lg:justify-start max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
         onClick={(event) => event.stopPropagation()}
         ref={menuRef}
       >
@@ -564,10 +573,13 @@ function WorkflowBottomToolbar({
         <div className="workflow-toolbar-palette-wrap relative flex shrink-0">
           {paletteOpen && !disabled ? (
             <WorkflowNodePicker
-              className="workflow-floating-palette absolute bottom-10 right-0 w-[340px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(420px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
-              onAddNode={(kind) => {
-                onAddNode(kind);
-                onPaletteOpenChange(false);
+              className="workflow-floating-palette absolute bottom-10 right-0 w-[360px] min-h-[min(240px,calc(100vh-148px))] max-h-[min(420px,calc(100vh-148px))] max-lg:fixed max-lg:bottom-[120px] max-lg:left-3 max-lg:right-3 max-lg:w-auto max-lg:max-h-[min(420px,calc(100vh-168px))]"
+              onAddNode={(kind, context) => {
+                if (!context) return;
+                onAddNode(
+                  kind,
+                  resolvePaletteNodePosition(context, screenToFlowPosition),
+                );
               }}
             />
           ) : null}
@@ -592,6 +604,16 @@ function WorkflowBottomToolbar({
       </div>
     </TooltipProvider>
   );
+}
+
+function resolvePaletteNodePosition(
+  context: WorkflowNodePickerAddContext,
+  screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number },
+) {
+  return screenToFlowPosition({
+    x: context.pickerRight + workflowPaletteNodeGap,
+    y: context.clientY,
+  });
 }
 
 function WorkflowToolbarTooltip({

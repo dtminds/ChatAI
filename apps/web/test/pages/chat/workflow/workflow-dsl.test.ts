@@ -40,6 +40,17 @@ describe("workflow DSL", () => {
                     { type: "text", value: "你好，" },
                     { selector: ["customer", "name"], type: "variable" },
                   ],
+                  attachments: [
+                    {
+                      content: {
+                        alt: "新人活动",
+                        fileUrl: "https://cdn.example.com/welcome.png",
+                      },
+                      materialCollectionId: "material-image-1",
+                      msgInfoId: "9001",
+                      type: "image",
+                    },
+                  ],
                   _connectedSourceHandleIds: ["source"],
                   _runtimeStatus: "selected",
                   onDelete: vi.fn(),
@@ -92,10 +103,22 @@ describe("workflow DSL", () => {
       kind: "message",
     }));
     expect(executionNode.config).toEqual({
+      attachments: [
+        {
+          content: {
+            alt: "新人活动",
+            fileUrl: "https://cdn.example.com/welcome.png",
+          },
+          materialCollectionId: "material-image-1",
+          msgInfoId: "9001",
+          type: "image",
+        },
+      ],
       content: [
         { type: "text", value: "你好，" },
         { selector: ["customer", "name"], type: "variable" },
       ],
+      contentMode: "custom",
     });
     expect(executionNode.config.kind).toBeUndefined();
     expect(executionNode.config.title).toBeUndefined();
@@ -116,6 +139,109 @@ describe("workflow DSL", () => {
       "message-welcome",
       "end",
     ]);
+  });
+
+  it("emits only the active message content source in execution config", () => {
+    const draft = createInitialDraft();
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === "message-welcome"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              contentMode: "node-output",
+              outputSelector: ["node", "llm-copy", "output-1"],
+            },
+          }
+        : node),
+    });
+    const messageConfig = graph.nodes.find((node) => node.id === "message-welcome")?.config;
+
+    expect(messageConfig).toEqual({
+      attachments: [],
+      contentMode: "node-output",
+      outputSelector: ["node", "llm-copy", "output-1"],
+    });
+    expect(messageConfig).not.toHaveProperty("content");
+  });
+
+  it("emits message query time expressions without canvas-only metadata", () => {
+    const draft = createInitialDraft();
+    const queryNode = createNodeFromKind("message-query", "query-replies", 0);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("message-welcome", queryNode.id),
+      ],
+      nodes: [
+        ...draft.nodes,
+        {
+          ...queryNode,
+          data: {
+            ...queryNode.data,
+            timeRange: {
+              end: { field: "enteredAt", kind: "current-node-lifecycle" },
+              mode: "dynamic",
+              start: {
+                kind: "node-output",
+                selector: ["node", "message-welcome", "sentAt"],
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(graph.nodes.find((node) => node.id === queryNode.id)?.config).toEqual({
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        end: { field: "enteredAt", kind: "current-node-lifecycle" },
+        mode: "dynamic",
+        start: {
+          kind: "node-output",
+          selector: ["node", "message-welcome", "sentAt"],
+        },
+      },
+    });
+  });
+
+  it("emits wait event outcomes and execution config with stable outlet ids", () => {
+    const draft = createInitialDraft();
+    const waitEventNode = createNodeFromKind("wait-event", "wait-for-message", 0);
+    const triggeredNode = createNodeFromKind("message-query", "query-context", 1);
+    const graph = createWorkflowExecutionGraph({
+      ...draft,
+      edges: [
+        ...draft.edges,
+        createEdge("message-welcome", waitEventNode.id),
+        createEdge(waitEventNode.id, triggeredNode.id, undefined, { sourceHandle: "triggered" }),
+        createEdge(waitEventNode.id, "end", undefined, { sourceHandle: "timeout" }),
+      ],
+      nodes: [...draft.nodes, waitEventNode, triggeredNode],
+    });
+
+    expect(graph.nodes.find((node) => node.id === waitEventNode.id)?.config).toEqual({
+      event: {
+        collectWindowSeconds: 10,
+        type: "customer.message.received",
+      },
+      timeout: { duration: 24, unit: "hour" },
+    });
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: waitEventNode.id,
+        sourceHandle: "triggered",
+        sourceOutlet: expect.objectContaining({ id: "triggered", kind: "outcome" }),
+      }),
+      expect.objectContaining({
+        source: waitEventNode.id,
+        sourceHandle: "timeout",
+        sourceOutlet: expect.objectContaining({ id: "timeout", kind: "outcome" }),
+      }),
+    ]));
   });
 
   it("round-trips exported workflow DSL text through the import boundary", () => {
@@ -200,7 +326,7 @@ describe("workflow DSL", () => {
         sourceOutlet: {
           id: "branch-high",
           kind: "branch-path",
-          label: "高意向客户",
+          label: "如果",
         },
         target: "message-welcome",
         targetHandle: null,
@@ -304,6 +430,12 @@ describe("workflow DSL", () => {
         ...handoffNode,
         data: {
           ...handoffNode.data,
+          customerMessage: [{ type: "text", value: "正在为您转接客服" }],
+          operatorMessage: [
+            { type: "text", value: "客户 " },
+            { selector: ["customer", "name"], type: "variable" },
+            { type: "text", value: " 需要人工处理" },
+          ],
           title: "会员运营接管",
         },
       }),
@@ -321,6 +453,11 @@ describe("workflow DSL", () => {
 
     expect(parsed.draft.nodes.find((node) => node.id === "start")?.data.entryPolicy).toEqual({ mode: "never" });
     expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.title).toBe("会员运营接管");
+    expect(parsed.draft.nodes.find((node) => node.id === "handoff-reception")?.data.operatorMessage).toEqual([
+      { type: "text", value: "客户 " },
+      { selector: ["customer", "name"], type: "variable" },
+      { type: "text", value: " 需要人工处理" },
+    ]);
   });
 
   it("keeps execution config limited to runtime-facing node parameters", () => {
@@ -347,20 +484,29 @@ describe("workflow DSL", () => {
         { tagIds: ["tag-new-customer"], type: "customer.tag_added" },
       ],
     });
-    expect(configByKind.get("wait")).toEqual({ duration: 2, unit: "day" });
+    expect(configByKind.get("wait")).toEqual({
+      duration: 2,
+      mode: "duration",
+      unit: "day",
+    });
     expect(configByKind.get("branch")).toEqual({
       branchPaths: expect.any(Array),
-      branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
     });
-    expect(configByKind.get("message")).toEqual({ content: [] });
-    expect(configByKind.get("handoff")).toEqual({});
+    expect(configByKind.get("message")).toEqual({
+      attachments: [],
+      content: [{ type: "text", value: "欢迎加入，这是为你准备的新人活动" }],
+      contentMode: "custom",
+    });
+    expect(configByKind.get("handoff")).toEqual({
+      customerMessage: [],
+      operatorMessage: [],
+    });
     expect(configByKind.get("end")).toEqual({});
 
     graph.nodes.forEach((node) => {
       expect(node.config).not.toHaveProperty("label");
       expect(node.config).not.toHaveProperty("metric");
       expect(node.config).not.toHaveProperty("status");
-      expect(node.config).not.toHaveProperty("summary");
       expect(node.config).not.toHaveProperty("title");
     });
   });

@@ -16,7 +16,7 @@ describe("compileWorkflowDraft", () => {
       workflowId: "42",
     });
     expect(spec.nodes.find((node) => node.id === "wait")).toEqual({
-      config: { duration: 2, unit: "day" },
+      config: { duration: 2, mode: "duration", unit: "day" },
       id: "wait",
       kind: "wait",
       nodeSchemaVersion: 1,
@@ -27,6 +27,27 @@ describe("compileWorkflowDraft", () => {
       triggers: [{ type: "contact.friend_added" }],
     });
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
+  });
+
+  it("compiles fixed-time wait configuration without duration fields", () => {
+    const draft = createDraft();
+    const waitNode = draft.nodes.find((node) => node.id === "wait")!;
+    waitNode.data = {
+      ...waitNode.data,
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "20:00",
+    };
+    delete waitNode.data.duration;
+    delete waitNode.data.unit;
+
+    const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42" });
+
+    expect(spec.nodes.find((node) => node.id === "wait")?.config).toEqual({
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "20:00",
+    });
   });
 
   it("compiles legacy rolling entry windows with the current maximum", () => {
@@ -165,7 +186,7 @@ function createDraft() {
     ],
     nodes: [
       node("start", "start", startConfig()),
-      node("wait", "wait", { duration: 2, unit: "day" }),
+      node("wait", "wait", { duration: 2, mode: "duration", unit: "day" }),
       node("end", "end"),
     ],
     viewport: { x: 100, y: 50, zoom: 1 },
@@ -190,7 +211,6 @@ function node(id: string, kind: string, config: Record<string, unknown> = {}) {
       metric: "canvas metric",
       schemaVersion: 1,
       status: "ready",
-      summary: "canvas summary",
       title: kind,
     },
     id,

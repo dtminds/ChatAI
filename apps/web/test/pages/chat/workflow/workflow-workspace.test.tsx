@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/workflow/use-workflow-workspace";
 import {
   createEdge,
-  createNodeFromKind,
 } from "@/pages/chat/workflow/graph";
 import {
   createInMemoryWorkflowDraftRepository,
@@ -289,12 +288,18 @@ describe("useWorkflowWorkspace", () => {
       .toEqual(messageNode.position);
   });
 
-  it("adds palette nodes without auto-connecting them to the current graph", () => {
+  it("adds palette nodes without changing the current selection or closing the palette", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
     const initialEdges = result.current.canvas.edges.map((edge) => edge.id);
 
     act(() => {
-      result.current.canvas.onAddNode("handoff");
+      result.current.canvas.onSelectNode("message-welcome");
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+
+    act(() => {
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
     });
 
     const handoffNode = result.current.canvas.nodes.find((node) =>
@@ -306,7 +311,10 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.canvas.edges.some((edge) =>
       edge.source === handoffNode?.id || edge.target === handoffNode?.id,
     )).toBe(false);
-    expect(result.current.inspector.node?.id).toBe(handoffNode?.id);
+    expect(handoffNode?.position).toEqual({ x: 1280, y: 420 });
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("message-welcome");
+    expect(result.current.canvas.paletteOpen).toBe(true);
   });
 
   it("persists manual connections through the workspace boundary and supports undo", async () => {
@@ -499,7 +507,7 @@ describe("useWorkflowWorkspace", () => {
       const initialNodeIds = result.current.canvas.nodes.map((node) => node.id);
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
 
       expect(result.current.topBar.saveState).toBe("saving");
@@ -541,7 +549,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       act(() => {
@@ -577,7 +585,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
       const publishedKeyword = getCanvasStartKeyword(result.current.canvas);
 
@@ -625,7 +633,7 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("keeps publish state published across non-draft canvas interactions", async () => {
-    importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+    importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
     await act(async () => {
@@ -653,7 +661,7 @@ describe("useWorkflowWorkspace", () => {
     vi.useFakeTimers();
 
     try {
-      importWorkflowDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNode());
+      importWorkflowDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraft());
       const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
       await act(async () => {
@@ -662,9 +670,11 @@ describe("useWorkflowWorkspace", () => {
       expect(result.current.topBar.publishState).toBe("published");
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const addedNodeId = result.current.inspector.node?.id ?? "";
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
 
       expect(addedNodeId).toMatch(/^handoff-/);
       expect(result.current.topBar.publishState).toBe("idle");
@@ -723,7 +733,7 @@ describe("useWorkflowWorkspace", () => {
     expect(getCanvasStartKeyword(result.current.canvas)).toBe("历史版本人群");
 
     act(() => {
-      result.current.canvas.onAddNode("handoff");
+      result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     });
 
@@ -767,7 +777,7 @@ describe("useWorkflowWorkspace", () => {
 
   it("allows viewport navigation while publishing without saving a draft change", async () => {
     const repository = createDeferredPublishRepository();
-    repository.importDraft("newcomer-conversion", createWorkflowDraftWithConnectedHandoffNodeFromRepository(repository));
+    repository.importDraft("newcomer-conversion", createRuntimeSupportedWorkflowDraftFromRepository(repository));
     const initialRevision = repository.getDocument("newcomer-conversion").revision;
     const initialDraftViewport = repository.getDocument("newcomer-conversion").draft.viewport;
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion", repository));
@@ -811,9 +821,11 @@ describe("useWorkflowWorkspace", () => {
       const versionId = publishedDocument.currentVersion?.id ?? "";
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const addedNodeId = result.current.inspector.node?.id ?? "";
+      const addedNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
@@ -903,9 +915,15 @@ describe("useWorkflowWorkspace", () => {
       });
 
       act(() => {
-        result.current.canvas.onAddNode("handoff");
+        result.current.canvas.onAddNode("handoff", { x: 1280, y: 420 });
       });
-      const handoffNodeId = result.current.inspector.node?.id ?? "";
+      const handoffNodeId = result.current.canvas.nodes.find((node) =>
+        node.data.kind === "handoff",
+      )?.id ?? "";
+
+      act(() => {
+        result.current.canvas.onSelectNode(handoffNodeId);
+      });
 
       act(() => {
         result.current.inspector.onNodeChange({ title: "会员运营接管" });
@@ -1004,66 +1022,26 @@ function getCanvasPositions(nodes: Array<{ id: string; position: { x: number; y:
   return Object.fromEntries(nodes.map((node) => [node.id, node.position]));
 }
 
-function createWorkflowDraftWithConnectedBranchOutlets() {
-  const draft = getWorkflowDocument("newcomer-conversion").draft;
-
-  return connectBranchOutlets(draft);
+function createRuntimeSupportedWorkflowDraft() {
+  return toRuntimeSupportedDraft(getWorkflowDocument("newcomer-conversion").draft);
 }
 
-function createWorkflowDraftWithConnectedHandoffNode() {
-  return connectHandoffSupportNode(createWorkflowDraftWithConnectedBranchOutlets());
-}
-
-function createWorkflowDraftWithConnectedHandoffNodeFromRepository(
+function createRuntimeSupportedWorkflowDraftFromRepository(
   repository: Pick<SyncWorkflowDraftRepository, "getDocument">,
 ) {
-  return connectHandoffSupportNode(connectBranchOutlets(repository.getDocument("newcomer-conversion").draft));
+  return toRuntimeSupportedDraft(repository.getDocument("newcomer-conversion").draft);
 }
 
-function connectBranchOutlets(draft: WorkflowDraft) {
-  return {
-    ...draft,
-    edges: [
-      ...draft.edges,
-      createEdge("branch-intent", "message-normal", "普通客户", {
-        sourceHandle: "branch-normal",
-      }),
-      createEdge("branch-intent", "message-default", "默认路径", {
-        sourceHandle: "branch-default",
-      }),
-      createEdge("message-normal", "end"),
-      createEdge("message-default", "end"),
-    ],
-    nodes: [
-      ...draft.nodes,
-      {
-        ...createNodeFromKind("message", "message-normal", 10),
-        position: { x: 930, y: 94 },
-      },
-      {
-        ...createNodeFromKind("message", "message-default", 11),
-        position: { x: 930, y: 282 },
-      },
-    ],
-  };
-}
-
-function connectHandoffSupportNode(draft: WorkflowDraft) {
+function toRuntimeSupportedDraft(draft: WorkflowDraft): WorkflowDraft {
+  const supportedNodeIds = new Set(["start", "wait-2d", "end"]);
 
   return {
     ...draft,
     edges: [
-      ...draft.edges.filter((edge) => edge.id !== "edge-message-welcome-end"),
-      createEdge("message-welcome", "handoff-support"),
-      createEdge("handoff-support", "end"),
+      createEdge("start", "wait-2d"),
+      createEdge("wait-2d", "end"),
     ],
-    nodes: [
-      ...draft.nodes,
-      {
-        ...createNodeFromKind("handoff", "handoff-support", 12),
-        position: { x: 1240, y: -94 },
-      },
-    ],
+    nodes: draft.nodes.filter((node) => supportedNodeIds.has(node.id)),
   };
 }
 

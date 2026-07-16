@@ -35,7 +35,6 @@ export function createInitialNodes(): WorkflowNode[] {
         accountIds: ["managed-account-sales-1", "managed-account-sales-2"],
         metric: "2 个账号 · 2 个触发条件",
         status: "running",
-        summary: "添加好友或添加标签时进入",
         title: "新人入会触发",
         triggers: [
           { type: "contact.friend_added" },
@@ -52,7 +51,6 @@ export function createInitialNodes(): WorkflowNode[] {
         duration: 2,
         metric: "2 天后唤醒",
         status: "ready",
-        summary: "等待 2 天后继续触达",
         title: "观察期",
       },
       id: "wait-2d",
@@ -62,10 +60,28 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("branch"),
-        branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
-        metric: "2 条分支",
+        branchPaths: [
+          {
+            conditions: [{
+              id: "condition-high-intent",
+              operator: "contains",
+              selector: ["customer", "name"],
+              value: "会员",
+            }],
+            id: "branch-high",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-default",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
+        ],
+        metric: "1 个条件分支",
         status: "ready",
-        summary: "按活动兴趣和咨询意图拆分路径",
         title: "意向判断",
       },
       id: "branch-intent",
@@ -75,10 +91,10 @@ export function createInitialNodes(): WorkflowNode[] {
     {
       data: {
         ...createDefaultNodeData("message"),
+        content: [{ type: "text", value: "欢迎加入，这是为你准备的新人活动" }],
         label: "发送消息",
-        metric: "欢迎语 + 活动卡片",
+        metric: "欢迎加入，这是为你准备的新人活动",
         status: "ready",
-        summary: "发送欢迎语和活动权益卡片",
         title: "发送欢迎消息",
       },
       id: "message-welcome",
@@ -100,7 +116,7 @@ export function createInitialEdges(): WorkflowEdge[] {
   return [
     createEdge("start", "wait-2d"),
     createEdge("wait-2d", "branch-intent"),
-    createEdge("branch-intent", "message-welcome", "高意向", {
+    createEdge("branch-intent", "message-welcome", "如果", {
       sourceHandle: "branch-high",
     }),
     createEdge("message-welcome", "end"),

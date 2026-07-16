@@ -8,6 +8,14 @@ import type {
   QuickInsertTarget,
 } from "./types";
 import { getInsertableNodeKindsBetween } from "./node-catalog";
+import {
+  getAvailableIntentInputOutputsForNode,
+  getAvailableMessageContentOutputsForNode,
+  getAvailableTimeReferenceNodesForNode,
+  getAvailableTimeReferenceOutputsForNode,
+  getAvailableVariablesForNode,
+} from "./workflow-variables";
+import { validateWorkflowNodeConfig } from "./validation/workflow-validation";
 
 type WorkflowRenderElementHandlers = {
   onDeleteNode: (nodeId: string) => void;
@@ -25,7 +33,7 @@ type WorkflowRenderElementHandlers = {
   ) => void;
   onRenameNode: (nodeId: string, title: string) => void;
   onSelectNode: (nodeId: string) => void;
-  onToggleEdgeInsertMenu: (edgeId: string) => void;
+  onToggleEdgeInsertMenu: (edgeId: string, open?: boolean) => void;
   onToggleNodeInsertMenu: (nodeId: string, sourceHandle?: string) => void;
   onToggleNodeSelection: (nodeId: string) => void;
 };
@@ -47,6 +55,11 @@ export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
   };
 
 type WorkflowRenderNodeCacheEntry = {
+  availableIntentInputKey: string;
+  availableMessageContentOutputKey: string;
+  availableTimeReferenceKey: string;
+  availableVariableKey: string;
+  effectiveStatus: WorkflowNode["data"]["status"];
   insertMenuOpen: boolean;
   insertMenuSourceHandle?: string;
   onDeleteNode: WorkflowRenderElementHandlers["onDeleteNode"];
@@ -75,6 +88,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.selectedEdgeId,
   ]);
   const nodes = useMemo(() => createWorkflowRenderNodes(options, nodeRenderCacheRef.current), [
+    options.edges,
     options.nodes,
     options.onDeleteNode,
     options.onDuplicateNode,
@@ -196,6 +210,7 @@ function createWorkflowRenderEdges({
 }
 
 function createWorkflowRenderNodes({
+  edges,
   nodes,
   onDeleteNode,
   onDuplicateNode,
@@ -210,7 +225,59 @@ function createWorkflowRenderNodes({
 }: CreateWorkflowRenderElementsOptions, cache?: Map<string, WorkflowRenderNodeCacheEntry>): WorkflowRenderNode[] {
   const renderedNodeIds = new Set<string>();
   const renderedNodes = nodes.map((node) => {
+    const availableVariables = getAvailableVariablesForNode(node.id, nodes, edges);
+    const availableIntentInputs = node.data.kind === "ai-intent"
+      ? getAvailableIntentInputOutputsForNode(node.id, nodes, edges)
+      : undefined;
+    const availableMessageContentOutputs = node.data.kind === "message"
+      ? getAvailableMessageContentOutputsForNode(node.id, nodes, edges)
+      : undefined;
+    const availableTimeReferences = node.data.kind === "message-query"
+      ? {
+          nodes: getAvailableTimeReferenceNodesForNode(node.id, nodes, edges).map((sourceNode) => ({
+            id: sourceNode.id,
+            title: sourceNode.data.title,
+          })),
+          outputs: getAvailableTimeReferenceOutputsForNode(node.id, nodes, edges),
+        }
+      : undefined;
+    const availableTimeReferenceKey = availableTimeReferences
+      ? [
+          ...availableTimeReferences.nodes.map((sourceNode) => `${sourceNode.id}:${sourceNode.title}`),
+          ...availableTimeReferences.outputs.map((output) => [
+            output.selector.join("."),
+            output.sourceNodeTitle,
+            output.label,
+          ].join(":")),
+        ].join("|")
+      : "";
+    const availableVariableKey = availableVariables.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|");
+    const availableMessageContentOutputKey = availableMessageContentOutputs?.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|") ?? "";
+    const availableIntentInputKey = availableIntentInputs?.map((variable) => [
+      variable.selector.join("."),
+      variable.sourceNodeTitle,
+      variable.label,
+    ].join(":"))
+      .join("|") ?? "";
     const isSelected = selectedNodeIdSet.has(node.id);
+    const derivesStatusFromGraph = node.data.kind === "branch"
+      || node.data.kind === "ai-intent"
+      || node.data.kind === "message-query"
+      || node.data.kind === "llm";
+    const effectiveStatus = derivesStatusFromGraph
+      && validateWorkflowNodeConfig(node, nodes, edges).length > 0
+      ? "warning" as const
+      : node.data.status;
     const insertMenuOpen = !readOnly && node.id === quickInsertTarget?.nodeId;
     const insertMenuSourceHandle = insertMenuOpen
       ? quickInsertTarget.sourceHandle
@@ -220,6 +287,11 @@ function createWorkflowRenderNodes({
     const cachedNode = cache?.get(node.id);
     if (
       cachedNode
+      && cachedNode.availableIntentInputKey === availableIntentInputKey
+      && cachedNode.availableMessageContentOutputKey === availableMessageContentOutputKey
+      && cachedNode.availableTimeReferenceKey === availableTimeReferenceKey
+      && cachedNode.availableVariableKey === availableVariableKey
+      && cachedNode.effectiveStatus === effectiveStatus
       && cachedNode.sourceNode === node
       && cachedNode.selected === isSelected
       && cachedNode.insertMenuOpen === insertMenuOpen
@@ -242,6 +314,10 @@ function createWorkflowRenderNodes({
       zIndex: isSelected ? 20 : undefined,
       data: {
         ...node.data,
+        availableIntentInputs,
+        availableMessageContentOutputs,
+        availableTimeReferences,
+        availableVariables,
         insertMenuOpen,
         insertMenuSourceHandle,
         onDelete: readOnly ? undefined : onDeleteNode,
@@ -258,10 +334,16 @@ function createWorkflowRenderNodes({
         },
         onToggleInsertMenu: readOnly ? undefined : onToggleNodeInsertMenu,
         selected: isSelected,
+        status: effectiveStatus,
       },
     };
 
     cache?.set(node.id, {
+      availableIntentInputKey,
+      availableMessageContentOutputKey,
+      availableTimeReferenceKey,
+      availableVariableKey,
+      effectiveStatus,
       insertMenuOpen,
       insertMenuSourceHandle,
       onDeleteNode,

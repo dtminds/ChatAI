@@ -70,6 +70,7 @@ import {
   WORKFLOW_NODE_TYPE,
 } from "@/pages/chat/workflow/constants";
 import type { WorkflowNode, WorkflowNodeKind } from "@/pages/chat/workflow/types";
+import { workflowContextVariables } from "@/pages/chat/workflow/workflow-variables";
 
 function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind: TKind) {
   const catalogEntry = getWorkflowNodeCatalogEntry(kind);
@@ -100,7 +101,6 @@ function assertDefinitionSourcesStayInSync<TKind extends WorkflowNodeKind>(kind:
   expect(defaultData.kind).toBe(kind);
   expect(defaultData.schemaVersion).toBe(definition.schemaVersion);
   expect(defaultData.title).toBeTruthy();
-  expect(defaultData.summary).toBeTruthy();
   expect(defaultData.metric).toBeTruthy();
   expect(catalogEntry.layout.width).toBeGreaterThan(0);
   expect(catalogEntry.layout.estimatedHeight).toBeGreaterThan(0);
@@ -164,7 +164,11 @@ function assertDefinitionRuntimeContract<TKind extends WorkflowNodeKind>(
   }
   expect(definition.configSections).toEqual(getNodeConfigSections(kind));
   expect(definition.getOutputVariables?.(node) ?? []).toEqual(expect.any(Array));
-  expect(definition.validate?.(node, { edges: createInitialEdges(), nodes }) ?? []).toEqual(
+  expect(definition.validate?.(node, {
+    availableVariables: workflowContextVariables,
+    edges: createInitialEdges(),
+    nodes,
+  }) ?? []).toEqual(
     expect.any(Array),
   );
 }
@@ -173,7 +177,25 @@ describe("workflow node catalog", () => {
   it("uses per-node registry modules as the catalog and UI source of truth", () => {
     const nodeKinds = Object.keys(workflowNodeDefinitions) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
+    expect(nodeKinds).toEqual([
+      "agent",
+      "ai-collect",
+      "ai-intent",
+      "branch",
+      "coupon",
+      "customer-update",
+      "end",
+      "handoff",
+      "llm",
+      "message",
+      "message-query",
+      "order-query",
+      "start",
+      "tag",
+      "tag-query",
+      "wait",
+      "wait-event",
+    ]);
     expect(workflowNodeCatalog).toBe(workflowNodeDefinitions);
     expect(orderedWorkflowNodeCatalog).toBe(orderedWorkflowNodeDefinitions);
     expect(Object.keys(workflowNodeUiRegistry)).toEqual(nodeKinds);
@@ -188,15 +210,23 @@ describe("workflow node catalog", () => {
   it("keeps pure node metadata, UI bindings and config schema in sync", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
 
-    expect(nodeKinds).toEqual(["branch", "coupon", "end", "handoff", "message", "start", "tag", "wait"]);
+    expect(nodeKinds).toEqual(Object.keys(workflowNodeDefinitions));
 
     nodeKinds.forEach(assertDefinitionSourcesStayInSync);
   });
 
   it("keeps node definitions as the single extension contract", () => {
     const nodeKinds = Object.keys(workflowNodeCatalog) as WorkflowNodeKind[];
-    const schemaNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "tag", "wait"];
-    const customNodeKinds: WorkflowNodeKind[] = ["branch", "message", "start"];
+    const schemaNodeKinds: WorkflowNodeKind[] = [
+      "agent",
+      "ai-collect",
+      "coupon",
+      "customer-update",
+      "order-query",
+      "tag",
+      "tag-query",
+    ];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-intent", "branch", "handoff", "llm", "message", "message-query", "start", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(nodeDefinitionCore)).toEqual(nodeKinds);
@@ -218,7 +248,7 @@ describe("workflow node catalog", () => {
     expect(workflowNodeUiRegistry.end.settings).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
 
-    expect(workflowNodeCatalog.branch.cardClassName).toBe("workflow-node-card-branch");
+    expect(workflowNodeCatalog.branch.cardClassName).toBeUndefined();
     expect(workflowNodeCatalog.message.cardClassName).toBeUndefined();
   });
 
@@ -298,7 +328,21 @@ describe("workflow node catalog", () => {
   });
 
   it("supports field, custom, and empty node body bindings", () => {
-    const fieldNodeKinds: WorkflowNodeKind[] = ["coupon", "handoff", "message", "start", "tag", "wait"];
+    const fieldNodeKinds: WorkflowNodeKind[] = [
+      "agent",
+      "ai-collect",
+      "coupon",
+      "customer-update",
+      "handoff",
+      "llm",
+      "message",
+      "message-query",
+      "order-query",
+      "start",
+      "tag",
+      "tag-query",
+      "wait",
+    ];
 
     fieldNodeKinds.forEach((kind) => {
       expect(workflowNodeUiBindings[kind].body.kind).toBe("fields");
@@ -307,6 +351,8 @@ describe("workflow node catalog", () => {
       component: BranchNodeBody,
       kind: "custom",
     });
+    expect(workflowNodeUiBindings["ai-intent"].body.kind).toBe("custom");
+    expect(workflowNodeUiBindings["wait-event"].body.kind).toBe("custom");
     expect(workflowNodeUiBindings.end.body).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
     expect(workflowNodeUiBindings.start.settings).toBe(StartConfig);
@@ -325,6 +371,7 @@ describe("workflow node catalog", () => {
     const startBody = workflowNodeUiBindings.start.body;
     const waitBody = workflowNodeUiBindings.wait.body;
     const messageBody = workflowNodeUiBindings.message.body;
+    const handoffBody = workflowNodeUiBindings.handoff.body;
 
     expect(startBody.kind === "fields" ? startBody.getFields(createDefaultNodeData("start")) : [])
       .toEqual(expect.arrayContaining([
@@ -338,10 +385,36 @@ describe("workflow node catalog", () => {
           value: { kind: "text", text: "1 天后，执行后续节点" },
         }),
       ]);
+    expect(waitBody.kind === "fields" ? waitBody.getFields({
+      ...createDefaultNodeData("wait"),
+      dayOffset: 2,
+      mode: "fixed-time",
+      time: "20:00",
+    }) : []).toEqual([
+      expect.objectContaining({
+        id: "duration",
+        value: { kind: "text", text: "2 天后的 20:00，执行后续节点" },
+      }),
+    ]);
     expect(messageBody.kind === "fields" ? messageBody.getFields(createDefaultNodeData("message")) : [])
       .toEqual([
         expect.objectContaining({
           id: "content",
+          value: { kind: "empty" },
+        }),
+        expect.objectContaining({
+          id: "attachments",
+          value: { kind: "empty" },
+        }),
+      ]);
+    expect(handoffBody.kind === "fields" ? handoffBody.getFields(createDefaultNodeData("handoff")) : [])
+      .toEqual([
+        expect.objectContaining({
+          id: "operator-message",
+          value: { kind: "empty" },
+        }),
+        expect.objectContaining({
+          id: "customer-message",
           value: { kind: "empty" },
         }),
       ]);
@@ -360,16 +433,26 @@ describe("workflow node catalog", () => {
     );
     expect(paletteItems.map((item) => item.groupId)).toEqual([
       "flow",
-      "logic",
-      "engagement",
-      "engagement",
-      "engagement",
-      "engagement",
+      "flow",
+      "flow",
+      "flow",
+      "data",
+      "data",
+      "data",
+      "data",
+      "data",
+      "data",
+      "message",
+      "message",
+      "message",
+      "message",
+      "benefit",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
-      "logic",
-      "engagement",
+      "data",
+      "message",
+      "benefit",
     ]);
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
@@ -384,15 +467,16 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "flow", items: ["wait"] },
-      { id: "logic", items: ["branch"] },
-      { id: "engagement", items: ["message", "tag", "coupon", "handoff"] },
+      { id: "flow", items: ["wait", "wait-event", "branch", "ai-intent"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "tag", "customer-update"] },
+      { id: "message", items: ["message", "message-query", "handoff", "agent"] },
+      { id: "benefit", items: ["coupon"] },
     ]);
     expect(getWorkflowPaletteItemGroups({ query: "转人工" }).map((group) => ({
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "engagement", items: ["handoff"] },
+      { id: "message", items: ["handoff"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
       kinds: getInsertableNodeKindsBetween("wait", "message"),
@@ -401,8 +485,15 @@ describe("workflow node catalog", () => {
       id: group.id,
       items: group.items.map((item) => item.id),
     }))).toEqual([
-      { id: "logic", items: ["branch"] },
+      { id: "flow", items: ["branch"] },
     ]);
+  });
+
+  it("marks the AI-powered palette nodes for shared badge rendering", () => {
+    expect(paletteItems
+      .filter((item) => item.badge === "ai")
+      .map((item) => item.id))
+      .toEqual(["ai-intent", "llm", "ai-collect", "agent"]);
   });
 
   it("derives connection candidates from catalog capabilities", () => {
@@ -423,18 +514,50 @@ describe("workflow node catalog", () => {
     const customBranchHandles = getNodeSourceHandleDefinitions({
       ...createDefaultNodeData("branch"),
       branchPaths: [
-        { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-        { id: "branch-risk", label: "风险客户", operator: "ELIF", title: "CASE 2" },
-        { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
+        {
+          conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+          id: "branch-vip",
+          label: "如果",
+          logic: "all",
+        },
+        {
+          conditions: [{ id: "condition-risk", operator: "equals", value: "" }],
+          id: "branch-risk",
+          label: "否则如果",
+          logic: "all",
+        },
+        {
+          conditions: [],
+          id: "branch-fallback",
+          isDefault: true,
+          label: "否则",
+          logic: "all",
+        },
       ],
     });
     const customBranchNode: WorkflowNode = {
       data: {
         ...createDefaultNodeData("branch"),
         branchPaths: [
-          { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
-          { id: "branch-risk", label: "风险客户", operator: "ELIF", title: "CASE 2" },
-          { id: "branch-fallback", isDefault: true, label: "默认", operator: "ELSE", title: "CASE 3" },
+          {
+            conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+            id: "branch-vip",
+            label: "如果",
+            logic: "all",
+          },
+          {
+            conditions: [{ id: "condition-risk", operator: "equals", value: "" }],
+            id: "branch-risk",
+            label: "否则如果",
+            logic: "all",
+          },
+          {
+            conditions: [],
+            id: "branch-fallback",
+            isDefault: true,
+            label: "否则",
+            logic: "all",
+          },
         ],
       },
       id: "branch-node",
@@ -451,13 +574,11 @@ describe("workflow node catalog", () => {
     expect(branchHandles.every((handle) => handle.outletKind === "branch-path")).toBe(true);
     expect(branchHandles.map((handle) => handle.id)).toEqual([
       "branch-high",
-      "branch-normal",
       "branch-default",
     ]);
     expect(branchHandles.map((handle) => handle.label)).toEqual([
-      "高意向客户",
-      "普通客户",
-      "默认路径",
+      "如果",
+      "否则",
     ]);
     expect(getDefaultSourceHandleId("branch")).toBe("branch-high");
     expect(customBranchHandles.map((handle) => handle.id)).toEqual([
@@ -466,7 +587,7 @@ describe("workflow node catalog", () => {
       "branch-fallback",
     ]);
     expect(getNodeSourceHandleIndex(customBranchNode.data, "branch-risk")).toBe(1);
-    expect(getNodeSourceHandleLabel(customBranchNode.data, "branch-risk")).toBe("风险客户");
+    expect(getNodeSourceHandleLabel(customBranchNode.data, "branch-risk")).toBe("否则如果");
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-risk")).toBe(0);
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-vip")).toBe(-1);
     expect(getNodeSourceHandleLaneOffset(customBranchNode, "branch-fallback")).toBe(1);
@@ -475,7 +596,12 @@ describe("workflow node catalog", () => {
     expect(getDefaultSourceHandleId("branch", {
       ...createDefaultNodeData("branch"),
       branchPaths: [
-        { id: "branch-vip", label: "VIP", operator: "IF", title: "CASE 1" },
+        {
+          conditions: [{ id: "condition-vip", operator: "equals", value: "" }],
+          id: "branch-vip",
+          label: "如果",
+          logic: "all",
+        },
       ],
     })).toBe("branch-vip");
     expect(getDefaultSourceHandleId("wait")).toBeUndefined();
@@ -527,7 +653,6 @@ describe("workflow node catalog", () => {
     });
 
     expect(unconnectedHandles.map((handle) => handle.id)).toEqual([
-      "branch-normal",
       "branch-default",
     ]);
   });

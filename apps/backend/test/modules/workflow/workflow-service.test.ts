@@ -175,13 +175,13 @@ describe("WorkflowService", () => {
         accountIds: ["account-a"],
         entryPolicy: { mode: "never" },
         triggers: [{ type: "contact.friend_added" }],
-      }), { duration: 2, unit: "day" }),
+      }), { duration: 2, mode: "duration", unit: "day" }),
       expectedDraftVersion: created.draftVersion,
     });
     await service.publish(operator, created.id, { expectedDraftVersion: configured.draftVersion });
     const enabled = await service.enable(operator, created.id);
     const saved = await service.saveDraft(operator, created.id, {
-      draft: withWaitConfig(enabled.draft, { duration: 3, unit: "day" }),
+      draft: withWaitConfig(enabled.draft, { duration: 3, mode: "duration", unit: "day" }),
       expectedDraftVersion: enabled.draftVersion,
     });
 
@@ -351,7 +351,7 @@ function withStartConfig(
 
 function withWaitNode(
   draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
-  config: { duration: number; unit: "day" | "hour" | "minute" },
+  config: { duration: number; mode: "duration"; unit: "day" | "hour" | "minute" },
 ) {
   return {
     ...draft,
@@ -369,7 +369,6 @@ function withWaitNode(
           metric: "",
           schemaVersion: 1,
           status: "ready" as const,
-          summary: "",
           title: "等待",
         },
         id: "wait",
@@ -384,7 +383,7 @@ function withWaitNode(
 
 function withWaitConfig(
   draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
-  config: { duration: number; unit: "day" | "hour" | "minute" },
+  config: { duration: number; mode: "duration"; unit: "day" | "hour" | "minute" },
 ) {
   return {
     ...draft,

@@ -20,15 +20,89 @@ describe("core node executors", () => {
   });
 
   it("persists wait as an absolute due time", async () => {
-    await expect(registry.execute(node("wait", { duration: 2, unit: "day" }), context()))
+    await expect(registry.execute(node("wait", {
+      duration: 2,
+      mode: "duration",
+      unit: "day",
+    }), context()))
       .resolves.toEqual({
         dueAt: "2026-07-12T00:00:00.000Z",
         output: { dueAt: "2026-07-12T00:00:00.000Z" },
         type: "wait",
       });
 
-    await expect(registry.execute(node("wait", { duration: 90, unit: "minute" }), context()))
+    await expect(registry.execute(node("wait", {
+      duration: 90,
+      mode: "duration",
+      unit: "minute",
+    }), context()))
       .resolves.toMatchObject({ dueAt: "2026-07-10T01:30:00.000Z" });
+  });
+
+  it("continues executing legacy duration waits without mode", async () => {
+    await expect(registry.execute(node("wait", {
+      duration: 46,
+      unit: "day",
+    }), context()))
+      .resolves.toEqual({
+        dueAt: "2026-08-25T00:00:00.000Z",
+        output: { dueAt: "2026-08-25T00:00:00.000Z" },
+        type: "wait",
+      });
+
+    await expect(registry.execute(node("wait", {
+      duration: 525_601,
+      unit: "minute",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+  });
+
+  it("rejects regular waits above the selected unit limit", async () => {
+    await expect(registry.execute(node("wait", {
+      duration: 361,
+      mode: "duration",
+      unit: "minute",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+    await expect(registry.execute(node("wait", {
+      duration: 97,
+      mode: "duration",
+      unit: "hour",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+    await expect(registry.execute(node("wait", {
+      duration: 46,
+      mode: "duration",
+      unit: "day",
+    }), context())).rejects.toThrow("duration exceeds the supported unit limit");
+  });
+
+  it("resumes fixed-time waits on the configured local day and time", async () => {
+    const expectedDueAt = "2025-03-26T01:00:00.000Z";
+    const fixedTimeNode = node("wait", {
+      dayOffset: 1,
+      mode: "fixed-time",
+      time: "09:00",
+    });
+
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date("2025-03-25T01:30:00.000Z"),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date("2025-03-25T15:59:00.000Z"),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
+    await expect(registry.execute(fixedTimeNode, context({
+      now: new Date("2025-03-24T16:30:00.000Z"),
+    }))).resolves.toEqual({
+      dueAt: expectedDueAt,
+      output: { dueAt: expectedDueAt },
+      type: "wait",
+    });
   });
 
   it("selects the first matching branch and falls back to default", async () => {
@@ -41,9 +115,9 @@ describe("core node executors", () => {
     });
 
     await expect(registry.execute(branch, context({ matchingPathIds: new Set(["returning"]) })))
-      .resolves.toMatchObject({ sourceOutletId: "returning", type: "advance" });
+      .resolves.toEqual({ output: {}, sourceOutletId: "returning", type: "advance" });
     await expect(registry.execute(branch, context()))
-      .resolves.toMatchObject({ sourceOutletId: "else", type: "advance" });
+      .resolves.toEqual({ output: {}, sourceOutletId: "else", type: "advance" });
   });
 
   it("requires deadline metadata before executing an action", async () => {

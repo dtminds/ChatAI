@@ -2,7 +2,7 @@ import { memo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   Copy01Icon,
-  Delete02Icon,
+  Delete01Icon,
   Edit03Icon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import {
   canDeleteNodeKind,
   canDuplicateNodeKind,
@@ -46,6 +47,7 @@ function WorkflowBaseNodeComponent({
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(data.title);
   const renameCancelledRef = useRef(false);
+  const canRename = definition.canRename && Boolean(data.onRename);
   const nodeCardStyle = {
     "--workflow-node-accent-rgb": visual.accentRgb,
   } as CSSProperties;
@@ -54,7 +56,7 @@ function WorkflowBaseNodeComponent({
     <div
       className={cn(
         "workflow-node-shell",
-        isSelected && "workflow-node-shell-selected",
+        isSelected ? "border-[var(--workflow-blue)]" : "border-border/70",
       )}
     >
       <div
@@ -70,15 +72,11 @@ function WorkflowBaseNodeComponent({
           actionMenuOpen={actionMenuOpen}
           data={data}
           id={id}
-          onRename={() => {
-            renameCancelledRef.current = false;
-            setRenameValue(data.title);
-            setIsRenaming(true);
-          }}
+          onRename={startRenaming}
           setActionMenuOpen={setActionMenuOpen}
         />
         <div
-          aria-label={`${data.title} ${data.summary}`}
+          aria-label={data.title}
           className="workflow-node-select"
           onClick={(event) => {
             event.stopPropagation();
@@ -98,6 +96,7 @@ function WorkflowBaseNodeComponent({
           tabIndex={0}
         >
           <NodeHeader
+            canRename={canRename}
             data={data}
             isRenaming={isRenaming}
             onCancelRename={() => {
@@ -122,6 +121,7 @@ function WorkflowBaseNodeComponent({
               }
             }}
             onRenameValueChange={setRenameValue}
+            onStartRename={startRenaming}
             renameValue={renameValue}
             visual={visual}
           />
@@ -131,24 +131,36 @@ function WorkflowBaseNodeComponent({
       </div>
     </div>
   );
+
+  function startRenaming() {
+    if (!canRename) return;
+
+    renameCancelledRef.current = false;
+    setRenameValue(data.title);
+    setIsRenaming(true);
+  }
 }
 
 export const WorkflowBaseNode = memo(WorkflowBaseNodeComponent);
 
 function NodeHeader({
+  canRename,
   data,
   isRenaming,
   onCancelRename,
   onCommitRename,
   onRenameValueChange,
+  onStartRename,
   renameValue,
   visual,
 }: {
+  canRename: boolean;
   data: WorkflowNodeRenderData;
   isRenaming: boolean;
   onCancelRename: () => void;
   onCommitRename: () => void;
   onRenameValueChange: (value: string) => void;
+  onStartRename: () => void;
   renameValue: string;
   visual: NodeVisual;
 }) {
@@ -164,36 +176,63 @@ function NodeHeader({
       </span>
       <span className="flex min-h-7 min-w-0 flex-1 items-center">
         {isRenaming ? (
-          <Input
-            aria-label="节点名称"
-            autoFocus
-            className="nodrag nopan h-7 rounded px-2.5 text-xs font-normal"
-            onBlur={onCommitRename}
-            onChange={(event) => onRenameValueChange(event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              event.stopPropagation();
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <Input
+              aria-label="节点名称"
+              autoFocus
+              className="nodrag nopan h-7 min-w-0 rounded px-2.5 text-xs font-normal"
+              onBlur={onCommitRename}
+              onChange={(event) => onRenameValueChange(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                event.stopPropagation();
 
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
 
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onCancelRename();
-              }
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-            value={renameValue}
-          />
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onCancelRename();
+                }
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              value={renameValue}
+            />
+            <NodeAiBadge visual={visual} />
+          </span>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-base font-semibold text-foreground">{data.title}</span>
+            <span
+              className="truncate text-base font-semibold text-foreground"
+              onDoubleClick={(event) => {
+                if (!canRename) return;
+
+                event.stopPropagation();
+                onStartRename();
+              }}
+            >
+              {data.title}
+            </span>
+            <NodeAiBadge visual={visual} />
           </span>
         )}
       </span>
     </span>
+  );
+}
+
+function NodeAiBadge({ visual }: { visual: NodeVisual }) {
+  if (visual.badge !== "ai") return null;
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="h-3 w-auto shrink-0"
+      src={WORKFLOW_AI_BADGE_URL}
+    />
   );
 }
 
@@ -268,7 +307,7 @@ function NodeActionMenu({
                   data.onDelete?.(id);
                 }}
               >
-                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                <HugeiconsIcon icon={Delete01Icon} size={14} strokeWidth={1.8} />
                 删除节点
               </DropdownMenuItem>
             </>

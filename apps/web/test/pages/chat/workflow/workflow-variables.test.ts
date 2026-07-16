@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createEdge, createInitialEdges, createInitialNodes } from "@/pages/chat/workflow/graph";
 import {
+  createEdge,
+  createInitialEdges,
+  createInitialNodes,
+  createNodeFromKind,
+} from "@/pages/chat/workflow/graph";
+import {
+  getAvailableLlmInputVariablesForNode,
+  getAvailableMessageContentOutputsForNode,
+  getAvailableIntentInputOutputsForNode,
   getAvailableVariablesForNode,
   getGuaranteedUpstreamNodes,
-  getInvalidMessageVariableSelectors,
+  getInvalidVariableContentSelectors,
   getWorkflowVariableDisplayLabel,
   getWorkflowVariableSelectorKey,
   resolveWorkflowVariable,
@@ -43,8 +51,46 @@ describe("workflow variables", () => {
     ]);
   });
 
+  it("exposes guaranteed predecessor outputs while a local chain is not connected to start", () => {
+    const startNode = createInitialNodes().find((node) => node.id === "start")!;
+    const queryNode = createNodeFromKind("message-query", "message-query", 1);
+    const intentNode = createNodeFromKind("ai-intent", "ai-intent", 2);
+    const llmNode = createNodeFromKind("llm", "llm", 3);
+    const nodes = [startNode, queryNode, intentNode, llmNode];
+    const edges = [
+      createEdge(queryNode.id, intentNode.id),
+      createEdge(queryNode.id, llmNode.id),
+    ];
+
+    expect(getGuaranteedUpstreamNodes(intentNode.id, nodes, edges).map((node) => node.id))
+      .toEqual([queryNode.id]);
+    expect(getAvailableIntentInputOutputsForNode(intentNode.id, nodes, edges))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "messageIds"],
+        }),
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "textContent"],
+        }),
+      ]));
+    expect(getAvailableLlmInputVariablesForNode(llmNode.id, nodes, edges))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "messageIds"],
+          valueType: { itemType: "bigint", kind: "array", semantic: "message" },
+        }),
+        expect.objectContaining({
+          selector: ["node", queryNode.id, "textContent"],
+        }),
+      ]));
+    expect(getAvailableVariablesForNode(llmNode.id, nodes, edges))
+      .not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ selector: ["node", queryNode.id, "messageIds"] }),
+      ]));
+  });
+
   it("resolves stable selectors and rejects unavailable message references", () => {
-    const variables = getAvailableVariablesForNode("message-welcome", createInitialNodes(), createInitialEdges());
+    const variables = getAvailableVariablesForNode("end", createInitialNodes(), createInitialEdges());
 
     expect(getWorkflowVariableSelectorKey(["customer", "name"])).toBe("customer.name");
     expect(resolveWorkflowVariable(variables, ["customer", "name"])).toEqual(expect.objectContaining({
@@ -52,22 +98,22 @@ describe("workflow variables", () => {
       scope: "customer",
     }));
     expect(resolveWorkflowVariable(variables, ["node", "missing", "result"])).toBeUndefined();
-    expect(resolveWorkflowVariable(variables, ["node", "branch-intent", "matchedPathLabel"]))
+    expect(resolveWorkflowVariable(variables, ["node", "message-welcome", "sentAt"]))
       .toEqual(expect.objectContaining({
-        label: "命中分支名称",
+        label: "发送成功时间",
         scope: "node",
-        sourceNodeId: "branch-intent",
-        sourceNodeTitle: "意向判断",
+        sourceNodeId: "message-welcome",
+        sourceNodeTitle: "发送欢迎消息",
       }));
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
-      ["node", "branch-intent", "matchedPathLabel"],
-    )!)).toBe("意向判断.命中分支名称");
+      ["node", "message-welcome", "sentAt"],
+    )!)).toBe("发送欢迎消息.发送成功时间");
     expect(getWorkflowVariableDisplayLabel(resolveWorkflowVariable(
       variables,
       ["customer", "name"],
     )!)).toBe("客户昵称");
-    expect(getInvalidMessageVariableSelectors([
+    expect(getInvalidVariableContentSelectors([
       { selector: ["customer", "name"], type: "variable" },
       { selector: ["node", "missing", "result"], type: "variable" },
     ], variables)).toEqual([["node", "missing", "result"]]);
@@ -77,10 +123,13 @@ describe("workflow variables", () => {
     const waitNode = createInitialNodes().find((node) => node.id === "wait-2d")!;
 
     expect(scopeWorkflowNodeOutputs(waitNode, [{
+      description: "节点完成等待的时间。",
       key: "resumedAt",
       label: "继续时间",
-      type: "datetime",
+      usages: ["variable"],
+      valueType: { kind: "datetime" },
     }])).toEqual([{
+      description: "节点完成等待的时间。",
       key: "resumedAt",
       label: "继续时间",
       scope: "node",
@@ -89,6 +138,37 @@ describe("workflow variables", () => {
       sourceNodeKind: "wait",
       sourceNodeTitle: "观察期",
       type: "datetime",
+      usages: ["variable"],
+      valueType: { kind: "datetime" },
     }]);
+  });
+
+  it("only exposes guaranteed upstream outputs explicitly declared as message content", () => {
+    const baseLlmNode = createNodeFromKind("llm", "llm-copy", 0);
+    const llmNode = {
+      ...baseLlmNode,
+      data: {
+        ...baseLlmNode.data,
+        title: "生成营销文案",
+      },
+    };
+    const outputId = llmNode.data.output.format === "json"
+      ? llmNode.data.output.fields[0]!.id
+      : llmNode.data.output.field.id;
+    const nodes = [...createInitialNodes(), llmNode];
+    const edges = [
+      ...createInitialEdges().filter((edge) => edge.target !== "message-welcome"),
+      createEdge("branch-intent", "llm-copy", undefined, { sourceHandle: "branch-high" }),
+      createEdge("llm-copy", "message-welcome"),
+    ];
+
+    expect(getAvailableMessageContentOutputsForNode("message-welcome", nodes, edges)).toEqual([
+      expect.objectContaining({
+        label: "output",
+        selector: ["node", "llm-copy", outputId],
+        sourceNodeTitle: "生成营销文案",
+      }),
+    ]);
+    expect(getAvailableMessageContentOutputsForNode("llm-copy", nodes, edges)).toEqual([]);
   });
 });

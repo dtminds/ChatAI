@@ -12,6 +12,7 @@ import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowShortcuts } from "./shortcuts";
 import type {
   InsertableWorkflowNodeKind,
+  WorkflowNode,
   WorkflowNodeConfigPatch,
   WorkflowRenderEdge,
   WorkflowRenderNode,
@@ -201,7 +202,7 @@ export function useWorkflowWorkspace(
 
     if (options.workflowEdited) {
       dispatchViewState({
-        openInspector: Boolean(options.selectNode && result.nodeId),
+        openInspector: options.selectNode && result.nodeId ? true : undefined,
         type: "workflow-edited",
       });
     }
@@ -265,13 +266,19 @@ export function useWorkflowWorkspace(
     });
   });
 
-  const addNode = useWorkflowStableCallback((kind: InsertableWorkflowNodeKind) => {
+  const addNode = useWorkflowStableCallback((
+    kind: InsertableWorkflowNodeKind,
+    position: WorkflowNode["position"],
+  ) => {
     if (!permissions.canEditGraph) {
       return;
     }
 
-    const result = controller.addNode(kind);
-    handleWorkflowEditResult(result);
+    const result = controller.addNode(kind, position);
+    commitWorkflowEditResult(result, {
+      closeOverlays: false,
+      workflowEdited: true,
+    });
   });
 
   const handleInsertNodeAfter = useWorkflowStableCallback((
@@ -634,6 +641,7 @@ export function useWorkflowWorkspace(
       nodes: controller.nodes,
       onClose: () => dispatchViewState({ type: "close-inspector" }),
       onNodeChange: updateSelectedNode,
+      onRenameNode: handleRenameNode,
     },
     topBar: {
       canPublish: permissions.canPublish,

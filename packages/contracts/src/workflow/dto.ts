@@ -5,13 +5,28 @@ export const WorkflowIdSchema = Type.String({ pattern: "^[1-9][0-9]*$" });
 export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("start"),
   Type.Literal("wait"),
+  Type.Literal("wait-event"),
   Type.Literal("branch"),
   Type.Literal("message"),
+  Type.Literal("message-query"),
   Type.Literal("tag"),
   Type.Literal("coupon"),
   Type.Literal("handoff"),
+  Type.Literal("agent"),
+  Type.Literal("llm"),
+  Type.Literal("order-query"),
+  Type.Literal("tag-query"),
+  Type.Literal("customer-update"),
+  Type.Literal("ai-collect"),
+  Type.Literal("ai-intent"),
   Type.Literal("end"),
 ]);
+
+export const WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS = [
+  "start",
+  "wait",
+  "end",
+] as const satisfies readonly WorkflowNodeKind[];
 
 export const WorkflowRuntimeStatusSchema = Type.Union([
   Type.Literal("inactive"),
@@ -30,7 +45,6 @@ export const WorkflowDraftNodeDataSchema = Type.Object({
     Type.Literal("running"),
     Type.Literal("warning"),
   ]),
-  summary: Type.String(),
   title: Type.String(),
 }, { additionalProperties: true });
 
@@ -200,6 +214,8 @@ export const WorkflowEntryRecordDetailSchema = Type.Object({
 });
 
 export type WorkflowNodeKind = Static<typeof WorkflowNodeKindSchema>;
+export type WorkflowRuntimeSupportedNodeKind =
+  (typeof WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS)[number];
 export type WorkflowEntryRecordStepNodeKind = Static<typeof WorkflowEntryRecordStepNodeKindSchema>;
 export type WorkflowRuntimeStatus = Static<typeof WorkflowRuntimeStatusSchema>;
 export type WorkflowDraft = Static<typeof WorkflowDraftSchema>;

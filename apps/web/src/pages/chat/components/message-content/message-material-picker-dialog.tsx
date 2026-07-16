@@ -29,27 +29,29 @@ import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import type { MaterialCollectionItem } from "@/pages/chat/components/material-collection/material-types";
 
-type QuickReplyMaterialPickerDialogProps = {
-  bizType: QuickReplyAttachmentMaterialBizType | null;
+type MessageMaterialPickerDialogProps = {
+  bizType: MessageAttachmentMaterialBizType | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (item: WorkbenchMaterialCollectionItemDto) => void;
 };
 
-export type QuickReplyAttachmentMaterialBizType =
+export type MessageAttachmentMaterialBizType =
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
 
-export function QuickReplyMaterialPickerDialog({
+export function MessageMaterialPickerDialog({
   bizType,
   open,
   onOpenChange,
   onSelect,
-}: QuickReplyMaterialPickerDialogProps) {
+}: MessageMaterialPickerDialogProps) {
   const [groups, setGroups] = useState<WorkbenchMaterialCollectionGroupDto[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [items, setItems] = useState<WorkbenchMaterialCollectionItemDto[]>([]);
@@ -66,6 +68,7 @@ export function QuickReplyMaterialPickerDialog({
   );
   const libraryTitle = getLibraryTitle(bizType);
   const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
+  const isImageLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
   const isBusy = isGroupsLoading || isItemsLoading || isLoadingMore;
 
   const loadItems = useCallback(
@@ -80,7 +83,7 @@ export function QuickReplyMaterialPickerDialog({
       mode: "append" | "replace";
       nextPage: number;
       requestSeq: number;
-      type: QuickReplyAttachmentMaterialBizType;
+      type: MessageAttachmentMaterialBizType;
     }) => {
       const response = await getWorkbenchService().listMaterialCollections({
         bizType: type,
@@ -255,7 +258,24 @@ export function QuickReplyMaterialPickerDialog({
               <LoadingState label="正在加载素材" />
             ) : items.length > 0 ? (
               isFileLibrary ? (
-                <QuickReplyFilePickerTable
+                <MessageFilePickerTable
+                  hasMoreItems={hasMore}
+                  isBusy={isBusy}
+                  isLoadingMoreItems={isLoadingMore}
+                  items={items}
+                  onCancel={() => onOpenChange(false)}
+                  onConfirm={handleConfirm}
+                  onLoadMoreItems={handleLoadMore}
+                  selectedItem={selectedItem}
+                  selectedItemId={selectedItemId}
+                  onToggleSelect={(itemId) =>
+                    setSelectedItemId((currentId) =>
+                      currentId === itemId ? null : itemId,
+                    )
+                  }
+                />
+              ) : isImageLibrary ? (
+                <MessageImagePickerGrid
                   hasMoreItems={hasMore}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMore}
@@ -272,7 +292,7 @@ export function QuickReplyMaterialPickerDialog({
                   }
                 />
               ) : (
-                <QuickReplyCardPickerGrid
+                <MessageCardPickerGrid
                   bizType={bizType}
                   hasMoreItems={hasMore}
                   isBusy={isBusy}
@@ -333,7 +353,7 @@ function GroupButton({
   );
 }
 
-function QuickReplyFilePickerTable({
+function MessageFilePickerTable({
   hasMoreItems,
   isBusy,
   isLoadingMoreItems,
@@ -492,7 +512,7 @@ function QuickReplyFilePickerTable({
         </div>
       </ScrollArea>
 
-      <QuickReplyPickerFooter
+      <MessagePickerFooter
         canConfirm={selectedItem != null}
         isBusy={isBusy}
         onCancel={onCancel}
@@ -502,7 +522,7 @@ function QuickReplyFilePickerTable({
   );
 }
 
-function QuickReplyCardPickerGrid({
+function MessageCardPickerGrid({
   bizType,
   hasMoreItems,
   isBusy,
@@ -515,7 +535,7 @@ function QuickReplyCardPickerGrid({
   selectedItem,
   selectedItemId,
 }: {
-  bizType: QuickReplyAttachmentMaterialBizType | null;
+  bizType: MessageAttachmentMaterialBizType | null;
   hasMoreItems: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
@@ -575,7 +595,7 @@ function QuickReplyCardPickerGrid({
         </div>
       </ScrollArea>
 
-      <QuickReplyPickerFooter
+      <MessagePickerFooter
         canConfirm={selectedItem != null}
         isBusy={isBusy}
         onCancel={onCancel}
@@ -585,7 +605,106 @@ function QuickReplyCardPickerGrid({
   );
 }
 
-function QuickReplyPickerFooter({
+function MessageImagePickerGrid({
+  hasMoreItems,
+  isBusy,
+  isLoadingMoreItems,
+  items,
+  onCancel,
+  onConfirm,
+  onLoadMoreItems,
+  onToggleSelect,
+  selectedItem,
+  selectedItemId,
+}: {
+  hasMoreItems: boolean;
+  isBusy: boolean;
+  isLoadingMoreItems: boolean;
+  items: WorkbenchMaterialCollectionItemDto[];
+  onCancel: () => void;
+  onConfirm: () => void;
+  onLoadMoreItems: () => void;
+  onToggleSelect: (itemId: string) => void;
+  selectedItem: WorkbenchMaterialCollectionItemDto | null;
+  selectedItemId: string | null;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ScrollArea
+        aria-label="收录图片列表区域"
+        className="min-h-0 flex-1"
+        role="region"
+      >
+        <div className="mx-auto w-full max-w-[43rem] p-8">
+          <div
+            aria-label="收录图片列表"
+            className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4"
+          >
+            {items.map((item) => {
+              const image = getImageMaterialContent(item);
+              const selected = selectedItemId === item.id;
+
+              return (
+                <button
+                  aria-label={`选择图片 ${image.alt}`}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative block aspect-square w-full overflow-hidden rounded-[8px] border bg-muted/30 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/30",
+                    selected ? "border-primary" : "border-border hover:border-ring/40",
+                  )}
+                  key={item.id}
+                  onClick={() => onToggleSelect(item.id)}
+                  type="button"
+                >
+                  {image.imageUrl ? (
+                    <img
+                      alt={image.alt}
+                      className="size-full object-contain"
+                      loading="lazy"
+                      src={getOptimizedMessageImageUrl(image.imageUrl)}
+                    />
+                  ) : (
+                    <span className="flex size-full items-center justify-center text-[13px] text-muted-foreground">
+                      图片不可用
+                    </span>
+                  )}
+                  <MaterialSelectionIndicator
+                    className="absolute right-2 top-2"
+                    selected={selected}
+                  />
+                </button>
+              );
+            })}
+          </div>
+          {hasMoreItems ? (
+            <div className="mt-5 flex justify-center">
+              <Button
+                className="h-8 gap-2 px-3 text-[13px]"
+                disabled={isBusy || isLoadingMoreItems}
+                onClick={onLoadMoreItems}
+                type="button"
+                variant="ghost"
+              >
+                {isLoadingMoreItems ? (
+                  <Spinner className="text-current" size={14} />
+                ) : null}
+                加载更多
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </ScrollArea>
+      <MessagePickerFooter
+        canConfirm={selectedItem != null}
+        isBusy={isBusy}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    </div>
+  );
+}
+
+function MessagePickerFooter({
   canConfirm,
   isBusy,
   onCancel,
@@ -632,6 +751,10 @@ function LoadingState({ label }: { label: string }) {
 }
 
 function getLibraryTitle(bizType: MaterialCollectionBizType | null) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    return "收录的图片";
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
     return "收录的文件";
   }
@@ -717,6 +840,16 @@ function getFileTableContent(item: WorkbenchMaterialCollectionItemDto) {
     extension: readString(item.content.extension) || getFileExtension(fileName),
     fileName,
     fileSizeLabel: readString(item.content.fileSizeLabel),
+  };
+}
+
+function getImageMaterialContent(item: WorkbenchMaterialCollectionItemDto) {
+  return {
+    alt: readString(item.content.alt) || item.title || "图片",
+    imageUrl:
+      readString(item.content.fileUrl) ||
+      readString(item.content.imageUrl) ||
+      readString(item.content.url),
   };
 }
 

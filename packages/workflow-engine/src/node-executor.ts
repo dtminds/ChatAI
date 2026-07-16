@@ -1,4 +1,9 @@
-import type { WorkflowExecutionNode, WorkflowNodeKind } from "@chatai/contracts";
+import {
+  WORKFLOW_WAIT_DAY_OFFSET_MAX,
+  WORKFLOW_WAIT_DURATION_MAX_BY_UNIT,
+  type WorkflowExecutionNode,
+  type WorkflowNodeKind,
+} from "@chatai/contracts";
 import { WorkflowNodeExecutionError } from "./errors.js";
 
 export type WorkflowNodeExecutionContext = {
@@ -43,6 +48,10 @@ type WorkflowBranchPathConfig = {
   isDefault?: boolean;
   label?: string;
 };
+
+// Published v1 wait specs omitted mode and used one shared duration limit.
+const LEGACY_WORKFLOW_WAIT_DURATION_MAX = 525_600;
+const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
 
 export class WorkflowNodeExecutorRegistry {
   private readonly executors = new Map<WorkflowNodeKind, WorkflowNodeExecutor>();
@@ -113,15 +122,55 @@ function executeWait(
   node: WorkflowExecutionNode,
   context: WorkflowNodeExecutionContext,
 ): WorkflowNodeExecutionResult {
-  const duration = node.config.duration;
-  const unit = node.config.unit;
-  if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration <= 0
+  const dueAt = node.config.mode === "fixed-time"
+    ? getFixedTimeWaitDueAt(node.config, context.now)
+    : getDurationWaitDueAt(node.config, context.now);
+  return { dueAt, output: { dueAt }, type: "wait" };
+}
+
+function getDurationWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {
+  const duration = config.duration;
+  const unit = config.unit;
+  const legacyDurationConfig = config.mode === undefined;
+  if ((!legacyDurationConfig && config.mode !== "duration")
+    || typeof duration !== "number"
+    || !Number.isSafeInteger(duration)
+    || duration <= 0
     || (unit !== "minute" && unit !== "hour" && unit !== "day")) {
     throw new WorkflowNodeExecutionError("Wait node requires a positive duration and supported unit");
   }
+  const maximumDuration = legacyDurationConfig
+    ? LEGACY_WORKFLOW_WAIT_DURATION_MAX
+    : WORKFLOW_WAIT_DURATION_MAX_BY_UNIT[unit];
+  if (duration > maximumDuration) {
+    throw new WorkflowNodeExecutionError("Wait node duration exceeds the supported unit limit");
+  }
   const unitMilliseconds = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
-  const dueAt = new Date(context.now.getTime() + duration * unitMilliseconds).toISOString();
-  return { dueAt, output: { dueAt }, type: "wait" };
+  return new Date(enteredAt.getTime() + duration * unitMilliseconds).toISOString();
+}
+
+function getFixedTimeWaitDueAt(config: Record<string, unknown>, enteredAt: Date) {
+  const dayOffset = config.dayOffset;
+  const time = config.time;
+  if (config.mode !== "fixed-time"
+    || typeof dayOffset !== "number"
+    || !Number.isSafeInteger(dayOffset)
+    || dayOffset <= 0
+    || dayOffset > WORKFLOW_WAIT_DAY_OFFSET_MAX
+    || typeof time !== "string"
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new WorkflowNodeExecutionError("Wait node requires a valid day offset and fixed time");
+  }
+  const [hour, minute] = time.split(":").map(Number) as [number, number];
+  const enteredAtUtc8 = new Date(enteredAt.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
+  const dueAtUtc8WallClock = Date.UTC(
+    enteredAtUtc8.getUTCFullYear(),
+    enteredAtUtc8.getUTCMonth(),
+    enteredAtUtc8.getUTCDate() + dayOffset,
+    hour,
+    minute,
+  );
+  return new Date(dueAtUtc8WallClock - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS).toISOString();
 }
 
 function executeBranch(
@@ -138,10 +187,7 @@ function executeBranch(
     throw new WorkflowNodeExecutionError("Branch node requires one default path");
   }
   return {
-    output: {
-      matchedPathId: matchedPath.id,
-      ...(matchedPath.label ? { matchedPathLabel: matchedPath.label } : {}),
-    },
+    output: {},
     sourceOutletId: matchedPath.id,
     type: "advance",
   };

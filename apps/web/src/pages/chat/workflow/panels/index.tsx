@@ -2,19 +2,25 @@ import type { WorkflowEdge, WorkflowNodeConfigPatch, WorkflowNode } from "../typ
 import { BasePanel } from "./base-panel";
 import { getNodeDefinition } from "../node-definitions";
 import type { NodeSettingsProps } from "./types";
+import { NodeOutputsSection } from "./node-outputs-section";
+import { SettingWorkspace, SettingWorkspaceProvider } from "./setting-workspace";
 
 export function NodeConfigPanel({
+  animateOnMount,
   edges,
   node,
   nodes,
   onClose,
   onNodeChange,
+  onRenameNode,
 }: {
+  animateOnMount?: boolean;
   edges: WorkflowEdge[];
   node?: WorkflowNode;
   nodes: WorkflowNode[];
   onClose: () => void;
   onNodeChange: (patch: WorkflowNodeConfigPatch) => void;
+  onRenameNode: (nodeId: string, title: string) => void;
 }) {
   if (!node) {
     return (
@@ -29,9 +35,16 @@ export function NodeConfigPanel({
   }
 
   return (
-    <BasePanel node={node} onClose={onClose}>
-      <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
-    </BasePanel>
+    <SettingWorkspaceProvider key={node.id}>
+      <SettingWorkspace animateOnMount={animateOnMount}>
+        <BasePanel node={node} onClose={onClose} onRenameNode={onRenameNode}>
+          <NodeSettingsForm edges={edges} node={node} nodes={nodes} onNodeChange={onNodeChange} />
+          {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
+            ? <NodeOutputsSection node={node} />
+            : null}
+        </BasePanel>
+      </SettingWorkspace>
+    </SettingWorkspaceProvider>
   );
 }
 

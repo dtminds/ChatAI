@@ -34,7 +34,6 @@ function createDraft(
       onToggleInsertMenu: vi.fn(),
       selected: true,
       status: "ready",
-      summary: "发送消息",
       title: `发送消息 ${index}`,
     },
     id: "message-welcome",

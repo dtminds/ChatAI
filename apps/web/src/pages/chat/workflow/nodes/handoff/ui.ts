@@ -1,17 +1,34 @@
 import type { WorkflowNodeUiBinding } from "../ui-types";
+import { getVariableContentPreview } from "../variable-content/content";
+import { HandoffConfig } from "./panel";
 
 export const handoffNodeUi: WorkflowNodeUiBinding<"handoff"> = {
   body: {
     getFields: (data) => [
       {
-        id: "target",
-        label: "接管目标",
-        value: data.metric.startsWith("待配置")
-          ? { kind: "empty" }
-          : { kind: "text", text: data.metric },
+        id: "operator-message",
+        label: "客服提示",
+        value: data.operatorMessage?.length
+          ? {
+              kind: "text",
+              maxLines: 2,
+              text: getVariableContentPreview(data.operatorMessage, data.availableVariables),
+            }
+          : { kind: "empty" },
+      },
+      {
+        id: "customer-message",
+        label: "对客话术",
+        value: data.customerMessage?.length
+          ? {
+              kind: "text",
+              maxLines: 2,
+              text: getVariableContentPreview(data.customerMessage, data.availableVariables),
+            }
+          : { kind: "empty" },
       },
     ],
     kind: "fields",
   },
-  settings: { kind: "schema", nodeKind: "handoff" },
+  settings: { component: HandoffConfig, kind: "custom" },
 };

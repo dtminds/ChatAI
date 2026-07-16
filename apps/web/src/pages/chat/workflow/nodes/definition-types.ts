@@ -16,11 +16,12 @@ import type {
 export type NodeVisual = {
   accentClassName: string;
   accentRgb: string;
+  badge?: "ai";
   icon: typeof Rocket01Icon;
   label: string;
 };
 
-export type WorkflowNodePaletteGroupId = "engagement" | "flow" | "logic";
+export type WorkflowNodePaletteGroupId = "benefit" | "data" | "flow" | "message";
 
 export type WorkflowNodePaletteGroup = {
   id: WorkflowNodePaletteGroupId;
@@ -65,8 +66,10 @@ export type WorkflowNodeDefinition<TKind extends WorkflowNodeKind = WorkflowNode
   sanitizeData?: (data: WorkflowNodeData<TKind>) => WorkflowNodeData<TKind>;
   schemaVersion: number;
   getOutputVariables?: (node: WorkflowNode<TKind>) => WorkflowNodeOutputDefinition[];
+  getEstimatedHeight?: (data: WorkflowNodeData<TKind>) => number;
   getSourceHandles: (data: WorkflowNodeData<TKind>) => WorkflowSourceHandleDefinition[];
   getTargetHandles: (data: WorkflowNodeData<TKind>) => WorkflowTargetHandleDefinition[];
+  ownsOutputConfiguration?: boolean;
   sort: number;
   validate?: (
     node: WorkflowNode<TKind>,

@@ -1,15 +1,22 @@
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   SettingsGroupChat,
   SettingsGroupChatReceptionManagedAccount,
   SettingsGroupChatsResponse,
 } from "@chatai/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -19,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   Popover,
   PopoverContent,
@@ -33,37 +41,41 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  listGroupChatReceptionOptions,
   listGroupChats,
   updateGroupChatReception,
 } from "@/pages/chat/settings/settings-service";
 import {
   GroupChatReceptionSettingsDialog,
-  type GroupChatReceptionManagedAccountOption,
   type GroupChatReceptionDialogState,
 } from "@/pages/chat/settings/pages/group-chat-reception-settings-dialog";
-import {
-  SettingsPagination,
-  useSettingsLocalPagination,
-} from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
 const emptyData: SettingsGroupChatsResponse = {
   filterManagedAccounts: [],
   groupChats: [],
+  page: 1,
+  pageSize: 10,
+  total: 0,
+  totalPages: 1,
 };
 
 const allManagedAccountsFilterValue = "all";
+const groupChatPageSizeOptions = [10, 20, 50] as const;
 
-export function GroupChatsSettingsTab() {
+export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNode }) {
   const { canManageManagedAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsGroupChatsResponse>(emptyData);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [managedAccountFilter, setManagedAccountFilter] = useState(allManagedAccountsFilterValue);
-  const [selectedGroupChatIds, setSelectedGroupChatIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(groupChatPageSizeOptions[0]);
+  const [selectedGroupChats, setSelectedGroupChats] = useState<SettingsGroupChat[]>([]);
   const [dialogState, setDialogState] = useState<GroupChatReceptionDialogState | null>(null);
+  const receptionOptionsRequestIdRef = useRef(0);
 
   useEffect(() => {
     let ignore = false;
@@ -79,15 +91,24 @@ export function GroupChatsSettingsTab() {
             managedAccountFilter === allManagedAccountsFilterValue
               ? undefined
               : managedAccountFilter,
+          page,
+          pageSize,
         });
 
         if (!ignore) {
           setData(response);
-          setSelectedGroupChatIds((current) =>
-            current.filter((groupChatId) =>
-              response.groupChats.some((groupChat) => groupChat.id === groupChatId),
-            ),
-          );
+          if (response.page !== page) {
+            setPage(response.page);
+          }
+          setSelectedGroupChats((current) => {
+            const selectedIds = new Set(current.map((groupChat) => groupChat.id));
+            const currentPageIds = new Set(response.groupChats.map((groupChat) => groupChat.id));
+
+            return [
+              ...current.filter((groupChat) => !currentPageIds.has(groupChat.id)),
+              ...response.groupChats.filter((groupChat) => selectedIds.has(groupChat.id)),
+            ];
+          });
         }
       } catch (error) {
         if (!ignore) {
@@ -105,20 +126,13 @@ export function GroupChatsSettingsTab() {
     return () => {
       ignore = true;
     };
-  }, [keyword, managedAccountFilter]);
+  }, [keyword, managedAccountFilter, page, pageSize]);
 
-  const {
-    currentPage,
-    pagedItems: pagedGroupChats,
-    resetPage,
-    setPage,
-    totalPages,
-  } = useSettingsLocalPagination(data.groupChats);
   const selectedGroupChatIdSet = useMemo(
-    () => new Set(selectedGroupChatIds),
-    [selectedGroupChatIds],
+    () => new Set(selectedGroupChats.map((groupChat) => groupChat.id)),
+    [selectedGroupChats],
   );
-  const visibleGroupChatIds = pagedGroupChats.map((groupChat) => groupChat.id);
+  const visibleGroupChatIds = data.groupChats.map((groupChat) => groupChat.id);
   const allVisibleSelected =
     visibleGroupChatIds.length > 0 &&
     visibleGroupChatIds.every((groupChatId) => selectedGroupChatIdSet.has(groupChatId));
@@ -127,38 +141,65 @@ export function GroupChatsSettingsTab() {
     !allVisibleSelected;
 
   function toggleGroupChatSelection(groupChatId: string) {
-    setSelectedGroupChatIds((current) =>
-      current.includes(groupChatId)
-        ? current.filter((id) => id !== groupChatId)
-        : [...current, groupChatId],
+    const groupChat = data.groupChats.find((item) => item.id === groupChatId);
+
+    if (!groupChat) {
+      return;
+    }
+
+    setSelectedGroupChats((current) =>
+      current.some((item) => item.id === groupChatId)
+        ? current.filter((item) => item.id !== groupChatId)
+        : [...current, groupChat],
     );
   }
 
   function toggleVisibleSelection(checked: boolean) {
-    setSelectedGroupChatIds((current) => {
-      const next = new Set(current);
+    setSelectedGroupChats((current) => {
+      const visibleIds = new Set(visibleGroupChatIds);
+      const offPageSelections = current.filter((groupChat) => !visibleIds.has(groupChat.id));
 
-      for (const groupChatId of visibleGroupChatIds) {
-        if (checked) {
-          next.add(groupChatId);
-        } else {
-          next.delete(groupChatId);
-        }
-      }
-
-      return [...next];
+      return checked ? [...offPageSelections, ...data.groupChats] : offPageSelections;
     });
   }
 
-  function openReceptionDialog(groupChats: SettingsGroupChat[]) {
+  async function openReceptionDialog(groupChats: SettingsGroupChat[]) {
     if (groupChats.length === 0) {
       return;
     }
 
+    const requestId = receptionOptionsRequestIdRef.current + 1;
+    receptionOptionsRequestIdRef.current = requestId;
     setDialogState({
-      availableManagedAccounts: buildAvailableManagedAccountsForDialog(groupChats),
+      availableManagedAccounts: [],
       groupChats,
+      isLoadingOptions: true,
+      optionsError: "",
     });
+
+    try {
+      const response = await listGroupChatReceptionOptions({
+        groupChatIds: groupChats.map((groupChat) => groupChat.id),
+      });
+
+      if (receptionOptionsRequestIdRef.current === requestId) {
+        setDialogState({
+          availableManagedAccounts: response.availableManagedAccounts,
+          groupChats,
+          isLoadingOptions: false,
+          optionsError: "",
+        });
+      }
+    } catch (error) {
+      if (receptionOptionsRequestIdRef.current === requestId) {
+        setDialogState({
+          availableManagedAccounts: [],
+          groupChats,
+          isLoadingOptions: false,
+          optionsError: getErrorMessage(error),
+        });
+      }
+    }
   }
 
   async function handleSaveReception(groupChatIds: string[], hostUserSeatIds: string[]) {
@@ -173,23 +214,18 @@ export function GroupChatsSettingsTab() {
         managedAccountFilter === allManagedAccountsFilterValue
           ? undefined
           : managedAccountFilter,
+      page,
+      pageSize,
     });
     setData(response);
-    setSelectedGroupChatIds((current) =>
-      current.filter((groupChatId) =>
-        response.groupChats.some((groupChat) => groupChat.id === groupChatId),
-      ),
-    );
+    setSelectedGroupChats([]);
   }
-
-  const selectedGroupChats = data.groupChats.filter((groupChat) =>
-    selectedGroupChatIdSet.has(groupChat.id),
-  );
 
   return (
     <>
       <section className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {toolbarStart}
           <div className="relative w-[280px]">
             <HugeiconsIcon
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -203,7 +239,8 @@ export function GroupChatsSettingsTab() {
               className="h-10 rounded-[8px] pl-9"
               onChange={(event) => {
                 setKeyword(event.target.value);
-                resetPage();
+                setPage(1);
+                setSelectedGroupChats([]);
               }}
               placeholder="搜索群聊"
               value={keyword}
@@ -213,7 +250,8 @@ export function GroupChatsSettingsTab() {
           <Select
             onValueChange={(value) => {
               setManagedAccountFilter(value);
-              resetPage();
+              setPage(1);
+              setSelectedGroupChats([]);
             }}
             value={managedAccountFilter}
           >
@@ -234,7 +272,7 @@ export function GroupChatsSettingsTab() {
         <Button
           className="h-10 rounded-[8px] px-4"
           disabled={!canManageManagedAccounts || selectedGroupChats.length === 0}
-          onClick={() => openReceptionDialog(selectedGroupChats)}
+          onClick={() => void openReceptionDialog(selectedGroupChats)}
           type="button"
           variant="outline"
         >
@@ -255,21 +293,20 @@ export function GroupChatsSettingsTab() {
                   <Checkbox
                     aria-label="全选当前页群聊"
                     checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
-                    disabled={isLoading || pagedGroupChats.length === 0}
+                    disabled={isLoading || data.groupChats.length === 0}
                     onCheckedChange={(checked) => toggleVisibleSelection(checked === true)}
                   />
                 </TableHead>
-                <TableHead className="w-[28%] px-5 py-4">群聊</TableHead>
-                <TableHead className="w-[24%] px-5 py-4">群ID</TableHead>
-                <TableHead className="w-[24%] px-5 py-4">开通企微号</TableHead>
-                <TableHead className="w-[12%] px-5 py-4">可接待企微号</TableHead>
+                <TableHead className="w-[36%] px-5 py-4">群聊</TableHead>
+                <TableHead className="w-[30%] px-5 py-4">开通企微号</TableHead>
+                <TableHead className="w-[22%] px-5 py-4">可接待企微号</TableHead>
                 <TableHead className="px-5 py-4">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell className="px-5 py-10" colSpan={6}>
+                  <TableCell className="px-5 py-10" colSpan={5}>
                     <div
                       aria-label="正在加载"
                       className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
@@ -280,20 +317,20 @@ export function GroupChatsSettingsTab() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : pagedGroupChats.length > 0 ? (
-                pagedGroupChats.map((groupChat) => (
+              ) : data.groupChats.length > 0 ? (
+                data.groupChats.map((groupChat) => (
                   <GroupChatRow
                     canManage={canManageManagedAccounts}
                     groupChat={groupChat}
                     isSelected={selectedGroupChatIdSet.has(groupChat.id)}
                     key={groupChat.id}
-                    onConfigure={() => openReceptionDialog([groupChat])}
+                    onConfigure={() => void openReceptionDialog([groupChat])}
                     onToggleSelection={() => toggleGroupChatSelection(groupChat.id)}
                   />
                 ))
               ) : (
                 <TableRow>
-                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={6}>
+                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={5}>
                     暂无数据
                   </TableCell>
                 </TableRow>
@@ -303,19 +340,27 @@ export function GroupChatsSettingsTab() {
         </section>
       )}
 
-      {!isLoading && totalPages > 1 ? (
-        <div className="mt-4 flex justify-end">
-          <SettingsPagination
-            onPageChange={setPage}
-            page={currentPage}
-            totalPages={totalPages}
-          />
-        </div>
+      {!isLoading ? (
+        <TablePagination
+          className="mt-4 border-t-0 py-0"
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPage(1);
+            setPageSize(nextPageSize);
+            setSelectedGroupChats([]);
+          }}
+          page={data.page}
+          pageSize={data.pageSize}
+          pageSizeOptions={groupChatPageSizeOptions}
+          total={data.total}
+          totalPages={data.totalPages}
+        />
       ) : null}
 
       <GroupChatReceptionSettingsDialog
         onOpenChange={(open) => {
           if (!open) {
+            receptionOptionsRequestIdRef.current += 1;
             setDialogState(null);
           }
         }}
@@ -356,11 +401,6 @@ function GroupChatRow({
         </div>
       </TableCell>
       <TableCell className="px-5 py-5">
-        <span className="block max-w-[16rem] truncate font-mono text-sm text-muted-foreground">
-          {truncateGroupId(groupChat.thirdGroupId)}
-        </span>
-      </TableCell>
-      <TableCell className="px-5 py-5">
         <div className="flex min-w-0 items-center gap-2">
           <ManagedAccountAvatar
             avatarUrl={groupChat.openingManagedAccount.avatarUrl}
@@ -375,16 +415,36 @@ function GroupChatRow({
         <ReceptionManagedAccountsCell accounts={groupChat.receptionManagedAccounts} />
       </TableCell>
       <TableCell className="px-5 py-5">
-        <Button
-          aria-label={`设置 ${groupChat.name}`}
-          className="h-8 rounded-[8px] px-2 text-primary"
-          disabled={!canManage}
-          onClick={onConfigure}
-          type="button"
-          variant="link"
-        >
-          设置
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`打开 ${groupChat.name} 操作菜单`}
+              className="size-8 rounded-[8px]"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                color="currentColor"
+                icon={MoreHorizontalIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[116px]">
+            <DropdownMenuItem disabled={!canManage} onSelect={onConfigure}>
+              接待账号设置
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                void copyGroupChatId(groupChat.thirdGroupId);
+              }}
+            >
+              复制群聊ID
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );
@@ -407,7 +467,7 @@ function ReceptionManagedAccountsCell({
   }, []);
 
   if (accounts.length === 0) {
-    return <span className="text-sm text-muted-foreground">0</span>;
+    return <span className="text-sm text-muted-foreground">-</span>;
   }
 
   function openPopover() {
@@ -441,11 +501,11 @@ function ReceptionManagedAccountsCell({
           onMouseLeave={scheduleClosePopover}
           type="button"
         >
-          <span aria-hidden="true" className="flex -space-x-2">
-            {accounts.map((account) => (
+          <span aria-hidden="true" className="flex items-center">
+            {accounts.map((account, index) => (
               <ManagedAccountAvatar
                 avatarUrl={account.avatarUrl}
-                className="size-7 ring-2 ring-background"
+                className={index === 0 ? undefined : "-ml-2"}
                 key={account.id}
                 name={account.name}
               />
@@ -523,47 +583,22 @@ function ManagedAccountAvatar({
   );
 }
 
-function truncateGroupId(groupId: string) {
-  if (groupId.length <= 22) {
-    return groupId;
-  }
-
-  return `${groupId.slice(0, 18)}...`;
-}
-
 function getInitial(name: string) {
   return name.trim().slice(0, 1) || "?";
 }
 
-function buildAvailableManagedAccountsForDialog(
-  groupChats: SettingsGroupChat[],
-): GroupChatReceptionManagedAccountOption[] {
-  if (groupChats.length === 0) {
-    return [];
+async function copyGroupChatId(groupChatId: string) {
+  if (!groupChatId || !navigator.clipboard) {
+    toast.warning("复制失败，请稍后重试");
+    return;
   }
 
-  const selectableLists = groupChats.map(
-    (groupChat) => groupChat.selectableReceptionManagedAccounts,
-  );
-  const [firstList, ...restLists] = selectableLists;
-  const sharedAccountIds = restLists.reduce((currentIds, accounts) => {
-    const accountIdSet = new Set(accounts.map((account) => account.id));
-
-    return new Set([...currentIds].filter((accountId) => accountIdSet.has(accountId)));
-  }, new Set(firstList.map((account) => account.id)));
-  const accountById = new Map<string, GroupChatReceptionManagedAccountOption>();
-
-  for (const accounts of selectableLists) {
-    for (const account of accounts) {
-      if (!accountById.has(account.id)) {
-        accountById.set(account.id, account);
-      }
-    }
+  try {
+    await navigator.clipboard.writeText(groupChatId);
+    toast.success("已复制群聊ID");
+  } catch {
+    toast.warning("复制失败，请稍后重试");
   }
-
-  return [...sharedAccountIds]
-    .map((accountId) => accountById.get(accountId))
-    .filter((account): account is GroupChatReceptionManagedAccountOption => account != null);
 }
 
 function getErrorMessage(error: unknown) {

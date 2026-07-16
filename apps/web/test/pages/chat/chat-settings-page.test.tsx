@@ -287,10 +287,23 @@ describe("Chat settings pages", () => {
       data: { updated: true },
       success: true,
     });
+    mock.onPost("/server/settings/group-chats/reception-options").reply((config) => {
+      const groupChatIds = (JSON.parse(config.data ?? "{}") as { groupChatIds?: string[] })
+        .groupChatIds ?? [];
+      const availableManagedAccounts = groupChatIds.length === 1 && groupChatIds[0] === "501"
+        ? [{ avatarUrl: "https://example.com/ndt.png", id: "102", name: "念都堂" }]
+        : groupChatIds.length === 1 && groupChatIds[0] === "502"
+          ? [{ avatarUrl: "https://example.com/drc.png", id: "101", name: "德瑞可" }]
+          : [];
+
+      return [200, { data: { availableManagedAccounts }, success: true }];
+    });
     mock.onGet("/server/settings/group-chats").reply((config) => {
       const keyword = config.params?.keyword as string | undefined;
       const managedAccountId = config.params?.managedAccountId as string | undefined;
-      const groupChats = [
+      const page = Number(config.params?.page ?? 1);
+      const pageSize = Number(config.params?.pageSize ?? 10);
+      const filteredGroupChats = [
         {
           avatarUrl: "https://example.com/group-1.png",
           id: "501",
@@ -318,13 +331,6 @@ describe("Chat settings pages", () => {
             },
           ],
           receptionSeatCount: 3,
-          selectableReceptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/ndt.png",
-              id: "102",
-              name: "念都堂",
-            },
-          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
         {
@@ -336,26 +342,8 @@ describe("Chat settings pages", () => {
             id: "102",
             name: "念都堂",
           },
-          receptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/reception-4.png",
-              id: "204",
-              name: "小李",
-            },
-            {
-              avatarUrl: "https://example.com/reception-5.png",
-              id: "205",
-              name: "小王",
-            },
-          ],
-          receptionSeatCount: 2,
-          selectableReceptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/drc.png",
-              id: "101",
-              name: "德瑞可",
-            },
-          ],
+          receptionManagedAccounts: [],
+          receptionSeatCount: 0,
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
       ].filter((groupChat) => {
@@ -368,6 +356,13 @@ describe("Chat settings pages", () => {
 
         return matchesKeyword && matchesManagedAccount;
       });
+      const total = filteredGroupChats.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const activePage = Math.min(page, totalPages);
+      const groupChats = filteredGroupChats.slice(
+        (activePage - 1) * pageSize,
+        activePage * pageSize,
+      );
 
       return [
         200,
@@ -378,6 +373,10 @@ describe("Chat settings pages", () => {
               { id: "102", name: "念都堂" },
             ],
             groupChats,
+            page: activePage,
+            pageSize,
+            total,
+            totalPages,
           },
           success: true,
         },
@@ -455,40 +454,82 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    await user.click(await screen.findByRole("radio", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
 
     expect(await screen.findByRole("table", { name: "开通群聊列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "群ID" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "群ID" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "开通企微号" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "可接待企微号" })).toBeInTheDocument();
     expect(await screen.findByText("护肤交流群")).toBeInTheDocument();
-    expect(screen.getByText("29F71A2ED8125854B6A1")).toBeInTheDocument();
+    expect(screen.queryByText("29F71A2ED8125854B6A1")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "查看可接待企微号 3 个" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^设置 / }).length).toBeGreaterThan(0);
+    expect(
+      within(screen.getByRole("row", { name: /售后答疑群/ })).getByText("-"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开 护肤交流群 操作菜单" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
+  });
+
+  it("reloads group chats from the server when page size changes", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await screen.findByRole("table", { name: "开通群聊列表" });
+
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/group-chats").at(-1)
+        ?.params,
+    ).toMatchObject({ page: 1, pageSize: 10 });
+
+    await user.click(screen.getByRole("combobox", { name: "每页条数" }));
+    await user.click(await screen.findByRole("option", { name: "20" }));
+
+    await waitFor(() => {
+      expect(
+        mock.history.get.filter((request) => request.url === "/server/settings/group-chats").at(-1)
+          ?.params,
+      ).toMatchObject({ page: 1, pageSize: 20 });
+    });
   });
 
   it("opens single and batch group chat reception dialogs from the same component", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    await user.click(await screen.findByRole("radio", { name: "开通群聊" }));
-    await user.click(await screen.findByRole("button", { name: "设置 护肤交流群" }));
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    expect(
+      mock.history.post.filter(
+        (request) => request.url === "/server/settings/group-chats/reception-options",
+      ),
+    ).toHaveLength(0);
+    await user.click(await screen.findByRole("button", { name: "打开 护肤交流群 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "接待账号设置" }));
 
     const singleDialog = await screen.findByRole("dialog", { name: "群聊接待设置" });
     expect(within(singleDialog).getByText("护肤交流群")).toBeInTheDocument();
-    expect(within(singleDialog).getByLabelText("可接待的企微号")).toBeInTheDocument();
-    expect(within(singleDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "请选择企微号",
-    );
+    expect(within(singleDialog).getByLabelText("群聊 护肤交流群")).toBeInTheDocument();
+    expect(
+      within(singleDialog).getByText("选中的企微号可在对应群聊收发消息"),
+    ).toBeInTheDocument();
+    expect(
+      mock.history.post.filter(
+        (request) => request.url === "/server/settings/group-chats/reception-options",
+      ),
+    ).toHaveLength(1);
+    expect(within(singleDialog).getByText("3/5")).toBeInTheDocument();
+    expect(within(singleDialog).getByText("小明")).toBeInTheDocument();
+    expect(within(singleDialog).getByText("小红")).toBeInTheDocument();
+    expect(within(singleDialog).getByText("小刚")).toBeInTheDocument();
 
-    await user.click(within(singleDialog).getByRole("button", { name: "选择可接待企微号" }));
+    await user.click(within(singleDialog).getByRole("textbox", { name: "搜索并选择接待账号" }));
     await user.click(await within(document.body).findByRole("checkbox", { name: "念都堂" }));
-    expect(within(singleDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "念都堂",
-    );
+    expect(within(singleDialog).getByText("4/5")).toBeInTheDocument();
+    expect(within(singleDialog).getByRole("button", { name: "移除 念都堂" })).toBeInTheDocument();
 
     await user.click(within(singleDialog).getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog", { name: "群聊接待设置" })).not.toBeInTheDocument();
@@ -497,16 +538,32 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("checkbox", { name: "选择 售后答疑群" }));
     await user.click(screen.getByRole("button", { name: "批量设置" }));
 
-    const batchDialog = await screen.findByRole("dialog", { name: "群聊接待批量设置" });
+    const batchDialog = await screen.findByRole("dialog", { name: "已选中 2 个群聊" });
     expect(
-      within(batchDialog).getByRole("note", {
-        name: "注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略",
+      within(batchDialog).getByRole("alert", {
+        name: "注意事项：请确保设置的企微号已加入每一个所选的群聊中",
       }),
     ).toBeInTheDocument();
     expect(within(batchDialog).queryByText("护肤交流群")).not.toBeInTheDocument();
-    expect(within(batchDialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "请选择企微号",
-    );
+    expect(within(batchDialog).getByText("0/5")).toBeInTheDocument();
+    expect(within(batchDialog).getByText("暂无已选择账号")).toBeInTheDocument();
+  });
+
+  it("copies the group chat id from the row action menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("tab", { name: "开通群聊" }));
+    await user.click(await screen.findByRole("button", { name: "打开 护肤交流群 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "复制群聊ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("29F71A2ED8125854B6A1");
+    expect(toast.success).toHaveBeenCalledWith("已复制群聊ID");
   });
 
   it("shows real managed-account and form reference pages inside the settings shell", async () => {
@@ -514,8 +571,8 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "企微账号" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "开通群聊" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "企微账号" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "开通群聊" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
     expect(await screen.findByText("德瑞可")).toBeInTheDocument();

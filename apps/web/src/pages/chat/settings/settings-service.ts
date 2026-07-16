@@ -1,5 +1,7 @@
 import type {
   ApiSuccessEnvelope,
+  SettingsGroupChatReceptionOptionsRequest,
+  SettingsGroupChatReceptionOptionsResponse,
   SettingsGroupChatReceptionUpdateRequest,
   SettingsGroupChatReceptionUpdateResponse,
   SettingsGroupChatsQuery,
@@ -48,6 +50,17 @@ export async function listGroupChats(query: SettingsGroupChatsQuery = {}) {
       params: query,
     },
   );
+
+  return response.data;
+}
+
+export async function listGroupChatReceptionOptions(
+  payload: SettingsGroupChatReceptionOptionsRequest,
+) {
+  const response = await http.post<
+    ApiSuccessEnvelope<SettingsGroupChatReceptionOptionsResponse>,
+    SettingsGroupChatReceptionOptionsRequest
+  >("/server/settings/group-chats/reception-options", payload);
 
   return response.data;
 }

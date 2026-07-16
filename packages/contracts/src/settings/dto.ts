@@ -88,9 +88,6 @@ export const SettingsGroupChatSchema = Type.Object({
   openingManagedAccount: SettingsGroupChatOpeningManagedAccountSchema,
   receptionManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
   receptionSeatCount: Type.Integer({ minimum: 0 }),
-  selectableReceptionManagedAccounts: Type.Array(
-    SettingsGroupChatReceptionManagedAccountSchema,
-  ),
   thirdGroupId: Type.String(),
 });
 
@@ -102,12 +99,26 @@ export const SettingsGroupChatFilterManagedAccountSchema = Type.Object({
 export const SettingsGroupChatsResponseSchema = Type.Object({
   filterManagedAccounts: Type.Array(SettingsGroupChatFilterManagedAccountSchema),
   groupChats: Type.Array(SettingsGroupChatSchema),
+  page: Type.Integer({ minimum: 1 }),
+  pageSize: Type.Integer({ minimum: 1 }),
+  total: Type.Integer({ minimum: 0 }),
+  totalPages: Type.Integer({ minimum: 1 }),
 });
 
 export const SettingsGroupChatsQuerySchema = Type.Object({
   keyword: Type.Optional(Type.String()),
   managedAccountId: Type.Optional(Type.String()),
+  page: Type.Optional(Type.Integer({ minimum: 1 })),
+  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 }, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionOptionsRequestSchema = Type.Object({
+  groupChatIds: Type.Array(Type.String(), { minItems: 1 }),
+}, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
+  availableManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
+});
 
 export const SettingsGroupChatReceptionUpdateRequestSchema = Type.Object({
   groupChatIds: Type.Array(Type.String(), { minItems: 1 }),
@@ -224,6 +235,12 @@ export type SettingsGroupChatFilterManagedAccount = Static<
 >;
 export type SettingsGroupChatsResponse = Static<typeof SettingsGroupChatsResponseSchema>;
 export type SettingsGroupChatsQuery = Static<typeof SettingsGroupChatsQuerySchema>;
+export type SettingsGroupChatReceptionOptionsRequest = Static<
+  typeof SettingsGroupChatReceptionOptionsRequestSchema
+>;
+export type SettingsGroupChatReceptionOptionsResponse = Static<
+  typeof SettingsGroupChatReceptionOptionsResponseSchema
+>;
 export type SettingsGroupChatReceptionUpdateRequest = Static<
   typeof SettingsGroupChatReceptionUpdateRequestSchema
 >;

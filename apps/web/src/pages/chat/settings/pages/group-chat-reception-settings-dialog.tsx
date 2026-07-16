@@ -1,9 +1,10 @@
-import { ArrowDown01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SettingsGroupChat } from "@chatai/contracts";
 import type { FormEvent } from "react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,12 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
@@ -38,6 +38,8 @@ export type GroupChatReceptionManagedAccountOption = {
 export type GroupChatReceptionDialogState = {
   availableManagedAccounts: GroupChatReceptionManagedAccountOption[];
   groupChats: SettingsGroupChat[];
+  isLoadingOptions: boolean;
+  optionsError: string;
 };
 
 export function GroupChatReceptionSettingsDialog({
@@ -54,25 +56,48 @@ export function GroupChatReceptionSettingsDialog({
   const pickerInputId = useId();
   const [selectedManagedAccountIds, setSelectedManagedAccountIds] = useState<string[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const pickerAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const groupChats = state?.groupChats ?? [];
   const availableManagedAccounts = state?.availableManagedAccounts ?? [];
+  const isLoadingOptions = state?.isLoadingOptions ?? false;
+  const optionsError = state?.optionsError ?? "";
   const isBatchMode = groupChats.length > 1;
   const singleGroupChat = groupChats.length === 1 ? groupChats[0] : null;
+  const managedAccountOptions = useMemo(() => {
+    const accountById = new Map(
+      availableManagedAccounts.map((account) => [account.id, account] as const),
+    );
+
+    for (const account of singleGroupChat?.receptionManagedAccounts ?? []) {
+      if (!accountById.has(account.id)) {
+        accountById.set(account.id, account);
+      }
+    }
+
+    return [...accountById.values()];
+  }, [availableManagedAccounts, singleGroupChat]);
+  const managedAccountById = useMemo(
+    () => new Map(managedAccountOptions.map((account) => [account.id, account] as const)),
+    [managedAccountOptions],
+  );
   const selectedManagedAccountIdSet = useMemo(
     () => new Set(selectedManagedAccountIds),
     [selectedManagedAccountIds],
   );
-  const selectedManagedAccounts = availableManagedAccounts.filter((account) =>
-    selectedManagedAccountIdSet.has(account.id),
-  );
-  const selectionSummary =
-    selectedManagedAccounts.length > 0
-      ? selectedManagedAccounts.map((account) => account.name).join("，")
-      : "";
+  const selectedManagedAccounts = selectedManagedAccountIds
+    .map((accountId) => managedAccountById.get(accountId))
+    .filter((account): account is GroupChatReceptionManagedAccountOption => account != null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredManagedAccounts = normalizedQuery
+    ? managedAccountOptions.filter((account) =>
+        account.name.toLowerCase().includes(normalizedQuery),
+      )
+    : managedAccountOptions;
   const isSelectionLimitReached =
     selectedManagedAccountIds.length >= maxReceptionManagedAccountsPerGroup;
 
@@ -81,22 +106,25 @@ export function GroupChatReceptionSettingsDialog({
       return;
     }
 
-    const availableIds = new Set(state.availableManagedAccounts.map((account) => account.id));
     const initialSelectedIds =
       state.groupChats.length === 1
         ? state.groupChats[0].receptionManagedAccounts
             .map((account) => account.id)
-            .filter((accountId) => availableIds.has(accountId))
             .slice(0, maxReceptionManagedAccountsPerGroup)
         : [];
 
     setSelectedManagedAccountIds(initialSelectedIds);
     setIsPickerOpen(false);
+    setQuery("");
     setSaving(false);
     setErrorMessage("");
   }, [open, state]);
 
   function toggleManagedAccount(managedAccountId: string) {
+    if (isLoadingOptions) {
+      return;
+    }
+
     setSelectedManagedAccountIds((current) => {
       if (current.includes(managedAccountId)) {
         return current.filter((id) => id !== managedAccountId);
@@ -140,19 +168,21 @@ export function GroupChatReceptionSettingsDialog({
         onOpenAutoFocus={(event) => event.preventDefault()}
         ref={setContentElement}
       >
-        <DialogHeader>
-          <DialogTitle>{isBatchMode ? "群聊接待批量设置" : "群聊接待设置"}</DialogTitle>
-          <DialogDescription className="pt-1">
-            可接待的企微号即可在对应群聊收发消息
-          </DialogDescription>
+        <DialogHeader className="pr-8">
+          {singleGroupChat ? (
+            <>
+              <DialogTitle className="sr-only">群聊接待设置</DialogTitle>
+              <div className="flex min-w-0 items-center gap-2">
+                <GroupChatAvatar groupChat={singleGroupChat} />
+                <p className="truncate text-sm font-medium text-foreground">
+                  {singleGroupChat.name}
+                </p>
+              </div>
+            </>
+          ) : (
+            <DialogTitle>已选中 {groupChats.length} 个群聊</DialogTitle>
+          )}
         </DialogHeader>
-
-        {singleGroupChat ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <GroupChatAvatar groupChat={singleGroupChat} />
-            <p className="truncate text-sm font-medium text-foreground">{singleGroupChat.name}</p>
-          </div>
-        ) : null}
 
         {isBatchMode ? <BatchReceptionNotice /> : null}
 
@@ -161,72 +191,87 @@ export function GroupChatReceptionSettingsDialog({
           className="space-y-5"
           onSubmit={handleSubmit}
         >
-          <div className="space-y-2">
-            <Label htmlFor={pickerInputId}>可接待的企微号</Label>
-            <p className="text-sm text-muted-foreground">每个群聊最多选择 5 个</p>
+          <section aria-label="可接待账号" className="space-y-2" role="group">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-foreground">群聊接待设置</h2>
+              <div className="flex items-start justify-between gap-3">
+                <DialogDescription>
+                  选中的企微号可在对应群聊收发消息
+                </DialogDescription>
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  {selectedManagedAccountIds.length}/{maxReceptionManagedAccountsPerGroup}
+                </span>
+              </div>
+            </div>
             <Popover modal={false} onOpenChange={setIsPickerOpen} open={isPickerOpen}>
               <PopoverAnchor asChild>
-                <PopoverTrigger asChild>
-                  <Button
-                    aria-label="选择可接待企微号"
-                    className="h-10 w-full justify-between rounded-[8px] px-3 font-normal"
+                <div ref={pickerAnchorRef}>
+                  <Input
+                    aria-label="搜索并选择接待账号"
+                    disabled={isLoadingOptions || !!optionsError}
                     id={pickerInputId}
-                    type="button"
-                    variant="outline"
-                  >
-                    <span
-                      className={cn(
-                        "truncate",
-                        selectionSummary ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {selectionSummary || "请选择企微号"}
-                    </span>
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      color="currentColor"
-                      icon={ArrowDown01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </Button>
-                </PopoverTrigger>
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setIsPickerOpen(true);
+                    }}
+                    onFocus={() => setIsPickerOpen(true)}
+                    placeholder={isLoadingOptions ? "正在加载" : "搜索并选择接待账号"}
+                    value={query}
+                  />
+                </div>
               </PopoverAnchor>
               <PopoverContent
                 align="start"
                 className="w-[var(--radix-popper-anchor-width)] rounded-[10px] p-2"
                 onCloseAutoFocus={(event) => event.preventDefault()}
+                onInteractOutside={(event) => {
+                  const target = event.target;
+
+                  if (
+                    target instanceof Node &&
+                    pickerAnchorRef.current?.contains(target)
+                  ) {
+                    event.preventDefault();
+                  }
+                }}
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 portalContainer={contentElement}
                 sideOffset={8}
               >
-                {availableManagedAccounts.length > 0 ? (
+                {managedAccountOptions.length > 0 ? (
                   <ScrollArea className="h-[15rem]">
                     <div className="space-y-1 pr-2">
-                      {availableManagedAccounts.map((account) => {
-                        const isSelected = selectedManagedAccountIdSet.has(account.id);
-                        const isDisabled = !isSelected && isSelectionLimitReached;
+                      {filteredManagedAccounts.length > 0 ? (
+                        filteredManagedAccounts.map((account) => {
+                          const isSelected = selectedManagedAccountIdSet.has(account.id);
+                          const isDisabled =
+                            isLoadingOptions || (!isSelected && isSelectionLimitReached);
 
-                        return (
-                          <label
-                            className={cn(
-                              "flex h-10 items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground",
-                              isDisabled
-                                ? "cursor-not-allowed opacity-50"
-                                : "cursor-pointer hover:bg-surface-hover",
-                            )}
-                            key={account.id}
-                          >
-                            <Checkbox
-                              aria-label={account.name}
-                              checked={isSelected}
-                              disabled={isDisabled}
-                              onCheckedChange={() => toggleManagedAccount(account.id)}
-                            />
-                            <ManagedAccountIdentity account={account} />
-                          </label>
-                        );
-                      })}
+                          return (
+                            <label
+                              className={cn(
+                                "flex h-10 items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground",
+                                isDisabled
+                                  ? "cursor-not-allowed opacity-50"
+                                  : "cursor-pointer hover:bg-surface-hover",
+                              )}
+                              key={account.id}
+                            >
+                              <Checkbox
+                                aria-label={account.name}
+                                checked={isSelected}
+                                disabled={isDisabled}
+                                onCheckedChange={() => toggleManagedAccount(account.id)}
+                              />
+                              <ManagedAccountIdentity account={account} />
+                            </label>
+                          );
+                        })
+                      ) : (
+                        <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
+                          未找到匹配账号
+                        </p>
+                      )}
                     </div>
                   </ScrollArea>
                 ) : (
@@ -236,12 +281,45 @@ export function GroupChatReceptionSettingsDialog({
                 )}
               </PopoverContent>
             </Popover>
+            {selectedManagedAccounts.length > 0 ? (
+              <ScrollArea className="h-[9rem] rounded-[10px] border border-border">
+                <div className="space-y-1 p-2">
+                  {selectedManagedAccounts.map((account) => (
+                    <div
+                      className="flex h-10 items-center gap-2 rounded-[8px] px-1.5 text-sm text-foreground"
+                      key={account.id}
+                    >
+                      <ManagedAccountIdentity account={account} />
+                      <Button
+                        aria-label={`移除 ${account.name}`}
+                        className="h-7 rounded-[8px] px-2 text-xs text-muted-foreground"
+                        disabled={isLoadingOptions}
+                        onClick={() => toggleManagedAccount(account.id)}
+                        type="button"
+                        variant="ghost"
+                      >
+                        移除
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="rounded-[10px] border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                暂无已选择账号
+              </div>
+            )}
+            {optionsError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {optionsError}
+              </p>
+            ) : null}
             {errorMessage ? (
               <p className="text-sm text-destructive" role="alert">
                 {errorMessage}
               </p>
             ) : null}
-          </div>
+          </section>
 
           <DialogFooter>
             <DialogClose asChild>
@@ -249,7 +327,7 @@ export function GroupChatReceptionSettingsDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button disabled={saving} type="submit">
+            <Button disabled={saving || isLoadingOptions || !!optionsError} type="submit">
               {saving ? (
                 <>
                   <Spinner aria-hidden="true" size={14} />
@@ -268,21 +346,21 @@ export function GroupChatReceptionSettingsDialog({
 
 function BatchReceptionNotice() {
   return (
-    <div
-      aria-label="注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略"
-      className="flex items-start gap-2 rounded-[8px] border border-border bg-muted/35 px-3 py-2.5 text-sm leading-5 text-muted-foreground"
-      role="note"
+    <Alert
+      aria-label="注意事项：请确保设置的企微号已加入每一个所选的群聊中"
+      className="border-info/30 bg-info/5 text-info"
     >
       <HugeiconsIcon
         aria-hidden="true"
-        className="mt-0.5 shrink-0"
         color="currentColor"
         icon={InformationCircleIcon}
         size={16}
         strokeWidth={1.8}
       />
-      <p>注意事项：请确保选择的企微号都在所选的群聊中，否则将会忽略</p>
-    </div>
+      <AlertDescription className="text-info">
+        注意事项：请确保设置的企微号已加入每一个所选的群聊中
+      </AlertDescription>
+    </Alert>
   );
 }
 

@@ -6,6 +6,9 @@ import {
   JwtUserSchema,
 } from "../src/auth/dto";
 import {
+  SettingsGroupChatReceptionOptionsRequestSchema,
+  SettingsGroupChatsQuerySchema,
+  SettingsGroupChatsResponseSchema,
   SettingsSidebarItemCreateRequestSchema,
   SettingsSidebarItemsResponseSchema,
   SettingsSidebarItemsSortUpdateRequestSchema,
@@ -19,6 +22,37 @@ import {
 } from "../src/settings/password";
 
 describe("settings sub-account DTOs", () => {
+  it("validates paginated group chat contracts without eager reception options", () => {
+    expect(
+      Value.Check(SettingsGroupChatsQuerySchema, {
+        keyword: "护肤",
+        page: 2,
+        pageSize: 20,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SettingsGroupChatsResponseSchema, {
+        filterManagedAccounts: [],
+        groupChats: [],
+        page: 2,
+        pageSize: 20,
+        total: 21,
+        totalPages: 2,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SettingsGroupChatReceptionOptionsRequestSchema, {
+        groupChatIds: ["501", "502"],
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SettingsGroupChatsQuerySchema, {
+        page: 1,
+        pageSize: 100,
+      }),
+    ).toBe(false);
+  });
+
   it("accepts sub-account list responses with related seats", () => {
     expect(
       Value.Check(SettingsSubAccountsResponseSchema, {

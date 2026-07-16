@@ -5,7 +5,7 @@ import type {
   SettingsManagedAccountSubAccount,
   SettingsManagedAccountsResponse,
 } from "@chatai/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -67,7 +67,7 @@ const emptyData: SettingsManagedAccountsResponse = {
   subAccounts: [],
 };
 
-export function WecomAccountsSettingsTab() {
+export function WecomAccountsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNode }) {
   const { canManageManagedAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsManagedAccountsResponse>(emptyData);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
@@ -173,24 +173,27 @@ export function WecomAccountsSettingsTab() {
   return (
     <>
       <section className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-[280px]">
-          <HugeiconsIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            color="currentColor"
-            icon={Search01Icon}
-            size={17}
-            strokeWidth={1.8}
-          />
-          <Input
-            aria-label="搜索托管账号"
-            className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              resetPage();
-            }}
-            placeholder="搜索托管账号"
-            value={query}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          {toolbarStart}
+          <div className="relative w-[280px]">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              color="currentColor"
+              icon={Search01Icon}
+              size={17}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索托管账号"
+              className="h-10 rounded-[8px] pl-9"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                resetPage();
+              }}
+              placeholder="搜索托管账号"
+              value={query}
+            />
+          </div>
         </div>
       </section>
 

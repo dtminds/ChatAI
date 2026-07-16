@@ -1,5 +1,6 @@
 import {
   apiSuccess,
+  SettingsGroupChatReceptionOptionsRequestSchema,
   SettingsGroupChatReceptionUpdateRequestSchema,
   SettingsGroupChatsQuerySchema,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
@@ -11,6 +12,7 @@ import {
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
+  type SettingsGroupChatReceptionOptionsRequest,
   type SettingsGroupChatReceptionUpdateRequest,
   type SettingsGroupChatsQuery,
   type SettingsManagedAccountSubAccountsUpdateRequest,
@@ -93,6 +95,25 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
           getAuthenticatedWorkbenchScope(request.user),
           request.body,
           createWorkbenchJavaClient(app.log),
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: SettingsGroupChatReceptionOptionsRequest }>(
+    "/api/server/settings/group-chats/reception-options",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsGroupChatReceptionOptionsRequestSchema,
+      },
+    },
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
+        await createGroupChatSettingsService(app.db).listReceptionOptions(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body,
         ),
       );
     },

@@ -3,7 +3,8 @@ import { GroupChatSettingsService } from "../../../src/modules/settings/group-ch
 
 describe("GroupChatSettingsService", () => {
   it("lists enabled group chats with opening managed account and reception seats from host_user_seat_ids", async () => {
-    const service = new GroupChatSettingsService(createDbMock() as never);
+    const onGroupMemberQuery = vi.fn();
+    const service = new GroupChatSettingsService(createDbMock({ onGroupMemberQuery }) as never);
 
     const result = await service.list({ platform: 5, uid: 9001 });
 
@@ -30,13 +31,6 @@ describe("GroupChatSettingsService", () => {
             },
           ],
           receptionSeatCount: 1,
-          selectableReceptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/ndt.png",
-              id: "102",
-              name: "念都堂",
-            },
-          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
         {
@@ -56,13 +50,6 @@ describe("GroupChatSettingsService", () => {
             },
           ],
           receptionSeatCount: 1,
-          selectableReceptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/drc.png",
-              id: "101",
-              name: "德瑞可",
-            },
-          ],
           thirdGroupId: "8C2D4F1A9B7765432100",
         },
         {
@@ -76,17 +63,15 @@ describe("GroupChatSettingsService", () => {
           },
           receptionManagedAccounts: [],
           receptionSeatCount: 0,
-          selectableReceptionManagedAccounts: [
-            {
-              avatarUrl: "https://example.com/drc.png",
-              id: "101",
-              name: "德瑞可",
-            },
-          ],
           thirdGroupId: "29F71A2ED8125854B6A1",
         },
       ],
+      page: 1,
+      pageSize: 10,
+      total: 3,
+      totalPages: 1,
     });
+    expect(onGroupMemberQuery).not.toHaveBeenCalled();
   });
 
   it("filters group chats by keyword and opening managed account", async () => {
@@ -115,32 +100,53 @@ describe("GroupChatSettingsService", () => {
           },
         ],
         receptionSeatCount: 1,
-        selectableReceptionManagedAccounts: [
-          {
-            avatarUrl: "https://example.com/drc.png",
-            id: "101",
-            name: "德瑞可",
-          },
-        ],
         thirdGroupId: "8C2D4F1A9B7765432100",
       },
     ]);
+    expect(result).toMatchObject({ page: 1, pageSize: 10, total: 1, totalPages: 1 });
   });
 
-  it("lists selectable reception managed accounts from group seat members excluding opening seat", async () => {
+  it("paginates group chats in the database before hydrating reception seats", async () => {
     const service = new GroupChatSettingsService(createDbMock() as never);
 
-    const result = await service.list({ platform: 5, uid: 9001 });
+    const result = await service.list(
+      { platform: 5, uid: 9001 },
+      { page: 2, pageSize: 2 },
+    );
 
-    expect(result.groupChats.find((groupChat) => groupChat.id === "501")).toMatchObject({
-      openingManagedAccount: { id: "101", name: "德瑞可" },
-      selectableReceptionManagedAccounts: [{ id: "102", name: "念都堂" }],
+    expect(result).toMatchObject({
+      page: 2,
+      pageSize: 2,
+      total: 3,
+      totalPages: 2,
     });
-    expect(
-      result.groupChats
-        .find((groupChat) => groupChat.id === "501")
-        ?.selectableReceptionManagedAccounts.some((account) => account.id === "101"),
-    ).toBe(false);
+    expect(result.groupChats.map((groupChat) => groupChat.id)).toEqual(["503"]);
+  });
+
+  it("loads selectable reception managed accounts on demand and excludes opening seats", async () => {
+    const onGroupMemberQuery = vi.fn();
+    const service = new GroupChatSettingsService(createDbMock({ onGroupMemberQuery }) as never);
+
+    const result = await service.listReceptionOptions(
+      { platform: 5, uid: 9001 },
+      { groupChatIds: ["501"] },
+    );
+
+    expect(result.availableManagedAccounts).toEqual([
+      { avatarUrl: "https://example.com/ndt.png", id: "102", name: "念都堂" },
+    ]);
+    expect(onGroupMemberQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns only reception managed accounts shared by every selected group", async () => {
+    const service = new GroupChatSettingsService(createDbMock() as never);
+
+    const result = await service.listReceptionOptions(
+      { platform: 5, uid: 9001 },
+      { groupChatIds: ["501", "502"] },
+    );
+
+    expect(result.availableManagedAccounts).toEqual([]);
   });
 
   it("updates reception seats through Java API and ignores seats outside each group", async () => {
@@ -174,7 +180,11 @@ describe("GroupChatSettingsService", () => {
   });
 });
 
-function createDbMock() {
+function createDbMock({
+  onGroupMemberQuery,
+}: {
+  onGroupMemberQuery?: () => void;
+} = {}) {
   const seats = [
     {
       biz_status: 1,
@@ -290,6 +300,7 @@ function createDbMock() {
       }
 
       if (table === "xy_wap_embed_group_member as member") {
+        onGroupMemberQuery?.();
         return createGroupMemberQueryBuilder(groupMembers, seats);
       }
 
@@ -451,9 +462,11 @@ function createGroupSeatListBuilder(
     group_remark: string | null;
     third_group_id: string;
   }) => boolean> = [];
-  const builder = {
-    execute: async () =>
-      groupSeats
+  let limitValue: number | undefined;
+  let offsetValue = 0;
+  let selectsCount = false;
+  const buildRows = () =>
+    groupSeats
         .map((groupSeat) => {
           const seat = seats.find(
             (item) =>
@@ -521,11 +534,24 @@ function createGroupSeatListBuilder(
           }
 
           return orFilters.length === 0 || orFilters.some((filter) => filter(row));
-        }),
+        });
+  const builder = {
+    execute: async () => buildRows().slice(offsetValue, limitValue == null ? undefined : offsetValue + limitValue),
+    executeTakeFirst: async () => selectsCount ? { count: buildRows().length } : buildRows()[0],
     innerJoin: () => builder,
-    limit: () => builder,
+    limit: (value: number) => {
+      limitValue = value;
+      return builder;
+    },
+    offset: (value: number) => {
+      offsetValue = value;
+      return builder;
+    },
     orderBy: () => builder,
-    select: () => builder,
+    select: (selection?: unknown) => {
+      selectsCount = typeof selection === "function";
+      return builder;
+    },
     where: (...whereArgs: [string, string, unknown] | [Function]) => {
       if (typeof whereArgs[0] === "function") {
         type Condition = { column: string; operator: string; value: string };

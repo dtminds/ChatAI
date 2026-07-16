@@ -1,5 +1,8 @@
 import type {
   SettingsGroupChat,
+  SettingsGroupChatReceptionManagedAccount,
+  SettingsGroupChatReceptionOptionsRequest,
+  SettingsGroupChatReceptionOptionsResponse,
   SettingsGroupChatReceptionUpdateRequest,
   SettingsGroupChatReceptionUpdateResponse,
   SettingsGroupChatsQuery,
@@ -37,7 +40,9 @@ type SeatIdentityRow = {
 };
 
 const dbActiveStatus = 1;
-const groupChatListLimit = 500;
+const defaultGroupChatPage = 1;
+const defaultGroupChatPageSize = 10;
+const maxGroupChatPageSize = 50;
 const maxReceptionManagedAccountsPerGroup = 5;
 
 export class GroupChatSettingsService {
@@ -47,15 +52,20 @@ export class GroupChatSettingsService {
     scope: TenantScope,
     query: SettingsGroupChatsQuery = {},
   ): Promise<SettingsGroupChatsResponse> {
-    const [filterManagedAccounts, groupChatRows] = await Promise.all([
+    const requestedPage = normalizePositiveInteger(query.page, defaultGroupChatPage);
+    const pageSize = Math.min(
+      normalizePositiveInteger(query.pageSize, defaultGroupChatPageSize),
+      maxGroupChatPageSize,
+    );
+    const [filterManagedAccounts, total] = await Promise.all([
       this.listFilterManagedAccounts(scope),
-      this.listGroupChatRows(scope, query),
+      this.countGroupChatRows(scope, query),
     ]);
-    const [receptionManagedAccountsByGroupSeatId, selectableReceptionManagedAccountsByGroupSeatId] =
-      await Promise.all([
-        this.listReceptionManagedAccountsByGroupSeatId(scope, groupChatRows),
-        this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows),
-      ]);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const groupChatRows = await this.listGroupChatRows(scope, query, page, pageSize);
+    const receptionManagedAccountsByGroupSeatId =
+      await this.listReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
 
     return {
       filterManagedAccounts: filterManagedAccounts.map((account) => ({
@@ -66,7 +76,38 @@ export class GroupChatSettingsService {
         mapGroupChat(
           row,
           receptionManagedAccountsByGroupSeatId.get(row.group_seat_id) ?? [],
-          selectableReceptionManagedAccountsByGroupSeatId.get(row.group_seat_id) ?? [],
+        ),
+      ),
+      page,
+      pageSize,
+      total,
+      totalPages,
+    };
+  }
+
+  async listReceptionOptions(
+    scope: TenantScope,
+    payload: SettingsGroupChatReceptionOptionsRequest,
+  ): Promise<SettingsGroupChatReceptionOptionsResponse> {
+    const groupSeatIds = uniquePositiveIds(payload.groupChatIds);
+
+    if (groupSeatIds.length === 0) {
+      throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
+    }
+
+    const groupChatRows = await this.listGroupChatRowsByIds(scope, groupSeatIds);
+
+    if (groupChatRows.length !== groupSeatIds.length) {
+      throw new BadRequestError("INVALID_GROUP_CHAT", "群聊不存在");
+    }
+
+    const selectableByGroupSeatId =
+      await this.listSelectableReceptionManagedAccountsByGroupSeatId(scope, groupChatRows);
+
+    return {
+      availableManagedAccounts: intersectReceptionManagedAccounts(
+        groupChatRows.map(
+          (row) => selectableByGroupSeatId.get(row.group_seat_id) ?? [],
         ),
       ),
     };
@@ -182,7 +223,7 @@ export class GroupChatSettingsService {
     const groupSeatIds = groupChatRows.map((row) => row.group_seat_id);
 
     if (groupSeatIds.length === 0) {
-      return new Map<number, SettingsGroupChat["selectableReceptionManagedAccounts"]>();
+      return new Map<number, SettingsGroupChatReceptionManagedAccount[]>();
     }
 
     const openingSeatIdByGroupSeatId = new Map(
@@ -212,7 +253,7 @@ export class GroupChatSettingsService {
 
     const accountsByGroupSeatId = new Map<
       number,
-      SettingsGroupChat["selectableReceptionManagedAccounts"]
+      SettingsGroupChatReceptionManagedAccount[]
     >();
     const seenSeatIdsByGroupSeatId = new Map<number, Set<string>>();
 
@@ -289,7 +330,7 @@ export class GroupChatSettingsService {
       .execute() as Promise<GroupChatRow[]>;
   }
 
-  private listGroupChatRows(scope: TenantScope, query: SettingsGroupChatsQuery) {
+  private buildGroupChatRowsQuery(scope: TenantScope, query: SettingsGroupChatsQuery) {
     let groupQuery = this.db
       .selectFrom("xy_wap_embed_group_seat as group_seat")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
@@ -298,22 +339,9 @@ export class GroupChatSettingsService {
           .onRef("seat.uid", "=", "group_seat.uid")
           .onRef("seat.platform", "=", "group_seat.platform"),
       )
-      .select([
-        "group_seat.avatar as avatar",
-        "group_seat.id as group_seat_id",
-        "group_seat.host_user_seat_ids as host_user_seat_ids",
-        "group_seat.name as group_name",
-        "group_seat.remark as group_remark",
-        "group_seat.third_group_id as third_group_id",
-        "seat.id as seat_id",
-        "seat.third_avatar as seat_avatar",
-        "seat.third_user_name as seat_name",
-      ])
       .where("group_seat.uid", "=", scope.uid)
       .where("group_seat.platform", "=", scope.platform)
-      .where("group_seat.biz_status", "=", dbActiveStatus)
-      .orderBy("group_seat.id", "desc")
-      .limit(groupChatListLimit);
+      .where("group_seat.biz_status", "=", dbActiveStatus);
 
     const managedAccountId = parseMySqlId(query.managedAccountId);
 
@@ -335,7 +363,41 @@ export class GroupChatSettingsService {
       );
     }
 
-    return groupQuery.execute() as Promise<GroupChatRow[]>;
+    return groupQuery;
+  }
+
+  private async countGroupChatRows(scope: TenantScope, query: SettingsGroupChatsQuery) {
+    const row = await this.buildGroupChatRowsQuery(scope, query)
+      .select((expressionBuilder) =>
+        expressionBuilder.fn.count<number>("group_seat.id").distinct().as("count"),
+      )
+      .executeTakeFirst();
+
+    return Number(row?.count ?? 0);
+  }
+
+  private listGroupChatRows(
+    scope: TenantScope,
+    query: SettingsGroupChatsQuery,
+    page: number,
+    pageSize: number,
+  ) {
+    return this.buildGroupChatRowsQuery(scope, query)
+      .select([
+        "group_seat.avatar as avatar",
+        "group_seat.id as group_seat_id",
+        "group_seat.host_user_seat_ids as host_user_seat_ids",
+        "group_seat.name as group_name",
+        "group_seat.remark as group_remark",
+        "group_seat.third_group_id as third_group_id",
+        "seat.id as seat_id",
+        "seat.third_avatar as seat_avatar",
+        "seat.third_user_name as seat_name",
+      ])
+      .orderBy("group_seat.id", "desc")
+      .limit(pageSize)
+      .offset((page - 1) * pageSize)
+      .execute() as Promise<GroupChatRow[]>;
   }
 }
 
@@ -346,7 +408,6 @@ export function createGroupChatSettingsService(db: Kysely<Database>) {
 function mapGroupChat(
   row: GroupChatRow,
   receptionManagedAccounts: SettingsGroupChat["receptionManagedAccounts"],
-  selectableReceptionManagedAccounts: SettingsGroupChat["selectableReceptionManagedAccounts"],
 ): SettingsGroupChat {
   return {
     avatarUrl: row.avatar || "",
@@ -359,9 +420,25 @@ function mapGroupChat(
     },
     receptionManagedAccounts,
     receptionSeatCount: receptionManagedAccounts.length,
-    selectableReceptionManagedAccounts,
     thirdGroupId: row.third_group_id,
   };
+}
+
+function intersectReceptionManagedAccounts(
+  accountLists: SettingsGroupChatReceptionManagedAccount[][],
+) {
+  const [firstList, ...restLists] = accountLists;
+
+  if (!firstList) {
+    return [];
+  }
+
+  const sharedAccountIds = restLists.reduce((currentIds, accounts) => {
+    const accountIds = new Set(accounts.map((account) => account.id));
+    return new Set([...currentIds].filter((accountId) => accountIds.has(accountId)));
+  }, new Set(firstList.map((account) => account.id)));
+
+  return firstList.filter((account) => sharedAccountIds.has(account.id));
 }
 
 function parseHostUserSeatIds(value: string | null | undefined) {
@@ -426,4 +503,8 @@ function parseMySqlId(value: string | number | null | undefined) {
   }
 
   return numericValue;
+}
+
+function normalizePositiveInteger(value: number | undefined, fallback: number) {
+  return Number.isInteger(value) && (value ?? 0) > 0 ? value as number : fallback;
 }

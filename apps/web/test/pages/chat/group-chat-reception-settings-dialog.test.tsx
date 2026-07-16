@@ -26,16 +26,11 @@ const dialogState: GroupChatReceptionDialogState = {
       },
       receptionManagedAccounts: [],
       receptionSeatCount: 0,
-      selectableReceptionManagedAccounts: [
-        {
-          avatarUrl: "",
-          id: "102",
-          name: "念都堂",
-        },
-      ],
       thirdGroupId: "group-501",
     },
   ],
+  isLoadingOptions: false,
+  optionsError: "",
 };
 
 describe("GroupChatReceptionSettingsDialog", () => {
@@ -52,23 +47,97 @@ describe("GroupChatReceptionSettingsDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "群聊接待设置" });
-    expect(within(dialog).getByText("每个群聊最多选择 5 个")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("群聊 护肤交流群")).toBeInTheDocument();
+    expect(within(dialog).getByText("护肤交流群")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("选中的企微号可在对应群聊收发消息"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("0/5")).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "选择可接待企微号" }));
+    await user.click(within(dialog).getByRole("textbox", { name: "搜索并选择接待账号" }));
 
     for (let index = 1; index <= 5; index += 1) {
       await user.click(await screen.findByRole("checkbox", { name: `企微号${index}` }));
     }
 
-    expect(within(dialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "企微号1，企微号2，企微号3，企微号4，企微号5",
-    );
+    expect(within(dialog).getByText("5/5")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "移除 企微号1" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "企微号6" })).toBeDisabled();
 
     await user.click(screen.getByRole("checkbox", { name: "企微号6" }));
-    expect(within(dialog).getByRole("button", { name: "选择可接待企微号" })).toHaveTextContent(
-      "企微号1，企微号2，企微号3，企微号4，企微号5",
+    expect(within(dialog).getByText("5/5")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "移除 企微号1" }));
+    expect(within(dialog).getByText("4/5")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("textbox", { name: "搜索并选择接待账号" }));
+    expect(screen.getByRole("checkbox", { name: "企微号6" })).toBeEnabled();
+  });
+
+  it("shows existing reception accounts and allows removing them", async () => {
+    const user = userEvent.setup();
+    const state: GroupChatReceptionDialogState = {
+      ...dialogState,
+      groupChats: [
+        {
+          ...dialogState.groupChats[0],
+          receptionManagedAccounts: [
+            { avatarUrl: "", id: "legacy-seat", name: "已配置账号" },
+          ],
+          receptionSeatCount: 1,
+        },
+      ],
+    };
+
+    render(
+      <GroupChatReceptionSettingsDialog
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+        open
+        state={state}
+      />,
     );
+
+    const dialog = screen.getByRole("dialog", { name: "群聊接待设置" });
+    expect(within(dialog).getByText("1/5")).toBeInTheDocument();
+    expect(within(dialog).getByText("已配置账号")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "移除 已配置账号" }));
+
+    expect(within(dialog).getByText("0/5")).toBeInTheDocument();
+    expect(within(dialog).getByText("暂无已选择账号")).toBeInTheDocument();
+  });
+
+  it("disables selection changes while reception options are loading", async () => {
+    const state: GroupChatReceptionDialogState = {
+      ...dialogState,
+      groupChats: [
+        {
+          ...dialogState.groupChats[0],
+          receptionManagedAccounts: [
+            { avatarUrl: "", id: "legacy-seat", name: "已配置账号" },
+          ],
+          receptionSeatCount: 1,
+        },
+      ],
+      isLoadingOptions: true,
+    };
+
+    render(
+      <GroupChatReceptionSettingsDialog
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+        open
+        state={state}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "群聊接待设置" });
+    expect(
+      within(dialog).getByRole("textbox", { name: "搜索并选择接待账号" }),
+    ).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "移除 已配置账号" })).toBeDisabled();
+    expect(within(dialog).getByText("1/5")).toBeInTheDocument();
   });
 
   it("saves selected reception seats for the current group chats", async () => {
@@ -86,7 +155,7 @@ describe("GroupChatReceptionSettingsDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "群聊接待设置" });
-    await user.click(within(dialog).getByRole("button", { name: "选择可接待企微号" }));
+    await user.click(within(dialog).getByRole("textbox", { name: "搜索并选择接待账号" }));
     await user.click(await screen.findByRole("checkbox", { name: "企微号1" }));
     await user.click(within(dialog).getByRole("button", { name: "确认提交" }));
 

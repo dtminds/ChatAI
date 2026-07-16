@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/pages/chat/settings/shared";
 import { GroupChatsSettingsTab } from "@/pages/chat/settings/pages/group-chats-settings-tab";
 import { WecomAccountsSettingsTab } from "@/pages/chat/settings/pages/wecom-accounts-settings-tab";
@@ -13,6 +13,24 @@ const settingsTabs: Array<{ label: string; value: AccountsSettingsTab }> = [
 
 export function AccountsSettingsPage() {
   const [activeTab, setActiveTab] = useState<AccountsSettingsTab>("wecom-accounts");
+  const tabs = (
+    <Tabs
+      onValueChange={(value) => setActiveTab(value as AccountsSettingsTab)}
+      value={activeTab}
+    >
+      <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+        {settingsTabs.map((tab) => (
+          <TabsTrigger
+            className="h-8 min-w-20 rounded-[6px] px-4 py-0 text-sm"
+            key={tab.value}
+            value={tab.value}
+          >
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
 
   return (
     <>
@@ -23,32 +41,10 @@ export function AccountsSettingsPage() {
       />
 
       <div className="space-y-4">
-        <SegmentedControl
-          aria-label="托管账号范围"
-          className="h-auto gap-0.5 rounded-[8px] border border-border bg-surface-muted p-1"
-          onValueChange={(value) => {
-            if (value) {
-              setActiveTab(value as AccountsSettingsTab);
-            }
-          }}
-          type="single"
-          value={activeTab}
-        >
-          {settingsTabs.map((tab) => (
-            <SegmentedControlItem
-              className="h-8 min-w-[88px] w-auto rounded-[6px] px-4 text-sm data-[state=on]:shadow-none"
-              key={tab.value}
-              value={tab.value}
-            >
-              {tab.label}
-            </SegmentedControlItem>
-          ))}
-        </SegmentedControl>
-
         {activeTab === "wecom-accounts" ? (
-          <WecomAccountsSettingsTab />
+          <WecomAccountsSettingsTab toolbarStart={tabs} />
         ) : (
-          <GroupChatsSettingsTab />
+          <GroupChatsSettingsTab toolbarStart={tabs} />
         )}
       </div>
     </>

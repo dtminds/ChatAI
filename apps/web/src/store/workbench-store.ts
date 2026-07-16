@@ -68,6 +68,9 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import {
   resolveConversationAIHostingPolicy,
 } from "@/pages/chat/lib/conversation-ai-hosting";
+import {
+  resolveConversationAIAssistantEligibility,
+} from "@/pages/chat/lib/conversation-ai-assistant";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
@@ -97,7 +100,6 @@ import {
   isSmartReplySingleChatOnlyFailure,
   isSmartReplySemanticWait,
   isSmartReplySemanticWaitExpired,
-  isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -1243,27 +1245,17 @@ function canUseSmartReplyForConversation(
   state: WorkbenchState,
   conversationId: string,
 ) {
-  if (!canDisplaySmartReplyForConversation(state, conversationId)) {
-    return false;
-  }
-
-  const conversation = findConversationById(
-    state.conversationListsByScope,
-    conversationId,
-  );
-
-  if (!conversation) {
-    return false;
-  }
-
-  const account = state.accounts.find(
-    (item) => item.id === conversation.accountId,
-  );
-
-  return canUseConversationActions(state, account);
+  return resolveSmartReplyEligibility(state, conversationId).canUse;
 }
 
 export function canDisplaySmartReplyForConversation(
+  state: WorkbenchState,
+  conversationId: string,
+) {
+  return resolveSmartReplyEligibility(state, conversationId).canDisplay;
+}
+
+function resolveSmartReplyEligibility(
   state: WorkbenchState,
   conversationId: string,
 ) {
@@ -1271,34 +1263,15 @@ export function canDisplaySmartReplyForConversation(
     state.conversationListsByScope,
     conversationId,
   );
+  const account = state.accounts.find(
+    (item) => item.id === conversation?.accountId,
+  );
 
-  if (conversation) {
-    // 单聊：会话全自动托管开启时不展示话术推荐
-    // 群聊：AI 自动回复与话术推荐相互独立，只看 groupSemiAutoAuth
-    if (
-      conversation.mode !== "group" &&
-      isConversationAIHostingEnabledInState(state, conversation)
-    ) {
-      return false;
-    }
-
-    if (!isSmartReplySupportedConversation(conversation) || conversation.bizStatus !== 1) {
-      return false;
-    }
-
-    const account = state.accounts.find(
-      (item) => item.id === conversation.accountId,
-    );
-
-    // 群聊依赖群聊设置「允许话术推荐」，不依赖单聊席位 AI 模式开关
-    if (conversation.mode === "group") {
-      return account?.groupSemiAutoAuth === true;
-    }
-
-    return account?.seatAIAssistantEnabled === true;
-  }
-
-  return false;
+  return resolveConversationAIAssistantEligibility({
+    account,
+    canUseConversationActions: canUseConversationActions(state, account),
+    conversation,
+  });
 }
 
 function scheduleSmartReplyPoll(

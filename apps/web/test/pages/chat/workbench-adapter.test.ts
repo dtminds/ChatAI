@@ -136,7 +136,7 @@ describe("workbench adapter", () => {
     });
   });
 
-  it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
+  it("adapts single and group AI assistant enablement", () => {
     expect(
       adaptAccount({
         avatar: "",
@@ -153,7 +153,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
-      groupSemiAutoAuth: false,
+      seatGroupAIAssistantEnabled: false,
       seatAIAssistantEnabled: true,
     });
 
@@ -161,7 +161,7 @@ describe("workbench adapter", () => {
       adaptAccount({
         avatar: "",
         description: "",
-        groupSemiAutoAuth: true,
+        seatGroupAIAssistantEnabled: true,
         loginStatus: "online",
         name: "测试席位",
         operatorName: "测试席位",
@@ -173,7 +173,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
-      groupSemiAutoAuth: true,
+      seatGroupAIAssistantEnabled: true,
       seatAIAssistantEnabled: true,
     });
 

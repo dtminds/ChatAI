@@ -6,8 +6,7 @@ import {
   SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS,
   SMART_REPLY_TERMINAL_GENERATE_STATUSES,
 } from "@chatai/contracts";
-import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
+import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
@@ -163,16 +162,6 @@ export function createTriggeredSmartReplySuggestion(
     ...pending,
     status: "thinking",
   };
-}
-
-export function isSmartReplySupportedConversation(
-  conversation?: Pick<Conversation, "customerBindType" | "mode"> | null,
-) {
-  if (conversation?.mode === "group") {
-    return true;
-  }
-
-  return isConversationAIFeatureSupported(conversation);
 }
 
 export function isSmartReplyEligibleMessage(message: ChatMessage) {

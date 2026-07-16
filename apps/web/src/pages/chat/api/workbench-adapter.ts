@@ -50,7 +50,7 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     seatAIHostingAuth: dto.seatAIHostingAuth,
     fullAutoSwitch: dto.fullAutoSwitch,
     seatGroupAIHostingEnabled: dto.seatGroupAIHostingEnabled === true,
-    groupSemiAutoAuth: dto.groupSemiAutoAuth === true,
+    seatGroupAIAssistantEnabled: dto.seatGroupAIAssistantEnabled === true,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,

@@ -45,7 +45,7 @@ describe("workbench MySQL mappers", () => {
       seatAIHostingAuth: true,
       fullAutoSwitch: true,
       seatGroupAIHostingEnabled: true,
-      groupSemiAutoAuth: true,
+      seatGroupAIAssistantEnabled: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",

@@ -281,9 +281,10 @@ export type WorkbenchSeatDto = {
    */
   seatGroupAIHostingEnabled?: boolean;
   /**
-   * 席位群聊是否开通话术推荐，对应 `xy_wap_embed_user_seat_group_agent.semi_auto_auth`
+   * 席位群聊 AI 话术推荐能力是否开启；当前对应
+   * `xy_wap_embed_user_seat_group_agent.semi_auto_auth`
    */
-  groupSemiAutoAuth?: boolean;
+  seatGroupAIAssistantEnabled?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;

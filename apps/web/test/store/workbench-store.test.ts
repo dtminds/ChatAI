@@ -4399,7 +4399,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              groupSemiAutoAuth: true,
+              seatGroupAIAssistantEnabled: true,
               seatAIAssistantEnabled: false,
             }
           : account,
@@ -4467,7 +4467,7 @@ describe("useWorkbenchStore", () => {
           ? {
               ...account,
               seatGroupAIHostingEnabled: true,
-              groupSemiAutoAuth: true,
+              seatGroupAIAssistantEnabled: true,
             }
           : account,
       ),
@@ -4560,7 +4560,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              groupSemiAutoAuth: false,
+              seatGroupAIAssistantEnabled: false,
               seatAIAssistantEnabled: true,
             }
           : account,

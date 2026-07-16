@@ -53,13 +53,13 @@ function enableSmartReplyDisplayContext({
   conversationAIHostingSwitch = false,
   enabled = true,
   seatGroupAIHostingEnabled,
-  groupSemiAutoAuth,
+  seatGroupAIAssistantEnabled,
   mode = "single",
 }: {
   conversationAIHostingSwitch?: boolean;
   enabled?: boolean;
   seatGroupAIHostingEnabled?: boolean;
-  groupSemiAutoAuth?: boolean;
+  seatGroupAIAssistantEnabled?: boolean;
   mode?: "single" | "group";
 } = {}) {
   useWorkbenchStore.setState((state) => ({
@@ -69,8 +69,8 @@ function enableSmartReplyDisplayContext({
         description: "",
         seatGroupAIHostingEnabled:
           seatGroupAIHostingEnabled ?? (mode === "group" ? conversationAIHostingSwitch : false),
-        groupSemiAutoAuth:
-          groupSemiAutoAuth ?? (mode === "group" ? enabled : false),
+        seatGroupAIAssistantEnabled:
+          seatGroupAIAssistantEnabled ?? (mode === "group" ? enabled : false),
         id: "seat-001",
         loginStatus: "online",
         metrics: {
@@ -171,7 +171,7 @@ describe("ChatMessagePanel smart reply state", () => {
   it("shows smart replies in group conversations when group script recommendation is enabled", () => {
     enableSmartReplyDisplayContext({
       enabled: false,
-      groupSemiAutoAuth: true,
+      seatGroupAIAssistantEnabled: true,
       mode: "group",
     });
     useWorkbenchStore.setState((state) => ({
@@ -206,7 +206,7 @@ describe("ChatMessagePanel smart reply state", () => {
   it("hides smart replies in group conversations when group script recommendation is disabled", () => {
     enableSmartReplyDisplayContext({
       enabled: true,
-      groupSemiAutoAuth: false,
+      seatGroupAIAssistantEnabled: false,
       mode: "group",
     });
     useWorkbenchStore.setState((state) => ({
@@ -242,7 +242,7 @@ describe("ChatMessagePanel smart reply state", () => {
     enableSmartReplyDisplayContext({
       conversationAIHostingSwitch: true,
       seatGroupAIHostingEnabled: true,
-      groupSemiAutoAuth: true,
+      seatGroupAIAssistantEnabled: true,
       mode: "group",
     });
     useWorkbenchStore.setState((state) => ({

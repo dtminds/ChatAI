@@ -56,6 +56,7 @@ export type ConversationRow = {
   last_message_type: string | null;
   last_msgtime: Date | number | string | null;
   pinned_time: number | string;
+  reply?: number | string | boolean | null;
   seat_id: number | string;
   third_external_userid: string;
   third_group_id: string;
@@ -208,6 +209,7 @@ export function mapConversationRow(
       : customerBindType === 2
         ? APPLICATION_MESSAGE_AVATAR_URL
         : row.customer_avatar ?? "";
+  const lastMessageId = normalizeBigIntId(row.last_audit_info_id);
 
   return {
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
@@ -224,10 +226,12 @@ export function mapConversationRow(
     isShadowGroup:
       mode === "group" && Boolean(row.third_group_origin_userid?.trim()),
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
+    lastMessageId: lastMessageId === "0" ? undefined : lastMessageId,
     lastMessage: lastMessagePreview,
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,
     priority: "medium",
+    replied: readBooleanFlag(row.reply),
     seatId: String(row.seat_id),
     thirdExternalUserId: row.third_external_userid || undefined,
     thirdGroupId: row.third_group_id || undefined,

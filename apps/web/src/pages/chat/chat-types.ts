@@ -75,6 +75,10 @@ export type Conversation = {
   conversationAIHostingSwitch?: boolean;
   /** 转人工触发消息 ID；`"0"` 表示当前无接管提醒 */
   handoffMsgId: string;
+  /** 当前会话最后一条审计消息 ID */
+  lastMessageId?: string;
+  /** 会话是否已经回复 */
+  replied?: boolean;
   /** 托管状态栏展示状态 */
   agentHostingStatus?:
     | "active"

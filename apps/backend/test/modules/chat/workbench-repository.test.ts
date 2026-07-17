@@ -286,6 +286,7 @@ function createQueryBuilder(result: unknown) {
   const limits: number[] = [];
   const offsets: number[] = [];
   const orderBys: Array<[string, string | undefined]> = [];
+  const selections: unknown[] = [];
   const whereExpressions: unknown[] = [];
   const joins: string[] = [];
   const joinConditions: Array<{
@@ -418,6 +419,7 @@ function createQueryBuilder(result: unknown) {
     limits,
     offsets,
     orderBys,
+    selections,
     whereExpressions,
     wheres,
     innerJoin(table: string, callback?: unknown) {
@@ -479,6 +481,12 @@ function createQueryBuilder(result: unknown) {
       return this;
     },
     select(selection?: unknown) {
+      if (Array.isArray(selection)) {
+        selections.push(...selection);
+      } else if (selection !== undefined && typeof selection !== "function") {
+        selections.push(selection);
+      }
+
       if (typeof selection === "function") {
         selection(expressionBuilder);
         currentResult = Array.isArray(currentResult)
@@ -660,6 +668,7 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
     last_message_type: "text",
     last_msgtime: 1_778_839_800_000,
     pinned_time: 0,
+    reply: 0,
     seat_id: 12,
     third_external_userid: "customer-001",
     third_group_id: "",
@@ -4619,6 +4628,9 @@ describe("WorkbenchRepository", () => {
       mode: "group",
     });
 
+    expect(conversationQueryBuilders[0].selections).toContain(
+      "conversation.reply as reply",
+    );
     expect(page.items).toEqual([
       expect.objectContaining({
         conversationId: "165",
@@ -5560,6 +5572,7 @@ describe("WorkbenchRepository", () => {
     const query = conversationQueryBuilders[0];
 
     expect(query.joins).toEqual([]);
+    expect(query.selections).toContain("conversation.reply as reply");
     expect(query.orderBys).toEqual([
       ["conversation.last_msgtime", "asc"],
       ["conversation.id", "asc"],

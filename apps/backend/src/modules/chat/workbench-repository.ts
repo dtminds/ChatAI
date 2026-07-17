@@ -3537,7 +3537,9 @@ export class WorkbenchRepository {
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
         sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        "conversation.last_audit_info_id as last_audit_info_id",
+        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
+          "last_audit_info_id",
+        ),
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -3545,6 +3547,7 @@ export class WorkbenchRepository {
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
@@ -3710,7 +3713,9 @@ export class WorkbenchRepository {
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
         sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        "conversation.last_audit_info_id as last_audit_info_id",
+        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
+          "last_audit_info_id",
+        ),
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -3718,6 +3723,7 @@ export class WorkbenchRepository {
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
@@ -5311,7 +5317,9 @@ export class WorkbenchRepository {
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
         sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        "conversation.last_audit_info_id as last_audit_info_id",
+        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
+          "last_audit_info_id",
+        ),
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -5319,6 +5327,7 @@ export class WorkbenchRepository {
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [

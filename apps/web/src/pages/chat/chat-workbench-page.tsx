@@ -172,7 +172,13 @@ function writeAccountRailCollapsed(isCollapsed: boolean) {
 }
 
 function isConversationView(value: string | null | undefined): value is ConversationView {
-  return value === "all" || value === "unread" || value === "human" || value === "ai";
+  return (
+    value === "all" ||
+    value === "unread" ||
+    value === "read-unreplied" ||
+    value === "human" ||
+    value === "ai"
+  );
 }
 
 function getInitialConversationViewState(): ConversationViewState {

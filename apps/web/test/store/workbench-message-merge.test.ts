@@ -1860,6 +1860,7 @@ function createPolledConversation({
     unreadCount,
     mode: "single",
     priority: "medium",
+    replied: unreadCount === 0,
     type: "upsert" as const,
   } satisfies WorkbenchConversationChangeDto;
 }

@@ -804,6 +804,10 @@ export interface XyWapEmbedConversation {
    */
   platform: Generated<number>;
   /**
+   * 已回复状态：1、已回复，0、未回复
+   */
+  reply: Generated<number>;
+  /**
    * 第三方外部联系人id
    */
   third_external_userid: Generated<string>;

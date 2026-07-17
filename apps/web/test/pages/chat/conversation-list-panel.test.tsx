@@ -42,14 +42,18 @@ function createConversation({
   customerBindType,
   id,
   customerName,
+  lastMessageId = "100",
   mode,
+  replied = true,
   unread = 0,
 }: {
   conversationAIHostingSwitch?: boolean;
   customerBindType?: number;
   id: string;
   customerName: string;
+  lastMessageId?: string;
   mode: ChatMode;
+  replied?: boolean;
   unread?: number;
 }): Conversation {
   return {
@@ -61,10 +65,12 @@ function createConversation({
     customerId: `customer-${id}`,
     customerName,
     id,
+    lastMessageId,
     mode,
     preview: mode === "group" ? "包含：星云客户、运营客服" : "客户成功部 / 运营客服",
     priority: "medium",
     quietFor: "刚刚",
+    replied,
     unread,
     updatedAt: "2026-05-07 09:00:00",
   };
@@ -518,6 +524,9 @@ describe("ConversationListPanel", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });
@@ -542,6 +551,9 @@ describe("ConversationListPanel", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "已读未回复" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });

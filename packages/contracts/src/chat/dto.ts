@@ -311,6 +311,10 @@ export type WorkbenchConversationSummaryDto = {
   isShadowGroup?: boolean;
   /** 转人工触发消息 ID，对应 `xy_wap_embed_conversation.handoff_msg_id`；`"0"` 表示无提醒 */
   handoffMsgId: string;
+  /** 当前会话最后一条审计消息 ID */
+  lastMessageId?: string;
+  /** 是否已经回复，对应 `xy_wap_embed_conversation.reply` */
+  replied: boolean;
   /** 客户绑定类型，对应 `xy_wap_embed_customer_bind_relation.bind_type`：1 普通客户，2 应用消息 */
   customerBindType?: number;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */

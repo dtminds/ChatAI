@@ -56,6 +56,19 @@ describe("workbench adapter", () => {
     ).toBe(true);
   });
 
+  it("maps conversation reply state and last message identity", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        lastMessageId: "9007199254740995",
+        replied: false,
+      }),
+    ).toMatchObject({
+      lastMessageId: "9007199254740995",
+      replied: false,
+    });
+  });
+
   it("maps shadow group member account identities", () => {
     expect(
       adaptGroupMember({
@@ -1109,8 +1122,10 @@ const conversationDto: WorkbenchConversationSummaryDto = {
   customerId: "group-1",
   customerName: "测试群002",
   lastMessage: "",
+  lastMessageId: "100",
   mode: "group",
   priority: "medium",
+  replied: true,
   seatId: "seat-1",
   thirdGroupId: "group-1",
   thirdUserId: "third-user-1",

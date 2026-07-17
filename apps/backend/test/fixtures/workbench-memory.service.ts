@@ -1694,9 +1694,11 @@ function conversation(
     customerName,
     isPinned,
     lastMessage,
+    lastMessageId: lastMessage ? `mock-last-${conversationId}` : undefined,
     lastMessageTime: toTimestamp(lastMessageTime),
     mode,
     priority,
+    replied: unreadCount === 0,
     unreadCount,
   };
 }

@@ -75,6 +75,7 @@ import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
+  WORKBENCH_MESSAGE_SOURCE,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchSeatAgentMode,
   type SettingsSidebarItem,
@@ -820,34 +821,7 @@ function upsertMessageList(
     );
 
     if (existingIndex >= 0) {
-      const currentMessage = merged[existingIndex];
-      if (currentMessage.role === "system" || nextMessage.role === "system") {
-        merged[existingIndex] = {
-          ...currentMessage,
-          ...nextMessage,
-        };
-        continue;
-      }
-
-      const nextSender = nextMessage.sender;
-      merged[existingIndex] = {
-        ...currentMessage,
-        ...nextMessage,
-        optNo: nextMessage.optNo || currentMessage.optNo,
-        revokePending: nextMessage.isRevoked
-          ? false
-          : currentMessage.revokePending,
-        sender: {
-          ...currentMessage.sender,
-          ...nextSender,
-          avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
-          name: nextSender.name || currentMessage.sender.name,
-          userId: nextSender.userId || currentMessage.sender.userId,
-        },
-        senderDisplayName:
-          nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
-        author: nextMessage.author || currentMessage.author,
-      };
+      merged[existingIndex] = mergeMessageState(merged[existingIndex], nextMessage);
       continue;
     }
 
@@ -859,6 +833,171 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+type PolledMessageReconciliationResult = {
+  messages: Message[];
+  resolvedPendingKeys: Set<string>;
+};
+
+const OPTIMISTIC_MESSAGE_RECONCILE_WINDOW_MS = 120_000;
+
+function reconcilePolledMessageList(
+  currentMessages: Message[],
+  nextMessages: Message[],
+  options?: { markAppendedAsNew?: boolean },
+): PolledMessageReconciliationResult {
+  const merged = [...currentMessages];
+  const unmatchedMessages: Message[] = [];
+  const resolvedPendingKeys = new Set<string>();
+
+  for (const nextMessage of nextMessages) {
+    if (isRevokeSignalMessage(nextMessage)) {
+      const targetIndex = findRevokedMessageIndex(merged, nextMessage);
+
+      if (targetIndex >= 0) {
+        merged[targetIndex] = {
+          ...merged[targetIndex],
+          isRevoked: true,
+          revokePending: false,
+        };
+      } else {
+        const unmatchedIndex = findRevokedMessageIndex(unmatchedMessages, nextMessage);
+
+        if (unmatchedIndex >= 0) {
+          unmatchedMessages[unmatchedIndex] = {
+            ...unmatchedMessages[unmatchedIndex],
+            isRevoked: true,
+            revokePending: false,
+          };
+        }
+      }
+
+      continue;
+    }
+
+    const existingIndex = merged.findIndex((message) =>
+      isSameMessage(message, nextMessage),
+    );
+
+    if (existingIndex >= 0) {
+      const currentMessage = merged[existingIndex];
+      collectResolvedPendingKeys(resolvedPendingKeys, currentMessage);
+      merged[existingIndex] = mergeMessageState(currentMessage, nextMessage);
+      continue;
+    }
+
+    const unmatchedIndex = unmatchedMessages.findIndex((message) =>
+      isSameMessage(message, nextMessage),
+    );
+
+    if (unmatchedIndex >= 0) {
+      unmatchedMessages[unmatchedIndex] = mergeMessageState(
+        unmatchedMessages[unmatchedIndex],
+        nextMessage,
+      );
+      continue;
+    }
+
+    unmatchedMessages.push(nextMessage);
+  }
+
+  unmatchedMessages.sort((left, right) => (left.seq ?? 0) - (right.seq ?? 0));
+
+  const appendedMessages: Message[] = [];
+
+  for (const nextMessage of unmatchedMessages) {
+    if (!isUnlinkedPolledOwnMessage(nextMessage)) {
+      appendedMessages.push(markPolledMessageAsNew(nextMessage, options));
+      continue;
+    }
+
+    const nextFingerprint = buildMessageReconcileFingerprint(nextMessage);
+    const optimisticIndex = nextFingerprint
+      ? merged.findIndex((message) =>
+          isOptimisticReconcileCandidate(message, nextMessage) &&
+          getMessageReconcileFingerprint(message) === nextFingerprint,
+        )
+      : -1;
+
+    if (optimisticIndex >= 0) {
+      const optimisticMessage = merged[optimisticIndex];
+      collectResolvedPendingKeys(resolvedPendingKeys, optimisticMessage);
+      merged[optimisticIndex] = mergeMessageState(
+        optimisticMessage,
+        nextMessage,
+      );
+      continue;
+    }
+
+    const fallbackIndex = merged.findIndex((message) =>
+      isOptimisticReconcileCandidate(message, nextMessage),
+    );
+
+    if (fallbackIndex >= 0) {
+      collectResolvedPendingKeys(resolvedPendingKeys, merged[fallbackIndex]);
+      merged[fallbackIndex] = markPolledMessageAsNew(nextMessage, options);
+      continue;
+    }
+
+    appendedMessages.push(markPolledMessageAsNew(nextMessage, options));
+  }
+
+  return {
+    messages: sortMessagesForAppend([...merged, ...appendedMessages]),
+    resolvedPendingKeys,
+  };
+}
+
+function markPolledMessageAsNew(
+  message: Message,
+  options?: { markAppendedAsNew?: boolean },
+) {
+  return options?.markAppendedAsNew && message.role !== "system"
+    ? { ...message, isNew: true }
+    : message;
+}
+
+function mergeMessageState(currentMessage: Message, nextMessage: Message): Message {
+  if (currentMessage.role === "system" || nextMessage.role === "system") {
+    return {
+      ...currentMessage,
+      ...nextMessage,
+    };
+  }
+
+  const nextSender = nextMessage.sender;
+  return {
+    ...currentMessage,
+    ...nextMessage,
+    optNo: nextMessage.optNo || currentMessage.optNo,
+    reconcileFingerprint:
+      nextMessage.reconcileFingerprint ?? currentMessage.reconcileFingerprint,
+    revokePending: nextMessage.isRevoked
+      ? false
+      : currentMessage.revokePending,
+    sender: {
+      ...currentMessage.sender,
+      ...nextSender,
+      avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
+      name: nextSender.name || currentMessage.sender.name,
+      userId: nextSender.userId || currentMessage.sender.userId,
+    },
+    senderDisplayName:
+      nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
+    author: nextMessage.author || currentMessage.author,
+  };
+}
+
+function collectResolvedPendingKeys(keys: Set<string>, message: Message) {
+  if (!isOptimisticAcceptedOwnMessage(message)) {
+    return;
+  }
+
+  keys.add(message.uiMessageKey);
+  if (message.optNo) {
+    keys.add(message.optNo);
+  }
 }
 
 function hasNewCustomerMessage(
@@ -2033,8 +2172,13 @@ function sortMessagesForAppend(messages: Message[]) {
 }
 
 function isSameMessage(left: Message, right: Message) {
+  if (left.conversationId !== right.conversationId) {
+    return false;
+  }
+
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
+    (left.msgid && right.msgid && left.msgid === right.msgid) ||
     (
       isValidMessageSeq(left.seq) &&
       isValidMessageSeq(right.seq) &&
@@ -2045,72 +2189,188 @@ function isSameMessage(left: Message, right: Message) {
       !isInvalidMessageUiKey(left.uiMessageKey) &&
       !isInvalidMessageUiKey(right.uiMessageKey) &&
       left.uiMessageKey === right.uiMessageKey
-    ) ||
-    canReconcileOptimisticOwnTextMessage(left, right)
+    )
   );
 }
 
-function getComparableAgentText(message: Message) {
-  if (message.role !== "agent" || message.content.type !== "text") {
-    return "";
+type ReconcileMessageKind =
+  | "emotion"
+  | "file"
+  | "h5"
+  | "image"
+  | "mini-program"
+  | "quote"
+  | "text"
+  | "video";
+
+function getReconcileMessageKind(message: Message): ReconcileMessageKind | undefined {
+  if (message.role === "system") {
+    return undefined;
   }
 
-  return message.content.text.trim();
+  if (message.content.type === "image") {
+    return message.content.variant === "emotion" ? "emotion" : "image";
+  }
+
+  switch (message.content.type) {
+    case "file":
+    case "h5":
+    case "mini-program":
+    case "quote":
+    case "text":
+    case "video":
+      return message.content.type;
+    default:
+      return undefined;
+  }
 }
 
-function isOptimisticAcceptedAgentText(message: Message) {
+function isOptimisticAcceptedOwnMessage(message: Message) {
   return (
     message.role === "agent" &&
     message.isOwnMessage === true &&
     message.status === "accepted" &&
     Boolean(message.optNo?.trim()) &&
-    !isValidMessageSeq(message.seq) &&
-    message.content.type === "text" &&
-    message.content.text.trim().length > 0
+    !isValidMessageSeq(message.seq)
   );
 }
 
-/** 影子群同步回写可能丢 optNo：用同文案己方消息收口乐观「发送中」 */
-function canReconcileOptimisticOwnTextMessage(left: Message, right: Message) {
-  const optimistic = isOptimisticAcceptedAgentText(left)
-    ? left
-    : isOptimisticAcceptedAgentText(right)
-      ? right
-      : undefined;
-  const synced = optimistic === left ? right : left;
+function isUnlinkedPolledOwnMessage(message: Message) {
+  return (
+    message.role === "agent" &&
+    message.isOwnMessage === true &&
+    (
+      message.source === WORKBENCH_MESSAGE_SOURCE.DEFAULT ||
+      message.source === WORKBENCH_MESSAGE_SOURCE.WORKBENCH
+    ) &&
+    !message.optNo?.trim() &&
+    isValidMessageSeq(message.seq) &&
+    getReconcileMessageKind(message) != null
+  );
+}
 
-  if (!optimistic || synced === optimistic) {
-    return false;
-  }
-
+function isOptimisticReconcileCandidate(
+  optimistic: Message,
+  synced: Message,
+) {
   if (
-    synced.role !== "agent" ||
-    synced.isOwnMessage !== true ||
-    !isValidMessageSeq(synced.seq) ||
-    synced.conversationId !== optimistic.conversationId
+    !isOptimisticAcceptedOwnMessage(optimistic) ||
+    optimistic.conversationId !== synced.conversationId ||
+    getReconcileMessageKind(optimistic) !== getReconcileMessageKind(synced)
   ) {
     return false;
   }
 
-  if (synced.optNo && synced.optNo !== optimistic.optNo) {
-    return false;
+  const optimisticTime = parseWorkbenchTimestamp(optimistic.sentAt);
+  const syncedTime = parseWorkbenchTimestamp(synced.sentAt);
+
+  return (
+    Number.isFinite(optimisticTime) &&
+    Number.isFinite(syncedTime) &&
+    Math.abs(optimisticTime - syncedTime) <= OPTIMISTIC_MESSAGE_RECONCILE_WINDOW_MS
+  );
+}
+
+function getMessageReconcileFingerprint(message: Message) {
+  return message.reconcileFingerprint ?? buildMessageReconcileFingerprint(message);
+}
+
+function buildMessageReconcileFingerprint(message: Message) {
+  if (message.role === "system") {
+    return undefined;
   }
 
-  const optimisticText = getComparableAgentText(optimistic);
-  const syncedText = getComparableAgentText(synced);
+  const content = message.content;
 
-  if (!optimisticText || optimisticText !== syncedText) {
-    return false;
+  switch (content.type) {
+    case "text":
+      return buildReconcileFingerprint("text", content.text.trim());
+    case "image":
+      return undefined;
+    case "file":
+      return buildReconcileFingerprint(
+        "file",
+        normalizeMediaReconcileUrl(content.fileUrl),
+      );
+    case "video":
+      return buildReconcileFingerprint(
+        "video",
+        normalizeMediaReconcileUrl(content.videoUrl),
+      );
+    case "h5":
+      return buildReconcileFingerprint("h5", normalizeLinkReconcileUrl(content.url));
+    case "mini-program":
+      return buildReconcileFingerprint("mini-program", content.title.trim());
+    case "quote":
+    default:
+      return undefined;
+  }
+}
+
+function buildComposerSegmentReconcileFingerprint(segment: ComposerSegment) {
+  switch (segment.type) {
+    case "text":
+      return buildReconcileFingerprint("text", segment.text.trim());
+    case "image":
+    case "emotion":
+      return undefined;
+    case "file":
+      return buildReconcileFingerprint(
+        "file",
+        normalizeMediaReconcileUrl(segment.url),
+      );
+    case "video":
+      return buildReconcileFingerprint(
+        "video",
+        normalizeMediaReconcileUrl(segment.url),
+      );
+    case "h5":
+      return buildReconcileFingerprint("h5", normalizeLinkReconcileUrl(segment.href));
+    case "weapp":
+      return buildReconcileFingerprint("mini-program", segment.title?.trim());
+    default:
+      return undefined;
+  }
+}
+
+function buildReconcileFingerprint(kind: ReconcileMessageKind, value?: string) {
+  return value ? `${kind}:${value}` : undefined;
+}
+
+function normalizeMediaReconcileUrl(value: string | undefined) {
+  const normalizedUrl = normalizeMediaAssetUrl(value ?? "");
+
+  if (!normalizedUrl) {
+    return "";
   }
 
-  const optimisticTime = Number.isFinite(parseWorkbenchTimestamp(optimistic.sentAt))
-    ? parseWorkbenchTimestamp(optimistic.sentAt)
-    : Date.now();
-  const syncedTime = Number.isFinite(parseWorkbenchTimestamp(synced.sentAt))
-    ? parseWorkbenchTimestamp(synced.sentAt)
-    : Date.now();
+  try {
+    const url = new URL(normalizedUrl);
+    url.hash = "";
+    url.search = "";
+    return url.pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return normalizedUrl;
+  }
+}
 
-  return Math.abs(optimisticTime - syncedTime) <= 120_000;
+function normalizeLinkReconcileUrl(value: string | undefined) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+    url.hash = "";
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+    return url.toString();
+  } catch {
+    return trimmedValue;
+  }
 }
 
 function parseWorkbenchTimestamp(value: unknown) {
@@ -4894,6 +5154,7 @@ export function createWorkbenchStore() {
             shouldPatchSmartReplyState
               ? { ...clearedResourceState.smartReplyHiddenMessageKeysByConversationId }
               : clearedResourceState.smartReplyHiddenMessageKeysByConversationId;
+          let polledResolvedPendingKeys = new Set<string>();
 
           if (
             hasActiveConversationMessages &&
@@ -4908,11 +5169,14 @@ export function createWorkbenchStore() {
             shouldNotifyPulledCustomerMessage ||= hasPulledNewCustomerMessage;
             shouldAutoGenerateForPulledCustomerMessage ||=
               hasPulledNewCustomerMessage;
-            nextMessagesByConversationId[polledConversationId] = upsertMessageList(
+            const reconciliationResult = reconcilePolledMessageList(
               currentMessages,
               response.activeConversationMessages,
               { markAppendedAsNew: true },
             );
+            nextMessagesByConversationId[polledConversationId] =
+              reconciliationResult.messages;
+            polledResolvedPendingKeys = reconciliationResult.resolvedPendingKeys;
             const currentSuggestions =
               clearedResourceState.smartReplyByMessageIdByConversationId[
                 polledConversationId
@@ -4994,6 +5258,8 @@ export function createWorkbenchStore() {
           const filteredPendingMessages = serverMessages.length
             ? currentState.pendingMessages.filter(
                 (pendingMessage) =>
+                  !polledResolvedPendingKeys.has(pendingMessage.uiMessageKey) &&
+                  !polledResolvedPendingKeys.has(pendingMessage.optNo ?? "") &&
                   !serverMessages.some((message) =>
                     isSameMessage(pendingMessage, message),
                   ),
@@ -5283,6 +5549,8 @@ export function createWorkbenchStore() {
             conversationId: activeConversationId,
             uiMessageKey: response.optNo,
             optNo: response.optNo,
+            reconcileFingerprint:
+              buildComposerSegmentReconcileFingerprint(optimisticSegment),
             role: "agent" as const,
             sender: {
               avatarUrl: account?.avatarUrl,
@@ -5426,6 +5694,7 @@ export function createWorkbenchStore() {
             : failedMessage.author,
           isNew: true,
           optNo: response.optNo,
+          reconcileFingerprint: buildMessageReconcileFingerprint(failedMessage),
           status: "accepted" as const,
           uiMessageKey: response.optNo,
           sentAt: formatWorkbenchTimestamp(timestamp),

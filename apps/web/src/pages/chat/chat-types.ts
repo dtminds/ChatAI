@@ -318,8 +318,11 @@ type BaseMessage = {
   status: MessageStatus;
   isNew?: boolean;
   optNo?: string;
+  /** 仅用于将无 optNo 的服务端回写与本地乐观消息对账 */
+  reconcileFingerprint?: string;
   rawMsgtype?: string;
   seq?: number;
+  source?: number;
   failReason?: string;
   isRevoked?: boolean;
   revokePending?: boolean;

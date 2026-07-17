@@ -3,6 +3,7 @@ import type {
   WorkbenchConversationChangeDto,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -345,6 +346,7 @@ describe("workbench message merge state", () => {
               seatId: "drc",
               senderType: "agent",
               seq: 1201,
+              source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
               status: "sent",
               thirdFromId: "reception-seat-001",
               thirdGroupId: "group-1",
@@ -390,6 +392,713 @@ describe("workbench message merge state", () => {
       seq: 1201,
       status: "sent",
     });
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
+  });
+
+  it("reconciles supported optimistic message types when optNo is absent", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+    const createdAt = Date.now();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return {
+          optNo: `opt-fingerprint-${sendIndex}`,
+          status: "accepted",
+        };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { text: "  指纹文本  " },
+              contentType: "text",
+              createdAt,
+              msgid: "remote-fingerprint-text",
+              rawMsgtype: "text",
+              seq: 1301,
+            }),
+            createOwnPolledMessage({
+              content: { fileUrl: "https://poll.example.com/rendered/image-001.png" },
+              contentType: "image",
+              createdAt,
+              msgid: "remote-fingerprint-image",
+              rawMsgtype: "image",
+              seq: 1302,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+            createOwnPolledMessage({
+              content: { fileUrl: "https://poll.example.com/rendered/emotion-001.gif" },
+              contentType: "emotion",
+              createdAt,
+              msgid: "remote-fingerprint-emotion",
+              rawMsgtype: "emotion",
+              seq: 1303,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+            createOwnPolledMessage({
+              content: {
+                fileName: "报价单.pdf",
+                fileUrl: "https://cdn-b.example.com/assets/quote.pdf?token=remote",
+              },
+              contentType: "file",
+              createdAt,
+              msgid: "remote-fingerprint-file",
+              rawMsgtype: "file",
+              seq: 1304,
+            }),
+            createOwnPolledMessage({
+              content: { videoUrl: "https://cdn-b.example.com/assets/video.mp4?token=remote" },
+              contentType: "video",
+              createdAt,
+              msgid: "remote-fingerprint-video",
+              rawMsgtype: "video",
+              seq: 1305,
+            }),
+            createOwnPolledMessage({
+              content: {
+                title: "活动链接",
+                url: "https://poll.example.com/rendered/activity-link",
+              },
+              contentType: "h5",
+              createdAt,
+              msgid: "remote-fingerprint-h5",
+              rawMsgtype: "link",
+              seq: 1306,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+            createOwnPolledMessage({
+              content: {
+                appName: "luckincoffee瑞幸咖啡",
+                coverImageUrl: "",
+                logoUrl: "https://b5.bokr.com.cn/s5/msg/mini-program.png",
+                sourceLabel: "小程序",
+                title: "  大西瓜生椰冷萃  ",
+              },
+              contentType: "mini-program",
+              createdAt,
+              msgid: "remote-fingerprint-weapp",
+              rawMsgtype: "weapp",
+              seq: 1307,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const initialCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      { text: "指纹文本", type: "text" },
+      {
+        alt: "图片",
+        imageUrl: "https://cdn-a.example.com/assets/image.png?token=local",
+        type: "image",
+        url: "https://cdn-a.example.com/assets/image.png?token=local",
+      },
+      {
+        imageUrl: "https://cdn-a.example.com/assets/emotion.gif?token=local",
+        materialCollectionId: "emotion-001",
+        type: "emotion",
+      },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        type: "file",
+        url: "https://cdn-a.example.com/assets/quote.pdf?token=local",
+      },
+      {
+        coverUrl: "https://cdn-a.example.com/assets/cover.jpg",
+        materialCollectionId: "",
+        msgInfoId: "video-001",
+        title: "视频",
+        type: "video",
+        url: "https://cdn-a.example.com/assets/video.mp4?token=local",
+      },
+      {
+        href: "https://example.com/activity?campaign=1#local",
+        title: "活动链接",
+        type: "h5",
+      },
+      {
+        appName: "客户助手",
+        msgInfoId: "weapp-001",
+        title: "大西瓜生椰冷萃",
+        type: "weapp",
+      },
+    ]);
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .pendingMessages.filter((message) => message.content.type === "image")
+        .map((message) => message.reconcileFingerprint),
+    ).toEqual([undefined, undefined]);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    const messages = state.messagesByConversationId["conv-001"];
+
+    expect(messages).toHaveLength(initialCount + 7);
+    expect(messages.slice(-7).map((message) => message.optNo)).toEqual([
+      "opt-fingerprint-1",
+      undefined,
+      undefined,
+      "opt-fingerprint-4",
+      "opt-fingerprint-5",
+      undefined,
+      "opt-fingerprint-7",
+    ]);
+    expect(messages.slice(-7).map((message) => message.status)).toEqual(
+      Array.from({ length: 7 }, () => "sent"),
+    );
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("retires unmatched optimistic messages in same-type server order", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-quote-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { quoteMsgId: "901", text: "服务端引用一" },
+              contentType: "quote",
+              msgid: "remote-quote-1",
+              rawMsgtype: "quote",
+              seq: 1401,
+            }),
+            createOwnPolledMessage({
+              content: { quoteMsgId: "902", text: "服务端引用二" },
+              contentType: "quote",
+              msgid: "remote-quote-2",
+              rawMsgtype: "quote",
+              seq: 1402,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [{ text: "本地引用一", type: "text" }],
+      { quote: { quoteMsgId: "101" } },
+    );
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [{ text: "本地引用二", type: "text" }],
+      { quote: { quoteMsgId: "102" } },
+    );
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    const quoteMessages = state.messagesByConversationId["conv-001"].filter(
+      (message) => message.content.type === "quote" && message.seq != null,
+    );
+
+    expect(quoteMessages.map((message) => message.seq)).toEqual([1401, 1402]);
+    expect(
+      state.messagesByConversationId["conv-001"].some(
+        (message) => message.optNo?.startsWith("opt-quote-") && message.seq == null,
+      ),
+    ).toBe(false);
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("retires a same-type optimistic message when its fingerprint does not match", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return { optNo: "opt-unmatched-image", status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { fileUrl: "https://cdn.example.com/server-image.png" },
+              contentType: "image",
+              msgid: "remote-unmatched-image",
+              rawMsgtype: "image",
+              seq: 1451,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "本地图片",
+        imageUrl: "https://cdn.example.com/local-image.png",
+        type: "image",
+        url: "https://cdn.example.com/local-image.png",
+      },
+    ]);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(0);
+    expect(
+      state.messagesByConversationId["conv-001"].some(
+        (message) => message.optNo === "opt-unmatched-image",
+      ),
+    ).toBe(false);
+    expect(
+      state.messagesByConversationId["conv-001"].find(
+        (message) => message.msgid === "remote-unmatched-image",
+      ),
+    ).toMatchObject({ seq: 1451, status: "sent" });
+  });
+
+  it("retires at most one optimistic message for each unlinked server message", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-one-to-one-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { fileUrl: "https://cdn.example.com/server.png" },
+              contentType: "image",
+              msgid: "remote-one-to-one",
+              rawMsgtype: "image",
+              seq: 1471,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "本地图片一",
+        imageUrl: "https://cdn.example.com/local-1.png",
+        type: "image",
+        url: "https://cdn.example.com/local-1.png",
+      },
+      {
+        alt: "本地图片二",
+        imageUrl: "https://cdn.example.com/local-2.png",
+        type: "image",
+        url: "https://cdn.example.com/local-2.png",
+      },
+    ]);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(1);
+    expect(state.pendingMessages[0]).toMatchObject({
+      optNo: "opt-one-to-one-2",
+      status: "accepted",
+    });
+    expect(
+      state.messagesByConversationId["conv-001"].some(
+        (message) => message.optNo === "opt-one-to-one-1",
+      ),
+    ).toBe(false);
+    expect(
+      state.messagesByConversationId["conv-001"].find(
+        (message) => message.msgid === "remote-one-to-one",
+      ),
+    ).toMatchObject({ seq: 1471, status: "sent" });
+  });
+
+  it("keeps earlier same-type pending messages when only a later fingerprint matches", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-later-match-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: {
+                fileName: "文件二.pdf",
+                fileUrl: "https://cdn.example.com/file-2.pdf",
+              },
+              contentType: "file",
+              msgid: "remote-later-match",
+              rawMsgtype: "file",
+              seq: 1481,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        extension: "pdf",
+        fileName: "文件一.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-1.pdf",
+      },
+      {
+        extension: "pdf",
+        fileName: "文件二.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-2.pdf",
+      },
+    ]);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toEqual([
+      expect.objectContaining({
+        optNo: "opt-later-match-1",
+        status: "accepted",
+      }),
+    ]);
+    expect(
+      state.messagesByConversationId["conv-001"].some(
+        (message) => message.optNo === "opt-later-match-1",
+      ),
+    ).toBe(true);
+    expect(
+      state.messagesByConversationId["conv-001"].find(
+        (message) => message.msgid === "remote-later-match",
+      ),
+    ).toMatchObject({
+      optNo: "opt-later-match-2",
+      seq: 1481,
+      status: "sent",
+    });
+  });
+
+  it("keeps server sequence order when fallback retirement precedes a fingerprint match", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-mixed-order-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: {
+                fileName: "未知文件.pdf",
+                fileUrl: "https://cdn.example.com/unknown.pdf",
+              },
+              contentType: "file",
+              msgid: "remote-mixed-order-1",
+              rawMsgtype: "file",
+              seq: 1491,
+            }),
+            createOwnPolledMessage({
+              content: {
+                fileName: "文件二.pdf",
+                fileUrl: "https://cdn.example.com/file-2.pdf",
+              },
+              contentType: "file",
+              msgid: "remote-mixed-order-2",
+              rawMsgtype: "file",
+              seq: 1492,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        extension: "pdf",
+        fileName: "文件一.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-1.pdf",
+      },
+      {
+        extension: "pdf",
+        fileName: "文件二.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-2.pdf",
+      },
+    ]);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(0);
+    expect(
+      state.messagesByConversationId["conv-001"]
+        .filter((message) => message.msgid?.startsWith("remote-mixed-order-"))
+        .map((message) => message.seq),
+    ).toEqual([1491, 1492]);
+  });
+
+  it("keeps server sequence order when a fingerprint match precedes fallback retirement", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+    const createdAt = Date.now();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-reverse-order-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: {
+                fileName: "文件二.pdf",
+                fileUrl: "https://cdn.example.com/file-2.pdf",
+              },
+              contentType: "file",
+              createdAt,
+              msgid: "remote-reverse-order-1",
+              rawMsgtype: "file",
+              seq: 1493,
+            }),
+            createOwnPolledMessage({
+              content: {
+                fileName: "未知文件.pdf",
+                fileUrl: "https://cdn.example.com/unknown.pdf",
+              },
+              contentType: "file",
+              createdAt,
+              msgid: "remote-reverse-order-2",
+              rawMsgtype: "file",
+              seq: 1494,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        extension: "pdf",
+        fileName: "文件一.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-1.pdf",
+      },
+      {
+        extension: "pdf",
+        fileName: "文件二.pdf",
+        type: "file",
+        url: "https://cdn.example.com/file-2.pdf",
+      },
+    ]);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(0);
+    expect(
+      state.messagesByConversationId["conv-001"]
+        .filter((message) => message.msgid?.startsWith("remote-reverse-order-"))
+        .map((message) => message.seq),
+    ).toEqual([1493, 1494]);
+  });
+
+  it("does not retire optimistic messages for another type or source", async () => {
+    const baseService = createMockWorkbenchService();
+    let pollIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return { optNo: "opt-guarded-image", status: "accepted" };
+      },
+      async poll() {
+        pollIndex += 1;
+        return {
+          activeConversationMessages: [
+            pollIndex === 1
+              ? createOwnPolledMessage({
+                  content: { text: "不同类型" },
+                  contentType: "text",
+                  msgid: "remote-other-type",
+                  rawMsgtype: "text",
+                  seq: 1501,
+                })
+              : createOwnPolledMessage({
+                  content: { fileUrl: "https://cdn.example.com/guarded.png" },
+                  contentType: "image",
+                  msgid: "remote-other-source",
+                  rawMsgtype: "image",
+                  seq: 1502,
+                  source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+                }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999 + pollIndex,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "待确认图片",
+        imageUrl: "https://cdn.example.com/guarded.png",
+        type: "image",
+        url: "https://cdn.example.com/guarded.png",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(1);
+    expect(
+      state.messagesByConversationId["conv-001"].find(
+        (message) => message.optNo === "opt-guarded-image",
+      ),
+    ).toMatchObject({ status: "accepted" });
+  });
+
+  it("does not use fingerprint fallback when the server message has another optNo", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return { optNo: "opt-local", status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              ...createOwnPolledMessage({
+                content: { text: "相同内容" },
+                contentType: "text",
+                msgid: "remote-other-opt",
+                rawMsgtype: "text",
+                seq: 1601,
+              }),
+              optNo: "opt-remote",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("相同内容");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toHaveLength(1);
+    expect(
+      state.messagesByConversationId["conv-001"].filter(
+        (message) => message.optNo === "opt-local" || message.optNo === "opt-remote",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("does not clear pending messages in another conversation with the same server identity", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              ...createOwnPolledMessage({
+                content: { text: "当前会话消息" },
+                contentType: "text",
+                msgid: "shared-message-id",
+                rawMsgtype: "text",
+                seq: 1701,
+              }),
+              optNo: "shared-opt-no",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pendingMessages: [
+        ...state.pendingMessages,
+        {
+          author: "客服",
+          content: { text: "其他会话消息", type: "text" },
+          conversationId: "conv-002",
+          isOwnMessage: true,
+          msgid: "shared-message-id",
+          optNo: "shared-opt-no",
+          role: "agent",
+          sender: { id: "agent", name: "客服" },
+          sentAt: "2026-07-17 10:00:00",
+          status: "accepted",
+          uiMessageKey: "shared-opt-no",
+        },
+      ],
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toEqual([
+      expect.objectContaining({ conversationId: "conv-002", optNo: "shared-opt-no" }),
+    ]);
   });
 
   it("keeps seed and pagination state untouched while reconciling message content", async () => {
@@ -681,6 +1390,39 @@ function createPolledMessage({
     seatId: "drc",
     senderType,
     seq: 1000,
+    status: "sent",
+  } satisfies WorkbenchMessageDto;
+}
+
+function createOwnPolledMessage({
+  content,
+  contentType,
+  createdAt = Date.now(),
+  msgid,
+  rawMsgtype,
+  seq,
+  source = WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+}: {
+  content: Record<string, unknown>;
+  contentType: WorkbenchMessageDto["contentType"];
+  createdAt?: number;
+  msgid: string;
+  rawMsgtype: string;
+  seq: number;
+  source?: number;
+}) {
+  return {
+    content,
+    contentType,
+    conversationId: "conv-001",
+    createdAt,
+    customerId: "cust-001",
+    msgid,
+    rawMsgtype,
+    seatId: "drc",
+    senderType: "agent",
+    seq,
+    source,
     status: "sent",
   } satisfies WorkbenchMessageDto;
 }

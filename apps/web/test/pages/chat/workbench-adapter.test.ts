@@ -294,6 +294,7 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       isAgentMessage: true,
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
     });
 
     expect(
@@ -309,6 +310,20 @@ describe("adaptMessage", () => {
       ),
     ).not.toMatchObject({
       isAgentMessage: true,
+    });
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
     });
   });
 

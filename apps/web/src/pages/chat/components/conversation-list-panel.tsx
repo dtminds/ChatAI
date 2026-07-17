@@ -498,7 +498,7 @@ function ConversationModeTab({
           />
         </TabsTrigger>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="min-w-28">
+      <DropdownMenuContent align="center" className="min-w-36">
         <DropdownMenuRadioGroup
           onValueChange={(value) => {
             void onSelectView?.(value as ConversationView);
@@ -508,7 +508,7 @@ function ConversationModeTab({
           {getConversationViewOptions(mode, isSeatAIHostingEnabled).map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value}>
               <span
-                className="w-16 shrink-0"
+                className="min-w-16 shrink-0 whitespace-nowrap"
                 data-testid={`conversation-view-label-${mode}-${option.value}`}
               >
                 {option.label}

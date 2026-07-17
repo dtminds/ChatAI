@@ -717,6 +717,7 @@ function ChatWorkbenchContent({
     canSendMessage,
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
+    canMarkHandoffHandled,
     canToggleConversationAIHosting,
     canTakeOverAccount,
     canUseChatSend,
@@ -2141,7 +2142,7 @@ function ChatWorkbenchContent({
       canToggleConversationAIHosting={canToggleConversationAIHosting}
       canCollectMaterialActions={canCollectMaterialActions}
       canSendMessage={canSendMessage}
-      canMarkHandoffHandled={activeAccount?.takenOverEmployeeId === me?.id}
+      canMarkHandoffHandled={canMarkHandoffHandled}
       canUseMessageForward={canUseMessageForward}
       composerPlaceholder={composerPlaceholder}
       customer={activeCustomer}

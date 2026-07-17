@@ -32,6 +32,7 @@ type CanUseWorkbenchConversationActionsInput = {
 export type WorkbenchPermissions = {
   canConfigureSeatAIHosting: boolean;
   canConfigureSeatSemiAuto: boolean;
+  canMarkHandoffHandled: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
   canUseMessageForward: boolean;
@@ -66,6 +67,9 @@ export function resolveWorkbenchPermissions({
   const isAccountOffline = account?.loginStatus === "offline";
   const isAccountTakenOverByCurrentUser =
     !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
+  const canMarkHandoffHandled =
+    isAccountTakenOverByCurrentUser &&
+    Boolean(subUser && subUser.role !== "viewer");
   const isConversationBizInactive = activeConversation?.bizStatus !== 1;
   const canUseConversationActions = canUseWorkbenchConversationActions({
     account,
@@ -104,6 +108,7 @@ export function resolveWorkbenchPermissions({
   return {
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
+    canMarkHandoffHandled,
     canToggleConversationAIHosting,
     canSendMessage,
     canUseMessageForward,

@@ -37,6 +37,7 @@ describe("resolveWorkbenchPermissions", () => {
     });
 
     expect(permissions).toMatchObject({
+      canMarkHandoffHandled: true,
       canSendMessage: true,
       canToggleConversationAIHosting: false,
       canTakeOverAccount: true,
@@ -44,6 +45,46 @@ describe("resolveWorkbenchPermissions", () => {
       composerPlaceholder: "请输入消息……",
       sidebarIframeSendStatus: "0",
     });
+  });
+
+  it("allows the current operator to handle a handoff without chat.send but blocks viewers", () => {
+    const operatorWithoutSend: AuthSubUser = {
+      ...operator,
+      permissions: ["chat.access", "chat.takeover"],
+    };
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operatorWithoutSend,
+      }),
+    ).toMatchObject({
+      canMarkHandoffHandled: true,
+      canSendMessage: false,
+    });
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: viewer,
+      }).canMarkHandoffHandled,
+    ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount(),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operatorWithoutSend,
+      }).canMarkHandoffHandled,
+    ).toBe(false);
   });
 
   it("allows enabling full-auto only when the taken-over account has seat hosting enabled", () => {

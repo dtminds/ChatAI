@@ -95,9 +95,6 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     isVerified: dto.verified,
     mode: dto.mode,
     preview: dto.lastMessage,
-    ...(dto.lastMessagePreviewParts
-      ? { previewParts: dto.lastMessagePreviewParts }
-      : {}),
     priority: dto.priority,
     quietFor: formatQuietFor(lastMessageTime),
     thirdExternalUserId: dto.thirdExternalUserId,

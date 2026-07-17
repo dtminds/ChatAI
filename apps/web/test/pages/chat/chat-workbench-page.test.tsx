@@ -181,18 +181,29 @@ describe("ChatWorkbenchPage", () => {
     const targetAnchor = document.querySelector<HTMLElement>(
       '[data-scroll-anchor="3"]',
     );
+    const messageViewport = screen.getByTestId("message-scroll-area");
     const scrollIntoView = vi.fn();
     expect(targetAnchor).not.toBeNull();
     Object.defineProperty(targetAnchor!, "scrollIntoView", {
       configurable: true,
-      value: scrollIntoView,
+      value: (...args: unknown[]) => {
+        scrollIntoView(...args);
+        fireEvent.scroll(messageViewport);
+      },
     });
 
-    await user.click(screen.getByRole("button", { name: "查看触发消息" }));
+    await user.click(screen.getByRole("button", { name: "定位消息" }));
 
     expect(scrollIntoView).toHaveBeenCalledWith({
       behavior: "smooth",
       block: "center",
+    });
+    expect(targetAnchor).not.toHaveAttribute("data-message-locate-highlight");
+    await waitFor(() => {
+      expect(targetAnchor).toHaveAttribute(
+        "data-message-locate-highlight",
+        "true",
+      );
     });
     expect(workbenchToastWarningMock).not.toHaveBeenCalled();
   });
@@ -217,7 +228,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     const viewMessageButton = screen.getByRole("button", {
-      name: "查看触发消息",
+      name: "定位消息",
     });
     expect(viewMessageButton).toBeEnabled();
 

@@ -1436,8 +1436,8 @@ describe("ChatPanel", () => {
     );
     expect(within(statusBar.parentElement!).queryByText("基础信息")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "查看触发消息" }));
-    await user.click(screen.getByRole("button", { name: "标记接管提醒已处理" }));
+    await user.click(screen.getByRole("button", { name: "定位消息" }));
+    await user.click(screen.getByRole("button", { name: "标记已处理" }));
 
     expect(onViewHandoffMessage).toHaveBeenCalledTimes(1);
     expect(onMarkHandoffHandled).toHaveBeenCalledTimes(1);

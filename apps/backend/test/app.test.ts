@@ -2620,7 +2620,7 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("accepts a positive bigint string when clearing a handoff reminder", async () => {
+  it("clears a handoff reminder by conversation id", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
       cleared: true,
@@ -2633,37 +2633,11 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "POST",
-      payload: {
-        expectedHandoffMsgId: "9007199254740995",
-      },
       url: "/api/server/conversations/conv-001/handoff/clear",
     });
 
     expect(response.statusCode).toBe(200);
-    expect(clearConversationHandoff).toHaveBeenCalledWith("101", "conv-001", {
-      expectedHandoffMsgId: "9007199254740995",
-    });
-
-    await app.close();
-  });
-
-  it("rejects invalid handoff message IDs before clearing the reminder", async () => {
-    const { app, authorization } = await createAuthenticatedApp();
-    const clearConversationHandoff = vi.fn();
-    app.workbenchService = { clearConversationHandoff } as never;
-    app.createWorkbenchService = () => app.workbenchService;
-
-    for (const expectedHandoffMsgId of ["0", "-1", "1.5", "abc"]) {
-      const response = await app.inject({
-        headers: { authorization },
-        method: "POST",
-        payload: { expectedHandoffMsgId },
-        url: "/api/server/conversations/conv-001/handoff/clear",
-      });
-
-      expect(response.statusCode).toBe(400);
-    }
-    expect(clearConversationHandoff).not.toHaveBeenCalled();
+    expect(clearConversationHandoff).toHaveBeenCalledWith("101", "conv-001");
 
     await app.close();
   });
@@ -2677,7 +2651,6 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "POST",
-      payload: { expectedHandoffMsgId: "9001" },
       url: "/api/server/conversations/conv-001/handoff/clear",
     });
 

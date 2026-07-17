@@ -11,7 +11,6 @@ import type {
   WorkbenchHistoryMessageQuery,
   WorkbenchConversationFullAutoResponse,
   WorkbenchConversationClearHandoffResponse,
-  WorkbenchConversationClearHandoffRequest,
   WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
@@ -512,9 +511,8 @@ export async function changeConversationFullAuto(
 
 export async function clearConversationHandoff(
   conversationId: string,
-  request: WorkbenchConversationClearHandoffRequest,
 ): Promise<WorkbenchConversationClearHandoffResponse> {
-  return getWorkbenchService().clearConversationHandoff(conversationId, request);
+  return getWorkbenchService().clearConversationHandoff(conversationId);
 }
 
 export async function updateSeatAgentMode(

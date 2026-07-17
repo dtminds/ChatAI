@@ -119,7 +119,10 @@ import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies"
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
-import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
+import {
+  findViewportAnchor,
+  scrollToAndHighlightViewportAnchor,
+} from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
@@ -1932,12 +1935,12 @@ function ChatWorkbenchContent({
         ? findViewportAnchor(viewport, handoffMessage.uiMessageKey)
         : null;
 
-    if (!anchor) {
+    if (!viewport || !anchor) {
       toast.warning("未找到触发消息，请向上加载更多消息后重试");
       return;
     }
 
-    anchor.scrollIntoView({
+    scrollToAndHighlightViewportAnchor(viewport, anchor, {
       behavior: "smooth",
       block: "center",
     });

@@ -6824,7 +6824,7 @@ describe("WorkbenchRepository", () => {
     expect(updates).toEqual([{ pinned_time: 0 }]);
   });
 
-  it("clears handoff_msg_id only when the expected reminder still matches", async () => {
+  it("clears handoff_msg_id by conversation id", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];
     const repository = new WorkbenchRepository(
@@ -6852,7 +6852,6 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.clearConversationHandoff({
         conversationId: "88",
-        expectedHandoffMsgId: "9007199254740995",
         platform: 5,
         uid: 9001,
       }),
@@ -6863,11 +6862,10 @@ describe("WorkbenchRepository", () => {
       ["uid", "=", 9001],
       ["platform", "=", 5],
       ["biz_status", "=", 1],
-      ["handoff_msg_id", "=", "9007199254740995"],
     ]);
   });
 
-  it("does not report handoff cleared when the reminder changed", async () => {
+  it("accepts an idempotent handoff clear", async () => {
     const repository = new WorkbenchRepository(
       {
         updateTable() {
@@ -6889,11 +6887,10 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.clearConversationHandoff({
         conversationId: "88",
-        expectedHandoffMsgId: "9001",
         platform: 5,
         uid: 9001,
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
   });
 
   it("hides a conversation in tenant scope", async () => {

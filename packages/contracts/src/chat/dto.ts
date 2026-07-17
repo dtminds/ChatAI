@@ -304,12 +304,6 @@ export type WorkbenchSeatDto = {
   expireTime?: number;
 };
 
-export type WorkbenchConversationPreviewPart = {
-  kind?: "takeover-reminder";
-  text: string;
-  tone?: "danger";
-};
-
 export type WorkbenchConversationSummaryDto = {
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
@@ -335,7 +329,6 @@ export type WorkbenchConversationSummaryDto = {
   /** 群原始名称（当使用备注展示时） */
   groupOriginalName?: string;
   lastMessage: string;
-  lastMessagePreviewParts?: WorkbenchConversationPreviewPart[];
   lastMessageTime?: number;
   unreadCount: number;
   mode: "single" | "group";
@@ -811,12 +804,6 @@ export type WorkbenchConversationFullAutoResponse = {
   conversationAIHostingSwitch: boolean;
   conversationId: string;
   seatId: string;
-};
-
-/** 将当前转人工提醒标记为已处理 */
-export type WorkbenchConversationClearHandoffRequest = {
-  /** 仅清除仍属于该消息的提醒，避免旧请求覆盖新一轮提醒 */
-  expectedHandoffMsgId: string;
 };
 
 export type WorkbenchConversationClearHandoffResponse = {

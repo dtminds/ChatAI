@@ -2216,7 +2216,7 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
-  it("clears the matching handoff reminder when acknowledged", async () => {
+  it("clears the handoff reminder by conversation id", async () => {
     const clearConversationHandoff = vi.fn().mockResolvedValue(true);
     const service = createWorkbenchService(
       {
@@ -2235,50 +2235,15 @@ describe("MysqlWorkbenchService", () => {
       createJavaClient(),
     );
 
-    await expect(
-      service.clearConversationHandoff("101", "88", {
-        expectedHandoffMsgId: "9001",
-      }),
-    ).resolves.toEqual({
+    await expect(service.clearConversationHandoff("101", "88")).resolves.toEqual({
       cleared: true,
       conversationId: "88",
       seatId: "12",
     });
     expect(clearConversationHandoff).toHaveBeenCalledWith({
       conversationId: "88",
-      expectedHandoffMsgId: "9001",
       platform: 5,
       uid: 9001,
-    });
-  });
-
-  it("reports a stale handoff clear without clearing a newer reminder", async () => {
-    const clearConversationHandoff = vi.fn().mockResolvedValue(false);
-    const service = createWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        clearConversationHandoff,
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-      } as unknown as WorkbenchRepository,
-      createJavaClient(),
-    );
-
-    await expect(
-      service.clearConversationHandoff("101", "88", {
-        expectedHandoffMsgId: "9001",
-      }),
-    ).resolves.toEqual({
-      cleared: false,
-      conversationId: "88",
-      seatId: "12",
     });
   });
 
@@ -2301,11 +2266,7 @@ describe("MysqlWorkbenchService", () => {
       createJavaClient(),
     );
 
-    await expect(
-      service.clearConversationHandoff("101", "88", {
-        expectedHandoffMsgId: "9001",
-      }),
-    ).rejects.toMatchObject({
+    await expect(service.clearConversationHandoff("101", "88")).rejects.toMatchObject({
       code: "SEAT_NOT_TAKEN_OVER",
       statusCode: 403,
     });

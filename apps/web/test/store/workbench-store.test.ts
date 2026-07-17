@@ -343,9 +343,7 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().sendAgentTextMessage("人工回复");
     await waitForStoreAssertion(() => {
-      expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
-        expectedHandoffMsgId: "9001",
-      });
+      expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001");
     });
 
     expect(
@@ -398,9 +396,7 @@ describe("useWorkbenchStore", () => {
       expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
     });
 
-    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
-      expectedHandoffMsgId: "9001",
-    });
+    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001");
   });
 
   it("keeps a handoff reminder when the accepted-send clear fails", async () => {
@@ -531,7 +527,7 @@ describe("useWorkbenchStore", () => {
     ).toBe("9001");
   });
 
-  it("keeps a newer handoff reminder when an older clear request finishes later", async () => {
+  it("clears the current handoff reminder by conversation id", async () => {
     const baseService = createMockWorkbenchService();
     const clearResult = createDeferred<{
       cleared: boolean;
@@ -589,7 +585,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
     ).toMatchObject({
-      handoffMsgId: "9002",
+      handoffMsgId: "0",
     });
   });
 
@@ -628,9 +624,7 @@ describe("useWorkbenchStore", () => {
       .markActiveConversationHandoffHandled();
 
     expect(result).toEqual({ ok: true });
-    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
-      expectedHandoffMsgId: "9001",
-    });
+    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001");
     expect(
       useWorkbenchStore
         .getState()

@@ -15,7 +15,6 @@ import {
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
   type WorkbenchConversationClearHandoffResponse,
-  type WorkbenchConversationClearHandoffRequest,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
@@ -232,7 +231,6 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchConversationFullAutoResponse>;
   clearConversationHandoff: (
     conversationId: string,
-    request: WorkbenchConversationClearHandoffRequest,
   ) => Promise<WorkbenchConversationClearHandoffResponse>;
   updateSeatAgentMode: (
     seatId: string,
@@ -1682,28 +1680,23 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
-    async clearConversationHandoff(conversationId, request) {
+    async clearConversationHandoff(conversationId) {
       const conversation = findConversation(state, conversationId);
 
       if (!conversation) {
         throw new Error("Conversation not found");
       }
 
-      const cleared =
-        conversation.handoffMsgId === request.expectedHandoffMsgId;
+      const nextConversation = {
+        ...conversation,
+        handoffMsgId: "0",
+      };
 
-      if (cleared) {
-        const nextConversation = {
-          ...conversation,
-          handoffMsgId: "0",
-        };
-
-        upsertConversation(state, nextConversation);
-        pushConversationEvent(state, nextConversation);
-      }
+      upsertConversation(state, nextConversation);
+      pushConversationEvent(state, nextConversation);
 
       return {
-        cleared,
+        cleared: true,
         conversationId,
         seatId: conversation.seatId,
       };
@@ -2490,13 +2483,9 @@ export function createHttpWorkbenchService(): WorkbenchService {
         request,
       );
     },
-    clearConversationHandoff(conversationId, request) {
-      return http.post<
-        WorkbenchConversationClearHandoffResponse,
-        WorkbenchConversationClearHandoffRequest
-      >(
+    clearConversationHandoff(conversationId) {
+      return http.post<WorkbenchConversationClearHandoffResponse>(
         `/server/conversations/${conversationId}/handoff/clear`,
-        request,
       );
     },
     updateSeatAgentMode(seatId, request) {

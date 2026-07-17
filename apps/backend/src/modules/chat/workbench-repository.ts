@@ -4019,18 +4019,16 @@ export class WorkbenchRepository {
 
   async clearConversationHandoff(input: {
     conversationId: string;
-    expectedHandoffMsgId: string;
     platform: number;
     uid: number;
   }) {
     const conversationNumericId = parseMySqlId(input.conversationId);
-    const expectedHandoffMsgId = uniqueIds([input.expectedHandoffMsgId])[0];
 
-    if (conversationNumericId == null || !expectedHandoffMsgId) {
+    if (conversationNumericId == null) {
       return false;
     }
 
-    const result = (await this.db
+    await this.db
       .updateTable("xy_wap_embed_conversation")
       .set({
         handoff_msg_id: 0,
@@ -4039,10 +4037,9 @@ export class WorkbenchRepository {
       .where("uid", "=", input.uid)
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("handoff_msg_id", "=", asSchemaBigIntId(expectedHandoffMsgId))
-      .execute()) as UpdateResult[];
+      .execute();
 
-    return getAffectedRows(result) > 0;
+    return true;
   }
 
   async hideConversation(input: {

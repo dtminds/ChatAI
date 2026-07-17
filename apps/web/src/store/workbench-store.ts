@@ -2594,15 +2594,13 @@ function applyConversationHandoffCleared(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
-  expectedHandoffMsgId: string,
 ) {
   return {
     conversationListsByScope: {
       ...state.conversationListsByScope,
       [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
         (conversation): Conversation =>
-          conversation.id === conversationId &&
-          conversation.handoffMsgId === expectedHandoffMsgId
+          conversation.id === conversationId
             ? {
                 ...conversation,
                 handoffMsgId: "0",
@@ -3854,9 +3852,8 @@ export function createWorkbenchStore() {
     function clearConversationHandoffReminder(input: {
       accountId: string;
       conversationId: string;
-      expectedHandoffMsgId: string;
     }) {
-      const requestKey = `${input.conversationId}:${input.expectedHandoffMsgId}`;
+      const requestKey = input.conversationId;
       const existingRequest = handoffClearRequestsByKey.get(requestKey);
 
       if (existingRequest) {
@@ -3870,9 +3867,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      const request = clearConversationHandoff(input.conversationId, {
-        expectedHandoffMsgId: input.expectedHandoffMsgId,
-      })
+      const request = clearConversationHandoff(input.conversationId)
         .then((response) => {
           if (response.cleared) {
             set((currentState) =>
@@ -3880,7 +3875,6 @@ export function createWorkbenchStore() {
                 currentState,
                 input.conversationId,
                 input.accountId,
-                input.expectedHandoffMsgId,
               ),
             );
           }
@@ -3894,7 +3888,7 @@ export function createWorkbenchStore() {
 
           const hasAnotherPendingRequest = Array.from(
             handoffClearRequestsByKey.keys(),
-          ).some((key) => key.startsWith(`${input.conversationId}:`));
+          ).some((key) => key === input.conversationId);
 
           if (!hasAnotherPendingRequest) {
             set((currentState) => ({
@@ -4167,7 +4161,6 @@ export function createWorkbenchStore() {
           const cleared = await clearConversationHandoffReminder({
             accountId: conversation.accountId,
             conversationId: conversation.id,
-            expectedHandoffMsgId: conversation.handoffMsgId,
           });
 
           return cleared
@@ -5661,11 +5654,9 @@ export function createWorkbenchStore() {
         };
       }
       const sendBatchStartedAt = Date.now();
-      const handoffMsgIdAtSend = hasConversationHandoff(
+      const shouldClearHandoffAfterSend = hasConversationHandoff(
         activeConversation.handoffMsgId,
-      )
-        ? activeConversation.handoffMsgId
-        : undefined;
+      );
       let hasRequestedHandoffClear = false;
 
       set((currentState) => ({
@@ -5755,12 +5746,11 @@ export function createWorkbenchStore() {
             seatId: activeAccountId,
             segment: payloadSegment,
           });
-          if (handoffMsgIdAtSend && !hasRequestedHandoffClear) {
+          if (shouldClearHandoffAfterSend && !hasRequestedHandoffClear) {
             hasRequestedHandoffClear = true;
             void clearConversationHandoffReminder({
               accountId: activeAccountId,
               conversationId: activeConversationId,
-              expectedHandoffMsgId: handoffMsgIdAtSend,
             }).catch(() => {
               // 消息已被 Java 接受；清除失败时保留提醒供人工重试。
             });

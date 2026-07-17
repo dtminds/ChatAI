@@ -1,6 +1,6 @@
 import {
-  CheckmarkCircle02Icon,
-  ViewIcon,
+  Gps02Icon,
+  ModernTvIssueIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -19,38 +19,38 @@ export function ChatHandoffStatusBar({
 }) {
   return (
     <div
-      className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-warning/20 bg-warning-muted/55 px-3 py-2 sm:flex-nowrap sm:px-5"
+      className="absolute inset-x-3 top-2 z-10 flex min-h-9 items-center justify-between gap-3 rounded-full border border-destructive/25 bg-destructive-muted/70 py-1 pl-3 pr-1.5 shadow-[0_4px_14px_var(--shadow-soft)] backdrop-blur-sm sm:inset-x-4 sm:pl-3.5"
       data-testid="chat-handoff-status-bar"
       role="status"
     >
-      <div className="flex min-w-0 items-center gap-2 text-sm text-warning">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-destructive">
         <HugeiconsIcon
           className="shrink-0"
-          icon={CheckmarkCircle02Icon}
-          size={17}
+          icon={ModernTvIssueIcon}
+          size={15}
           strokeWidth={1.8}
         />
-        <span className="font-medium">待人工处理</span>
-        <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-          AI 已将会话转交人工处理
+        <span className="shrink-0 font-medium">接管提醒</span>
+        <span className="hidden truncate text-destructive/70 md:inline">
+          部分消息触发转人工处理
         </span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1">
         <Button
-          aria-label="查看触发消息"
-          className="h-7 px-2.5"
+          aria-label="定位消息"
+          className="h-6 rounded-full border-destructive/25 bg-background/75 px-2.5 text-xs text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
           onClick={onViewMessage}
           size="sm"
           type="button"
-          variant="ghost"
+          variant="outline"
         >
-          <HugeiconsIcon icon={ViewIcon} size={15} strokeWidth={1.8} />
-          查看消息
+          <HugeiconsIcon icon={Gps02Icon} size={14} strokeWidth={1.8} />
+          定位消息
         </Button>
         <Button
-          aria-label="标记接管提醒已处理"
-          className="h-7 px-2.5"
+          aria-label="标记已处理"
+          className="h-6 rounded-full border-destructive/25 bg-background/75 px-2.5 text-xs text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
           disabled={!canMarkHandled || isPending}
           onClick={onMarkHandled}
           size="sm"

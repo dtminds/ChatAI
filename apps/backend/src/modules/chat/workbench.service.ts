@@ -1,5 +1,4 @@
 import type {
-  WorkbenchConversationClearHandoffRequest,
   WorkbenchConversationClearHandoffResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
@@ -351,7 +350,6 @@ export type WorkbenchService = {
   clearConversationHandoff(
     subUserId: string,
     conversationId: string,
-    request: WorkbenchConversationClearHandoffRequest,
   ):
     | Promise<WorkbenchConversationClearHandoffResponse>
     | WorkbenchConversationClearHandoffResponse;
@@ -1440,7 +1438,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async clearConversationHandoff(
     subUserId: string,
     conversationId: string,
-    request: WorkbenchConversationClearHandoffRequest,
   ): Promise<WorkbenchConversationClearHandoffResponse> {
     const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
     const conversation = await this.getOperableConversation(
@@ -1451,7 +1448,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const cleared = await this.repository.clearConversationHandoff({
       conversationId: conversation.id,
-      expectedHandoffMsgId: request.expectedHandoffMsgId,
       platform: conversation.platform,
       uid: conversation.uid,
     });

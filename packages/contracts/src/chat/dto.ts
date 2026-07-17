@@ -309,10 +309,10 @@ export type WorkbenchConversationSummaryDto = {
   conversationAIHostingSwitch?: boolean;
   /** 是否为影子群会话；影子群暂不支持消息撤回 */
   isShadowGroup?: boolean;
-  /** 转人工触发消息 ID，对应 `xy_wap_embed_conversation.handoff_msg_id`；`"0"` 表示无提醒 */
-  handoffMsgId: string;
+  /** 转人工触发消息 ID，对应 `xy_wap_embed_conversation.handoff_msg_id`；`0` 表示无提醒 */
+  handoffMsgId: number;
   /** 当前会话最后一条审计消息 ID */
-  lastMessageId?: string;
+  lastMessageId?: number;
   /** 是否已经回复，对应 `xy_wap_embed_conversation.reply` */
   replied: boolean;
   /** 客户绑定类型，对应 `xy_wap_embed_customer_bind_relation.bind_type`：1 普通客户，2 应用消息 */

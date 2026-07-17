@@ -16,7 +16,7 @@ function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversa
   return conversations.map((conversation) => ({
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
-    handoffMsgId: conversation.handoffMsgId ?? "0",
+    handoffMsgId: conversation.handoffMsgId ?? 0,
     replied: conversation.replied ?? true,
     customerBindType:
       conversation.mode === "single"

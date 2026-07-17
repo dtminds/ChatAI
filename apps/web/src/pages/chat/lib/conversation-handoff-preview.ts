@@ -8,8 +8,8 @@ const AGENT_HANDOFF_PREVIEW_PATTERN =
 const EXISTING_HANDOFF_PREFIX_PATTERN =
   /^\[接管提醒\](.*)$/u;
 
-export function hasConversationHandoff(handoffMsgId: string | undefined) {
-  return /^[1-9]\d*$/.test(handoffMsgId ?? "");
+export function hasConversationHandoff(handoffMsgId: number | undefined) {
+  return typeof handoffMsgId === "number" && handoffMsgId > 0;
 }
 
 /**

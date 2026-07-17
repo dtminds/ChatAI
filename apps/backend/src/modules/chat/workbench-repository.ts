@@ -205,7 +205,7 @@ type ConversationPageRow = Omit<
   | "last_message_content"
   | "last_message_type"
 > & {
-  last_audit_info_id: number | string | null;
+  last_audit_info_id: number | null;
   third_group_origin_userid?: string | null;
 };
 
@@ -227,7 +227,7 @@ type ConversationHydrationSources = {
     string,
     { avatar: string | null; bizStatus: number | null; name: string | null; remark: string | null }
   >;
-  lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
+  lastMessagesById: Map<number, { content: string | null; msgtype: string | null }>;
 };
 
 type SeatBaseRow = {
@@ -3536,10 +3536,8 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
-          "last_audit_info_id",
-        ),
+        "conversation.handoff_msg_id as handoff_msg_id",
+        "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -3712,10 +3710,8 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
-          "last_audit_info_id",
-        ),
+        "conversation.handoff_msg_id as handoff_msg_id",
+        "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -4929,8 +4925,8 @@ export class WorkbenchRepository {
     uid: number,
     platform: number,
   ): Promise<ConversationHydrationSources> {
-    const lastMessageIds = uniqueIds(
-      rows.map((row) => row.last_audit_info_id),
+    const lastMessageIds = uniquePositiveNumbers(
+      rows.map((row) => row.last_audit_info_id ?? undefined),
     );
     const contactThirdExternalIds = uniqueNonEmpty(
       rows
@@ -4956,7 +4952,7 @@ export class WorkbenchRepository {
         ? this.db
             .selectFrom("xy_wap_embed_msg_audit_info")
             .select(["id", "content", "msgtype"])
-            .where("id", "in", asSchemaBigIntIds(lastMessageIds))
+            .where("id", "in", lastMessageIds)
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .execute()
@@ -5033,7 +5029,7 @@ export class WorkbenchRepository {
       ),
       lastMessagesById: new Map(
         lastMessages.map((message) => [
-          String(message.id),
+          message.id,
           {
             content: message.content,
             msgtype: message.msgtype,
@@ -5056,7 +5052,7 @@ export class WorkbenchRepository {
   ): WorkbenchConversationListResponse["items"][number] {
     const lastMessage =
       row.last_audit_info_id != null
-        ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
+        ? hydrationSources.lastMessagesById.get(row.last_audit_info_id)
         : undefined;
     const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
     const bindRelation = hydrationSources.bindRelationsByThirdExternalId.get(
@@ -5314,10 +5310,8 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
-        sql<string>`cast(conversation.last_audit_info_id as char)`.as(
-          "last_audit_info_id",
-        ),
+        "conversation.handoff_msg_id as handoff_msg_id",
+        "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",

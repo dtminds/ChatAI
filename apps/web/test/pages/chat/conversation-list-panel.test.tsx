@@ -42,7 +42,7 @@ function createConversation({
   customerBindType,
   id,
   customerName,
-  lastMessageId = "100",
+  lastMessageId = 100,
   mode,
   replied = true,
   unread = 0,
@@ -51,7 +51,7 @@ function createConversation({
   customerBindType?: number;
   id: string;
   customerName: string;
-  lastMessageId?: string;
+  lastMessageId?: number;
   mode: ChatMode;
   replied?: boolean;
   unread?: number;
@@ -59,7 +59,7 @@ function createConversation({
   return {
     accountId: "account-1",
     conversationAIHostingSwitch,
-    handoffMsgId: "0",
+    handoffMsgId: 0,
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerBindType: mode === "single" ? customerBindType ?? 1 : undefined,
     customerId: `customer-${id}`,

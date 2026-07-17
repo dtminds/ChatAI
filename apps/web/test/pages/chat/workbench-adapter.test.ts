@@ -60,11 +60,11 @@ describe("workbench adapter", () => {
     expect(
       adaptConversation({
         ...conversationDto,
-        lastMessageId: "9007199254740995",
+        lastMessageId: 9001,
         replied: false,
       }),
     ).toMatchObject({
-      lastMessageId: "9007199254740995",
+      lastMessageId: 9001,
       replied: false,
     });
   });
@@ -1117,12 +1117,12 @@ describe("adaptMessage", () => {
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
   conversationAIHostingSwitch: false,
-  handoffMsgId: "0",
+  handoffMsgId: 0,
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",
   lastMessage: "",
-  lastMessageId: "100",
+  lastMessageId: 100,
   mode: "group",
   priority: "medium",
   replied: true,

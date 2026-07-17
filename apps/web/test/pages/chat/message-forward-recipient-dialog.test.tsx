@@ -27,7 +27,7 @@ function createConversation(index: number, mode: "single" | "group" = "single"):
   return {
     accountId: "seat-1",
     bizStatus: 1,
-    handoffMsgId: "0",
+    handoffMsgId: 0,
     customerAvatarUrl: "",
     customerId: `customer-${index}`,
     customerName: mode === "group" ? `群聊${index}` : `客户${index}`,

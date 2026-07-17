@@ -72,7 +72,7 @@ function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
     conversationAIHostingSwitch: false,
-    handoffMsgId: "0",
+    handoffMsgId: 0,
     customerAvatarUrl: "",
     customerBindType: 1,
     customerId: `${accountId}-customer`,
@@ -294,7 +294,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -308,7 +308,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("clears a handoff reminder after a send is accepted", async () => {
@@ -333,7 +333,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -349,7 +349,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("0");
+    ).toBe(0);
   });
 
   it("optimistically marks the conversation replied after a send is accepted", async () => {
@@ -369,7 +369,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                lastMessageId: "existing-last-message-id",
+                lastMessageId: 9000,
                 replied: false,
               }
             : conversation,
@@ -384,7 +384,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
     ).toMatchObject({
-      lastMessageId: "existing-last-message-id",
+      lastMessageId: 9000,
       replied: true,
     });
   });
@@ -411,7 +411,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -452,7 +452,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -468,7 +468,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("does not clear a handoff reminder when send is rejected", async () => {
@@ -493,7 +493,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -507,7 +507,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("does not clear a handoff reminder when an agent message arrives through polling", async () => {
@@ -544,7 +544,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -558,7 +558,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("clears the current handoff reminder by conversation id", async () => {
@@ -584,7 +584,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -598,7 +598,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9002" }
+            ? { ...conversation, handoffMsgId: 9002 }
             : conversation,
         ),
       },
@@ -617,7 +617,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
     ).toMatchObject({
-      handoffMsgId: "0",
+      handoffMsgId: 0,
     });
   });
 
@@ -644,7 +644,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -661,7 +661,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("0");
+    ).toBe(0);
   });
 
   it("keeps a handoff reminder when manual handling fails", async () => {
@@ -685,7 +685,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -701,7 +701,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("deduplicates an in-flight manual handoff clear", async () => {
@@ -728,7 +728,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -753,7 +753,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("0");
+    ).toBe(0);
   });
 
   it("patches active conversation full-auto from API response instead of request input", async () => {
@@ -2261,7 +2261,7 @@ describe("useWorkbenchStore", () => {
             accountId: "drc",
             bizStatus: 1,
             conversationAIHostingSwitch: false,
-            handoffMsgId: "0",
+            handoffMsgId: 0,
             customerAvatarUrl: "",
             customerBindType: 1,
             customerId: "cust-001",
@@ -5997,7 +5997,7 @@ describe("useWorkbenchStore", () => {
             {
               conversationAIHostingSwitch: false,
               conversationId: "server-unread-single",
-              handoffMsgId: "0",
+              handoffMsgId: 0,
               customerAvatar: "",
               customerId: "customer-server-unread",
               customerName: "服务端补齐未读",
@@ -7488,7 +7488,7 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, handoffMsgId: "9001" }
+            ? { ...conversation, handoffMsgId: 9001 }
             : conversation,
         ),
       },
@@ -7521,7 +7521,7 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
         ?.handoffMsgId,
-    ).toBe("9001");
+    ).toBe(9001);
   });
 
   it("calls the retry API with the failed message seq", async () => {
@@ -10604,7 +10604,7 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const hydratedConversation: WorkbenchConversationSummaryDto = {
       conversationId: "conv-search-001",
-      handoffMsgId: "0",
+      handoffMsgId: 0,
       seatId: "drc",
       customerId: "cust-search-001",
       customerName: "搜索客户",
@@ -10665,7 +10665,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("single", {
       preserveConversation: {
         accountId: "drc",
-        handoffMsgId: "0",
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "external-search-001",
         customerName: "搜索客户",
@@ -10715,7 +10715,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveAccount("ndt");
     deferredConversation.resolve({
       conversationId: "conv-search-stale",
-      handoffMsgId: "0",
+      handoffMsgId: 0,
       customerAvatar: "",
       customerId: "cust-search-stale",
       customerName: "搜索客户",
@@ -10819,7 +10819,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("single", {
       preserveConversation: {
         accountId: "drc",
-        handoffMsgId: "0",
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "drc-preserved-customer",
         customerName: "跨账号保留客户",
@@ -10851,7 +10851,7 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const hydratedConversation: WorkbenchConversationSummaryDto = {
       conversationId: "conv-search-group-001",
-      handoffMsgId: "0",
+      handoffMsgId: 0,
       seatId: "drc",
       customerId: "group-search-001",
       customerName: "搜索群聊",
@@ -10926,7 +10926,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("group", {
       preserveConversation: {
         accountId: "drc",
-        handoffMsgId: "0",
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "group-search-001",
         customerName: "搜索群聊",

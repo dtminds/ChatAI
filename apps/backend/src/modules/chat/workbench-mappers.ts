@@ -46,13 +46,13 @@ export type ConversationRow = {
   customer_name: string | null;
   contact_original_name: string | null;
   full_auto_switch?: number | string | boolean | null;
-  handoff_msg_id?: bigint | number | string | null;
+  handoff_msg_id?: number | null;
   group_avatar: string | null;
   group_name: string | null;
   group_remark: string | null;
   id: number | string;
   last_message_content: string | null;
-  last_audit_info_id?: number | string | null;
+  last_audit_info_id?: number | null;
   last_message_type: string | null;
   last_msgtime: Date | number | string | null;
   pinned_time: number | string;
@@ -209,13 +209,13 @@ export function mapConversationRow(
       : customerBindType === 2
         ? APPLICATION_MESSAGE_AVATAR_URL
         : row.customer_avatar ?? "";
-  const lastMessageId = normalizeBigIntId(row.last_audit_info_id);
+  const lastMessageId = toNumber(row.last_audit_info_id);
 
   return {
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
-    handoffMsgId: normalizeBigIntId(row.handoff_msg_id),
+    handoffMsgId: toNumber(row.handoff_msg_id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerBindType,
@@ -226,7 +226,7 @@ export function mapConversationRow(
     isShadowGroup:
       mode === "group" && Boolean(row.third_group_origin_userid?.trim()),
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
-    lastMessageId: lastMessageId === "0" ? undefined : lastMessageId,
+    lastMessageId: lastMessageId || undefined,
     lastMessage: lastMessagePreview,
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,
@@ -1032,12 +1032,6 @@ function normalizeOptionalId(value: number | string | null) {
   const id = String(value ?? "");
 
   return id && id !== "0" ? id : undefined;
-}
-
-function normalizeBigIntId(value: bigint | number | string | null | undefined) {
-  const id = String(value ?? "").trim();
-
-  return /^[1-9]\d*$/.test(id) ? id : "0";
 }
 
 function toNumber(value: number | string | null | undefined) {

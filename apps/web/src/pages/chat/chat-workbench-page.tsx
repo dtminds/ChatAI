@@ -1928,12 +1928,12 @@ function ChatWorkbenchContent({
   const handleViewHandoffMessage = () => {
     const handoffMsgId = activeConversation?.handoffMsgId;
 
-    if (!handoffMsgId || !/^[1-9]\d*$/.test(handoffMsgId)) {
+    if (!handoffMsgId) {
       return;
     }
 
     const handoffMessage = activeMessages.find(
-      (message) => String(message.seq) === handoffMsgId,
+      (message) => message.seq === handoffMsgId,
     );
     const viewport = messageViewportRef.current;
     const anchor =

@@ -1379,7 +1379,7 @@ describe("ChatPanel", () => {
     render(
       <ChatPanel
         activeAccount={account}
-        activeConversation={{ ...createConversation(), handoffMsgId: "9001" }}
+        activeConversation={{ ...createConversation(), handoffMsgId: 9001 }}
         activeHistoryStatus="idle"
         canMarkHandoffHandled
         canSendMessage
@@ -1452,7 +1452,7 @@ function createConversation(): Conversation {
     customerName: "客户",
     id: "conversation-1",
     conversationAIHostingSwitch: false,
-    handoffMsgId: "0",
+    handoffMsgId: 0,
     customerBindType: 1,
     mode: "single",
     preview: "",

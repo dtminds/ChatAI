@@ -1689,7 +1689,7 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       const nextConversation = {
         ...conversation,
-        handoffMsgId: "0",
+        handoffMsgId: 0,
       };
 
       upsertConversation(state, nextConversation);
@@ -1923,7 +1923,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         lastMessage: getPayloadPreview(segments),
         lastMessageId:
           outcome.status === "sent"
-            ? backendMessages.at(-1)?.msgid
+            ? backendMessages.at(-1)?.seq
             : conversation.lastMessageId,
         lastMessageTime: now,
         replied: outcome.status === "sent" ? true : conversation.replied,
@@ -2032,7 +2032,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         bizStatus: 1,
         conversationId,
         conversationAIHostingSwitch: false,
-        handoffMsgId: "0",
+        handoffMsgId: 0,
         customerAvatar: "",
         customerBindType: payload.chatType === 2 ? undefined : 1,
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
@@ -2815,7 +2815,7 @@ function buildInitialState(): MockState {
           customerId: conversation.customerId,
           customerName: conversation.customerName,
           lastMessage: conversation.preview,
-          lastMessageId: conversation.preview ? `mock-last-${conversation.id}` : undefined,
+          lastMessageId: conversation.preview ? 1 : undefined,
           lastMessageTime: new Date(conversation.updatedAt.replace(" ", "T")).getTime(),
           isPinned: conversation.isPinned,
           mode: conversation.mode,

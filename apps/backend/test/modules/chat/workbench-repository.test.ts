@@ -5448,7 +5448,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("hydrates last messages and cursors without losing bigint id precision", async () => {
+  it("hydrates numeric last message IDs while preserving conversation cursors", async () => {
     const observedAuditInfoQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(
       {
@@ -5466,12 +5466,12 @@ describe("WorkbenchRepository", () => {
             return createQueryBuilder([
               createConversationRow({
                 id: "9007199254740993",
-                last_audit_info_id: "9007199254740995",
+                last_audit_info_id: 900,
                 third_external_userid: "external-001",
               }),
               createConversationRow({
                 id: "9007199254740992",
-                last_audit_info_id: "9007199254740996",
+                last_audit_info_id: 901,
                 third_external_userid: "external-002",
               }),
             ]);
@@ -5479,8 +5479,8 @@ describe("WorkbenchRepository", () => {
 
           if (table === "xy_wap_embed_msg_audit_info") {
             const query = createQueryBuilder({
-              id: "9007199254740995",
-              content: "bigint message",
+              id: 900,
+              content: "last message",
               msgtype: "text",
             });
             observedAuditInfoQueries.push(query);
@@ -5509,11 +5509,11 @@ describe("WorkbenchRepository", () => {
     expect(observedAuditInfoQueries[0].wheres).toContainEqual([
       "id",
       "in",
-      ["9007199254740995"],
+      [900],
     ]);
     expect(page.items[0]).toMatchObject({
       conversationId: "9007199254740993",
-      lastMessage: "bigint message",
+      lastMessage: "last message",
     });
     expect(decodeConversationListCursor(page.nextCursor ?? "")).toEqual({
       id: "9007199254740993",

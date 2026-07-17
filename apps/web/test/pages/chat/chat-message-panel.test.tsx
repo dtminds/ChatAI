@@ -94,7 +94,7 @@ function enableSmartReplyDisplayContext({
           accountId: "seat-001",
           bizStatus: 1,
           conversationAIHostingSwitch,
-          handoffMsgId: "0",
+          handoffMsgId: 0,
           customerAvatarUrl: "",
           customerBindType: 1,
           customerId: "cust-001",

@@ -7,7 +7,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 const conversation: Conversation = {
   accountId: "account-1",
   conversationAIHostingSwitch: false,
-  handoffMsgId: "0",
+  handoffMsgId: 0,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -145,7 +145,7 @@ describe("ConversationCard", () => {
           mode: "group",
           preview:
             "Agent 转人工处理：客户明确要求转人工，同时存在不满情绪，符合handoff规则",
-          handoffMsgId: "9001",
+          handoffMsgId: 9001,
         }}
         isActive={false}
         onSelect={vi.fn()}
@@ -166,7 +166,7 @@ describe("ConversationCard", () => {
         conversation={{
           ...conversation,
           preview: "Agent 转人工处理：客户明确要求转人工",
-          handoffMsgId: "0",
+          handoffMsgId: 0,
         }}
         isActive={false}
         onSelect={vi.fn()}
@@ -192,7 +192,7 @@ describe("ConversationCard", () => {
         conversation={{
           ...conversation,
           preview: "Agent 转人工处理：客户明确要求转人工",
-          handoffMsgId: "9001",
+          handoffMsgId: 9001,
         }}
         isActive={false}
         onSelect={vi.fn()}

@@ -116,7 +116,7 @@ function isConversationIncludedInView(
       return (
         conversation.unread === 0 &&
         conversation.replied === false &&
-        Boolean(conversation.lastMessageId && conversation.lastMessageId !== "0") &&
+        Boolean(conversation.lastMessageId) &&
         conversation.customerBindType !== 2
       );
     }

@@ -171,7 +171,7 @@ describe("ChatWorkbenchPage", () => {
           ...state.conversationListsByScope,
           drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
             conversation.id === "conv-001"
-              ? { ...conversation, handoffMsgId: "3" }
+              ? { ...conversation, handoffMsgId: 3 }
               : conversation,
           ),
         },
@@ -220,7 +220,7 @@ describe("ChatWorkbenchPage", () => {
           ...state.conversationListsByScope,
           drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
             conversation.id === "conv-001"
-              ? { ...conversation, handoffMsgId: "9001" }
+              ? { ...conversation, handoffMsgId: 9001 }
               : conversation,
           ),
         },
@@ -668,7 +668,7 @@ describe("ChatWorkbenchPage", () => {
                   ...conversation,
                   customerBindType: 1,
                   customerName: "已读未回复客户",
-                  lastMessageId: "1001",
+                  lastMessageId: 1001,
                   replied: false,
                   unread: 0,
                 };
@@ -679,7 +679,7 @@ describe("ChatWorkbenchPage", () => {
                   ...conversation,
                   customerBindType: 2,
                   customerName: "应用消息会话",
-                  lastMessageId: "1002",
+                  lastMessageId: 1002,
                   replied: false,
                   unread: 0,
                 };
@@ -701,7 +701,7 @@ describe("ChatWorkbenchPage", () => {
                   ...conversation,
                   customerBindType: 1,
                   customerName: "稍后成为未回复",
-                  lastMessageId: "1004",
+                  lastMessageId: 1004,
                   replied: true,
                   unread: 0,
                 };

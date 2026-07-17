@@ -782,7 +782,7 @@ export interface XyWapEmbedConversation {
   /**
    * 转人工触发消息 ID：0 表示无提醒
    */
-  handoff_msg_id: Generated<number | string>;
+  handoff_msg_id: Generated<number>;
   /**
    * id
    */

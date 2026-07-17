@@ -73,10 +73,10 @@ export type Conversation = {
   isShadowGroup?: boolean;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
-  /** 转人工触发消息 ID；`"0"` 表示当前无接管提醒 */
-  handoffMsgId: string;
+  /** 转人工触发消息 ID；`0` 表示当前无接管提醒 */
+  handoffMsgId: number;
   /** 当前会话最后一条审计消息 ID */
-  lastMessageId?: string;
+  lastMessageId?: number;
   /** 会话是否已经回复 */
   replied?: boolean;
   /** 托管状态栏展示状态 */

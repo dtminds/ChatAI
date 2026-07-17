@@ -2628,7 +2628,7 @@ function applyConversationHandoffCleared(
           conversation.id === conversationId
             ? {
                 ...conversation,
-                handoffMsgId: "0",
+                handoffMsgId: 0,
               }
             : conversation,
       ),

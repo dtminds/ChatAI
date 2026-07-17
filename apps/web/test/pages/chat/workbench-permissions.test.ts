@@ -570,7 +570,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerName: "客户一号",
     id: "conv-001",
     conversationAIHostingSwitch: false,
-    handoffMsgId: "0",
+    handoffMsgId: 0,
     mode: "single",
     preview: "",
     priority: "medium",

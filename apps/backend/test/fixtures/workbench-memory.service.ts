@@ -1702,7 +1702,7 @@ function conversation(
     customerName,
     isPinned: options.isPinned,
     lastMessage,
-    lastMessageId: lastMessage ? `mock-last-${conversationId}` : undefined,
+    lastMessageId: lastMessage ? 1 : undefined,
     lastMessageTime: toTimestamp(lastMessageTime),
     mode,
     priority,

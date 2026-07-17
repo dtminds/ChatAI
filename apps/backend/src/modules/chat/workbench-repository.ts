@@ -95,6 +95,7 @@ const GROUP_MEMBER_SORT_RANK = {
 export type ConversationLookup = {
   chatType: number;
   id: string;
+  messageSourceThirdUserId: string;
   platform: number;
   seatId: string;
   seatHostSubUserId?: string;
@@ -2068,10 +2069,10 @@ export class WorkbenchRepository {
 
   async getMessageRawContent(input: {
     auditId: number;
+    messageSourceThirdUserId: string;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }) {
     if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
@@ -2084,7 +2085,7 @@ export class WorkbenchRepository {
       .where("id", "=", input.auditId)
       .where("uid", "=", input.uid)
       .where("platform", "=", input.platform)
-      .where("third_user_id", "=", input.thirdUserId);
+      .where("third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("third_group_id", "=", input.thirdGroupId);
@@ -2101,11 +2102,12 @@ export class WorkbenchRepository {
 
   async getMessageForRevoke(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     messageSeq: number;
     platform: number;
+    receptionThirdUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<RevokeMessageLookup | undefined> {
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
@@ -2126,7 +2128,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId);
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("message.third_group_id", "=", input.thirdGroupId);
@@ -2158,7 +2160,7 @@ export class WorkbenchRepository {
         chatType,
         fromType: toNumber(row.from_type) ?? null,
         thirdFromId: row.third_from_id ?? undefined,
-        thirdUserId: row.third_user_id ?? undefined,
+        thirdUserId: input.receptionThirdUserId,
       }),
       seq,
       status: toNumber(row.status) === 0 ? "failed" : "sent",
@@ -2167,11 +2169,12 @@ export class WorkbenchRepository {
 
   async findRetryMessage(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     messageSeq: number;
     platform: number;
+    receptionThirdUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<RetryMessageLookup | undefined> {
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
@@ -2190,7 +2193,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId)
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId)
       .where("message.id", "=", input.messageSeq)
       .where("message.status", "=", 0);
 
@@ -2216,7 +2219,7 @@ export class WorkbenchRepository {
         chatType: toNumber(row?.chat_type) ?? 0,
         fromType: toNumber(row?.from_type) ?? null,
         thirdFromId: row?.third_from_id ?? undefined,
-        thirdUserId: row?.third_user_id ?? undefined,
+        thirdUserId: input.receptionThirdUserId,
       }),
     };
   }
@@ -3787,6 +3790,7 @@ export class WorkbenchRepository {
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
@@ -3824,6 +3828,13 @@ export class WorkbenchRepository {
       ? {
           chatType: row.chat_type,
           id: String(row.id),
+          messageSourceThirdUserId:
+            row.chat_type === CHAT_TYPE_GROUP
+              ? resolveGroupSourceThirdUserId(
+                  row.third_group_origin_userid,
+                  row.third_userid,
+                )
+              : row.third_userid,
           platform: row.platform,
           seatId: String(row.seat_id),
           seatHostSubUserId:
@@ -4371,13 +4382,13 @@ export class WorkbenchRepository {
   }
 
   async getLatestConversationMessageSummary(input: {
+    messageSourceThirdUserId: string;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<{ createdAt: number; msgtype: string } | undefined> {
-    if (!input.thirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
+    if (!input.messageSourceThirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
       return undefined;
     }
 
@@ -4386,7 +4397,7 @@ export class WorkbenchRepository {
       .select(["message.create_time as create_time", "message.msgtype as msgtype"])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId);
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("message.third_group_id", "=", input.thirdGroupId);

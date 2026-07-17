@@ -240,6 +240,10 @@ type SmartReplyJavaScope = {
 type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
   SmartReplyMessagePageMetadata;
 
+function getMessageSourceThirdUserId(conversation: ConversationLookup) {
+  return conversation.messageSourceThirdUserId || conversation.thirdUserId;
+}
+
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
 function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[]) {
@@ -1170,10 +1174,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const rawContent = await this.repository.getMessageRawContent({
       auditId: input.messageSeq,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -1236,10 +1240,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const rawContent = await this.repository.getMessageRawContent({
       auditId: input.messageSeq,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -1416,12 +1420,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     if (request.enabled) {
       await this.insertFullAutoEnabledSystemMessage({
         conversationId: conversation.id,
+        messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
         operatorId: subUserNumericId,
         platform: conversation.platform,
         subUserId,
         thirdExternalUserId: conversation.thirdExternalUserId,
         thirdGroupId: conversation.thirdGroupId,
-        thirdUserId: conversation.thirdUserId,
         uid: conversation.uid,
       });
     }
@@ -2061,13 +2065,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const failedMessage = await this.repository.findRetryMessage({
       conversationId: conversation.id,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       messageSeq: payload.messageSeq,
       platform: conversation.platform,
+      receptionThirdUserId: conversation.thirdUserId,
       ...(conversation.thirdExternalUserId
         ? { thirdExternalUserId: conversation.thirdExternalUserId }
         : {}),
       ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -2214,11 +2219,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const message = await this.repository.getMessageForRevoke({
       conversationId: conversation.id,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       messageSeq,
       platform: conversation.platform,
+      receptionThirdUserId: conversation.thirdUserId,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -3960,21 +3966,21 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
   private async insertFullAutoEnabledSystemMessage(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     operatorId: number;
     platform: number;
     subUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }) {
     try {
       const latestMessage =
         await this.repository.getLatestConversationMessageSummary({
+          messageSourceThirdUserId: input.messageSourceThirdUserId,
           platform: input.platform,
           thirdExternalUserId: input.thirdExternalUserId,
           thirdGroupId: input.thirdGroupId,
-          thirdUserId: input.thirdUserId,
           uid: input.uid,
         });
 

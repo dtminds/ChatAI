@@ -1337,9 +1337,9 @@ describe("MysqlWorkbenchService", () => {
 
     expect(getMessageRawContent).toHaveBeenCalledWith({
       auditId: 538,
+      messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       thirdExternalUserId: "external-001",
-      thirdUserId: "seat-user-001",
       uid: 9001,
     });
     expect(playableVoiceExists).toHaveBeenCalledWith(
@@ -1433,9 +1433,9 @@ describe("MysqlWorkbenchService", () => {
 
     expect(getMessageRawContent).toHaveBeenCalledWith({
       auditId: 538,
+      messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       thirdExternalUserId: "external-001",
-      thirdUserId: "seat-user-001",
       uid: 9001,
     });
     expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
@@ -1911,10 +1911,10 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(getLatestConversationMessageSummary).toHaveBeenCalledWith({
+      messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       thirdExternalUserId: "external-001",
       thirdGroupId: undefined,
-      thirdUserId: "seat-user-001",
       uid: 9001,
     });
     expect(javaClient.insertSystemMessage).toHaveBeenCalledWith({
@@ -3595,14 +3595,65 @@ describe("MysqlWorkbenchService", () => {
 
     expect(getMessageForRevoke).toHaveBeenCalledWith({
       conversationId: "88",
+      messageSourceThirdUserId: "seat-user-001",
       messageSeq: 321,
       platform: 5,
-      thirdUserId: "seat-user-001",
+      receptionThirdUserId: "seat-user-001",
       uid: 9001,
     });
     expect(javaClient.revokeMessage).toHaveBeenCalledWith({
       platform: 5,
       revokeMsgId: 321,
+      uid: 9001,
+    });
+  });
+
+  it("locates a shadow group revoke message by opening seat while preserving reception ownership", async () => {
+    const javaClient = createJavaClient();
+    const getMessageForRevoke = vi.fn().mockResolvedValue({
+      createdAt: Date.now() - 60_000,
+      isRevoked: false,
+      seq: 322,
+      senderType: "agent",
+      status: "sent",
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          chatType: 2,
+          id: "89",
+          messageSourceThirdUserId: "opening-seat-001",
+          platform: 5,
+          seatId: "13",
+          seatHostSubUserId: "101",
+          thirdGroupId: "group-001",
+          thirdUserId: "reception-seat-001",
+          uid: 9001,
+        }),
+        getMessageForRevoke,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.revokeMessage("101", "89", 322)).resolves.toMatchObject({
+      accepted: true,
+      messageSeq: 322,
+      revokeMsgId: 322,
+    });
+    expect(getMessageForRevoke).toHaveBeenCalledWith({
+      conversationId: "89",
+      messageSourceThirdUserId: "opening-seat-001",
+      messageSeq: 322,
+      platform: 5,
+      receptionThirdUserId: "reception-seat-001",
+      thirdExternalUserId: undefined,
+      thirdGroupId: "group-001",
+      uid: 9001,
+    });
+    expect(javaClient.revokeMessage).toHaveBeenCalledWith({
+      platform: 5,
+      revokeMsgId: 322,
       uid: 9001,
     });
   });
@@ -7977,6 +8028,7 @@ describe("MysqlWorkbenchService", () => {
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "conv-group",
+        messageSourceThirdUserId: "opening-user",
         platform: 5,
         seatHostSubUserId: "101",
         seatId: "12",
@@ -7999,10 +8051,11 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.findRetryMessage).toHaveBeenCalledWith({
       conversationId: "conv-group",
+      messageSourceThirdUserId: "opening-user",
       messageSeq: 538,
       platform: 5,
+      receptionThirdUserId: "current-user",
       thirdGroupId: "current-group",
-      thirdUserId: "current-user",
       uid: 272,
     });
     expect(repository.findAsyncOperationByOptNo).toHaveBeenCalledWith({

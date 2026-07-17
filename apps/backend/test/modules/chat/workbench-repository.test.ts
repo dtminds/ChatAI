@@ -2501,9 +2501,9 @@ describe("WorkbenchRepository", () => {
 
     await expect(
       repository.getLatestConversationMessageSummary({
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
         thirdExternalUserId: "external-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -2522,13 +2522,42 @@ describe("WorkbenchRepository", () => {
     expect(queries[0]?.query.limits).toEqual([1]);
   });
 
+  it("loads the latest shadow group message summary from the opening-seat partition", async () => {
+    const query = createQueryBuilder({
+      create_time: new Date("2026-06-29T10:00:00.000Z"),
+      msgtype: "text",
+    });
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          return query;
+        },
+      } as never,
+    );
+
+    await repository.getLatestConversationMessageSummary({
+      messageSourceThirdUserId: "opening-seat-001",
+      platform: 5,
+      thirdGroupId: "group-001",
+      uid: 9001,
+    });
+
+    expect(query.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
+    expect(query.wheres).toContainEqual(["message.third_group_id", "=", "group-001"]);
+  });
+
   it("does not query latest conversation message without a conversation target", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 
     await expect(
       repository.getLatestConversationMessageSummary({
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toBeUndefined();
@@ -6093,6 +6122,7 @@ describe("WorkbenchRepository", () => {
               seat_host_sub_id: 101,
               third_external_userid: "external-001",
               third_group_id: null,
+              third_group_origin_userid: "should-not-affect-single-chat",
               third_userid: "seat-user-001",
               uid: 9001,
             });
@@ -6108,6 +6138,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
       chatType: 1,
       id: "88",
+      messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
@@ -6226,6 +6257,7 @@ describe("WorkbenchRepository", () => {
           expect(table).toBe("xy_wap_embed_conversation as conversation");
 
           return createQueryBuilder({
+            chat_type: 2,
             group_name: "原始群名",
             group_remark: "备注群名",
             id: 99,
@@ -6235,6 +6267,7 @@ describe("WorkbenchRepository", () => {
             seat_unread_count: 3,
             third_external_userid: null,
             third_group_id: "group-001",
+            third_group_origin_userid: "opening-seat-001",
             third_userid: "seat-user-001",
             uid: 9001,
             unread_cnt: 1,
@@ -6244,7 +6277,9 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("99")).resolves.toEqual({
+      chatType: 2,
       id: "99",
+      messageSourceThirdUserId: "opening-seat-001",
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
@@ -6427,9 +6462,9 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageRawContent({
         auditId: 538,
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
         thirdExternalUserId: "external-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toBe(JSON.stringify({
@@ -6446,6 +6481,29 @@ describe("WorkbenchRepository", () => {
         ["third_external_id", "=", "external-001"],
       ],
     });
+  });
+
+  it("reads shadow group message raw content from the opening-seat partition", async () => {
+    const query = createQueryBuilder({ content: JSON.stringify({ fileUrl: "voice.amr" }) });
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info");
+          return query;
+        },
+      } as never,
+    );
+
+    await repository.getMessageRawContent({
+      auditId: 539,
+      messageSourceThirdUserId: "opening-seat-001",
+      platform: 5,
+      thirdGroupId: "group-001",
+      uid: 9001,
+    });
+
+    expect(query.wheres).toContainEqual(["third_user_id", "=", "opening-seat-001"]);
+    expect(query.wheres).toContainEqual(["third_group_id", "=", "group-001"]);
   });
 
   it("finds retry message opt no only within the failed conversation message scope", async () => {
@@ -6472,10 +6530,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.findRetryMessage({
         conversationId: "conv-001",
+        messageSourceThirdUserId: "seat-user-001",
         messageSeq: 538,
         platform: 5,
+        receptionThirdUserId: "seat-user-001",
         thirdGroupId: "group-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -6517,10 +6576,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.findRetryMessage({
         conversationId: "conv-001",
+        messageSourceThirdUserId: "seat-user-001",
         messageSeq: 539,
         platform: 5,
+        receptionThirdUserId: "seat-user-001",
         thirdGroupId: "group-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -6528,6 +6588,48 @@ describe("WorkbenchRepository", () => {
       optNo: "failed-opt-539",
       senderType: "customer",
     });
+  });
+
+  it("finds shadow group retry messages in the opening-seat partition and owns them by reception seat", async () => {
+    const queries: Array<{ wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          const query = createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 540,
+            opt_no: "failed-opt-540",
+            third_from_id: "reception-seat-001",
+            third_user_id: "opening-seat-001",
+          });
+          queries.push({ wheres: query.wheres });
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-shadow",
+        messageSourceThirdUserId: "opening-seat-001",
+        messageSeq: 540,
+        platform: 5,
+        receptionThirdUserId: "reception-seat-001",
+        thirdGroupId: "group-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 540,
+      optNo: "failed-opt-540",
+      senderType: "agent",
+    });
+    expect(queries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
   });
 
   it("finds async operation opt params in tenant and platform scope", async () => {
@@ -7224,10 +7326,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
         messageSeq: 321,
         platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
         thirdExternalUserId: "external-1",
-        thirdUserId: "seat-third-user-1",
         uid: 9001,
       }),
     ).resolves.toMatchObject({
@@ -7251,10 +7354,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
         messageSeq: 321,
         platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
         thirdExternalUserId: "external-1",
-        thirdUserId: "seat-third-user-1",
         uid: 9001,
       }),
     ).resolves.toMatchObject({
@@ -7266,6 +7370,80 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 321]);
     expect(db.messageQueries[0]?.whereExpressions).toEqual([]);
     expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
+  });
+
+  it("keeps ordinary group revoke lookup and ownership on the current seat", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        chat_type: 2,
+        from_type: null,
+        id: 323,
+        msgid: "remote-msg-323",
+        status: 1,
+        third_from_id: "seat-third-user-1",
+        third_group_id: "group-1",
+        third_user_id: "seat-third-user-1",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
+        messageSeq: 323,
+        platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
+        thirdGroupId: "group-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 323,
+      status: "sent",
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+  });
+
+  it("finds shadow group revoke messages in the opening-seat partition and owns them by reception seat", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        chat_type: 2,
+        from_type: null,
+        id: 322,
+        msgid: "remote-msg-322",
+        status: 1,
+        third_from_id: "reception-seat-001",
+        third_group_id: "group-1",
+        third_user_id: "opening-seat-001",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "opening-seat-001",
+        messageSeq: 322,
+        platform: 5,
+        receptionThirdUserId: "reception-seat-001",
+        thirdGroupId: "group-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 322,
+      status: "sent",
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
   });
 
   it("applies media scope with day and sender filters in history queries", async () => {

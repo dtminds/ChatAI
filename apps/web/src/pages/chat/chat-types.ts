@@ -26,6 +26,8 @@ export type GroupMember = {
   id: string;
   displayName: string;
   avatarUrl?: string;
+  isOpeningAccount?: boolean;
+  isReceptionAccount?: boolean;
   type: WorkbenchGroupMemberType;
 };
 
@@ -68,6 +70,8 @@ export type Account = {
 
 export type Conversation = {
   id: string;
+  /** 影子群会话暂不支持消息撤回 */
+  isShadowGroup?: boolean;
   /** 当前会话最后一条审计消息 ID */
   lastMessageId?: string;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */

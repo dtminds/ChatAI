@@ -2236,6 +2236,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
     }
 
+    if (conversation.isShadowGroup) {
+      throw new ForbiddenError("MESSAGE_REVOKE_FORBIDDEN", "暂不支持撤回该消息");
+    }
+
     const message = await this.repository.getMessageForRevoke({
       conversationId: conversation.id,
       messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),

@@ -91,6 +91,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     groupOriginalName: dto.groupOriginalName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
+    isShadowGroup: dto.isShadowGroup,
     isVerified: dto.verified,
     lastMessageId: dto.lastMessageId,
     mode: dto.mode,
@@ -114,6 +115,8 @@ export function adaptGroupMember(dto: WorkbenchGroupMemberDto) {
     avatarUrl: dto.avatarUrl,
     displayName: dto.displayName,
     id: dto.thirdUserId,
+    isOpeningAccount: dto.isOpeningAccount,
+    isReceptionAccount: dto.isReceptionAccount,
     type: dto.type,
   };
 }

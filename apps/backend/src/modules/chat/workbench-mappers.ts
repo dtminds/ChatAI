@@ -59,6 +59,7 @@ export type ConversationRow = {
   seat_id: number | string;
   third_external_userid: string;
   third_group_id: string;
+  third_group_origin_userid?: string | null;
   third_userid: string;
   unread_cnt: number | string;
   verified?: number | string | null;
@@ -222,6 +223,8 @@ export function mapConversationRow(
     customerName,
     contactOriginalName,
     groupOriginalName,
+    isShadowGroup:
+      mode === "group" && Boolean(row.third_group_origin_userid?.trim()),
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
     lastMessageId:
       row.last_audit_info_id == null ? undefined : String(row.last_audit_info_id),

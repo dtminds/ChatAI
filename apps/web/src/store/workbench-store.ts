@@ -5861,8 +5861,15 @@ export function createWorkbenchStore() {
         state.messagesByConversationId[state.activeConversationId] ?? [],
         uiMessageKey,
       );
+      const conversation = (
+        state.conversationListsByScope[state.activeAccountId] ?? []
+      ).find((item) => item.id === message?.conversationId);
 
-      if (!message || !canUseMessageRevoke(message)) {
+      if (
+        !message ||
+        conversation?.isShadowGroup ||
+        !canUseMessageRevoke(message)
+      ) {
         return {
           errorCode: "MESSAGE_NOT_REVOKABLE",
           errorMessage: "暂不支持撤回该消息",

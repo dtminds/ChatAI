@@ -2231,7 +2231,9 @@ function ChatWorkbenchContent({
       onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
-      onRevokeMessage={handleRevokeMessage}
+      onRevokeMessage={
+        activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
+      }
       onMessageViewportScroll={handleMessageViewportScroll}
       onRetryMessage={handleRetryFailedMessage}
       retryingMessageIds={retryingUiMessageKeys}

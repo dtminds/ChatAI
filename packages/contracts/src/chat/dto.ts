@@ -313,6 +313,8 @@ export type WorkbenchConversationPreviewPart = {
 export type WorkbenchConversationSummaryDto = {
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
+  /** 是否为影子群会话；影子群暂不支持消息撤回 */
+  isShadowGroup?: boolean;
   /**
    * 是否待人工处理，对应 `xy_wap_embed_conversation.wait_manual`：
    * true 时会话列表展示红色「[接管提醒]」前缀
@@ -861,6 +863,8 @@ export type WorkbenchGroupMemberDto = {
   thirdUserId: string;
   displayName: string;
   avatarUrl: string;
+  isOpeningAccount?: boolean;
+  isReceptionAccount?: boolean;
   nickname?: string;
   type: WorkbenchGroupMemberType;
 };

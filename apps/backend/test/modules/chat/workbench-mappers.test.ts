@@ -241,6 +241,58 @@ describe("workbench MySQL mappers", () => {
     expect(conversation.bizStatus).toBe(0);
   });
 
+  it("marks group conversations with an opening member as shadow groups", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "",
+        group_name: "影子群",
+        id: 89,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-001",
+        third_group_origin_userid: "opening-seat-001",
+        third_userid: "reception-seat-001",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      isShadowGroup: true,
+      mode: "group",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "",
+        group_name: "普通群",
+        id: 90,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-002",
+        third_group_origin_userid: "",
+        third_userid: "reception-seat-001",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      isShadowGroup: false,
+      mode: "group",
+    });
+  });
+
   it("does not fall back to customer or group ids for display names", () => {
     expect(
       mapConversationRow({

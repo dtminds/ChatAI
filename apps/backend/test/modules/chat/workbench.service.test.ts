@@ -3608,21 +3608,16 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("locates a shadow group revoke message by opening seat while preserving reception ownership", async () => {
+  it("rejects revoke for shadow group conversations", async () => {
     const javaClient = createJavaClient();
-    const getMessageForRevoke = vi.fn().mockResolvedValue({
-      createdAt: Date.now() - 60_000,
-      isRevoked: false,
-      seq: 322,
-      senderType: "agent",
-      status: "sent",
-    });
+    const getMessageForRevoke = vi.fn();
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
           chatType: 2,
           id: "89",
+          isShadowGroup: true,
           messageSourceThirdUserId: "opening-seat-001",
           platform: 5,
           seatId: "13",
@@ -3636,26 +3631,13 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await expect(service.revokeMessage("101", "89", 322)).resolves.toMatchObject({
-      accepted: true,
-      messageSeq: 322,
-      revokeMsgId: 322,
+    await expect(service.revokeMessage("101", "89", 322)).rejects.toMatchObject({
+      code: "MESSAGE_REVOKE_FORBIDDEN",
+      message: "暂不支持撤回该消息",
+      statusCode: 403,
     });
-    expect(getMessageForRevoke).toHaveBeenCalledWith({
-      conversationId: "89",
-      messageSourceThirdUserId: "opening-seat-001",
-      messageSeq: 322,
-      platform: 5,
-      receptionThirdUserId: "reception-seat-001",
-      thirdExternalUserId: undefined,
-      thirdGroupId: "group-001",
-      uid: 9001,
-    });
-    expect(javaClient.revokeMessage).toHaveBeenCalledWith({
-      platform: 5,
-      revokeMsgId: 322,
-      uid: 9001,
-    });
+    expect(getMessageForRevoke).not.toHaveBeenCalled();
+    expect(javaClient.revokeMessage).not.toHaveBeenCalled();
   });
 
   it("rejects revoke for messages at the 180 second boundary", async () => {

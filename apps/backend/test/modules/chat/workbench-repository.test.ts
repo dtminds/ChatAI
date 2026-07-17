@@ -6138,6 +6138,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
       chatType: 1,
       id: "88",
+      isShadowGroup: false,
       messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       seatHostSubUserId: "101",
@@ -6279,6 +6280,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("99")).resolves.toEqual({
       chatType: 2,
       id: "99",
+      isShadowGroup: true,
       messageSourceThirdUserId: "opening-seat-001",
       platform: 5,
       seatHostSubUserId: "101",
@@ -6290,6 +6292,73 @@ describe("WorkbenchRepository", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
       unreadCount: 1,
+    });
+  });
+
+  it("marks opening and reception accounts in shadow group members", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder({
+              conversation_id: 99,
+              group_seat_id: 1001,
+              platform: 5,
+              third_group_id: "group-001",
+              third_group_origin_userid: " opening-seat-001 ",
+              third_userid: " reception-seat-001 ",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_group_member as member") {
+            return createQueryBuilder([
+              {
+                avatar_url: "https://example.com/opening.png",
+                name: "开通成员",
+                nickname: null,
+                third_user_id: " opening-seat-001 ",
+                type: 2,
+              },
+              {
+                avatar_url: "https://example.com/reception.png",
+                name: "接待成员",
+                nickname: null,
+                third_user_id: " reception-seat-001 ",
+                type: 1,
+              },
+              {
+                avatar_url: "",
+                name: "普通成员",
+                nickname: null,
+                third_user_id: "member-001",
+                type: 0,
+              },
+            ]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.listGroupMembers("99")).resolves.toMatchObject({
+      items: [
+        {
+          displayName: "开通成员",
+          isOpeningAccount: true,
+          thirdUserId: " opening-seat-001 ",
+        },
+        {
+          displayName: "接待成员",
+          isReceptionAccount: true,
+          thirdUserId: " reception-seat-001 ",
+        },
+        {
+          displayName: "普通成员",
+          thirdUserId: "member-001",
+        },
+      ],
     });
   });
 

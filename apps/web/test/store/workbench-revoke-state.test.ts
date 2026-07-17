@@ -467,6 +467,64 @@ describe("workbench revoke state", () => {
     });
   });
 
+  it("rejects revoke for shadow group conversations without sending a request", async () => {
+    vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
+    const baseService = createMockWorkbenchService();
+    const revokeMessage = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      revokeMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        [state.activeAccountId]: (
+          state.conversationListsByScope[state.activeAccountId] ?? []
+        ).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, isShadowGroup: true }
+            : conversation,
+        ),
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "德瑞可-小可",
+            content: {
+              text: "影子群客服消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "shadow-group-agent-message",
+            isOwnMessage: true,
+            role: "agent",
+            sender: {
+              id: "sender-agent-drc",
+              name: "德瑞可-小可",
+            },
+            sentAt: formatWorkbenchTimestamp(Date.now() - 60_000),
+            seq: 104,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore.getState().revokeMessage("shadow-group-agent-message"),
+    ).resolves.toEqual({
+      errorCode: "MESSAGE_NOT_REVOKABLE",
+      errorMessage: "暂不支持撤回该消息",
+      ok: false,
+    });
+    expect(revokeMessage).not.toHaveBeenCalled();
+  });
+
   it("rejects revoke when the message seq is invalid", async () => {
     vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
     const baseService = createMockWorkbenchService();

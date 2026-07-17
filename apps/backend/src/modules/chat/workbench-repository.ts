@@ -95,6 +95,7 @@ const GROUP_MEMBER_SORT_RANK = {
 export type ConversationLookup = {
   chatType: number;
   id: string;
+  isShadowGroup?: boolean;
   messageSourceThirdUserId: string;
   platform: number;
   seatId: string;
@@ -3828,6 +3829,9 @@ export class WorkbenchRepository {
       ? {
           chatType: row.chat_type,
           id: String(row.id),
+          isShadowGroup:
+            row.chat_type === CHAT_TYPE_GROUP &&
+            Boolean(row.third_group_origin_userid?.trim()),
           messageSourceThirdUserId:
             row.chat_type === CHAT_TYPE_GROUP
               ? resolveGroupSourceThirdUserId(
@@ -4150,6 +4154,8 @@ export class WorkbenchRepository {
       .select([
         "conversation.id as conversation_id",
         "conversation.third_group_id as third_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
+        "conversation.third_userid as third_userid",
         "conversation.uid as uid",
         "conversation.platform as platform",
         "group_seat.id as group_seat_id",
@@ -4179,8 +4185,18 @@ export class WorkbenchRepository {
       .where("member.biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
 
+    const openingAccountThirdUserId =
+      conversation.third_group_origin_userid?.trim() || undefined;
+    const receptionAccountThirdUserId = openingAccountThirdUserId
+      ? conversation.third_userid?.trim() || undefined
+      : undefined;
     const items = rows
-      .map((row) => mapGroupMemberRow(row as GroupMemberRow))
+      .map((row) =>
+        mapGroupMemberRow(row as GroupMemberRow, {
+          openingAccountThirdUserId,
+          receptionAccountThirdUserId,
+        }),
+      )
       .sort(sortGroupMembers);
 
     return {
@@ -6113,10 +6129,24 @@ type GroupMemberRow = {
   type: number | null;
 };
 
-function mapGroupMemberRow(row: GroupMemberRow): WorkbenchGroupMemberDto {
+function mapGroupMemberRow(
+  row: GroupMemberRow,
+  identity: {
+    openingAccountThirdUserId?: string;
+    receptionAccountThirdUserId?: string;
+  } = {},
+): WorkbenchGroupMemberDto {
+  const normalizedThirdUserId = row.third_user_id.trim();
+
   return {
     avatarUrl: row.avatar_url ?? "",
     displayName: row.nickname?.trim() || row.name?.trim() || row.third_user_id,
+    ...(normalizedThirdUserId === identity.openingAccountThirdUserId
+      ? { isOpeningAccount: true }
+      : {}),
+    ...(normalizedThirdUserId === identity.receptionAccountThirdUserId
+      ? { isReceptionAccount: true }
+      : {}),
     nickname: row.nickname?.trim() || undefined,
     thirdUserId: row.third_user_id,
     type: normalizeGroupMemberType(row.type),

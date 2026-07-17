@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adaptAccount,
   adaptConversation,
+  adaptGroupMember,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
@@ -44,6 +45,32 @@ describe("workbench adapter", () => {
         conversationAIHostingSwitch: true,
       }).conversationAIHostingSwitch,
     ).toBe(true);
+  });
+
+  it("maps the shadow group capability flag", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        isShadowGroup: true,
+      }).isShadowGroup,
+    ).toBe(true);
+  });
+
+  it("maps shadow group member account identities", () => {
+    expect(
+      adaptGroupMember({
+        avatarUrl: "",
+        displayName: "接待成员",
+        isOpeningAccount: true,
+        isReceptionAccount: true,
+        thirdUserId: "member-001",
+        type: 1,
+      }),
+    ).toMatchObject({
+      id: "member-001",
+      isOpeningAccount: true,
+      isReceptionAccount: true,
+    });
   });
 
   it("adapts conversation biz status for send availability", () => {

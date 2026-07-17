@@ -134,6 +134,61 @@ describe("ChatHeader", () => {
     expect(screen.getByText("微信昵称：客户原始昵称")).toBeInTheDocument();
   });
 
+  it("shows reception account constraints for shadow group conversations", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          customerName: "测试影子群",
+          isShadowGroup: true,
+          mode: "group",
+          thirdGroupId: "group-001",
+        }}
+      />,
+    );
+
+    const noticeTrigger = screen.getByRole("button", {
+      name: "查看接待号注意事项",
+    });
+
+    expect(noticeTrigger).toHaveTextContent("接待号");
+
+    await user.hover(noticeTrigger);
+
+    expect(await screen.findByText("接待号注意事项")).toBeInTheDocument();
+    expect(screen.getByText(/无法在工作台撤回已发送的消息/)).toBeInTheDocument();
+    expect(screen.getByText(/包含引用或@内容时工作台回显可能异常/)).toBeInTheDocument();
+    expect(screen.getByText(/不支持一键重发/)).toBeInTheDocument();
+  });
+
+  it("does not show the reception account notice for regular conversations", () => {
+    const { rerender } = render(
+      <ChatHeader
+        activeConversation={conversation}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "查看接待号注意事项" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          mode: "group",
+          thirdGroupId: "group-001",
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "查看接待号注意事项" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not read browser storage or media queries while rendering", () => {
     const getItemSpy = vi.spyOn(window.localStorage, "getItem");
     const matchMediaSpy = vi.spyOn(window, "matchMedia");

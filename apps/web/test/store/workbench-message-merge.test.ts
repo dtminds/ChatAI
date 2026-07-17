@@ -27,6 +27,17 @@ vi.mock("@/pages/chat/lib/new-message-title-alert", () => ({
   notifyPulledCustomerMessage: vi.fn(),
 }));
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe("workbench message merge state", () => {
   beforeEach(() => {
     resetWorkbenchStoreTestState();
@@ -393,6 +404,259 @@ describe("workbench message merge state", () => {
       status: "sent",
     });
     expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
+  });
+
+  it("reconciles an already-polled text message when the send ACK arrives later", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendStarted = createDeferred<void>();
+    const sendAck = createDeferred<{ optNo: string; status: "accepted" }>();
+    const createdAt = Date.now();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendStarted.resolve();
+        return sendAck.promise;
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { text: "ACK 竞态文本" },
+              contentType: "text",
+              createdAt,
+              msgid: "remote-ack-race-text",
+              rawMsgtype: "text",
+              seq: 1251,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const initialCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+    const sendPromise = useWorkbenchStore
+      .getState()
+      .sendAgentTextMessage("ACK 竞态文本");
+
+    await sendStarted.promise;
+    await useWorkbenchStore.getState().pollWorkbench();
+    sendAck.resolve({ optNo: "opt-ack-race-text", status: "accepted" });
+    await sendPromise;
+
+    const state = useWorkbenchStore.getState();
+    const messages = state.messagesByConversationId["conv-001"];
+
+    expect(messages).toHaveLength(initialCount + 1);
+    expect(
+      messages.filter(
+        (message) =>
+          message.msgid === "remote-ack-race-text" ||
+          message.optNo === "opt-ack-race-text",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        msgid: "remote-ack-race-text",
+        optNo: "opt-ack-race-text",
+        seq: 1251,
+        status: "sent",
+      }),
+    ]);
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("reconciles an already-polled image by fallback when the send ACK arrives later", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendStarted = createDeferred<void>();
+    const sendAck = createDeferred<{ optNo: string; status: "accepted" }>();
+    const createdAt = Date.now();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendStarted.resolve();
+        return sendAck.promise;
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { fileUrl: "https://poll.example.com/rendered/race.png" },
+              contentType: "image",
+              createdAt,
+              msgid: "remote-ack-race-image",
+              rawMsgtype: "image",
+              seq: 1261,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const initialCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+    const sendPromise = useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "ACK 竞态图片",
+        imageUrl: "https://local.example.com/race.png",
+        type: "image",
+        url: "https://local.example.com/race.png",
+      },
+    ]);
+
+    await sendStarted.promise;
+    await useWorkbenchStore.getState().pollWorkbench();
+    sendAck.resolve({ optNo: "opt-ack-race-image", status: "accepted" });
+    await sendPromise;
+
+    const state = useWorkbenchStore.getState();
+    const messages = state.messagesByConversationId["conv-001"];
+
+    expect(messages).toHaveLength(initialCount + 1);
+    expect(
+      messages.filter(
+        (message) =>
+          message.msgid === "remote-ack-race-image" ||
+          message.optNo === "opt-ack-race-image",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        msgid: "remote-ack-race-image",
+        optNo: "opt-ack-race-image",
+        seq: 1261,
+        status: "sent",
+      }),
+    ]);
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("does not reconcile a same-type message that existed before sending started", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendAck = createDeferred<{ optNo: string; status: "accepted" }>();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return sendAck.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      activeMessageSeq: 1241,
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客服",
+            content: { text: "本次发送文本", type: "text" },
+            conversationId: "conv-001",
+            isOwnMessage: true,
+            msgid: "remote-before-send",
+            role: "agent",
+            sender: { id: "agent", name: "客服" },
+            sentAt: "2026-07-17 13:00:00",
+            seq: 1241,
+            source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            status: "sent",
+            uiMessageKey: "1241",
+          },
+        ],
+      },
+    }));
+    const initialCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+    const sendPromise = useWorkbenchStore
+      .getState()
+      .sendAgentTextMessage("本次发送文本");
+
+    sendAck.resolve({ optNo: "opt-after-existing-message", status: "accepted" });
+    await sendPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(initialCount + 1);
+    expect(
+      state.messagesByConversationId["conv-001"].find(
+        (message) => message.msgid === "remote-before-send",
+      ),
+    ).not.toHaveProperty("optNo");
+    expect(state.pendingMessages).toEqual([
+      expect.objectContaining({ optNo: "opt-after-existing-message" }),
+    ]);
+  });
+
+  it("does not overwrite a newer conversation preview when a send ACK arrives later", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendStarted = createDeferred<void>();
+    const sendAck = createDeferred<{ optNo: string; status: "accepted" }>();
+    const sentAt = Date.now();
+    const newerPreviewAt = sentAt + 10_000;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendStarted.resolve();
+        return sendAck.promise;
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { text: "较早发送文本" },
+              contentType: "text",
+              createdAt: sentAt,
+              msgid: "remote-ack-preview-agent",
+              rawMsgtype: "text",
+              seq: 1271,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+          ],
+          conversationChanges: [
+            createPolledConversation({
+              conversationId: "conv-001",
+              lastMessage: "更新的会话预览",
+              lastMessageTime: newerPreviewAt,
+              unreadCount: 0,
+            }),
+          ],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const sendPromise = useWorkbenchStore
+      .getState()
+      .sendAgentTextMessage("较早发送文本");
+
+    await sendStarted.promise;
+    await useWorkbenchStore.getState().pollWorkbench();
+    sendAck.resolve({ optNo: "opt-ack-preview", status: "accepted" });
+    await sendPromise;
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-001",
+        ),
+    ).toMatchObject({
+      preview: "更新的会话预览",
+      updatedAtMs: newerPreviewAt,
+    });
   });
 
   it("reconciles supported optimistic message types when optNo is absent", async () => {
@@ -945,6 +1209,80 @@ describe("workbench message merge state", () => {
         .filter((message) => message.msgid?.startsWith("remote-reverse-order-"))
         .map((message) => message.seq),
     ).toEqual([1493, 1494]);
+  });
+
+  it("orders new polled messages across an unresolved optimistic message", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+    const firstSentAt = 1_784_261_400_000;
+    const customerSentAt = firstSentAt + 10_000;
+    const secondSentAt = firstSentAt + 20_000;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        sendIndex += 1;
+        return { optNo: `opt-partial-order-${sendIndex}`, status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { text: "第一条发送" },
+              contentType: "text",
+              createdAt: firstSentAt,
+              msgid: "remote-partial-order-agent",
+              rawMsgtype: "text",
+              seq: 1511,
+            }),
+            {
+              content: { text: "中间客户消息" },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: customerSentAt,
+              customerId: "cust-001",
+              msgid: "remote-partial-order-customer",
+              rawMsgtype: "text",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 1512,
+              status: "sent",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(firstSentAt);
+    await useWorkbenchStore.getState().sendAgentTextMessage("第一条发送");
+    nowSpy.mockReturnValue(secondSentAt);
+    await useWorkbenchStore.getState().sendAgentTextMessage("第二条发送");
+    nowSpy.mockRestore();
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages).toEqual([
+      expect.objectContaining({ optNo: "opt-partial-order-2" }),
+    ]);
+    expect(
+      state.messagesByConversationId["conv-001"]
+        .filter(
+          (message) =>
+            message.msgid?.startsWith("remote-partial-order-") ||
+            message.optNo === "opt-partial-order-2",
+        )
+        .map((message) => message.msgid ?? message.optNo),
+    ).toEqual([
+      "remote-partial-order-agent",
+      "remote-partial-order-customer",
+      "opt-partial-order-2",
+    ]);
   });
 
   it("does not retire optimistic messages for another type or source", async () => {

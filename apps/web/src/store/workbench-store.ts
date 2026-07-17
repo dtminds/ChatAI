@@ -966,8 +966,13 @@ function orderPolledMessagesInSlots(
 ) {
   const messages = [...merged, ...appendedMessages];
   const polledMessageIndexes = [
-    ...reconciledMessageIndexes,
-    ...appendedMessages.map((_, index) => merged.length + index),
+    ...new Set([
+      ...reconciledMessageIndexes,
+      ...merged.flatMap((message, index) =>
+        isOptimisticAcceptedOwnMessage(message) ? [index] : [],
+      ),
+      ...appendedMessages.map((_, index) => merged.length + index),
+    ]),
   ].sort((left, right) => left - right);
   const orderedPolledMessages = sortMessagesForAppend(
     polledMessageIndexes.map((index) => messages[index]),
@@ -1029,6 +1034,40 @@ function collectResolvedPendingKeys(keys: Set<string>, message: Message) {
   if (message.optNo) {
     keys.add(message.optNo);
   }
+}
+
+function findAcknowledgedPolledMessageIndex(
+  messages: Message[],
+  optimisticMessage: Message,
+  sendBaseSeq: number,
+) {
+  const exactIndex = messages.findIndex(
+    (message) =>
+      isValidMessageSeq(message.seq) &&
+      message.seq > sendBaseSeq &&
+      isSameMessage(message, optimisticMessage),
+  );
+
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  const isCandidate = (message: Message) =>
+    isUnlinkedPolledOwnMessage(message) &&
+    message.seq! > sendBaseSeq &&
+    isOptimisticReconcileCandidate(optimisticMessage, message);
+  const optimisticFingerprint = getMessageReconcileFingerprint(optimisticMessage);
+  const fingerprintIndex = optimisticFingerprint
+    ? messages.findIndex(
+        (message) =>
+          isCandidate(message) &&
+          getMessageReconcileFingerprint(message) === optimisticFingerprint,
+      )
+    : -1;
+
+  return fingerprintIndex >= 0
+    ? fingerprintIndex
+    : messages.findIndex(isCandidate);
 }
 
 function hasNewCustomerMessage(
@@ -2578,6 +2617,13 @@ function updateConversationPreview(
     return conversations;
   }
 
+  if (
+    currentConversation.updatedAtMs != null &&
+    currentConversation.updatedAtMs > updatedAtMs
+  ) {
+    return conversations;
+  }
+
   return mergeConversationList(conversations, {
     ...currentConversation,
     preview: formatConversationPreview(preview),
@@ -3021,6 +3067,7 @@ export function createWorkbenchStore() {
       previewTimestamp: number;
       minimumActiveMessageSeq?: number;
       removeMessageKeys?: string[];
+      sendBaseSeq?: number;
     },
   ) {
     const currentMessages =
@@ -3030,12 +3077,27 @@ export function createWorkbenchStore() {
           input.removeMessageKeys?.some((key) => matchesMessageKey(message, key)) ??
           false
       : undefined;
-    const nextMessages = [
-      ...(shouldRemoveMessage
-        ? currentMessages.filter((message) => !shouldRemoveMessage(message))
-        : currentMessages),
-      input.optimisticMessage,
-    ];
+    const retainedMessages = shouldRemoveMessage
+      ? currentMessages.filter((message) => !shouldRemoveMessage(message))
+      : currentMessages;
+    const acknowledgedMessageIndex =
+      input.sendBaseSeq == null
+        ? -1
+        : findAcknowledgedPolledMessageIndex(
+            retainedMessages,
+            input.optimisticMessage,
+            input.sendBaseSeq,
+          );
+    const nextMessages = [...retainedMessages];
+
+    if (acknowledgedMessageIndex >= 0) {
+      nextMessages[acknowledgedMessageIndex] = mergeMessageState(
+        input.optimisticMessage,
+        retainedMessages[acknowledgedMessageIndex],
+      );
+    } else {
+      nextMessages.push(input.optimisticMessage);
+    }
     const currentConversations = input.activeAccountId
       ? currentState.conversationListsByScope[input.activeAccountId] ?? []
       : [];
@@ -3078,7 +3140,7 @@ export function createWorkbenchStore() {
               (message) => !shouldRemoveMessage(message),
             )
           : currentState.pendingMessages),
-        input.optimisticMessage,
+        ...(acknowledgedMessageIndex >= 0 ? [] : [input.optimisticMessage]),
       ],
     };
   }
@@ -5495,7 +5557,7 @@ export function createWorkbenchStore() {
           ok: false,
         };
       }
-      const timestamp = Date.now();
+      const sendBatchStartedAt = Date.now();
 
       set((currentState) => ({
         sendStatusByConversationId: {
@@ -5570,6 +5632,11 @@ export function createWorkbenchStore() {
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
+          const sendStartedAt = Math.max(Date.now(), sendBatchStartedAt + index);
+          const sendBaseSeq = getActiveMessageSeq(
+            get().messagesByConversationId,
+            activeConversationId,
+          );
           const response = await sendTextMessage({
             conversationId: activeConversationId,
             failMsgId: options?.failMsgId,
@@ -5598,7 +5665,7 @@ export function createWorkbenchStore() {
               name: account ? `${account.name}-${account.operator}` : me.displayName,
               userId: activeConversation.thirdUserId,
             },
-            sentAt: formatWorkbenchTimestamp(timestamp + index),
+            sentAt: formatWorkbenchTimestamp(sendStartedAt),
             status: "accepted" as const,
           } satisfies Message;
           const preview = getComposerSegmentsPreview([originalSegment]);
@@ -5609,10 +5676,11 @@ export function createWorkbenchStore() {
               activeConversationId,
               optimisticMessage,
               preview,
-              previewTimestamp: timestamp + index,
+              previewTimestamp: sendStartedAt,
               removeMessageKeys: options?.removeMessageIdOnAccepted
                 ? [options.removeMessageIdOnAccepted]
                 : undefined,
+              sendBaseSeq,
             }),
           );
         }

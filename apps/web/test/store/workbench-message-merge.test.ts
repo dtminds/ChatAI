@@ -655,8 +655,60 @@ describe("workbench message merge state", () => {
         ),
     ).toMatchObject({
       preview: "更新的会话预览",
+      replied: false,
       updatedAtMs: newerPreviewAt,
     });
+  });
+
+  it("does not roll back an optimistic replied state with an older poll change", async () => {
+    const baseService = createMockWorkbenchService();
+    const sentAt = Date.now();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            createPolledConversation({
+              conversationId: "conv-001",
+              lastMessage: "发送前的客户消息",
+              lastMessageTime: sentAt - 10_000,
+              replied: false,
+              unreadCount: 0,
+            }),
+          ],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                replied: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("人工回复");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-001",
+        )?.replied,
+    ).toBe(true);
   });
 
   it("reconciles supported optimistic message types when optNo is absent", async () => {
@@ -1837,11 +1889,13 @@ function createPolledConversation({
   conversationId,
   lastMessage,
   lastMessageTime,
+  replied = false,
   unreadCount,
 }: {
   conversationId: string;
   lastMessage: string;
   lastMessageTime: number;
+  replied?: boolean;
   unreadCount: number;
 }) {
   return {
@@ -1860,7 +1914,7 @@ function createPolledConversation({
     unreadCount,
     mode: "single",
     priority: "medium",
-    replied: unreadCount === 0,
+    replied,
     type: "upsert" as const,
   } satisfies WorkbenchConversationChangeDto;
 }

@@ -1921,7 +1921,12 @@ export function createMockWorkbenchService(): WorkbenchService {
       const nextConversation = {
         ...conversation,
         lastMessage: getPayloadPreview(segments),
+        lastMessageId:
+          outcome.status === "sent"
+            ? backendMessages.at(-1)?.msgid
+            : conversation.lastMessageId,
         lastMessageTime: now,
+        replied: outcome.status === "sent" ? true : conversation.replied,
       };
 
       upsertConversation(state, nextConversation);
@@ -2815,7 +2820,7 @@ function buildInitialState(): MockState {
           isPinned: conversation.isPinned,
           mode: conversation.mode,
           priority: conversation.priority,
-          replied: conversation.unread === 0,
+          replied: conversation.replied ?? true,
           unreadCount: conversation.unread,
           thirdUserId: `third-user-${seatId}`,
           ...(conversation.mode === "group"

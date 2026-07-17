@@ -17,6 +17,7 @@ function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversa
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
     handoffMsgId: conversation.handoffMsgId ?? "0",
+    replied: conversation.replied ?? true,
     customerBindType:
       conversation.mode === "single"
         ? conversation.customerBindType ?? 1
@@ -171,6 +172,7 @@ const rawSeedConversations: Record<string, SeedConversation[]> = {
       updatedAt: "2026-04-13 15:04:16",
       quietFor: "2天没聊了",
       unread: 0,
+      replied: false,
       mode: "single",
       priority: "medium",
     },

@@ -123,6 +123,22 @@ describe("workbench gateway message paging", () => {
     ]);
   });
 
+  it("keeps mock replied state independent from unread state", async () => {
+    const service = createMockWorkbenchService();
+    const conversations = await service.getConversations("drc", {
+      mode: "single",
+    });
+
+    expect(
+      conversations.items.find(
+        (conversation) => conversation.conversationId === "conv-002",
+      ),
+    ).toMatchObject({
+      replied: false,
+      unreadCount: 0,
+    });
+  });
+
   it("loads unread conversations with unread-only mode limits and keeps unread summary", async () => {
     const observedConversationRequests: Array<{
       limit?: number;

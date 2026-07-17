@@ -2513,6 +2513,51 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("keeps replied independent from unread and marks it after an accepted send", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getConversation = async () => {
+      const response = await app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/conversations?seatId=drc",
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      return response
+        .json()
+        .items.find(
+          (conversation: { conversationId: string }) =>
+            conversation.conversationId === "conv-002",
+        );
+    };
+
+    await expect(getConversation()).resolves.toMatchObject({
+      replied: false,
+      unreadCount: 0,
+    });
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        content: "人工回复",
+        contentType: "text",
+        conversationId: "conv-002",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+
+    expect(send.statusCode).toBe(200);
+    await expect(getConversation()).resolves.toMatchObject({
+      replied: true,
+      unreadCount: 0,
+    });
+
+    await app.close();
+  });
+
   it("returns unread-only conversations with seat unread summary", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

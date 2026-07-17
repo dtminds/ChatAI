@@ -352,6 +352,43 @@ describe("useWorkbenchStore", () => {
     ).toBe("0");
   });
 
+  it("optimistically marks the conversation replied after a send is accepted", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                lastMessageId: "existing-last-message-id",
+                replied: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("人工回复");
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
+    ).toMatchObject({
+      lastMessageId: "existing-last-message-id",
+      replied: true,
+    });
+  });
+
   it("clears a handoff reminder only once for a multi-segment accepted send", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({

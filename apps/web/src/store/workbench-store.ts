@@ -743,6 +743,31 @@ function mergeConversationList(
   ]);
 }
 
+function mergePolledConversation(
+  currentList: Conversation[],
+  conversation: Conversation,
+) {
+  const currentConversation = currentList.find(
+    (item) => item.id === conversation.id,
+  );
+  const shouldPreserveOptimisticReply =
+    currentConversation?.replied === true &&
+    conversation.replied === false &&
+    currentConversation.updatedAtMs != null &&
+    conversation.updatedAtMs != null &&
+    currentConversation.updatedAtMs > conversation.updatedAtMs;
+
+  return mergeConversationList(
+    currentList,
+    shouldPreserveOptimisticReply
+      ? {
+          ...conversation,
+          replied: true,
+        }
+      : conversation,
+  );
+}
+
 function mergeConversationLists(
   currentList: Conversation[],
   conversations: Conversation[],
@@ -2640,6 +2665,23 @@ function updateConversationPreview(
   });
 }
 
+function markConversationReplied(
+  conversations: Conversation[],
+  conversationId: string,
+  repliedAtMs: number,
+) {
+  return conversations.map((conversation) =>
+    conversation.id === conversationId &&
+    conversation.replied !== true &&
+    (conversation.updatedAtMs == null || conversation.updatedAtMs <= repliedAtMs)
+      ? {
+          ...conversation,
+          replied: true,
+        }
+      : conversation,
+  );
+}
+
 function buildOptimisticMessageContent(
   segment: ComposerSegment,
   quote?: SendQuotePayload,
@@ -3126,11 +3168,15 @@ export function createWorkbenchStore() {
         ? {
             conversationListsByScope: {
               ...currentState.conversationListsByScope,
-              [input.activeAccountId]: updateConversationPreview(
-                currentConversations,
+              [input.activeAccountId]: markConversationReplied(
+                updateConversationPreview(
+                  currentConversations,
+                  input.activeConversationId,
+                  input.preview,
+                  input.optimisticMessage.sentAt,
+                  input.previewTimestamp,
+                ),
                 input.activeConversationId,
-                input.preview,
-                input.optimisticMessage.sentAt,
                 input.previewTimestamp,
               ),
             },
@@ -5296,7 +5342,7 @@ export function createWorkbenchStore() {
               continue;
             }
 
-            nextConversationLists[change.accountId] = mergeConversationList(
+            nextConversationLists[change.accountId] = mergePolledConversation(
               currentList,
               change.conversation,
             );

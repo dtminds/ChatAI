@@ -14,8 +14,8 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
-  type WorkbenchConversationClearWaitManualResponse,
-  type WorkbenchConversationClearWaitManualRequest,
+  type WorkbenchConversationClearHandoffResponse,
+  type WorkbenchConversationClearHandoffRequest,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
@@ -230,10 +230,10 @@ export type WorkbenchService = {
     conversationId: string,
     request: { enabled: boolean },
   ) => Promise<WorkbenchConversationFullAutoResponse>;
-  clearConversationWaitManual: (
+  clearConversationHandoff: (
     conversationId: string,
-    request: WorkbenchConversationClearWaitManualRequest,
-  ) => Promise<WorkbenchConversationClearWaitManualResponse>;
+    request: WorkbenchConversationClearHandoffRequest,
+  ) => Promise<WorkbenchConversationClearHandoffResponse>;
   updateSeatAgentMode: (
     seatId: string,
     request: WorkbenchSeatAgentModeSwitchRequest,
@@ -1682,7 +1682,7 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
-    async clearConversationWaitManual(conversationId, request) {
+    async clearConversationHandoff(conversationId, request) {
       const conversation = findConversation(state, conversationId);
 
       if (!conversation) {
@@ -1690,13 +1690,12 @@ export function createMockWorkbenchService(): WorkbenchService {
       }
 
       const cleared =
-        conversation.waitManual === true &&
-        conversation.lastMessageId === request.expectedLastMessageId;
+        conversation.handoffMsgId === request.expectedHandoffMsgId;
 
       if (cleared) {
         const nextConversation = {
           ...conversation,
-          waitManual: false,
+          handoffMsgId: "0",
         };
 
         upsertConversation(state, nextConversation);
@@ -2010,6 +2009,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: existingConversation.conversationId,
           conversationAIHostingSwitch:
             existingConversation.conversationAIHostingSwitch ?? false,
+          handoffMsgId: existingConversation.handoffMsgId,
           customerAvatar: existingConversation.customerAvatar,
           customerBindType: existingConversation.customerBindType,
           customerId: existingConversation.customerId,
@@ -2033,6 +2033,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         bizStatus: 1,
         conversationId,
         conversationAIHostingSwitch: false,
+        handoffMsgId: "0",
         customerAvatar: "",
         customerBindType: payload.chatType === 2 ? undefined : 1,
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
@@ -2489,12 +2490,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         request,
       );
     },
-    clearConversationWaitManual(conversationId, request) {
+    clearConversationHandoff(conversationId, request) {
       return http.post<
-        WorkbenchConversationClearWaitManualResponse,
-        WorkbenchConversationClearWaitManualRequest
+        WorkbenchConversationClearHandoffResponse,
+        WorkbenchConversationClearHandoffRequest
       >(
-        `/server/conversations/${conversationId}/wait-manual/clear`,
+        `/server/conversations/${conversationId}/handoff/clear`,
         request,
       );
     },
@@ -2809,7 +2810,7 @@ function buildInitialState(): MockState {
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
           conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
-          waitManual: conversation.waitManual === true,
+          handoffMsgId: conversation.handoffMsgId,
           customerAvatar: conversation.customerAvatarUrl,
           customerBindType:
             conversation.mode === "single"
@@ -2817,7 +2818,6 @@ function buildInitialState(): MockState {
               : undefined,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
-          lastMessageId: `1${conversation.id.replace(/\D/g, "") || "0"}`,
           lastMessage: conversation.preview,
           lastMessageTime: new Date(conversation.updatedAt.replace(" ", "T")).getTime(),
           isPinned: conversation.isPinned,

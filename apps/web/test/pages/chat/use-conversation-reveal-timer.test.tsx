@@ -17,6 +17,7 @@ function createConversation(id: string, createdAtMs: number): Conversation {
   return {
     accountId: "account-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: "0",
     createdAtMs,
     customerAvatarUrl: "",
     customerId: `customer-${id}`,

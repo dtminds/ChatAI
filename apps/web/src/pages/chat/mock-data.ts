@@ -6,14 +6,17 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 
-type SeedConversation = Omit<Conversation, "conversationAIHostingSwitch"> &
-  Partial<Pick<Conversation, "conversationAIHostingSwitch">>;
+type SeedConversation = Omit<
+  Conversation,
+  "conversationAIHostingSwitch" | "handoffMsgId"
+> &
+  Partial<Pick<Conversation, "conversationAIHostingSwitch" | "handoffMsgId">>;
 
 function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
-    waitManual: conversation.waitManual ?? false,
+    handoffMsgId: conversation.handoffMsgId ?? "0",
     customerBindType:
       conversation.mode === "single"
         ? conversation.customerBindType ?? 1

@@ -8,8 +8,12 @@ const AGENT_HANDOFF_PREVIEW_PATTERN =
 const EXISTING_HANDOFF_PREFIX_PATTERN =
   /^\[接管提醒\](.*)$/u;
 
+export function hasConversationHandoff(handoffMsgId: string | undefined) {
+  return /^[1-9]\d*$/.test(handoffMsgId ?? "");
+}
+
 /**
- * 在 `wait_manual` 为真时，把会话预览拆成红色「接管提醒」前缀 + 正文。
+ * 在 `handoff_msg_id` 大于 0 时，把会话预览拆成红色「接管提醒」前缀 + 正文。
  * 正文优先去掉平台已写入的前缀或 Agent 转人工系统文案头，便于列表截断展示。
  */
 export function getConversationHandoffTakeoverPreviewParts(

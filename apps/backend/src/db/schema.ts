@@ -780,9 +780,9 @@ export interface XyWapEmbedConversation {
    */
   full_auto_switch: Generated<number>;
   /**
-   * 是否待人工处理：0 不需要，1 需要（用于会话列表「接管提醒」）
+   * 转人工触发消息 ID：0 表示无提醒
    */
-  wait_manual: Generated<number>;
+  handoff_msg_id: Generated<number | string>;
   /**
    * id
    */

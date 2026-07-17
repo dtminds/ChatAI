@@ -27,7 +27,10 @@ import {
   hasConversationComposerDraftContent,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
-import { getConversationHandoffTakeoverPreviewParts } from "@/pages/chat/lib/conversation-handoff-preview";
+import {
+  getConversationHandoffTakeoverPreviewParts,
+  hasConversationHandoff,
+} from "@/pages/chat/lib/conversation-handoff-preview";
 
 export function ConversationCard({
   composerDraft,
@@ -60,7 +63,7 @@ export function ConversationCard({
       ? getConversationComposerDraftPreviewParts(composerDraft)
       : null;
   const handoffPreviewParts =
-    !draftPreviewParts && conversation.waitManual === true
+    !draftPreviewParts && hasConversationHandoff(conversation.handoffMsgId)
       ? getConversationHandoffTakeoverPreviewParts(conversation.preview)
       : null;
   const taggedPreviewParts = draftPreviewParts ?? handoffPreviewParts;

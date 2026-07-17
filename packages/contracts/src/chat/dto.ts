@@ -315,18 +315,13 @@ export type WorkbenchConversationSummaryDto = {
   conversationAIHostingSwitch?: boolean;
   /** 是否为影子群会话；影子群暂不支持消息撤回 */
   isShadowGroup?: boolean;
-  /**
-   * 是否待人工处理，对应 `xy_wap_embed_conversation.wait_manual`：
-   * true 时会话列表展示红色「[接管提醒]」前缀
-   */
-  waitManual?: boolean;
+  /** 转人工触发消息 ID，对应 `xy_wap_embed_conversation.handoff_msg_id`；`"0"` 表示无提醒 */
+  handoffMsgId: string;
   /** 客户绑定类型，对应 `xy_wap_embed_customer_bind_relation.bind_type`：1 普通客户，2 应用消息 */
   customerBindType?: number;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;
-  /** 当前会话最后一条审计消息 ID，用于保护基于消息状态的条件更新 */
-  lastMessageId?: string;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -818,13 +813,13 @@ export type WorkbenchConversationFullAutoResponse = {
   seatId: string;
 };
 
-/** 打开会话后清除「待人工处理 / 接管提醒」 */
-export type WorkbenchConversationClearWaitManualRequest = {
+/** 将当前转人工提醒标记为已处理 */
+export type WorkbenchConversationClearHandoffRequest = {
   /** 仅清除仍属于该消息的提醒，避免旧请求覆盖新一轮提醒 */
-  expectedLastMessageId: string;
+  expectedHandoffMsgId: string;
 };
 
-export type WorkbenchConversationClearWaitManualResponse = {
+export type WorkbenchConversationClearHandoffResponse = {
   cleared: boolean;
   conversationId: string;
   seatId: string;

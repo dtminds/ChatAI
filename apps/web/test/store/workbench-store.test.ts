@@ -72,6 +72,7 @@ function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
     conversationAIHostingSwitch: false,
+    handoffMsgId: "0",
     customerAvatarUrl: "",
     customerBindType: 1,
     customerId: `${accountId}-customer`,
@@ -275,9 +276,9 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
-  it("clears waitManual takeover reminder when opening a conversation", async () => {
+  it("keeps a handoff reminder when opening a conversation", async () => {
     const baseService = createMockWorkbenchService();
-    const clearConversationWaitManual = vi.fn().mockResolvedValue({
+    const clearConversationHandoff = vi.fn().mockResolvedValue({
       cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
@@ -285,11 +286,46 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      clearConversationWaitManual,
+      clearConversationHandoff,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
       activeConversationId: undefined,
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("9001");
+  });
+
+  it("clears a handoff reminder after a send is accepted", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn().mockResolvedValue({
+      cleared: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
       accounts: state.accounts.map((account) =>
         account.id === "drc"
           ? { ...account, takenOverEmployeeId: state.me?.id }
@@ -299,40 +335,41 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? {
-                ...conversation,
-                lastMessageId: "9001",
-                waitManual: true,
-              }
+            ? { ...conversation, handoffMsgId: "9001" }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
-
-    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001", {
-      expectedLastMessageId: "9001",
+    await useWorkbenchStore.getState().sendAgentTextMessage("人工回复");
+    await waitForStoreAssertion(() => {
+      expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
+        expectedHandoffMsgId: "9001",
+      });
     });
+
     expect(
       useWorkbenchStore
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
-        ?.waitManual,
-    ).toBe(false);
+        ?.handoffMsgId,
+    ).toBe("0");
   });
 
-  it("keeps waitManual visible when clearing the takeover reminder fails", async () => {
+  it("clears a handoff reminder only once for a multi-segment accepted send", async () => {
     const baseService = createMockWorkbenchService();
-    const clearConversationWaitManual = vi.fn().mockRejectedValue(new Error("request failed"));
+    const clearConversationHandoff = vi.fn().mockResolvedValue({
+      cleared: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
 
     setWorkbenchService({
       ...baseService,
-      clearConversationWaitManual,
+      clearConversationHandoff,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
-      activeConversationId: undefined,
       accounts: state.accounts.map((account) =>
         account.id === "drc"
           ? { ...account, takenOverEmployeeId: state.me?.id }
@@ -342,78 +379,173 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            ? { ...conversation, handoffMsgId: "9001" }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
-
-    expect(clearConversationWaitManual).toHaveBeenCalledWith("conv-001", {
-      expectedLastMessageId: "9001",
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      { text: "第一段", type: "text" },
+      {
+        alt: "截图",
+        localUrl: "data:image/png;base64,abc",
+        type: "image",
+      },
+      { text: "第二段", type: "text" },
+    ]);
+    await waitForStoreAssertion(() => {
+      expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
     });
-    expect(
-      useWorkbenchStore
-        .getState()
-        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
-        ?.waitManual,
-    ).toBe(true);
+
+    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
+      expectedHandoffMsgId: "9001",
+    });
   });
 
-  it("does not clear waitManual when the account is taken over by another operator", async () => {
+  it("keeps a handoff reminder when the accepted-send clear fails", async () => {
     const baseService = createMockWorkbenchService();
-    const clearConversationWaitManual = vi.fn();
+    const clearConversationHandoff = vi.fn().mockRejectedValue(new Error("request failed"));
 
     setWorkbenchService({
       ...baseService,
-      clearConversationWaitManual,
+      clearConversationHandoff,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
-      activeConversationId: undefined,
       accounts: state.accounts.map((account) =>
         account.id === "drc"
-          ? { ...account, takenOverEmployeeId: "another-operator" }
+          ? { ...account, takenOverEmployeeId: state.me?.id }
           : account,
       ),
       conversationListsByScope: {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            ? { ...conversation, handoffMsgId: "9001" }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    await useWorkbenchStore.getState().sendAgentTextMessage("人工回复");
+    await waitForStoreAssertion(() => {
+      expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
+    });
 
-    expect(clearConversationWaitManual).not.toHaveBeenCalled();
     expect(
       useWorkbenchStore
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
-        ?.waitManual,
-    ).toBe(true);
+        ?.handoffMsgId,
+    ).toBe("9001");
   });
 
-  it("keeps a newer waitManual reminder when an older clear request finishes later", async () => {
+  it("does not clear a handoff reminder when send is rejected", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+      async sendMessage() {
+        throw new Error("send failed");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("发送失败");
+
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("9001");
+  });
+
+  it("does not clear a handoff reminder when an agent message arrives through polling", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+      async poll(request) {
+        return {
+          activeConversationMessages: [
+            createSmartReplyTextMessageDto({
+              id: "polled-agent-message",
+              senderType: "agent",
+              seq: 900,
+              text: "其他入口发送的人工消息",
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("9001");
+  });
+
+  it("keeps a newer handoff reminder when an older clear request finishes later", async () => {
     const baseService = createMockWorkbenchService();
     const clearResult = createDeferred<{
       cleared: boolean;
       conversationId: string;
       seatId: string;
     }>();
-    const clearConversationWaitManual = vi.fn(() => clearResult.promise);
+    const clearConversationHandoff = vi.fn(() => clearResult.promise);
 
     setWorkbenchService({
       ...baseService,
-      clearConversationWaitManual,
+      clearConversationHandoff,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
-      activeConversationId: undefined,
       accounts: state.accounts.map((account) =>
         account.id === "drc"
           ? { ...account, takenOverEmployeeId: state.me?.id }
@@ -423,19 +555,21 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            ? { ...conversation, handoffMsgId: "9001" }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    const clearPromise = useWorkbenchStore
+      .getState()
+      .markActiveConversationHandoffHandled();
     useWorkbenchStore.setState((state) => ({
       conversationListsByScope: {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, lastMessageId: "9002", waitManual: true }
+            ? { ...conversation, handoffMsgId: "9002" }
             : conversation,
         ),
       },
@@ -447,6 +581,7 @@ describe("useWorkbenchStore", () => {
       seatId: "drc",
     });
     await clearResult.promise;
+    await clearPromise;
     await Promise.resolve();
 
     expect(
@@ -454,23 +589,108 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001"),
     ).toMatchObject({
-      lastMessageId: "9002",
-      waitManual: true,
+      handoffMsgId: "9002",
     });
   });
 
-  it("deduplicates an in-flight waitManual clear and allows retry after it settles", async () => {
+  it("allows the current takeover operator to mark a handoff handled without chat.send", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn().mockResolvedValue({
+      cleared: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().setChatSendPermission(false);
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+    }));
+
+    const result = await useWorkbenchStore
+      .getState()
+      .markActiveConversationHandoffHandled();
+
+    expect(result).toEqual({ ok: true });
+    expect(clearConversationHandoff).toHaveBeenCalledWith("conv-001", {
+      expectedHandoffMsgId: "9001",
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("0");
+  });
+
+  it("keeps a handoff reminder when manual handling fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn().mockRejectedValue(
+      new Error("request failed"),
+    );
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+    }));
+
+    const result = await useWorkbenchStore
+      .getState()
+      .markActiveConversationHandoffHandled();
+
+    expect(result).toMatchObject({ ok: false });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("9001");
+  });
+
+  it("deduplicates an in-flight manual handoff clear and allows retry after it settles", async () => {
     const baseService = createMockWorkbenchService();
     const clearResult = createDeferred<{
       cleared: boolean;
       conversationId: string;
       seatId: string;
     }>();
-    const clearConversationWaitManual = vi.fn(() => clearResult.promise);
+    const clearConversationHandoff = vi.fn(() => clearResult.promise);
 
     setWorkbenchService({
       ...baseService,
-      clearConversationWaitManual,
+      clearConversationHandoff,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
@@ -484,27 +704,27 @@ describe("useWorkbenchStore", () => {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
           conversation.id === "conv-001"
-            ? { ...conversation, lastMessageId: "9001", waitManual: true }
+            ? { ...conversation, handoffMsgId: "9001" }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    const firstClear = useWorkbenchStore.getState().markActiveConversationHandoffHandled();
+    const secondClear = useWorkbenchStore.getState().markActiveConversationHandoffHandled();
 
-    expect(clearConversationWaitManual).toHaveBeenCalledTimes(1);
+    expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
 
     clearResult.resolve({
       cleared: false,
       conversationId: "conv-001",
       seatId: "drc",
     });
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await Promise.all([firstClear, secondClear]);
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    await useWorkbenchStore.getState().markActiveConversationHandoffHandled();
 
-    expect(clearConversationWaitManual).toHaveBeenCalledTimes(2);
+    expect(clearConversationHandoff).toHaveBeenCalledTimes(2);
   });
 
   it("patches active conversation full-auto from API response instead of request input", async () => {
@@ -2012,6 +2232,7 @@ describe("useWorkbenchStore", () => {
             accountId: "drc",
             bizStatus: 1,
             conversationAIHostingSwitch: false,
+            handoffMsgId: "0",
             customerAvatarUrl: "",
             customerBindType: 1,
             customerId: "cust-001",
@@ -5747,6 +5968,7 @@ describe("useWorkbenchStore", () => {
             {
               conversationAIHostingSwitch: false,
               conversationId: "server-unread-single",
+              handoffMsgId: "0",
               customerAvatar: "",
               customerId: "customer-server-unread",
               customerName: "服务端补齐未读",
@@ -7210,6 +7432,66 @@ describe("useWorkbenchStore", () => {
       status: "accepted",
     });
     expect(latestMessage?.uiMessageKey).not.toBe(failedMessage?.uiMessageKey);
+  });
+
+  it("does not clear a handoff reminder after retry is accepted", async () => {
+    const baseService = createMockWorkbenchService();
+    const clearConversationHandoff = vi.fn();
+    const retryMessage = vi.fn().mockResolvedValue({
+      optNo: "retry-opt-handoff",
+      status: "accepted" as const,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      clearConversationHandoff,
+      retryMessage,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: state.me?.id }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, handoffMsgId: "9001" }
+            : conversation,
+        ),
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服",
+            content: { text: "发送失败", type: "text" },
+            conversationId: "conv-001",
+            msgid: "failed-message",
+            role: "agent",
+            sender: { id: "drc", name: "客服" },
+            sentAt: "刚刚",
+            seq: 900,
+            status: "failed",
+            uiMessageKey: "failed-message",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("failed-message");
+
+    expect(retryMessage).toHaveBeenCalled();
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("9001");
   });
 
   it("calls the retry API with the failed message seq", async () => {
@@ -10292,6 +10574,7 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const hydratedConversation: WorkbenchConversationSummaryDto = {
       conversationId: "conv-search-001",
+      handoffMsgId: "0",
       seatId: "drc",
       customerId: "cust-search-001",
       customerName: "搜索客户",
@@ -10351,6 +10634,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("single", {
       preserveConversation: {
         accountId: "drc",
+        handoffMsgId: "0",
         customerAvatarUrl: "",
         customerId: "external-search-001",
         customerName: "搜索客户",
@@ -10400,6 +10684,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveAccount("ndt");
     deferredConversation.resolve({
       conversationId: "conv-search-stale",
+      handoffMsgId: "0",
       customerAvatar: "",
       customerId: "cust-search-stale",
       customerName: "搜索客户",
@@ -10502,6 +10787,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("single", {
       preserveConversation: {
         accountId: "drc",
+        handoffMsgId: "0",
         customerAvatarUrl: "",
         customerId: "drc-preserved-customer",
         customerName: "跨账号保留客户",
@@ -10533,6 +10819,7 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const hydratedConversation: WorkbenchConversationSummaryDto = {
       conversationId: "conv-search-group-001",
+      handoffMsgId: "0",
       seatId: "drc",
       customerId: "group-search-001",
       customerName: "搜索群聊",
@@ -10606,6 +10893,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("group", {
       preserveConversation: {
         accountId: "drc",
+        handoffMsgId: "0",
         customerAvatarUrl: "",
         customerId: "group-search-001",
         customerName: "搜索群聊",

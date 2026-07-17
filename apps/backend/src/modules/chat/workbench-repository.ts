@@ -3536,7 +3536,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        "conversation.wait_manual as wait_manual",
+        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
@@ -3709,7 +3709,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        "conversation.wait_manual as wait_manual",
+        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",
@@ -4017,30 +4017,29 @@ export class WorkbenchRepository {
       .execute();
   }
 
-  async clearConversationWaitManual(input: {
+  async clearConversationHandoff(input: {
     conversationId: string;
-    expectedLastMessageId: string;
+    expectedHandoffMsgId: string;
     platform: number;
     uid: number;
   }) {
     const conversationNumericId = parseMySqlId(input.conversationId);
-    const expectedLastMessageId = uniqueIds([input.expectedLastMessageId])[0];
+    const expectedHandoffMsgId = uniqueIds([input.expectedHandoffMsgId])[0];
 
-    if (conversationNumericId == null || !expectedLastMessageId) {
+    if (conversationNumericId == null || !expectedHandoffMsgId) {
       return false;
     }
 
     const result = (await this.db
       .updateTable("xy_wap_embed_conversation")
       .set({
-        wait_manual: 0,
+        handoff_msg_id: 0,
       })
       .where("id", "=", conversationNumericId)
       .where("uid", "=", input.uid)
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("wait_manual", "=", 1)
-      .where("last_audit_info_id", "=", asSchemaBigIntId(expectedLastMessageId))
+      .where("handoff_msg_id", "=", asSchemaBigIntId(expectedHandoffMsgId))
       .execute()) as UpdateResult[];
 
     return getAffectedRows(result) > 0;
@@ -5314,7 +5313,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
-        "conversation.wait_manual as wait_manual",
+        sql<string>`cast(conversation.handoff_msg_id as char)`.as("handoff_msg_id"),
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_group_origin_userid as third_group_origin_userid",

@@ -10,8 +10,8 @@ import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchConversationFullAutoResponse,
-  WorkbenchConversationClearWaitManualResponse,
-  WorkbenchConversationClearWaitManualRequest,
+  WorkbenchConversationClearHandoffResponse,
+  WorkbenchConversationClearHandoffRequest,
   WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
@@ -510,11 +510,11 @@ export async function changeConversationFullAuto(
   });
 }
 
-export async function clearConversationWaitManual(
+export async function clearConversationHandoff(
   conversationId: string,
-  request: WorkbenchConversationClearWaitManualRequest,
-): Promise<WorkbenchConversationClearWaitManualResponse> {
-  return getWorkbenchService().clearConversationWaitManual(conversationId, request);
+  request: WorkbenchConversationClearHandoffRequest,
+): Promise<WorkbenchConversationClearHandoffResponse> {
+  return getWorkbenchService().clearConversationHandoff(conversationId, request);
 }
 
 export async function updateSeatAgentMode(

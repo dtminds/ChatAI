@@ -2216,12 +2216,12 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
-  it("clears conversation wait_manual when acknowledging takeover reminder", async () => {
-    const clearConversationWaitManual = vi.fn().mockResolvedValue(true);
+  it("clears the matching handoff reminder when acknowledged", async () => {
+    const clearConversationHandoff = vi.fn().mockResolvedValue(true);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        clearConversationWaitManual,
+        clearConversationHandoff,
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
           platform: 5,
@@ -2236,28 +2236,28 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.clearConversationWaitManual("101", "88", {
-        expectedLastMessageId: "9001",
+      service.clearConversationHandoff("101", "88", {
+        expectedHandoffMsgId: "9001",
       }),
     ).resolves.toEqual({
       cleared: true,
       conversationId: "88",
       seatId: "12",
     });
-    expect(clearConversationWaitManual).toHaveBeenCalledWith({
+    expect(clearConversationHandoff).toHaveBeenCalledWith({
       conversationId: "88",
-      expectedLastMessageId: "9001",
+      expectedHandoffMsgId: "9001",
       platform: 5,
       uid: 9001,
     });
   });
 
-  it("reports a stale wait_manual clear without clearing a newer reminder", async () => {
-    const clearConversationWaitManual = vi.fn().mockResolvedValue(false);
+  it("reports a stale handoff clear without clearing a newer reminder", async () => {
+    const clearConversationHandoff = vi.fn().mockResolvedValue(false);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        clearConversationWaitManual,
+        clearConversationHandoff,
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
           platform: 5,
@@ -2272,8 +2272,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.clearConversationWaitManual("101", "88", {
-        expectedLastMessageId: "9001",
+      service.clearConversationHandoff("101", "88", {
+        expectedHandoffMsgId: "9001",
       }),
     ).resolves.toEqual({
       cleared: false,
@@ -2282,12 +2282,12 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("rejects clearing conversation wait_manual when the seat is not taken over", async () => {
-    const clearConversationWaitManual = vi.fn().mockResolvedValue(true);
+  it("rejects clearing a handoff reminder when the seat is not taken over", async () => {
+    const clearConversationHandoff = vi.fn().mockResolvedValue(true);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        clearConversationWaitManual,
+        clearConversationHandoff,
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
           platform: 5,
@@ -2302,14 +2302,14 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.clearConversationWaitManual("101", "88", {
-        expectedLastMessageId: "9001",
+      service.clearConversationHandoff("101", "88", {
+        expectedHandoffMsgId: "9001",
       }),
     ).rejects.toMatchObject({
       code: "SEAT_NOT_TAKEN_OVER",
       statusCode: 403,
     });
-    expect(clearConversationWaitManual).not.toHaveBeenCalled();
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
   });
 
   it("enables full-auto for group conversations through Java", async () => {

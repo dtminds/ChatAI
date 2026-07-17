@@ -1135,6 +1135,7 @@ describe("adaptMessage", () => {
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
   conversationAIHostingSwitch: false,
+  handoffMsgId: "0",
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",

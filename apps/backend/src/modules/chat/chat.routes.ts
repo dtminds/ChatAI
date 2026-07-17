@@ -1,6 +1,6 @@
 import type {
   WorkbenchPollRequest,
-  WorkbenchConversationClearWaitManualRequest,
+  WorkbenchConversationClearHandoffRequest,
   WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
@@ -72,8 +72,8 @@ const ConversationFullAutoRequestSchema = Type.Object({
 
 type ConversationFullAutoRequest = Static<typeof ConversationFullAutoRequestSchema>;
 
-const ConversationClearWaitManualRequestSchema = Type.Object({
-  expectedLastMessageId: NumericStringSchema,
+const ConversationClearHandoffRequestSchema = Type.Object({
+  expectedHandoffMsgId: Type.String({ pattern: "^[1-9][0-9]*$" }),
 });
 
 const SeatAgentModeSwitchRequestSchema = Type.Object({
@@ -1055,20 +1055,20 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{
-    Body: WorkbenchConversationClearWaitManualRequest;
+    Body: WorkbenchConversationClearHandoffRequest;
     Params: ConversationParams;
   }>(
-    "/api/server/conversations/:conversationId/wait-manual/clear",
+    "/api/server/conversations/:conversationId/handoff/clear",
     {
       preHandler: app.authenticate,
       schema: {
-        body: ConversationClearWaitManualRequestSchema,
+        body: ConversationClearHandoffRequestSchema,
         params: ConversationParamsSchema,
       },
     },
     async (request) => {
       assertChatWriteAccess(request);
-      return getWorkbenchService(app, request).clearConversationWaitManual(
+      return getWorkbenchService(app, request).clearConversationHandoff(
         getSubUserId(request),
         request.params.conversationId,
         request.body,

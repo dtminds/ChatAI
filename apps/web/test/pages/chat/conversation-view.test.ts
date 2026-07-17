@@ -14,6 +14,7 @@ function createConversation(
   return {
     accountId: "account-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: "0",
     customerAvatarUrl: "",
     customerBindType: mode === "single" ? 1 : undefined,
     customerId: `customer-${id}`,

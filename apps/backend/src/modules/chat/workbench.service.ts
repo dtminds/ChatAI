@@ -1,6 +1,6 @@
 import type {
-  WorkbenchConversationClearWaitManualRequest,
-  WorkbenchConversationClearWaitManualResponse,
+  WorkbenchConversationClearHandoffRequest,
+  WorkbenchConversationClearHandoffResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
   WorkbenchConversationListResponse,
@@ -348,13 +348,13 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchConversationFullAutoResponse>
     | WorkbenchConversationFullAutoResponse;
-  clearConversationWaitManual(
+  clearConversationHandoff(
     subUserId: string,
     conversationId: string,
-    request: WorkbenchConversationClearWaitManualRequest,
+    request: WorkbenchConversationClearHandoffRequest,
   ):
-    | Promise<WorkbenchConversationClearWaitManualResponse>
-    | WorkbenchConversationClearWaitManualResponse;
+    | Promise<WorkbenchConversationClearHandoffResponse>
+    | WorkbenchConversationClearHandoffResponse;
   deleteConversation(
     subUserId: string,
     conversationId: string,
@@ -1437,11 +1437,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
     };
   }
 
-  async clearConversationWaitManual(
+  async clearConversationHandoff(
     subUserId: string,
     conversationId: string,
-    request: WorkbenchConversationClearWaitManualRequest,
-  ): Promise<WorkbenchConversationClearWaitManualResponse> {
+    request: WorkbenchConversationClearHandoffRequest,
+  ): Promise<WorkbenchConversationClearHandoffResponse> {
     const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
     const conversation = await this.getOperableConversation(
       subUserId,
@@ -1449,9 +1449,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
-    const cleared = await this.repository.clearConversationWaitManual({
+    const cleared = await this.repository.clearConversationHandoff({
       conversationId: conversation.id,
-      expectedLastMessageId: request.expectedLastMessageId,
+      expectedHandoffMsgId: request.expectedHandoffMsgId,
       platform: conversation.platform,
       uid: conversation.uid,
     });

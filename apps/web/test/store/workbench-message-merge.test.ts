@@ -1847,6 +1847,7 @@ function createPolledConversation({
   return {
     conversationId,
     conversationAIHostingSwitch: false,
+    handoffMsgId: "0",
     seatId: "drc",
     thirdUserId: "seat-third-user-id",
     thirdExternalUserId: `external-${conversationId}`,

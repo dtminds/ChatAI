@@ -17,6 +17,7 @@ let audioInstances: AudioMock[];
 const conversation: Conversation = {
   accountId: "account-1",
   conversationAIHostingSwitch: false,
+  handoffMsgId: "0",
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",

@@ -1370,6 +1370,78 @@ describe("ChatPanel", () => {
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(false);
   });
+
+  it("renders the handoff reminder inside the chat column only", async () => {
+    const user = userEvent.setup();
+    const onMarkHandoffHandled = vi.fn();
+    const onViewHandoffMessage = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={{ ...createConversation(), handoffMsgId: "9001" }}
+        activeHistoryStatus="idle"
+        canMarkHandoffHandled
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMarkHandoffHandled={onMarkHandoffHandled}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+        onViewHandoffMessage={onViewHandoffMessage}
+      />,
+    );
+
+    const statusBar = screen.getByTestId("chat-handoff-status-bar");
+    expect(statusBar.parentElement).toContainElement(
+      screen.getByTestId("message-scroll-area"),
+    );
+    expect(within(statusBar.parentElement!).queryByText("基础信息")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看触发消息" }));
+    await user.click(screen.getByRole("button", { name: "标记接管提醒已处理" }));
+
+    expect(onViewHandoffMessage).toHaveBeenCalledTimes(1);
+    expect(onMarkHandoffHandled).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createConversation(): Conversation {
@@ -1380,6 +1452,7 @@ function createConversation(): Conversation {
     customerName: "客户",
     id: "conversation-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: "0",
     customerBindType: 1,
     mode: "single",
     preview: "",

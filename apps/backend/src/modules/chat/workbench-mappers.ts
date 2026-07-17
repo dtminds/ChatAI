@@ -46,7 +46,7 @@ export type ConversationRow = {
   customer_name: string | null;
   contact_original_name: string | null;
   full_auto_switch?: number | string | boolean | null;
-  wait_manual?: number | string | boolean | null;
+  handoff_msg_id?: bigint | number | string | null;
   group_avatar: string | null;
   group_name: string | null;
   group_remark: string | null;
@@ -215,7 +215,7 @@ export function mapConversationRow(
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
-    waitManual: readBooleanFlag(row.wait_manual),
+    handoffMsgId: normalizeBigIntId(row.handoff_msg_id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerBindType,
@@ -226,8 +226,6 @@ export function mapConversationRow(
     isShadowGroup:
       mode === "group" && Boolean(row.third_group_origin_userid?.trim()),
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
-    lastMessageId:
-      row.last_audit_info_id == null ? undefined : String(row.last_audit_info_id),
     lastMessage: lastMessagePreview.text,
     ...(lastMessagePreview.parts
       ? { lastMessagePreviewParts: lastMessagePreview.parts }
@@ -257,7 +255,6 @@ export function mapMessageRow(
       ? row.conversation_group_id || row.third_group_id || buildMissingCustomerId(row)
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
   const messageSource = mapMessageSource(row.source);
-
   return {
     content: parseMessageContent(row, quotePreview),
     contentType: mapMessageContentType(row),
@@ -1088,6 +1085,12 @@ function normalizeOptionalId(value: number | string | null) {
   const id = String(value ?? "");
 
   return id && id !== "0" ? id : undefined;
+}
+
+function normalizeBigIntId(value: bigint | number | string | null | undefined) {
+  const id = String(value ?? "").trim();
+
+  return /^[1-9]\d*$/.test(id) ? id : "0";
 }
 
 function toNumber(value: number | string | null | undefined) {

@@ -72,15 +72,10 @@ export type Conversation = {
   id: string;
   /** 影子群会话暂不支持消息撤回 */
   isShadowGroup?: boolean;
-  /** 当前会话最后一条审计消息 ID */
-  lastMessageId?: string;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
-  /**
-   * 是否待人工处理，对应 `xy_wap_embed_conversation.wait_manual`；
-   * 为 true 时会话列表展示红色「[接管提醒]」
-   */
-  waitManual?: boolean;
+  /** 转人工触发消息 ID；`"0"` 表示当前无接管提醒 */
+  handoffMsgId: string;
   /** 托管状态栏展示状态 */
   agentHostingStatus?:
     | "active"

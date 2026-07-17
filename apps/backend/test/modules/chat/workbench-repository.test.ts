@@ -6824,7 +6824,7 @@ describe("WorkbenchRepository", () => {
     expect(updates).toEqual([{ pinned_time: 0 }]);
   });
 
-  it("clears wait_manual only for the expected last message", async () => {
+  it("clears handoff_msg_id only when the expected reminder still matches", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];
     const repository = new WorkbenchRepository(
@@ -6850,25 +6850,24 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(
-      repository.clearConversationWaitManual({
+      repository.clearConversationHandoff({
         conversationId: "88",
-        expectedLastMessageId: "9007199254740995",
+        expectedHandoffMsgId: "9007199254740995",
         platform: 5,
         uid: 9001,
       }),
     ).resolves.toBe(true);
-    expect(updates).toEqual([{ wait_manual: 0 }]);
+    expect(updates).toEqual([{ handoff_msg_id: 0 }]);
     expect(wheres).toEqual([
       ["id", "=", 88],
       ["uid", "=", 9001],
       ["platform", "=", 5],
       ["biz_status", "=", 1],
-      ["wait_manual", "=", 1],
-      ["last_audit_info_id", "=", "9007199254740995"],
+      ["handoff_msg_id", "=", "9007199254740995"],
     ]);
   });
 
-  it("does not report wait_manual cleared when the last message changed", async () => {
+  it("does not report handoff cleared when the reminder changed", async () => {
     const repository = new WorkbenchRepository(
       {
         updateTable() {
@@ -6888,9 +6887,9 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(
-      repository.clearConversationWaitManual({
+      repository.clearConversationHandoff({
         conversationId: "88",
-        expectedLastMessageId: "9001",
+        expectedHandoffMsgId: "9001",
         platform: 5,
         uid: 9001,
       }),

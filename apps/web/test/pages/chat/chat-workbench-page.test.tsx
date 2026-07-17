@@ -159,6 +159,75 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
+  it("locates the loaded handoff trigger message by its existing message seq", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? { ...conversation, handoffMsgId: "3" }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    const targetAnchor = document.querySelector<HTMLElement>(
+      '[data-scroll-anchor="3"]',
+    );
+    const scrollIntoView = vi.fn();
+    expect(targetAnchor).not.toBeNull();
+    Object.defineProperty(targetAnchor!, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    await user.click(screen.getByRole("button", { name: "查看触发消息" }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(workbenchToastWarningMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the view button available and warns when the trigger message is not loaded", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? { ...conversation, handoffMsgId: "9001" }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    const viewMessageButton = screen.getByRole("button", {
+      name: "查看触发消息",
+    });
+    expect(viewMessageButton).toBeEnabled();
+
+    await user.click(viewMessageButton);
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+      "未找到触发消息，请向上加载更多消息后重试",
+    );
+  });
+
   it("exits full agent mode when cancel agent hosting is clicked", async () => {
     const user = userEvent.setup();
 

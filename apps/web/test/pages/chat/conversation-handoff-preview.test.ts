@@ -25,7 +25,7 @@ describe("getConversationHandoffTakeoverPreviewParts", () => {
     });
   });
 
-  it("keeps ordinary preview text as the body when wait_manual is on", () => {
+  it("keeps ordinary preview text as the body when a handoff reminder exists", () => {
     expect(getConversationHandoffTakeoverPreviewParts("请尽快处理")).toEqual({
       body: "请尽快处理",
       prefix: CONVERSATION_HANDOFF_TAKEOVER_PREVIEW_PREFIX,

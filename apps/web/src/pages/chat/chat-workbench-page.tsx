@@ -342,6 +342,8 @@ function ChatWorkbenchContent({
     fullAutoActionPending,
     seatAgentModeActionPending,
     fullAutoStatusByConversationId,
+    handoffClearPendingByConversationId,
+    markActiveConversationHandoffHandled,
   } = useWorkbenchStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -384,6 +386,10 @@ function ChatWorkbenchContent({
       fullAutoActionPending: state.fullAutoActionPending,
       seatAgentModeActionPending: state.seatAgentModeActionPending,
       fullAutoStatusByConversationId: state.fullAutoStatusByConversationId,
+      handoffClearPendingByConversationId:
+        state.handoffClearPendingByConversationId,
+      markActiveConversationHandoffHandled:
+        state.markActiveConversationHandoffHandled,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
@@ -1909,6 +1915,41 @@ function ChatWorkbenchContent({
     });
   };
 
+  const handleViewHandoffMessage = () => {
+    const handoffMsgId = activeConversation?.handoffMsgId;
+
+    if (!handoffMsgId || !/^[1-9]\d*$/.test(handoffMsgId)) {
+      return;
+    }
+
+    const handoffMessage = activeMessages.find(
+      (message) => String(message.seq) === handoffMsgId,
+    );
+    const viewport = messageViewportRef.current;
+    const anchor =
+      viewport && handoffMessage
+        ? findViewportAnchor(viewport, handoffMessage.uiMessageKey)
+        : null;
+
+    if (!anchor) {
+      toast.warning("未找到触发消息，请向上加载更多消息后重试");
+      return;
+    }
+
+    anchor.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
+  const handleMarkHandoffHandled = async () => {
+    const result = await markActiveConversationHandoffHandled();
+
+    if (!result.ok) {
+      toast.warning(result.errorMessage);
+    }
+  };
+
   const handleQuoteMessage = (message: ChatMessage) => {
     if (message.isRevoked) {
       return;
@@ -2100,6 +2141,7 @@ function ChatWorkbenchContent({
       canToggleConversationAIHosting={canToggleConversationAIHosting}
       canCollectMaterialActions={canCollectMaterialActions}
       canSendMessage={canSendMessage}
+      canMarkHandoffHandled={activeAccount?.takenOverEmployeeId === me?.id}
       canUseMessageForward={canUseMessageForward}
       composerPlaceholder={composerPlaceholder}
       customer={activeCustomer}
@@ -2118,6 +2160,11 @@ function ChatWorkbenchContent({
       seatAIHostingEnabled={seatAIHostingEnabled}
       isEmojiPickerOpen={isEmojiPickerOpen}
       isSendingDraft={isSendingDraft}
+      isHandoffClearPending={
+        activeConversation
+          ? handoffClearPendingByConversationId[activeConversation.id] === true
+          : false
+      }
       conversationAIHostingEnabled={conversationAIHostingEnabled}
       conversationAIHostingConfigured={conversationAIHostingConfigured}
       shouldShowConversationAIHostingControl={
@@ -2157,6 +2204,10 @@ function ChatWorkbenchContent({
       onCancelAgentHosting={() => handleChangeFullAuto(false)}
       onChangeSeatAgentMode={handleChangeSeatAgentMode}
       onChangeFullAuto={handleChangeFullAuto}
+      onMarkHandoffHandled={() => {
+        void handleMarkHandoffHandled();
+      }}
+      onViewHandoffMessage={handleViewHandoffMessage}
       onClearQuotedMessage={() => setQuotedMessage(null)}
       onCollectMaterial={handleCollectMaterial}
       onEnterMultiSelectMode={messageForward.enterMultiSelectMode}

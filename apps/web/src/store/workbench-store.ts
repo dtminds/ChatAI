@@ -14,7 +14,7 @@ import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   changeConversationFullAuto,
-  clearConversationWaitManual,
+  clearConversationHandoff,
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
@@ -54,6 +54,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 import {
@@ -152,6 +153,10 @@ type SendMessageResult =
 
 type RetryFailedMessageResult = SendMessageResult;
 
+type MarkConversationHandoffHandledResult =
+  | { ok: true }
+  | { errorMessage: string; ok: false };
+
 type RevokeMessageResult =
   | {
       ok: true;
@@ -246,6 +251,7 @@ type WorkbenchState = {
   bootstrapError?: string;
   fullAutoActionError?: string;
   fullAutoStatusByConversationId: Record<string, FullAutoStatusState>;
+  handoffClearPendingByConversationId: Record<string, true>;
   seatAgentModeActionPending: boolean;
   isConversationLoading: boolean;
   readReceiptError?: string;
@@ -284,6 +290,7 @@ type WorkbenchState = {
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
+  markActiveConversationHandoffHandled: () => Promise<MarkConversationHandoffHandledResult>;
   markConversationRead: (conversationId: string) => Promise<void>;
   pinConversation: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
@@ -401,6 +408,7 @@ function createInitialState(): Omit<
   | "clearActiveConversation"
   | "resetWorkbenchSession"
   | "initializeWorkbench"
+  | "markActiveConversationHandoffHandled"
   | "markConversationRead"
   | "pinConversation"
   | "setActiveAccount"
@@ -491,6 +499,7 @@ function createInitialState(): Omit<
     fullAutoActionError: undefined,
     fullAutoActionPending: false,
     fullAutoStatusByConversationId: {},
+    handoffClearPendingByConversationId: {},
     seatAgentModeActionPending: false,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
@@ -2581,11 +2590,11 @@ function applyConversationAIHostingSwitchResult(
   };
 }
 
-function applyConversationWaitManualCleared(
+function applyConversationHandoffCleared(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
-  expectedLastMessageId: string,
+  expectedHandoffMsgId: string,
 ) {
   return {
     conversationListsByScope: {
@@ -2593,10 +2602,10 @@ function applyConversationWaitManualCleared(
       [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
         (conversation): Conversation =>
           conversation.id === conversationId &&
-          conversation.lastMessageId === expectedLastMessageId
+          conversation.handoffMsgId === expectedHandoffMsgId
             ? {
                 ...conversation,
-                waitManual: false,
+                handoffMsgId: "0",
               }
             : conversation,
       ),
@@ -3014,7 +3023,6 @@ export function createWorkbenchStore() {
   let latestGroupMembersRequestId = 0;
   let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
-  let latestWaitManualClearRequestId = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3026,7 +3034,7 @@ export function createWorkbenchStore() {
   const fullAutoPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const fullAutoResetTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
-  const waitManualClearRequestIdByKey = new Map<string, number>();
+  const handoffClearRequestsByKey = new Map<string, Promise<boolean>>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
@@ -3317,7 +3325,7 @@ export function createWorkbenchStore() {
 
     pendingVoicePlaybackConfirmKeys.clear();
     pendingRevokeRequestMessageIds.clear();
-    waitManualClearRequestIdByKey.clear();
+    handoffClearRequestsByKey.clear();
 
     for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
       delete latestTakeoverRequestIdByAccountId[accountId];
@@ -3843,6 +3851,65 @@ export function createWorkbenchStore() {
       }
     }
 
+    function clearConversationHandoffReminder(input: {
+      accountId: string;
+      conversationId: string;
+      expectedHandoffMsgId: string;
+    }) {
+      const requestKey = `${input.conversationId}:${input.expectedHandoffMsgId}`;
+      const existingRequest = handoffClearRequestsByKey.get(requestKey);
+
+      if (existingRequest) {
+        return existingRequest;
+      }
+
+      set((currentState) => ({
+        handoffClearPendingByConversationId: {
+          ...currentState.handoffClearPendingByConversationId,
+          [input.conversationId]: true,
+        },
+      }));
+
+      const request = clearConversationHandoff(input.conversationId, {
+        expectedHandoffMsgId: input.expectedHandoffMsgId,
+      })
+        .then((response) => {
+          if (response.cleared) {
+            set((currentState) =>
+              applyConversationHandoffCleared(
+                currentState,
+                input.conversationId,
+                input.accountId,
+                input.expectedHandoffMsgId,
+              ),
+            );
+          }
+
+          return response.cleared;
+        })
+        .finally(() => {
+          if (handoffClearRequestsByKey.get(requestKey) === request) {
+            handoffClearRequestsByKey.delete(requestKey);
+          }
+
+          const hasAnotherPendingRequest = Array.from(
+            handoffClearRequestsByKey.keys(),
+          ).some((key) => key.startsWith(`${input.conversationId}:`));
+
+          if (!hasAnotherPendingRequest) {
+            set((currentState) => ({
+              handoffClearPendingByConversationId: omitByKeys(
+                currentState.handoffClearPendingByConversationId,
+                [input.conversationId],
+              ),
+            }));
+          }
+        });
+
+      handoffClearRequestsByKey.set(requestKey, request);
+      return request;
+    }
+
     async function reloadAccountConversations(accountId: string) {
       const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
@@ -4076,6 +4143,42 @@ export function createWorkbenchStore() {
         searchDebounceTimer = setTimeout(() => {
           void get().triggerSearch(seatIdAtSchedule ?? undefined);
         }, 450);
+      },
+      async markActiveConversationHandoffHandled() {
+        const state = get();
+        const conversation = getConversationById(
+          state,
+          state.activeConversationId,
+        );
+        const account = state.accounts.find(
+          (item) => item.id === conversation?.accountId,
+        );
+
+        if (
+          !conversation ||
+          !hasConversationHandoff(conversation.handoffMsgId) ||
+          !state.me ||
+          account?.takenOverEmployeeId !== state.me.id
+        ) {
+          return { errorMessage: "仅当前接管人可以标记已处理", ok: false };
+        }
+
+        try {
+          const cleared = await clearConversationHandoffReminder({
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+            expectedHandoffMsgId: conversation.handoffMsgId,
+          });
+
+          return cleared
+            ? { ok: true }
+            : { errorMessage: "提醒已更新，请刷新后重试", ok: false };
+        } catch (error) {
+          return {
+            errorMessage: getRequestErrorMessage(error, "标记已处理失败"),
+            ok: false,
+          };
+        }
       },
       async triggerSearch(seatIdOverride?: string) {
         const keyword = get().searchKeyword;
@@ -5558,6 +5661,12 @@ export function createWorkbenchStore() {
         };
       }
       const sendBatchStartedAt = Date.now();
+      const handoffMsgIdAtSend = hasConversationHandoff(
+        activeConversation.handoffMsgId,
+      )
+        ? activeConversation.handoffMsgId
+        : undefined;
+      let hasRequestedHandoffClear = false;
 
       set((currentState) => ({
         sendStatusByConversationId: {
@@ -5646,6 +5755,16 @@ export function createWorkbenchStore() {
             seatId: activeAccountId,
             segment: payloadSegment,
           });
+          if (handoffMsgIdAtSend && !hasRequestedHandoffClear) {
+            hasRequestedHandoffClear = true;
+            void clearConversationHandoffReminder({
+              accountId: activeAccountId,
+              conversationId: activeConversationId,
+              expectedHandoffMsgId: handoffMsgIdAtSend,
+            }).catch(() => {
+              // 消息已被 Java 接受；清除失败时保留提醒供人工重试。
+            });
+          }
           optNos.push(response.optNo);
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
@@ -6734,54 +6853,6 @@ export function createWorkbenchStore() {
       }
 
       const currentConversation = getConversationById(state, conversationId);
-
-      if (currentConversation?.waitManual === true) {
-        const account = state.accounts.find(
-          (item) => item.id === currentConversation.accountId,
-        );
-
-        const expectedLastMessageId = currentConversation.lastMessageId;
-
-        if (
-          account?.takenOverEmployeeId === state.me?.id &&
-          expectedLastMessageId
-        ) {
-          const accountId = currentConversation.accountId;
-          const requestKey = `${conversationId}:${expectedLastMessageId}`;
-
-          if (!waitManualClearRequestIdByKey.has(requestKey)) {
-            latestWaitManualClearRequestId += 1;
-            const requestId = latestWaitManualClearRequestId;
-            waitManualClearRequestIdByKey.set(requestKey, requestId);
-
-            void clearConversationWaitManual(conversationId, {
-              expectedLastMessageId,
-            })
-              .then((response) => {
-                if (!response.cleared) {
-                  return;
-                }
-
-                set((currentState) =>
-                  applyConversationWaitManualCleared(
-                    currentState,
-                    conversationId,
-                    accountId,
-                    expectedLastMessageId,
-                  ),
-                );
-              })
-              .catch(() => {
-                // 保留接管提醒，等待后续轮询或再次打开时重试
-              })
-              .finally(() => {
-                if (waitManualClearRequestIdByKey.get(requestKey) === requestId) {
-                  waitManualClearRequestIdByKey.delete(requestKey);
-                }
-              });
-          }
-        }
-      }
 
       if (state.activeConversationId === conversationId) {
         return;

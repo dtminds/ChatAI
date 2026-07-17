@@ -7,6 +7,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 const conversation: Conversation = {
   accountId: "account-1",
   conversationAIHostingSwitch: false,
+  handoffMsgId: "0",
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -189,7 +190,7 @@ describe("ConversationCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows a red takeover reminder prefix when waitManual is true", () => {
+  it("shows a takeover reminder prefix when handoffMsgId is positive", () => {
     render(
       <ConversationCard
         conversation={{
@@ -197,7 +198,7 @@ describe("ConversationCard", () => {
           mode: "group",
           preview:
             "Agent 转人工处理：客户明确要求转人工，同时存在不满情绪，符合handoff规则",
-          waitManual: true,
+          handoffMsgId: "9001",
         }}
         isActive={false}
         onSelect={vi.fn()}
@@ -212,13 +213,13 @@ describe("ConversationCard", () => {
     );
   });
 
-  it("hides takeover reminder prefix when waitManual is false", () => {
+  it("hides takeover reminder prefix when handoffMsgId is zero", () => {
     render(
       <ConversationCard
         conversation={{
           ...conversation,
           preview: "Agent 转人工处理：客户明确要求转人工",
-          waitManual: false,
+          handoffMsgId: "0",
         }}
         isActive={false}
         onSelect={vi.fn()}
@@ -233,7 +234,7 @@ describe("ConversationCard", () => {
     );
   });
 
-  it("prefers draft preview over waitManual takeover reminder", () => {
+  it("prefers draft preview over the takeover reminder", () => {
     render(
       <ConversationCard
         composerDraft={{
@@ -244,7 +245,7 @@ describe("ConversationCard", () => {
         conversation={{
           ...conversation,
           preview: "Agent 转人工处理：客户明确要求转人工",
-          waitManual: true,
+          handoffMsgId: "9001",
         }}
         isActive={false}
         onSelect={vi.fn()}

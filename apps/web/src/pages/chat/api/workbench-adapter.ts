@@ -80,7 +80,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
   return {
     accountId: dto.seatId,
     conversationAIHostingSwitch: dto.conversationAIHostingSwitch,
-    waitManual: dto.waitManual === true,
+    handoffMsgId: dto.handoffMsgId,
     bizStatus: dto.bizStatus ?? 0,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
@@ -93,7 +93,6 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     isPinned: dto.isPinned,
     isShadowGroup: dto.isShadowGroup,
     isVerified: dto.verified,
-    lastMessageId: dto.lastMessageId,
     mode: dto.mode,
     preview: dto.lastMessage,
     ...(dto.lastMessagePreviewParts

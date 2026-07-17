@@ -175,6 +175,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentListResponseSchema, {
         agents: [
           {
+            autoLearnEnabled: true,
             id: "301",
             kbList: [
               {
@@ -193,6 +194,7 @@ describe("AI hosting DTOs", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
+            pendingSuggestionCount: 6,
             updatedAt: 1_718_006_460_000,
           },
         ],
@@ -208,6 +210,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentListResponseSchema, {
         agents: [
           {
+            autoLearnEnabled: true,
             id: "301",
             knowledgeBases: ["商品咨询知识库"],
             model: {
@@ -217,6 +220,7 @@ describe("AI hosting DTOs", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
+            pendingSuggestionCount: 6,
           },
         ],
         pagination: {

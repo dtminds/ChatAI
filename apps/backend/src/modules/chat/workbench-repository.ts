@@ -4031,7 +4031,7 @@ export class WorkbenchRepository {
     const conversationNumericId = parseMySqlId(input.conversationId);
 
     if (conversationNumericId == null) {
-      return false;
+      return;
     }
 
     await this.db
@@ -4044,8 +4044,6 @@ export class WorkbenchRepository {
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
-
-    return true;
   }
 
   async hideConversation(input: {

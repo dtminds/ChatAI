@@ -2217,7 +2217,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("clears the handoff reminder by conversation id", async () => {
-    const clearConversationHandoff = vi.fn().mockResolvedValue(true);
+    const clearConversationHandoff = vi.fn().mockResolvedValue(undefined);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -2236,7 +2236,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.clearConversationHandoff("101", "88")).resolves.toEqual({
-      cleared: true,
       conversationId: "88",
       seatId: "12",
     });
@@ -2248,7 +2247,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("rejects clearing a handoff reminder when the seat is not taken over", async () => {
-    const clearConversationHandoff = vi.fn().mockResolvedValue(true);
+    const clearConversationHandoff = vi.fn().mockResolvedValue(undefined);
     const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),

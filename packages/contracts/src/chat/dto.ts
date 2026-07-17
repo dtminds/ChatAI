@@ -811,7 +811,6 @@ export type WorkbenchConversationFullAutoResponse = {
 };
 
 export type WorkbenchConversationClearHandoffResponse = {
-  cleared: boolean;
   conversationId: string;
   seatId: string;
 };

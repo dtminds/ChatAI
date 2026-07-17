@@ -1696,7 +1696,6 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushConversationEvent(state, nextConversation);
 
       return {
-        cleared: true,
         conversationId,
         seatId: conversation.seatId,
       };

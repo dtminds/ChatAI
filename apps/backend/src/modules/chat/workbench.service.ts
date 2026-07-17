@@ -1446,14 +1446,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
-    const cleared = await this.repository.clearConversationHandoff({
+    await this.repository.clearConversationHandoff({
       conversationId: conversation.id,
       platform: conversation.platform,
       uid: conversation.uid,
     });
 
     return {
-      cleared,
       conversationId: conversation.id,
       seatId: conversation.seatId,
     };

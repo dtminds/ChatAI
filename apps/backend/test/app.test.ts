@@ -2623,7 +2623,6 @@ describe("backend app", () => {
   it("clears a handoff reminder by conversation id", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -2638,6 +2637,10 @@ describe("backend app", () => {
 
     expect(response.statusCode).toBe(200);
     expect(clearConversationHandoff).toHaveBeenCalledWith("101", "conv-001");
+    expect(response.json()).toEqual({
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
 
     await app.close();
   });

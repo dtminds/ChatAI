@@ -6868,7 +6868,7 @@ describe("WorkbenchRepository", () => {
         platform: 5,
         uid: 9001,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeUndefined();
     expect(updates).toEqual([{ handoff_msg_id: 0 }]);
     expect(wheres).toEqual([
       ["id", "=", 88],
@@ -6903,7 +6903,7 @@ describe("WorkbenchRepository", () => {
         platform: 5,
         uid: 9001,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeUndefined();
   });
 
   it("hides a conversation in tenant scope", async () => {

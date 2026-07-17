@@ -3032,7 +3032,7 @@ export function createWorkbenchStore() {
   const fullAutoPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const fullAutoResetTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
-  const handoffClearRequestsByKey = new Map<string, Promise<boolean>>();
+  const handoffClearRequestsByKey = new Map<string, Promise<void>>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
@@ -3868,18 +3868,14 @@ export function createWorkbenchStore() {
       }));
 
       const request = clearConversationHandoff(input.conversationId)
-        .then((response) => {
-          if (response.cleared) {
-            set((currentState) =>
-              applyConversationHandoffCleared(
-                currentState,
-                input.conversationId,
-                input.accountId,
-              ),
-            );
-          }
-
-          return response.cleared;
+        .then(() => {
+          set((currentState) =>
+            applyConversationHandoffCleared(
+              currentState,
+              input.conversationId,
+              input.accountId,
+            ),
+          );
         })
         .finally(() => {
           if (handoffClearRequestsByKey.get(requestKey) === request) {
@@ -4158,14 +4154,12 @@ export function createWorkbenchStore() {
         }
 
         try {
-          const cleared = await clearConversationHandoffReminder({
+          await clearConversationHandoffReminder({
             accountId: conversation.accountId,
             conversationId: conversation.id,
           });
 
-          return cleared
-            ? { ok: true }
-            : { errorMessage: "提醒已更新，请刷新后重试", ok: false };
+          return { ok: true };
         } catch (error) {
           return {
             errorMessage: getRequestErrorMessage(error, "标记已处理失败"),

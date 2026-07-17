@@ -279,7 +279,6 @@ describe("useWorkbenchStore", () => {
   it("keeps a handoff reminder when opening a conversation", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -315,7 +314,6 @@ describe("useWorkbenchStore", () => {
   it("clears a handoff reminder after a send is accepted", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -357,7 +355,6 @@ describe("useWorkbenchStore", () => {
   it("clears a handoff reminder only once for a multi-segment accepted send", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -530,7 +527,6 @@ describe("useWorkbenchStore", () => {
   it("clears the current handoff reminder by conversation id", async () => {
     const baseService = createMockWorkbenchService();
     const clearResult = createDeferred<{
-      cleared: boolean;
       conversationId: string;
       seatId: string;
     }>();
@@ -572,7 +568,6 @@ describe("useWorkbenchStore", () => {
     }));
 
     clearResult.resolve({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -592,7 +587,6 @@ describe("useWorkbenchStore", () => {
   it("allows the current takeover operator to mark a handoff handled without chat.send", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
-      cleared: true,
       conversationId: "conv-001",
       seatId: "drc",
     });
@@ -673,10 +667,9 @@ describe("useWorkbenchStore", () => {
     ).toBe("9001");
   });
 
-  it("deduplicates an in-flight manual handoff clear and allows retry after it settles", async () => {
+  it("deduplicates an in-flight manual handoff clear", async () => {
     const baseService = createMockWorkbenchService();
     const clearResult = createDeferred<{
-      cleared: boolean;
       conversationId: string;
       seatId: string;
     }>();
@@ -710,15 +703,20 @@ describe("useWorkbenchStore", () => {
     expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
 
     clearResult.resolve({
-      cleared: false,
       conversationId: "conv-001",
       seatId: "drc",
     });
-    await Promise.all([firstClear, secondClear]);
-
-    await useWorkbenchStore.getState().markActiveConversationHandoffHandled();
-
-    expect(clearConversationHandoff).toHaveBeenCalledTimes(2);
+    await expect(Promise.all([firstClear, secondClear])).resolves.toEqual([
+      { ok: true },
+      { ok: true },
+    ]);
+    expect(clearConversationHandoff).toHaveBeenCalledTimes(1);
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.handoffMsgId,
+    ).toBe("0");
   });
 
   it("patches active conversation full-auto from API response instead of request input", async () => {

@@ -1101,6 +1101,74 @@ describe("workbench message merge state", () => {
     ]);
   });
 
+  it("does not clear a same-key pending message in another conversation after fallback", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return { optNo: "shared-fallback-opt", status: "accepted" };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createOwnPolledMessage({
+              content: { fileUrl: "https://poll.example.com/rendered/image.png" },
+              contentType: "image",
+              msgid: "remote-fallback-image",
+              rawMsgtype: "image",
+              seq: 1711,
+              source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "本地图片",
+        imageUrl: "https://local.example.com/image.png",
+        type: "image",
+        url: "https://local.example.com/image.png",
+      },
+    ]);
+    useWorkbenchStore.setState((state) => ({
+      pendingMessages: [
+        ...state.pendingMessages,
+        {
+          author: "客服",
+          content: {
+            alt: "其他会话图片",
+            imageUrl: "https://other.example.com/image.png",
+            type: "image",
+          },
+          conversationId: "conv-002",
+          isOwnMessage: true,
+          optNo: "shared-fallback-opt",
+          role: "agent",
+          sender: { id: "agent", name: "客服" },
+          sentAt: "2026-07-17 10:00:00",
+          status: "accepted",
+          uiMessageKey: "shared-fallback-opt",
+        },
+      ],
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toEqual([
+      expect.objectContaining({
+        conversationId: "conv-002",
+        optNo: "shared-fallback-opt",
+      }),
+    ]);
+  });
+
   it("keeps seed and pagination state untouched while reconciling message content", async () => {
     const baseService = createMockWorkbenchService();
 

@@ -850,6 +850,7 @@ function reconcilePolledMessageList(
   const merged = [...currentMessages];
   const unmatchedMessages: Message[] = [];
   const resolvedPendingKeys = new Set<string>();
+  const reconciledMessageIndexes = new Set<number>();
 
   for (const nextMessage of nextMessages) {
     if (isRevokeSignalMessage(nextMessage)) {
@@ -884,6 +885,9 @@ function reconcilePolledMessageList(
       const currentMessage = merged[existingIndex];
       collectResolvedPendingKeys(resolvedPendingKeys, currentMessage);
       merged[existingIndex] = mergeMessageState(currentMessage, nextMessage);
+      if (isOptimisticAcceptedOwnMessage(currentMessage)) {
+        reconciledMessageIndexes.add(existingIndex);
+      }
       continue;
     }
 
@@ -927,6 +931,7 @@ function reconcilePolledMessageList(
         optimisticMessage,
         nextMessage,
       );
+      reconciledMessageIndexes.add(optimisticIndex);
       continue;
     }
 
@@ -937,6 +942,7 @@ function reconcilePolledMessageList(
     if (fallbackIndex >= 0) {
       collectResolvedPendingKeys(resolvedPendingKeys, merged[fallbackIndex]);
       merged[fallbackIndex] = markPolledMessageAsNew(nextMessage, options);
+      reconciledMessageIndexes.add(fallbackIndex);
       continue;
     }
 
@@ -944,9 +950,34 @@ function reconcilePolledMessageList(
   }
 
   return {
-    messages: sortMessagesForAppend([...merged, ...appendedMessages]),
+    messages: orderPolledMessagesInSlots(
+      merged,
+      appendedMessages,
+      reconciledMessageIndexes,
+    ),
     resolvedPendingKeys,
   };
+}
+
+function orderPolledMessagesInSlots(
+  merged: Message[],
+  appendedMessages: Message[],
+  reconciledMessageIndexes: Set<number>,
+) {
+  const messages = [...merged, ...appendedMessages];
+  const polledMessageIndexes = [
+    ...reconciledMessageIndexes,
+    ...appendedMessages.map((_, index) => merged.length + index),
+  ].sort((left, right) => left - right);
+  const orderedPolledMessages = sortMessagesForAppend(
+    polledMessageIndexes.map((index) => messages[index]),
+  );
+
+  for (let index = 0; index < polledMessageIndexes.length; index += 1) {
+    messages[polledMessageIndexes[index]] = orderedPolledMessages[index];
+  }
+
+  return messages;
 }
 
 function markPolledMessageAsNew(
@@ -5257,12 +5288,21 @@ export function createWorkbenchStore() {
 
           const filteredPendingMessages = serverMessages.length
             ? currentState.pendingMessages.filter(
-                (pendingMessage) =>
-                  !polledResolvedPendingKeys.has(pendingMessage.uiMessageKey) &&
-                  !polledResolvedPendingKeys.has(pendingMessage.optNo ?? "") &&
-                  !serverMessages.some((message) =>
-                    isSameMessage(pendingMessage, message),
-                  ),
+                (pendingMessage) => {
+                  const isResolvedByPolledMessage =
+                    pendingMessage.conversationId === polledConversationId &&
+                    (
+                      polledResolvedPendingKeys.has(pendingMessage.uiMessageKey) ||
+                      polledResolvedPendingKeys.has(pendingMessage.optNo ?? "")
+                    );
+
+                  return (
+                    !isResolvedByPolledMessage &&
+                    !serverMessages.some((message) =>
+                      isSameMessage(pendingMessage, message),
+                    )
+                  );
+                },
               )
             : currentState.pendingMessages;
           const pendingMessages =

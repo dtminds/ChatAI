@@ -2,16 +2,19 @@ export class AppError extends Error {
   readonly code: string;
   readonly statusCode: number;
   readonly details?: Record<string, unknown>;
+  readonly logDetails?: Record<string, unknown>;
 
   constructor(
     code: string,
     message: string,
     statusCode = 500,
     details?: Record<string, unknown>,
+    logDetails?: Record<string, unknown>,
   ) {
     super(message);
     this.code = code;
     this.details = details;
+    this.logDetails = logDetails;
     this.statusCode = statusCode;
   }
 }
@@ -29,8 +32,13 @@ export class UnauthorizedError extends AppError {
 }
 
 export class BadRequestError extends AppError {
-  constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(code, message, 400, details);
+  constructor(
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+    logDetails?: Record<string, unknown>,
+  ) {
+    super(code, message, 400, details, logDetails);
   }
 }
 

@@ -8082,6 +8082,77 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("reports retry failure when the failed message is missing", async () => {
+    const repository = createMaterialRepository({
+      findAsyncOperationByOptNo: vi.fn(),
+      findRetryMessage: vi.fn().mockResolvedValue(undefined),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "RETRY_MESSAGE_FAILED",
+      logDetails: {
+        conversationId: "conv-001",
+        messageSeq: 538,
+        reason: "retry_message_not_found",
+      },
+      message: "重发失败",
+      statusCode: 400,
+    });
+    expect(repository.findAsyncOperationByOptNo).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry when the failed message optNo is missing", async () => {
+    const repository = createMaterialRepository({
+      findAsyncOperationByOptNo: vi.fn(),
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: null,
+        senderType: "agent",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "retry_message_opt_no_missing",
+      message: "暂不支持重发该消息",
+      statusCode: 400,
+    });
+    expect(repository.findAsyncOperationByOptNo).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("reports retry failure when the async operation record is missing", async () => {
     const repository = createMaterialRepository({
       findRetryMessage: vi.fn().mockResolvedValue({
@@ -8110,6 +8181,12 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).rejects.toMatchObject({
       code: "RETRY_MESSAGE_FAILED",
+      logDetails: {
+        conversationId: "conv-001",
+        messageSeq: 538,
+        reason: "retry_operation_not_found",
+        retryOptNo: "failed-opt-538",
+      },
       message: "重发失败",
       statusCode: 400,
     });
@@ -8265,43 +8342,74 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it.each([
-    ["invalid json", "{"],
-    ["missing msgData", JSON.stringify({})],
-    ["empty text", JSON.stringify({ msgData: { msgtype: "text" } })],
-  ])("reports retry failure for %s async operation params", async (_label, optParams) => {
-    const repository = createMaterialRepository({
-      findRetryMessage: vi.fn().mockResolvedValue({
-        id: 538,
-        optNo: "failed-opt-538",
-        senderType: "agent",
+    ["missing params", null, "retry_operation_params_missing"],
+    ["invalid json", "{", "retry_operation_params_invalid_json"],
+    ["missing msgData", JSON.stringify({}), "retry_message_data_missing"],
+    [
+      "missing text",
+      JSON.stringify({ msgData: { msgtype: "text" } }),
+      "retry_text_invalid",
+    ],
+    [
+      "invalid quote",
+      JSON.stringify({ msgData: { msgtype: "quote", text: "引用回复" } }),
+      "retry_quote_invalid",
+    ],
+    [
+      "missing image URL",
+      JSON.stringify({ msgData: { msgtype: "image" } }),
+      "retry_image_url_missing",
+    ],
+    [
+      "invalid file data",
+      JSON.stringify({
+        msgData: { fileName: "报价.pdf", msgtype: "file" },
       }),
-      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
-        optParams,
-      }),
-      getConversationLookup: vi.fn().mockResolvedValue({
-        id: "conv-001",
-        platform: 5,
-        seatHostSubUserId: "101",
-        seatId: "12",
-        thirdExternalUserId: "external-001",
-        thirdUserId: "seat-user-001",
-        uid: 272,
-      }),
-    });
-    const javaClient = createJavaClient();
-    const service = createWorkbenchService(repository, javaClient);
+      "retry_file_data_invalid",
+    ],
+  ])(
+    "reports retry failure for %s async operation params",
+    async (_label, optParams, reason) => {
+      const repository = createMaterialRepository({
+        findRetryMessage: vi.fn().mockResolvedValue({
+          id: 538,
+          optNo: "failed-opt-538",
+          senderType: "agent",
+        }),
+        findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+          optParams,
+        }),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "conv-001",
+          platform: 5,
+          seatHostSubUserId: "101",
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 272,
+        }),
+      });
+      const javaClient = createJavaClient();
+      const service = createWorkbenchService(repository, javaClient);
 
-    await expect(
-      service.retryMessage("101", {
-        conversationId: "conv-001",
-        messageSeq: 538,
-      }),
-    ).rejects.toMatchObject({
-      code: "RETRY_MESSAGE_FAILED",
-      statusCode: 400,
-    });
-    expect(javaClient.sendMessage).not.toHaveBeenCalled();
-  });
+      await expect(
+        service.retryMessage("101", {
+          conversationId: "conv-001",
+          messageSeq: 538,
+        }),
+      ).rejects.toMatchObject({
+        code: "RETRY_MESSAGE_FAILED",
+        logDetails: {
+          conversationId: "conv-001",
+          messageSeq: 538,
+          reason,
+          retryOptNo: "failed-opt-538",
+        },
+        statusCode: 400,
+      });
+      expect(javaClient.sendMessage).not.toHaveBeenCalled();
+    },
+  );
 });
 
 function createWorkbenchService(

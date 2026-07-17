@@ -2076,8 +2076,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    if (!failedMessage?.optNo) {
-      throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    const retryLogContext = {
+      conversationId: conversation.id,
+      messageSeq: payload.messageSeq,
+    };
+
+    if (!failedMessage) {
+      throw retryMessageFailed("retry_message_not_found", retryLogContext);
+    }
+
+    if (!failedMessage.optNo) {
+      throw new BadRequestError("retry_message_opt_no_missing", "暂不支持重发该消息");
     }
 
     if (failedMessage.senderType !== "agent") {
@@ -2089,7 +2098,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
-    const msgData = buildRetryJavaMessageData(operation?.optParams);
+    if (!operation) {
+      throw retryMessageFailed("retry_operation_not_found", {
+        ...retryLogContext,
+        retryOptNo: failedMessage.optNo,
+      });
+    }
+
+    const msgData = buildRetryJavaMessageData(operation.optParams, {
+      ...retryLogContext,
+      retryOptNo: failedMessage.optNo,
+    });
 
     const response = await this.javaClient.sendMessage({
       failMsgId: failedMessage.id,
@@ -5420,20 +5439,33 @@ function buildJavaSendMessageData(
   return message;
 }
 
-function buildRetryJavaMessageData(rawOptParams: string | null | undefined): JavaSendMessageData {
+function retryMessageFailed(
+  reason: string,
+  context?: Record<string, unknown>,
+): BadRequestError {
+  return new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败", undefined, {
+    ...context,
+    reason,
+  });
+}
+
+function buildRetryJavaMessageData(
+  rawOptParams: string | null | undefined,
+  logContext?: Record<string, unknown>,
+): JavaSendMessageData {
   if (!rawOptParams?.trim()) {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_operation_params_missing", logContext);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawOptParams);
   } catch {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_operation_params_invalid_json", logContext);
   }
 
   if (!isRecord(parsed) || !isRecord(parsed.msgData)) {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_message_data_missing", logContext);
   }
 
   const msgData = parsed.msgData;
@@ -5441,7 +5473,7 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
   switch (msgData.msgtype) {
     case "text":
       if (typeof msgData.text !== "string") {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_text_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     case "quote":
@@ -5449,12 +5481,12 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
         typeof msgData.text !== "string" ||
         !Number.isSafeInteger(msgData.quoteMsgId)
       ) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_quote_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     case "image":
       if (typeof msgData.fileUrl !== "string" || !msgData.fileUrl.trim()) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_image_url_missing", logContext);
       }
       return msgData as JavaSendMessageData;
     case "file":
@@ -5464,7 +5496,7 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
         !msgData.fileName.trim() ||
         !msgData.fileUrl.trim()
       ) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_file_data_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     default:

@@ -747,7 +747,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("heading", { level: 1, name: "AI 优化建议" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回 Agent 管理" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/agents/301",
+      "/chat/ai-hosting/agents",
     );
     expect(screen.getByRole("button", { name: "待处理" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "智能过滤" })).toBeInTheDocument();
@@ -823,6 +823,33 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("alertdialog", { name: "是否确认忽略?" })).toHaveTextContent(
       "已忽略的，后续也可前往已忽略列表中重新入库",
     );
+  });
+
+  it("disables queued and failed knowledge items in the ingest dialog", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "入库" });
+    await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
+    await user.click(screen.getByRole("option", { name: "华为产品知识" }));
+
+    const knowledgeComboboxes = within(dialog).getAllByRole("combobox", { name: /选择知识/ });
+    await user.click(knowledgeComboboxes[1]!);
+
+    const completedOption = await screen.findByRole("option", { name: /产品说明大全/ });
+    const queuedOption = screen.getByRole("option", { name: /售前场景话术/ });
+    const failedOption = screen.getByRole("option", { name: /文本知识集合/ });
+
+    expect(completedOption).not.toHaveAttribute("aria-disabled", "true");
+    expect(queuedOption).toHaveAttribute("aria-disabled", "true");
+    expect(failedOption).toHaveAttribute("aria-disabled", "true");
   });
 
   it("shows pending suggestion count and enabled self-learning on agent cards", async () => {

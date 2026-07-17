@@ -82,23 +82,21 @@ export type AgentLearningJavaListItem = {
   customerQuestion?: string | null;
   id?: string | number | null;
   priorityScore?: number | null;
-  seat?: {
-    avatar?: string | null;
-    id?: string | null;
-    name?: string | null;
-  } | null;
+  seat?: AgentLearningJavaPerson | null;
   status?: number | null;
   suggestedAnswer?: string | null;
   suggestedQuestion?: string | null;
   targetDocId?: string | null;
   targetEntryId?: string | null;
   targetKbId?: string | null;
-  user?: {
-    avatar?: string | null;
-    id?: string | null;
-    name?: string | null;
-  } | null;
+  user?: AgentLearningJavaPerson | null;
   userReason?: string | null;
+};
+
+export type AgentLearningJavaPerson = {
+  avatar?: string | null;
+  id?: string | null;
+  name?: string | null;
 };
 
 export type AgentLearningJavaListResult = {

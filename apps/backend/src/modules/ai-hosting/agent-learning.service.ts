@@ -293,7 +293,30 @@ function mapCandidateItem(item: AgentLearningJavaListItem): AiHostingLearningCan
     id,
     question: item.suggestedQuestion?.trim() ?? "",
     rationale: resolveRationale(status, item.aiReason, item.userReason),
+    seat: normalizePerson(item.seat),
     status,
+    user: normalizePerson(item.user),
+  };
+}
+
+function normalizePerson(person: unknown): { avatar?: string; id?: string; name?: string } | undefined {
+  if (!person || typeof person !== "object") {
+    return undefined;
+  }
+
+  const { avatar, id, name } = person as Record<string, unknown>;
+  const normalizedAvatar = typeof avatar === "string" ? avatar.trim() : undefined;
+  const normalizedId = typeof id === "string" ? id.trim() : undefined;
+  const normalizedName = typeof name === "string" ? name.trim() : undefined;
+
+  if (!normalizedAvatar && !normalizedId && !normalizedName) {
+    return undefined;
+  }
+
+  return {
+    avatar: normalizedAvatar,
+    id: normalizedId,
+    name: normalizedName,
   };
 }
 

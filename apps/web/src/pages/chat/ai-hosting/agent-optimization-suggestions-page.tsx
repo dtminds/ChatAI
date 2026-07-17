@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -225,9 +226,7 @@ export function AgentOptimizationSuggestionsPage() {
         });
 
         if (!cancelled) {
-          setKnowledgeItems(
-            response.docs.map(toKbDocViewItem).filter((item) => item.type === "qa"),
-          );
+          setKnowledgeItems(response.docs.map(toKbDocViewItem));
         }
       } catch {
         if (!cancelled) {
@@ -338,7 +337,7 @@ export function AgentOptimizationSuggestionsPage() {
         <div className="space-y-3">
           <Link
             className="inline-flex items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground"
-            to={`/chat/ai-hosting/agents/${agentId}`}
+            to="/chat/ai-hosting/agents"
           >
             <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} size={16} strokeWidth={1.8} />
             返回 Agent 管理
@@ -589,11 +588,27 @@ export function AgentOptimizationSuggestionsPage() {
                     </span>
                   </SelectItem>
                   <SelectSeparator />
-                  {knowledgeItems.map((knowledge) => (
-                    <SelectItem key={knowledge.id} value={knowledge.id}>
-                      {knowledge.nameWithExtension}
-                    </SelectItem>
-                  ))}
+                  {knowledgeItems.map((knowledge) => {
+                    const disabled = knowledge.status === "queued" || knowledge.status === "failed";
+
+                    return (
+                      <SelectItem
+                        aria-disabled={disabled}
+                        disabled={disabled}
+                        key={knowledge.id}
+                        value={knowledge.id}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          {knowledge.nameWithExtension}
+                          {disabled ? (
+                            <span className="text-xs text-muted-foreground">
+                              {knowledge.status === "queued" ? "排队中" : "失败"}
+                            </span>
+                          ) : null}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -727,13 +742,27 @@ function SuggestionCard({
         </p>
         <p className="mt-1 line-clamp-1 text-sm text-foreground">{suggestion.rationale}</p>
       </div>
-      {suggestion.createdAt ? (
-        <div className="mt-auto flex items-center justify-end gap-3 pt-3 text-xs text-muted-foreground">
-          <time dateTime={new Date(suggestion.createdAt).toISOString()}>
+      <div className="mt-auto flex items-center justify-between pt-3">
+        <div className="flex items-center gap-1.5">
+          <Avatar className="size-5 rounded-full">
+            <AvatarImage alt={suggestion.seat?.name} src={suggestion.seat?.avatar} />
+            <AvatarFallback className="size-5 rounded-full text-[10px]" />
+          </Avatar>
+          <span className="text-xs text-muted-foreground">与</span>
+          <Avatar className="size-5 rounded-full">
+            <AvatarImage alt={suggestion.user?.name} src={suggestion.user?.avatar} />
+            <AvatarFallback className="size-5 rounded-full text-[10px]" />
+          </Avatar>
+        </div>
+        {suggestion.createdAt ? (
+          <time
+            className="text-xs text-muted-foreground"
+            dateTime={new Date(suggestion.createdAt).toISOString()}
+          >
             {formatDateTime(suggestion.createdAt)}
           </time>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </article>
   );
 }

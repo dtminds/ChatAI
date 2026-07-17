@@ -7,13 +7,21 @@ export const AiHostingLearningCandidateStatusSchema = Type.Union([
   Type.Literal("filtered"),
 ]);
 
+const AiHostingLearningCandidatePersonSchema = Type.Object({
+  avatar: Type.Optional(Type.String()),
+  id: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+});
+
 export const AiHostingLearningCandidateItemSchema = Type.Object({
   answer: Type.String(),
   createdAt: Type.Optional(Type.Number()),
   id: Type.String(),
   question: Type.String(),
   rationale: Type.String(),
+  seat: Type.Optional(AiHostingLearningCandidatePersonSchema),
   status: AiHostingLearningCandidateStatusSchema,
+  user: Type.Optional(AiHostingLearningCandidatePersonSchema),
 });
 
 export const AiHostingLearningCandidateListResponseSchema = Type.Object(

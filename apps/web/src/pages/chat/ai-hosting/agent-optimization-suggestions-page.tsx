@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { AiHostingLearningCandidateItem } from "@chatai/contracts";
 import {
-  AiMagicIcon,
+  AiChemistry02Icon,
   Add01Icon,
   ArrowLeft01Icon,
-  BubbleChatQuestionIcon,
-  InboxDownloadIcon,
+  HonourStarIcon,
+  OkFingerIcon,
   Refresh03Icon,
   UnavailableIcon,
 } from "@hugeicons/core-free-icons";
@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -438,7 +439,7 @@ export function AgentOptimizationSuggestionsPage() {
   }
 
   return (
-    <AiHostingLayout title="AI 优化建议">
+    <AiHostingLayout title="Agent 自主进化">
       <div className="space-y-6">
         <div className="space-y-3">
           <Link
@@ -448,7 +449,14 @@ export function AgentOptimizationSuggestionsPage() {
             <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} size={16} strokeWidth={1.8} />
             返回 Agent 管理
           </Link>
-          <h1 className="text-[22px] font-semibold leading-tight text-foreground">AI 优化建议</h1>
+          <div>
+            <h1 className="text-[22px] font-semibold leading-tight text-foreground">
+              Agent 自主进化
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              从对话中自动提炼 FAQ 候选，结合知识库进行智能评测，辅助高价值内容入库
+            </p>
+          </div>
         </div>
 
         <section aria-label="优化建议列表" className="space-y-5">
@@ -524,19 +532,6 @@ export function AgentOptimizationSuggestionsPage() {
             ) : null}
           </div>
 
-          {activeStatus === "filtered" ? (
-            <div className="flex items-center gap-2 rounded-[8px] bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-              <HugeiconsIcon
-                aria-hidden="true"
-                className="text-primary"
-                icon={AiMagicIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-              Agent 会基于对话自主学习并提炼出有价值的知识，并进行自动评测，留下有效的知识待人工核实
-            </div>
-          ) : null}
-
           {loading ? (
             <div
               className="flex min-h-[240px] items-center justify-center gap-2 text-sm text-muted-foreground"
@@ -560,9 +555,10 @@ export function AgentOptimizationSuggestionsPage() {
                 activeStatus === "filtered" ? "xl:grid-cols-2" : "xl:grid-cols-2",
               )}
             >
-              {candidates.map((suggestion) => (
+              {candidates.map((suggestion, index) => (
                 <SuggestionCard
                   checked={selectedIds.includes(suggestion.id)}
+                  displayIndex={(activePage - 1) * PAGE_SIZE + index + 1}
                   key={suggestion.id}
                   onAdopt={() => openIngestDialog("single", [suggestion.id])}
                   onCheckedChange={(checked) => toggleSuggestion(suggestion.id, checked)}
@@ -839,6 +835,7 @@ export function AgentOptimizationSuggestionsPage() {
 
 function SuggestionCard({
   checked = false,
+  displayIndex,
   onAdopt,
   onCheckedChange,
   onIgnore,
@@ -847,6 +844,7 @@ function SuggestionCard({
   suggestion,
 }: {
   checked?: boolean;
+  displayIndex: number;
   onAdopt?: () => void;
   onCheckedChange?: (checked: boolean) => void;
   onIgnore?: () => void;
@@ -858,14 +856,10 @@ function SuggestionCard({
     <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
       <div className="flex min-h-7 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="shrink-0 text-foreground"
-            icon={BubbleChatQuestionIcon}
-            size={18}
-            strokeWidth={1.8}
-          />
-          <h2 className="truncate text-sm font-medium text-foreground">{suggestion.question}</h2>
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-conversation-active text-sm font-semibold text-conversation-active-foreground shadow-sm">
+            {displayIndex}
+          </span>
+          <h2 className="truncate text-base font-bold text-foreground">{suggestion.question}</h2>
         </div>
         {selectable ? (
           <Checkbox
@@ -873,76 +867,142 @@ function SuggestionCard({
             checked={checked}
             onCheckedChange={(nextChecked) => onCheckedChange?.(nextChecked === true)}
           />
-        ) : status === "pending" ? (
+        ) : null}
+      </div>
+      <div className="mt-3 rounded-[10px] border border-border/50 bg-card px-3.5 py-3">
+        <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="text-primary"
+            icon={HonourStarIcon}
+            size={15}
+            strokeWidth={1.8}
+          />
+          <span>
+            提炼答案<span className="text-muted-foreground">（预览）</span>
+          </span>
+        </div>
+        <p className="mt-2 h-18 line-clamp-3 text-[13px] leading-6 text-foreground">
+          {suggestion.answer}
+        </p>
+      </div>
+      <div
+        className={cn(
+          "mt-3 rounded-[10px] border bg-clip-padding bg-origin-border px-3.5 py-3",
+          status === "filtered"
+            ? "border-destructive/15 bg-linear-to-r from-background from-55% to-destructive-muted/70"
+            : "border-success/15 bg-linear-to-r from-background from-55% to-success-muted/70",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          <div className="flex min-w-0 items-center gap-1.5 text-foreground">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className={cn(
+                "shrink-0",
+                status === "filtered" ? "text-destructive" : "text-success",
+              )}
+              icon={AiChemistry02Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <span>AI 评测</span>
+          </div>
+          <Badge
+            className={cn(
+              "shrink-0 px-2.5",
+              status === "filtered"
+                ? "bg-destructive/85 text-destructive-foreground"
+                : "bg-success/85 text-success-foreground",
+            )}
+          >
+            {status === "filtered" ? "智能过滤" : "建议入库"}
+          </Badge>
+        </div>
+        <p className="mt-2 h-15 line-clamp-3 text-[13px] leading-5 text-foreground">
+          {suggestion.rationale}
+        </p>
+      </div>
+      <div className="mt-4 flex h-8 shrink-0 items-center justify-between gap-3 pl-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-xs text-muted-foreground">来源对话</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Avatar className="size-5 rounded-full">
+              <AvatarImage alt={suggestion.seat?.name} src={suggestion.seat?.avatar} />
+              <AvatarFallback className="size-5 rounded-full text-[10px]" />
+            </Avatar>
+            <span className="text-xs text-muted-foreground">与</span>
+            <Avatar className="size-5 rounded-full">
+              <AvatarImage alt={suggestion.user?.name} src={suggestion.user?.avatar} />
+              <AvatarFallback className="size-5 rounded-full text-[10px]" />
+            </Avatar>
+          </div>
+          {suggestion.createdAt ? (
+            <time
+              className="truncate text-xs text-muted-foreground"
+              dateTime={new Date(suggestion.createdAt).toISOString()}
+            >
+              {formatDate(suggestion.createdAt)}
+            </time>
+          ) : null}
+        </div>
+        {!selectable && status === "pending" ? (
           <div className="flex shrink-0 items-center gap-2">
             <Button
-              className="h-7 rounded-[6px] px-2 text-xs"
+              className="border-primary/40 text-primary hover:border-primary/60 hover:bg-primary/5 hover:text-primary"
               onClick={onAdopt}
+              size="sm"
               type="button"
               variant="outline"
             >
-              <HugeiconsIcon aria-hidden="true" icon={InboxDownloadIcon} size={14} strokeWidth={1.8} />
-              入库
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={OkFingerIcon}
+                size={14}
+                strokeWidth={1.8}
+              />
+              采纳
             </Button>
             <Button
-              className="h-7 rounded-[6px] px-2 text-xs"
               onClick={onIgnore}
+              size="sm"
               type="button"
               variant="outline"
             >
-              <HugeiconsIcon aria-hidden="true" icon={UnavailableIcon} size={14} strokeWidth={1.8} />
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={UnavailableIcon}
+                size={14}
+                strokeWidth={1.8}
+              />
               忽略
             </Button>
           </div>
-        ) : status === "ignored" || status === "filtered" ? (
+        ) : !selectable && (status === "ignored" || status === "filtered") ? (
           <Button
-            className="h-7 shrink-0 rounded-[6px] px-2 text-xs"
+            className="border-primary/40 text-primary hover:border-primary/60 hover:bg-primary/5 hover:text-primary"
             onClick={onAdopt}
+            size="sm"
             type="button"
             variant="outline"
           >
-            <HugeiconsIcon aria-hidden="true" icon={InboxDownloadIcon} size={14} strokeWidth={1.8} />
-            入库
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={OkFingerIcon}
+              size={14}
+              strokeWidth={1.8}
+            />
+            采纳
           </Button>
-        ) : null}
-      </div>
-      <p className="mt-3 h-18 line-clamp-3 text-sm leading-6 text-foreground">
-        {suggestion.answer}
-      </p>
-      <div className="mt-3 rounded-[8px] bg-success-muted/55 px-3 py-2">
-        <p className="text-xs text-success">
-          {status === "filtered" ? "AI过滤理由" : "AI 评测"}
-        </p>
-        <p className="mt-1 line-clamp-1 text-xs text-foreground">{suggestion.rationale}</p>
-      </div>
-      <div className="mt-auto flex items-center justify-between pt-3">
-        <div className="flex items-center gap-1.5">
-          <Avatar className="size-5 rounded-full">
-            <AvatarImage alt={suggestion.seat?.name} src={suggestion.seat?.avatar} />
-            <AvatarFallback className="size-5 rounded-full text-[10px]" />
-          </Avatar>
-          <span className="text-xs text-muted-foreground">与</span>
-          <Avatar className="size-5 rounded-full">
-            <AvatarImage alt={suggestion.user?.name} src={suggestion.user?.avatar} />
-            <AvatarFallback className="size-5 rounded-full text-[10px]" />
-          </Avatar>
-        </div>
-        {suggestion.createdAt ? (
-          <time
-            className="text-xs text-muted-foreground"
-            dateTime={new Date(suggestion.createdAt).toISOString()}
-          >
-            {formatDateTime(suggestion.createdAt)}
-          </time>
         ) : null}
       </div>
     </article>
   );
 }
 
-function formatDateTime(value: number) {
+function formatDate(value: number) {
   const date = new Date(value);
   const pad = (input: number) => String(input).padStart(2, "0");
 
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }

@@ -405,9 +405,9 @@ export function AgentManagementPage() {
           </div>
           <div className="space-y-5 p-6">
             <DialogHeader className="space-y-2">
-              <DialogTitle>允许开启自主进化</DialogTitle>
+              <DialogTitle>Agent 自主进化</DialogTitle>
               <DialogDescription className="leading-6">
-                AI会根据每天的回复情况给出优化建议，帮助企业健壮智能体
+                从对话中自动提炼 FAQ 候选，结合知识库进行智能评测，辅助高价值内容入库
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center justify-between gap-4">

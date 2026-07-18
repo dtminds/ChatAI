@@ -728,7 +728,7 @@ describe("AI hosting pages", () => {
       await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
     );
 
-    const dialog = screen.getByRole("dialog", { name: "允许开启自主进化" });
+    const dialog = screen.getByRole("dialog", { name: "Agent 自主进化" });
     expect(within(dialog).getByRole("switch", { name: "开启自主进化" })).not.toBeChecked();
     expect(dialog.querySelector("img")).toHaveAttribute(
       "src",
@@ -745,7 +745,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "AI 优化建议" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Agent 自主进化" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回 Agent 管理" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents",
@@ -753,7 +753,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "待处理" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "智能过滤" })).toBeInTheDocument();
     expect(await screen.findAllByText("这个商品现在还有货吗？")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "入库" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "采纳" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "忽略" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "批量入库" })).not.toBeInTheDocument();
     expect(agentLearningService.listAgentLearningCandidates).toHaveBeenCalledWith("301", {
@@ -762,7 +762,7 @@ describe("AI hosting pages", () => {
       status: "pending",
     });
 
-    await user.click(screen.getAllByRole("button", { name: "入库" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
 
     const singleIngestDialog = screen.getByRole("dialog", { name: "入库" });
     const knowledgeBaseCombobox = within(singleIngestDialog).getByRole("combobox", {
@@ -778,7 +778,7 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("button", { name: "批量操作" }));
 
-    expect(screen.queryByRole("button", { name: "入库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "采纳" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "忽略" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量入库" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "批量忽略" })).toBeDisabled();
@@ -807,7 +807,7 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("button", { name: "已忽略" }));
 
-    expect(screen.getAllByRole("button", { name: "入库" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "采纳" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "批量操作" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "批量操作" }));
@@ -841,7 +841,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
     const dialog = screen.getByRole("dialog", { name: "入库" });
     await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
@@ -876,7 +876,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
     const dialog = screen.getByRole("dialog", { name: "入库" });
     await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
@@ -901,7 +901,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
     const dialog = screen.getByRole("dialog", { name: "入库" });
     const questionInput = within(dialog).getByLabelText(/问题/);
@@ -992,7 +992,7 @@ describe("AI hosting pages", () => {
       await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
     );
 
-    const dialog = screen.getByRole("dialog", { name: "允许开启自主进化" });
+    const dialog = screen.getByRole("dialog", { name: "Agent 自主进化" });
     await user.click(within(dialog).getByRole("switch", { name: "开启自主进化" }));
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 

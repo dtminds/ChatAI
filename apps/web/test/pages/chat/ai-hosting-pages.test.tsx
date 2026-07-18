@@ -642,10 +642,11 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("活动政策知识库")).toBeInTheDocument();
     expect(screen.getByText("未关联")).toBeInTheDocument();
     expect(screen.getByText("未开启")).toBeInTheDocument();
+    expect(screen.getByText("已开启")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "您有 6 条优化建议" }),
+      screen.getByRole("link", { name: "6 条提升建议" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /AI 自主学习/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /自主进化/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "添加 Agent" })).toBeInTheDocument();
     expect(agentService.listAiHostingAgents).toHaveBeenCalledWith({
       page: 1,
@@ -681,16 +682,16 @@ describe("AI hosting pages", () => {
     const trigger = await screen.findByLabelText("查看 护肤小助理 的全部关联知识库");
 
     expect(trigger).toHaveTextContent("商品咨询知识库");
-    expect(trigger).toHaveTextContent("测试超长测试超长测试..");
-    expect(trigger).toHaveTextContent("等 4 个");
+    expect(trigger).toHaveTextContent("测试超长测试超长测试知识库");
+    expect(trigger).toHaveTextContent("活动政策知识库");
+    expect(trigger).toHaveTextContent("直播话术知识库");
+    expect(trigger).not.toHaveTextContent("等 4 个");
     expect(
       screen.getByRole("link", { name: "商品咨询知识库" }),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/1");
     expect(
-      screen.getByRole("link", { name: "测试超长测试超长测试.." }),
+      screen.getByRole("link", { name: "测试超长测试超长测试知识库" }),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");
-    expect(screen.queryByText("直播话术知识库")).not.toBeInTheDocument();
-    expect(screen.queryByText("测试超长测试超长测试知识库")).not.toBeInTheDocument();
 
     await user.hover(trigger);
 
@@ -724,11 +725,11 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     await user.click(
-      await screen.findByRole("button", { name: "护肤小助理 AI 自主学习" }),
+      await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
     );
 
-    const dialog = screen.getByRole("dialog", { name: "允许开启 AI 自主学习" });
-    expect(within(dialog).getByRole("switch", { name: "开启 AI 自主学习" })).not.toBeChecked();
+    const dialog = screen.getByRole("dialog", { name: "允许开启自主进化" });
+    expect(within(dialog).getByRole("switch", { name: "开启自主进化" })).not.toBeChecked();
     expect(dialog.querySelector("img")).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png",
@@ -764,7 +765,13 @@ describe("AI hosting pages", () => {
     await user.click(screen.getAllByRole("button", { name: "入库" })[0]);
 
     const singleIngestDialog = screen.getByRole("dialog", { name: "入库" });
-    expect(within(singleIngestDialog).getByRole("combobox", { name: /选择知识库/ })).toBeInTheDocument();
+    const knowledgeBaseCombobox = within(singleIngestDialog).getByRole("combobox", {
+      name: /选择知识库/,
+    });
+    expect(knowledgeBaseCombobox).toHaveFocus();
+    expect(
+      within(singleIngestDialog).getByRole("button", { name: "刷新知识库列表" }),
+    ).not.toHaveFocus();
     expect(within(singleIngestDialog).getByLabelText(/问题/)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByLabelText(/答案/)).toBeInTheDocument();
     await user.click(within(singleIngestDialog).getByRole("button", { name: "取消" }));
@@ -852,13 +859,128 @@ describe("AI hosting pages", () => {
     expect(failedOption).toHaveAttribute("aria-disabled", "true");
   });
 
+  it("shows an empty state when the selected knowledge base has no knowledge", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.listKbDocs).mockResolvedValue({
+      docs: [],
+      pagination: {
+        page: 1,
+        pageSize: 100,
+        total: 0,
+      },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "入库" });
+    await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
+    await user.click(screen.getByRole("option", { name: "华为产品知识" }));
+
+    const knowledgeComboboxes = within(dialog).getAllByRole("combobox", {
+      name: /选择知识/,
+    });
+    await user.click(knowledgeComboboxes[1]!);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("暂无数据");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  it("keeps the ingest context while adding and refreshing knowledge", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    await user.click((await screen.findAllByRole("button", { name: "入库" }))[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "入库" });
+    const questionInput = within(dialog).getByLabelText(/问题/);
+    const answerInput = within(dialog).getByLabelText(/答案/);
+
+    await user.clear(questionInput);
+    await user.type(questionInput, "编辑后的问题");
+    await user.clear(answerInput);
+    await user.type(answerInput, "编辑后的答案");
+
+    await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
+    await user.click(screen.getByRole("option", { name: "华为产品知识" }));
+
+    await waitFor(() => {
+      expect(kbService.listKbDocs).toHaveBeenCalledWith("W7zU2fWkVSp65OTAjDd3-w", {
+        page: 1,
+        pageSize: 100,
+      });
+    });
+
+    await user.click(within(dialog).getByRole("button", { name: "添加知识" }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?addKnowledge=qa:new",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(screen.getByRole("dialog", { name: "入库" })).toBeInTheDocument();
+    expect(questionInput).toHaveValue("编辑后的问题");
+    expect(answerInput).toHaveValue("编辑后的答案");
+    expect(screen.queryByRole("option", { name: "添加知识" })).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "刷新知识库列表" }));
+    await waitFor(() => {
+      expect(kbService.listKbs).toHaveBeenCalledTimes(2);
+    });
+
+    await user.click(within(dialog).getByRole("button", { name: "刷新知识列表" }));
+    await waitFor(() => {
+      expect(kbService.listKbDocs).toHaveBeenCalledTimes(2);
+    });
+
+    expect(within(dialog).getByRole("combobox", { name: /选择知识库/ })).toHaveTextContent(
+      "华为产品知识",
+    );
+    openSpy.mockRestore();
+  });
+
   it("shows pending suggestion count and enabled self-learning on agent cards", async () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     expect(await screen.findByText("未开启")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "您有 6 条优化建议" }),
+      screen.getByRole("link", { name: "6 条提升建议" }),
     ).toHaveAttribute("href", "/chat/ai-hosting/agents/302/optimization-suggestions");
+  });
+
+  it("links enabled self-learning to suggestions when no suggestions are pending", async () => {
+    vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
+      agents: [
+        {
+          ...mockAgents[1],
+          pendingSuggestionCount: 0,
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByRole("link", { name: "已开启" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/agents/302/optimization-suggestions",
+    );
+    expect(screen.queryByText(/条提升建议/)).not.toBeInTheDocument();
   });
 
   it("saves AI self-learning switch from the agent dialog", async () => {
@@ -867,11 +989,11 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
     await user.click(
-      await screen.findByRole("button", { name: "护肤小助理 AI 自主学习" }),
+      await screen.findByRole("button", { name: "护肤小助理 自主进化" }),
     );
 
-    const dialog = screen.getByRole("dialog", { name: "允许开启 AI 自主学习" });
-    await user.click(within(dialog).getByRole("switch", { name: "开启 AI 自主学习" }));
+    const dialog = screen.getByRole("dialog", { name: "允许开启自主进化" });
+    await user.click(within(dialog).getByRole("switch", { name: "开启自主进化" }));
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 
     await waitFor(() => {

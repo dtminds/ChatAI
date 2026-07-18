@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AiHostingLearningCandidateItem } from "@chatai/contracts";
 import {
-  AiIdeaIcon,
   AiMagicIcon,
   Add01Icon,
   ArrowLeft01Icon,
+  BubbleChatQuestionIcon,
   InboxDownloadIcon,
+  Refresh03Icon,
   UnavailableIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -38,7 +39,6 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -50,6 +50,12 @@ import {
 import { cn } from "@/lib/utils";
 import { isRequestError } from "@/lib/request";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import {
   approveAgentLearningCandidate,
@@ -68,7 +74,6 @@ import type { KbDocViewItem, KbListViewItem } from "./kb-types";
 
 type SuggestionStatus = AiHostingLearningCandidateItem["status"];
 type IngestMode = "batch" | "single";
-const ADD_KNOWLEDGE_OPTION_VALUE = "__add_knowledge__";
 const PAGE_SIZE = 10;
 
 const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
@@ -78,9 +83,49 @@ const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "智能过滤", value: "filtered" },
 ];
 
+function RefreshListButton({
+  disabled,
+  label,
+  loading,
+  onClick,
+}: {
+  disabled: boolean;
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          className="size-7 p-0"
+          disabled={disabled}
+          onClick={onClick}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          {loading ? (
+            <Spinner className="size-4" />
+          ) : (
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Refresh03Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function AgentOptimizationSuggestionsPage() {
-  const navigate = useNavigate();
   const { agentId = "" } = useParams();
+  const knowledgeBaseSelectRef = useRef<HTMLButtonElement>(null);
   const [activeStatus, setActiveStatus] = useState<SuggestionStatus>("pending");
   const [batchMode, setBatchMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -245,6 +290,67 @@ export function AgentOptimizationSuggestionsPage() {
       cancelled = true;
     };
   }, [ingestMode, selectedKnowledgeBaseId]);
+
+  async function handleRefreshKnowledgeBases() {
+    if (knowledgeBasesLoading || ingestSubmitting) {
+      return;
+    }
+
+    setKnowledgeBasesLoading(true);
+
+    try {
+      const response = await listKbs({ page: 1, pageSize: 100 });
+      const refreshedKnowledgeBases = response.kbs.map(toKbListViewItem);
+
+      setKnowledgeBases(refreshedKnowledgeBases);
+
+      if (
+        selectedKnowledgeBaseId &&
+        !refreshedKnowledgeBases.some(
+          (knowledgeBase) => knowledgeBase.id === selectedKnowledgeBaseId,
+        )
+      ) {
+        setSelectedKnowledgeBaseId("");
+        setSelectedKnowledgeId("");
+        setKnowledgeItems([]);
+      }
+    } catch {
+      toast.error("刷新知识库失败");
+    } finally {
+      setKnowledgeBasesLoading(false);
+    }
+  }
+
+  async function handleRefreshKnowledgeItems() {
+    if (!selectedKnowledgeBaseId || knowledgeItemsLoading || ingestSubmitting) {
+      return;
+    }
+
+    setKnowledgeItemsLoading(true);
+
+    try {
+      const response = await listKbDocs(selectedKnowledgeBaseId, {
+        page: 1,
+        pageSize: 100,
+      });
+      const refreshedKnowledgeItems = response.docs.map(toKbDocViewItem);
+
+      setKnowledgeItems(refreshedKnowledgeItems);
+
+      if (
+        selectedKnowledgeId &&
+        !refreshedKnowledgeItems.some(
+          (knowledgeItem) => knowledgeItem.id === selectedKnowledgeId,
+        )
+      ) {
+        setSelectedKnowledgeId("");
+      }
+    } catch {
+      toast.error("刷新知识失败");
+    } finally {
+      setKnowledgeItemsLoading(false);
+    }
+  }
 
   async function handleConfirmIngest() {
     if (
@@ -427,7 +533,7 @@ export function AgentOptimizationSuggestionsPage() {
                 size={16}
                 strokeWidth={1.8}
               />
-              Agent在使用过程中会自主学习并提炼出有价值的知识，再经过AI评判功能，智能过滤掉重复或冲突的知识
+              Agent 会基于对话自主学习并提炼出有价值的知识，并进行自动评测，留下有效的知识待人工核实
             </div>
           ) : null}
 
@@ -519,127 +625,188 @@ export function AgentOptimizationSuggestionsPage() {
         }}
         open={ingestMode != null}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent
+          className="max-w-xl"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            knowledgeBaseSelectRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>入库</DialogTitle>
             <DialogDescription className="sr-only">
               选择知识库和知识后确认入库
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="optimization-kb-select">
-                选择知识库 <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                disabled={knowledgeBasesLoading || ingestSubmitting}
-                onValueChange={(value) => {
-                  setSelectedKnowledgeBaseId(value);
-                  setSelectedKnowledgeId("");
-                }}
-                value={selectedKnowledgeBaseId}
-              >
-                <SelectTrigger className="w-full" id="optimization-kb-select">
-                  <SelectValue
-                    placeholder={knowledgeBasesLoading ? "正在加载" : "请选择将保存至哪个知识库"}
+          <TooltipProvider>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="optimization-kb-select">
+                    选择知识库 <span className="text-destructive">*</span>
+                  </Label>
+                  <RefreshListButton
+                    disabled={knowledgeBasesLoading || ingestSubmitting}
+                    label="刷新知识库列表"
+                    loading={knowledgeBasesLoading}
+                    onClick={() => {
+                      void handleRefreshKnowledgeBases();
+                    }}
                   />
-                </SelectTrigger>
-                <SelectContent>
-                  {knowledgeBases.map((knowledgeBase) => (
-                    <SelectItem key={knowledgeBase.id} value={knowledgeBase.id}>
-                      {knowledgeBase.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="optimization-knowledge-select">
-                选择知识 <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                disabled={!selectedKnowledgeBase || knowledgeItemsLoading || ingestSubmitting}
-                onValueChange={(value) => {
-                  if (value === ADD_KNOWLEDGE_OPTION_VALUE && selectedKnowledgeBase) {
-                    setIngestMode(null);
-                    navigate(`/chat/ai-hosting/kb/${selectedKnowledgeBase.id}?addKnowledge=qa:new`);
-                    return;
-                  }
-
-                  setSelectedKnowledgeId(value);
-                }}
-                value={selectedKnowledgeId}
-              >
-                <SelectTrigger className="w-full" id="optimization-knowledge-select">
-                  <SelectValue
-                    placeholder={
-                      knowledgeItemsLoading ? "正在加载" : "请选择将保存至哪个知识"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    className="h-9 pl-3 text-primary focus:bg-primary/5 focus:text-primary"
-                    value={ADD_KNOWLEDGE_OPTION_VALUE}
+                </div>
+                <Select
+                  disabled={knowledgeBasesLoading || ingestSubmitting}
+                  onValueChange={(value) => {
+                    setSelectedKnowledgeBaseId(value);
+                    setSelectedKnowledgeId("");
+                  }}
+                  value={selectedKnowledgeBaseId}
+                >
+                  <SelectTrigger
+                    className="w-full"
+                    id="optimization-kb-select"
+                    ref={knowledgeBaseSelectRef}
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <HugeiconsIcon aria-hidden="true" icon={Add01Icon} size={14} strokeWidth={1.8} />
-                      <span>添加知识</span>
-                    </span>
-                  </SelectItem>
-                  <SelectSeparator />
-                  {knowledgeItems.map((knowledge) => {
-                    const disabled = knowledge.status === "queued" || knowledge.status === "failed";
-
-                    return (
-                      <SelectItem
-                        aria-disabled={disabled}
-                        disabled={disabled}
-                        key={knowledge.id}
-                        value={knowledge.id}
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          {knowledge.nameWithExtension}
-                          {disabled ? (
-                            <span className="text-xs text-muted-foreground">
-                              {knowledge.status === "queued" ? "排队中" : "失败"}
-                            </span>
-                          ) : null}
-                        </span>
+                    <SelectValue
+                      placeholder={
+                        knowledgeBasesLoading ? "正在加载" : "请选择"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {knowledgeBases.map((knowledgeBase) => (
+                      <SelectItem key={knowledgeBase.id} value={knowledgeBase.id}>
+                        {knowledgeBase.name}
                       </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="optimization-knowledge-select">
+                    选择知识 <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          aria-label="添加知识"
+                          className="size-7 p-0"
+                          disabled={!selectedKnowledgeBase || ingestSubmitting}
+                          onClick={() => {
+                            if (!selectedKnowledgeBase) {
+                              return;
+                            }
+
+                            window.open(
+                              `/chat/ai-hosting/kb/${selectedKnowledgeBase.id}?addKnowledge=qa:new`,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          }}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={Add01Icon}
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>添加知识</TooltipContent>
+                    </Tooltip>
+                    <RefreshListButton
+                      disabled={
+                        !selectedKnowledgeBase || knowledgeItemsLoading || ingestSubmitting
+                      }
+                      label="刷新知识列表"
+                      loading={knowledgeItemsLoading}
+                      onClick={() => {
+                        void handleRefreshKnowledgeItems();
+                      }}
+                    />
+                  </div>
+                </div>
+                <Select
+                  disabled={!selectedKnowledgeBase || knowledgeItemsLoading || ingestSubmitting}
+                  onValueChange={setSelectedKnowledgeId}
+                  value={selectedKnowledgeId}
+                >
+                  <SelectTrigger className="w-full" id="optimization-knowledge-select">
+                    <SelectValue
+                      placeholder={
+                        knowledgeItemsLoading ? "正在加载" : "请选择"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {knowledgeItems.length === 0 ? (
+                      <div
+                        className="flex h-9 items-center justify-center px-3 text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        暂无数据
+                      </div>
+                    ) : (
+                      knowledgeItems.map((knowledge) => {
+                        const disabled =
+                          knowledge.status === "queued" || knowledge.status === "failed";
+
+                        return (
+                          <SelectItem
+                            aria-disabled={disabled}
+                            disabled={disabled}
+                            key={knowledge.id}
+                            value={knowledge.id}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              {knowledge.nameWithExtension}
+                              {disabled ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {knowledge.status === "queued" ? "排队中" : "失败"}
+                                </span>
+                              ) : null}
+                            </span>
+                          </SelectItem>
+                        );
+                      })
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              {ingestMode === "single" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="optimization-question">
+                      问题 <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      disabled={ingestSubmitting}
+                      id="optimization-question"
+                      onChange={(event) => setIngestQuestion(event.target.value)}
+                      value={ingestQuestion}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="optimization-answer">
+                      答案 <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      className="min-h-24 resize-none"
+                      disabled={ingestSubmitting}
+                      id="optimization-answer"
+                      onChange={(event) => setIngestAnswer(event.target.value)}
+                      value={ingestAnswer}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
-            {ingestMode === "single" ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="optimization-question">
-                    问题 <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    disabled={ingestSubmitting}
-                    id="optimization-question"
-                    onChange={(event) => setIngestQuestion(event.target.value)}
-                    value={ingestQuestion}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="optimization-answer">
-                    答案 <span className="text-destructive">*</span>
-                  </Label>
-                  <Textarea
-                    className="min-h-24 resize-none"
-                    disabled={ingestSubmitting}
-                    id="optimization-answer"
-                    onChange={(event) => setIngestAnswer(event.target.value)}
-                    value={ingestAnswer}
-                  />
-                </div>
-              </>
-            ) : null}
-          </div>
+          </TooltipProvider>
           <DialogFooter>
             <Button
               disabled={ingestSubmitting}
@@ -691,9 +858,13 @@ function SuggestionCard({
     <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
       <div className="flex min-h-7 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-warning-muted text-warning">
-            <HugeiconsIcon aria-hidden="true" icon={AiIdeaIcon} size={13} strokeWidth={1.8} />
-          </span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0 text-foreground"
+            icon={BubbleChatQuestionIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
           <h2 className="truncate text-sm font-medium text-foreground">{suggestion.question}</h2>
         </div>
         {selectable ? (
@@ -735,12 +906,14 @@ function SuggestionCard({
           </Button>
         ) : null}
       </div>
-      <p className="mt-3 text-sm leading-6 text-foreground">{suggestion.answer}</p>
+      <p className="mt-3 h-18 line-clamp-3 text-sm leading-6 text-foreground">
+        {suggestion.answer}
+      </p>
       <div className="mt-3 rounded-[8px] bg-success-muted/55 px-3 py-2">
         <p className="text-xs text-success">
-          {status === "filtered" ? "AI过滤理由" : "入库理由"}
+          {status === "filtered" ? "AI过滤理由" : "AI 评测"}
         </p>
-        <p className="mt-1 line-clamp-1 text-sm text-foreground">{suggestion.rationale}</p>
+        <p className="mt-1 line-clamp-1 text-xs text-foreground">{suggestion.rationale}</p>
       </div>
       <div className="mt-auto flex items-center justify-between pt-3">
         <div className="flex items-center gap-1.5">

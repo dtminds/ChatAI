@@ -79,9 +79,8 @@ type AgentRecord = AiHostingAgentListItem;
 
 const AGENT_PAGE_SIZE = 9;
 const MAX_INLINE_KB_COUNT = 2;
-const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
-  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
+  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-muted px-1.5 text-[13px] font-normal leading-[22px] text-foreground";
 const AI_SELF_LEARNING_BANNER_URL =
   "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png";
 const agentIntroSteps = [
@@ -406,7 +405,7 @@ export function AgentManagementPage() {
           </div>
           <div className="space-y-5 p-6">
             <DialogHeader className="space-y-2">
-              <DialogTitle>允许开启 AI 自主学习</DialogTitle>
+              <DialogTitle>允许开启自主进化</DialogTitle>
               <DialogDescription className="leading-6">
                 AI会根据每天的回复情况给出优化建议，帮助企业健壮智能体
               </DialogDescription>
@@ -419,10 +418,10 @@ export function AgentManagementPage() {
                   size={16}
                   strokeWidth={1.8}
                 />
-                开启AI自主学习将同时开启会话洞察功能
+                开启自主进化将同时开启会话洞察功能
               </p>
               <Switch
-                aria-label="开启 AI 自主学习"
+                aria-label="开启自主进化"
                 checked={selfLearningEnabled}
                 disabled={!canManage || selfLearningSaving}
                 onCheckedChange={setSelfLearningEnabled}
@@ -521,10 +520,10 @@ function AgentCard({
   return (
     <article
       aria-label={agent.name}
-      className="rounded-xl border border-border bg-card p-5 shadow-xs transition-shadow hover:shadow-sm"
+      className="rounded-[14px] border border-border/80 bg-card p-5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]"
       role="listitem"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <Link
           className="min-w-0 truncate text-base font-semibold text-foreground no-underline outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
           to={`/chat/ai-hosting/agents/${agent.id}`}
@@ -536,8 +535,8 @@ function AgentCard({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  aria-label={`${agent.name} AI 自主学习`}
-                  className="size-8 rounded-[8px] border border-border p-0 text-primary"
+                  aria-label={`${agent.name} 自主进化`}
+                  className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                   onClick={() => onOpenSelfLearning(agent)}
                   type="button"
                   variant="ghost"
@@ -546,7 +545,7 @@ function AgentCard({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                AI自主学习
+                自主进化
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -554,7 +553,7 @@ function AgentCard({
             <DropdownMenuTrigger asChild>
               <Button
                 aria-label={`${agent.name} 更多操作`}
-                className="size-8 rounded-[8px] border border-border p-0"
+                className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                 type="button"
                 variant="ghost"
               >
@@ -584,7 +583,7 @@ function AgentCard({
         <AgentCardMetaRow label="关联知识库">
           <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
         </AgentCardMetaRow>
-        <AgentCardMetaRow label="AI 自主学习">
+        <AgentCardMetaRow label="自主进化">
           <AgentSelfLearningPreview
             agentId={agent.id}
             autoLearnEnabled={agent.autoLearnEnabled}
@@ -620,28 +619,59 @@ function AgentSelfLearningPreview({
   autoLearnEnabled: boolean;
   pendingSuggestionCount: number;
 }) {
-  if (pendingSuggestionCount > 0) {
-    return (
-      <Link
-        className="inline-flex items-center gap-1 text-warning no-underline hover:text-warning"
-        to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
-      >
-        您有 {pendingSuggestionCount} 条优化建议
-        <HugeiconsIcon aria-hidden="true" icon={ArrowRight01Icon} size={14} strokeWidth={1.8} />
-      </Link>
-    );
-  }
-
-  if (autoLearnEnabled) {
-    return (
-      <span className="inline-flex items-center gap-1 text-success">
-        <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={15} strokeWidth={1.8} />
-        已开启
-      </span>
-    );
-  }
-
-  return <span className="text-muted-foreground">未开启</span>;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {autoLearnEnabled ? (
+        pendingSuggestionCount === 0 ? (
+          <Link
+            className="inline-flex shrink-0 items-center gap-1 text-success no-underline hover:text-success"
+            to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={CheckmarkCircle02Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            已开启
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={ArrowRight01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+          </Link>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 text-success">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={CheckmarkCircle02Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            已开启
+          </span>
+        )
+      ) : (
+        <span className="shrink-0 text-muted-foreground">未开启</span>
+      )}
+      {pendingSuggestionCount > 0 ? (
+        <Link
+          className="inline-flex min-w-0 items-center gap-1 truncate text-warning no-underline hover:text-warning"
+          to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
+        >
+          <span className="truncate">{pendingSuggestionCount} 条提升建议</span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0"
+            icon={ArrowRight01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
+        </Link>
+      ) : null}
+    </div>
+  );
 }
 
 function AgentKnowledgeBasePreview({
@@ -666,7 +696,6 @@ function AgentKnowledgeBasePreview({
     return <span className="text-sm text-muted-foreground">未关联</span>;
   }
 
-  const visibleKbList = kbList.slice(0, MAX_INLINE_KB_COUNT);
   const hasOverflow = kbList.length > MAX_INLINE_KB_COUNT;
 
   function openPopover() {
@@ -691,19 +720,22 @@ function AgentKnowledgeBasePreview({
   }
 
   const content = (
-    <div className="flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
-      {visibleKbList.map((kb) => (
+    <div
+      className={cn(
+        "relative flex h-[22px] max-w-full min-w-0 items-center gap-1.5 overflow-hidden",
+        hasOverflow &&
+          "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-14 after:bg-gradient-to-r after:from-transparent after:to-card",
+      )}
+    >
+      {kbList.map((kb) => (
         <AgentKnowledgeBaseChip
+          className="shrink-0 max-w-none"
           key={kb.id}
-          name={formatInlineKnowledgeBaseName(kb.name)}
+          name={kb.name}
+          title={kb.name}
           to={getKnowledgeBaseDetailPath(kb.id)}
         />
       ))}
-      {hasOverflow ? (
-        <span className="shrink-0 text-sm text-muted-foreground">
-          等 {kbList.length} 个
-        </span>
-      ) : null}
     </div>
   );
 
@@ -850,12 +882,6 @@ function AgentKnowledgeBaseChip({
       {content}
     </span>
   );
-}
-
-function formatInlineKnowledgeBaseName(name: string) {
-  return name.length > MAX_INLINE_KB_NAME_LENGTH
-    ? `${name.slice(0, MAX_INLINE_KB_NAME_LENGTH)}..`
-    : name;
 }
 
 function getKnowledgeBaseDetailPath(kbId: string) {

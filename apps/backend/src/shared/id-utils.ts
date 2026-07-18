@@ -1,5 +1,19 @@
 type PositiveIdLike = number | string | bigint;
 
+export function parseMySqlId(value: number | string | null | undefined) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function uniquePositiveNumbers(values: Array<number | undefined>) {
   return Array.from(
     new Set(

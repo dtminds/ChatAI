@@ -20,6 +20,7 @@ import {
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
+import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -46,8 +47,8 @@ import {
   resolveAgentHostingStatus,
   type AgentHostingStatus,
 } from "@/pages/chat/lib/chat-agent-hosting-status";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -59,13 +60,16 @@ type ChatPanelProps = {
   canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  canMarkHandoffHandled?: boolean;
   canUseMessageForward?: boolean;
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
+  conversationAIHostingConfigured?: boolean;
   conversationAIHostingEnabled?: boolean;
+  shouldShowConversationAIHostingControl?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -81,6 +85,7 @@ type ChatPanelProps = {
   isEmojiPickerOpen: boolean;
   isMobileLayout?: boolean;
   isSendingDraft: boolean;
+  isHandoffClearPending?: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
   multiSelectMode?: boolean;
@@ -118,6 +123,8 @@ type ChatPanelProps = {
   onEnableAgentHosting?: () => void;
   onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
   onChangeFullAuto?: (enabled: boolean) => void;
+  onMarkHandoffHandled?: () => void;
+  onViewHandoffMessage?: () => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
@@ -188,13 +195,16 @@ export function ChatPanel({
   canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  canMarkHandoffHandled = false,
   canUseMessageForward = false,
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
   activeAccount,
   seatAIHostingEnabled = false,
+  conversationAIHostingConfigured = false,
   conversationAIHostingEnabled = false,
+  shouldShowConversationAIHostingControl = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -208,6 +218,7 @@ export function ChatPanel({
   isEmojiPickerOpen,
   isMobileLayout = false,
   isSendingDraft,
+  isHandoffClearPending = false,
   isResizingCustomerPanel,
   messages,
   multiSelectMode = false,
@@ -228,6 +239,8 @@ export function ChatPanel({
   onEnableAgentHosting,
   onChangeSeatAgentMode,
   onChangeFullAuto,
+  onMarkHandoffHandled,
+  onViewHandoffMessage,
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
@@ -286,13 +299,13 @@ export function ChatPanel({
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
   const agentHostingStatus =
-    !conversationAIHostingEnabled || resolvedAgentHostingStatus === "exited"
+    activeConversation?.mode === "group" ||
+    !conversationAIHostingEnabled ||
+    resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
-  const canUseConversationAIFeatures =
-    isConversationAIFeatureSupported(activeConversation);
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -371,6 +384,17 @@ export function ChatPanel({
         {hasActiveConversation ? (
           <>
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+              {hasConversationHandoff(activeConversation.handoffMsgId) &&
+              onMarkHandoffHandled &&
+              onViewHandoffMessage ? (
+                <ChatHandoffStatusBar
+                  canMarkHandled={canMarkHandoffHandled}
+                  isPending={isHandoffClearPending}
+                  onMarkHandled={onMarkHandoffHandled}
+                  onViewMessage={onViewHandoffMessage}
+                />
+              ) : null}
+
               <ChatMessagePanel
                 activeHistoryStatus={activeHistoryStatus}
                 bottomOverlay={
@@ -470,7 +494,9 @@ export function ChatPanel({
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
-                      canUseConversationAIFeatures={canUseConversationAIFeatures}
+                      shouldShowConversationAIHostingControl={
+                        shouldShowConversationAIHostingControl
+                      }
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
                       seatAgentModeActionPending={seatAgentModeActionPending}
@@ -488,9 +514,9 @@ export function ChatPanel({
                       accountName={activeAccount?.name ?? accountName}
                       seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
                       seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
+                      conversationAIHostingConfigured={conversationAIHostingConfigured}
                       fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
                       semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
-                      conversationAIHostingEnabled={conversationAIHostingEnabled}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={

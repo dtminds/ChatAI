@@ -75,6 +75,8 @@ const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
+/** 群资料/群消息归属席位：影子群用开通号，否则用当前会话席位 */
+const GROUP_SOURCE_THIRD_USERID_SQL = sql<string>`coalesce(nullif(trim(conversation.third_group_origin_userid), ''), conversation.third_userid)`;
 const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
@@ -93,6 +95,8 @@ const GROUP_MEMBER_SORT_RANK = {
 export type ConversationLookup = {
   chatType: number;
   id: string;
+  isShadowGroup?: boolean;
+  messageSourceThirdUserId: string;
   platform: number;
   seatId: string;
   seatHostSubUserId?: string;
@@ -103,6 +107,13 @@ export type ConversationLookup = {
   thirdUserId: string;
   uid: number;
   unreadCount: number;
+};
+
+export type ConversationFullAutoCapability = {
+  customerBindType?: number;
+  seatGroupAIHostingEnabled: boolean;
+  seatFullAutoAuth: boolean;
+  seatFullAutoSwitch: boolean;
 };
 
 type FullAutoAnswerStatusScope = {
@@ -194,7 +205,8 @@ type ConversationPageRow = Omit<
   | "last_message_content"
   | "last_message_type"
 > & {
-  last_audit_info_id: number | string | null;
+  last_audit_info_id: number | null;
+  third_group_origin_userid?: string | null;
 };
 
 type ConversationHydrationSources = {
@@ -211,11 +223,11 @@ type ConversationHydrationSources = {
       realName: string | null;
     }
   >;
-  groupsByThirdGroupId: Map<
+  groupsBySourceKey: Map<
     string,
     { avatar: string | null; bizStatus: number | null; name: string | null; remark: string | null }
   >;
-  lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
+  lastMessagesById: Map<number, { content: string | null; msgtype: string | null }>;
 };
 
 type SeatBaseRow = {
@@ -224,6 +236,8 @@ type SeatBaseRow = {
   expire_time: number | string | null;
   full_auto_auth?: number | string | boolean | null;
   full_auto_switch?: number | string | boolean | null;
+  group_full_auto_auth?: number | string | boolean | null;
+  group_semi_auto_auth?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -2056,10 +2070,10 @@ export class WorkbenchRepository {
 
   async getMessageRawContent(input: {
     auditId: number;
+    messageSourceThirdUserId: string;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }) {
     if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
@@ -2072,7 +2086,7 @@ export class WorkbenchRepository {
       .where("id", "=", input.auditId)
       .where("uid", "=", input.uid)
       .where("platform", "=", input.platform)
-      .where("third_user_id", "=", input.thirdUserId);
+      .where("third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("third_group_id", "=", input.thirdGroupId);
@@ -2089,11 +2103,12 @@ export class WorkbenchRepository {
 
   async getMessageForRevoke(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     messageSeq: number;
     platform: number;
+    receptionThirdUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<RevokeMessageLookup | undefined> {
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
@@ -2114,7 +2129,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId);
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("message.third_group_id", "=", input.thirdGroupId);
@@ -2146,7 +2161,7 @@ export class WorkbenchRepository {
         chatType,
         fromType: toNumber(row.from_type) ?? null,
         thirdFromId: row.third_from_id ?? undefined,
-        thirdUserId: row.third_user_id ?? undefined,
+        thirdUserId: input.receptionThirdUserId,
       }),
       seq,
       status: toNumber(row.status) === 0 ? "failed" : "sent",
@@ -2155,11 +2170,12 @@ export class WorkbenchRepository {
 
   async findRetryMessage(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     messageSeq: number;
     platform: number;
+    receptionThirdUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<RetryMessageLookup | undefined> {
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
@@ -2178,7 +2194,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId)
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId)
       .where("message.id", "=", input.messageSeq)
       .where("message.status", "=", 0);
 
@@ -2204,7 +2220,7 @@ export class WorkbenchRepository {
         chatType: toNumber(row?.chat_type) ?? 0,
         fromType: toNumber(row?.from_type) ?? null,
         thirdFromId: row?.third_from_id ?? undefined,
-        thirdUserId: row?.third_user_id ?? undefined,
+        thirdUserId: input.receptionThirdUserId,
       }),
     };
   }
@@ -2407,6 +2423,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.platform as platform",
         "seat.id as seat_id",
@@ -2417,7 +2434,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -2429,6 +2446,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return { messages: [] };
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -2452,7 +2474,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_user_id", "=", messageThirdUserId)
       .where("message.id", "in", normalizedSeqs);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
@@ -2469,6 +2491,7 @@ export class WorkbenchRepository {
     const messageRows = (rows as MessageRow[]).map((row) => ({
       ...row,
       conversation_group_seat_id: conversation.group_seat_id,
+      conversation_third_userid: conversation.third_userid,
     }));
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
@@ -2503,6 +2526,7 @@ export class WorkbenchRepository {
           conversation_group_seat_id: conversation.group_seat_id,
           conversation_group_id: conversation.conversation_group_id,
           conversation_id: conversation.conversation_id,
+          conversation_third_userid: conversation.third_userid,
           seat_id: conversation.seat_id,
           third_external_id: row.third_external_id ?? undefined,
           third_from_id: row.third_from_id ?? undefined,
@@ -2535,6 +2559,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.platform as platform",
         "conversation.uid as uid",
@@ -2549,6 +2574,11 @@ export class WorkbenchRepository {
       return undefined;
     }
 
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
+
     let parentQuery = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
@@ -2558,7 +2588,7 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_user_id", "=", messageThirdUserId)
       .where("message.id", "=", messageSeq);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
@@ -2610,6 +2640,7 @@ export class WorkbenchRepository {
           conversation_external_id: conversation.conversation_external_id,
           conversation_group_id: conversation.conversation_group_id,
           conversation_id: conversation.conversation_id,
+          conversation_third_userid: conversation.third_userid,
           from_type: 2,
           id: row.id,
           msgid: `chatrecord:${messageSeq}:${row.id}`,
@@ -2623,7 +2654,7 @@ export class WorkbenchRepository {
           third_external_id: conversation.conversation_external_id,
           third_from_id: row.name ?? "",
           third_group_id: conversation.conversation_group_id,
-          third_user_id: conversation.third_userid,
+          third_user_id: messageThirdUserId,
         }),
       ),
     };
@@ -2649,6 +2680,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "seat.id")
           .onRef("seat_agent.uid", "=", "seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
       .select([
         "seat.id as id",
         "seat.uid as uid",
@@ -2664,6 +2700,8 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.full_auto_auth as group_full_auto_auth",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
@@ -3280,6 +3318,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id")
           .onRef("seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id")
+          .onRef("seat_group_agent.uid", "=", "xy_wap_embed_user_seat.uid"),
+      )
       .select([
         "xy_wap_embed_user_seat.id as id",
         "xy_wap_embed_user_seat.uid as uid",
@@ -3295,6 +3338,8 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.full_auto_auth as group_full_auto_auth",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
       ])
       .where("xy_wap_embed_user_seat.id", "=", seatNumericId)
       .executeTakeFirst() as SeatBaseRow | undefined;
@@ -3323,6 +3368,11 @@ export class WorkbenchRepository {
           .onRef("seat_agent.user_seat_id", "=", "seat.id")
           .onRef("seat_agent.uid", "=", "seat.uid"),
       )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.third_userid", "=", "seat.third_userid")
@@ -3343,6 +3393,8 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch as full_auto_switch",
         "seat_agent.semi_auto_auth as semi_auto_auth",
         "seat_agent.semi_auto_switch as semi_auto_switch",
+        "seat_group_agent.full_auto_auth as group_full_auto_auth",
+        "seat_group_agent.semi_auto_auth as group_semi_auto_auth",
         expressionBuilder.fn
           .coalesce(
             expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
@@ -3391,6 +3443,8 @@ export class WorkbenchRepository {
         "seat_agent.full_auto_switch",
         "seat_agent.semi_auto_auth",
         "seat_agent.semi_auto_switch",
+        "seat_group_agent.full_auto_auth",
+        "seat_group_agent.semi_auto_auth",
       ])
       .execute();
 
@@ -3482,13 +3536,16 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
+        "conversation.handoff_msg_id as handoff_msg_id",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
@@ -3547,7 +3604,6 @@ export class WorkbenchRepository {
       conversationRows,
       seat.uid,
       seat.platform,
-      seat.third_userid,
     );
 
     const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
@@ -3654,13 +3710,16 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
+        "conversation.handoff_msg_id as handoff_msg_id",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
@@ -3691,7 +3750,6 @@ export class WorkbenchRepository {
       conversationRows,
       seat.uid,
       seat.platform,
-      seat.third_userid,
     );
 
     const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
@@ -3724,7 +3782,7 @@ export class WorkbenchRepository {
       .leftJoin("xy_wap_embed_group_seat as group_seat", (join) =>
         join
           .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .onRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .on("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .onRef("group_seat.uid", "=", "conversation.uid")
           .onRef("group_seat.platform", "=", "conversation.platform")
           .on("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE),
@@ -3735,6 +3793,7 @@ export class WorkbenchRepository {
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
@@ -3772,6 +3831,16 @@ export class WorkbenchRepository {
       ? {
           chatType: row.chat_type,
           id: String(row.id),
+          isShadowGroup:
+            row.chat_type === CHAT_TYPE_GROUP &&
+            Boolean(row.third_group_origin_userid?.trim()),
+          messageSourceThirdUserId:
+            row.chat_type === CHAT_TYPE_GROUP
+              ? resolveGroupSourceThirdUserId(
+                  row.third_group_origin_userid,
+                  row.third_userid,
+                )
+              : row.third_userid,
           platform: row.platform,
           seatId: String(row.seat_id),
           seatHostSubUserId:
@@ -3789,6 +3858,64 @@ export class WorkbenchRepository {
           unreadCount: Number(row.unread_cnt ?? 0),
         }
       : undefined;
+  }
+
+  async getConversationFullAutoCapability(input: {
+    platform: number;
+    seatId: string;
+    thirdExternalUserId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<ConversationFullAutoCapability | undefined> {
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (seatNumericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
+      .leftJoin("xy_wap_embed_user_seat_group_agent as seat_group_agent", (join) =>
+        join
+          .onRef("seat_group_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_group_agent.uid", "=", "seat.uid"),
+      )
+      .leftJoin("xy_wap_embed_customer_bind_relation as bind", (join) =>
+        join
+          .onRef("bind.third_userid", "=", "seat.third_userid")
+          .onRef("bind.uid", "=", "seat.uid")
+          .onRef("bind.platform", "=", "seat.platform")
+          .on("bind.third_external_userid", "=", input.thirdExternalUserId ?? "")
+          .on("bind.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select([
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_group_agent.full_auto_auth as group_full_auto_auth",
+        "bind.bind_type as customer_bind_type",
+      ])
+      .where("seat.id", "=", seatNumericId)
+      .where("seat.uid", "=", input.uid)
+      .where("seat.platform", "=", input.platform)
+      .where("seat.third_userid", "=", input.thirdUserId)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      customerBindType:
+        row.customer_bind_type == null ? undefined : Number(row.customer_bind_type),
+      seatGroupAIHostingEnabled: readBooleanFlag(row.group_full_auto_auth),
+      seatFullAutoAuth: readBooleanFlag(row.full_auto_auth),
+      seatFullAutoSwitch: readBooleanFlag(row.full_auto_switch),
+    };
   }
 
   async getLatestFullAutoAnswerStatus(
@@ -3884,6 +4011,29 @@ export class WorkbenchRepository {
       .updateTable("xy_wap_embed_conversation")
       .set({
         pinned_time: input.isPinned ? Math.floor(Date.now() / 1000) : 0,
+      })
+      .where("id", "=", conversationNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
+  async clearConversationHandoff(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+
+    if (conversationNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_conversation")
+      .set({
+        handoff_msg_id: 0,
       })
       .where("id", "=", conversationNumericId)
       .where("uid", "=", input.uid)
@@ -3993,12 +4143,15 @@ export class WorkbenchRepository {
       .innerJoin("xy_wap_embed_group_seat as group_seat", (join) =>
         join
           .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .on("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .onRef("group_seat.uid", "=", "conversation.uid")
           .onRef("group_seat.platform", "=", "conversation.platform"),
       )
       .select([
         "conversation.id as conversation_id",
         "conversation.third_group_id as third_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
+        "conversation.third_userid as third_userid",
         "conversation.uid as uid",
         "conversation.platform as platform",
         "group_seat.id as group_seat_id",
@@ -4028,8 +4181,18 @@ export class WorkbenchRepository {
       .where("member.biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
 
+    const openingAccountThirdUserId =
+      conversation.third_group_origin_userid?.trim() || undefined;
+    const receptionAccountThirdUserId = openingAccountThirdUserId
+      ? conversation.third_userid?.trim() || undefined
+      : undefined;
     const items = rows
-      .map((row) => mapGroupMemberRow(row as GroupMemberRow))
+      .map((row) =>
+        mapGroupMemberRow(row as GroupMemberRow, {
+          openingAccountThirdUserId,
+          receptionAccountThirdUserId,
+        }),
+      )
       .sort(sortGroupMembers);
 
     return {
@@ -4052,6 +4215,7 @@ export class WorkbenchRepository {
       smartReplyScope?: {
         chatType: number;
         thirdExternalId: string;
+        thirdGroupId?: string;
         thirdUserId: string;
         uid: number;
       };
@@ -4078,6 +4242,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
@@ -4086,7 +4251,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -4106,6 +4271,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return emptyMessagePage();
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4135,10 +4305,13 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === 2) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4187,6 +4360,7 @@ export class WorkbenchRepository {
     );
 
     const thirdExternalId = (conversation.conversation_external_id || "").trim();
+    const thirdGroupId = (conversation.conversation_group_id || "").trim();
     const thirdUserId = (conversation.third_userid || "").trim();
     const uid = toNumber(conversation.uid) ?? 0;
     const smartReplyScope =
@@ -4197,7 +4371,15 @@ export class WorkbenchRepository {
             thirdUserId,
             uid,
           }
-        : undefined;
+        : conversation.chat_type === CHAT_TYPE_GROUP && thirdGroupId && thirdUserId && uid > 0
+          ? {
+              chatType: CHAT_TYPE_GROUP,
+              thirdExternalId: "",
+              thirdGroupId,
+              thirdUserId,
+              uid,
+            }
+          : undefined;
 
     return {
       filteredCount: 0,
@@ -4212,13 +4394,13 @@ export class WorkbenchRepository {
   }
 
   async getLatestConversationMessageSummary(input: {
+    messageSourceThirdUserId: string;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }): Promise<{ createdAt: number; msgtype: string } | undefined> {
-    if (!input.thirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
+    if (!input.messageSourceThirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
       return undefined;
     }
 
@@ -4227,7 +4409,7 @@ export class WorkbenchRepository {
       .select(["message.create_time as create_time", "message.msgtype as msgtype"])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
-      .where("message.third_user_id", "=", input.thirdUserId);
+      .where("message.third_user_id", "=", input.messageSourceThirdUserId);
 
     if (input.thirdGroupId) {
       query = query.where("message.third_group_id", "=", input.thirdGroupId);
@@ -4292,6 +4474,7 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
@@ -4300,7 +4483,7 @@ export class WorkbenchRepository {
           .selectFrom("xy_wap_embed_group_seat as group_seat")
           .select("group_seat.id")
           .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .where("group_seat.third_userid", "=", GROUP_SOURCE_THIRD_USERID_SQL)
           .whereRef("group_seat.uid", "=", "conversation.uid")
           .whereRef("group_seat.platform", "=", "conversation.platform")
           .as("group_seat_id"),
@@ -4312,6 +4495,11 @@ export class WorkbenchRepository {
     if (!conversation) {
       return emptyHistoryMessagePage();
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4341,10 +4529,13 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4469,6 +4660,7 @@ export class WorkbenchRepository {
       conversation_group_id: string;
       group_seat_id?: number | string | null;
       platform: number;
+      third_group_origin_userid?: string | null;
       third_userid: string;
       uid: number;
     },
@@ -4480,6 +4672,11 @@ export class WorkbenchRepository {
     if (!missingQuoteIds.length) {
       return { fetchedRows: [] as MessageRow[] };
     }
+
+    const messageThirdUserId = resolveGroupSourceThirdUserId(
+      conversation.third_group_origin_userid,
+      conversation.third_userid,
+    );
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
@@ -4508,11 +4705,14 @@ export class WorkbenchRepository {
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id ?? null).as("conversation_group_seat_id"),
+        expressionBuilder
+          .val(conversation.third_userid)
+          .as("conversation_third_userid"),
       ])
       .where("message.id", "in", missingQuoteIds)
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.third_user_id", "=", messageThirdUserId);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -4724,20 +4924,27 @@ export class WorkbenchRepository {
     rows: ConversationPageRow[],
     uid: number,
     platform: number,
-    seatThirdUserId: string,
   ): Promise<ConversationHydrationSources> {
-    const lastMessageIds = uniqueIds(
-      rows.map((row) => row.last_audit_info_id),
+    const lastMessageIds = uniquePositiveNumbers(
+      rows.map((row) => row.last_audit_info_id ?? undefined),
     );
     const contactThirdExternalIds = uniqueNonEmpty(
       rows
         .filter((row) => row.chat_type !== CHAT_TYPE_GROUP)
         .map((row) => row.third_external_userid),
     );
+    const seatThirdUserIds = uniqueNonEmpty(rows.map((row) => row.third_userid));
     const groupIds = uniqueNonEmpty(
       rows
         .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
         .map((row) => row.third_group_id),
+    );
+    const groupSourceThirdUserIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
+        .map((row) =>
+          resolveGroupSourceThirdUserId(row.third_group_origin_userid, row.third_userid),
+        ),
     );
 
     const [lastMessages, contacts, bindRelations, groups] = await Promise.all([
@@ -4745,7 +4952,7 @@ export class WorkbenchRepository {
         ? this.db
             .selectFrom("xy_wap_embed_msg_audit_info")
             .select(["id", "content", "msgtype"])
-            .where("id", "in", asSchemaBigIntIds(lastMessageIds))
+            .where("id", "in", lastMessageIds)
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .execute()
@@ -4759,23 +4966,30 @@ export class WorkbenchRepository {
             .where("third_external_userid", "in", contactThirdExternalIds)
             .execute()
         : [],
-      contactThirdExternalIds.length
+      contactThirdExternalIds.length && seatThirdUserIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
             .select(["bind_type", "third_external_userid", "remark"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
-            .where("third_userid", "=", seatThirdUserId)
+            .where("third_userid", "in", seatThirdUserIds)
             .where("third_external_userid", "in", contactThirdExternalIds)
             .execute()
         : [],
-      groupIds.length
+      groupIds.length && groupSourceThirdUserIds.length
         ? this.db
             .selectFrom("xy_wap_embed_group_seat")
-            .select(["third_group_id", "avatar", "name", "remark", "biz_status"])
+            .select([
+              "third_group_id",
+              "third_userid",
+              "avatar",
+              "name",
+              "remark",
+              "biz_status",
+            ])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
-            .where("third_userid", "=", seatThirdUserId)
+            .where("third_userid", "in", groupSourceThirdUserIds)
             .where("third_group_id", "in", groupIds)
             .execute()
         : [],
@@ -4802,9 +5016,9 @@ export class WorkbenchRepository {
           },
         ]),
       ),
-      groupsByThirdGroupId: new Map(
+      groupsBySourceKey: new Map(
         groups.map((group) => [
-          group.third_group_id,
+          getGroupSourceHydrationKey(group.third_group_id, group.third_userid),
           {
             avatar: group.avatar,
             bizStatus: group.biz_status,
@@ -4815,7 +5029,7 @@ export class WorkbenchRepository {
       ),
       lastMessagesById: new Map(
         lastMessages.map((message) => [
-          String(message.id),
+          message.id,
           {
             content: message.content,
             msgtype: message.msgtype,
@@ -4838,13 +5052,22 @@ export class WorkbenchRepository {
   ): WorkbenchConversationListResponse["items"][number] {
     const lastMessage =
       row.last_audit_info_id != null
-        ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
+        ? hydrationSources.lastMessagesById.get(row.last_audit_info_id)
         : undefined;
     const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
     const bindRelation = hydrationSources.bindRelationsByThirdExternalId.get(
       row.third_external_userid,
     );
-    const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+    const groupSourceThirdUserId = resolveGroupSourceThirdUserId(
+      row.third_group_origin_userid,
+      row.third_userid,
+    );
+    const group =
+      row.chat_type === CHAT_TYPE_GROUP
+        ? hydrationSources.groupsBySourceKey.get(
+            getGroupSourceHydrationKey(row.third_group_id, groupSourceThirdUserId),
+          )
+        : undefined;
 
     return mapConversationRow({
       ...row,
@@ -5087,13 +5310,16 @@ export class WorkbenchRepository {
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
         "conversation.full_auto_switch as full_auto_switch",
+        "conversation.handoff_msg_id as handoff_msg_id",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
+        "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.reply as reply",
         "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
@@ -5114,7 +5340,6 @@ export class WorkbenchRepository {
       [conversationRow],
       uid,
       platform,
-      seatThirdUserId,
     );
 
     return this.mapHydratedConversationRow(conversationRow, hydrationSources);
@@ -5391,6 +5616,19 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
         .filter(Boolean),
     ),
   );
+}
+
+/** 群聊读路径用开通号；影子会话 third_group_origin_userid 非空时优先 */
+function resolveGroupSourceThirdUserId(
+  thirdGroupOriginUserId: string | null | undefined,
+  thirdUserId: string,
+) {
+  const origin = thirdGroupOriginUserId?.trim();
+  return origin || thirdUserId;
+}
+
+function getGroupSourceHydrationKey(thirdGroupId: string, sourceThirdUserId: string) {
+  return `${thirdGroupId}\0${sourceThirdUserId}`;
 }
 
 function firstNonEmptyString(...values: Array<string | null | undefined>) {
@@ -5888,10 +6126,24 @@ type GroupMemberRow = {
   type: number | null;
 };
 
-function mapGroupMemberRow(row: GroupMemberRow): WorkbenchGroupMemberDto {
+function mapGroupMemberRow(
+  row: GroupMemberRow,
+  identity: {
+    openingAccountThirdUserId?: string;
+    receptionAccountThirdUserId?: string;
+  } = {},
+): WorkbenchGroupMemberDto {
+  const normalizedThirdUserId = row.third_user_id.trim();
+
   return {
     avatarUrl: row.avatar_url ?? "",
     displayName: row.nickname?.trim() || row.name?.trim() || row.third_user_id,
+    ...(normalizedThirdUserId === identity.openingAccountThirdUserId
+      ? { isOpeningAccount: true }
+      : {}),
+    ...(normalizedThirdUserId === identity.receptionAccountThirdUserId
+      ? { isReceptionAccount: true }
+      : {}),
     nickname: row.nickname?.trim() || undefined,
     thirdUserId: row.third_user_id,
     type: normalizeGroupMemberType(row.type),

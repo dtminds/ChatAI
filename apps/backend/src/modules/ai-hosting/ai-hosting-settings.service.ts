@@ -1,11 +1,14 @@
 import type {
+  AiHostingGroupChatReplyMode,
+  AiHostingGroupSettingsUpdateRequest,
   AiHostingSettingsAccount,
+  AiHostingSettingsGroupChat,
   AiHostingSettingsResponse,
   AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import type { Insertable, Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
+import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import {
   type AgentRow,
@@ -29,10 +32,20 @@ type UserSeatAgentRow = {
   user_seat_id: number;
 };
 
+type UserSeatGroupAgentRow = {
+  agent_id: number;
+  full_auto_auth: number | null;
+  full_auto_config: string | null;
+  semi_auto_auth: number | null;
+  user_seat_id: number;
+};
+
 type UserSeatAgentInsert = Insertable<Database["xy_wap_embed_user_seat_agent"]>;
+type UserSeatGroupAgentInsert = Insertable<Database["xy_wap_embed_user_seat_group_agent"]>;
 
 const hostingSettingsSeatLimit = 200;
 const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
+const defaultGroupChatReplyMode: AiHostingGroupChatReplyMode = 1;
 
 export class AiHostingSettingsService {
   private readonly agentService: AiHostingAgentService;
@@ -47,12 +60,24 @@ export class AiHostingSettingsService {
       this.agentService.listAllAgentRows(scope.uid),
     ]);
     const seatIds = seats.map((seat) => seat.id);
-    const configs = await this.listUserSeatAgentRows(scope, seatIds);
-    const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
+    const [singleChatConfigs, groupChatConfigs] = await Promise.all([
+      this.listUserSeatAgentRows(scope, seatIds),
+      this.listUserSeatGroupAgentRows(scope, seatIds),
+    ]);
+    const singleChatConfigsBySeatId = new Map(
+      singleChatConfigs.map((config) => [config.user_seat_id, config]),
+    );
+    const groupChatConfigsBySeatId = new Map(
+      groupChatConfigs.map((config) => [config.user_seat_id, config]),
+    );
 
     return {
       accounts: seats.map((seat) =>
-        mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id)),
+        mapHostingSettingsAccount(
+          seat,
+          singleChatConfigsBySeatId.get(seat.id),
+          groupChatConfigsBySeatId.get(seat.id),
+        ),
       ),
       agents: agents.map(mapHostingSettingsAgent),
       fullAutoAuthAvailable: isFullAutoAuthAvailable(scope.uid),
@@ -79,46 +104,69 @@ export class AiHostingSettingsService {
 
     const currentConfigs = await this.listUserSeatAgentRows(scope, userSeatIds);
     assertFullAutoAuthUpdateAllowed(scope.uid, payload, userSeatIds, currentConfigs);
-    const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
-    const insertRows: UserSeatAgentInsert[] = [];
-    const updateSeatIds: number[] = [];
     const values = {
       agent_id: agentId,
       full_auto_auth: payload.fullAutoAuth ? 1 : 0,
       semi_auto_auth: payload.semiAutoAuth ? 1 : 0,
     };
+    const rows: UserSeatAgentInsert[] = userSeatIds.map((userSeatId) => ({
+      ...values,
+      uid: scope.uid,
+      user_seat_id: userSeatId,
+    }));
 
-    for (const userSeatId of userSeatIds) {
-      if (existingSeatIds.has(userSeatId)) {
-        updateSeatIds.push(userSeatId);
-        continue;
-      }
-
-      insertRows.push({
+    await this.db
+      .insertInto("xy_wap_embed_user_seat_agent")
+      .values(rows)
+      .onDuplicateKeyUpdate({
         ...values,
-        uid: scope.uid,
-        user_seat_id: userSeatId,
-      });
+        update_time: new Date(),
+      })
+      .execute();
+
+    return this.listHostingSettings(scope);
+  }
+
+  async updateGroupHostingSettings(
+    scope: SettingsScope,
+    payload: AiHostingGroupSettingsUpdateRequest,
+  ): Promise<AiHostingSettingsResponse> {
+    const agentId = parseMySqlId(payload.agentId);
+    const userSeatIds = normalizeIdList(payload.userSeatIds);
+
+    if (agentId == null) {
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
-    if (insertRows.length > 0) {
-      await this.db
-        .insertInto("xy_wap_embed_user_seat_agent")
-        .values(insertRows)
-        .executeTakeFirstOrThrow();
+    if (userSeatIds == null || userSeatIds.length === 0) {
+      throw new BadRequestError("INVALID_USER_SEAT", "企微账号不存在");
     }
 
-    if (updateSeatIds.length > 0) {
-      await this.db
-        .updateTable("xy_wap_embed_user_seat_agent")
-        .set({
-          ...values,
-          update_time: new Date(),
-        })
-        .where("uid", "=", scope.uid)
-        .where("user_seat_id", "in", updateSeatIds)
-        .execute();
-    }
+    await this.agentService.assertPublishedAgentInTenant(scope.uid, agentId);
+    await this.assertUserSeatsInScope(scope, userSeatIds);
+
+    const currentConfigs = await this.listUserSeatGroupAgentRows(scope, userSeatIds);
+    assertGroupFullAutoAuthUpdateAllowed(scope.uid, payload, userSeatIds, currentConfigs);
+    const values = {
+      agent_id: agentId,
+      full_auto_auth: payload.fullAutoAuth ? 1 : 0,
+      full_auto_config: serializeGroupFullAutoConfig(payload.replyMode),
+      semi_auto_auth: payload.semiAutoAuth ? 1 : 0,
+    };
+    const rows: UserSeatGroupAgentInsert[] = userSeatIds.map((userSeatId) => ({
+      ...values,
+      uid: scope.uid,
+      user_seat_id: userSeatId,
+    }));
+
+    await this.db
+      .insertInto("xy_wap_embed_user_seat_group_agent")
+      .values(rows)
+      .onDuplicateKeyUpdate({
+        ...values,
+        update_time: new Date(),
+      })
+      .execute();
 
     return this.listHostingSettings(scope);
   }
@@ -160,6 +208,25 @@ export class AiHostingSettingsService {
       .execute() as Promise<UserSeatAgentRow[]>;
   }
 
+  private listUserSeatGroupAgentRows(scope: SettingsScope, seatIds: number[]) {
+    if (seatIds.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    return this.db
+      .selectFrom("xy_wap_embed_user_seat_group_agent")
+      .select([
+        "agent_id",
+        "full_auto_auth",
+        "full_auto_config",
+        "semi_auto_auth",
+        "user_seat_id",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("user_seat_id", "in", seatIds)
+      .execute() as Promise<UserSeatGroupAgentRow[]>;
+  }
+
   private async assertUserSeatsInScope(scope: SettingsScope, userSeatIds: number[]) {
     const seats = await this.listHostingSettingSeats(scope, userSeatIds);
     const validSeatIds = new Set(seats.map((seat) => seat.id));
@@ -176,14 +243,32 @@ export function createAiHostingSettingsService(db: Kysely<Database>) {
 
 function mapHostingSettingsAccount(
   seat: HostingSettingsSeatRow,
-  config: UserSeatAgentRow | undefined,
+  singleChatConfig: UserSeatAgentRow | undefined,
+  groupChatConfig: UserSeatGroupAgentRow | undefined,
 ): AiHostingSettingsAccount {
   return {
-    agentId: config && config.agent_id > 0 ? String(config.agent_id) : null,
+    agentId:
+      singleChatConfig && singleChatConfig.agent_id > 0
+        ? String(singleChatConfig.agent_id)
+        : null,
     avatarUrl: seat.avatarUrl || "",
-    fullAutoAuth: config?.full_auto_auth === 1,
+    fullAutoAuth: singleChatConfig?.full_auto_auth === 1,
+    groupChat: mapHostingSettingsGroupChat(groupChatConfig),
     id: String(seat.id),
     name: seat.third_user_name || "未命名托管账号",
+    semiAutoAuth: singleChatConfig?.semi_auto_auth === 1,
+  };
+}
+
+function mapHostingSettingsGroupChat(
+  config: UserSeatGroupAgentRow | undefined,
+): AiHostingSettingsGroupChat {
+  const replyMode = parseGroupFullAutoConfig(config?.full_auto_config).replyMode;
+
+  return {
+    agentId: config && config.agent_id > 0 ? String(config.agent_id) : null,
+    fullAutoAuth: config?.full_auto_auth === 1,
+    replyMode: config?.full_auto_auth === 1 ? replyMode : null,
     semiAutoAuth: config?.semi_auto_auth === 1,
   };
 }
@@ -220,10 +305,66 @@ function assertFullAutoAuthUpdateAllowed(
   }
 }
 
+function assertGroupFullAutoAuthUpdateAllowed(
+  uid: number,
+  payload: AiHostingGroupSettingsUpdateRequest,
+  userSeatIds: number[],
+  currentConfigs: UserSeatGroupAgentRow[],
+) {
+  if (!payload.fullAutoAuth || isFullAutoAuthAvailable(uid)) {
+    return;
+  }
+
+  const enabledSeatIds = new Set(
+    currentConfigs
+      .filter((config) => config.full_auto_auth === 1)
+      .map((config) => config.user_seat_id),
+  );
+
+  if (userSeatIds.some((userSeatId) => !enabledSeatIds.has(userSeatId))) {
+    throw new ForbiddenError(
+      "AI_HOSTING_FULL_AUTO_NOT_AVAILABLE",
+      fullAutoAuthUnavailableMessage,
+    );
+  }
+}
+
+function parseGroupFullAutoConfig(raw: string | null | undefined): {
+  replyMode: AiHostingGroupChatReplyMode;
+} {
+  if (!raw?.trim()) {
+    return { replyMode: defaultGroupChatReplyMode };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { replyMode?: unknown; replyRule?: unknown };
+
+    if (parsed.replyMode === 1 || parsed.replyMode === 2) {
+      return { replyMode: parsed.replyMode };
+    }
+
+    if (parsed.replyRule === "quote") {
+      return { replyMode: 1 };
+    }
+
+    if (parsed.replyRule === "at_customer") {
+      return { replyMode: 2 };
+    }
+  } catch {
+    return { replyMode: defaultGroupChatReplyMode };
+  }
+
+  return { replyMode: defaultGroupChatReplyMode };
+}
+
+function serializeGroupFullAutoConfig(replyMode: AiHostingGroupChatReplyMode) {
+  return JSON.stringify({ replyMode });
+}
+
 function isFullAutoAuthAvailable(uid: number) {
   return getFullAutoAuthAllowlist().has(uid);
 }
 
 function getFullAutoAuthAllowlist() {
-  return new Set(process.env.NODE_ENV === "production" ? [101, 975, 3865] : [272]);
+  return new Set(process.env.NODE_ENV === "production" ? [101, 272, 975, 3865] : [272]);
 }

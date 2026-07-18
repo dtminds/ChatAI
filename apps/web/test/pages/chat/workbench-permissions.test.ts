@@ -37,6 +37,7 @@ describe("resolveWorkbenchPermissions", () => {
     });
 
     expect(permissions).toMatchObject({
+      canMarkHandoffHandled: true,
       canSendMessage: true,
       canToggleConversationAIHosting: false,
       canTakeOverAccount: true,
@@ -44,6 +45,46 @@ describe("resolveWorkbenchPermissions", () => {
       composerPlaceholder: "请输入消息……",
       sidebarIframeSendStatus: "0",
     });
+  });
+
+  it("allows the current operator to handle a handoff without chat.send but blocks viewers", () => {
+    const operatorWithoutSend: AuthSubUser = {
+      ...operator,
+      permissions: ["chat.access", "chat.takeover"],
+    };
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operatorWithoutSend,
+      }),
+    ).toMatchObject({
+      canMarkHandoffHandled: true,
+      canSendMessage: false,
+    });
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: viewer,
+      }).canMarkHandoffHandled,
+    ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount(),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operatorWithoutSend,
+      }).canMarkHandoffHandled,
+    ).toBe(false);
   });
 
   it("allows enabling full-auto only when the taken-over account has seat hosting enabled", () => {
@@ -62,6 +103,7 @@ describe("resolveWorkbenchPermissions", () => {
     ).toMatchObject({
       canToggleConversationAIHosting: true,
       conversationAIHostingEnabled: false,
+      shouldShowConversationAIHostingControl: true,
     });
 
     expect(
@@ -151,7 +193,7 @@ describe("resolveWorkbenchPermissions", () => {
         me,
         subUser: operator,
       }).canToggleConversationAIHosting,
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       resolveWorkbenchPermissions({
@@ -169,8 +211,34 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }),
     ).toMatchObject({
-      canToggleConversationAIHosting: false,
+      canToggleConversationAIHosting: true,
       conversationAIHostingEnabled: false,
+    });
+  });
+
+  it("keeps group AI auto-reply from blocking the composer", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatGroupAIHostingEnabled: true,
+          seatAIHostingEnabled: false,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }),
+    ).toMatchObject({
+      canSendMessage: true,
+      canToggleConversationAIHosting: true,
+      conversationAIHostingConfigured: true,
+      conversationAIHostingEnabled: true,
+      composerPlaceholder: "请输入消息……",
+      shouldShowConversationAIHostingControl: true,
     });
   });
 
@@ -502,6 +570,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerName: "客户一号",
     id: "conv-001",
     conversationAIHostingSwitch: false,
+    handoffMsgId: 0,
     mode: "single",
     preview: "",
     priority: "medium",

@@ -139,10 +139,23 @@ export const AiHostingAgentTestResponseSchema = Type.Object({
   reply: Type.Array(AiHostingAgentTestReplyItemSchema),
 }, { additionalProperties: false });
 
+export const AiHostingGroupChatReplyModeSchema = Type.Union([
+  Type.Literal(1),
+  Type.Literal(2),
+]);
+
+export const AiHostingSettingsGroupChatSchema = Type.Object({
+  agentId: Type.Union([Type.String(), Type.Null()]),
+  fullAutoAuth: Type.Boolean(),
+  replyMode: Type.Union([AiHostingGroupChatReplyModeSchema, Type.Null()]),
+  semiAutoAuth: Type.Boolean(),
+});
+
 export const AiHostingSettingsAccountSchema = Type.Object({
   agentId: Type.Union([Type.String(), Type.Null()]),
   avatarUrl: Type.String(),
   fullAutoAuth: Type.Boolean(),
+  groupChat: AiHostingSettingsGroupChatSchema,
   id: Type.String(),
   name: Type.String(),
   semiAutoAuth: Type.Boolean(),
@@ -163,6 +176,14 @@ export const AiHostingSettingsResponseSchema = Type.Object({
 export const AiHostingSettingsUpdateRequestSchema = Type.Object({
   agentId: Type.String({ minLength: 1 }),
   fullAutoAuth: Type.Boolean(),
+  semiAutoAuth: Type.Boolean(),
+  userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
+}, { additionalProperties: false });
+
+export const AiHostingGroupSettingsUpdateRequestSchema = Type.Object({
+  agentId: Type.String({ minLength: 1 }),
+  fullAutoAuth: Type.Boolean(),
+  replyMode: AiHostingGroupChatReplyModeSchema,
   semiAutoAuth: Type.Boolean(),
   userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
 }, { additionalProperties: false });
@@ -188,8 +209,14 @@ export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageS
 export type AiHostingAgentTestRequest = Static<typeof AiHostingAgentTestRequestSchema>;
 export type AiHostingAgentTestReplyItem = Static<typeof AiHostingAgentTestReplyItemSchema>;
 export type AiHostingAgentTestResponse = Static<typeof AiHostingAgentTestResponseSchema>;
+export type AiHostingGroupChatReplyMode = Static<
+  typeof AiHostingGroupChatReplyModeSchema
+>;
 export type AiHostingSettingsAccount = Static<typeof AiHostingSettingsAccountSchema>;
+export type AiHostingSettingsGroupChat = Static<typeof AiHostingSettingsGroupChatSchema>;
 export type AiHostingSettingsAgentOption = Static<typeof AiHostingSettingsAgentOptionSchema>;
 export type AiHostingSettingsResponse = Static<typeof AiHostingSettingsResponseSchema>;
 export type AiHostingSettingsUpdateRequest =
   Static<typeof AiHostingSettingsUpdateRequestSchema>;
+export type AiHostingGroupSettingsUpdateRequest =
+  Static<typeof AiHostingGroupSettingsUpdateRequestSchema>;

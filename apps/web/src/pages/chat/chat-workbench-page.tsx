@@ -119,7 +119,10 @@ import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies"
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
-import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
+import {
+  findViewportAnchor,
+  scrollToAndHighlightViewportAnchor,
+} from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
@@ -169,7 +172,13 @@ function writeAccountRailCollapsed(isCollapsed: boolean) {
 }
 
 function isConversationView(value: string | null | undefined): value is ConversationView {
-  return value === "all" || value === "unread" || value === "human" || value === "ai";
+  return (
+    value === "all" ||
+    value === "unread" ||
+    value === "read-unreplied" ||
+    value === "human" ||
+    value === "ai"
+  );
 }
 
 function getInitialConversationViewState(): ConversationViewState {
@@ -342,6 +351,8 @@ function ChatWorkbenchContent({
     fullAutoActionPending,
     seatAgentModeActionPending,
     fullAutoStatusByConversationId,
+    handoffClearPendingByConversationId,
+    markActiveConversationHandoffHandled,
   } = useWorkbenchStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -384,6 +395,10 @@ function ChatWorkbenchContent({
       fullAutoActionPending: state.fullAutoActionPending,
       seatAgentModeActionPending: state.seatAgentModeActionPending,
       fullAutoStatusByConversationId: state.fullAutoStatusByConversationId,
+      handoffClearPendingByConversationId:
+        state.handoffClearPendingByConversationId,
+      markActiveConversationHandoffHandled:
+        state.markActiveConversationHandoffHandled,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
@@ -711,13 +726,16 @@ function ChatWorkbenchContent({
     canSendMessage,
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
+    canMarkHandoffHandled,
     canToggleConversationAIHosting,
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,
     canUseMessageForward,
     composerPlaceholder,
+    conversationAIHostingConfigured,
     conversationAIHostingEnabled,
+    shouldShowConversationAIHostingControl,
     seatAIHostingEnabled,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
@@ -1907,6 +1925,41 @@ function ChatWorkbenchContent({
     });
   };
 
+  const handleViewHandoffMessage = () => {
+    const handoffMsgId = activeConversation?.handoffMsgId;
+
+    if (!handoffMsgId) {
+      return;
+    }
+
+    const handoffMessage = activeMessages.find(
+      (message) => message.seq === handoffMsgId,
+    );
+    const viewport = messageViewportRef.current;
+    const anchor =
+      viewport && handoffMessage
+        ? findViewportAnchor(viewport, handoffMessage.uiMessageKey)
+        : null;
+
+    if (!viewport || !anchor) {
+      toast.warning("未找到触发消息，请向上加载更多消息后重试");
+      return;
+    }
+
+    scrollToAndHighlightViewportAnchor(viewport, anchor, {
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
+  const handleMarkHandoffHandled = async () => {
+    const result = await markActiveConversationHandoffHandled();
+
+    if (!result.ok) {
+      toast.warning(result.errorMessage);
+    }
+  };
+
   const handleQuoteMessage = (message: ChatMessage) => {
     if (message.isRevoked) {
       return;
@@ -2064,6 +2117,7 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId={composerDraftsByConversationId}
       conversations={visibleSearchableConversations}
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
+      seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
       isConversationLoading={isConversationLoading}
       onDeleteConversation={deleteConversation}
@@ -2097,6 +2151,7 @@ function ChatWorkbenchContent({
       canToggleConversationAIHosting={canToggleConversationAIHosting}
       canCollectMaterialActions={canCollectMaterialActions}
       canSendMessage={canSendMessage}
+      canMarkHandoffHandled={canMarkHandoffHandled}
       canUseMessageForward={canUseMessageForward}
       composerPlaceholder={composerPlaceholder}
       customer={activeCustomer}
@@ -2115,7 +2170,16 @@ function ChatWorkbenchContent({
       seatAIHostingEnabled={seatAIHostingEnabled}
       isEmojiPickerOpen={isEmojiPickerOpen}
       isSendingDraft={isSendingDraft}
+      isHandoffClearPending={
+        activeConversation
+          ? handoffClearPendingByConversationId[activeConversation.id] === true
+          : false
+      }
       conversationAIHostingEnabled={conversationAIHostingEnabled}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
+      shouldShowConversationAIHostingControl={
+        shouldShowConversationAIHostingControl
+      }
       isResizingCustomerPanel={isResizingCustomerPanel}
       fileUploadQueue={fileUploadQueue}
       collectedExpressions={collectedExpressions}
@@ -2150,6 +2214,10 @@ function ChatWorkbenchContent({
       onCancelAgentHosting={() => handleChangeFullAuto(false)}
       onChangeSeatAgentMode={handleChangeSeatAgentMode}
       onChangeFullAuto={handleChangeFullAuto}
+      onMarkHandoffHandled={() => {
+        void handleMarkHandoffHandled();
+      }}
+      onViewHandoffMessage={handleViewHandoffMessage}
       onClearQuotedMessage={() => setQuotedMessage(null)}
       onCollectMaterial={handleCollectMaterial}
       onEnterMultiSelectMode={messageForward.enterMultiSelectMode}
@@ -2224,7 +2292,9 @@ function ChatWorkbenchContent({
       onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
-      onRevokeMessage={handleRevokeMessage}
+      onRevokeMessage={
+        activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
+      }
       onMessageViewportScroll={handleMessageViewportScroll}
       onRetryMessage={handleRetryFailedMessage}
       retryingMessageIds={retryingUiMessageKeys}

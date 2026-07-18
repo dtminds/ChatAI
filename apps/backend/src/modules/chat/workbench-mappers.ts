@@ -22,10 +22,12 @@ export type SeatRow = {
   expire_time?: number | string | null;
   full_auto_auth?: number | string | boolean | null;
   full_auto_switch?: number | string | boolean | null;
+  group_full_auto_auth?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
   last_message_time: Date | number | string | null;
+  group_semi_auto_auth?: number | string | boolean | null;
   group_unread_count?: number | string | null;
   semi_auto_auth?: number | string | boolean | null;
   semi_auto_switch?: number | string | boolean | null;
@@ -44,17 +46,21 @@ export type ConversationRow = {
   customer_name: string | null;
   contact_original_name: string | null;
   full_auto_switch?: number | string | boolean | null;
+  handoff_msg_id?: number | null;
   group_avatar: string | null;
   group_name: string | null;
   group_remark: string | null;
   id: number | string;
   last_message_content: string | null;
+  last_audit_info_id?: number | null;
   last_message_type: string | null;
   last_msgtime: Date | number | string | null;
   pinned_time: number | string;
+  reply?: number | string | boolean | null;
   seat_id: number | string;
   third_external_userid: string;
   third_group_id: string;
+  third_group_origin_userid?: string | null;
   third_userid: string;
   unread_cnt: number | string;
   verified?: number | string | null;
@@ -66,6 +72,8 @@ export type MessageRow = {
   conversation_external_id: string;
   conversation_group_id: string;
   conversation_group_seat_id?: number | string | null;
+  /** 会话接待号 third_userid；影子群读分区可能是开通号，归属判断应用接待号 */
+  conversation_third_userid?: string | null;
   conversation_id: number | string;
   from_type: number | null;
   id: number | string;
@@ -119,8 +127,6 @@ const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 const APPLICATION_MESSAGE_AVATAR_URL = "https://b5.bokr.com.cn/dist/app-avatar.png";
-const AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX = "Agent 转人工处理";
-const TAKEOVER_REMINDER_PREVIEW_PREFIX = "[接管提醒]";
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -129,6 +135,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
   const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
   const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
+  const seatGroupAIHostingEnabled = readBooleanFlag(row.group_full_auto_auth);
+  const seatGroupAIAssistantEnabled = readBooleanFlag(row.group_semi_auto_auth);
 
   return {
     seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
@@ -139,6 +147,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
     seatAIHostingAuth,
     fullAutoSwitch,
+    seatGroupAIHostingEnabled,
+    seatGroupAIAssistantEnabled,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -158,7 +168,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
 export function mapConversationRow(
   row: ConversationRow,
 ): WorkbenchConversationSummaryDto {
-  const lastMessagePreview = formatConversationMessagePreview(
+  const lastMessagePreview = formatMessagePreview(
     row.last_message_type,
     row.last_message_content,
   );
@@ -199,11 +209,13 @@ export function mapConversationRow(
       : customerBindType === 2
         ? APPLICATION_MESSAGE_AVATAR_URL
         : row.customer_avatar ?? "";
+  const lastMessageId = toNumber(row.last_audit_info_id);
 
   return {
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
+    handoffMsgId: toNumber(row.handoff_msg_id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerBindType,
@@ -211,14 +223,15 @@ export function mapConversationRow(
     customerName,
     contactOriginalName,
     groupOriginalName,
+    isShadowGroup:
+      mode === "group" && Boolean(row.third_group_origin_userid?.trim()),
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
-    lastMessage: lastMessagePreview.text,
-    ...(lastMessagePreview.parts
-      ? { lastMessagePreviewParts: lastMessagePreview.parts }
-      : {}),
+    lastMessageId: lastMessageId || undefined,
+    lastMessage: lastMessagePreview,
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,
     priority: "medium",
+    replied: readBooleanFlag(row.reply),
     seatId: String(row.seat_id),
     thirdExternalUserId: row.third_external_userid || undefined,
     thirdGroupId: row.third_group_id || undefined,
@@ -241,7 +254,6 @@ export function mapMessageRow(
       ? row.conversation_group_id || row.third_group_id || buildMissingCustomerId(row)
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
   const messageSource = mapMessageSource(row.source);
-
   return {
     content: parseMessageContent(row, quotePreview),
     contentType: mapMessageContentType(row),
@@ -357,9 +369,16 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
 
   if (row.chat_type === 2) {
     const thirdFromId = (row.third_from_id || "").trim();
-    const thirdUserId = (row.third_user_id || "").trim();
+    // 影子群消息分区可能是开通号，己方发送方是接待号
+    const ownershipThirdUserId = (
+      row.conversation_third_userid ||
+      row.third_user_id ||
+      ""
+    ).trim();
 
-    return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
+    return thirdFromId && ownershipThirdUserId && thirdFromId === ownershipThirdUserId
+      ? "agent"
+      : "customer";
   }
 
   switch (row.from_type) {
@@ -651,7 +670,7 @@ function formatMessagePreview(
   }
 
   if (msgtype === "system") {
-    return formatSystemMessagePreview(readSystemMessageText(parsed, rawContent));
+    return readSystemMessageText(parsed, rawContent);
   }
 
   switch (msgtype) {
@@ -688,58 +707,6 @@ function formatMessagePreview(
     default:
       return "[新消息]";
   }
-}
-
-function formatConversationMessagePreview(
-  msgtype: string | null | undefined,
-  rawContent: string | null,
-): {
-  parts?: WorkbenchConversationSummaryDto["lastMessagePreviewParts"];
-  text: string;
-} {
-  if (msgtype !== "system") {
-    return {
-      text: formatMessagePreview(msgtype, rawContent),
-    };
-  }
-
-  const parsed = parseContent(rawContent);
-  const text = readSystemMessageText(parsed, rawContent);
-
-  if (!text.startsWith(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX)) {
-    return { text };
-  }
-
-  const body = getAgentHandoffPreviewBody(text);
-
-  return {
-    parts: [
-      {
-        kind: "takeover-reminder",
-        text: TAKEOVER_REMINDER_PREVIEW_PREFIX,
-        tone: "danger",
-      },
-      ...(body ? [{ text: body }] : []),
-    ],
-    text: `${TAKEOVER_REMINDER_PREVIEW_PREFIX}${body}`,
-  };
-}
-
-function formatSystemMessagePreview(text: string) {
-  if (!text.startsWith(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX)) {
-    return text;
-  }
-
-  const body = getAgentHandoffPreviewBody(text);
-
-  return `${TAKEOVER_REMINDER_PREVIEW_PREFIX}${body}`;
-}
-
-function getAgentHandoffPreviewBody(text: string) {
-  return text
-    .slice(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX.length)
-    .replace(/^\s*[:：]\s*/, "")
-    .trim();
 }
 
 function readSystemMessageText(parsed: unknown, rawContent: string | null) {

@@ -49,12 +49,28 @@ function renderPanel({
   );
 }
 
-function enableSmartReplyDisplayContext(enabled = true) {
+function enableSmartReplyDisplayContext({
+  conversationAIHostingSwitch = false,
+  enabled = true,
+  seatGroupAIHostingEnabled,
+  seatGroupAIAssistantEnabled,
+  mode = "single",
+}: {
+  conversationAIHostingSwitch?: boolean;
+  enabled?: boolean;
+  seatGroupAIHostingEnabled?: boolean;
+  seatGroupAIAssistantEnabled?: boolean;
+  mode?: "single" | "group";
+} = {}) {
   useWorkbenchStore.setState((state) => ({
     accounts: [
       {
         avatarUrl: "",
         description: "",
+        seatGroupAIHostingEnabled:
+          seatGroupAIHostingEnabled ?? (mode === "group" ? conversationAIHostingSwitch : false),
+        seatGroupAIAssistantEnabled:
+          seatGroupAIAssistantEnabled ?? (mode === "group" ? enabled : false),
         id: "seat-001",
         loginStatus: "online",
         metrics: {
@@ -67,6 +83,7 @@ function enableSmartReplyDisplayContext(enabled = true) {
         operator: "客服",
         phone: "",
         seatAIAssistantEnabled: enabled,
+        seatAIHostingEnabled: mode === "single" ? conversationAIHostingSwitch : false,
         takenOverEmployeeId: state.me?.id,
         tone: "",
       },
@@ -76,13 +93,14 @@ function enableSmartReplyDisplayContext(enabled = true) {
         {
           accountId: "seat-001",
           bizStatus: 1,
-          conversationAIHostingSwitch: false,
+          conversationAIHostingSwitch,
+          handoffMsgId: 0,
           customerAvatarUrl: "",
           customerBindType: 1,
           customerId: "cust-001",
           customerName: "客户甲",
           id: "conv-001",
-          mode: "single",
+          mode,
           preview: "",
           priority: "medium",
           quietFor: "",
@@ -151,15 +169,54 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(screen.queryByText("隐藏的话术")).not.toBeInTheDocument();
   });
 
-  it("does not show smart replies in group conversations", () => {
-    enableSmartReplyDisplayContext();
+  it("shows smart replies in group conversations when group script recommendation is enabled", () => {
+    enableSmartReplyDisplayContext({
+      enabled: false,
+      seatGroupAIAssistantEnabled: true,
+      mode: "group",
+    });
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
           "1": {
             assistantName: "智能助手",
-            content: "群聊不展示的话术",
+            content: "群聊可展示的话术",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      conversationMode: "group",
+      messages: [
+        createCustomerMessage({
+          isGroupConversation: true,
+          senderDisplayName: "客户甲",
+        }),
+      ],
+    });
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("群聊可展示的话术")).toBeInTheDocument();
+  });
+
+  it("hides smart replies in group conversations when group script recommendation is disabled", () => {
+    enableSmartReplyDisplayContext({
+      enabled: true,
+      seatGroupAIAssistantEnabled: false,
+      mode: "group",
+    });
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "群聊不应展示的话术",
             generateStatus: 2,
             pollComplete: true,
             status: "ready",
@@ -179,7 +236,43 @@ describe("ChatMessagePanel smart reply state", () => {
     });
 
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    expect(screen.queryByText("群聊不展示的话术")).not.toBeInTheDocument();
+    expect(screen.queryByText("群聊不应展示的话术")).not.toBeInTheDocument();
+  });
+
+  it("keeps group smart replies available when AI auto-reply is enabled", () => {
+    enableSmartReplyDisplayContext({
+      conversationAIHostingSwitch: true,
+      seatGroupAIHostingEnabled: true,
+      seatGroupAIAssistantEnabled: true,
+      mode: "group",
+    });
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "群聊自动回复开启时仍可推荐",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      conversationMode: "group",
+      messages: [
+        createCustomerMessage({
+          isGroupConversation: true,
+          senderDisplayName: "客户甲",
+        }),
+      ],
+    });
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("群聊自动回复开启时仍可推荐")).toBeInTheDocument();
   });
 
   it("hides cached smart replies immediately after seat AI assistant is disabled", () => {
@@ -327,7 +420,7 @@ describe("ChatMessagePanel smart reply state", () => {
   it("disables the smart reply action when seat AI assistant is unavailable", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
-    enableSmartReplyDisplayContext(false);
+    enableSmartReplyDisplayContext({ enabled: false });
 
     renderPanel({ onTriggerSmartReply });
 

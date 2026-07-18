@@ -286,6 +286,7 @@ function createQueryBuilder(result: unknown) {
   const limits: number[] = [];
   const offsets: number[] = [];
   const orderBys: Array<[string, string | undefined]> = [];
+  const selections: unknown[] = [];
   const whereExpressions: unknown[] = [];
   const joins: string[] = [];
   const joinConditions: Array<{
@@ -418,6 +419,7 @@ function createQueryBuilder(result: unknown) {
     limits,
     offsets,
     orderBys,
+    selections,
     whereExpressions,
     wheres,
     innerJoin(table: string, callback?: unknown) {
@@ -479,6 +481,12 @@ function createQueryBuilder(result: unknown) {
       return this;
     },
     select(selection?: unknown) {
+      if (Array.isArray(selection)) {
+        selections.push(...selection);
+      } else if (selection !== undefined && typeof selection !== "function") {
+        selections.push(selection);
+      }
+
       if (typeof selection === "function") {
         selection(expressionBuilder);
         currentResult = Array.isArray(currentResult)
@@ -660,9 +668,11 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
     last_message_type: "text",
     last_msgtime: 1_778_839_800_000,
     pinned_time: 0,
+    reply: 0,
     seat_id: 12,
     third_external_userid: "customer-001",
     third_group_id: "",
+    third_group_origin_userid: "",
     third_userid: "seat-user-001",
     unread_cnt: 0,
     verified: 1,
@@ -2500,9 +2510,9 @@ describe("WorkbenchRepository", () => {
 
     await expect(
       repository.getLatestConversationMessageSummary({
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
         thirdExternalUserId: "external-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -2521,13 +2531,42 @@ describe("WorkbenchRepository", () => {
     expect(queries[0]?.query.limits).toEqual([1]);
   });
 
+  it("loads the latest shadow group message summary from the opening-seat partition", async () => {
+    const query = createQueryBuilder({
+      create_time: new Date("2026-06-29T10:00:00.000Z"),
+      msgtype: "text",
+    });
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          return query;
+        },
+      } as never,
+    );
+
+    await repository.getLatestConversationMessageSummary({
+      messageSourceThirdUserId: "opening-seat-001",
+      platform: 5,
+      thirdGroupId: "group-001",
+      uid: 9001,
+    });
+
+    expect(query.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
+    expect(query.wheres).toContainEqual(["message.third_group_id", "=", "group-001"]);
+  });
+
   it("does not query latest conversation message without a conversation target", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 
     await expect(
       repository.getLatestConversationMessageSummary({
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toBeUndefined();
@@ -2626,7 +2665,7 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_user_seat_sub_relation as relation",
       "xy_wap_embed_conversation",
     ]);
-    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin"]);
+    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin", "leftJoin"]);
     expect(queries[0]?.query.joinConditions).toEqual([
       {
         conditions: [
@@ -2643,6 +2682,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "seat.id"],
+          ["seat_group_agent.uid", "=", "seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -2709,7 +2756,7 @@ describe("WorkbenchRepository", () => {
       unreadCount: 3,
     });
 
-    expect(queryBuilders[0]?.joins).toEqual(["leftJoin"]);
+    expect(queryBuilders[0]?.joins).toEqual(["leftJoin", "leftJoin"]);
     expect(queryBuilders[0]?.joinConditions).toEqual([
       {
         conditions: [
@@ -2717,6 +2764,14 @@ describe("WorkbenchRepository", () => {
           ["seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
         ],
         table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+      {
+        conditions: [
+          ["seat_group_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id"],
+          ["seat_group_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_group_agent as seat_group_agent",
         type: "leftJoin",
       },
     ]);
@@ -4284,6 +4339,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: true,
         fullAutoSwitch: true,
+        seatGroupAIHostingEnabled: false,
+        seatGroupAIAssistantEnabled: false,
         groupUnreadCount: 0,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
@@ -4307,6 +4364,8 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: false,
         fullAutoSwitch: false,
+        seatGroupAIHostingEnabled: false,
+        seatGroupAIAssistantEnabled: false,
         groupUnreadCount: 0,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
@@ -4569,6 +4628,9 @@ describe("WorkbenchRepository", () => {
       mode: "group",
     });
 
+    expect(conversationQueryBuilders[0].selections).toContain(
+      "conversation.reply as reply",
+    );
     expect(page.items).toEqual([
       expect.objectContaining({
         conversationId: "165",
@@ -5216,6 +5278,7 @@ describe("WorkbenchRepository", () => {
               biz_status: 0,
               name: "失效群聊",
               third_group_id: "group-001",
+              third_userid: "seat-user-001",
             });
             observedGroupSeatQueries.push(query);
 
@@ -5250,6 +5313,78 @@ describe("WorkbenchRepository", () => {
       conversationId: "89",
       customerAvatar: "https://example.com/inactive-group.png",
       customerName: "失效群聊",
+    });
+  });
+
+  it("hydrates shadow group conversations from the opening seat group profile", async () => {
+    const observedGroupSeatQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "reception-seat-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 90,
+                third_external_userid: "",
+                third_group_id: "group-001",
+                third_group_origin_userid: "opening-seat-001",
+                third_userid: "reception-seat-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/opening-group.png",
+              biz_status: 1,
+              name: "开通号群聊",
+              remark: "开通号备注",
+              third_group_id: "group-001",
+              third_userid: "opening-seat-001",
+            });
+            observedGroupSeatQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(observedGroupSeatQueries[0]?.wheres).toContainEqual([
+      "third_userid",
+      "in",
+      ["opening-seat-001"],
+    ]);
+    expect(page.items[0]).toMatchObject({
+      conversationId: "90",
+      customerAvatar: "https://example.com/opening-group.png",
+      customerName: "开通号备注",
+      mode: "group",
     });
   });
 
@@ -5313,7 +5448,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("hydrates last messages and cursors without losing bigint id precision", async () => {
+  it("hydrates numeric last message IDs while preserving conversation cursors", async () => {
     const observedAuditInfoQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(
       {
@@ -5331,12 +5466,12 @@ describe("WorkbenchRepository", () => {
             return createQueryBuilder([
               createConversationRow({
                 id: "9007199254740993",
-                last_audit_info_id: "9007199254740995",
+                last_audit_info_id: 900,
                 third_external_userid: "external-001",
               }),
               createConversationRow({
                 id: "9007199254740992",
-                last_audit_info_id: "9007199254740996",
+                last_audit_info_id: 901,
                 third_external_userid: "external-002",
               }),
             ]);
@@ -5344,8 +5479,8 @@ describe("WorkbenchRepository", () => {
 
           if (table === "xy_wap_embed_msg_audit_info") {
             const query = createQueryBuilder({
-              id: "9007199254740995",
-              content: "bigint message",
+              id: 900,
+              content: "last message",
               msgtype: "text",
             });
             observedAuditInfoQueries.push(query);
@@ -5374,11 +5509,11 @@ describe("WorkbenchRepository", () => {
     expect(observedAuditInfoQueries[0].wheres).toContainEqual([
       "id",
       "in",
-      ["9007199254740995"],
+      [900],
     ]);
     expect(page.items[0]).toMatchObject({
       conversationId: "9007199254740993",
-      lastMessage: "bigint message",
+      lastMessage: "last message",
     });
     expect(decodeConversationListCursor(page.nextCursor ?? "")).toEqual({
       id: "9007199254740993",
@@ -5437,6 +5572,7 @@ describe("WorkbenchRepository", () => {
     const query = conversationQueryBuilders[0];
 
     expect(query.joins).toEqual([]);
+    expect(query.selections).toContain("conversation.reply as reply");
     expect(query.orderBys).toEqual([
       ["conversation.last_msgtime", "asc"],
       ["conversation.id", "asc"],
@@ -5999,6 +6135,7 @@ describe("WorkbenchRepository", () => {
               seat_host_sub_id: 101,
               third_external_userid: "external-001",
               third_group_id: null,
+              third_group_origin_userid: "should-not-affect-single-chat",
               third_userid: "seat-user-001",
               uid: 9001,
             });
@@ -6014,6 +6151,8 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
       chatType: 1,
       id: "88",
+      isShadowGroup: false,
+      messageSourceThirdUserId: "seat-user-001",
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
@@ -6074,6 +6213,57 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("loads conversation full-auto capability in seat and active binding scope", async () => {
+    let capabilityQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_user_seat as seat");
+          capabilityQuery = createQueryBuilder({
+            customer_bind_type: 1,
+            full_auto_auth: 1,
+            full_auto_switch: 1,
+            group_full_auto_auth: 0,
+          });
+          return capabilityQuery;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getConversationFullAutoCapability({
+        platform: 5,
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      customerBindType: 1,
+      seatGroupAIHostingEnabled: false,
+      seatFullAutoAuth: true,
+      seatFullAutoSwitch: true,
+    });
+    expect(capabilityQuery?.wheres).toEqual([
+      ["seat.id", "=", 12],
+      ["seat.uid", "=", 9001],
+      ["seat.platform", "=", 5],
+      ["seat.third_userid", "=", "seat-user-001"],
+    ]);
+    expect(capabilityQuery?.joinConditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          conditions: expect.arrayContaining([
+            ["bind.third_external_userid", "=", "external-001"],
+            ["bind.biz_status", "=", 1],
+          ]),
+          table: "xy_wap_embed_customer_bind_relation as bind",
+          type: "leftJoin",
+        }),
+      ]),
+    );
+  });
+
   it("returns group name from group seat lookup for sidebar iframe params", async () => {
     const repository = new WorkbenchRepository(
       {
@@ -6081,6 +6271,7 @@ describe("WorkbenchRepository", () => {
           expect(table).toBe("xy_wap_embed_conversation as conversation");
 
           return createQueryBuilder({
+            chat_type: 2,
             group_name: "原始群名",
             group_remark: "备注群名",
             id: 99,
@@ -6090,6 +6281,7 @@ describe("WorkbenchRepository", () => {
             seat_unread_count: 3,
             third_external_userid: null,
             third_group_id: "group-001",
+            third_group_origin_userid: "opening-seat-001",
             third_userid: "seat-user-001",
             uid: 9001,
             unread_cnt: 1,
@@ -6099,7 +6291,10 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("99")).resolves.toEqual({
+      chatType: 2,
       id: "99",
+      isShadowGroup: true,
+      messageSourceThirdUserId: "opening-seat-001",
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
@@ -6110,6 +6305,73 @@ describe("WorkbenchRepository", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
       unreadCount: 1,
+    });
+  });
+
+  it("marks opening and reception accounts in shadow group members", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder({
+              conversation_id: 99,
+              group_seat_id: 1001,
+              platform: 5,
+              third_group_id: "group-001",
+              third_group_origin_userid: " opening-seat-001 ",
+              third_userid: " reception-seat-001 ",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_group_member as member") {
+            return createQueryBuilder([
+              {
+                avatar_url: "https://example.com/opening.png",
+                name: "开通成员",
+                nickname: null,
+                third_user_id: " opening-seat-001 ",
+                type: 2,
+              },
+              {
+                avatar_url: "https://example.com/reception.png",
+                name: "接待成员",
+                nickname: null,
+                third_user_id: " reception-seat-001 ",
+                type: 1,
+              },
+              {
+                avatar_url: "",
+                name: "普通成员",
+                nickname: null,
+                third_user_id: "member-001",
+                type: 0,
+              },
+            ]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.listGroupMembers("99")).resolves.toMatchObject({
+      items: [
+        {
+          displayName: "开通成员",
+          isOpeningAccount: true,
+          thirdUserId: " opening-seat-001 ",
+        },
+        {
+          displayName: "接待成员",
+          isReceptionAccount: true,
+          thirdUserId: " reception-seat-001 ",
+        },
+        {
+          displayName: "普通成员",
+          thirdUserId: "member-001",
+        },
+      ],
     });
   });
 
@@ -6282,9 +6544,9 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageRawContent({
         auditId: 538,
+        messageSourceThirdUserId: "seat-user-001",
         platform: 5,
         thirdExternalUserId: "external-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toBe(JSON.stringify({
@@ -6301,6 +6563,29 @@ describe("WorkbenchRepository", () => {
         ["third_external_id", "=", "external-001"],
       ],
     });
+  });
+
+  it("reads shadow group message raw content from the opening-seat partition", async () => {
+    const query = createQueryBuilder({ content: JSON.stringify({ fileUrl: "voice.amr" }) });
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info");
+          return query;
+        },
+      } as never,
+    );
+
+    await repository.getMessageRawContent({
+      auditId: 539,
+      messageSourceThirdUserId: "opening-seat-001",
+      platform: 5,
+      thirdGroupId: "group-001",
+      uid: 9001,
+    });
+
+    expect(query.wheres).toContainEqual(["third_user_id", "=", "opening-seat-001"]);
+    expect(query.wheres).toContainEqual(["third_group_id", "=", "group-001"]);
   });
 
   it("finds retry message opt no only within the failed conversation message scope", async () => {
@@ -6327,10 +6612,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.findRetryMessage({
         conversationId: "conv-001",
+        messageSourceThirdUserId: "seat-user-001",
         messageSeq: 538,
         platform: 5,
+        receptionThirdUserId: "seat-user-001",
         thirdGroupId: "group-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -6372,10 +6658,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.findRetryMessage({
         conversationId: "conv-001",
+        messageSourceThirdUserId: "seat-user-001",
         messageSeq: 539,
         platform: 5,
+        receptionThirdUserId: "seat-user-001",
         thirdGroupId: "group-001",
-        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     ).resolves.toEqual({
@@ -6383,6 +6670,48 @@ describe("WorkbenchRepository", () => {
       optNo: "failed-opt-539",
       senderType: "customer",
     });
+  });
+
+  it("finds shadow group retry messages in the opening-seat partition and owns them by reception seat", async () => {
+    const queries: Array<{ wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          const query = createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 540,
+            opt_no: "failed-opt-540",
+            third_from_id: "reception-seat-001",
+            third_user_id: "opening-seat-001",
+          });
+          queries.push({ wheres: query.wheres });
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-shadow",
+        messageSourceThirdUserId: "opening-seat-001",
+        messageSeq: 540,
+        platform: 5,
+        receptionThirdUserId: "reception-seat-001",
+        thirdGroupId: "group-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 540,
+      optNo: "failed-opt-540",
+      senderType: "agent",
+    });
+    expect(queries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
   });
 
   it("finds async operation opt params in tenant and platform scope", async () => {
@@ -6506,6 +6835,75 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(updates).toEqual([{ pinned_time: 0 }]);
+  });
+
+  it("clears handoff_msg_id by conversation id", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const wheres: Array<[string, string, unknown]> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation");
+
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+              return this;
+            },
+            execute() {
+              return Promise.resolve([{ numUpdatedRows: 1n }]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.clearConversationHandoff({
+        conversationId: "88",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+    expect(updates).toEqual([{ handoff_msg_id: 0 }]);
+    expect(wheres).toEqual([
+      ["id", "=", 88],
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["biz_status", "=", 1],
+    ]);
+  });
+
+  it("accepts an idempotent handoff clear", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        updateTable() {
+          return {
+            set() {
+              return this;
+            },
+            where() {
+              return this;
+            },
+            execute() {
+              return Promise.resolve([{ numUpdatedRows: 0n }]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.clearConversationHandoff({
+        conversationId: "88",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("hides a conversation in tenant scope", async () => {
@@ -6654,6 +7052,53 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+  });
+
+  it("loads shadow group messages with the opening seat third user id", async () => {
+    const db = createMessagesDb(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          from_type: 2,
+          id: 201,
+          msgid: "shadow-msg-201",
+          third_external_id: null,
+          third_from_id: "member-1",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+        group_seat_id: 7788,
+        third_group_origin_userid: "opening-seat-001",
+        third_userid: "reception-seat-001",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          msgid: "shadow-msg-201",
+        }),
+      ],
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_group_id",
+      "=",
+      "group-1",
+    ]);
   });
 
   it("hydrates group message senders from the conversation group seat without active-status filters", async () => {
@@ -6959,10 +7404,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
         messageSeq: 321,
         platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
         thirdExternalUserId: "external-1",
-        thirdUserId: "seat-third-user-1",
         uid: 9001,
       }),
     ).resolves.toMatchObject({
@@ -6986,10 +7432,11 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
         messageSeq: 321,
         platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
         thirdExternalUserId: "external-1",
-        thirdUserId: "seat-third-user-1",
         uid: 9001,
       }),
     ).resolves.toMatchObject({
@@ -7001,6 +7448,80 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 321]);
     expect(db.messageQueries[0]?.whereExpressions).toEqual([]);
     expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
+  });
+
+  it("keeps ordinary group revoke lookup and ownership on the current seat", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        chat_type: 2,
+        from_type: null,
+        id: 323,
+        msgid: "remote-msg-323",
+        status: 1,
+        third_from_id: "seat-third-user-1",
+        third_group_id: "group-1",
+        third_user_id: "seat-third-user-1",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
+        messageSeq: 323,
+        platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
+        thirdGroupId: "group-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 323,
+      status: "sent",
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+  });
+
+  it("finds shadow group revoke messages in the opening-seat partition and owns them by reception seat", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        chat_type: 2,
+        from_type: null,
+        id: 322,
+        msgid: "remote-msg-322",
+        status: 1,
+        third_from_id: "reception-seat-001",
+        third_group_id: "group-1",
+        third_user_id: "opening-seat-001",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "opening-seat-001",
+        messageSeq: 322,
+        platform: 5,
+        receptionThirdUserId: "reception-seat-001",
+        thirdGroupId: "group-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 322,
+      status: "sent",
+    });
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "opening-seat-001",
+    ]);
   });
 
   it("applies media scope with day and sender filters in history queries", async () => {

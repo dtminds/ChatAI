@@ -1237,6 +1237,35 @@ html.dark[data-appearance-theme="nature"] {
   }
 }
 
+@keyframes message-locate-highlight {
+  0%,
+  30%,
+  60%,
+  100% {
+    background-color: transparent;
+  }
+
+  15%,
+  45% {
+    background-color: color-mix(in oklch, var(--destructive) 10%, transparent);
+  }
+}
+
+[data-message-locate-highlight="true"] {
+  position: relative;
+  z-index: 0;
+}
+
+[data-message-locate-highlight="true"]::before {
+  position: absolute;
+  z-index: -1;
+  inset: -8px -12px;
+  border-radius: 8px;
+  animation: message-locate-highlight 800ms ease-out;
+  content: "";
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shiny-text,
   .animated-text-switch__char,

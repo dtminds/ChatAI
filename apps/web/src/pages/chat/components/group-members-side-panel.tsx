@@ -105,7 +105,10 @@ export function GroupMembersSidePanel({
 
 function GroupMemberRow({ member }: { member: GroupMember }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[6px] px-1 py-1.5">
+    <div
+      className="flex min-w-0 items-center gap-2 rounded-[6px] px-1 py-1.5"
+      data-group-member-id={member.id}
+    >
       <Avatar className="size-7 shrink-0">
         <AvatarImage alt={member.displayName} src={member.avatarUrl} />
         <AvatarFallback className="text-[11px]">
@@ -117,11 +120,23 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
           {member.displayName}
         </div>
       </div>
-      {member.type === GROUP_MEMBER_TYPE.OWNER ? (
-        <Badge variant="secondary" className="h-4 shrink-0 rounded-[4px] px-1 text-[10px]">
-          群主
-        </Badge>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-1">
+        {member.type === GROUP_MEMBER_TYPE.OWNER ? (
+          <Badge variant="secondary" className="h-4 rounded-[4px] px-1 text-[10px]">
+            群主
+          </Badge>
+        ) : null}
+        {member.isOpeningAccount ? (
+          <Badge className="h-4 rounded-[4px] bg-success/10 px-1 text-[10px] text-success">
+            开通号
+          </Badge>
+        ) : null}
+        {member.isReceptionAccount ? (
+          <Badge className="h-4 rounded-[4px] bg-warning/10 px-1 text-[10px] text-warning">
+            接待号
+          </Badge>
+        ) : null}
+      </div>
     </div>
   );
 }

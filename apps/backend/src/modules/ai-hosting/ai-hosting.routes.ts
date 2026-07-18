@@ -3,12 +3,14 @@ import {
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
+  AiHostingGroupSettingsUpdateRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
   type AiHostingAgentTestRequest,
+  type AiHostingGroupSettingsUpdateRequest,
   type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -102,6 +104,25 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingManage(request);
       return apiSuccess(
         await createAiHostingSettingsService(app.db).updateHostingSettings(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: AiHostingGroupSettingsUpdateRequest }>(
+    "/api/server/ai-hosting/group-hosting-settings",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingGroupSettingsUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingSettingsService(app.db).updateGroupHostingSettings(
           getAuthenticatedWorkbenchScope(request.user),
           request.body,
         ),

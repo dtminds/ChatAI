@@ -56,6 +56,7 @@ const agentServiceMock = vi.hoisted(() => ({
   renameAiHostingAgent: vi.fn(),
   testAiHostingAgent: vi.fn(),
   updateAiHostingSettings: vi.fn(),
+  updateAiHostingGroupSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
 const kbServiceMock = vi.hoisted(() => ({
@@ -194,12 +195,20 @@ const mockAgentDetail = {
   updatedAt: 1_718_006_460_000,
 };
 
+const emptyGroupChat = {
+  agentId: null,
+  fullAutoAuth: false,
+  replyMode: null,
+  semiAutoAuth: false,
+} as const;
+
 const mockHostingSettings: AiHostingSettingsResponse = {
   accounts: [
     {
       agentId: null,
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChat: emptyGroupChat,
       id: "101",
       name: "小助理1",
       semiAutoAuth: false,
@@ -208,6 +217,12 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "301",
       avatarUrl: "https://example.com/avatar-102.png",
       fullAutoAuth: true,
+      groupChat: {
+        agentId: "301",
+        fullAutoAuth: true,
+        replyMode: 1,
+        semiAutoAuth: false,
+      },
       id: "102",
       name: "小助理2",
       semiAutoAuth: true,
@@ -216,6 +231,12 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "303",
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChat: {
+        agentId: "303",
+        fullAutoAuth: false,
+        replyMode: null,
+        semiAutoAuth: true,
+      },
       id: "103",
       name: "小助理3",
       semiAutoAuth: true,
@@ -330,6 +351,22 @@ describe("AI hosting pages", () => {
               agentId: "301",
               fullAutoAuth: true,
               semiAutoAuth: true,
+            }
+          : account,
+      ),
+    });
+    vi.mocked(agentService.updateAiHostingGroupSettings).mockResolvedValue({
+      ...mockHostingSettings,
+      accounts: mockHostingSettings.accounts.map((account) =>
+        account.id === "102"
+          ? {
+              ...account,
+              groupChat: {
+                agentId: "301",
+                fullAutoAuth: true,
+                replyMode: 2,
+                semiAutoAuth: true,
+              },
             }
           : account,
       ),
@@ -1188,6 +1225,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("textbox", { name: "搜索托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
     expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "单聊Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "群聊Agent" })).toBeInTheDocument();
     expect(screen.getByText("小助理1")).toBeInTheDocument();
     expect(screen.getByText("小助理2")).toBeInTheDocument();
     expect(screen.getByText("小助理3")).toBeInTheDocument();
@@ -1195,11 +1234,58 @@ describe("AI hosting pages", () => {
       "src",
       "https://example.com/avatar-102.png",
     );
-    expect(screen.getByText("护肤小助理")).toBeInTheDocument();
-    expect(screen.getByText("未发布小助理")).toBeInTheDocument();
-    expect(screen.getAllByText("启用")).toHaveLength(3);
-    expect(screen.getAllByText("关闭")).toHaveLength(3);
-    expect(screen.getAllByRole("button", { name: "设置" })).toHaveLength(3);
+    expect(screen.getAllByText("护肤小助理")).toHaveLength(2);
+    expect(screen.getAllByText("未发布小助理")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /单聊设置$/ })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /群聊设置$/ })).toHaveLength(3);
+  });
+
+  it("opens the group chat settings dialog from row action", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getByRole("button", { name: "小助理2群聊设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "群聊设置" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("小助理2")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("关联Agent")).toBeInTheDocument();
+    expect(within(dialog).getByRole("switch", { name: "允许开启 AI回复" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("group", { name: "回复规则" })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("switch", { name: "允许开启 AI回复" }));
+
+    expect(within(dialog).queryByRole("group", { name: "回复规则" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "保存设置" })).toBeInTheDocument();
+  });
+
+  it("saves group chat settings from the dialog", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getByRole("button", { name: "小助理2群聊设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "群聊设置" });
+
+    await user.click(within(dialog).getByRole("switch", { name: "允许话术推荐" }));
+    await user.click(within(dialog).getByText("回复时@客户"));
+    await user.click(within(dialog).getByRole("button", { name: "保存设置" }));
+
+    await waitFor(() => {
+      expect(agentService.updateAiHostingGroupSettings).toHaveBeenCalledWith({
+        agentId: "301",
+        fullAutoAuth: true,
+        replyMode: 2,
+        semiAutoAuth: true,
+        userSeatIds: ["102"],
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: "群聊设置" })).not.toBeInTheDocument();
   });
 
   it("keeps the hosting settings table header visible while loading", async () => {
@@ -1211,9 +1297,8 @@ describe("AI hosting pages", () => {
 
     expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "托管账号" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "关联 Agent" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "允许开启 AI 回复" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "允许话术推荐" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "单聊Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "群聊Agent" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "正在加载" })).toBeInTheDocument();
     expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
@@ -1238,9 +1323,9 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[1]);
+    await user.click(screen.getByRole("button", { name: "小助理2单聊设置" }));
 
-    const dialog = screen.getByRole("dialog", { name: "设置" });
+    const dialog = screen.getByRole("dialog", { name: "单聊设置" });
 
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveTextContent("小助理2");
@@ -1270,9 +1355,10 @@ describe("AI hosting pages", () => {
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.click(screen.getByRole("checkbox", { name: "选择小助理2" }));
     await user.click(screen.getByRole("checkbox", { name: "选择小助理3" }));
-    await user.click(screen.getByRole("button", { name: "批量设置 2" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+    await user.click(screen.getByRole("menuitem", { name: "单聊设置" }));
 
-    const dialog = screen.getByRole("dialog", { name: "批量设置" });
+    const dialog = screen.getByRole("dialog", { name: "单聊批量设置" });
 
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveTextContent("小助理2");
@@ -1285,7 +1371,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("button", { name: "小助理1单聊设置" }));
     await user.click(screen.getByRole("switch", { name: "允许开启 AI 回复" }));
     await user.click(screen.getByRole("switch", { name: "允许话术推荐" }));
     await user.click(screen.getByRole("button", { name: "保存设置" }));
@@ -1305,9 +1391,8 @@ describe("AI hosting pages", () => {
         userSeatIds: ["101"],
       });
     });
-    expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("启用")).toHaveLength(5);
-    expect(screen.getAllByText("关闭")).toHaveLength(1);
+    expect(screen.queryByRole("dialog", { name: "单聊设置" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("护肤小助理")).toHaveLength(3);
   });
 
   it("blocks enabling full-auto auth when it is unavailable but still allows disabling enabled accounts", async () => {
@@ -1320,7 +1405,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("button", { name: "小助理1单聊设置" }));
 
     const disabledSwitch = screen.getByRole("switch", { name: "允许开启 AI 回复" });
 
@@ -1331,9 +1416,9 @@ describe("AI hosting pages", () => {
     expect(disabledSwitch).not.toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "取消" }));
-    await user.click(screen.getAllByRole("button", { name: "设置" })[1]);
+    await user.click(screen.getByRole("button", { name: "小助理2单聊设置" }));
 
-    const enabledDialog = screen.getByRole("dialog", { name: "设置" });
+    const enabledDialog = screen.getByRole("dialog", { name: "单聊设置" });
     const enabledSwitch = within(enabledDialog).getByRole("switch", { name: "允许开启 AI 回复" });
 
     expect(enabledSwitch).toBeEnabled();
@@ -1349,12 +1434,12 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("button", { name: "小助理1单聊设置" }));
     await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
     await user.click(screen.getByRole("option", { name: "护肤小助理" }));
     await user.click(screen.getByRole("button", { name: "保存设置" }));
 
-    const dialog = screen.getByRole("dialog", { name: "设置" });
+    const dialog = screen.getByRole("dialog", { name: "单聊设置" });
 
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("保存失败，请稍后重试");
@@ -1368,7 +1453,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("button", { name: "小助理1单聊设置" }));
     await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
     await user.click(screen.getByRole("option", { name: "护肤小助理" }));
     await user.click(screen.getByRole("button", { name: "保存设置" }));

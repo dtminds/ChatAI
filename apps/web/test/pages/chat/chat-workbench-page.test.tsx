@@ -159,6 +159,86 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
+  it("locates the loaded handoff trigger message by its existing message seq", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? { ...conversation, handoffMsgId: 3 }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    const targetAnchor = document.querySelector<HTMLElement>(
+      '[data-scroll-anchor="3"]',
+    );
+    const messageViewport = screen.getByTestId("message-scroll-area");
+    const scrollIntoView = vi.fn();
+    expect(targetAnchor).not.toBeNull();
+    Object.defineProperty(targetAnchor!, "scrollIntoView", {
+      configurable: true,
+      value: (...args: unknown[]) => {
+        scrollIntoView(...args);
+        fireEvent.scroll(messageViewport);
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "定位消息" }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(targetAnchor).not.toHaveAttribute("data-message-locate-highlight");
+    await waitFor(() => {
+      expect(targetAnchor).toHaveAttribute(
+        "data-message-locate-highlight",
+        "true",
+      );
+    });
+    expect(workbenchToastWarningMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the view button available and warns when the trigger message is not loaded", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? { ...conversation, handoffMsgId: 9001 }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    const viewMessageButton = screen.getByRole("button", {
+      name: "定位消息",
+    });
+    expect(viewMessageButton).toBeEnabled();
+
+    await user.click(viewMessageButton);
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+      "未找到触发消息，请向上加载更多消息后重试",
+    );
+  });
+
   it("exits full agent mode when cancel agent hosting is clicked", async () => {
     const user = userEvent.setup();
 
@@ -556,6 +636,138 @@ describe("ChatWorkbenchPage", () => {
       within(conversationList).getByText(retainedConversationName ?? ""),
     ).toBeVisible();
     expect(within(conversationList).getByText("新未读客户")).toBeVisible();
+  });
+
+  it("filters read-unreplied conversations locally and keeps the current result set stable", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    act(() => {
+      useWorkbenchStore.setState((state) => {
+        const singleConversations = (state.conversationListsByScope.drc ?? []).filter(
+          (conversation) => conversation.mode === "single",
+        );
+        const [matching, applicationMessage, noMessage, newMatch] =
+          singleConversations;
+
+        if (!matching || !applicationMessage || !noMessage || !newMatch) {
+          return {};
+        }
+
+        return {
+          conversationListsByScope: {
+            ...state.conversationListsByScope,
+            drc: (state.conversationListsByScope.drc ?? []).map((conversation) => {
+              if (conversation.id === matching.id) {
+                return {
+                  ...conversation,
+                  customerBindType: 1,
+                  customerName: "已读未回复客户",
+                  lastMessageId: 1001,
+                  replied: false,
+                  unread: 0,
+                };
+              }
+
+              if (conversation.id === applicationMessage.id) {
+                return {
+                  ...conversation,
+                  customerBindType: 2,
+                  customerName: "应用消息会话",
+                  lastMessageId: 1002,
+                  replied: false,
+                  unread: 0,
+                };
+              }
+
+              if (conversation.id === noMessage.id) {
+                return {
+                  ...conversation,
+                  customerBindType: 1,
+                  customerName: "空会话",
+                  lastMessageId: undefined,
+                  replied: false,
+                  unread: 0,
+                };
+              }
+
+              if (conversation.id === newMatch.id) {
+                return {
+                  ...conversation,
+                  customerBindType: 1,
+                  customerName: "稍后成为未回复",
+                  lastMessageId: 1004,
+                  replied: true,
+                  unread: 0,
+                };
+              }
+
+              return {
+                ...conversation,
+                replied: true,
+              };
+            }),
+          },
+        };
+      });
+    });
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+    );
+
+    const conversationList = screen.getByTestId("conversation-list-scroll-area");
+
+    expect(within(conversationList).getByText("已读未回复客户")).toBeVisible();
+    expect(
+      within(conversationList).queryByText("应用消息会话"),
+    ).not.toBeInTheDocument();
+    expect(within(conversationList).queryByText("空会话")).not.toBeInTheDocument();
+    expect(
+      within(conversationList).queryByText("稍后成为未回复"),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.customerName === "已读未回复客户"
+              ? {
+                  ...conversation,
+                  replied: true,
+                }
+              : conversation.customerName === "稍后成为未回复"
+                ? {
+                    ...conversation,
+                    replied: false,
+                  }
+                : conversation,
+          ),
+        },
+      }));
+    });
+
+    expect(within(conversationList).getByText("已读未回复客户")).toBeVisible();
+    expect(within(conversationList).getByText("稍后成为未回复")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "全部" }));
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+    );
+
+    expect(
+      within(conversationList).queryByText("已读未回复客户"),
+    ).not.toBeInTheDocument();
+    expect(within(conversationList).getByText("稍后成为未回复")).toBeVisible();
   });
 
   it("does not switch to and mark read a conversation that is marked unread inside the unread view", async () => {

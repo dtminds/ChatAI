@@ -1394,8 +1394,13 @@ export function createMemoryWorkbenchService() {
       const nextConversation = {
         ...conversation,
         lastMessage: getPayloadPreview(segments),
+        lastMessageId:
+          outcome.status === "sent"
+            ? backendMessages.at(-1)?.seq
+            : conversation.lastMessageId,
         lastMessageTime: now,
-      };
+        replied: outcome.status === "sent" ? true : conversation.replied,
+      } satisfies WorkbenchConversationSummaryDto;
 
       upsertConversation(state, nextConversation);
       syncSeatLastMessageTime(state, payload.seatId);
@@ -1474,8 +1479,8 @@ export function createMemoryWorkbenchService() {
 function buildInitialState(): MemoryWorkbenchState {
   const conversationsBySeat = {
     drc: sortConversations([
-      conversation("conv-001", "drc", "cust-001", "丹阳草莓，得利市大樱桃", customerAvatarUrl, "这是最新的权益清单截图，你帮我确认下。", "2026-04-14 19:18:32", 2, "single", "high", true),
-      conversation("conv-002", "drc", "cust-002", "睿白鸽", customerAvatarRuiUrl, "早餐能不能换成酸奶和坚果？", "2026-04-13 15:04:16", 0, "single", "medium"),
+      conversation("conv-001", "drc", "cust-001", "丹阳草莓，得利市大樱桃", customerAvatarUrl, "这是最新的权益清单截图，你帮我确认下。", "2026-04-14 19:18:32", 2, "single", "high", { isPinned: true }),
+      conversation("conv-002", "drc", "cust-002", "睿白鸽", customerAvatarRuiUrl, "早餐能不能换成酸奶和坚果？", "2026-04-13 15:04:16", 0, "single", "medium", { replied: false }),
       conversation("conv-003", "drc", "cust-003", "+1.", customerAvatarPlusUrl, "体重平台期了，今天想加一次有氧。", "2026-04-13 05:09:59", 4, "single", "medium"),
       conversation("conv-004", "drc", "cust-004", "营养群-4月减脂冲刺", customerAvatarGroupUrl, "今天的打卡图请统一发到群公告下方。", "2026-04-11 09:44:38", 7, "group", "low"),
       conversation("conv-revoke-only", "drc", "cust-revoke-only", "撤回测试", customerAvatarUrl, "[撤回消息]", "2026-04-10 10:01:00", 0, "single", "low"),
@@ -1682,7 +1687,10 @@ function conversation(
   unreadCount: number,
   mode: WorkbenchConversationSummaryDto["mode"],
   priority: WorkbenchConversationSummaryDto["priority"],
-  isPinned?: boolean,
+  options: {
+    isPinned?: boolean;
+    replied?: boolean;
+  } = {},
 ): WorkbenchConversationSummaryDto {
   return {
     seatId,
@@ -1692,11 +1700,13 @@ function conversation(
     customerBindType: mode === "single" ? 1 : undefined,
     customerId,
     customerName,
-    isPinned,
+    isPinned: options.isPinned,
     lastMessage,
+    lastMessageId: lastMessage ? 1 : undefined,
     lastMessageTime: toTimestamp(lastMessageTime),
     mode,
     priority,
+    replied: options.replied ?? true,
     unreadCount,
   };
 }

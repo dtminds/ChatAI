@@ -153,7 +153,8 @@ type JavaRevokeMessageResponse = {
 
 export type WorkbenchJavaClient = {
   changeConversationFullAuto(input: {
-    change: 1 | 2;
+    /** 0 关闭，1 开启 */
+    change: 0 | 1;
     conversationId: string;
     operatorId: number;
     platform: number;
@@ -170,6 +171,7 @@ export type WorkbenchJavaClient = {
     chatType: number;
     msgIds: number[];
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyPollResponse>;
@@ -178,6 +180,7 @@ export type WorkbenchJavaClient = {
     msgId: number;
     questionImgs: string[];
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
@@ -185,6 +188,7 @@ export type WorkbenchJavaClient = {
     chatType: number;
     msgId: number;
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
@@ -311,6 +315,12 @@ export type WorkbenchJavaClient = {
     syncMembers?: boolean;
     uid: number;
   }): Promise<void>;
+  setGroupSeatHostUserSeatIds(input: {
+    groupSeatId: number;
+    hostUserSeatIds: number[] | null;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   testAgent(input: {
     messages: Array<{
       contents: Array<{
@@ -385,6 +395,7 @@ export function createWorkbenchJavaClient(
           chatType: input.chatType,
           msgIds: input.msgIds,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
           withCacheSeat: true,
@@ -405,6 +416,7 @@ export function createWorkbenchJavaClient(
           msgId: input.msgId,
           questionImgs: input.questionImgs,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
         },
@@ -425,6 +437,7 @@ export function createWorkbenchJavaClient(
           chatType: input.chatType,
           msgId: input.msgId,
           thirdExternalId: input.thirdExternalId,
+          ...withOptionalThirdGroupId(input.thirdGroupId),
           thirdUserId: input.thirdUserId,
           uid: input.uid,
         },
@@ -777,6 +790,21 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "sync-seat-groups",
+      ).then(() => undefined);
+    },
+    setGroupSeatHostUserSeatIds(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/group-seat/set-host-user-seat-ids",
+        {
+          groupSeatId: input.groupSeatId,
+          hostUserSeatIds: input.hostUserSeatIds,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "set-group-seat-host-user-seat-ids",
       ).then(() => undefined);
     },
     testAgent(input) {
@@ -1243,6 +1271,11 @@ function buildJavaLogContext(body: unknown) {
   }
 
   return context;
+}
+
+function withOptionalThirdGroupId(thirdGroupId?: string) {
+  const normalized = thirdGroupId?.trim();
+  return normalized ? { thirdGroupId: normalized } : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

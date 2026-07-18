@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adaptAccount,
   adaptConversation,
+  adaptGroupMember,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
@@ -46,6 +47,45 @@ describe("workbench adapter", () => {
     ).toBe(true);
   });
 
+  it("maps the shadow group capability flag", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        isShadowGroup: true,
+      }).isShadowGroup,
+    ).toBe(true);
+  });
+
+  it("maps conversation reply state and last message identity", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        lastMessageId: 9001,
+        replied: false,
+      }),
+    ).toMatchObject({
+      lastMessageId: 9001,
+      replied: false,
+    });
+  });
+
+  it("maps shadow group member account identities", () => {
+    expect(
+      adaptGroupMember({
+        avatarUrl: "",
+        displayName: "接待成员",
+        isOpeningAccount: true,
+        isReceptionAccount: true,
+        thirdUserId: "member-001",
+        type: 1,
+      }),
+    ).toMatchObject({
+      id: "member-001",
+      isOpeningAccount: true,
+      isReceptionAccount: true,
+    });
+  });
+
   it("adapts conversation biz status for send availability", () => {
     expect(
       adaptConversation({
@@ -54,37 +94,6 @@ describe("workbench adapter", () => {
       }),
     ).toMatchObject({
       bizStatus: 2,
-    });
-  });
-
-  it("adapts conversation preview kind for takeover reminder display", () => {
-    expect(
-      adaptConversation({
-        ...conversationDto,
-        lastMessage: "[接管提醒]请及时接管",
-        lastMessagePreviewParts: [
-          {
-            kind: "takeover-reminder",
-            text: "[接管提醒]",
-            tone: "danger",
-          },
-          {
-            text: "请及时接管",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      preview: "[接管提醒]请及时接管",
-      previewParts: [
-        {
-          kind: "takeover-reminder",
-          text: "[接管提醒]",
-          tone: "danger",
-        },
-        {
-          text: "请及时接管",
-        },
-      ],
     });
   });
 
@@ -167,7 +176,7 @@ describe("workbench adapter", () => {
     });
   });
 
-  it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
+  it("adapts single and group AI assistant enablement", () => {
     expect(
       adaptAccount({
         avatar: "",
@@ -184,6 +193,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      seatGroupAIAssistantEnabled: false,
       seatAIAssistantEnabled: true,
     });
 
@@ -191,6 +201,7 @@ describe("workbench adapter", () => {
       adaptAccount({
         avatar: "",
         description: "",
+        seatGroupAIAssistantEnabled: true,
         loginStatus: "online",
         name: "测试席位",
         operatorName: "测试席位",
@@ -202,6 +213,7 @@ describe("workbench adapter", () => {
         unreadCount: 0,
       }),
     ).toMatchObject({
+      seatGroupAIAssistantEnabled: true,
       seatAIAssistantEnabled: true,
     });
 
@@ -291,6 +303,7 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       isAgentMessage: true,
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
     });
 
     expect(
@@ -306,6 +319,20 @@ describe("adaptMessage", () => {
       ),
     ).not.toMatchObject({
       isAgentMessage: true,
+    });
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
     });
   });
 
@@ -540,6 +567,33 @@ describe("adaptMessage", () => {
     ).toMatchObject({
       isGroupConversation: true,
       isOwnMessage: true,
+      senderDisplayName: undefined,
+    });
+  });
+
+  it("marks shadow group reception sends as own even when message partition is origin", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderAvatar: "",
+          senderName: "护肤小助理-花花?",
+          senderType: "agent",
+          thirdFromId: "reception-seat-001",
+          thirdGroupId: "group-1",
+          thirdUserId: "opening-seat-001",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isGroupConversation: true,
+      isOwnMessage: true,
+      role: "agent",
+      sender: {
+        userId: "reception-seat-001",
+      },
       senderDisplayName: undefined,
     });
   });
@@ -1063,12 +1117,15 @@ describe("adaptMessage", () => {
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
   conversationAIHostingSwitch: false,
+  handoffMsgId: 0,
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",
   lastMessage: "",
+  lastMessageId: 100,
   mode: "group",
   priority: "medium",
+  replied: true,
   seatId: "seat-1",
   thirdGroupId: "group-1",
   thirdUserId: "third-user-1",

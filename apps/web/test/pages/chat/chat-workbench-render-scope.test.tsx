@@ -15,8 +15,15 @@ const chatPanelRenderMock = vi.hoisted(() => vi.fn());
 const conversationListPanelRenderMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/pages/chat/components/chat-panel", () => ({
-  ChatPanel: (props: { activeConversation?: { id: string } }) => {
-    chatPanelRenderMock(props.activeConversation?.id ?? null);
+  ChatPanel: (props: {
+    activeConversation?: { id: string; isShadowGroup?: boolean };
+    onRevokeMessage?: unknown;
+  }) => {
+    chatPanelRenderMock({
+      activeConversationId: props.activeConversation?.id ?? null,
+      isShadowGroup: props.activeConversation?.isShadowGroup,
+      onRevokeMessage: props.onRevokeMessage,
+    });
 
     return (
       <div data-testid="mock-chat-panel">
@@ -170,6 +177,38 @@ describe("ChatWorkbenchPage render scope", () => {
     expect(nextProps.conversations).toBe(firstProps.conversations);
     expect(nextProps.searchableConversations).toBe(
       firstProps.searchableConversations,
+    );
+  });
+
+  it("does not expose the revoke handler for shadow group conversations", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("mock-chat-panel");
+    await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          [state.activeAccountId]: (
+            state.conversationListsByScope[state.activeAccountId] ?? []
+          ).map((conversation) =>
+            conversation.id === state.activeConversationId
+              ? { ...conversation, isShadowGroup: true }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    await waitFor(() =>
+      expect(chatPanelRenderMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeConversationId: "conv-001",
+          isShadowGroup: true,
+          onRevokeMessage: undefined,
+        }),
+      ),
     );
   });
 });

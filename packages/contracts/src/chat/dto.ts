@@ -275,6 +275,16 @@ export type WorkbenchSeatDto = {
   semiAutoSwitch?: boolean;
   /** 席位 AI 话术推荐能力是否开启，对应 `semi_auto_auth && semi_auto_switch` */
   seatAIAssistantEnabled?: boolean;
+  /**
+   * 席位群聊 AI 托管能力是否开启；当前对应
+   * `xy_wap_embed_user_seat_group_agent.full_auto_auth`
+   */
+  seatGroupAIHostingEnabled?: boolean;
+  /**
+   * 席位群聊 AI 话术推荐能力是否开启；当前对应
+   * `xy_wap_embed_user_seat_group_agent.semi_auto_auth`
+   */
+  seatGroupAIAssistantEnabled?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -294,15 +304,17 @@ export type WorkbenchSeatDto = {
   expireTime?: number;
 };
 
-export type WorkbenchConversationPreviewPart = {
-  kind?: "takeover-reminder";
-  text: string;
-  tone?: "danger";
-};
-
 export type WorkbenchConversationSummaryDto = {
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
+  /** 是否为影子群会话；影子群暂不支持消息撤回 */
+  isShadowGroup?: boolean;
+  /** 转人工触发消息 ID，对应 `xy_wap_embed_conversation.handoff_msg_id`；`0` 表示无提醒 */
+  handoffMsgId: number;
+  /** 当前会话最后一条审计消息 ID */
+  lastMessageId?: number;
+  /** 是否已经回复，对应 `xy_wap_embed_conversation.reply` */
+  replied: boolean;
   /** 客户绑定类型，对应 `xy_wap_embed_customer_bind_relation.bind_type`：1 普通客户，2 应用消息 */
   customerBindType?: number;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
@@ -321,7 +333,6 @@ export type WorkbenchConversationSummaryDto = {
   /** 群原始名称（当使用备注展示时） */
   groupOriginalName?: string;
   lastMessage: string;
-  lastMessagePreviewParts?: WorkbenchConversationPreviewPart[];
   lastMessageTime?: number;
   unreadCount: number;
   mode: "single" | "group";
@@ -799,6 +810,11 @@ export type WorkbenchConversationFullAutoResponse = {
   seatId: string;
 };
 
+export type WorkbenchConversationClearHandoffResponse = {
+  conversationId: string;
+  seatId: string;
+};
+
 export type WorkbenchSeatAgentMode = "assistant" | "autoReply" | "off";
 
 export type WorkbenchSeatAgentModeSwitchRequest = {
@@ -832,6 +848,8 @@ export type WorkbenchGroupMemberDto = {
   thirdUserId: string;
   displayName: string;
   avatarUrl: string;
+  isOpeningAccount?: boolean;
+  isReceptionAccount?: boolean;
   nickname?: string;
   type: WorkbenchGroupMemberType;
 };

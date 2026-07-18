@@ -87,7 +87,6 @@ import {
 } from "./kb-components/kb-attachment-types";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
-import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   getKbDoc,
   getKb,
@@ -96,11 +95,6 @@ import {
   toKbListViewItem,
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
-import {
-  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
-  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
-  isQuotaReached,
-} from "./quota";
 
 const PAGE_SIZE = 10;
 
@@ -197,7 +191,6 @@ export function KbDetailPage() {
   const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
-  const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const [detailTab, setDetailTab] = useState("knowledge");
   const [activeAttachmentType, setActiveAttachmentType] = useState<KbAttachmentType>(
     KB_ATTACHMENT_TYPE.IMAGE,
@@ -412,33 +405,14 @@ export function KbDetailPage() {
     }
   }
 
-  async function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
-    if (checkingKnowledgeQuota) {
-      return;
+  function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
+    if (optionType === "qa") {
+      setQaDialogDefaultAddMethod("file");
+      setImportQaDialogOpen(true);
     }
 
-    setCheckingKnowledgeQuota(true);
-
-    try {
-      const quota = await fetchAiHostingQuota({ force: true });
-
-      if (quota && isQuotaReached(quota.kbDocs)) {
-        toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
-        return;
-      }
-
-      if (optionType === "qa") {
-        setQaDialogDefaultAddMethod("file");
-        setImportQaDialogOpen(true);
-      }
-
-      if (optionType === "document") {
-        setDocumentDialogOpen(true);
-      }
-    } catch {
-      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
-    } finally {
-      setCheckingKnowledgeQuota(false);
+    if (optionType === "document") {
+      setDocumentDialogOpen(true);
     }
   }
 
@@ -538,10 +512,7 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <AddKnowledgeMenu
-                disabled={checkingKnowledgeQuota}
-                onSelect={(type) => void handleAddKnowledgeSelect(type)}
-              />
+              <AddKnowledgeMenu onSelect={handleAddKnowledgeSelect} />
             </div>
           </div>
 

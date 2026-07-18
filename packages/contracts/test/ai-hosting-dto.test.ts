@@ -8,6 +8,7 @@ import {
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
   AiHostingAgentTestResponseSchema,
+  AiHostingLearningCandidateIdSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
   KbDocCreateRequestSchema,
@@ -19,6 +20,12 @@ import {
 } from "../src";
 
 describe("AI hosting DTOs", () => {
+  it("accepts only numeric learning candidate ids", () => {
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001")).toBe(true);
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "ENC-CANDIDATE-001")).toBe(false);
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001/2")).toBe(false);
+  });
+
   it("accepts Chinese prompt config values for agent saves", () => {
     expect(
       Value.Check(AiHostingAgentSaveRequestSchema, {

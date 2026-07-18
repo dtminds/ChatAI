@@ -18,7 +18,7 @@ import {
   type AgentLearningJavaClient,
   type AgentLearningJavaListItem,
 } from "./agent-learning-java-client.js";
-import { parseMySqlId } from "./ai-hosting-id-utils.js";
+import { normalizeIdList, parseMySqlId } from "./ai-hosting-id-utils.js";
 
 type AgentWriteContext = {
   operatorSubUserId: string;
@@ -100,18 +100,25 @@ export class AgentLearningService {
     );
     const targetKbId = parseMySqlId(payload.targetKbId);
     const targetDocId = parseMySqlId(payload.targetDocId);
+    const question = payload.question.trim();
+    const answer = payload.answer.trim();
 
     if (targetKbId == null || targetDocId == null) {
       throw new BadRequestError("INVALID_TARGET", "请选择有效的知识库和知识");
     }
 
+    if (!question || !answer) {
+      throw new BadRequestError("INVALID_CANDIDATE_CONTENT", "问题和答案不能为空");
+    }
+
     await this.assertAgentInScope(context.uid, numericAgentId);
+    await this.assertCandidatesInScope(context.uid, numericAgentId, [normalizedCandidateId]);
     await this.assertKbDocInScope(context.uid, targetKbId, targetDocId);
     await this.javaClient.approve({
-      answer: payload.answer.trim(),
+      answer,
       id: normalizedCandidateId,
       operatorId,
-      question: payload.question.trim(),
+      question,
       targetDocId,
       targetKbId,
       uid: context.uid,
@@ -133,6 +140,7 @@ export class AgentLearningService {
     );
 
     await this.assertAgentInScope(context.uid, numericAgentId);
+    await this.assertCandidatesInScope(context.uid, numericAgentId, [normalizedCandidateId]);
     await this.javaClient.reject({
       id: normalizedCandidateId,
       operatorId,
@@ -152,7 +160,7 @@ export class AgentLearningService {
     const operatorId = parseMySqlId(context.operatorSubUserId);
     const targetKbId = parseMySqlId(payload.targetKbId);
     const targetDocId = parseMySqlId(payload.targetDocId);
-    const ids = uniqueCandidateIds(payload.ids);
+    const ids = normalizeCandidateIds(payload.ids);
 
     if (numericAgentId == null) {
       throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
@@ -166,11 +174,12 @@ export class AgentLearningService {
       throw new BadRequestError("INVALID_TARGET", "请选择有效的知识库和知识");
     }
 
-    if (ids.length === 0) {
+    if (!ids || ids.length === 0) {
       throw new BadRequestError("INVALID_CANDIDATE", "请选择优化建议");
     }
 
     await this.assertAgentInScope(context.uid, numericAgentId);
+    await this.assertCandidatesInScope(context.uid, numericAgentId, ids);
     await this.assertKbDocInScope(context.uid, targetKbId, targetDocId);
     const result = await this.javaClient.batchApprove({
       ids,
@@ -196,7 +205,7 @@ export class AgentLearningService {
   ): Promise<AiHostingLearningCandidateBatchRejectResponse> {
     const numericAgentId = parseMySqlId(agentId);
     const operatorId = parseMySqlId(context.operatorSubUserId);
-    const ids = uniqueCandidateIds(payload.ids);
+    const ids = normalizeCandidateIds(payload.ids);
 
     if (numericAgentId == null) {
       throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
@@ -206,11 +215,12 @@ export class AgentLearningService {
       throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
     }
 
-    if (ids.length === 0) {
+    if (!ids || ids.length === 0) {
       throw new BadRequestError("INVALID_CANDIDATE", "请选择优化建议");
     }
 
     await this.assertAgentInScope(context.uid, numericAgentId);
+    await this.assertCandidatesInScope(context.uid, numericAgentId, ids);
     const updatedCount = await this.javaClient.batchReject({
       ids,
       operatorId,
@@ -252,6 +262,26 @@ export class AgentLearningService {
 
     if (!agent) {
       throw new NotFoundError("AGENT_NOT_FOUND", "Agent 不存在");
+    }
+  }
+
+  private async assertCandidatesInScope(uid: number, agentId: number, candidateIds: string[]) {
+    const numericCandidateIds = normalizeIdList(candidateIds);
+
+    if (!numericCandidateIds || numericCandidateIds.length !== candidateIds.length) {
+      throw new BadRequestError("INVALID_CANDIDATE", "优化建议不存在");
+    }
+
+    const candidates = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_learning_candidate")
+      .select("id")
+      .where("id", "in", numericCandidateIds)
+      .where("uid", "=", uid)
+      .where("agent_id", "=", agentId)
+      .execute();
+
+    if (candidates.length !== numericCandidateIds.length) {
+      throw new BadRequestError("INVALID_CANDIDATE", "优化建议不存在");
     }
   }
 
@@ -350,27 +380,14 @@ function normalizePagination(options: { page?: number; pageSize?: number }) {
   return { page, pageSize };
 }
 
-function uniqueCandidateIds(ids: string[]) {
-  return [
-    ...new Set(
-      ids
-        .map((id) => id.trim())
-        .filter((id) => id.length > 0),
-    ),
-  ];
+function normalizeCandidateIds(ids: string[]) {
+  const numericIds = normalizeIdList(ids.map((id) => id.trim()));
+  return numericIds?.map(String) ?? null;
 }
 
 function normalizeCandidateId(value: string | number | null | undefined) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed || null;
-  }
-
-  return null;
+  const candidateId = parseMySqlId(value);
+  return candidateId == null ? null : String(candidateId);
 }
 
 function toOptionalTimestamp(value: Date | string | number | null | undefined) {

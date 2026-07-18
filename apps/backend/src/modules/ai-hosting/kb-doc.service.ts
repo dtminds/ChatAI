@@ -356,6 +356,7 @@ export class KbDocService {
     }
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocStorageQuotaAvailable(uid, 0);
 
     const docUrl = resolveKbDocUrlForJava(options.docUrl);
     const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();

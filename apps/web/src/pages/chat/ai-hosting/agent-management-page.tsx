@@ -4,10 +4,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Add01Icon,
-  AiAudioIcon,
   AiBookIcon,
   ArrowRight01Icon,
+  ArtificialIntelligence03Icon,
   CheckmarkCircle02Icon,
+  InformationCircleIcon,
   MoreHorizontalIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -22,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,7 +35,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -41,7 +42,6 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -121,7 +121,6 @@ export function AgentManagementPage() {
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
   const [selfLearningTarget, setSelfLearningTarget] = useState<AgentRecord | null>(null);
-  const [selfLearningEnabled, setSelfLearningEnabled] = useState(false);
   const [selfLearningSaving, setSelfLearningSaving] = useState(false);
   const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
@@ -219,21 +218,26 @@ export function AgentManagementPage() {
       return;
     }
 
+    const targetAgentId = selfLearningTarget.id;
     setSelfLearningSaving(true);
 
     try {
-      await updateAiHostingAgentAutoLearn(selfLearningTarget.id, {
-        enabled: selfLearningEnabled,
+      const result = await updateAiHostingAgentAutoLearn(targetAgentId, {
+        enabled: !selfLearningTarget.autoLearnEnabled,
       });
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === targetAgentId
+            ? {
+                ...agent,
+                autoLearnEnabled: result.autoLearnEnabled,
+                pendingSuggestionCount: result.pendingSuggestionCount,
+              }
+            : agent,
+        ),
+      );
       setSelfLearningTarget(null);
       toast.success("已保存");
-      const response = await listAiHostingAgents({
-        page: activePage,
-        pageSize: AGENT_PAGE_SIZE,
-        query: debouncedAgentSearchQuery,
-      });
-      setAgents(response.agents);
-      setTotalAgents(response.pagination.total);
     } catch (error) {
       toast.error(isRequestError(error) ? error.message : "保存失败");
     } finally {
@@ -326,10 +330,7 @@ export function AgentManagementPage() {
               agents={agents}
               canManage={canManage}
               loading={loading}
-              onOpenSelfLearning={(agent) => {
-                setSelfLearningTarget(agent);
-                setSelfLearningEnabled(agent.autoLearnEnabled);
-              }}
+              onOpenSelfLearning={setSelfLearningTarget}
               onRemove={setRemoveTarget}
             />
             <TablePagination
@@ -405,47 +406,58 @@ export function AgentManagementPage() {
           </div>
           <div className="space-y-5 p-6">
             <DialogHeader className="space-y-2">
-              <DialogTitle>Agent 自主进化</DialogTitle>
+              <DialogTitle aria-label="Agent 自主进化" className="flex items-center gap-2">
+                <span>Agent 自主进化</span>
+                <Badge
+                  className={cn(
+                    "px-2 py-0.5",
+                    selfLearningTarget?.autoLearnEnabled
+                      ? "bg-success/12 text-success"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {selfLearningTarget?.autoLearnEnabled ? "已开启" : "未开启"}
+                </Badge>
+              </DialogTitle>
               <DialogDescription className="leading-6">
                 从对话中自动提炼 FAQ 候选，结合知识库进行智能评测，辅助高价值内容入库
               </DialogDescription>
             </DialogHeader>
-            <div className="flex items-center justify-between gap-4">
+            <div>
               <p className="inline-flex items-center gap-1.5 text-sm text-warning">
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={CheckmarkCircle02Icon}
+                  icon={InformationCircleIcon}
                   size={16}
                   strokeWidth={1.8}
                 />
-                开启自主进化将同时开启会话洞察功能
+                自主进化依赖会话洞察功能，请同步启用会话洞察
               </p>
-              <Switch
-                aria-label="开启自主进化"
-                checked={selfLearningEnabled}
-                disabled={!canManage || selfLearningSaving}
-                onCheckedChange={setSelfLearningEnabled}
-              />
             </div>
-            <DialogFooter>
+            <div className="flex justify-end">
               <Button
-                disabled={selfLearningSaving}
-                onClick={() => setSelfLearningTarget(null)}
-                type="button"
-                variant="outline"
-              >
-                取消
-              </Button>
-              <Button
+                className={cn(
+                  "min-w-40 rounded-full shadow-none",
+                  !selfLearningTarget?.autoLearnEnabled &&
+                    "bg-black text-white hover:bg-black/85",
+                )}
                 disabled={!canManage || selfLearningSaving}
                 onClick={() => {
                   void handleSelfLearningConfirm();
                 }}
+                size="lg"
                 type="button"
+                variant={selfLearningTarget?.autoLearnEnabled ? "secondary" : "default"}
               >
-                确定
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ArtificialIntelligence03Icon}
+                  size={17}
+                  strokeWidth={1.8}
+                />
+                {selfLearningTarget?.autoLearnEnabled ? "关闭自主进化" : "启用自主进化"}
               </Button>
-            </DialogFooter>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -541,7 +553,12 @@ function AgentCard({
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon aria-hidden="true" icon={AiAudioIcon} size={16} strokeWidth={1.8} />
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={ArtificialIntelligence03Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>

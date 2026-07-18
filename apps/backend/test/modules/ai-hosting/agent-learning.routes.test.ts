@@ -21,6 +21,17 @@ async function createAuthenticatedApp(
         status: 1,
         uid: 9001,
       },
+      {
+        id: 11,
+        prompt_config: "{}",
+        status: 1,
+        uid: 9001,
+      },
+    ],
+    learningCandidates: [
+      { agent_id: 10, id: 1001 },
+      { agent_id: 11, id: 1002 },
+      { agent_id: 10, id: 1003, uid: 9002 },
     ],
   }) as never;
 
@@ -56,7 +67,7 @@ describe("ai-hosting agent-learning routes", () => {
               aiReason: "推荐入库",
               createTime: "2026-07-16T15:12:04",
               customerQuestion: "原问题",
-              id: "ENC-CANDIDATE-001",
+              id: "1001",
               status: 0,
               suggestedAnswer: "精炼答案",
               suggestedQuestion: "精炼问题",
@@ -96,7 +107,7 @@ describe("ai-hosting agent-learning routes", () => {
     expect(body.data.candidates).toHaveLength(1);
     expect(body.data.candidates[0]).toMatchObject({
       answer: "精炼答案",
-      id: "ENC-CANDIDATE-001",
+      id: "1001",
       question: "精炼问题",
       rationale: "推荐入库",
       status: "pending",
@@ -121,7 +132,7 @@ describe("ai-hosting agent-learning routes", () => {
     });
   });
 
-  it("approves a candidate with encrypted id via Java", async () => {
+  it("approves a numeric candidate in the route agent scope", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -150,7 +161,7 @@ describe("ai-hosting agent-learning routes", () => {
         targetDocId: "1001",
         targetKbId: "1",
       },
-      url: "/api/server/ai-hosting/agents/10/learning-candidates/ENC-CANDIDATE-001/approve",
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/approve",
     });
 
     expect(response.statusCode).toBe(200);
@@ -159,10 +170,151 @@ describe("ai-hosting agent-learning routes", () => {
       success: true,
     });
     expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toMatchObject({
-      id: "ENC-CANDIDATE-001",
+      id: "1001",
       targetDocId: 1001,
       targetKbId: 1,
       uid: 9001,
+    });
+  });
+
+  it("rejects a candidate that belongs to another agent without calling Java", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        answer: "答案",
+        question: "问题",
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1002/approve",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects ignoring a candidate that belongs to another agent", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {},
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1002/reject",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a candidate that belongs to another tenant", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {},
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1003/reject",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a batch containing candidates outside the route agent scope", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        ids: ["1001", "1002"],
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/batch-approve",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects batch ignoring candidates outside the route agent scope", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        ids: ["1001", "1002"],
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/batch-reject",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects blank candidate content after trimming", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        answer: "\n",
+        question: "   ",
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/approve",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("trims candidate content before forwarding to Java", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, data: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "POST",
+      payload: {
+        answer: "  答案  ",
+        question: "  问题  ",
+        targetDocId: "1001",
+        targetKbId: "1",
+      },
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/approve",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toMatchObject({
+      answer: "答案",
+      question: "问题",
     });
   });
 });

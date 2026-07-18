@@ -252,6 +252,50 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("allows zero-byte blank docs when storage usage is exactly at the limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3012);
+    const context = await createAuthenticatedApp("admin", {
+      docSizeBytes: [1024 * 1024 * 1024, 0, 0, 0, 0],
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "额度满时的空白问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("rejects blank docs when stored usage already exceeds the limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3013);
+    const context = await createAuthenticatedApp("admin", {
+      docSizeBytes: [1024 * 1024 * 1024 + 1, 0, 0, 0, 0],
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "异常配额下的空白问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("rejects creating docs when tenant document storage quota would be exceeded", async () => {
     const fetchMock = mockJavaKbDocCreateFetch(3009);
     const context = await createAuthenticatedApp("admin", {

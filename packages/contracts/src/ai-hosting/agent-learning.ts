@@ -53,8 +53,11 @@ export const AiHostingLearningCandidateRejectRequestSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** 候选 ID 可能是 Java 加密串，不再限制纯数字 */
-export const AiHostingLearningCandidateIdSchema = Type.String({ minLength: 1, maxLength: 128 });
+export const AiHostingLearningCandidateIdSchema = Type.String({
+  maxLength: 20,
+  minLength: 1,
+  pattern: "^[0-9]+$",
+});
 
 export const AiHostingLearningCandidateBatchApproveRequestSchema = Type.Object(
   {

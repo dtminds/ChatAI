@@ -27,6 +27,7 @@
 - 前端业务请求统一从 `apps/web/src/lib/request.ts` 出口发起，不直接在页面里裸写 `fetch`。
 - 前后端共享 DTO 和响应结构优先放到 `packages/contracts`，不要在 web/backend 两边复制类型。
 - 鉴权使用 Bearer token；所有环境都必须走正常登录、JWT 和 session 校验，不再提供开发绕过。
+- 本项目所有作为 ID 使用的 MySQL `BIGINT AUTO_INCREMENT` 字段，按业务容量约定不会触及 JavaScript `Number.MAX_SAFE_INTEGER`。代码实现和契约可以使用 `number`；Review 时禁止仅因字段是 `BIGINT`、移除了字符串转换或统一为 `number`，提出 ID 精度丢失、溢出或安全整数越界问题。
 
 ## Web Working Agreements
 

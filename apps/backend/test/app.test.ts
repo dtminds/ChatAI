@@ -2834,12 +2834,32 @@ describe("backend app", () => {
       status: "accepted",
     });
     expect(poll.statusCode).toBe(200);
-    expect(poll.json().conversationChanges[0]).toMatchObject({
+    const pollBody = poll.json<{
+      activeConversationMessages: Array<{
+        conversationId: string;
+        optNo?: string;
+        seq: number;
+        status: string;
+      }>;
+      conversationChanges: Array<{
+        conversationId: string;
+        lastMessage: string;
+        lastMessageId?: number;
+        type: string;
+      }>;
+    }>();
+    const sentMessage = pollBody.activeConversationMessages.find(
+      (message) => message.optNo === sendBody.optNo,
+    );
+
+    expect(pollBody.conversationChanges[0]).toMatchObject({
       conversationId: "conv-001",
       lastMessage: "后端 mock 发送测试",
+      lastMessageId: sentMessage?.seq,
       type: "upsert",
     });
-    expect(poll.json().activeConversationMessages).toMatchObject([
+    expect(typeof pollBody.conversationChanges[0]?.lastMessageId).toBe("number");
+    expect(pollBody.activeConversationMessages).toMatchObject([
       {
         conversationId: "conv-001",
         optNo: sendBody.optNo,
@@ -2847,11 +2867,11 @@ describe("backend app", () => {
       },
     ]);
     expect(
-      poll.json().activeConversationMessages.some(
+      pollBody.activeConversationMessages.some(
         (message) => message.optNo === sendBody.optNo,
       ),
     ).toBe(true);
-    expect(poll.json().activeConversationMessages[0]).toMatchObject({
+    expect(pollBody.activeConversationMessages[0]).toMatchObject({
       conversationId: "conv-001",
       optNo: sendBody.optNo,
       status: "sent",

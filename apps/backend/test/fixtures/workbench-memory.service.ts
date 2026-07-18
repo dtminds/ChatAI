@@ -1396,11 +1396,11 @@ export function createMemoryWorkbenchService() {
         lastMessage: getPayloadPreview(segments),
         lastMessageId:
           outcome.status === "sent"
-            ? backendMessages.at(-1)?.msgid
+            ? backendMessages.at(-1)?.seq
             : conversation.lastMessageId,
         lastMessageTime: now,
         replied: outcome.status === "sent" ? true : conversation.replied,
-      };
+      } satisfies WorkbenchConversationSummaryDto;
 
       upsertConversation(state, nextConversation);
       syncSeatLastMessageTime(state, payload.seatId);

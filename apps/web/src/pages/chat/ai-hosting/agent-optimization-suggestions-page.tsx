@@ -79,7 +79,7 @@ const PAGE_SIZE = 10;
 
 const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "待处理", value: "pending" },
-  { label: "已入库", value: "adopted" },
+  { label: "已采纳", value: "adopted" },
   { label: "已忽略", value: "ignored" },
   { label: "智能过滤", value: "filtered" },
 ];
@@ -629,7 +629,7 @@ export function AgentOptimizationSuggestionsPage() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>入库</DialogTitle>
+            <DialogTitle>采纳入库</DialogTitle>
             <DialogDescription className="sr-only">
               选择知识库和知识后确认入库
             </DialogDescription>

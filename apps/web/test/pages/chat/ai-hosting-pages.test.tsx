@@ -764,7 +764,7 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
 
-    const singleIngestDialog = screen.getByRole("dialog", { name: "入库" });
+    const singleIngestDialog = screen.getByRole("dialog", { name: "采纳入库" });
     const knowledgeBaseCombobox = within(singleIngestDialog).getByRole("combobox", {
       name: /选择知识库/,
     });
@@ -787,7 +787,7 @@ describe("AI hosting pages", () => {
     await user.click(screen.getAllByRole("checkbox")[0]);
     await user.click(screen.getByRole("button", { name: "批量入库" }));
 
-    const batchIngestDialog = screen.getByRole("dialog", { name: "入库" });
+    const batchIngestDialog = screen.getByRole("dialog", { name: "采纳入库" });
     expect(within(batchIngestDialog).getByRole("combobox", { name: /选择知识库/ })).toBeInTheDocument();
     expect(within(batchIngestDialog).queryByLabelText(/问题/)).not.toBeInTheDocument();
     expect(within(batchIngestDialog).queryByLabelText(/答案/)).not.toBeInTheDocument();
@@ -800,7 +800,7 @@ describe("AI hosting pages", () => {
     );
     await user.click(screen.getByRole("button", { name: "确认" }));
 
-    await user.click(screen.getByRole("button", { name: "已入库" }));
+    await user.click(screen.getByRole("button", { name: "已采纳" }));
 
     expect(screen.queryByRole("button", { name: "批量操作" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "批量入库" })).not.toBeInTheDocument();
@@ -843,7 +843,7 @@ describe("AI hosting pages", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
-    const dialog = screen.getByRole("dialog", { name: "入库" });
+    const dialog = screen.getByRole("dialog", { name: "采纳入库" });
     await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
     await user.click(screen.getByRole("option", { name: "华为产品知识" }));
 
@@ -878,7 +878,7 @@ describe("AI hosting pages", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
-    const dialog = screen.getByRole("dialog", { name: "入库" });
+    const dialog = screen.getByRole("dialog", { name: "采纳入库" });
     await user.click(within(dialog).getByRole("combobox", { name: /选择知识库/ }));
     await user.click(screen.getByRole("option", { name: "华为产品知识" }));
 
@@ -903,7 +903,7 @@ describe("AI hosting pages", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "采纳" }))[0]);
 
-    const dialog = screen.getByRole("dialog", { name: "入库" });
+    const dialog = screen.getByRole("dialog", { name: "采纳入库" });
     const questionInput = within(dialog).getByLabelText(/问题/);
     const answerInput = within(dialog).getByLabelText(/答案/);
 
@@ -929,7 +929,7 @@ describe("AI hosting pages", () => {
       "_blank",
       "noopener,noreferrer",
     );
-    expect(screen.getByRole("dialog", { name: "入库" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "采纳入库" })).toBeInTheDocument();
     expect(questionInput).toHaveValue("编辑后的问题");
     expect(answerInput).toHaveValue("编辑后的答案");
     expect(screen.queryByRole("option", { name: "添加知识" })).not.toBeInTheDocument();

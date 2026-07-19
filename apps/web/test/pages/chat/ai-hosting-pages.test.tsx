@@ -196,7 +196,17 @@ const mockLearningCandidates = [
     id: "1",
     question: "这个商品现在还有货吗？",
     rationale: "这是一段理由说明这是一段理由说明这是一段理由说明这是一段理由说明",
+    seat: {
+      avatar: "https://example.com/seat.png",
+      id: "seat-1",
+      name: "客服小王",
+    },
     status: "pending" as const,
+    user: {
+      avatar: "https://example.com/user.png",
+      id: "user-1",
+      name: "客户小李",
+    },
   },
   {
     answer:
@@ -776,6 +786,13 @@ describe("AI hosting pages", () => {
     ).not.toHaveFocus();
     expect(within(singleIngestDialog).getByLabelText(/问题/)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByLabelText(/答案/)).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByRole("heading", { name: "AI 评测" })).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText(mockLearningCandidates[0].rationale)).toBeInTheDocument();
+    expect(
+      within(singleIngestDialog).getByRole("heading", { name: "来源会话" }),
+    ).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText("客服小王")).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText("客户小李")).toBeInTheDocument();
     await user.click(within(singleIngestDialog).getByRole("button", { name: "取消" }));
 
     await user.click(screen.getByRole("button", { name: "批量操作" }));
@@ -793,6 +810,10 @@ describe("AI hosting pages", () => {
     expect(within(batchIngestDialog).getByRole("combobox", { name: /选择知识库/ })).toBeInTheDocument();
     expect(within(batchIngestDialog).queryByLabelText(/问题/)).not.toBeInTheDocument();
     expect(within(batchIngestDialog).queryByLabelText(/答案/)).not.toBeInTheDocument();
+    expect(within(batchIngestDialog).getByText("已选择 1 条建议")).toBeInTheDocument();
+    expect(
+      within(batchIngestDialog).queryByRole("heading", { name: "来源会话" }),
+    ).not.toBeInTheDocument();
     await user.click(within(batchIngestDialog).getByRole("button", { name: "取消" }));
 
     await user.click(screen.getByRole("button", { name: "批量忽略" }));

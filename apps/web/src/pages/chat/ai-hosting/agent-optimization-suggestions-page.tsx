@@ -187,6 +187,10 @@ export function AgentOptimizationSuggestionsPage() {
   const canManage = canManageAiHostingAgents(role);
   const canBatchOperate = canManage && activeStatus !== "adopted";
   const canSelect = canBatchOperate && batchMode;
+  const ingestPreviewCandidate =
+    ingestMode === "single"
+      ? candidates.find((candidate) => candidate.id === ingestTargetIds[0]) ?? null
+      : null;
 
   function toggleSuggestion(id: string, checked: boolean) {
     setSelectedIds((current) =>
@@ -589,7 +593,7 @@ export function AgentOptimizationSuggestionsPage() {
         open={ingestMode != null}
       >
         <DialogContent
-          className="max-w-xl"
+          className="max-w-4xl"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             knowledgeBaseSelectRef.current?.focus();
@@ -602,100 +606,106 @@ export function AgentOptimizationSuggestionsPage() {
             </DialogDescription>
           </DialogHeader>
           <TooltipProvider>
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="optimization-kb-select">
-                    选择知识库 <span className="text-destructive">*</span>
-                  </Label>
-                  <RefreshListButton
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="optimization-kb-select">
+                      选择知识库 <span className="text-destructive">*</span>
+                    </Label>
+                    <RefreshListButton
+                      disabled={knowledgeBasesLoading || ingestSubmitting}
+                      label="刷新知识库列表"
+                      loading={knowledgeBasesLoading}
+                      onClick={() => {
+                        void handleRefreshKnowledgeBases();
+                      }}
+                    />
+                  </div>
+                  <Select
                     disabled={knowledgeBasesLoading || ingestSubmitting}
-                    label="刷新知识库列表"
-                    loading={knowledgeBasesLoading}
-                    onClick={() => {
-                      void handleRefreshKnowledgeBases();
+                    onValueChange={(value) => {
+                      setSelectedKnowledgeBaseId(value);
+                      setSelectedKnowledge(null);
+                      setKnowledgePickerOpen(false);
                     }}
-                  />
+                    value={selectedKnowledgeBaseId}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      id="optimization-kb-select"
+                      ref={knowledgeBaseSelectRef}
+                    >
+                      <SelectValue
+                        placeholder={
+                          knowledgeBasesLoading ? "正在加载" : "请选择"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {knowledgeBases.map((knowledgeBase) => (
+                        <SelectItem key={knowledgeBase.id} value={knowledgeBase.id}>
+                          {knowledgeBase.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Select
-                  disabled={knowledgeBasesLoading || ingestSubmitting}
-                  onValueChange={(value) => {
-                    setSelectedKnowledgeBaseId(value);
-                    setSelectedKnowledge(null);
-                    setKnowledgePickerOpen(false);
-                  }}
-                  value={selectedKnowledgeBaseId}
-                >
-                  <SelectTrigger
-                    className="w-full"
-                    id="optimization-kb-select"
-                    ref={knowledgeBaseSelectRef}
+                <div className="space-y-2">
+                  <Label htmlFor="optimization-knowledge-select">
+                    选择知识 <span className="text-destructive">*</span>
+                  </Label>
+                  <Button
+                    aria-label="选择知识"
+                    className="w-full justify-start px-3 font-normal"
+                    disabled={!selectedKnowledgeBase || ingestSubmitting}
+                    id="optimization-knowledge-select"
+                    onClick={() => setKnowledgePickerOpen(true)}
+                    type="button"
+                    variant="outline"
                   >
-                    <SelectValue
-                      placeholder={
-                        knowledgeBasesLoading ? "正在加载" : "请选择"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {knowledgeBases.map((knowledgeBase) => (
-                      <SelectItem key={knowledgeBase.id} value={knowledgeBase.id}>
-                        {knowledgeBase.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <span
+                      className={cn(
+                        "min-w-0 truncate",
+                        selectedKnowledge ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {selectedKnowledge?.nameWithExtension ?? "请选择"}
+                    </span>
+                  </Button>
+                </div>
+                {ingestMode === "single" ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="optimization-question">
+                        问题 <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        disabled={ingestSubmitting}
+                        id="optimization-question"
+                        onChange={(event) => setIngestQuestion(event.target.value)}
+                        value={ingestQuestion}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="optimization-answer">
+                        答案 <span className="text-destructive">*</span>
+                      </Label>
+                      <Textarea
+                        className="min-h-24 resize-none"
+                        disabled={ingestSubmitting}
+                        id="optimization-answer"
+                        onChange={(event) => setIngestAnswer(event.target.value)}
+                        value={ingestAnswer}
+                      />
+                    </div>
+                  </>
+                ) : null}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="optimization-knowledge-select">
-                  选择知识 <span className="text-destructive">*</span>
-                </Label>
-                <Button
-                  aria-label="选择知识"
-                  className="w-full justify-start px-3 font-normal"
-                  disabled={!selectedKnowledgeBase || ingestSubmitting}
-                  id="optimization-knowledge-select"
-                  onClick={() => setKnowledgePickerOpen(true)}
-                  type="button"
-                  variant="outline"
-                >
-                  <span
-                    className={cn(
-                      "min-w-0 truncate",
-                      selectedKnowledge ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {selectedKnowledge?.nameWithExtension ?? "请选择"}
-                  </span>
-                </Button>
-              </div>
-              {ingestMode === "single" ? (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="optimization-question">
-                      问题 <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      disabled={ingestSubmitting}
-                      id="optimization-question"
-                      onChange={(event) => setIngestQuestion(event.target.value)}
-                      value={ingestQuestion}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="optimization-answer">
-                      答案 <span className="text-destructive">*</span>
-                    </Label>
-                    <Textarea
-                      className="min-h-24 resize-none"
-                      disabled={ingestSubmitting}
-                      id="optimization-answer"
-                      onChange={(event) => setIngestAnswer(event.target.value)}
-                      value={ingestAnswer}
-                    />
-                  </div>
-                </>
-              ) : null}
+              <IngestContextPanel
+                candidate={ingestPreviewCandidate}
+                selectedCount={ingestTargetIds.length}
+              />
             </div>
           </TooltipProvider>
           <DialogFooter>
@@ -989,6 +999,95 @@ function KnowledgePickerDialog({
         </TooltipProvider>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function IngestContextPanel({
+  candidate,
+  selectedCount,
+}: {
+  candidate: AiHostingLearningCandidateItem | null;
+  selectedCount: number;
+}) {
+  if (!candidate) {
+    return (
+      <aside className="border-t pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-foreground">批量入库</h3>
+          <p className="text-sm text-muted-foreground">已选择 {selectedCount} 条建议</p>
+        </div>
+      </aside>
+    );
+  }
+
+  const seatName = candidate.seat?.name ?? "客服";
+  const userName = candidate.user?.name ?? "客户";
+
+  return (
+    <aside className="space-y-6 border-t pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+      <section aria-labelledby="ingest-evaluation-title" className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className={candidate.status === "filtered" ? "text-destructive" : "text-success"}
+              icon={AiChemistry02Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <h3 className="text-sm font-medium text-foreground" id="ingest-evaluation-title">
+              AI 评测
+            </h3>
+          </div>
+          <Badge
+            className={cn(
+              "px-2.5",
+              candidate.status === "filtered"
+                ? "bg-destructive/85 text-destructive-foreground"
+                : "bg-success/85 text-success-foreground",
+            )}
+          >
+            {candidate.status === "filtered" ? "智能过滤" : "建议入库"}
+          </Badge>
+        </div>
+        <p className="text-sm leading-6 text-foreground">{candidate.rationale}</p>
+      </section>
+
+      <section aria-labelledby="ingest-source-title" className="space-y-3">
+        <h3 className="text-sm font-medium text-foreground" id="ingest-source-title">
+          来源会话
+        </h3>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Avatar className="size-7 rounded-full">
+              <AvatarImage alt={seatName} src={candidate.seat?.avatar} />
+              <AvatarFallback className="rounded-full text-xs">
+                {seatName.slice(0, 1)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate text-xs text-foreground">{seatName}</span>
+          </div>
+          <span className="text-xs text-muted-foreground">与</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Avatar className="size-7 rounded-full">
+              <AvatarImage alt={userName} src={candidate.user?.avatar} />
+              <AvatarFallback className="rounded-full text-xs">
+                {userName.slice(0, 1)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate text-xs text-foreground">{userName}</span>
+          </div>
+        </div>
+        {candidate.createdAt ? (
+          <time
+            className="block text-xs text-muted-foreground"
+            dateTime={new Date(candidate.createdAt).toISOString()}
+          >
+            {formatDate(candidate.createdAt)}
+          </time>
+        ) : null}
+      </section>
+    </aside>
   );
 }
 

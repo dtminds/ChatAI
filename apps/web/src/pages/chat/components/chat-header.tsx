@@ -59,7 +59,7 @@ export function ChatHeader({
                 {activeConversation?.customerName ?? "请选择会话"}
               </p>
               {activeConversation && isAIHostingEnabled ? (
-                <Badge className="h-6 shrink-0 gap-1.5 rounded-[6px] bg-muted px-2 py-0.5 text-xs text-success">
+                <Badge className="h-6 shrink-0 gap-1.5 rounded-[6px] bg-muted px-2 py-0.5 text-xs font-bold text-success">
                   <AIHostingIcon className="size-3" />
                   <span className="ai-hosting-tag-text">AI 托管中</span>
                 </Badge>
@@ -111,7 +111,7 @@ function ReceptionAccountNotice() {
       <HoverCardTrigger asChild>
         <button
           aria-label="查看接待号注意事项"
-          className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[6px] bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning outline-none transition-colors hover:bg-warning/15 focus-visible:ring-4 focus-visible:ring-ring/20"
+          className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[6px] bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning outline-none transition-colors hover:bg-warning/15 focus-visible:ring-4 focus-visible:ring-ring/20"
           type="button"
         >
           <HugeiconsIcon

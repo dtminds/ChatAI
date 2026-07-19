@@ -155,6 +155,7 @@ export function AccountRail({
     useState<AppearanceThemeId>("default");
   const [themePreference, setThemePreference] =
     useState<ThemePreference>("system");
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isThemeColorMenuOpen, setIsThemeColorMenuOpen] = useState(false);
   const [isAppearanceModeMenuOpen, setIsAppearanceModeMenuOpen] = useState(false);
   const signedInName = currentEmployee?.displayName.trim() || "未登录";
@@ -201,6 +202,15 @@ export function AccountRail({
     );
     writeThemePreference(nextThemePreference);
     setThemePreference(nextThemePreference);
+  };
+
+  const handleAccountMenuOpenChange = (isOpen: boolean) => {
+    setIsAccountMenuOpen(isOpen);
+
+    if (!isOpen) {
+      setIsThemeColorMenuOpen(false);
+      setIsAppearanceModeMenuOpen(false);
+    }
   };
 
   const accountMenuContent = (
@@ -487,7 +497,10 @@ export function AccountRail({
         </ScrollArea>
 
         <div className="pt-3" data-testid="account-rail-footer">
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={handleAccountMenuOpenChange}
+            open={isAccountMenuOpen}
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 aria-label="打开账号菜单"
@@ -634,7 +647,10 @@ export function AccountRail({
       </ScrollArea>
 
       <div className="pt-3" data-testid="account-rail-footer">
-        <DropdownMenu>
+        <DropdownMenu
+          onOpenChange={handleAccountMenuOpenChange}
+          open={isAccountMenuOpen}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               aria-label="打开账号菜单"

@@ -196,6 +196,63 @@ describe("AccountRail", () => {
     expect(window.localStorage.getItem("chat-ai-theme")).toBe("system");
   });
 
+  it("still switches appearance mode when localStorage is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+  });
+
+  it("resets nested menu state after the account menu closes", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /主题颜色/ }));
+    expect(
+      await screen.findByRole("menuitemradio", { name: "Claude" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: /主题颜色/ })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+
+    expect(screen.getByRole("menuitem", { name: /主题颜色/ })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "Claude" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("uses the first user-name grapheme as avatar fallback", () => {
     render(
       <AccountRail

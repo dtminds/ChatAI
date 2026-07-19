@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Toaster } from "@/components/ui/sonner";
@@ -45,7 +45,7 @@ export function RootLayout() {
     applyAppearanceTheme(getInitialAppearanceTheme());
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mediaQuery = getDarkModeMediaQuery();
     const applySavedThemePreference = () => {
       applyThemePreference(

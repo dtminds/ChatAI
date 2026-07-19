@@ -77,6 +77,9 @@ describe("workbench scrollbar policy", () => {
 
     expect(await screen.findByRole("textbox", { name: "请输入消息……" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回会话列表" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "打开账号菜单" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /新消息提醒/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
@@ -117,6 +120,11 @@ describe("workbench scrollbar policy", () => {
 
     expect(await screen.findByTestId("chat-mobile-list-layout")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "请输入消息……" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+
+    expect(screen.getByRole("menuitem", { name: /主题颜色/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /外观模式/ })).toBeInTheDocument();
   });
 });
 

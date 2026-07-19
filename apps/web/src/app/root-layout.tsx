@@ -6,6 +6,11 @@ import {
   applyAppearanceTheme,
   getInitialAppearanceTheme,
 } from "@/lib/appearance-theme";
+import {
+  applyThemePreference,
+  getDarkModeMediaQuery,
+  getInitialThemePreference,
+} from "@/lib/theme-preference";
 import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
@@ -38,6 +43,23 @@ export function RootLayout() {
 
   useEffect(() => {
     applyAppearanceTheme(getInitialAppearanceTheme());
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = getDarkModeMediaQuery();
+    const applySavedThemePreference = () => {
+      applyThemePreference(
+        getInitialThemePreference(),
+        mediaQuery?.matches ?? false,
+      );
+    };
+
+    applySavedThemePreference();
+    mediaQuery?.addEventListener("change", applySavedThemePreference);
+
+    return () => {
+      mediaQuery?.removeEventListener("change", applySavedThemePreference);
+    };
   }, []);
 
   useEffect(() => {

@@ -80,7 +80,9 @@ describe("workbench scrollbar policy", () => {
     expect(screen.queryByRole("button", { name: /新消息提醒/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /切换[深浅]色模式/ })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开侧边栏" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-mobile-list-layout")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-mobile-detail-layout")).toHaveClass(

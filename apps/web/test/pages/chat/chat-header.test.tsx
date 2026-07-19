@@ -34,7 +34,6 @@ describe("ChatHeader", () => {
   beforeEach(() => {
     document.documentElement.classList.remove("dark");
     window.localStorage.clear();
-    setSystemColorScheme(false);
     audioInstances = [];
     AudioMock.reset();
     clearNewMessageSoundRuntimeState();
@@ -47,44 +46,18 @@ describe("ChatHeader", () => {
     vi.restoreAllMocks();
   });
 
-  it("selects a persisted light or dark theme from the segmented control", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <ChatHeader />,
-    );
-
-    await user.click(screen.getByRole("radio", { name: "深色模式" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
-
-    await user.click(screen.getByRole("radio", { name: "浅色模式" }));
-    expect(document.documentElement).not.toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("light");
-  });
-
-  it("follows the system color scheme option", async () => {
-    const user = userEvent.setup();
-    const mediaQuery = setSystemColorScheme(true);
-    window.localStorage.setItem("chat-ai-theme", "light");
-
+  it("keeps appearance controls out of the chat header", () => {
     render(<ChatHeader />);
 
-    await user.click(screen.getByRole("radio", { name: "跟随系统" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("system");
-
-    mediaQuery.setMatches(false);
-    await waitFor(() => {
-      expect(document.documentElement).not.toHaveClass("dark");
-    });
+    expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("uses compact mobile controls without the new message sound entry", async () => {
-    const user = userEvent.setup();
-
+  it("uses compact mobile controls without appearance or new message sound entries", () => {
     render(
       <ChatHeader
         activeConversation={conversation}
@@ -98,14 +71,9 @@ describe("ChatHeader", () => {
     expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
-
-    const themeButton = screen.getByRole("button", { name: "切换深色模式" });
-
-    await user.click(themeButton);
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
-    expect(screen.getByRole("button", { name: "切换浅色模式" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not show internal sync cursor details in the header", () => {
@@ -218,44 +186,6 @@ describe("ChatHeader", () => {
 
     expect(markup).toContain("提示音关");
     expect(markup).not.toContain("提示音开");
-  });
-
-  it("restores the saved system mode preference", async () => {
-    window.localStorage.setItem("chat-ai-theme", "system");
-    setSystemColorScheme(true);
-
-    render(
-      <ChatHeader />,
-    );
-
-    await waitFor(() => {
-      expect(document.documentElement).toHaveClass("dark");
-      expect(screen.getByRole("radio", { name: "跟随系统" })).toHaveAttribute(
-        "data-state",
-        "on",
-      );
-    });
-  });
-
-  it("still toggles the theme when localStorage is unavailable", async () => {
-    const user = userEvent.setup();
-    const getItemSpy = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-    const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    render(
-      <ChatHeader />,
-    );
-
-    await user.click(screen.getByRole("radio", { name: "深色模式" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-
-    getItemSpy.mockRestore();
-    setItemSpy.mockRestore();
   });
 
   it("shows the notification capsule and summary popover without directly toggling from the capsule", async () => {
@@ -501,41 +431,6 @@ describe("ChatHeader", () => {
     expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
   });
 });
-
-function setSystemColorScheme(matches: boolean) {
-  let currentMatches = matches;
-  const listeners = new Set<(event: MediaQueryListEvent) => void>();
-  const mediaQuery = {
-    get matches() {
-      return currentMatches;
-    },
-    media: "(prefers-color-scheme: dark)",
-    onchange: null,
-    addEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
-      if (event === "change") {
-        listeners.add(listener);
-      }
-    }),
-    removeEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
-      if (event === "change") {
-        listeners.delete(listener);
-      }
-    }),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-    setMatches(nextMatches: boolean) {
-      currentMatches = nextMatches;
-      listeners.forEach((listener) => {
-        listener({ matches: nextMatches } as MediaQueryListEvent);
-      });
-    },
-  };
-
-  window.matchMedia = vi.fn().mockReturnValue(mediaQuery);
-
-  return mediaQuery;
-}
 
 class AudioMock {
   private static pendingPlayRejections = 0;

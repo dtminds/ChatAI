@@ -1,4 +1,9 @@
-import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  startTransition,
+  useLayoutEffect,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   AiIdeaIcon,
   ChatIcon,
@@ -6,10 +11,15 @@ import {
   LayoutAlignLeftIcon,
   LogoutSquare01Icon,
   DashboardCircleIcon,
+  ModernTvIcon,
   MoreVerticalIcon,
+  Moon02Icon,
+  PaintBoardIcon,
   PanelLeftIcon,
+  Ramadhan01Icon,
   Settings03Icon,
   Notification01Icon,
+  Sun02Icon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
@@ -23,7 +33,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +48,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  type AppearanceThemeId,
+  appearanceThemes,
+  applyAppearanceTheme,
+  getInitialAppearanceTheme,
+  isAppearanceThemeId,
+  writeAppearanceTheme,
+} from "@/lib/appearance-theme";
+import {
+  applyThemePreference,
+  getDarkModeMediaQuery,
+  getInitialThemePreference,
+  isThemePreference,
+  writeThemePreference,
+  type ThemePreference,
+} from "@/lib/theme-preference";
 import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
@@ -49,6 +80,12 @@ const railItems = [
 const visibleRailItems = import.meta.env.DEV
   ? railItems
   : railItems.filter((item) => !item.devOnly);
+
+const themeModeOptions = [
+  { value: "light", label: "浅色", icon: Sun02Icon },
+  { value: "dark", label: "深色", icon: Moon02Icon },
+  { value: "system", label: "跟随系统", icon: ModernTvIcon },
+] as const;
 
 const collapsedNavItemClassName =
   "inline-flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 [&_svg]:shrink-0";
@@ -114,10 +151,58 @@ export function AccountRail({
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const location = useLocation();
+  const [appearanceTheme, setAppearanceTheme] =
+    useState<AppearanceThemeId>("default");
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>("system");
+  const [isThemeColorMenuOpen, setIsThemeColorMenuOpen] = useState(false);
+  const [isAppearanceModeMenuOpen, setIsAppearanceModeMenuOpen] = useState(false);
   const signedInName = currentEmployee?.displayName.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
+  const activeThemeMode =
+    themeModeOptions.find((option) => option.value === themePreference) ??
+    themeModeOptions[2];
+
+  useLayoutEffect(() => {
+    const initialTheme = getInitialAppearanceTheme();
+
+    applyAppearanceTheme(initialTheme);
+    setAppearanceTheme(initialTheme);
+  }, []);
+
+  useLayoutEffect(() => {
+    const initialThemePreference = getInitialThemePreference();
+    const mediaQuery = getDarkModeMediaQuery();
+
+    applyThemePreference(initialThemePreference, mediaQuery?.matches ?? false);
+    setThemePreference(initialThemePreference);
+  }, []);
+
+  const handleAppearanceThemeChange = (nextTheme: string) => {
+    if (!isAppearanceThemeId(nextTheme)) {
+      return;
+    }
+
+    applyAppearanceTheme(nextTheme);
+    writeAppearanceTheme(nextTheme);
+    setAppearanceTheme(nextTheme);
+  };
+
+  const handleThemePreferenceChange = (nextThemePreference: string) => {
+    if (!isThemePreference(nextThemePreference)) {
+      return;
+    }
+
+    applyThemePreference(
+      nextThemePreference,
+      getDarkModeMediaQuery()?.matches ?? false,
+    );
+    writeThemePreference(nextThemePreference);
+    setThemePreference(nextThemePreference);
+  };
+
   const accountMenuContent = (
     <DropdownMenuContent
       align="start"
@@ -148,6 +233,107 @@ export function AccountRail({
           </div>
         </div>
       </DropdownMenuLabel>
+
+      <DropdownMenuSeparator />
+
+      <div className="flex flex-col gap-1 py-1">
+        <DropdownMenuSub
+          onOpenChange={setIsThemeColorMenuOpen}
+          open={isThemeColorMenuOpen}
+        >
+          <DropdownMenuSubTrigger
+            onClick={() => setIsThemeColorMenuOpen(true)}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              color="currentColor"
+              icon={PaintBoardIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <span className="min-w-0 flex-1 truncate">主题颜色</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-52 overflow-y-auto">
+            <DropdownMenuRadioGroup
+              onValueChange={handleAppearanceThemeChange}
+              value={appearanceTheme}
+            >
+              {appearanceThemes.map((theme) => (
+                <DropdownMenuRadioItem
+                  className="gap-2"
+                  key={theme.id}
+                  onSelect={(event) => event.preventDefault()}
+                  value={theme.id}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex shrink-0 -space-x-1"
+                  >
+                    {theme.previewColors.map((color) => (
+                      <span
+                        className="size-3 rounded-full ring-1 ring-background"
+                        key={`${theme.id}-${color}`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{theme.name}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <DropdownMenuSub
+          onOpenChange={setIsAppearanceModeMenuOpen}
+          open={isAppearanceModeMenuOpen}
+        >
+          <DropdownMenuSubTrigger
+            onClick={() => setIsAppearanceModeMenuOpen(true)}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              color="currentColor"
+              icon={Ramadhan01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <span className="min-w-0 flex-1 truncate">外观模式</span>
+            <HugeiconsIcon
+              aria-label={`当前外观模式：${activeThemeMode.label}`}
+              className="mr-1 text-muted-foreground"
+              color="currentColor"
+              icon={activeThemeMode.icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-40">
+            <DropdownMenuRadioGroup
+              onValueChange={handleThemePreferenceChange}
+              value={themePreference}
+            >
+              {themeModeOptions.map((option) => (
+                <DropdownMenuRadioItem
+                  className="gap-2"
+                  key={option.value}
+                  onSelect={(event) => event.preventDefault()}
+                  value={option.value}
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    color="currentColor"
+                    icon={option.icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                  <span>{option.label}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </div>
 
       <DropdownMenuSeparator />
 

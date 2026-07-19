@@ -86,7 +86,7 @@ describe("workbench scrollbar policy", () => {
     expect(
       screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开侧边栏" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-mobile-list-layout")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-mobile-detail-layout")).toHaveClass(
       "h-full",
@@ -106,7 +106,7 @@ describe("workbench scrollbar policy", () => {
     );
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开侧边栏" }));
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
 
     expect(await screen.findByRole("dialog", { name: "客户信息栏" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "客户信息栏" })).toBeInTheDocument();

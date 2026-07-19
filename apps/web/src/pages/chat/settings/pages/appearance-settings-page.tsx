@@ -5,7 +5,6 @@ import {
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useLayoutEffect, useState } from "react";
 
 import {
   Avatar,
@@ -15,25 +14,12 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from "@/components/ui/segmented-control";
+import { useAppearancePreferences } from "@/hooks/use-appearance-preferences";
 import { cn } from "@/lib/utils";
-import {
-  type AppearanceThemeId,
-  appearanceThemes,
-  applyAppearanceTheme,
-  getInitialAppearanceTheme,
-  writeAppearanceTheme,
-} from "@/lib/appearance-theme";
-import {
-  applyThemePreference,
-  getDarkModeMediaQuery,
-  getInitialThemePreference,
-  isThemePreference,
-  writeThemePreference,
-  type ThemePreference,
-} from "@/lib/theme-preference";
-import {
-  PageHeader,
-} from "@/pages/chat/settings/shared";
+import { appearanceThemes } from "@/lib/appearance-theme";
+import { isThemePreference } from "@/lib/theme-preference";
+import { PageHeader } from "@/pages/chat/settings/shared";
+import { useAppearanceStore } from "@/store/appearance-store";
 
 const themeModeOptions = [
   { value: "light", label: "浅色", icon: Sun02Icon },
@@ -42,55 +28,22 @@ const themeModeOptions = [
 ] as const;
 
 export function AppearanceSettingsPage() {
-  const [appearanceTheme, setAppearanceTheme] =
-    useState<AppearanceThemeId>("default");
-  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
-  const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
+  useAppearancePreferences();
 
-  useLayoutEffect(() => {
-    const initialTheme = getInitialAppearanceTheme();
-
-    applyAppearanceTheme(initialTheme);
-    setAppearanceTheme(initialTheme);
-  }, []);
-
-  useLayoutEffect(() => {
-    applyThemePreference(themePreference, isSystemDarkMode);
-  }, [isSystemDarkMode, themePreference]);
-
-  useLayoutEffect(() => {
-    setThemePreference(getInitialThemePreference());
-
-    const mediaQuery = getDarkModeMediaQuery();
-    if (!mediaQuery) {
-      return;
-    }
-
-    setIsSystemDarkMode(mediaQuery.matches);
-
-    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
-      setIsSystemDarkMode(event.matches);
-    };
-
-    mediaQuery.addEventListener("change", handleSystemThemeChange);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleSystemThemeChange);
-    };
-  }, []);
-
-  const handleAppearanceThemeChange = (nextTheme: AppearanceThemeId) => {
-    applyAppearanceTheme(nextTheme);
-    writeAppearanceTheme(nextTheme);
-    setAppearanceTheme(nextTheme);
-  };
+  const appearanceTheme = useAppearanceStore((state) => state.appearanceTheme);
+  const setAppearanceTheme = useAppearanceStore(
+    (state) => state.setAppearanceTheme,
+  );
+  const setThemePreference = useAppearanceStore(
+    (state) => state.setThemePreference,
+  );
+  const themePreference = useAppearanceStore((state) => state.themePreference);
 
   const handleThemePreferenceChange = (nextThemePreference: string) => {
     if (!isThemePreference(nextThemePreference)) {
       return;
     }
 
-    writeThemePreference(nextThemePreference);
     setThemePreference(nextThemePreference);
   };
 
@@ -151,7 +104,7 @@ export function AppearanceSettingsPage() {
                 isActive && "border-primary/60 bg-primary/10",
               )}
               key={theme.id}
-              onClick={() => handleAppearanceThemeChange(theme.id)}
+              onClick={() => setAppearanceTheme(theme.id)}
               type="button"
             >
               <span className="flex min-w-0 items-start gap-3">

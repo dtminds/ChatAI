@@ -1923,6 +1923,61 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("keeps the appearance page and account menu preferences in sync", async () => {
+    const user = userEvent.setup();
+    const mediaQuery = setSystemColorScheme(false);
+
+    renderRoute("/chat/settings/appearance");
+
+    expect(await screen.findByRole("heading", { name: "外观" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /主题颜色/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Claude" }));
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: /主题颜色/ })).not.toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "浅色" }));
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: /外观模式/ })).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("radio", { name: "浅色模式" })).toBeChecked();
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    mediaQuery.setMatches(true);
+    await waitFor(() => {
+      expect(document.documentElement).not.toHaveClass("dark");
+    });
+
+    await user.click(screen.getByRole("radio", { name: "深色模式" }));
+    await user.click(screen.getByRole("button", { name: "Green 绿色主色，适合健康和增长类语境。" }));
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /主题颜色/ }));
+
+    expect(
+      await screen.findByRole("menuitemradio", { name: "Green" }),
+    ).toBeChecked();
+
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+
+    expect(
+      await screen.findByRole("menuitemradio", { name: "深色" }),
+    ).toBeChecked();
+  });
+
   it("shows basic UI component demos for settings development references", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");

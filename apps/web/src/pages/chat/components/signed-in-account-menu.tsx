@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import {
   LogoutSquare01Icon,
   ModernTvIcon,
@@ -26,25 +26,13 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  type AppearanceThemeId,
-  appearanceThemes,
-  applyAppearanceTheme,
-  getInitialAppearanceTheme,
-  isAppearanceThemeId,
-  writeAppearanceTheme,
-} from "@/lib/appearance-theme";
-import {
-  applyThemePreference,
-  getDarkModeMediaQuery,
-  getInitialThemePreference,
-  isThemePreference,
-  writeThemePreference,
-  type ThemePreference,
-} from "@/lib/theme-preference";
+import { useAppearancePreferences } from "@/hooks/use-appearance-preferences";
+import { appearanceThemes, isAppearanceThemeId } from "@/lib/appearance-theme";
+import { isThemePreference } from "@/lib/theme-preference";
 import { cn } from "@/lib/utils";
 import { logout } from "@/pages/auth/auth-service";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import { useAppearanceStore } from "@/store/appearance-store";
 import { useAuthStore } from "@/store/auth-store";
 
 const themeModeOptions = [
@@ -73,13 +61,19 @@ export function SignedInAccountMenu({
   onOpenSettings,
   variant = "expanded",
 }: SignedInAccountMenuProps) {
+  useAppearancePreferences();
+
   const location = useLocation();
   const navigate = useNavigate();
   const authDisplayName = useAuthStore((state) => state.subUser?.displayName);
-  const [appearanceTheme, setAppearanceTheme] =
-    useState<AppearanceThemeId>("default");
-  const [themePreference, setThemePreference] =
-    useState<ThemePreference>("system");
+  const appearanceTheme = useAppearanceStore((state) => state.appearanceTheme);
+  const setAppearanceTheme = useAppearanceStore(
+    (state) => state.setAppearanceTheme,
+  );
+  const setThemePreference = useAppearanceStore(
+    (state) => state.setThemePreference,
+  );
+  const themePreference = useAppearanceStore((state) => state.themePreference);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isThemeColorMenuOpen, setIsThemeColorMenuOpen] = useState(false);
   const [isAppearanceModeMenuOpen, setIsAppearanceModeMenuOpen] = useState(false);
@@ -89,28 +83,11 @@ export function SignedInAccountMenu({
     themeModeOptions.find((option) => option.value === themePreference) ??
     themeModeOptions[2];
 
-  useLayoutEffect(() => {
-    const initialTheme = getInitialAppearanceTheme();
-
-    applyAppearanceTheme(initialTheme);
-    setAppearanceTheme(initialTheme);
-  }, []);
-
-  useLayoutEffect(() => {
-    const initialThemePreference = getInitialThemePreference();
-    const mediaQuery = getDarkModeMediaQuery();
-
-    applyThemePreference(initialThemePreference, mediaQuery?.matches ?? false);
-    setThemePreference(initialThemePreference);
-  }, []);
-
   const handleAppearanceThemeChange = (nextTheme: string) => {
     if (!isAppearanceThemeId(nextTheme)) {
       return;
     }
 
-    applyAppearanceTheme(nextTheme);
-    writeAppearanceTheme(nextTheme);
     setAppearanceTheme(nextTheme);
   };
 
@@ -119,11 +96,6 @@ export function SignedInAccountMenu({
       return;
     }
 
-    applyThemePreference(
-      nextThemePreference,
-      getDarkModeMediaQuery()?.matches ?? false,
-    );
-    writeThemePreference(nextThemePreference);
     setThemePreference(nextThemePreference);
   };
 

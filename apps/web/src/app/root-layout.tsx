@@ -1,16 +1,8 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Toaster } from "@/components/ui/sonner";
-import {
-  applyAppearanceTheme,
-  getInitialAppearanceTheme,
-} from "@/lib/appearance-theme";
-import {
-  applyThemePreference,
-  getDarkModeMediaQuery,
-  getInitialThemePreference,
-} from "@/lib/theme-preference";
+import { useAppearancePreferences } from "@/hooks/use-appearance-preferences";
 import { buildLoginRedirectPath } from "@/pages/auth/auth-redirect";
 import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
@@ -20,6 +12,8 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export function RootLayout() {
+  useAppearancePreferences();
+
   const location = useLocation();
   const clearSession = useAuthStore((state) => state.clearSession);
   const checkedPath = useAuthStore((state) => state.checkedPath);
@@ -41,27 +35,6 @@ export function RootLayout() {
   useEffect(() => {
     authSubUserIdRef.current = subUserId;
   }, [subUserId]);
-
-  useEffect(() => {
-    applyAppearanceTheme(getInitialAppearanceTheme());
-  }, []);
-
-  useLayoutEffect(() => {
-    const mediaQuery = getDarkModeMediaQuery();
-    const applySavedThemePreference = () => {
-      applyThemePreference(
-        getInitialThemePreference(),
-        mediaQuery?.matches ?? false,
-      );
-    };
-
-    applySavedThemePreference();
-    mediaQuery?.addEventListener("change", applySavedThemePreference);
-
-    return () => {
-      mediaQuery?.removeEventListener("change", applySavedThemePreference);
-    };
-  }, []);
 
   useEffect(() => {
     let isActive = true;

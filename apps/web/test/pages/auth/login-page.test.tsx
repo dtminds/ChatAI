@@ -238,6 +238,41 @@ describe("LoginPage", () => {
     expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
   });
 
+  it("returns to the requested internal page after login", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply(200, {
+      data: {
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    const redirect = "/chat/settings/roles?tab=permissions#matrix";
+    const router = renderLoginRoute(
+      `/login?redirect=${encodeURIComponent(redirect)}`,
+    );
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat/settings/roles");
+    });
+    expect(router.state.location.search).toBe("?tab=permissions");
+    expect(router.state.location.hash).toBe("#matrix");
+  });
+
   it("shows a blocking error dialog when credentials are rejected", async () => {
     const user = userEvent.setup();
     setSecureContext(false);
@@ -358,9 +393,9 @@ describe("LoginPage", () => {
   });
 });
 
-function renderLoginRoute() {
+function renderLoginRoute(initialEntry = "/login") {
   const router = createMemoryRouter(routerConfig, {
-    initialEntries: ["/login"],
+    initialEntries: [initialEntry],
   });
 
   render(

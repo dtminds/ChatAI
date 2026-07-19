@@ -57,6 +57,7 @@ describe("auth routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/login");
     });
+    expect(router.state.location.search).toBe("?redirect=%2Fchat");
     expect(useWorkbenchStore.getState()).toMatchObject({
       activeAccountId: "",
       bootstrapStatus: "idle",
@@ -231,12 +232,63 @@ describe("auth routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/login");
     });
+    expect(router.state.location.search).toBe("?redirect=%2Fchat");
     expect(useWorkbenchStore.getState()).toMatchObject({
       activeAccountId: "",
       bootstrapStatus: "idle",
       messagesByConversationId: {},
       takeoverStatusByAccountId: {},
     });
+  });
+
+  it("preserves a deep private route when the active session expires", async () => {
+    mock.onGet("/auth/session").replyOnce(200, {
+      data: {
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            {
+              path: "login",
+              element: <div>登录页占位</div>,
+            },
+            {
+              path: "chat/settings/roles",
+              element: <div>权限角色页占位</div>,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/chat/settings/roles?tab=permissions#matrix"],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("权限角色页占位")).toBeInTheDocument();
+
+    mock.onGet("/auth/session").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    notifyAuthSessionChanged();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(router.state.location.search).toBe(
+      "?redirect=%2Fchat%2Fsettings%2Froles%3Ftab%3Dpermissions%23matrix",
+    );
   });
 
   it("does not recheck an authenticated session on private-route navigation", async () => {

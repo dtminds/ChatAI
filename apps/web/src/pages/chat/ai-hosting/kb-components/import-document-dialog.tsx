@@ -38,7 +38,8 @@ import {
 } from "@/components/ui/table";
 import { isRequestError } from "@/lib/request";
 import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
-import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { createBlankKbDoc, importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { Input } from "@/components/ui/input";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -139,6 +140,8 @@ export function ImportDocumentDialog({
     open,
   });
   const isMountedRef = useRef(false);
+  const [addMethod, setAddMethod] = useState<"file" | "new">("file");
+  const [blankName, setBlankName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [parseMode, setParseMode] =
@@ -152,6 +155,8 @@ export function ImportDocumentDialog({
   const [uploadProgress, setUploadProgress] = useState(0);
 
   function resetForm() {
+    setAddMethod("file");
+    setBlankName("");
     setSelectedFile(null);
     setFileError("");
     setParseMode("standard");
@@ -206,6 +211,42 @@ export function ImportDocumentDialog({
   };
 
   const handleSubmit = () => {
+    if (addMethod === "new") {
+      const name = blankName.trim();
+
+      if (!name) {
+        return;
+      }
+
+      void runSubmit(async () => {
+        try {
+          const result = await createBlankKbDoc({
+            kbId,
+            name,
+          });
+
+          if (!isMountedRef.current) {
+            return false;
+          }
+
+          toast.success("已创建");
+          onCreated?.({
+            docId: result.docId,
+            docSuffix: "txt",
+            name,
+          });
+        } catch (error) {
+          if (!isMountedRef.current) {
+            return false;
+          }
+
+          toast.error(isRequestError(error) ? error.message : "创建失败");
+          return false;
+        }
+      });
+      return;
+    }
+
     if (!selectedFile) {
       return;
     }
@@ -271,9 +312,15 @@ export function ImportDocumentDialog({
     });
   };
 
-  const canSubmit = Boolean(selectedFile) && !submitting;
+  const canSubmit =
+    !submitting &&
+    (addMethod === "new" ? Boolean(blankName.trim()) : Boolean(selectedFile));
   const submitLabel =
-    parseMode === "enhanced" ? "确认提交（限免）" : "确认提交";
+    addMethod === "new"
+      ? "确认创建"
+      : parseMode === "enhanced"
+        ? "确认提交（限免）"
+        : "确认提交";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -289,7 +336,7 @@ export function ImportDocumentDialog({
       >
         <DialogHeader className="space-y-0 text-left">
           <div className="flex min-w-0 items-start justify-between gap-4">
-            <DialogTitle>导入文档</DialogTitle>
+            <DialogTitle>添加文档</DialogTitle>
             <DocumentFileSizeLimitPopover />
           </div>
           <DialogDescription className="sr-only">
@@ -298,7 +345,32 @@ export function ImportDocumentDialog({
         </DialogHeader>
 
         <div className="space-y-5">
-          {selectedFile ? null : (
+          <div className="grid gap-2">
+            <Label>选择添加方式</Label>
+            <RadioGroup
+              aria-label="选择添加方式"
+              className="grid gap-3 md:grid-cols-2"
+              onValueChange={(value) => {
+                setAddMethod(value as "file" | "new");
+                setSelectedFile(null);
+                setFileError("");
+                setBlankName("");
+              }}
+              value={addMethod}
+            >
+              <RadioOptionCard
+                description="已有整理好的文档内容，可通过文件批量导入"
+                label="从本地文件导入"
+                value="file"
+              />
+              <RadioOptionCard
+                description="先创建空的文档知识，创建后可随时添加内容"
+                label="新建"
+                value="new"
+              />
+            </RadioGroup>
+          </div>
+          {addMethod === "file" && !selectedFile ? (
             <FileUploadDropzone
               accept={DOCUMENT_KNOWLEDGE_ACCEPT}
               ariaLabel="上传文档文件"
@@ -309,9 +381,9 @@ export function ImportDocumentDialog({
               onFilesRejected={handleFileReject}
               title="点击或拖拽上传文件"
             />
-          )}
+          ) : null}
 
-          {fileError ? (
+          {addMethod === "file" && fileError ? (
             <div className="flex items-center gap-2 text-sm text-destructive">
               <HugeiconsIcon
                 color="currentColor"
@@ -323,7 +395,7 @@ export function ImportDocumentDialog({
             </div>
           ) : null}
 
-          {selectedFile ? (
+          {addMethod === "file" && selectedFile ? (
             <>
               <FileUploadSelectedFile
                 clearDisabled={submitting}
@@ -425,6 +497,19 @@ export function ImportDocumentDialog({
               ) : null}
             </>
           ) : null}
+
+          {addMethod === "new" ? (
+            <div className="grid gap-2">
+              <RequiredLabel htmlFor="document-blank-name">知识名称</RequiredLabel>
+              <Input
+                id="document-blank-name"
+                maxLength={100}
+                onChange={(event) => setBlankName(event.target.value)}
+                placeholder="请输入知识名称"
+                value={blankName}
+              />
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -512,7 +597,7 @@ function RadioOptionCard({
   value: string;
 }) {
   return (
-    <Label className="relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50 has-[[data-state=checked]]:border-primary/80 has-[[data-state=checked]]:bg-primary/[0.04]">
+    <Label className="relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40 has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50 has-data-[state=checked]:border-primary/80 has-data-[state=checked]:bg-primary/4">
       {recommended ? (
         <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-[8px] bg-primary px-2.5 py-1 text-xs font-medium leading-none text-primary-foreground">
           <HugeiconsIcon
@@ -573,7 +658,7 @@ function SegmentedOptionGroup({
     >
       {options.map((option) => (
         <SegmentedControlItem
-          className="h-10 w-auto min-w-24 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
+          className="h-10 w-auto min-w-24 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/6 data-[state=on]:text-primary data-[state=on]:shadow-none"
           key={option.value}
           value={option.value}
         >

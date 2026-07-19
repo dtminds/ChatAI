@@ -25,6 +25,10 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export interface XyWapEmbedAgent {
   /**
+   * 自主学习开关: 0关 1开
+   */
+  auto_learn_enabled: Generated<number>;
+  /**
    * 创建时间
    */
   create_time: Generated<Date | null>;
@@ -68,6 +72,109 @@ export interface XyWapEmbedAgent {
    * 更新时间
    */
   update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentKbLearningCandidate {
+  /**
+   * 客服/AI回答原文
+   */
+  agent_answer: string | null;
+  /**
+   * 来源agent ID(xy_wap_embed_agent.id)
+   */
+  agent_id: Generated<number>;
+  /**
+   * 忽略或推荐理由(AI填写)
+   */
+  ai_reason: Generated<string>;
+  /**
+   * 客服回答消息ID
+   */
+  answer_msg_id: Generated<number>;
+  /**
+   * 回答来源: 1=AI生成 2=人工回复
+   */
+  answer_source: Generated<number>;
+  /**
+   * LLM置信度(0~1)
+   */
+  confidence: Generated<string>;
+  /**
+   * 来源聊天窗口ID(xy_wap_embed_conversation.id)
+   */
+  conversation_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 客户问题原文
+   */
+  customer_question: string | null;
+  /**
+   * 去重校验详情
+   */
+  dedup_check_detail: string | null;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * LLM返回中本条Q&A对应的原始JSON
+   */
+  llm_raw_response: string | null;
+  /**
+   * 客户消息ID(xy_wap_embed_msg_audit_info.id)
+   */
+  question_msg_id: Generated<number>;
+  /**
+   * 审核人
+   */
+  reviewer_id: Generated<number>;
+  /**
+   * 审核时间
+   */
+  review_time: Date | null;
+  /**
+   * 来源逻辑会话ID(xy_wap_embed_logical_session.id)
+   */
+  session_id: Generated<number>;
+  /**
+   * 状态: 0=待处理 1=已入库 2=已忽略 3=智能忽略
+   */
+  status: Generated<number>;
+  /**
+   * AI建议的标准答案
+   */
+  suggested_answer: string | null;
+  /**
+   * AI建议的标准问题
+   */
+  suggested_question: Generated<string>;
+  /**
+   * 入库的文档ID
+   */
+  target_doc_id: Generated<number>;
+  /**
+   * 入库的条目ID
+   */
+  target_entry_id: Generated<number>;
+  /**
+   * 入库的知识库ID
+   */
+  target_kb_id: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 忽略或推荐理由(用户填写)
+   */
+  user_reason: Generated<string>;
 }
 
 export interface XyWapEmbedAgentAnswerRecord {
@@ -396,7 +503,7 @@ export interface XyWapEmbedAgentKbDoc {
    */
   doc_summary: string | null;
   /**
-   * 文档类型：1：faq 2：文档 3：图片 4：attachment
+   * 文档类型：1：faq 2：文档 3：图片 4：attachment 5：空白文档 6：空白FAQ
    */
   doc_type: number;
   /**
@@ -3091,6 +3198,7 @@ export interface DB {
   xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
   xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
+  xy_wap_embed_agent_kb_learning_candidate: XyWapEmbedAgentKbLearningCandidate;
   xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;

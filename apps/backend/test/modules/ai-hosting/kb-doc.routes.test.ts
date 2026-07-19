@@ -186,6 +186,116 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("creates blank FAQ docs with fixed template url and docType 6", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3010);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "空白问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        docId: "3010",
+      },
+      success: true,
+    });
+
+    const javaFormBody = String(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(javaFormBody).toContain("docType=6");
+    expect(javaFormBody).toContain("docSuffix=faq.xlsx");
+    expect(javaFormBody).toContain("docSize=0");
+    expect(javaFormBody).toContain(
+      "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fdist%2FQ%26A%E9%97%AE%E7%AD%94%E5%AF%B9%E7%A4%BA%E4%BE%8B.faq.xlsx",
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("creates blank document docs with fixed placeholder url and docType 5", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3011);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "空白文档",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-document",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        docId: "3011",
+      },
+      success: true,
+    });
+
+    const javaFormBody = String(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(javaFormBody).toContain("docType=5");
+    expect(javaFormBody).toContain("docSuffix=txt");
+    expect(javaFormBody).toContain("docSize=0");
+    expect(javaFormBody).toContain(
+      "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb%2Fupload%2F2026%2F07%2F15%2F272%2F1784103226141-prdyxsla.txt",
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("allows zero-byte blank docs when storage usage is exactly at the limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3012);
+    const context = await createAuthenticatedApp("admin", {
+      docSizeBytes: [1024 * 1024 * 1024, 0, 0, 0, 0],
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "额度满时的空白问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("rejects blank docs when stored usage already exceeds the limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3013);
+    const context = await createAuthenticatedApp("admin", {
+      docSizeBytes: [1024 * 1024 * 1024 + 1, 0, 0, 0, 0],
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        kbId: "1",
+        name: "异常配额下的空白问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("rejects creating docs when tenant document storage quota would be exceeded", async () => {
     const fetchMock = mockJavaKbDocCreateFetch(3009);
     const context = await createAuthenticatedApp("admin", {

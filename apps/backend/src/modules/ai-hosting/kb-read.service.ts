@@ -15,7 +15,7 @@ import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
 import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
 import {
-  mapDocTypeToDb,
+  mapDocTypeFilterValues,
   mapKbDocDetail,
   mapKbDocListItem,
   mapKbListItem,
@@ -143,7 +143,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (options.docType) {
-      query = query.where("doc_type", "=", mapDocTypeToDb(options.docType));
+      query = query.where("doc_type", "in", mapDocTypeFilterValues(options.docType));
     } else {
       query = query.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }
@@ -269,7 +269,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (docType) {
-      countQuery = countQuery.where("doc_type", "=", mapDocTypeToDb(docType));
+      countQuery = countQuery.where("doc_type", "in", mapDocTypeFilterValues(docType));
     } else {
       countQuery = countQuery.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }

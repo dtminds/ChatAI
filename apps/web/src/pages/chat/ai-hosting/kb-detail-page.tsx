@@ -14,7 +14,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import ReactMarkdown from "react-markdown";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import {
@@ -28,7 +28,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import {
+  Spinner,
+} from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,7 +87,6 @@ import {
 } from "./kb-components/kb-attachment-types";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
-import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   getKbDoc,
   getKb,
@@ -94,11 +95,6 @@ import {
   toKbListViewItem,
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
-import {
-  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
-  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
-  isQuotaReached,
-} from "./quota";
 
 const PAGE_SIZE = 10;
 
@@ -176,6 +172,7 @@ const statusMeta: Record<
 
 export function KbDetailPage() {
   const { kbId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -184,6 +181,7 @@ export function KbDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
+  const [qaDialogDefaultAddMethod, setQaDialogDefaultAddMethod] = useState<"file" | "new">("file");
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
   // const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
@@ -193,7 +191,6 @@ export function KbDetailPage() {
   const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
-  const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const [detailTab, setDetailTab] = useState("knowledge");
   const [activeAttachmentType, setActiveAttachmentType] = useState<KbAttachmentType>(
     KB_ATTACHMENT_TYPE.IMAGE,
@@ -209,6 +206,18 @@ export function KbDetailPage() {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("addKnowledge") !== "qa:new") {
+      return;
+    }
+
+    setQaDialogDefaultAddMethod("new");
+    setImportQaDialogOpen(true);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("addKnowledge");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
@@ -396,36 +405,14 @@ export function KbDetailPage() {
     }
   }
 
-  async function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
-    if (checkingKnowledgeQuota) {
-      return;
+  function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
+    if (optionType === "qa") {
+      setQaDialogDefaultAddMethod("file");
+      setImportQaDialogOpen(true);
     }
 
-    setCheckingKnowledgeQuota(true);
-
-    try {
-      const quota = await fetchAiHostingQuota({ force: true });
-
-      if (quota && isQuotaReached(quota.kbDocs)) {
-        toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
-        return;
-      }
-
-      if (optionType === "qa") {
-        setImportQaDialogOpen(true);
-      }
-
-      // if (optionType === "image") {
-      //   setImageDialogOpen(true);
-      // }
-
-      if (optionType === "document") {
-        setDocumentDialogOpen(true);
-      }
-    } catch {
-      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
-    } finally {
-      setCheckingKnowledgeQuota(false);
+    if (optionType === "document") {
+      setDocumentDialogOpen(true);
     }
   }
 
@@ -472,7 +459,7 @@ export function KbDetailPage() {
           <div className="flex flex-wrap items-center gap-5">
             <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="knowledge"
               >
                 <HugeiconsIcon
@@ -485,7 +472,7 @@ export function KbDetailPage() {
                 知识
               </TabsTrigger>
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="attachments"
               >
                 <HugeiconsIcon
@@ -525,10 +512,7 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <AddKnowledgeMenu
-                disabled={checkingKnowledgeQuota}
-                onSelect={(type) => void handleAddKnowledgeSelect(type)}
-              />
+              <AddKnowledgeMenu onSelect={handleAddKnowledgeSelect} />
             </div>
           </div>
 
@@ -569,12 +553,18 @@ export function KbDetailPage() {
       </div>
       </TooltipProvider>
       <ImportQaDialog
+        defaultAddMethod={qaDialogDefaultAddMethod}
         kbId={kbId}
         onImportComplete={() => {
           void loadDocs();
           notifyAiHostingQuotaChanged();
         }}
-        onOpenChange={setImportQaDialogOpen}
+        onOpenChange={(open) => {
+          setImportQaDialogOpen(open);
+          if (!open) {
+            setQaDialogDefaultAddMethod("file");
+          }
+        }}
         open={importQaDialogOpen}
       />
       {/* 图片添加入口暂时下线

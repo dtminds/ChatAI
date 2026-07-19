@@ -48,12 +48,29 @@ export const AiHostingAgentKbSummarySchema = Type.Object({
 });
 
 export const AiHostingAgentListItemSchema = Type.Object({
+  autoLearnEnabled: Type.Boolean(),
   id: Type.String(),
   kbList: Type.Array(AiHostingAgentKbSummarySchema),
   model: AiHostingAgentModelSummarySchema,
   name: Type.String(),
+  pendingSuggestionCount: Type.Number(),
   updatedAt: Type.Optional(Type.Number()),
 });
+
+export const AiHostingAgentAutoLearnUpdateRequestSchema = Type.Object(
+  {
+    enabled: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const AiHostingAgentAutoLearnUpdateResponseSchema = Type.Object(
+  {
+    autoLearnEnabled: Type.Boolean(),
+    pendingSuggestionCount: Type.Number(),
+  },
+  { additionalProperties: false },
+);
 
 export const AiHostingAgentDetailSchema = Type.Object({
   hasUnpublishedChanges: Type.Boolean(),
@@ -203,6 +220,10 @@ export type AiHostingAgentSettingsSaveRequest =
   Static<typeof AiHostingAgentSettingsSaveRequestSchema>;
 export type AiHostingAgentRenameRequest = Static<typeof AiHostingAgentRenameRequestSchema>;
 export type AiHostingAgentRemoveResponse = Static<typeof AiHostingAgentRemoveResponseSchema>;
+export type AiHostingAgentAutoLearnUpdateRequest =
+  Static<typeof AiHostingAgentAutoLearnUpdateRequestSchema>;
+export type AiHostingAgentAutoLearnUpdateResponse =
+  Static<typeof AiHostingAgentAutoLearnUpdateResponseSchema>;
 export type AiHostingAgentTestMessageContent =
   Static<typeof AiHostingAgentTestMessageContentSchema>;
 export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageSchema>;

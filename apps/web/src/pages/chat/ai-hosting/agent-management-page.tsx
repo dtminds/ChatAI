@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  AiBookIcon,
+  ArrowRight01Icon,
+  ArtificialIntelligence03Icon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+  MoreHorizontalIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
@@ -14,19 +23,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   resolveTablePagination,
   TablePagination,
@@ -37,6 +58,7 @@ import { useAuthStore } from "@/store/auth-store";
 import {
   listAiHostingAgents,
   removeAiHostingAgent,
+  updateAiHostingAgentAutoLearn,
 } from "./agent-service";
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
@@ -55,11 +77,12 @@ import {
 
 type AgentRecord = AiHostingAgentListItem;
 
-const AGENT_PAGE_SIZE = 10;
+const AGENT_PAGE_SIZE = 9;
 const MAX_INLINE_KB_COUNT = 2;
-const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
-  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
+  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-muted px-1.5 text-[13px] font-normal leading-[22px] text-foreground";
+const AI_SELF_LEARNING_BANNER_URL =
+  "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png";
 const agentIntroSteps = [
   {
     description: "定义 Agent 在对话中的身份、服务边界和风格",
@@ -97,6 +120,8 @@ export function AgentManagementPage() {
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
+  const [selfLearningTarget, setSelfLearningTarget] = useState<AgentRecord | null>(null);
+  const [selfLearningSaving, setSelfLearningSaving] = useState(false);
   const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
 
@@ -113,6 +138,11 @@ export function AgentManagementPage() {
 
     return () => window.clearTimeout(timer);
   }, [agentSearchQuery]);
+
+  useEffect(() => {
+    const bannerImage = new Image();
+    bannerImage.src = AI_SELF_LEARNING_BANNER_URL;
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -180,6 +210,38 @@ export function AgentManagementPage() {
       setRemoveErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
+    }
+  }
+
+  async function handleSelfLearningConfirm() {
+    if (!canManage || !selfLearningTarget || selfLearningSaving) {
+      return;
+    }
+
+    const targetAgentId = selfLearningTarget.id;
+    setSelfLearningSaving(true);
+
+    try {
+      const result = await updateAiHostingAgentAutoLearn(targetAgentId, {
+        enabled: !selfLearningTarget.autoLearnEnabled,
+      });
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === targetAgentId
+            ? {
+                ...agent,
+                autoLearnEnabled: result.autoLearnEnabled,
+                pendingSuggestionCount: result.pendingSuggestionCount,
+              }
+            : agent,
+        ),
+      );
+      setSelfLearningTarget(null);
+      toast.success("已保存");
+    } catch (error) {
+      toast.error(isRequestError(error) ? error.message : "保存失败");
+    } finally {
+      setSelfLearningSaving(false);
     }
   }
 
@@ -264,13 +326,15 @@ export function AgentManagementPage() {
                 {errorMessage}
               </p>
             ) : null}
-            <AgentTable
+            <AgentCardGrid
               agents={agents}
               canManage={canManage}
               loading={loading}
+              onOpenSelfLearning={setSelfLearningTarget}
               onRemove={setRemoveTarget}
             />
             <TablePagination
+              className="border-t-0"
               onPageChange={setCurrentPage}
               page={activePage}
               total={totalAgents}
@@ -322,87 +386,308 @@ export function AgentManagementPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelfLearningTarget(null);
+          }
+        }}
+        open={Boolean(selfLearningTarget)}
+      >
+        <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0">
+          <div className="h-64 overflow-hidden bg-muted">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="size-full object-cover"
+              src={AI_SELF_LEARNING_BANNER_URL}
+            />
+          </div>
+          <div className="space-y-5 p-6">
+            <DialogHeader className="space-y-2">
+              <DialogTitle aria-label="Agent 自主进化" className="flex items-center gap-2">
+                <span>Agent 自主进化</span>
+                <Badge
+                  className={cn(
+                    "px-2 py-0.5",
+                    selfLearningTarget?.autoLearnEnabled
+                      ? "bg-success/12 text-success"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {selfLearningTarget?.autoLearnEnabled ? "已开启" : "未开启"}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="leading-6">
+                从对话中自动提炼 FAQ 候选，结合知识库进行智能评测，辅助高价值内容入库
+              </DialogDescription>
+            </DialogHeader>
+            <div>
+              <p className="inline-flex items-center gap-1.5 text-sm text-warning">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={InformationCircleIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                自主进化依赖会话洞察功能，请同步启用会话洞察
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                className={cn(
+                  "min-w-40 rounded-full shadow-none",
+                  !selfLearningTarget?.autoLearnEnabled &&
+                    "bg-black text-white hover:bg-black/85",
+                )}
+                disabled={!canManage || selfLearningSaving}
+                onClick={() => {
+                  void handleSelfLearningConfirm();
+                }}
+                size="lg"
+                type="button"
+                variant={selfLearningTarget?.autoLearnEnabled ? "secondary" : "default"}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ArtificialIntelligence03Icon}
+                  size={17}
+                  strokeWidth={1.8}
+                />
+                {selfLearningTarget?.autoLearnEnabled ? "关闭自主进化" : "启用自主进化"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AiHostingLayout>
   );
 }
 
-function AgentTable({
+function AgentCardGrid({
   agents,
   canManage,
   loading,
+  onOpenSelfLearning,
   onRemove,
 }: {
   agents: AgentRecord[];
   canManage: boolean;
   loading: boolean;
+  onOpenSelfLearning: (agent: AgentRecord) => void;
+  onRemove: (agent: AgentRecord) => void;
+}) {
+  if (loading) {
+    return (
+      <div
+        aria-label="正在加载"
+        className="flex min-h-[280px] items-center justify-center"
+        role="status"
+      >
+        <Spinner aria-hidden="true" size={16} />
+        <span className="ml-2 text-sm text-muted-foreground">正在加载</span>
+      </div>
+    );
+  }
+
+  if (agents.length === 0) {
+    return (
+      <div className="flex min-h-[280px] items-center justify-center text-sm text-muted-foreground">
+        暂无数据
+      </div>
+    );
+  }
+
+  return (
+    <div
+      aria-label="Agent 列表"
+      className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+      role="list"
+    >
+        {agents.map((agent) => (
+        <AgentCard
+          agent={agent}
+          canManage={canManage}
+          key={agent.id}
+          onOpenSelfLearning={onOpenSelfLearning}
+          onRemove={onRemove}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AgentCard({
+  agent,
+  canManage,
+  onOpenSelfLearning,
+  onRemove,
+}: {
+  agent: AgentRecord;
+  canManage: boolean;
+  onOpenSelfLearning: (agent: AgentRecord) => void;
   onRemove: (agent: AgentRecord) => void;
 }) {
   return (
-    <>
-      <Table aria-label="Agent 列表">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="h-11 w-[22%]">Agent 名称</TableHead>
-            <TableHead className="h-11 w-[18%]">大模型</TableHead>
-            <TableHead className="h-11">关联知识库</TableHead>
-            <TableHead className="h-11 w-[120px] text-right">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow>
-              <TableCell className="py-10 text-center" colSpan={4}>
-                <div
-                  aria-label="正在加载"
-                  className="inline-flex items-center gap-2 text-sm text-muted-foreground"
-                  role="status"
+    <article
+      aria-label={agent.name}
+      className="rounded-[14px] border border-border/80 bg-card p-5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]"
+      role="listitem"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          className="min-w-0 truncate text-base font-semibold text-foreground no-underline outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
+          to={`/chat/ai-hosting/agents/${agent.id}`}
+        >
+          {agent.name}
+        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={`${agent.name} 自主进化`}
+                  className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  onClick={() => onOpenSelfLearning(agent)}
+                  type="button"
+                  variant="ghost"
                 >
-                  <Spinner aria-hidden="true" size={14} />
-                  <span>正在加载</span>
-                </div>
-              </TableCell>
-            </TableRow>
-          ) : agents.length === 0 ? (
-            <TableRow>
-              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={4}>
-                暂无数据
-              </TableCell>
-            </TableRow>
-          ) : (
-            agents.map((agent) => (
-              <TableRow key={agent.id}>
-                <TableCell className="py-4 font-medium text-foreground">{agent.name}</TableCell>
-                <TableCell className="py-4 text-muted-foreground">
-                  <AgentModelBadge label={agent.model.label} model={agent.model.model} />
-                </TableCell>
-                <TableCell className="py-4">
-                  <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
-                </TableCell>
-                <TableCell className="py-4 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
-                      <Link to={`/chat/ai-hosting/agents/${agent.id}`}>
-                        {canManage ? "编辑" : "查看"}
-                      </Link>
-                    </Button>
-                    {canManage ? (
-                      <Button
-                        className="h-auto p-0 text-primary"
-                        onClick={() => onRemove(agent)}
-                        type="button"
-                        variant="link"
-                      >
-                        删除
-                      </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </>
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={ArtificialIntelligence03Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                自主进化
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={`${agent.name} 更多操作`}
+                className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon aria-hidden="true" icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link to={`/chat/ai-hosting/agents/${agent.id}`}>
+                  {canManage ? "编辑" : "查看"}
+                </Link>
+              </DropdownMenuItem>
+              {canManage ? (
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onRemove(agent)}>
+                  删除
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <dl className="mt-5 space-y-3 text-sm">
+        <AgentCardMetaRow label="大模型">
+          <AgentModelBadge label={agent.model.label} model={agent.model.model} />
+        </AgentCardMetaRow>
+        <AgentCardMetaRow label="知识库">
+          <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
+        </AgentCardMetaRow>
+        <AgentCardMetaRow label="自主进化">
+          <AgentSelfLearningPreview
+            agentId={agent.id}
+            autoLearnEnabled={agent.autoLearnEnabled}
+            pendingSuggestionCount={agent.pendingSuggestionCount}
+          />
+        </AgentCardMetaRow>
+      </dl>
+    </article>
+  );
+}
+
+function AgentCardMetaRow({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+function AgentSelfLearningPreview({
+  agentId,
+  autoLearnEnabled,
+  pendingSuggestionCount,
+}: {
+  agentId: string;
+  autoLearnEnabled: boolean;
+  pendingSuggestionCount: number;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {autoLearnEnabled ? (
+        pendingSuggestionCount === 0 ? (
+          <Link
+            className="inline-flex shrink-0 items-center gap-1 text-success no-underline hover:text-success"
+            to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={CheckmarkCircle02Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            已开启
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={ArrowRight01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+          </Link>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 text-success">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={CheckmarkCircle02Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            已开启
+          </span>
+        )
+      ) : (
+        <span className="shrink-0 text-muted-foreground">未开启</span>
+      )}
+      {pendingSuggestionCount > 0 ? (
+        <Link
+          className="inline-flex min-w-0 items-center gap-1 truncate text-warning no-underline hover:text-warning"
+          to={`/chat/ai-hosting/agents/${agentId}/optimization-suggestions`}
+        >
+          <span className="truncate">{pendingSuggestionCount} 条提升建议</span>
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="shrink-0"
+            icon={ArrowRight01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
+        </Link>
+      ) : null}
+    </div>
   );
 }
 
@@ -428,7 +713,6 @@ function AgentKnowledgeBasePreview({
     return <span className="text-sm text-muted-foreground">未关联</span>;
   }
 
-  const visibleKbList = kbList.slice(0, MAX_INLINE_KB_COUNT);
   const hasOverflow = kbList.length > MAX_INLINE_KB_COUNT;
 
   function openPopover() {
@@ -453,19 +737,22 @@ function AgentKnowledgeBasePreview({
   }
 
   const content = (
-    <div className="flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
-      {visibleKbList.map((kb) => (
+    <div
+      className={cn(
+        "relative flex h-[22px] max-w-full min-w-0 items-center gap-1.5 overflow-hidden",
+        hasOverflow &&
+          "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-14 after:bg-gradient-to-r after:from-transparent after:to-card",
+      )}
+    >
+      {kbList.map((kb) => (
         <AgentKnowledgeBaseChip
+          className="shrink-0 max-w-none"
           key={kb.id}
-          name={formatInlineKnowledgeBaseName(kb.name)}
+          name={kb.name}
+          title={kb.name}
           to={getKnowledgeBaseDetailPath(kb.id)}
         />
       ))}
-      {hasOverflow ? (
-        <span className="shrink-0 text-sm text-muted-foreground">
-          等 {kbList.length} 个
-        </span>
-      ) : null}
     </div>
   );
 
@@ -521,7 +808,7 @@ function AgentKnowledgeBasePopoverContent({
           <p className="text-sm font-medium text-foreground">关联知识库 · {kbList.length}</p>
         </div>
         <ScrollArea
-          className="max-h-[12rem]"
+          className="max-h-48"
           data-testid="agent-kb-popover-scroll"
           viewportProps={{
             className: "[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full",
@@ -612,12 +899,6 @@ function AgentKnowledgeBaseChip({
       {content}
     </span>
   );
-}
-
-function formatInlineKnowledgeBaseName(name: string) {
-  return name.length > MAX_INLINE_KB_NAME_LENGTH
-    ? `${name.slice(0, MAX_INLINE_KB_NAME_LENGTH)}..`
-    : name;
 }
 
 function getKnowledgeBaseDetailPath(kbId: string) {

@@ -27,6 +27,7 @@ describe("AI hosting agent routes", () => {
       data: {
         agents: [
           {
+            autoLearnEnabled: false,
             id: "301",
             kbList: [
               {
@@ -45,9 +46,11 @@ describe("AI hosting agent routes", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
+            pendingSuggestionCount: 0,
             updatedAt: 1_718_006_460_000,
           },
           {
+            autoLearnEnabled: false,
             id: "303",
             kbList: [
               {
@@ -66,6 +69,7 @@ describe("AI hosting agent routes", () => {
               name: "Doubao-2.0-lite",
             },
             name: "未发布小助理",
+            pendingSuggestionCount: 0,
             updatedAt: 1_718_179_260_000,
           },
         ],
@@ -116,6 +120,32 @@ describe("AI hosting agent routes", () => {
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
     expect(db.modelUidFilter).toEqual([9001, 0]);
+    expect(db.queriedTables).toContain("xy_wap_embed_agent_kb_learning_candidate");
+
+    await app.close();
+  });
+
+  it("updates agent auto-learn switch", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PATCH",
+      payload: { enabled: true },
+      url: "/api/server/ai-hosting/agents/301/auto-learn",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        autoLearnEnabled: true,
+        pendingSuggestionCount: 0,
+      },
+      success: true,
+    });
+    expect(db.updatedAgent?.values).toMatchObject({
+      auto_learn_enabled: 1,
+    });
 
     await app.close();
   });
@@ -1567,6 +1597,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   let agentPrompt = "如何客户咨询成分，那么说明功效";
   const agents = [
     {
+      auto_learn_enabled: 0,
       create_time: new Date("2024-06-10T08:00:00Z"),
       id: 301,
       last_publish_time: new Date("2024-06-10T08:00:00Z").getTime(),
@@ -1580,6 +1611,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       update_time: new Date("2024-06-10T08:01:00Z"),
     },
     {
+      auto_learn_enabled: 0,
       create_time: new Date("2024-06-12T08:00:00Z"),
       id: 303,
       last_publish_time: 0,
@@ -1595,6 +1627,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   ];
   for (let index = agents.length; index < (options.activeAgentCount ?? agents.length); index += 1) {
     agents.push({
+      auto_learn_enabled: 0,
       create_time: new Date("2024-06-13T08:00:00Z"),
       id: 400 + index,
       last_publish_time: 0,
@@ -1610,6 +1643,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   }
   for (let index = 0; index < (options.deletedAgentCount ?? 0); index += 1) {
     agents.push({
+      auto_learn_enabled: 0,
       create_time: new Date("2024-06-14T08:00:00Z"),
       id: 500 + index,
       last_publish_time: 0,
@@ -1882,6 +1916,10 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             return docs;
           }
 
+          if (table === "xy_wap_embed_agent_kb_learning_candidate") {
+            return [];
+          }
+
           if (table === "xy_wap_embed_user_seat as seat") {
             state.seatListWheres = wheres;
             const uid = Number(wheres.find(([column]) => column === "seat.uid")?.[2]);
@@ -2076,6 +2114,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           orderByCalls.push([column, direction]);
           return builder;
         },
+        groupBy: () => builder,
         select: (selection: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
@@ -2184,6 +2223,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             }
             state.insertedAgent = values;
             agents.push({
+              auto_learn_enabled: Number(values.auto_learn_enabled ?? 0),
               create_time: new Date("2024-06-11T08:00:00Z"),
               id: 302,
               last_operator_id: Number(values.last_operator_id),

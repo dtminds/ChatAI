@@ -99,10 +99,10 @@ import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
 const PAGE_SIZE = 10;
 
 const kbKnowledgeEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_2.png";
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
-  "你可以添加各类知识，用于在Agent做话术推荐和自动回复的时候做召回用，Agent会参考召回的知识内容组织回复话术";
+  "添加各类知识，Agent 会参考相关的知识内容组织回复话术";
 const KB_KNOWLEDGE_EMPTY_SUGGESTION =
   "建议添加的知识：商品知识、活动规则说明、订单售后问答、常见问题FAQ、退换货政策、物流发货政策等";
 
@@ -697,7 +697,7 @@ function KbKnowledgeEmptyState() {
       description={KB_KNOWLEDGE_EMPTY_DESCRIPTION}
       illustrationUrl={kbKnowledgeEmptyIllustrationUrl}
       suggestionContent={KB_KNOWLEDGE_EMPTY_SUGGESTION}
-      suggestionLabel="建议添加知识"
+      suggestionLabel="查看建议"
     />
   );
 }

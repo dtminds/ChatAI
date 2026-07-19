@@ -597,7 +597,7 @@ function AgentCard({
         <AgentCardMetaRow label="大模型">
           <AgentModelBadge label={agent.model.label} model={agent.model.model} />
         </AgentCardMetaRow>
-        <AgentCardMetaRow label="关联知识库">
+        <AgentCardMetaRow label="知识库">
           <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
         </AgentCardMetaRow>
         <AgentCardMetaRow label="自主进化">

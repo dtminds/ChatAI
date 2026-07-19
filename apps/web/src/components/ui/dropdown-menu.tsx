@@ -25,9 +25,10 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+    indicatorClassName?: string;
     inset?: boolean;
   }
->(({ className, inset, children, ...props }, ref) => (
+>(({ className, indicatorClassName, inset, children, ...props }, ref) => (
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
@@ -39,7 +40,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
   >
     {children}
     <HugeiconsIcon
-      className="ml-auto"
+      className={cn("ml-auto", indicatorClassName)}
       color="currentColor"
       icon={ArrowRight01Icon}
       size={16}

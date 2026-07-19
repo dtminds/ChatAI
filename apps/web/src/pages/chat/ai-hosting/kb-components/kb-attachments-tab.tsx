@@ -50,10 +50,10 @@ import {
 const PAGE_SIZE = 10;
 
 const kbAttachmentInitIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_1.png";
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const kbAttachmentEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const kbAttachmentInitLoadingIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_4.gif";
@@ -62,7 +62,7 @@ const ATTACHMENT_SYNC_POLL_MS = 5000;
 const ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS = 3 * 60 * 1000;
 
 const KB_ATTACHMENT_EMPTY_DESCRIPTION =
-  "你可以添加各类附件，用于Agent在做话术推荐或自动回复时，检索并发送该附件";
+  "添加各类附件，Agent 会根据附件描述，自动检索并发送该附件";
 const KB_ATTACHMENT_EMPTY_SUGGESTION =
   "建议添加的附件：产品说明书、营销活动海报、直播预告海报、产品安装视频、小程序商城链接、公众号文章、小红书链接等";
 
@@ -916,7 +916,7 @@ function KbAttachmentsEmptyState() {
       illustrationUrl={kbAttachmentEmptyIllustrationUrl}
       keepSuggestionOnSameLine
       suggestionContent={KB_ATTACHMENT_EMPTY_SUGGESTION}
-      suggestionLabel="建议添加附件"
+      suggestionLabel="查看建议"
     />
   );
 }

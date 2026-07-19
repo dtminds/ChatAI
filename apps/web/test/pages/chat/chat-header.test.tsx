@@ -34,7 +34,6 @@ describe("ChatHeader", () => {
   beforeEach(() => {
     document.documentElement.classList.remove("dark");
     window.localStorage.clear();
-    setSystemColorScheme(false);
     audioInstances = [];
     AudioMock.reset();
     clearNewMessageSoundRuntimeState();
@@ -47,44 +46,18 @@ describe("ChatHeader", () => {
     vi.restoreAllMocks();
   });
 
-  it("selects a persisted light or dark theme from the segmented control", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <ChatHeader />,
-    );
-
-    await user.click(screen.getByRole("radio", { name: "深色模式" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
-
-    await user.click(screen.getByRole("radio", { name: "浅色模式" }));
-    expect(document.documentElement).not.toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("light");
-  });
-
-  it("follows the system color scheme option", async () => {
-    const user = userEvent.setup();
-    const mediaQuery = setSystemColorScheme(true);
-    window.localStorage.setItem("chat-ai-theme", "light");
-
+  it("keeps appearance controls out of the chat header", () => {
     render(<ChatHeader />);
 
-    await user.click(screen.getByRole("radio", { name: "跟随系统" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("system");
-
-    mediaQuery.setMatches(false);
-    await waitFor(() => {
-      expect(document.documentElement).not.toHaveClass("dark");
-    });
+    expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("uses compact mobile controls without the new message sound entry", async () => {
-    const user = userEvent.setup();
-
+  it("uses compact mobile controls without appearance or new message sound entries", () => {
     render(
       <ChatHeader
         activeConversation={conversation}
@@ -98,14 +71,77 @@ describe("ChatHeader", () => {
     expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换[深浅]色模式/ }),
+    ).not.toBeInTheDocument();
+  });
 
-    const themeButton = screen.getByRole("button", { name: "切换深色模式" });
+  it("keeps conversation actions in the overflow menu on desktop", async () => {
+    const user = userEvent.setup();
+    const onMarkConversationRead = vi.fn();
+    const onPinConversation = vi.fn();
+    const onUnpinConversation = vi.fn();
 
-    await user.click(themeButton);
+    const { rerender } = render(
+      <ChatHeader
+        activeConversation={conversation}
+        onMarkConversationRead={onMarkConversationRead}
+        onPinConversation={onPinConversation}
+        onUnpinConversation={onUnpinConversation}
+      />,
+    );
 
-    expect(document.documentElement).toHaveClass("dark");
-    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
-    expect(screen.getByRole("button", { name: "切换浅色模式" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "置顶" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "标记已读" }));
+
+    expect(onPinConversation).toHaveBeenCalledTimes(1);
+    expect(onMarkConversationRead).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menuitem", { name: "不显示" })).not.toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{ ...conversation, isPinned: true }}
+        onMarkConversationRead={onMarkConversationRead}
+        onPinConversation={onPinConversation}
+        onUnpinConversation={onUnpinConversation}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "取消置顶" }));
+    expect(onUnpinConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mobile sidebar button outside the conversation overflow menu", async () => {
+    const user = userEvent.setup();
+    const onMarkConversationUnread = vi.fn();
+    const onToggleSidebar = vi.fn();
+
+    render(
+      <ChatHeader
+        activeConversation={{ ...conversation, unread: 0 }}
+        isMobileLayout
+        onBack={vi.fn()}
+        onMarkConversationUnread={onMarkConversationUnread}
+        onPinConversation={vi.fn()}
+        onToggleSidebar={onToggleSidebar}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "更多会话操作" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开侧边栏" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "置顶" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    expect(screen.queryByRole("menuitem", { name: "不显示" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "标记未读" }));
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+
+    expect(onMarkConversationUnread).toHaveBeenCalledTimes(1);
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 
   it("does not show internal sync cursor details in the header", () => {
@@ -133,6 +169,34 @@ describe("ChatHeader", () => {
 
     expect(screen.getByText("客户备注")).toBeInTheDocument();
     expect(screen.getByText("微信昵称：客户原始昵称")).toBeInTheDocument();
+  });
+
+  it("shows the AI hosting tag for hosted single and group conversations", () => {
+    const { rerender } = render(
+      <ChatHeader activeConversation={conversation} isAIHostingEnabled />,
+    );
+
+    const hostingTag = screen.getByText("AI 托管中").parentElement;
+
+    expect(hostingTag).toBeInTheDocument();
+    expect(hostingTag?.querySelector("svg")).toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          mode: "group",
+          thirdGroupId: "group-001",
+        }}
+        isAIHostingEnabled
+      />,
+    );
+
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
+
+    rerender(<ChatHeader activeConversation={conversation} />);
+
+    expect(screen.queryByText("AI 托管中")).not.toBeInTheDocument();
   });
 
   it("shows reception account constraints for shadow group conversations", async () => {
@@ -218,44 +282,6 @@ describe("ChatHeader", () => {
 
     expect(markup).toContain("提示音关");
     expect(markup).not.toContain("提示音开");
-  });
-
-  it("restores the saved system mode preference", async () => {
-    window.localStorage.setItem("chat-ai-theme", "system");
-    setSystemColorScheme(true);
-
-    render(
-      <ChatHeader />,
-    );
-
-    await waitFor(() => {
-      expect(document.documentElement).toHaveClass("dark");
-      expect(screen.getByRole("radio", { name: "跟随系统" })).toHaveAttribute(
-        "data-state",
-        "on",
-      );
-    });
-  });
-
-  it("still toggles the theme when localStorage is unavailable", async () => {
-    const user = userEvent.setup();
-    const getItemSpy = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-    const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    render(
-      <ChatHeader />,
-    );
-
-    await user.click(screen.getByRole("radio", { name: "深色模式" }));
-
-    expect(document.documentElement).toHaveClass("dark");
-
-    getItemSpy.mockRestore();
-    setItemSpy.mockRestore();
   });
 
   it("shows the notification capsule and summary popover without directly toggling from the capsule", async () => {
@@ -501,41 +527,6 @@ describe("ChatHeader", () => {
     expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
   });
 });
-
-function setSystemColorScheme(matches: boolean) {
-  let currentMatches = matches;
-  const listeners = new Set<(event: MediaQueryListEvent) => void>();
-  const mediaQuery = {
-    get matches() {
-      return currentMatches;
-    },
-    media: "(prefers-color-scheme: dark)",
-    onchange: null,
-    addEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
-      if (event === "change") {
-        listeners.add(listener);
-      }
-    }),
-    removeEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
-      if (event === "change") {
-        listeners.delete(listener);
-      }
-    }),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-    setMatches(nextMatches: boolean) {
-      currentMatches = nextMatches;
-      listeners.forEach((listener) => {
-        listener({ matches: nextMatches } as MediaQueryListEvent);
-      });
-    },
-  };
-
-  window.matchMedia = vi.fn().mockReturnValue(mediaQuery);
-
-  return mediaQuery;
-}
 
 class AudioMock {
   private static pendingPlayRejections = 0;

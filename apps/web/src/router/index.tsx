@@ -13,6 +13,11 @@ const LoginPage = lazy(() =>
     default: LoginPage,
   })),
 );
+const NotFoundPage = lazy(() =>
+  import("@/pages/not-found-page").then(({ NotFoundPage }) => ({
+    default: NotFoundPage,
+  })),
+);
 const ChatWorkbenchRoutePage = lazy(() =>
   import("@/pages/chat/chat-workbench-page").then(({ ChatWorkbenchRoutePage }) => ({
     default: ChatWorkbenchRoutePage,
@@ -256,6 +261,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/subscription",
         element: withRouteSuspense(<AgentSubscriptionPage />),
+      },
+      {
+        path: "*",
+        element: withRouteSuspense(<NotFoundPage />),
       },
     ],
   },

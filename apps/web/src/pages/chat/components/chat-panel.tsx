@@ -50,6 +50,9 @@ import {
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 
+const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
+  "chatai.workbenchSidebarCollapsed";
+
 type ChatPanelProps = {
   accountName?: string;
   accountAvatarUrl?: string;
@@ -81,6 +84,7 @@ type ChatPanelProps = {
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
   inputEnterBehavior: InputEnterBehavior;
+  isConversationActionDisabled?: boolean;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
   isMobileLayout?: boolean;
@@ -151,12 +155,15 @@ type ChatPanelProps = {
   onHistorySetSenderId: (senderId?: string) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
+  onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
+  onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
+  onPinConversation?: (conversationId: string) => void | Promise<void>;
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
@@ -167,6 +174,7 @@ type ChatPanelProps = {
     options?: { force?: boolean },
   ) => void;
   onToggleMessageSelection?: (message: ChatMessage) => void;
+  onUnpinConversation?: (conversationId: string) => void | Promise<void>;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -214,6 +222,7 @@ export function ChatPanel({
   groupMembers,
   isGroupMembersLoading,
   inputEnterBehavior,
+  isConversationActionDisabled = false,
   isConversationLoading,
   isEmojiPickerOpen,
   isMobileLayout = false,
@@ -267,12 +276,15 @@ export function ChatPanel({
   onHistorySetSenderId,
   onRefreshGroupMembers,
   onLoadOlderMessages,
+  onMarkConversationRead,
+  onMarkConversationUnread,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
   onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
+  onPinConversation,
   onRetryMessage,
   onSendSmartReply,
   onFillSmartReplyComposer,
@@ -280,6 +292,7 @@ export function ChatPanel({
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
+  onUnpinConversation,
   onVoicePlaybackReady,
   retryingMessageIds,
   onSendDraft,
@@ -295,6 +308,9 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
+    readDesktopSidebarCollapsedPreference,
+  );
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
@@ -367,15 +383,63 @@ export function ChatPanel({
     }
   }, [isMobileLayout, isMobileSidebarOpen, onQuickReplyActiveChange]);
 
+  const isSidebarOpen = isMobileLayout
+    ? isMobileSidebarOpen
+    : !isDesktopSidebarCollapsed;
+  const handleToggleSidebar = () => {
+    if (isMobileLayout) {
+      setIsMobileSidebarOpen((current) => !current);
+      return;
+    }
+
+    if (!isDesktopSidebarCollapsed && isHistoryPanelOpen) {
+      onHistoryClose();
+    }
+    if (!isDesktopSidebarCollapsed) {
+      onQuickReplyActiveChange?.(false);
+    }
+    setIsDesktopSidebarCollapsed((current) => {
+      const next = !current;
+      writeDesktopSidebarCollapsedPreference(next);
+      return next;
+    });
+  };
+  const handleOpenHistory = () => {
+    if (!isMobileLayout) {
+      setIsDesktopSidebarCollapsed(false);
+      writeDesktopSidebarCollapsedPreference(false);
+    }
+    onOpenHistory();
+  };
+
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
+        isAIHostingEnabled={conversationAIHostingEnabled}
+        isConversationActionDisabled={isConversationActionDisabled}
         isMobileLayout={isMobileLayout}
+        isSidebarOpen={isSidebarOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
-        onOpenSidebar={
-          isMobileLayout && hasActiveConversation
-            ? () => setIsMobileSidebarOpen(true)
+        onMarkConversationRead={
+          activeConversation && onMarkConversationRead
+            ? () => onMarkConversationRead(activeConversation.id)
+            : undefined
+        }
+        onMarkConversationUnread={
+          activeConversation && onMarkConversationUnread
+            ? () => onMarkConversationUnread(activeConversation.id)
+            : undefined
+        }
+        onPinConversation={
+          activeConversation && onPinConversation
+            ? () => onPinConversation(activeConversation.id)
+            : undefined
+        }
+        onToggleSidebar={hasActiveConversation ? handleToggleSidebar : undefined}
+        onUnpinConversation={
+          activeConversation && onUnpinConversation
+            ? () => onUnpinConversation(activeConversation.id)
             : undefined
         }
       />
@@ -536,7 +600,7 @@ export function ChatPanel({
                       }
                       onOpenCollectedExpressions={onOpenCollectedExpressions}
                       onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
-                      onOpenHistory={onOpenHistory}
+                      onOpenHistory={handleOpenHistory}
                       onSelectCollectedExpression={onSelectCollectedExpression}
                       onSegmentsChange={onComposerSegmentsChange}
                       onSendDraft={onSendDraft}
@@ -576,7 +640,7 @@ export function ChatPanel({
                   {customerSidePanelNode}
                 </SheetContent>
               </Sheet>
-            ) : (
+            ) : isDesktopSidebarCollapsed ? null : (
               <div
                 className="relative flex h-full min-h-0 min-w-0 shrink-0"
                 data-testid="customer-side-panel-shell"
@@ -603,6 +667,28 @@ export function ChatPanel({
       </div>
     </section>
   );
+}
+
+function readDesktopSidebarCollapsedPreference() {
+  try {
+    return (
+      window.localStorage.getItem(WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY) ===
+      "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeDesktopSidebarCollapsedPreference(isCollapsed: boolean) {
+  try {
+    window.localStorage.setItem(
+      WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY,
+      String(isCollapsed),
+    );
+  } catch {
+    // Sidebar persistence is best-effort; the current session still updates.
+  }
 }
 
 function FileUploadQueueBar({

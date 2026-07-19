@@ -39,8 +39,6 @@ import {
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
-import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
-import { logout } from "@/pages/auth/auth-service";
 import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
@@ -254,9 +252,6 @@ export function ChatWorkbenchRoutePage() {
       onNavigateChat={() => {
         navigate("/chat");
       }}
-      onOpenSettings={() => {
-        navigate("/chat/settings");
-      }}
     />
   );
 }
@@ -265,12 +260,10 @@ function ChatWorkbenchContent({
   activeView = "chat",
   onNavigateChat,
   onNavigateCustomerPage,
-  onOpenSettings,
 }: {
   activeView?: "chat" | "customers";
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
-  onOpenSettings?: () => void;
 }) {
   const {
     accounts,
@@ -317,7 +310,6 @@ function ChatWorkbenchContent({
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     readReceiptError,
-    resetWorkbenchSession,
     revokeMessage,
     pinConversation,
     retryFailedMessage,
@@ -419,7 +411,6 @@ function ChatWorkbenchContent({
       pollStatus: state.pollState.status,
       pollWorkbench: state.pollWorkbench,
       readReceiptError: state.readReceiptError,
-      resetWorkbenchSession: state.resetWorkbenchSession,
       refreshSeatSummaries: state.refreshSeatSummaries,
       requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
       requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
@@ -544,15 +535,6 @@ function ChatWorkbenchContent({
     isResizingAccountRail,
   } = useAccountRailResize();
   const isMobileWorkbenchLayout = useMediaQuery("(max-width: 767px)");
-
-  async function handleLogout() {
-    try {
-      await logout();
-    } finally {
-      resetWorkbenchSession();
-      notifyAuthSessionChanged();
-    }
-  }
 
   const handleAccountRailCollapseChange = (nextIsCollapsed: boolean) => {
     setIsAccountRailCollapsed(nextIsCollapsed);
@@ -2081,7 +2063,6 @@ function ChatWorkbenchContent({
       onCollapseChange={
         isMobileWorkbenchLayout ? undefined : handleAccountRailCollapseChange
       }
-      onLogout={handleLogout}
       onNavItemSelect={(label) => {
         if (label === "客户") {
           setMobilePane("list");
@@ -2102,7 +2083,6 @@ function ChatWorkbenchContent({
         onNavigateChat?.();
         await setActiveAccount(accountId);
       }}
-      onOpenSettings={onOpenSettings}
       onTakeOverAccount={handleTakeOverAccount}
       takeoverStatusByAccountId={takeoverStatusByAccountId}
     />

@@ -467,6 +467,9 @@ describe("Chat settings pages", () => {
     expect(
       await screen.findByRole("navigation", { name: "设置菜单" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开账号菜单" })).toHaveTextContent(
+      "客服一号",
+    );
     expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
 
@@ -475,6 +478,20 @@ describe("Chat settings pages", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");
     });
+  });
+
+  it("keeps the current settings section when settings is selected again", async () => {
+    const user = userEvent.setup();
+    const router = renderRoute("/chat/settings/roles");
+
+    expect(
+      await screen.findByRole("heading", { name: "权限角色" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "设置" }));
+
+    expect(router.state.location.pathname).toBe("/chat/settings/roles");
   });
 
   it("shows enabled group chats in the managed-account settings tab", async () => {
@@ -758,7 +775,9 @@ describe("Chat settings pages", () => {
     expect(screen.getByLabelText("角色：主账号")).toBeInTheDocument();
     expect(screen.getByLabelText("角色：管理员")).toBeInTheDocument();
     expect(screen.getByLabelText("角色：客服")).toBeInTheDocument();
-    expect(screen.getByText("客服一号")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("table", { name: "子账号列表" })).getByText("客服一号"),
+    ).toBeInTheDocument();
     expect(screen.getByText("agent001")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 主账号 操作菜单" })).toBeInTheDocument();

@@ -13,6 +13,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import { useAuthStore } from "@/store/auth-store";
 import {
   fetchAiHostingQuota,
@@ -96,7 +97,7 @@ export function AiHostingLayout({
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
       <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
-        <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground max-lg:hidden">
+        <aside className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground max-lg:hidden">
           <Button
             asChild
             className="mb-5 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -144,7 +145,10 @@ export function AiHostingLayout({
             ))}
           </nav>
 
-          <AiHostingQuotaPanel quota={quota} />
+          <div className="mt-auto space-y-3">
+            <AiHostingQuotaPanel quota={quota} />
+            <SignedInAccountMenu />
+          </div>
         </aside>
 
         <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow max-lg:rounded-none">
@@ -163,7 +167,7 @@ function AiHostingQuotaPanel({ quota }: { quota: AiHostingQuotaOverview | null }
   return (
     <section
       aria-label="智能体用量"
-      className="mt-auto rounded-[8px] border border-border/60 bg-background p-3"
+      className="rounded-[8px] border border-border/60 bg-background p-3"
     >
       <div className="space-y-3">
         <div className="text-xs font-medium text-muted-foreground">用量</div>

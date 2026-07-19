@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +102,34 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(screen.getByRole("status", { name: "正在验证登录状态" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+  });
+
+  it("shows a not-found page for an unknown route and returns to the workbench", async () => {
+    const user = userEvent.setup();
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/missing-page"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "页面不存在" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("alert", { name: "页面加载失败" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "返回首页" }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");

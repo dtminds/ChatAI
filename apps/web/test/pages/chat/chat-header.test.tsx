@@ -76,6 +76,74 @@ describe("ChatHeader", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps conversation actions in the overflow menu on desktop", async () => {
+    const user = userEvent.setup();
+    const onMarkConversationRead = vi.fn();
+    const onPinConversation = vi.fn();
+    const onUnpinConversation = vi.fn();
+
+    const { rerender } = render(
+      <ChatHeader
+        activeConversation={conversation}
+        onMarkConversationRead={onMarkConversationRead}
+        onPinConversation={onPinConversation}
+        onUnpinConversation={onUnpinConversation}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "置顶" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "标记已读" }));
+
+    expect(onPinConversation).toHaveBeenCalledTimes(1);
+    expect(onMarkConversationRead).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menuitem", { name: "不显示" })).not.toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{ ...conversation, isPinned: true }}
+        onMarkConversationRead={onMarkConversationRead}
+        onPinConversation={onPinConversation}
+        onUnpinConversation={onUnpinConversation}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "取消置顶" }));
+    expect(onUnpinConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mobile sidebar button outside the conversation overflow menu", async () => {
+    const user = userEvent.setup();
+    const onMarkConversationUnread = vi.fn();
+    const onToggleSidebar = vi.fn();
+
+    render(
+      <ChatHeader
+        activeConversation={{ ...conversation, unread: 0 }}
+        isMobileLayout
+        onBack={vi.fn()}
+        onMarkConversationUnread={onMarkConversationUnread}
+        onPinConversation={vi.fn()}
+        onToggleSidebar={onToggleSidebar}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "更多会话操作" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开侧边栏" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "置顶" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    expect(screen.queryByRole("menuitem", { name: "不显示" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "标记未读" }));
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+
+    expect(onMarkConversationUnread).toHaveBeenCalledTimes(1);
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
   it("does not show internal sync cursor details in the header", () => {
     render(
       <ChatHeader

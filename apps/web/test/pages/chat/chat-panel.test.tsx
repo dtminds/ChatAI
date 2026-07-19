@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import type { Account, Conversation } from "@/pages/chat/chat-types";
 
@@ -27,6 +27,155 @@ const account: Account = {
 };
 
 describe("ChatPanel", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("runs header actions for the active conversation and toggles the desktop sidebar", async () => {
+    const user = userEvent.setup();
+    const onPinConversation = vi.fn();
+    const onQuickReplyActiveChange = vi.fn();
+
+    const panel = (
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onPinConversation={onPinConversation}
+        onQuickReplyActiveChange={onQuickReplyActiveChange}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />
+    );
+    const { unmount } = render(panel);
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    expect(onPinConversation).toHaveBeenCalledWith("conversation-1");
+
+    expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "折叠侧边栏" }));
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+    expect(onQuickReplyActiveChange).toHaveBeenCalledWith(false);
+    expect(
+      window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
+    ).toBe("true");
+
+    unmount();
+    render(panel);
+
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+    expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    expect(
+      window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
+    ).toBe("false");
+  });
+
+  it("opens the mobile sidebar sheet from the persistent header button", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isMobileLayout
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onBackToConversationList={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+
+    expect(screen.getByRole("complementary", { name: "客户信息栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  });
+
   it("renders the customer side panel resize handle", () => {
     render(
       <ChatPanel

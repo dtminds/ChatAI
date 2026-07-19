@@ -2165,6 +2165,7 @@ function ChatWorkbenchContent({
       seatAgentModeActionPending={seatAgentModeActionPending}
       isGroupMembersLoading={isActiveGroupMembersLoading}
       inputEnterBehavior={inputEnterBehavior}
+      isConversationActionDisabled={isConversationActionDisabled}
       isConversationLoading={isConversationLoading}
       isMobileLayout={isMobileWorkbenchLayout}
       seatAIHostingEnabled={seatAIHostingEnabled}
@@ -2281,6 +2282,8 @@ function ChatWorkbenchContent({
         void loadActiveGroupMembers({ force: true });
       }}
       onLoadOlderMessages={handleLoadOlderMessages}
+      onMarkConversationRead={handleMarkConversationRead}
+      onMarkConversationUnread={handleMarkConversationUnread}
       onMentionMessage={handleMentionMessage}
       onOpenQuotedMessage={handleOpenQuotedMessage}
       onQuoteMessage={handleQuoteMessage}
@@ -2296,9 +2299,11 @@ function ChatWorkbenchContent({
         activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
       }
       onMessageViewportScroll={handleMessageViewportScroll}
+      onPinConversation={pinConversation}
       onRetryMessage={handleRetryFailedMessage}
       retryingMessageIds={retryingUiMessageKeys}
       onSendDraft={handleSendDraft}
+      onUnpinConversation={unpinConversation}
       onQuickReplyActiveChange={setIsQuickReplyPanelActive}
       quickReplyPanel={quickReplyPanel}
       onDismissScopeTransitionError={() => {

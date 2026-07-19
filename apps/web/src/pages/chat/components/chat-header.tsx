@@ -1,17 +1,35 @@
+import type { ComponentProps } from "react";
 import {
   ArrowLeft01Icon,
+  BubbleChatNotificationIcon,
+  ChatDone01Icon,
   InformationCircleIcon,
-  SidebarRightIcon,
+  LayoutAlignRightIcon,
+  MoreHorizontalIcon,
+  PinIcon,
+  PinOffIcon,
   TeamWorkIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -19,18 +37,38 @@ import type { Conversation } from "@/pages/chat/chat-types";
 type ChatHeaderProps = {
   activeConversation?: Conversation;
   isAIHostingEnabled?: boolean;
+  isConversationActionDisabled?: boolean;
   isMobileLayout?: boolean;
+  isSidebarOpen?: boolean;
   onBack?: () => void;
-  onOpenSidebar?: () => void;
+  onMarkConversationRead?: () => void | Promise<void>;
+  onMarkConversationUnread?: () => void | Promise<void>;
+  onPinConversation?: () => void | Promise<void>;
+  onToggleSidebar?: () => void;
+  onUnpinConversation?: () => void | Promise<void>;
 };
 
 export function ChatHeader({
   activeConversation,
   isAIHostingEnabled = false,
+  isConversationActionDisabled = false,
   isMobileLayout = false,
+  isSidebarOpen = false,
   onBack,
-  onOpenSidebar,
+  onMarkConversationRead,
+  onMarkConversationUnread,
+  onPinConversation,
+  onToggleSidebar,
+  onUnpinConversation,
 }: ChatHeaderProps) {
+  const hasConversationActions = Boolean(
+    activeConversation &&
+      (onMarkConversationRead ||
+        onMarkConversationUnread ||
+        onPinConversation ||
+        onUnpinConversation),
+  );
+
   return (
     <div className="flex min-h-[69px] items-center border-b border-divider px-5 py-3">
       <div className="flex w-full items-center justify-between gap-4">
@@ -80,29 +118,141 @@ export function ChatHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {isMobileLayout ? null : <NewMessageSoundControl />}
-          {isMobileLayout && onOpenSidebar ? (
-            <Button
-              aria-label="打开侧边栏"
-              className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
-              onClick={onOpenSidebar}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon
-                aria-hidden="true"
-                color="currentColor"
-                icon={SidebarRightIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            </Button>
+          {hasConversationActions && activeConversation ? (
+            <ConversationHeaderActions
+              conversation={activeConversation}
+              disabled={isConversationActionDisabled}
+              onMarkRead={onMarkConversationRead}
+              onMarkUnread={onMarkConversationUnread}
+              onPin={onPinConversation}
+              onUnpin={onUnpinConversation}
+            />
           ) : null}
+          {activeConversation && onToggleSidebar ? (
+            <HeaderIconButton
+              icon={LayoutAlignRightIcon}
+              label={isSidebarOpen ? "折叠侧边栏" : "展开侧边栏"}
+              onClick={onToggleSidebar}
+            />
+          ) : null}
+          {isMobileLayout ? null : <NewMessageSoundControl />}
         </div>
       </div>
     </div>
   );
+}
+
+function ConversationHeaderActions({
+  conversation,
+  disabled,
+  onMarkRead,
+  onMarkUnread,
+  onPin,
+  onUnpin,
+}: {
+  conversation: Conversation;
+  disabled: boolean;
+  onMarkRead?: () => void | Promise<void>;
+  onMarkUnread?: () => void | Promise<void>;
+  onPin?: () => void | Promise<void>;
+  onUnpin?: () => void | Promise<void>;
+}) {
+  const actions = [
+    {
+      icon: conversation.isPinned ? PinOffIcon : PinIcon,
+      label: conversation.isPinned ? "取消置顶" : "置顶",
+      onSelect: conversation.isPinned ? onUnpin : onPin,
+    },
+    conversation.unread > 0
+      ? { icon: ChatDone01Icon, label: "标记已读", onSelect: onMarkRead }
+      : {
+          icon: BubbleChatNotificationIcon,
+          label: "标记未读",
+          onSelect: onMarkUnread,
+        },
+  ];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="更多会话操作"
+          className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={MoreHorizontalIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {actions.map((action) => (
+          <DropdownMenuItem
+            disabled={disabled || !action.onSelect}
+            key={action.label}
+            onSelect={() => runAction(action.onSelect)}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={action.icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <span>{action.label}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function HeaderIconButton({
+  disabled = false,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ComponentProps<typeof HugeiconsIcon>["icon"];
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label={label}
+            className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+            disabled={disabled}
+            onClick={onClick}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function runAction(action: (() => void | Promise<void>) | undefined) {
+  void action?.();
 }
 
 function ReceptionAccountNotice() {

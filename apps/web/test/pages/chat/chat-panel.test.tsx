@@ -398,6 +398,7 @@ describe("ChatPanel", () => {
       />,
     );
 
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar-anchor")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toBeInTheDocument();
@@ -790,6 +791,7 @@ describe("ChatPanel", () => {
       />,
     );
 
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
     expect(
       screen.queryByTestId("chat-agent-hosting-status-bar"),
     ).not.toBeInTheDocument();

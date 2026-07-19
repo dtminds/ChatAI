@@ -1107,6 +1107,14 @@ html.dark[data-appearance-theme="nature"] {
     background-color: #FA9D3D;
   }
 
+  .ai-hosting-tag-text {
+    color: #2AB431;
+    background-image: linear-gradient(90deg, #2AB431 0%, #38B03B 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
   .shiny-text {
     --shiny-text-duration: 1.35s;
     --shiny-text-shimmer-width: 56px;

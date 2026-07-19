@@ -103,6 +103,34 @@ describe("ChatHeader", () => {
     expect(screen.getByText("微信昵称：客户原始昵称")).toBeInTheDocument();
   });
 
+  it("shows the AI hosting tag for hosted single and group conversations", () => {
+    const { rerender } = render(
+      <ChatHeader activeConversation={conversation} isAIHostingEnabled />,
+    );
+
+    const hostingTag = screen.getByText("AI 托管中").parentElement;
+
+    expect(hostingTag).toBeInTheDocument();
+    expect(hostingTag?.querySelector("svg")).toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          mode: "group",
+          thirdGroupId: "group-001",
+        }}
+        isAIHostingEnabled
+      />,
+    );
+
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
+
+    rerender(<ChatHeader activeConversation={conversation} />);
+
+    expect(screen.queryByText("AI 托管中")).not.toBeInTheDocument();
+  });
+
   it("shows reception account constraints for shadow group conversations", async () => {
     const user = userEvent.setup();
 

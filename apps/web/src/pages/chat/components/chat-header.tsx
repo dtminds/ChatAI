@@ -5,17 +5,20 @@ import {
   TeamWorkIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
+  isAIHostingEnabled?: boolean;
   isMobileLayout?: boolean;
   onBack?: () => void;
   onOpenSidebar?: () => void;
@@ -23,6 +26,7 @@ type ChatHeaderProps = {
 
 export function ChatHeader({
   activeConversation,
+  isAIHostingEnabled = false,
   isMobileLayout = false,
   onBack,
   onOpenSidebar,
@@ -54,6 +58,12 @@ export function ChatHeader({
               <p className="min-w-0 truncate text-[17px] font-semibold text-foreground">
                 {activeConversation?.customerName ?? "请选择会话"}
               </p>
+              {activeConversation && isAIHostingEnabled ? (
+                <Badge className="h-6 shrink-0 gap-1.5 rounded-[6px] bg-muted px-2 py-0.5 text-xs text-success">
+                  <AIHostingIcon className="size-3" />
+                  <span className="ai-hosting-tag-text">AI 托管中</span>
+                </Badge>
+              ) : null}
               {activeConversation?.mode === "group" &&
               activeConversation.isShadowGroup ? (
                 <ReceptionAccountNotice />

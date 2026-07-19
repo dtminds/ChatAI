@@ -371,6 +371,7 @@ export function ChatPanel({
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
+        isAIHostingEnabled={conversationAIHostingEnabled}
         isMobileLayout={isMobileLayout}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
         onOpenSidebar={

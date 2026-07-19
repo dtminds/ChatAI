@@ -252,6 +252,7 @@ export function SignedInAccountMenu({
             open={isThemeColorMenuOpen}
           >
             <DropdownMenuSubTrigger
+              indicatorClassName="opacity-30"
               onClick={() => setIsThemeColorMenuOpen(true)}
             >
               <HugeiconsIcon
@@ -299,6 +300,7 @@ export function SignedInAccountMenu({
             open={isAppearanceModeMenuOpen}
           >
             <DropdownMenuSubTrigger
+              indicatorClassName="opacity-30"
               onClick={() => setIsAppearanceModeMenuOpen(true)}
             >
               <HugeiconsIcon

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type {
   AiHostingAgentDetail,
   AiHostingAgentPromptConfig,
+  AiHostingAgentTestAttachmentMaterialType,
   AiHostingAgentTestMessage,
   AiHostingAgentTestMessageContent,
   AiHostingAgentTestResponse,
   AiHostingModel,
+  WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -83,6 +85,7 @@ import {
   testAiHostingAgent,
   updateAiHostingAgent,
 } from "./agent-service";
+import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply/quick-reply-attachment-preview";
 import { uploadKbImage } from "./api/kb-doc-service";
 import {
   agentModelOptions,
@@ -103,7 +106,15 @@ import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
 import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 
+type PreviewAttachment = {
+  content: Record<string, unknown>;
+  title: string;
+  type: AiHostingAgentTestAttachmentMaterialType;
+  typeLabel: string;
+};
+
 type PreviewMessage = {
+  attachments?: PreviewAttachment[];
   content: string;
   id: string;
   imageUrls?: string[];
@@ -707,7 +718,7 @@ export function AgentSettingsPage() {
           </p>
         ) : null}
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-4">
             <AgentSettingsSection title="基本设置">
               <div className="grid gap-5 md:grid-cols-2">
@@ -1097,7 +1108,7 @@ function AgentPreviewPanel({
 
         <div className="flex min-h-0 flex-1 flex-col bg-background">
           <div
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+            className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4"
             ref={messageViewportRef}
           >
             {visibleMessages.map((message) => (
@@ -1165,36 +1176,66 @@ function PreviewMessageRow({
 }) {
   const isAgent = message.role === "agent";
   const hasImages = Boolean(message.imageUrls?.length);
+  const attachments = message.attachments ?? [];
+  const singleAttachment =
+    attachments.length === 1 ? attachments[0] : undefined;
+  const richAttachment = singleAttachment
+    ? toAgentTestQuickReplyAttachment(singleAttachment)
+    : undefined;
+  const hasSimpleAttachments = attachments.length > 1;
 
   return (
-    <div className={cn("flex items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
+    <div className={cn("flex min-w-0 items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
       {isAgent ? <PreviewAgentAvatar /> : null}
-      <div className="max-w-[78%] space-y-2 rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
-        {message.pending ? (
-          <div className="flex items-center gap-2 text-muted-foreground" role="status">
-            <Spinner aria-hidden="true" size={14} variant="classic" />
-            正在加载
-          </div>
-        ) : (
-          <>
-            {hasImages ? (
-              <div className="space-y-2">
-                {message.imageUrls?.map((imageUrl, index) => (
-                  <img
-                    alt=""
-                    className="max-h-44 max-w-full rounded-lg border border-border object-contain"
-                    draggable={false}
-                    key={`${message.id}-image-${index}`}
-                    onLoad={onMediaLoad}
-                    src={imageUrl}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {message.content ? <p>{message.content}</p> : null}
-          </>
-        )}
-      </div>
+      {richAttachment && !message.pending ? (
+        <div
+          className={cn(
+            "min-w-0 max-w-[78%] overflow-hidden",
+            richAttachment.type === "weapp" ? "w-auto" : "flex-1",
+          )}
+        >
+          <QuickReplyAttachmentPreview
+            attachment={richAttachment}
+            className={
+              richAttachment.type === "weapp" ? undefined : "w-full max-w-full"
+            }
+          />
+        </div>
+      ) : (
+        <div className="min-w-0 max-w-[78%] space-y-2 break-words rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
+          {message.pending ? (
+            <div className="flex items-center gap-2 text-muted-foreground" role="status">
+              <Spinner aria-hidden="true" size={14} variant="classic" />
+              正在加载
+            </div>
+          ) : (
+            <>
+              {hasImages ? (
+                <div className="space-y-2">
+                  {message.imageUrls?.map((imageUrl, index) => (
+                    <img
+                      alt=""
+                      className="max-h-44 max-w-full rounded-lg border border-border object-contain"
+                      draggable={false}
+                      key={`${message.id}-image-${index}`}
+                      onLoad={onMediaLoad}
+                      src={imageUrl}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {hasSimpleAttachments ? (
+                <p className="whitespace-pre-wrap">
+                  {attachments
+                    .map((attachment) => `${attachment.typeLabel} ${attachment.title}`)
+                    .join("\n")}
+                </p>
+              ) : null}
+              {message.content ? <p>{message.content}</p> : null}
+            </>
+          )}
+        </div>
+      )}
       {!isAgent ? <PreviewCustomerAvatar /> : null}
     </div>
   );
@@ -1638,8 +1679,81 @@ function mapTestResponseToPreviewMessages(
       ];
     }
 
+    if (item.type === "attachment" && item.attachments.length > 0) {
+      return [
+        {
+          id,
+          role: "agent" as const,
+          content: "",
+          attachments: item.attachments.map((attachment) => ({
+            type: attachment.type,
+            typeLabel: getAgentTestAttachmentTypeLabel(attachment.type),
+            title: attachment.title,
+            content: attachment.content,
+          })),
+        },
+      ];
+    }
+
     return [];
   });
+}
+
+function toAgentTestQuickReplyAttachment(
+  attachment: PreviewAttachment,
+): WorkbenchQuickReplyAttachment | undefined {
+  const type = mapAgentTestAttachmentToQuickReplyType(attachment.type);
+  if (!type) {
+    return undefined;
+  }
+
+  return {
+    type,
+    content: {
+      ...attachment.content,
+      ...(type === "file" && !readPreviewAttachmentString(attachment.content.fileName)
+        ? { fileName: attachment.title }
+        : {}),
+      ...(type === "h5" || type === "weapp"
+        ? {
+            title:
+              readPreviewAttachmentString(attachment.content.title) || attachment.title,
+          }
+        : {}),
+    },
+  };
+}
+
+function mapAgentTestAttachmentToQuickReplyType(
+  type: AiHostingAgentTestAttachmentMaterialType,
+): WorkbenchQuickReplyAttachment["type"] | undefined {
+  switch (type) {
+    case "image":
+      return "image";
+    case "file":
+      return "file";
+    case "link":
+      return "h5";
+    case "mini-program":
+      return "weapp";
+  }
+}
+
+function getAgentTestAttachmentTypeLabel(type: AiHostingAgentTestAttachmentMaterialType) {
+  switch (type) {
+    case "image":
+      return "图片";
+    case "file":
+      return "文件";
+    case "link":
+      return "链接";
+    case "mini-program":
+      return "小程序";
+  }
+}
+
+function readPreviewAttachmentString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizePreviewReplyText(item: AiHostingAgentTestResponse["reply"][number]) {

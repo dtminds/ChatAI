@@ -142,14 +142,34 @@ export const AiHostingAgentTestRequestSchema = Type.Object({
   promptConfig: AiHostingAgentPromptConfigSchema,
 }, { additionalProperties: false });
 
-export const AiHostingAgentTestReplyItemSchema = Type.Object({
-  content: Type.String(),
-  type: Type.Union([
-    Type.Literal("text"),
-    Type.Literal("image"),
-    Type.Literal("audio"),
-  ]),
+export const AiHostingAgentTestAttachmentMaterialTypeSchema = Type.Union([
+  Type.Literal("image"),
+  Type.Literal("file"),
+  Type.Literal("link"),
+  Type.Literal("mini-program"),
+]);
+
+export const AiHostingAgentTestAttachmentMaterialSchema = Type.Object({
+  content: Type.Record(Type.String(), Type.Unknown()),
+  title: Type.String(),
+  type: AiHostingAgentTestAttachmentMaterialTypeSchema,
 }, { additionalProperties: false });
+
+export const AiHostingAgentTestReplyItemSchema = Type.Union([
+  Type.Object({
+    content: Type.String(),
+    type: Type.Union([
+      Type.Literal("text"),
+      Type.Literal("image"),
+      Type.Literal("audio"),
+    ]),
+  }, { additionalProperties: false }),
+  Type.Object({
+    attachments: Type.Array(AiHostingAgentTestAttachmentMaterialSchema),
+    chunkId: Type.String({ minLength: 1 }),
+    type: Type.Literal("attachment"),
+  }, { additionalProperties: false }),
+]);
 
 export const AiHostingAgentTestResponseSchema = Type.Object({
   action: Type.String(),
@@ -228,6 +248,10 @@ export type AiHostingAgentTestMessageContent =
   Static<typeof AiHostingAgentTestMessageContentSchema>;
 export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageSchema>;
 export type AiHostingAgentTestRequest = Static<typeof AiHostingAgentTestRequestSchema>;
+export type AiHostingAgentTestAttachmentMaterialType =
+  Static<typeof AiHostingAgentTestAttachmentMaterialTypeSchema>;
+export type AiHostingAgentTestAttachmentMaterial =
+  Static<typeof AiHostingAgentTestAttachmentMaterialSchema>;
 export type AiHostingAgentTestReplyItem = Static<typeof AiHostingAgentTestReplyItemSchema>;
 export type AiHostingAgentTestResponse = Static<typeof AiHostingAgentTestResponseSchema>;
 export type AiHostingGroupChatReplyMode = Static<

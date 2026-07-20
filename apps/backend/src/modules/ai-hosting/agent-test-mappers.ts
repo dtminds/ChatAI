@@ -147,6 +147,21 @@ function readReplyItems(value: unknown): AiHostingAgentTestReplyItem[] {
     }
 
     const type = readString(item.type);
+
+    if (type === "attachment") {
+      const chunkId = readChunkId(item.chunkId ?? item.chunk_id);
+      if (!chunkId) {
+        continue;
+      }
+
+      reply.push({
+        type: "attachment",
+        chunkId,
+        attachments: [],
+      });
+      continue;
+    }
+
     const content = readString(item.content) || readString(item.text) || readString(item.url);
 
     if (!content) {
@@ -234,6 +249,21 @@ function tryParseJson(value: string) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function readChunkId(value: unknown) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed) && Number(trimmed) > 0) {
+      return trimmed;
+    }
+  }
+
+  return "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

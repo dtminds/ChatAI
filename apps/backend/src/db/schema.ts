@@ -368,9 +368,17 @@ export interface XyWapEmbedAgentKbChunk {
    */
   attachment_content: string | null;
   /**
+   * 附件素材 ID 列表（逗号分隔或 JSON 数组字符串）
+   */
+  attachment_ids: string | null;
+  /**
    * 附件类型 1：图片 2：视频 3：文件 4：链接 5：小程序
    */
   attachment_type: Generated<number>;
+  /**
+   * 附件素材类型列表（逗号分隔或 JSON 数组字符串，对齐 material biz_type）
+   */
+  attachment_types: string | null;
   /**
    * 切片内容1、非结构化文件：content 返回切片原文内容 2、faq 文件：content 返回答案字段内容
    */

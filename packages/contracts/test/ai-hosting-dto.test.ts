@@ -282,6 +282,42 @@ describe("AI hosting DTOs", () => {
     ).toBe(true);
   });
 
+  it("accepts agent simulation attachment reply items with materials", () => {
+    expect(
+      Value.Check(AiHostingAgentTestResponseSchema, {
+        action: "reply",
+        reply: [
+          { type: "text", content: "发送给客户的文本消息" },
+          {
+            type: "attachment",
+            chunkId: "1234",
+            attachments: [
+              {
+                type: "image",
+                title: "产品海报.jpg",
+                content: { fileUrl: "https://example.com/a.jpg" },
+              },
+              {
+                type: "mini-program",
+                title: "大西瓜生椰冷萃",
+                content: { title: "大西瓜生椰冷萃", appName: "示例小程序" },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects attachment reply items without materials payload", () => {
+    expect(
+      Value.Check(AiHostingAgentTestResponseSchema, {
+        action: "reply",
+        reply: [{ type: "attachment", chunkId: "1234" }],
+      }),
+    ).toBe(false);
+  });
+
   it("keeps kb creation response command-shaped", () => {
     expect(Value.Check(KbCreateResponseSchema, { kbId: "2" })).toBe(true);
     expect(

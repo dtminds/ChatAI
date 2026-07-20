@@ -556,10 +556,10 @@ export function KbDetailPage() {
 
         <Tabs onValueChange={handleDetailTabChange} value={detailTab}>
           <TabsList className="mb-2" variant="underline">
-            <TabsTrigger className="text-base" value="knowledge" variant="underline">
+            <TabsTrigger value="knowledge" variant="underline">
               知识
             </TabsTrigger>
-            <TabsTrigger className="text-base" value="attachments" variant="underline">
+            <TabsTrigger value="attachments" variant="underline">
               附件
             </TabsTrigger>
           </TabsList>

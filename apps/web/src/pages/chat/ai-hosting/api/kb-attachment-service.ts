@@ -18,7 +18,8 @@ import { toKbAttachmentItem } from "@/pages/chat/ai-hosting/kb-components/kb-att
 import { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
 
 export type ListKbAttachmentsParams = {
-  attachmentType: KbAttachmentType;
+  attachmentType?: KbAttachmentType;
+  chunkId?: string;
   docId: string;
   page?: number;
   pageSize?: number;

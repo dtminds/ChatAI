@@ -13,14 +13,26 @@ const AiHostingLearningCandidatePersonSchema = Type.Object({
   name: Type.Optional(Type.String()),
 });
 
+const AiHostingLearningCandidateSearchResultSchema = Type.Object({
+  docId: Type.String(),
+  docName: Type.String(),
+  docSuffix: Type.String(),
+  kbId: Type.String(),
+});
+
 export const AiHostingLearningCandidateItemSchema = Type.Object({
   answer: Type.String(),
+  confidence: Type.Optional(Type.Number()),
   createdAt: Type.Optional(Type.Number()),
   id: Type.String(),
   question: Type.String(),
   rationale: Type.String(),
+  searchResults: Type.Optional(Type.Array(AiHostingLearningCandidateSearchResultSchema)),
   seat: Type.Optional(AiHostingLearningCandidatePersonSchema),
   status: AiHostingLearningCandidateStatusSchema,
+  targetDocId: Type.Optional(Type.String()),
+  targetEntryId: Type.Optional(Type.String()),
+  targetKbId: Type.Optional(Type.String()),
   user: Type.Optional(AiHostingLearningCandidatePersonSchema),
 });
 
@@ -31,6 +43,33 @@ export const AiHostingLearningCandidateListResponseSchema = Type.Object(
       page: Type.Number(),
       pageSize: Type.Number(),
       total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
+
+export const AiHostingLearningCandidateSearchDetailItemSchema = Type.Object({
+  chunkId: Type.String(),
+  chunkTitle: Type.String(),
+  content: Type.String(),
+  docId: Type.String(),
+  docName: Type.String(),
+  docSuffix: Type.String(),
+  docType: Type.Number(),
+  kbId: Type.String(),
+  kbName: Type.String(),
+  score: Type.Number(),
+  volcChunkId: Type.String(),
+});
+
+export const AiHostingLearningCandidateSearchDetailResponseSchema = Type.Object(
+  {
+    items: Type.Array(AiHostingLearningCandidateSearchDetailItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+      totalPages: Type.Number(),
     }),
   },
   { additionalProperties: false },
@@ -109,6 +148,12 @@ export type AiHostingLearningCandidateStatus = Static<
 export type AiHostingLearningCandidateItem = Static<typeof AiHostingLearningCandidateItemSchema>;
 export type AiHostingLearningCandidateListResponse = Static<
   typeof AiHostingLearningCandidateListResponseSchema
+>;
+export type AiHostingLearningCandidateSearchDetailItem = Static<
+  typeof AiHostingLearningCandidateSearchDetailItemSchema
+>;
+export type AiHostingLearningCandidateSearchDetailResponse = Static<
+  typeof AiHostingLearningCandidateSearchDetailResponseSchema
 >;
 export type AiHostingLearningCandidateApproveRequest = Static<
   typeof AiHostingLearningCandidateApproveRequestSchema

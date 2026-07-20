@@ -1,5 +1,4 @@
 import type {
-  KbChunkListItem,
   KbChunkSource,
   KbChunkType,
   KbDocDetail,
@@ -11,7 +10,6 @@ import type {
 import type { Selectable } from "kysely";
 import type {
   XyWapEmbedAgentKb,
-  XyWapEmbedAgentKbChunk,
   XyWapEmbedAgentKbDoc,
 } from "../../db/schema.js";
 import { normalizeMediaAssetUrl, parseJsonRecord } from "../chat/workbench-content-utils.js";
@@ -116,34 +114,6 @@ export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
     previewImageUrl:
       docType === "image" ? normalizeOptionalText(normalizeMediaAssetUrl(row.doc_url)) : undefined,
     volcDocId: row.volc_doc_id ?? undefined,
-  };
-}
-
-export function mapKbChunkListItem(
-  row: Selectable<XyWapEmbedAgentKbChunk>,
-  docType: KbDocType,
-): KbChunkListItem {
-  const parsedContent = parseKbChunkContent(row.content);
-  const rawContent = row.content?.trim() ?? "";
-  const rawIsJson = Boolean(parseJsonRecord(rawContent));
-  const chunkType = resolveKbChunkType(parsedContent, row.type, docType);
-  const source = mapChunkSource(row.source);
-  const imageUrls = resolveKbChunkImageUrls(row, chunkType, docType, parsedContent, rawIsJson);
-  const content = resolveKbChunkContent(row, docType, parsedContent, rawIsJson);
-  const description = row.description?.trim() || undefined;
-
-  return {
-    chunkId: String(row.id),
-    chunkType,
-    content,
-    createdAt: toIsoString(row.create_time),
-    description: docType === "image" ? (description ?? (content || undefined)) : description,
-    docId: String(row.doc_id),
-    imageUrls,
-    kbId: String(row.kb_id),
-    source,
-    title: row.title?.trim() || parsedContent.title || undefined,
-    updatedAt: toIsoString(row.update_time),
   };
 }
 

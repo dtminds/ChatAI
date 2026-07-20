@@ -475,6 +475,80 @@ describe("KB read routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("rebuilds a target volc chunk id before calling the Java page API", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document&chunkId=20260630131921038-3",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("resolves an entry primary key before calling the Java page API", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document&entryId=501",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+    fetchMock.mockRestore();
+  });
+
   it("forwards FAQ chunk title filter to Java", async () => {
     const context = await createAuthenticatedKbApp();
     app = context.app;

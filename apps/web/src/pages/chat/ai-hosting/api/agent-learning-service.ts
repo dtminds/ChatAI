@@ -7,6 +7,7 @@ import type {
   AiHostingLearningCandidateActionResponse,
   AiHostingLearningCandidateListResponse,
   AiHostingLearningCandidateRejectRequest,
+  AiHostingLearningCandidateSearchDetailResponse,
   AiHostingLearningCandidateStatus,
   ApiSuccessEnvelope,
 } from "@chatai/contracts";
@@ -67,6 +68,19 @@ export async function rejectAgentLearningCandidate(
   >(
     `/server/ai-hosting/agents/${agentId}/learning-candidates/${candidateId}/reject`,
     payload,
+  );
+
+  return response.data;
+}
+
+export async function getAgentLearningCandidateSearchDetail(
+  agentId: string,
+  candidateId: string,
+) {
+  const response = await http.get<
+    ApiSuccessEnvelope<AiHostingLearningCandidateSearchDetailResponse>
+  >(
+    `/server/ai-hosting/agents/${agentId}/learning-candidates/${candidateId}/search-detail`,
   );
 
   return response.data;

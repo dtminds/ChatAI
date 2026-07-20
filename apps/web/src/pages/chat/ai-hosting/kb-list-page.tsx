@@ -174,6 +174,14 @@ export function KbListPage() {
 
         setItems(response.kbs.map(toKbListViewItem));
         setTotal(response.pagination.total);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setItems([]);
+        setTotal(0);
+        toast.error("知识库列表加载失败，请稍后重试");
       } finally {
         if (!cancelled) {
           setLoading(false);

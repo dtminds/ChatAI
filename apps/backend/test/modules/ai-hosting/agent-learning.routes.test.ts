@@ -65,12 +65,21 @@ describe("ai-hosting agent-learning routes", () => {
             {
               agentAnswer: "原回答",
               aiReason: "推荐入库",
+              confidence: 0.87,
               createTime: "2026-07-16T15:12:04",
               customerQuestion: "原问题",
               id: "1001",
+              searchResults: [
+                { docId: 1001, docName: "敏感肌护理", docSuffix: "faq.xlsx", kbId: 1 },
+                { docId: "1001", docName: "重复文档", docSuffix: "pdf", kbId: "1" },
+                { docId: 1002, docName: "油皮清洁", docSuffix: "pdf", kbId: 1 },
+              ],
               status: 0,
               suggestedAnswer: "精炼答案",
               suggestedQuestion: "精炼问题",
+              targetDocId: 1001,
+              targetEntryId: 501,
+              targetKbId: 1,
               userReason: "",
             },
           ],
@@ -107,10 +116,18 @@ describe("ai-hosting agent-learning routes", () => {
     expect(body.data.candidates).toHaveLength(1);
     expect(body.data.candidates[0]).toMatchObject({
       answer: "精炼答案",
+      confidence: 0.87,
       id: "1001",
       question: "精炼问题",
       rationale: "推荐入库",
+      searchResults: [
+        { docId: "1001", docName: "敏感肌护理", docSuffix: "faq.xlsx", kbId: "1" },
+        { docId: "1002", docName: "油皮清洁", docSuffix: "pdf", kbId: "1" },
+      ],
       status: "pending",
+      targetDocId: "1001",
+      targetEntryId: "501",
+      targetKbId: "1",
     });
     expect(typeof body.data.candidates[0].createdAt).toBe("number");
 
@@ -130,6 +147,114 @@ describe("ai-hosting agent-learning routes", () => {
       status: 0,
       uid: 9001,
     });
+  });
+
+  it("loads valid search details and omits entries without chunk targets", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 0,
+          data: [
+            {
+              chunkId: 1024,
+              chunkTitle: "25+的油皮痘肌如果皮肤不敏感，有什么护肤产品推荐？",
+              content: "25+的油皮痘肌如果皮肤不敏感，可以使用酸C循环套组",
+              docId: 102,
+              docName: "护肤Q&A文档",
+              docSuffix: "pdf",
+              docType: 2,
+              kbId: 5,
+              kbName: "护肤知识库",
+              score: 0.5689,
+              volcChunkId: "doc_id_272_102_20260717105032070-6",
+            },
+            {
+              chunkId: 1025,
+              docId: 102,
+              docType: 2,
+              kbId: 5,
+              score: 0.4,
+              volcChunkId: " ",
+            },
+            {
+              chunkId: 1026,
+              docId: 102,
+              docType: 2,
+              kbId: 5,
+              score: 0.3,
+            },
+          ],
+          message: "success",
+          page: 1,
+          pageSize: 20,
+          total: 3,
+          totalPage: 1,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const created = await createAuthenticatedApp("viewer");
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1001/search-detail",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        items: [
+          {
+            chunkId: "1024",
+            chunkTitle: "25+的油皮痘肌如果皮肤不敏感，有什么护肤产品推荐？",
+            content: "25+的油皮痘肌如果皮肤不敏感，可以使用酸C循环套组",
+            docId: "102",
+            docName: "护肤Q&A文档",
+            docSuffix: "pdf",
+            docType: 2,
+            kbId: "5",
+            kbName: "护肤知识库",
+            score: 0.5689,
+            volcChunkId: "doc_id_272_102_20260717105032070-6",
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 20,
+          total: 3,
+          totalPages: 1,
+        },
+      },
+      success: true,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-learning/search-detail",
+    );
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 1001,
+      uid: 9001,
+    });
+  });
+
+  it("rejects search details outside the route agent scope without calling Java", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const created = await createAuthenticatedApp();
+    app = created.app;
+
+    const response = await app.inject({
+      headers: { authorization: created.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/10/learning-candidates/1002/search-detail",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("approves a numeric candidate in the route agent scope", async () => {

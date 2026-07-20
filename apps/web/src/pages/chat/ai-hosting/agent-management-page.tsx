@@ -115,7 +115,6 @@ export function AgentManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
   const [removeErrorMessage, setRemoveErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -149,7 +148,6 @@ export function AgentManagementPage() {
 
     async function loadAgents() {
       setLoading(true);
-      setErrorMessage("");
 
       try {
         const response = await listAiHostingAgents({
@@ -171,7 +169,7 @@ export function AgentManagementPage() {
 
         setAgents([]);
         setTotalAgents(0);
-        setErrorMessage(isRequestError(error) ? error.message : "Agent 列表加载失败");
+        toast.error("Agent 列表加载失败，请稍后重试");
       } finally {
         if (!ignore) {
           setLoading(false);
@@ -192,7 +190,6 @@ export function AgentManagementPage() {
     }
 
     setRemoving(true);
-    setErrorMessage("");
 
     try {
       await removeAiHostingAgent(removeTarget.id);
@@ -319,11 +316,6 @@ export function AgentManagementPage() {
             {!canManage ? (
               <p className="mb-3 text-sm text-muted-foreground">
                 当前账号仅可查看 Agent，管理操作需管理员权限
-              </p>
-            ) : null}
-            {errorMessage ? (
-              <p className="mb-3 text-sm text-destructive" role="alert">
-                {errorMessage}
               </p>
             ) : null}
             <AgentCardGrid

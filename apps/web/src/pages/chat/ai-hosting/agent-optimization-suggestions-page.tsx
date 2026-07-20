@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingLearningCandidateItem,
+  type AiHostingLearningCandidateSearchDetailItem,
 } from "@chatai/contracts";
 import {
   AiChemistry02Icon,
   Add01Icon,
   ArrowLeft01Icon,
-  HonourStarIcon,
+  ArrowRight01Icon,
+  MoreHorizontalIcon,
   OkFingerIcon,
   Refresh03Icon,
   Search01Icon,
@@ -61,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { isRequestError } from "@/lib/request";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,6 +79,7 @@ import {
   batchApproveAgentLearningCandidates,
   batchRejectAgentLearningCandidates,
   listAgentLearningCandidates,
+  getAgentLearningCandidateSearchDetail,
   rejectAgentLearningCandidate,
 } from "./api/agent-learning-service";
 import {
@@ -94,6 +98,8 @@ type SuggestionStatus = AiHostingLearningCandidateItem["status"];
 type IngestMode = "batch" | "single";
 const PAGE_SIZE = 10;
 const KNOWLEDGE_PICKER_PAGE_SIZE = 10;
+const VERY_HIGH_CONFIDENCE_THRESHOLD = 0.9;
+const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -179,6 +185,7 @@ export function AgentOptimizationSuggestionsPage() {
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState("");
   const [selectedKnowledge, setSelectedKnowledge] = useState<KbDocViewItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [searchDetailCandidateId, setSearchDetailCandidateId] = useState<string | null>(null);
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
@@ -431,29 +438,23 @@ export function AgentOptimizationSuggestionsPage() {
 
         <section aria-label="优化建议列表" className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex rounded-[10px] bg-muted p-1">
-              {suggestionTabs.map((tab) => (
-                <Button
-                  className={cn(
-                    "h-8 rounded-[8px] px-3 text-sm font-normal",
-                    activeStatus === tab.value
-                      ? "bg-background text-foreground shadow-sm hover:bg-background"
-                      : "text-muted-foreground",
-                  )}
-                  key={tab.value}
-                  onClick={() => {
-                    setActiveStatus(tab.value);
-                    setBatchMode(false);
-                    setSelectedIds([]);
-                    setCurrentPage(1);
-                  }}
-                  type="button"
-                  variant="ghost"
-                >
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
+            <Tabs
+              onValueChange={(value) => {
+                setActiveStatus(value as SuggestionStatus);
+                setBatchMode(false);
+                setSelectedIds([]);
+                setCurrentPage(1);
+              }}
+              value={activeStatus}
+            >
+              <TabsList aria-label="建议状态">
+                {suggestionTabs.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value}>
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
             {canManage && batchMode ? (
               <div className="flex items-center gap-3">
@@ -519,30 +520,33 @@ export function AgentOptimizationSuggestionsPage() {
               暂无数据
             </div>
           ) : (
-            <div
-              className={cn(
-                "grid grid-cols-1 gap-4",
-                activeStatus === "filtered" ? "xl:grid-cols-2" : "xl:grid-cols-2",
-              )}
-            >
-              {candidates.map((suggestion, index) => (
-                <SuggestionCard
-                  checked={selectedIds.includes(suggestion.id)}
-                  displayIndex={(activePage - 1) * PAGE_SIZE + index + 1}
-                  key={suggestion.id}
-                  onAdopt={() => openIngestDialog("single", [suggestion.id])}
-                  onCheckedChange={(checked) => toggleSuggestion(suggestion.id, checked)}
-                  onIgnore={() => {
-                    setIgnoreTargetIds([suggestion.id]);
-                    setIgnoreConfirmationOpen(true);
-                  }}
-                  selectable={canSelect}
-                  showActions={canManage}
-                  status={activeStatus}
-                  suggestion={suggestion}
-                />
-              ))}
-            </div>
+            <TooltipProvider>
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-4",
+                  activeStatus === "filtered" ? "xl:grid-cols-2" : "xl:grid-cols-2",
+                )}
+              >
+                {candidates.map((suggestion, index) => (
+                  <SuggestionCard
+                    checked={selectedIds.includes(suggestion.id)}
+                    displayIndex={(activePage - 1) * PAGE_SIZE + index + 1}
+                    key={suggestion.id}
+                    onAdopt={() => openIngestDialog("single", [suggestion.id])}
+                    onCheckedChange={(checked) => toggleSuggestion(suggestion.id, checked)}
+                    onIgnore={() => {
+                      setIgnoreTargetIds([suggestion.id]);
+                      setIgnoreConfirmationOpen(true);
+                    }}
+                    onViewSearchDetail={() => setSearchDetailCandidateId(suggestion.id)}
+                    selectable={canSelect}
+                    showActions={canManage}
+                    status={activeStatus}
+                    suggestion={suggestion}
+                  />
+                ))}
+              </div>
+            </TooltipProvider>
           )}
         </section>
 
@@ -692,7 +696,7 @@ export function AgentOptimizationSuggestionsPage() {
                         答案 <span className="text-destructive">*</span>
                       </Label>
                       <Textarea
-                        className="min-h-24 resize-none"
+                        className="min-h-32 resize-none"
                         disabled={ingestSubmitting}
                         id="optimization-answer"
                         onChange={(event) => setIngestAnswer(event.target.value)}
@@ -704,6 +708,11 @@ export function AgentOptimizationSuggestionsPage() {
               </div>
               <IngestContextPanel
                 candidate={ingestPreviewCandidate}
+                onViewSearchDetail={
+                  ingestPreviewCandidate
+                    ? () => setSearchDetailCandidateId(ingestPreviewCandidate.id)
+                    : undefined
+                }
                 selectedCount={ingestTargetIds.length}
               />
             </div>
@@ -743,6 +752,16 @@ export function AgentOptimizationSuggestionsPage() {
         }}
         onOpenChange={setKnowledgePickerOpen}
         open={knowledgePickerOpen}
+      />
+      <SearchDetailDialog
+        agentId={agentId}
+        candidateId={searchDetailCandidateId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSearchDetailCandidateId(null);
+          }
+        }}
+        open={searchDetailCandidateId != null}
       />
     </AiHostingLayout>
   );
@@ -1004,9 +1023,11 @@ function KnowledgePickerDialog({
 
 function IngestContextPanel({
   candidate,
+  onViewSearchDetail,
   selectedCount,
 }: {
   candidate: AiHostingLearningCandidateItem | null;
+  onViewSearchDetail?: () => void;
   selectedCount: number;
 }) {
   if (!candidate) {
@@ -1024,8 +1045,8 @@ function IngestContextPanel({
   const userName = candidate.user?.name ?? "客户";
 
   return (
-    <aside className="space-y-6 border-t pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-      <section aria-labelledby="ingest-evaluation-title" className="space-y-3">
+    <aside className="border-t pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+      <section aria-labelledby="ingest-evaluation-title">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             <HugeiconsIcon
@@ -1039,53 +1060,56 @@ function IngestContextPanel({
               AI 评测
             </h3>
           </div>
-          <Badge
-            className={cn(
-              "px-2.5",
-              candidate.status === "filtered"
-                ? "bg-destructive/85 text-destructive-foreground"
-                : "bg-success/85 text-success-foreground",
-            )}
-          >
-            {candidate.status === "filtered" ? "智能过滤" : "建议入库"}
-          </Badge>
+          <EvaluationMeta confidence={candidate.confidence} status={candidate.status} />
         </div>
-        <p className="text-sm leading-6 text-foreground">{candidate.rationale}</p>
+        <p className="mt-3 text-sm leading-6 text-foreground">{candidate.rationale}</p>
+        <KnowledgeComparison
+          className="mt-5"
+          layout="ingest"
+          onClick={onViewSearchDetail}
+          searchResults={candidate.searchResults}
+        />
       </section>
 
-      <section aria-labelledby="ingest-source-title" className="space-y-3">
+      <section aria-labelledby="ingest-source-title" className="mt-8 space-y-3">
         <h3 className="text-sm font-medium text-foreground" id="ingest-source-title">
           来源会话
         </h3>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <Avatar className="size-7 rounded-full">
-              <AvatarImage alt={seatName} src={candidate.seat?.avatar} />
-              <AvatarFallback className="rounded-full text-xs">
-                {seatName.slice(0, 1)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="truncate text-xs text-foreground">{seatName}</span>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-7 rounded-full">
+                  <AvatarImage alt={seatName} src={candidate.seat?.avatar} />
+                  <AvatarFallback className="rounded-full text-xs">
+                    {seatName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>{seatName}</TooltipContent>
+            </Tooltip>
+            <span className="text-xs text-muted-foreground">与</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-7 rounded-full">
+                  <AvatarImage alt={userName} src={candidate.user?.avatar} />
+                  <AvatarFallback className="rounded-full text-xs">
+                    {userName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>{userName}</TooltipContent>
+            </Tooltip>
           </div>
-          <span className="text-xs text-muted-foreground">与</span>
-          <div className="flex min-w-0 items-center gap-2">
-            <Avatar className="size-7 rounded-full">
-              <AvatarImage alt={userName} src={candidate.user?.avatar} />
-              <AvatarFallback className="rounded-full text-xs">
-                {userName.slice(0, 1)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="truncate text-xs text-foreground">{userName}</span>
-          </div>
+          {candidate.createdAt ? (
+            <time
+              className="truncate text-right text-xs text-muted-foreground"
+              dateTime={new Date(candidate.createdAt).toISOString()}
+            >
+              {formatDate(candidate.createdAt)}
+            </time>
+          ) : null}
         </div>
-        {candidate.createdAt ? (
-          <time
-            className="block text-xs text-muted-foreground"
-            dateTime={new Date(candidate.createdAt).toISOString()}
-          >
-            {formatDate(candidate.createdAt)}
-          </time>
-        ) : null}
       </section>
     </aside>
   );
@@ -1097,6 +1121,7 @@ function SuggestionCard({
   onAdopt,
   onCheckedChange,
   onIgnore,
+  onViewSearchDetail,
   selectable = false,
   showActions = false,
   status,
@@ -1107,18 +1132,24 @@ function SuggestionCard({
   onAdopt?: () => void;
   onCheckedChange?: (checked: boolean) => void;
   onIgnore?: () => void;
+  onViewSearchDetail?: () => void;
   selectable?: boolean;
   showActions?: boolean;
   status?: SuggestionStatus;
   suggestion: AiHostingLearningCandidateItem;
 }) {
+  const seatName = suggestion.seat?.name ?? "客服";
+  const userName = suggestion.user?.name ?? "客户";
+
   return (
-    <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
+    <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
       <div className="flex min-h-7 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-conversation-active text-sm font-semibold text-conversation-active-foreground shadow-sm">
-            {displayIndex}
-          </span>
+          {status === "pending" ? (
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-conversation-active text-sm font-semibold text-conversation-active-foreground shadow-sm">
+              {displayIndex}
+            </span>
+          ) : null}
           <h2 className="truncate text-base font-bold text-foreground">{suggestion.question}</h2>
         </div>
         {selectable ? (
@@ -1129,23 +1160,9 @@ function SuggestionCard({
           />
         ) : null}
       </div>
-      <div className="mt-3 rounded-[10px] border border-border/50 bg-card px-3.5 py-3">
-        <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="text-primary"
-            icon={HonourStarIcon}
-            size={15}
-            strokeWidth={1.8}
-          />
-          <span>
-            提炼答案<span className="text-muted-foreground">（预览）</span>
-          </span>
-        </div>
-        <p className="mt-2 h-18 line-clamp-3 text-[13px] leading-6 text-foreground">
-          {suggestion.answer}
-        </p>
-      </div>
+      <p className="mt-2 h-18 line-clamp-3 text-sm leading-6 text-foreground">
+        {suggestion.answer}
+      </p>
       <div
         className={cn(
           "mt-3 rounded-[10px] border bg-clip-padding bg-origin-border px-3.5 py-3",
@@ -1168,34 +1185,45 @@ function SuggestionCard({
             />
             <span>AI 评测</span>
           </div>
-          <Badge
-            className={cn(
-              "shrink-0 px-2.5",
-              status === "filtered"
-                ? "bg-destructive/85 text-destructive-foreground"
-                : "bg-success/85 text-success-foreground",
-            )}
-          >
-            {status === "filtered" ? "智能过滤" : "建议入库"}
-          </Badge>
+          <EvaluationMeta confidence={suggestion.confidence} status={status} />
         </div>
-        <p className="mt-2 h-15 line-clamp-3 text-[13px] leading-5 text-foreground">
+        <p className="mt-2 min-h-15 line-clamp-3 text-[13px] leading-5 text-foreground/60">
           {suggestion.rationale}
         </p>
+        <KnowledgeComparison
+          className="mt-3"
+          layout="card"
+          onClick={onViewSearchDetail}
+          searchResults={suggestion.searchResults}
+        />
       </div>
       <div className="mt-4 flex h-8 shrink-0 items-center justify-between gap-3 pl-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 text-xs text-muted-foreground">来源对话</span>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Avatar className="size-5 rounded-full">
-              <AvatarImage alt={suggestion.seat?.name} src={suggestion.seat?.avatar} />
-              <AvatarFallback className="size-5 rounded-full text-[10px]" />
-            </Avatar>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-5 rounded-full">
+                  <AvatarImage alt={seatName} src={suggestion.seat?.avatar} />
+                  <AvatarFallback className="size-5 rounded-full text-[10px]">
+                    {seatName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>{seatName}</TooltipContent>
+            </Tooltip>
             <span className="text-xs text-muted-foreground">与</span>
-            <Avatar className="size-5 rounded-full">
-              <AvatarImage alt={suggestion.user?.name} src={suggestion.user?.avatar} />
-              <AvatarFallback className="size-5 rounded-full text-[10px]" />
-            </Avatar>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-5 rounded-full">
+                  <AvatarImage alt={userName} src={suggestion.user?.avatar} />
+                  <AvatarFallback className="size-5 rounded-full text-[10px]">
+                    {userName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>{userName}</TooltipContent>
+            </Tooltip>
           </div>
           {suggestion.createdAt ? (
             <time
@@ -1206,7 +1234,23 @@ function SuggestionCard({
             </time>
           ) : null}
         </div>
-        {showActions && !selectable && status === "pending" ? (
+        {status === "adopted" && hasKnowledgeChunkTarget(suggestion) ? (
+          <Button asChild className="h-auto shrink-0 p-0 text-[13px]" variant="link">
+            <Link
+              rel="noopener noreferrer"
+              target="_blank"
+              to={buildKnowledgeChunkPath(suggestion)}
+            >
+              查看知识切片
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={ArrowRight01Icon}
+                size={14}
+                strokeWidth={1.8}
+              />
+            </Link>
+          </Button>
+        ) : showActions && !selectable && status === "pending" ? (
           <div className="flex shrink-0 items-center gap-2">
             <Button
               className="border-primary/40 text-primary hover:border-primary/60 hover:bg-primary/5 hover:text-primary"
@@ -1258,6 +1302,301 @@ function SuggestionCard({
       </div>
     </article>
   );
+}
+
+function EvaluationMeta({
+  confidence,
+  status,
+}: {
+  confidence?: number;
+  status?: SuggestionStatus;
+}) {
+  const level = resolveConfidenceLevel(confidence);
+
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px]">
+      {level ? (
+        <>
+          <span className="font-normal text-muted-foreground">置信度：{level}</span>
+          <span aria-hidden="true" className="h-3 w-px bg-border" />
+        </>
+      ) : null}
+      <span
+        className={cn(
+          "font-medium",
+          status === "filtered" ? "text-destructive" : "text-success",
+        )}
+      >
+        {status === "filtered" ? "智能过滤" : "建议入库"}
+      </span>
+    </div>
+  );
+}
+
+function resolveConfidenceLevel(confidence?: number) {
+  if (confidence == null || !Number.isFinite(confidence)) {
+    return undefined;
+  }
+
+  if (confidence >= VERY_HIGH_CONFIDENCE_THRESHOLD) {
+    return "极高";
+  }
+
+  if (confidence >= HIGH_CONFIDENCE_THRESHOLD) {
+    return "高";
+  }
+
+  return "中";
+}
+
+function KnowledgeComparison({
+  className,
+  layout,
+  onClick,
+  searchResults,
+}: {
+  className?: string;
+  layout: "card" | "ingest";
+  onClick?: () => void;
+  searchResults: AiHostingLearningCandidateItem["searchResults"];
+}) {
+  if (!searchResults?.length) {
+    return null;
+  }
+
+  const documents = searchResults.map((result) => (
+    <span
+      className="flex min-w-0 items-center gap-1.5 rounded-[4px] bg-muted px-2 py-0.5 text-[13px] font-normal text-foreground mix-blend-multiply [.dark_&]:mix-blend-normal"
+      key={`${result.kbId}:${result.docId}`}
+      title={result.docName}
+    >
+      <FileExtensionBadge className="size-4" extension={result.docSuffix} />
+      <span className="min-w-0 truncate">{result.docName}</span>
+    </span>
+  ));
+  const viewButton = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label="知识对比详情"
+          className="size-6 shrink-0 rounded-[4px] bg-muted p-0 text-muted-foreground shadow-none mix-blend-multiply hover:bg-muted/80 hover:text-foreground [.dark_&]:mix-blend-normal"
+          onClick={onClick}
+          size="icon"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={MoreHorizontalIcon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>知识对比详情</TooltipContent>
+    </Tooltip>
+  );
+
+  if (layout === "ingest") {
+    return (
+      <div className={cn("space-y-2", className)}>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-medium text-foreground">对比已有知识</h3>
+          {viewButton}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">{documents}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap",
+        className,
+      )}
+    >
+      <span className="shrink-0 text-[13px] font-medium text-foreground">知识对比</span>
+      <div className="flex min-w-0 items-center gap-1 overflow-hidden">{documents}</div>
+      {viewButton}
+    </div>
+  );
+}
+
+function SearchDetailDialog({
+  agentId,
+  candidateId,
+  onOpenChange,
+  open,
+}: {
+  agentId: string;
+  candidateId: string | null;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const [items, setItems] = useState<AiHostingLearningCandidateSearchDetailItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    if (!open || !agentId || !candidateId) {
+      return;
+    }
+
+    let cancelled = false;
+    setItems([]);
+    setErrorMessage("");
+    setLoading(true);
+
+    void getAgentLearningCandidateSearchDetail(agentId, candidateId)
+      .then((response) => {
+        if (!cancelled) {
+          setItems(response.items);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setErrorMessage(isRequestError(error) ? error.message : "加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, candidateId, open]);
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="flex max-h-[82vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-6 py-4">
+          <DialogTitle className="text-xl">对比已有知识</DialogTitle>
+          <DialogDescription className="sr-only">查看候选建议的知识库检索明细</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6">
+          {loading ? (
+            <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+              <Spinner />
+              正在加载
+            </div>
+          ) : errorMessage ? (
+            <div className="flex min-h-56 items-center justify-center text-sm text-destructive">
+              {errorMessage}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
+              暂无数据
+            </div>
+          ) : (
+            <div className="divide-y">
+              {items.map((item, index) => (
+                <SearchDetailItem item={item} key={`${item.chunkId}:${index}`} rank={index + 1} />
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SearchDetailItem({
+  item,
+  rank,
+}: {
+  item: AiHostingLearningCandidateSearchDetailItem;
+  rank: number;
+}) {
+  return (
+    <article className="py-4">
+      {item.chunkTitle ? (
+        <h3 className="text-base font-semibold leading-6 text-foreground">{item.chunkTitle}</h3>
+      ) : null}
+      <p className={cn("whitespace-pre-wrap text-sm leading-6 text-foreground", item.chunkTitle && "mt-1")}>
+        {item.content || "-"}
+      </p>
+      <div className="mt-3 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+        <FileExtensionBadge className="size-4" extension={item.docSuffix} />
+        <span className="truncate">{item.kbName || "知识库"}</span>
+        <span aria-hidden="true">/</span>
+        <span className="truncate">{item.docName || "知识文档"}</span>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-[13px]">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">召回分数</span>
+          <span className="font-medium text-primary">{formatRecallScore(item.score)}</span>
+          <Badge className="rounded-[6px] px-2 py-1 font-semibold" variant="secondary">
+            NO.{rank}
+          </Badge>
+        </div>
+        <Button asChild className="h-7 shrink-0 px-2 text-[13px] font-medium" variant="secondary">
+          <Link
+            rel="noopener noreferrer"
+            target="_blank"
+            to={buildSearchDetailTargetPath(item)}
+          >
+            查看切片
+          </Link>
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function formatRecallScore(score: number) {
+  return score.toFixed(4).replace(/0+$/u, "").replace(/\.$/u, "");
+}
+
+function hasKnowledgeChunkTarget(
+  suggestion: AiHostingLearningCandidateItem,
+): suggestion is AiHostingLearningCandidateItem & {
+  targetDocId: string;
+  targetEntryId: string;
+  targetKbId: string;
+} {
+  return Boolean(suggestion.targetKbId && suggestion.targetDocId && suggestion.targetEntryId);
+}
+
+function buildKnowledgeChunkPath(
+  suggestion: AiHostingLearningCandidateItem & {
+    targetDocId: string;
+    targetEntryId: string;
+    targetKbId: string;
+  },
+) {
+  const searchParams = new URLSearchParams({ entryId: suggestion.targetEntryId });
+
+  return `/chat/ai-hosting/kb/${encodeURIComponent(suggestion.targetKbId)}/docs/${encodeURIComponent(suggestion.targetDocId)}?${searchParams.toString()}`;
+}
+
+function buildKnowledgeChunkPathFromIds(kbId: string, docId: string, chunkId: string) {
+  const searchParams = new URLSearchParams({ chunkId });
+
+  return `/chat/ai-hosting/kb/${encodeURIComponent(kbId)}/docs/${encodeURIComponent(docId)}?${searchParams.toString()}`;
+}
+
+function buildSearchDetailTargetPath(item: AiHostingLearningCandidateSearchDetailItem) {
+  const chunkId = resolveVolcChunkDisplayId(item.volcChunkId);
+
+  if (item.docType === 4) {
+    const searchParams = new URLSearchParams({
+      chunkId,
+      docId: item.docId,
+      tab: "attachments",
+    });
+
+    return `/chat/ai-hosting/kb/${encodeURIComponent(item.kbId)}?${searchParams.toString()}`;
+  }
+
+  return buildKnowledgeChunkPathFromIds(item.kbId, item.docId, chunkId);
+}
+
+function resolveVolcChunkDisplayId(volcChunkId: string) {
+  return volcChunkId.split("_").pop()?.trim() || volcChunkId;
 }
 
 function formatDate(value: number) {

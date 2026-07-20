@@ -97,12 +97,18 @@ type KbAttachmentsTabProps = {
   activeType: KbAttachmentType;
   kbId: string;
   onActiveTypeChange: (type: KbAttachmentType) => void;
+  onTargetChunkClear?: () => void;
+  onTargetTypeResolved?: (type: KbAttachmentType) => void;
+  targetChunkId?: string;
 };
 
 export function KbAttachmentsTab({
   activeType,
   kbId,
   onActiveTypeChange,
+  onTargetChunkClear,
+  onTargetTypeResolved,
+  targetChunkId,
 }: KbAttachmentsTabProps) {
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
@@ -124,9 +130,13 @@ export function KbAttachmentsTab({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextListLoadRef = useRef(false);
   const phaseRef = useRef(phase);
+  const onTargetTypeResolvedRef = useRef(onTargetTypeResolved);
   const pollAttachmentSyncStatusRef = useRef<PollAttachmentSyncStatus | null>(null);
   phaseRef.current = phase;
   kbIdRef.current = kbId;
+  onTargetTypeResolvedRef.current = onTargetTypeResolved;
+  const requestedAttachmentType = targetChunkId ? undefined : activeType;
+  const requestedSearchQuery = targetChunkId ? undefined : debouncedSearchQuery || undefined;
 
   const clearPollTimer = useCallback(() => {
     if (pollTimerRef.current) {
@@ -159,13 +169,14 @@ export function KbAttachmentsTab({
     setLoadingList(true);
 
     try {
-      const requestedPage = options?.page ?? currentPage;
+      const requestedPage = options?.page ?? (targetChunkId ? 1 : currentPage);
       const response = await listKbAttachments(kbId, {
-        attachmentType: activeType,
+        attachmentType: requestedAttachmentType,
+        chunkId: targetChunkId,
         docId: resolvedDocId,
         page: requestedPage,
         pageSize: PAGE_SIZE,
-        query: debouncedSearchQuery || undefined,
+        query: requestedSearchQuery,
       });
 
       if (version !== requestVersionRef.current || !isMountedRef.current) {
@@ -179,11 +190,12 @@ export function KbAttachmentsTab({
 
       if (resolvedPage !== requestedPage && newTotal > 0) {
         const corrected = await listKbAttachments(kbId, {
-          attachmentType: activeType,
+          attachmentType: requestedAttachmentType,
+          chunkId: targetChunkId,
           docId: resolvedDocId,
           page: resolvedPage,
           pageSize: PAGE_SIZE,
-          query: debouncedSearchQuery || undefined,
+          query: requestedSearchQuery,
         });
 
         if (version !== requestVersionRef.current || !isMountedRef.current) {
@@ -200,7 +212,13 @@ export function KbAttachmentsTab({
         return;
       }
 
-      setAttachments(response.attachments.map(toKbAttachmentItem));
+      const mappedAttachments = response.attachments.map(toKbAttachmentItem);
+
+      if (targetChunkId && mappedAttachments[0]) {
+        onTargetTypeResolvedRef.current?.(mappedAttachments[0].attachmentType);
+      }
+
+      setAttachments(mappedAttachments);
       setTotal(newTotal);
       if (resolvedPage !== currentPage) {
         skipNextListLoadRef.current = true;
@@ -226,7 +244,13 @@ export function KbAttachmentsTab({
         setLoadingList(false);
       }
     }
-  }, [activeType, attachmentDocId, currentPage, debouncedSearchQuery, kbId]);
+  }, [attachmentDocId, currentPage, kbId, requestedAttachmentType, requestedSearchQuery, targetChunkId]);
+
+  useEffect(() => {
+    if (targetChunkId) {
+      setSearchQuery("");
+    }
+  }, [targetChunkId]);
 
   const finishAttachmentSync = useCallback(async (currentKbId: string, docId: string) => {
     setCurrentPage(1);
@@ -397,7 +421,7 @@ export function KbAttachmentsTab({
 
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [activeType, debouncedSearchQuery, phase]);
+  }, [debouncedSearchQuery, phase, requestedAttachmentType, targetChunkId]);
 
   useEffect(() => {
     if (phase !== "ready" || !kbId || !attachmentDocId) {
@@ -411,13 +435,14 @@ export function KbAttachmentsTab({
 
     void loadAttachments();
   }, [
-    activeType,
     attachmentDocId,
     currentPage,
     debouncedSearchQuery,
     kbId,
     loadAttachments,
     phase,
+    requestedAttachmentType,
+    targetChunkId,
   ]);
 
   const handleAttachmentSyncResult = useCallback(async (
@@ -689,7 +714,10 @@ export function KbAttachmentsTab({
             <Input
               aria-label="搜索附件"
               className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                onTargetChunkClear?.();
+                setSearchQuery(event.target.value);
+              }}
               placeholder="搜索附件"
               value={searchQuery}
             />

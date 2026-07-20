@@ -45,6 +45,10 @@ const retryKbDocMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
 const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
+const kbAttachmentServiceMock = vi.hoisted(() => ({
+  getKbAttachmentStatus: vi.fn(),
+  listKbAttachments: vi.fn(),
+}));
 const chunkVectorizationTip =
   "保存编辑后的切片内容，需要重新向量化，并产生额外 tokens 消耗。";
 const agentServiceMock = vi.hoisted(() => ({
@@ -68,6 +72,7 @@ const agentLearningServiceMock = vi.hoisted(() => ({
   approveAgentLearningCandidate: vi.fn(),
   batchApproveAgentLearningCandidates: vi.fn(),
   batchRejectAgentLearningCandidates: vi.fn(),
+  getAgentLearningCandidateSearchDetail: vi.fn(),
   listAgentLearningCandidates: vi.fn(),
   rejectAgentLearningCandidate: vi.fn(),
 }));
@@ -94,6 +99,17 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-service", async (importOriginal) => {
   return {
     ...actual,
     ...kbServiceMock,
+  };
+});
+
+vi.mock("@/pages/chat/ai-hosting/api/kb-attachment-service", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/pages/chat/ai-hosting/api/kb-attachment-service")
+  >();
+
+  return {
+    ...actual,
+    ...kbAttachmentServiceMock,
   };
 });
 
@@ -193,10 +209,15 @@ const mockLearningCandidates = [
   {
     answer:
       "您好，这款商品是否有货需要以当前小程序或商品链接页面显示为准。如果页面可正常下单，一般表示当前有库存；如果显示售罄或无法购买，说明暂时无货",
+    confidence: 0.92,
     createdAt: 1_725_000_000_000,
     id: "1",
     question: "这个商品现在还有货吗？",
     rationale: "这是一段理由说明这是一段理由说明这是一段理由说明这是一段理由说明",
+    searchResults: [
+      { docId: "1001", docName: "敏感肌护理", docSuffix: "faq.xlsx", kbId: "1" },
+      { docId: "1002", docName: "油皮清洁", docSuffix: "pdf", kbId: "1" },
+    ],
     seat: {
       avatar: "https://example.com/seat.png",
       id: "seat-1",
@@ -212,6 +233,7 @@ const mockLearningCandidates = [
   {
     answer:
       "您好，这款商品是否有货需要以当前小程序或商品链接页面显示为准。如果页面可正常下单，一般表示当前有库存；如果显示售罄或无法购买，说明暂时无货",
+    confidence: 0.76,
     createdAt: 1_725_000_100_000,
     id: "2",
     question: "这个商品现在还有货吗？",
@@ -219,6 +241,54 @@ const mockLearningCandidates = [
     status: "pending" as const,
   },
 ];
+
+const mockLearningCandidateSearchDetail = {
+  items: [
+    {
+      chunkId: "1024",
+      chunkTitle: "25+的油皮痘肌如果皮肤不敏感，有什么护肤产品推荐？",
+      content: "25+的油皮痘肌如果皮肤不敏感，可以使用酸C循环套组",
+      docId: "102",
+      docName: "护肤Q&A文档",
+      docSuffix: "pdf",
+      docType: 2,
+      kbId: "5",
+      kbName: "护肤知识库",
+      score: 0.5689,
+      volcChunkId: "doc_id_272_102_20260717105032070-6",
+    },
+  ],
+  pagination: {
+    page: 1,
+    pageSize: 20,
+    total: 1,
+    totalPages: 1,
+  },
+};
+
+const mockAttachmentLearningCandidateSearchDetail = {
+  items: [
+    {
+      chunkId: "2048",
+      chunkTitle: "产品说明书",
+      content: "安装与使用说明",
+      docId: "90",
+      docName: "附件库",
+      docSuffix: "attachment",
+      docType: 4,
+      kbId: "16",
+      kbName: "产品知识库",
+      score: 0.81,
+      volcChunkId: "doc_id_272_90_20260717105032070-6",
+    },
+  ],
+  pagination: {
+    page: 1,
+    pageSize: 20,
+    total: 1,
+    totalPages: 1,
+  },
+};
 
 const mockAgentDetail = {
   hasUnpublishedChanges: true,
@@ -453,11 +523,19 @@ describe("AI hosting pages", () => {
       async (_agentId, params) => {
         if (params.status === "adopted") {
           return {
-            candidates: [],
+            candidates: [
+              {
+                ...mockLearningCandidates[0],
+                status: "adopted",
+                targetDocId: "1001",
+                targetEntryId: "501",
+                targetKbId: "1",
+              },
+            ],
             pagination: {
               page: 1,
               pageSize: 10,
-              total: 0,
+              total: 1,
             },
           };
         }
@@ -476,6 +554,9 @@ describe("AI hosting pages", () => {
       },
     );
     vi.mocked(agentLearningService.approveAgentLearningCandidate).mockResolvedValue({ ok: true });
+    vi.mocked(agentLearningService.getAgentLearningCandidateSearchDetail).mockResolvedValue(
+      mockLearningCandidateSearchDetail,
+    );
     vi.mocked(agentLearningService.rejectAgentLearningCandidate).mockResolvedValue({ ok: true });
     vi.mocked(agentLearningService.batchApproveAgentLearningCandidates).mockResolvedValue({
       failDetails: [],
@@ -528,8 +609,21 @@ describe("AI hosting pages", () => {
       createMockKbDocDetail(docId),
     );
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.title ?? params?.content),
+      createMockKbDocChunksResponse(
+        docId,
+        params?.title ?? params?.content,
+        params?.chunkId,
+      ),
     );
+    kbAttachmentServiceMock.getKbAttachmentStatus.mockResolvedValue({
+      docId: "attachment-doc-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    kbAttachmentServiceMock.listKbAttachments.mockResolvedValue({
+      attachments: [],
+      pagination: { page: 1, pageSize: 10, total: 0 },
+    });
     retryKbDocMock.mockImplementation(async (docId: string) => {
       updateMockKbDocStatus(docId, "queued");
       return { retried: true };
@@ -807,12 +901,28 @@ describe("AI hosting pages", () => {
     expect(await screen.findAllByText("这个商品现在还有货吗？")).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "采纳" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "忽略" })).toHaveLength(2);
+    expect(screen.getByText("置信度：极高")).toBeInTheDocument();
+    expect(screen.getByText("置信度：高")).toBeInTheDocument();
+    expect(screen.getByText("知识对比")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 >" })).toBeInTheDocument();
+    expect(screen.getByText("敏感肌护理")).toBeInTheDocument();
+    expect(screen.getByText("油皮清洁")).toBeInTheDocument();
+    expect(screen.getByText("敏感肌护理").previousElementSibling).toHaveAttribute(
+      "alt",
+      "Excel 文件",
+    );
+    expect(screen.getByText("油皮清洁").previousElementSibling).toHaveAttribute(
+      "alt",
+      "PDF 文件",
+    );
     expect(screen.queryByRole("button", { name: "批量入库" })).not.toBeInTheDocument();
     expect(agentLearningService.listAgentLearningCandidates).toHaveBeenCalledWith("301", {
       page: 1,
       pageSize: 10,
       status: "pending",
     });
+    await user.hover(screen.getAllByAltText("客服小王")[0]);
+    expect(await screen.findByRole("tooltip", { name: "客服小王" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
 
@@ -828,11 +938,23 @@ describe("AI hosting pages", () => {
     expect(within(singleIngestDialog).getByLabelText(/答案/)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByRole("heading", { name: "AI 评测" })).toBeInTheDocument();
     expect(within(singleIngestDialog).getByText(mockLearningCandidates[0].rationale)).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText("置信度：极高")).toBeInTheDocument();
+    expect(
+      within(singleIngestDialog).getByRole("heading", { level: 3, name: "对比已有知识" }),
+    ).toBeInTheDocument();
+    expect(
+      within(singleIngestDialog).getByRole("button", { name: "查看 >" }),
+    ).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText("敏感肌护理")).toBeInTheDocument();
+    expect(within(singleIngestDialog).getByText("油皮清洁")).toBeInTheDocument();
     expect(
       within(singleIngestDialog).getByRole("heading", { name: "来源会话" }),
     ).toBeInTheDocument();
-    expect(within(singleIngestDialog).getByText("客服小王")).toBeInTheDocument();
-    expect(within(singleIngestDialog).getByText("客户小李")).toBeInTheDocument();
+    expect(within(singleIngestDialog).queryByText("客服小王")).not.toBeInTheDocument();
+    expect(within(singleIngestDialog).queryByText("客户小李")).not.toBeInTheDocument();
+    expect(within(singleIngestDialog).getByAltText("客户小李")).toBeInTheDocument();
+    await user.hover(within(singleIngestDialog).getByAltText("客服小王"));
+    expect(await screen.findByRole("tooltip", { name: "客服小王" })).toBeInTheDocument();
     await user.click(within(singleIngestDialog).getByRole("button", { name: "取消" }));
 
     await user.click(screen.getByRole("button", { name: "批量操作" }));
@@ -867,6 +989,13 @@ describe("AI hosting pages", () => {
 
     expect(screen.queryByRole("button", { name: "批量操作" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "批量入库" })).not.toBeInTheDocument();
+    const knowledgeChunkLink = await screen.findByRole("link", { name: "查看知识切片" });
+    expect(knowledgeChunkLink).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/1/docs/1001?entryId=501",
+    );
+    expect(knowledgeChunkLink).toHaveAttribute("target", "_blank");
+    expect(knowledgeChunkLink).toHaveAttribute("rel", "noopener noreferrer");
 
     await user.click(screen.getByRole("button", { name: "已忽略" }));
 
@@ -892,6 +1021,103 @@ describe("AI hosting pages", () => {
 
     expect(screen.getByRole("alertdialog", { name: "是否确认忽略?" })).toHaveTextContent(
       "已忽略的，后续也可前往已忽略列表中重新入库",
+    );
+  });
+
+  it("maps learning confidence into the three display levels", async () => {
+    vi.mocked(agentLearningService.listAgentLearningCandidates).mockResolvedValueOnce({
+      candidates: [
+        { ...mockLearningCandidates[0], confidence: 0.9, id: "confidence-very-high" },
+        { ...mockLearningCandidates[0], confidence: 0.7, id: "confidence-high" },
+        { ...mockLearningCandidates[0], confidence: 0.69, id: "confidence-medium" },
+      ],
+      pagination: { page: 1, pageSize: 10, total: 3 },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    expect(await screen.findByText("置信度：极高")).toBeInTheDocument();
+    expect(screen.getByText("置信度：高")).toBeInTheDocument();
+    expect(screen.getByText("置信度：中")).toBeInTheDocument();
+  });
+
+  it("loads knowledge match details from the candidate card and ingest dialog", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    const cardTrigger = await screen.findByRole("button", { name: "查看 >" });
+    await user.click(cardTrigger);
+
+    const searchDetailDialog = await screen.findByRole("dialog", { name: "对比已有知识" });
+    expect(agentLearningService.getAgentLearningCandidateSearchDetail).toHaveBeenCalledWith(
+      "301",
+      "1",
+    );
+    expect(
+      within(searchDetailDialog).getByRole("heading", {
+        name: mockLearningCandidateSearchDetail.items[0].chunkTitle,
+      }),
+    ).toBeInTheDocument();
+    expect(searchDetailDialog).toHaveTextContent(mockLearningCandidateSearchDetail.items[0].content);
+    expect(searchDetailDialog).toHaveTextContent("护肤知识库");
+    expect(searchDetailDialog).toHaveTextContent("护肤Q&A文档");
+    expect(searchDetailDialog).toHaveTextContent("0.5689");
+    expect(searchDetailDialog).toHaveTextContent("NO.1");
+    expect(within(searchDetailDialog).getByRole("link", { name: "查看切片" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/5/docs/102?chunkId=20260717105032070-6",
+    );
+    expect(within(searchDetailDialog).getByRole("link", { name: "查看切片" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+
+    await user.click(within(searchDetailDialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "对比已有知识" })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
+    const ingestDialog = screen.getByRole("dialog", { name: "采纳入库" });
+    await user.click(
+      within(ingestDialog).getByRole("button", { name: "查看 >" }),
+    );
+
+    expect(await screen.findByRole("dialog", { name: "对比已有知识" })).toBeInTheDocument();
+    expect(agentLearningService.getAgentLearningCandidateSearchDetail).toHaveBeenLastCalledWith(
+      "301",
+      "1",
+    );
+  });
+
+  it("routes attachment search details to the attachment library", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentLearningService.getAgentLearningCandidateSearchDetail).mockResolvedValueOnce(
+      mockAttachmentLearningCandidateSearchDetail,
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301/optimization-suggestions",
+      <AgentOptimizationSuggestionsPage />,
+      "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
+    );
+
+    await user.click(await screen.findByRole("button", { name: "查看 >" }));
+
+    expect(
+      within(await screen.findByRole("dialog", { name: "对比已有知识" })).getByRole("link", {
+        name: "查看切片",
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/16?chunkId=20260717105032070-6&tab=attachments",
     );
   });
 
@@ -3050,6 +3276,128 @@ describe("AI hosting pages", () => {
     );
   });
 
+  it("persists the knowledge and attachment views in the URL history", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&attachmentType=file",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    expect(await screen.findByRole("tab", { name: "文件" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(router.state.location.search).toBe("?tab=attachments&attachmentType=file");
+    expect(kbAttachmentServiceMock.listKbAttachments).toHaveBeenCalledWith(
+      "W7zU2fWkVSp65OTAjDd3-w",
+      expect.objectContaining({ attachmentType: 2 }),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "链接" }));
+    expect(router.state.location.search).toBe("?tab=attachments&attachmentType=link");
+    expect(screen.getByRole("tab", { name: "链接" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "小程序" }));
+    expect(router.state.location.search).toBe("?tab=attachments&attachmentType=miniProgram");
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.search).toBe("?tab=attachments&attachmentType=link");
+    expect(screen.getByRole("tab", { name: "链接" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "知识" }));
+    expect(router.state.location.search).toBe("");
+    expect(screen.getByRole("tab", { name: "知识" })).toHaveAttribute("data-state", "active");
+  });
+
+  it("writes the default attachment view to the URL when switching from knowledge", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("tab", { name: "附件" }));
+
+    expect(router.state.location.search).toBe("?tab=attachments&attachmentType=image");
+    expect(await screen.findByRole("tab", { name: "图片" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("loads an attachment deep link and resolves its attachment type", async () => {
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&chunkId=20260717105032070-6",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+    kbAttachmentServiceMock.listKbAttachments.mockResolvedValueOnce({
+      attachments: [
+        {
+          attachmentContent: {
+            content: {
+              fileName: "产品说明书.pdf",
+              fileUrl: "https://example.com/manual.pdf",
+            },
+            materialCollectionId: "1",
+            msgInfoId: "1",
+            type: "file",
+          },
+          attachmentType: 2,
+          chunkId: "503",
+          createdAt: "2026-07-20 12:00:00",
+          description: "安装与使用说明",
+          materialCollectionId: "1",
+          title: "产品说明书.pdf",
+          updatedAt: "2026-07-20 12:00:00",
+        },
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+
+    expect(await screen.findByText("产品说明书.pdf")).toBeInTheDocument();
+    expect(kbAttachmentServiceMock.listKbAttachments).toHaveBeenCalledWith(
+      "W7zU2fWkVSp65OTAjDd3-w",
+      {
+        attachmentType: undefined,
+        chunkId: "20260717105032070-6",
+        docId: "attachment-doc-1",
+        page: 1,
+        pageSize: 10,
+        query: undefined,
+      },
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(
+        "?tab=attachments&chunkId=20260717105032070-6&attachmentType=file",
+      );
+    });
+    expect(screen.getByRole("tab", { name: "文件" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("normalizes invalid knowledge base view parameters", async () => {
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&attachmentType=unknown&source=test",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    expect(await screen.findByRole("tab", { name: "图片" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(
+        "?tab=attachments&attachmentType=image&source=test",
+      );
+    });
+  });
+
   it("shows document summaries from the knowledge name hover card", async () => {
     const user = userEvent.setup();
     const { router } = renderWithRoute(
@@ -3791,6 +4139,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索切片 ID" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
     const addQaButton = screen.getByRole("button", { name: "添加问答" });
     expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
@@ -3830,6 +4179,112 @@ describe("AI hosting pages", () => {
       page: 1,
       pageSize: 10,
       title: "物流",
+    });
+  });
+
+  it("loads and locates a target chunk from the display-id deep link", async () => {
+    vi.mocked(kbService.listKbDocChunks).mockResolvedValueOnce({
+      chunks: [
+        {
+          chunkId: "501",
+          chunkType: "faq",
+          content: "进入设置后选择系统并点击重置",
+          createdAt: "2026-06-20T23:22:22+08:00",
+          docId: "knowledge-3",
+          kbId: "W7zU2fWkVSp65OTAjDd3-w",
+          source: "manual",
+          title: "如何恢复出厂设置",
+          updatedAt: "2026-06-20T23:22:22+08:00",
+          volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+        },
+      ],
+      pagination: { page: 1, pageSize: 1, total: 1 },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3?chunkId=20260630131921038-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    const row = await screen.findByRole("row", { name: /如何恢复出厂设置/ });
+    expect(row).toHaveAttribute("aria-current", "true");
+    expect(kbService.listKbDocChunks).toHaveBeenCalledWith("knowledge-3", {
+      chunkId: "20260630131921038-3",
+      docType: "qa",
+      page: 1,
+      pageSize: 10,
+      title: undefined,
+      content: undefined,
+    });
+  });
+
+  it("loads and locates an adopted target from its local entry primary key", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(kbService.listKbDocChunks).mockResolvedValueOnce({
+      chunks: [
+        {
+          chunkId: "501",
+          chunkType: "faq",
+          content: "进入设置后选择系统并点击重置",
+          createdAt: "2026-06-20T23:22:22+08:00",
+          docId: "knowledge-3",
+          kbId: "W7zU2fWkVSp65OTAjDd3-w",
+          source: "manual",
+          title: "如何恢复出厂设置",
+          updatedAt: "2026-06-20T23:22:22+08:00",
+          volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+        },
+      ],
+      pagination: { page: 1, pageSize: 1, total: 1 },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3?entryId=501",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    const row = await screen.findByRole("row", { name: /如何恢复出厂设置/ });
+    expect(row).toHaveAttribute("aria-current", "true");
+    expect(kbService.listKbDocChunks).toHaveBeenCalledWith("knowledge-3", {
+      chunkId: undefined,
+      content: undefined,
+      docType: "qa",
+      entryId: "501",
+      page: 1,
+      pageSize: 10,
+      title: undefined,
+    });
+
+    const chunkIdSearch = screen.getByRole("textbox", { name: "搜索切片 ID" });
+
+    await waitFor(() => {
+      expect(chunkIdSearch).toHaveValue("20260630131921038-3");
+      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
+        chunkId: "20260630131921038-3",
+        content: undefined,
+        docType: "qa",
+        entryId: undefined,
+        page: 1,
+        pageSize: 10,
+        title: undefined,
+      });
+    });
+
+    await user.clear(chunkIdSearch);
+
+    await waitFor(() => {
+      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
+        chunkId: undefined,
+        content: undefined,
+        docType: "qa",
+        entryId: undefined,
+        page: 1,
+        pageSize: 10,
+        title: undefined,
+      });
     });
   });
 
@@ -3979,6 +4434,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
     const chunkList = await screen.findByRole("list", { name: "切片列表" });
+    expect(screen.getByRole("textbox", { name: "搜索切片 ID" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();
@@ -4065,6 +4521,52 @@ describe("AI hosting pages", () => {
       expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
       expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
       expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
+    });
+  });
+
+  it("filters FAQ and document chunks by display chunk id", async () => {
+    const user = userEvent.setup();
+
+    const qaView = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("如何恢复出厂设置");
+    await user.type(screen.getByRole("textbox", { name: "搜索切片 ID" }), "20260630131921038-3");
+
+    await waitFor(() => {
+      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
+        chunkId: "20260630131921038-3",
+        content: undefined,
+        docType: "qa",
+        page: 1,
+        pageSize: 10,
+        title: undefined,
+      });
+    });
+
+    qaView.unmount();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("ID 20260630131921038-3");
+    await user.type(screen.getByRole("textbox", { name: "搜索切片 ID" }), "20260630131921038-3");
+
+    await waitFor(() => {
+      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-1", {
+        chunkId: "20260630131921038-3",
+        content: undefined,
+        docType: "document",
+        page: 1,
+        pageSize: 10,
+        title: undefined,
+      });
     });
   });
 

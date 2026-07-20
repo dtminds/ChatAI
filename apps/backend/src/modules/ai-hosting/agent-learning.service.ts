@@ -7,6 +7,8 @@ import type {
   AiHostingLearningCandidateItem,
   AiHostingLearningCandidateListResponse,
   AiHostingLearningCandidateRejectRequest,
+  AiHostingLearningCandidateSearchDetailItem,
+  AiHostingLearningCandidateSearchDetailResponse,
   AiHostingLearningCandidateStatus,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
@@ -17,6 +19,7 @@ import {
   createAgentLearningJavaClient,
   type AgentLearningJavaClient,
   type AgentLearningJavaListItem,
+  type AgentLearningJavaSearchDetailItem,
 } from "./agent-learning-java-client.js";
 import { normalizeIdList, parseMySqlId } from "./ai-hosting-id-utils.js";
 
@@ -83,6 +86,39 @@ export class AgentLearningService {
         page: result.page,
         pageSize: result.pageSize,
         total: result.total,
+      },
+    };
+  }
+
+  async getSearchDetail(
+    uid: number,
+    agentId: string,
+    candidateId: string,
+  ): Promise<AiHostingLearningCandidateSearchDetailResponse> {
+    const numericAgentId = parseMySqlId(agentId);
+    const numericCandidateId = parseMySqlId(candidateId);
+
+    if (numericAgentId == null) {
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
+    }
+
+    if (numericCandidateId == null) {
+      throw new BadRequestError("INVALID_CANDIDATE", "优化建议不存在");
+    }
+
+    await this.assertAgentInScope(uid, numericAgentId);
+    await this.assertCandidatesInScope(uid, numericAgentId, [candidateId]);
+    const result = await this.javaClient.searchDetail({ id: numericCandidateId, uid });
+
+    return {
+      items: result.items
+        .map(mapSearchDetailItem)
+        .filter((item): item is AiHostingLearningCandidateSearchDetailItem => item != null),
+      pagination: {
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        totalPages: result.totalPages,
       },
     };
   }
@@ -319,14 +355,99 @@ function mapCandidateItem(item: AgentLearningJavaListItem): AiHostingLearningCan
 
   return {
     answer: item.suggestedAnswer?.trim() ?? "",
+    confidence: normalizeConfidence(item.confidence),
     createdAt: toOptionalTimestamp(item.createTime),
     id,
     question: item.suggestedQuestion?.trim() ?? "",
     rationale: resolveRationale(status, item.aiReason, item.userReason),
+    searchResults: normalizeSearchResults(item.searchResults),
     seat: normalizePerson(item.seat),
     status,
+    targetDocId: normalizeOptionalId(item.targetDocId),
+    targetEntryId: normalizeOptionalId(item.targetEntryId),
+    targetKbId: normalizeOptionalId(item.targetKbId),
     user: normalizePerson(item.user),
   };
+}
+
+function mapSearchDetailItem(
+  item: AgentLearningJavaSearchDetailItem,
+): AiHostingLearningCandidateSearchDetailItem | null {
+  const chunkId = normalizeOptionalId(item.chunkId);
+  const docId = normalizeOptionalId(item.docId);
+  const kbId = normalizeOptionalId(item.kbId);
+  const score = normalizeConfidence(item.score);
+
+  if (!chunkId || !docId || !kbId || score == null) {
+    return null;
+  }
+
+  return {
+    chunkId,
+    chunkTitle: item.chunkTitle?.trim() ?? "",
+    content: item.content?.trim() ?? "",
+    docId,
+    docName: item.docName?.trim() ?? "",
+    docSuffix: item.docSuffix?.trim() ?? "",
+    docType: Number.isFinite(Number(item.docType)) ? Number(item.docType) : 0,
+    kbId,
+    kbName: item.kbName?.trim() ?? "",
+    score,
+    volcChunkId: item.volcChunkId?.trim() ?? "",
+  };
+}
+
+function normalizeConfidence(value: unknown) {
+  if (
+    value == null ||
+    (typeof value === "string" && value.trim() === "") ||
+    (typeof value !== "number" && typeof value !== "string")
+  ) {
+    return undefined;
+  }
+
+  const normalized = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+function normalizeOptionalId(value: unknown) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = String(value).trim();
+
+  return /^\d+$/.test(normalized) ? normalized : undefined;
+}
+
+function normalizeSearchResults(value: unknown) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  const results = value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const record = item as Record<string, unknown>;
+    const kbId = normalizeOptionalId(record.kbId);
+    const docId = normalizeOptionalId(record.docId);
+    const docName = typeof record.docName === "string" ? record.docName.trim() : "";
+    const docSuffix = typeof record.docSuffix === "string" ? record.docSuffix.trim() : "";
+    const key = `${kbId}:${docId}`;
+
+    if (!kbId || !docId || !docName || seen.has(key)) {
+      return [];
+    }
+
+    seen.add(key);
+    return [{ docId, docName, docSuffix, kbId }];
+  });
+
+  return results.length > 0 ? results : undefined;
 }
 
 function normalizePerson(person: unknown): { avatar?: string; id?: string; name?: string } | undefined {

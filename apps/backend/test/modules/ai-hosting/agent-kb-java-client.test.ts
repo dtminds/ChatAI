@@ -266,6 +266,42 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
+  it("submits volc chunk id filter as JSON", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().listKbChunks({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+  });
+
   it("submits attachmentType filter on chunk page query", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

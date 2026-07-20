@@ -394,7 +394,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       type: "text",
       uid: 9001,
       update_time: mysqlDatetime("2026-06-18 15:22:22"),
-      volc_chunk_id: null,
+      volc_chunk_id: "doc_id_9001_1001_20260630131921038-3",
       volc_doc_id: null,
       volc_resource_id: null,
     },

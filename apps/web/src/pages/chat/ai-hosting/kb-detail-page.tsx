@@ -97,6 +97,24 @@ import {
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
 
 const PAGE_SIZE = 10;
+const KB_DETAIL_TAB_PARAM = "tab";
+const KB_ATTACHMENT_TYPE_PARAM = "attachmentType";
+
+type KbDetailTab = "attachments" | "knowledge";
+
+const kbAttachmentTypeParamEntries = [
+  ["image", KB_ATTACHMENT_TYPE.IMAGE],
+  ["file", KB_ATTACHMENT_TYPE.FILE],
+  ["link", KB_ATTACHMENT_TYPE.LINK],
+  ["miniProgram", KB_ATTACHMENT_TYPE.MINI_PROGRAM],
+] as const;
+
+const kbAttachmentTypeByParam = new Map<string, KbAttachmentType>(
+  kbAttachmentTypeParamEntries,
+);
+const kbAttachmentTypeParamByType = new Map<KbAttachmentType, string>(
+  kbAttachmentTypeParamEntries.map(([param, type]) => [type, param] as const),
+);
 
 const kbKnowledgeEmptyIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
@@ -173,6 +191,13 @@ const statusMeta: Record<
 export function KbDetailPage() {
   const { kbId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const detailTab: KbDetailTab =
+    searchParams.get(KB_DETAIL_TAB_PARAM) === "attachments" ? "attachments" : "knowledge";
+  const activeAttachmentType =
+    resolveKbAttachmentTypeParam(searchParams.get(KB_ATTACHMENT_TYPE_PARAM))
+    ?? KB_ATTACHMENT_TYPE.IMAGE;
+  const targetAttachmentChunkId =
+    detailTab === "attachments" ? searchParams.get("chunkId")?.trim() || undefined : undefined;
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -191,10 +216,6 @@ export function KbDetailPage() {
   const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
-  const [detailTab, setDetailTab] = useState("knowledge");
-  const [activeAttachmentType, setActiveAttachmentType] = useState<KbAttachmentType>(
-    KB_ATTACHMENT_TYPE.IMAGE,
-  );
   const requestVersionRef = useRef(0);
   const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -214,10 +235,70 @@ export function KbDetailPage() {
 
     setQaDialogDefaultAddMethod("new");
     setImportQaDialogOpen(true);
-    const nextSearchParams = new URLSearchParams(searchParams);
-    nextSearchParams.delete("addKnowledge");
-    setSearchParams(nextSearchParams, { replace: true });
+    setSearchParams((currentSearchParams) => {
+      const nextSearchParams = new URLSearchParams(currentSearchParams);
+      nextSearchParams.delete("addKnowledge");
+      return nextSearchParams;
+    }, { replace: true });
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const normalizedSearchParams = normalizeKbDetailViewSearchParams(searchParams);
+
+    if (normalizedSearchParams) {
+      setSearchParams(normalizedSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  function handleDetailTabChange(value: string) {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    if (value === "attachments") {
+      nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+      nextSearchParams.set(
+        KB_ATTACHMENT_TYPE_PARAM,
+        resolveKbAttachmentTypeSearchParam(activeAttachmentType),
+      );
+    } else {
+      nextSearchParams.delete(KB_DETAIL_TAB_PARAM);
+      nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+      nextSearchParams.delete("chunkId");
+    }
+
+    setSearchParams(nextSearchParams);
+  }
+
+  function handleAttachmentTypeChange(type: KbAttachmentType) {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+    nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, resolveKbAttachmentTypeSearchParam(type));
+    nextSearchParams.delete("chunkId");
+    setSearchParams(nextSearchParams);
+  }
+
+  function handleAttachmentTargetTypeResolved(type: KbAttachmentType) {
+    const nextAttachmentType = resolveKbAttachmentTypeSearchParam(type);
+
+    if (searchParams.get(KB_ATTACHMENT_TYPE_PARAM) === nextAttachmentType) {
+      return;
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+    nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, nextAttachmentType);
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  function handleAttachmentTargetClear() {
+    if (!searchParams.has("chunkId")) {
+      return;
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("chunkId");
+    setSearchParams(nextSearchParams, { replace: true });
+  }
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
@@ -455,7 +536,7 @@ export function KbDetailPage() {
           />
         </div>
 
-        <Tabs className="gap-5" onValueChange={setDetailTab} value={detailTab}>
+        <Tabs className="gap-5" onValueChange={handleDetailTabChange} value={detailTab}>
           <div className="flex flex-wrap items-center gap-5">
             <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
               <TabsTrigger
@@ -546,7 +627,10 @@ export function KbDetailPage() {
             <KbAttachmentsTab
               activeType={activeAttachmentType}
               kbId={kbId}
-              onActiveTypeChange={setActiveAttachmentType}
+              onActiveTypeChange={handleAttachmentTypeChange}
+              onTargetChunkClear={handleAttachmentTargetClear}
+              onTargetTypeResolved={handleAttachmentTargetTypeResolved}
+              targetChunkId={targetAttachmentChunkId}
             />
           </TabsContent>
         </Tabs>
@@ -623,6 +707,43 @@ export function KbDetailPage() {
       />
     </AiHostingLayout>
   );
+}
+
+function resolveKbAttachmentTypeParam(value: string | null) {
+  return value ? kbAttachmentTypeByParam.get(value) : undefined;
+}
+
+function resolveKbAttachmentTypeSearchParam(type: KbAttachmentType) {
+  return kbAttachmentTypeParamByType.get(type) ?? "image";
+}
+
+function normalizeKbDetailViewSearchParams(searchParams: URLSearchParams) {
+  const tabParam = searchParams.get(KB_DETAIL_TAB_PARAM);
+  const attachmentTypeParam = searchParams.get(KB_ATTACHMENT_TYPE_PARAM);
+  const nextSearchParams = new URLSearchParams(searchParams);
+
+  if (tabParam !== "attachments") {
+    if (tabParam == null && attachmentTypeParam == null) {
+      return null;
+    }
+
+    nextSearchParams.delete(KB_DETAIL_TAB_PARAM);
+    nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+  } else if (!resolveKbAttachmentTypeParam(attachmentTypeParam)) {
+    if (searchParams.get("chunkId")) {
+      if (attachmentTypeParam == null) {
+        return null;
+      }
+
+      nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+    } else {
+      nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, "image");
+    }
+  } else {
+    return null;
+  }
+
+  return nextSearchParams;
 }
 
 function AddKnowledgeMenu({

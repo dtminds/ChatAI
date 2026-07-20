@@ -88,6 +88,25 @@ export async function registerAgentLearningRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: CandidateParams }>(
+    "/api/server/ai-hosting/agents/:agentId/learning-candidates/:candidateId/search-detail",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CandidateParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createAgentLearningService(app.db, app.log).getSearchDetail(
+          getUid(request),
+          request.params.agentId,
+          request.params.candidateId,
+        ),
+      );
+    },
+  );
+
   app.post<{
     Body: AiHostingLearningCandidateRejectRequest;
     Params: CandidateParams;

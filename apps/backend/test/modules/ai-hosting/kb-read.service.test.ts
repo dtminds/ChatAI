@@ -485,6 +485,89 @@ describe("KbReadService", () => {
     });
   });
 
+  it("rebuilds a target volc chunk id and queries Java", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 1,
+      list: [
+        {
+          ...javaChunkPageItems[0],
+          volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService(listKbChunks);
+
+    const response = await service.listKbDocChunks(tenant, "1001", {
+      chunkId: "20260630131921038-3",
+      docType: "document",
+    });
+
+    expect(listKbChunks).toHaveBeenCalledWith({
+      content: undefined,
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      title: undefined,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+    expect(response).toMatchObject({
+      chunks: [{ chunkId: "501", docId: "1001", kbId: "1" }],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+  });
+
+  it("resolves a local entry primary key before querying Java", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 1,
+      list: [
+        {
+          ...javaChunkPageItems[0],
+          volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService(listKbChunks);
+
+    await service.listKbDocChunks(tenant, "1001", {
+      docType: "document",
+      entryId: "501",
+    });
+
+    expect(listKbChunks).toHaveBeenCalledWith({
+      content: undefined,
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      title: undefined,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+  });
+
+  it("does not resolve an entry primary key outside its tenant or document", async () => {
+    const listKbChunks = vi.fn();
+    const { service } = createService(listKbChunks);
+
+    await expect(
+      service.listKbDocChunks({ ...tenant, uid: 9002 }, "1001", {
+        docType: "document",
+        entryId: "501",
+      }),
+    ).rejects.toMatchObject({ code: "KB_CHUNK_NOT_FOUND" });
+    await expect(
+      service.listKbDocChunks(tenant, "1002", {
+        docType: "document",
+        entryId: "501",
+      }),
+    ).rejects.toMatchObject({ code: "KB_CHUNK_NOT_FOUND" });
+    expect(listKbChunks).not.toHaveBeenCalled();
+  });
+
   it("forwards chunk title filter to Java", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 1,

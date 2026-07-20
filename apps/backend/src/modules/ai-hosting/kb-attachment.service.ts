@@ -133,7 +133,8 @@ export class KbAttachmentService {
     tenant: AgentKbTenant,
     kbId: string,
     options: {
-      attachmentType: KbAttachmentType;
+      attachmentType?: KbAttachmentType;
+      chunkId?: string;
       docId: string;
       page?: number;
       pageSize?: number;
@@ -155,6 +156,11 @@ export class KbAttachmentService {
 
     const pagination = normalizeAttachmentPagination(options);
     const normalizedQuery = normalizeAttachmentSearchQuery(options.query);
+    const normalizedChunkId = normalizeAttachmentChunkDisplayId(options.chunkId);
+
+    if (options.attachmentType == null && !normalizedChunkId) {
+      throw new BadRequestError("KB_ATTACHMENT_FILTER_REQUIRED", "请选择附件类型");
+    }
 
     const response = await this.agentKbJavaClient.listKbChunks({
       attachmentType: options.attachmentType,
@@ -163,6 +169,9 @@ export class KbAttachmentService {
       page: pagination.page,
       pageSize: pagination.pageSize,
       uid,
+      volcChunkId: normalizedChunkId
+        ? `doc_id_${uid}_${attachmentDocId}_${normalizedChunkId}`
+        : undefined,
     });
 
     const materialIds = response.list.flatMap((item) => {
@@ -527,6 +536,16 @@ export class KbAttachmentService {
       throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
     }
   }
+}
+
+function normalizeAttachmentChunkDisplayId(value?: string) {
+  const normalized = value?.trim();
+
+  if (!normalized || normalized.includes("_")) {
+    return undefined;
+  }
+
+  return normalized;
 }
 
 function isAttachmentDocRow(doc: { doc_type: number; name?: string | null }) {

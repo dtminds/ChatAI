@@ -194,6 +194,54 @@ describe("KbAttachmentService", () => {
     });
   });
 
+  it("lists a target attachment via Java with its display chunk id", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 1,
+      list: [
+        {
+          attachmentIds: [1],
+          attachmentTypes: [2],
+          content: "附件描述",
+          createTime: "2026-06-18 15:22:22",
+          docId: 1005,
+          id: 503,
+          kbId: 1,
+          source: 1,
+          title: "产品说明书.pdf",
+          type: 2,
+          uid: 9001,
+          updateTime: "2026-06-18 15:22:22",
+          volcChunkId: "doc_id_9001_1005_20260717105032070-6",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+    });
+    const { client, service } = createService({ listKbChunks }, {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
+
+    const response = await service.listAttachments(tenant, "1", {
+      chunkId: "20260717105032070-6",
+      docId: "1005",
+    });
+
+    expect(client.listKbChunks).toHaveBeenCalledWith({
+      attachmentType: undefined,
+      content: undefined,
+      docId: 1005,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1005_20260717105032070-6",
+    });
+    expect(response.attachments[0]).toMatchObject({
+      attachmentType: 2,
+      chunkId: "503",
+    });
+  });
+
   it("validates attachment doc ownership before listing attachments", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 0,

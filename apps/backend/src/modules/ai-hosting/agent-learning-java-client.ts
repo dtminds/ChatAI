@@ -77,20 +77,28 @@ export type AgentLearningJavaListItem = {
   agentAnswer?: string | null;
   aiReason?: string | null;
   answerSource?: number | null;
-  confidence?: string | null;
+  confidence?: number | string | null;
   createTime?: string | null;
   customerQuestion?: string | null;
   id?: string | number | null;
   priorityScore?: number | null;
+  searchResults?: AgentLearningJavaSearchResult[] | null;
   seat?: AgentLearningJavaPerson | null;
   status?: number | null;
   suggestedAnswer?: string | null;
   suggestedQuestion?: string | null;
-  targetDocId?: string | null;
-  targetEntryId?: string | null;
-  targetKbId?: string | null;
+  targetDocId?: number | string | null;
+  targetEntryId?: number | string | null;
+  targetKbId?: number | string | null;
   user?: AgentLearningJavaPerson | null;
   userReason?: string | null;
+};
+
+export type AgentLearningJavaSearchResult = {
+  docId?: number | string | null;
+  docName?: string | null;
+  docSuffix?: string | null;
+  kbId?: number | string | null;
 };
 
 export type AgentLearningJavaPerson = {
@@ -106,6 +114,33 @@ export type AgentLearningJavaListResult = {
   total: number;
 };
 
+export type AgentLearningJavaSearchDetailInput = {
+  id: number;
+  uid: number;
+};
+
+export type AgentLearningJavaSearchDetailItem = {
+  chunkId?: number | string | null;
+  chunkTitle?: string | null;
+  content?: string | null;
+  docId?: number | string | null;
+  docName?: string | null;
+  docSuffix?: string | null;
+  docType?: number | string | null;
+  kbId?: number | string | null;
+  kbName?: string | null;
+  score?: number | string | null;
+  volcChunkId?: string | null;
+};
+
+export type AgentLearningJavaSearchDetailResult = {
+  items: AgentLearningJavaSearchDetailItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type AgentLearningJavaClient = {
   approve: (input: AgentLearningJavaApproveInput) => Promise<void>;
   batchApprove: (
@@ -114,6 +149,9 @@ export type AgentLearningJavaClient = {
   batchReject: (input: AgentLearningJavaBatchRejectInput) => Promise<number>;
   list: (input: AgentLearningJavaListInput) => Promise<AgentLearningJavaListResult>;
   reject: (input: AgentLearningJavaRejectInput) => Promise<void>;
+  searchDetail: (
+    input: AgentLearningJavaSearchDetailInput,
+  ) => Promise<AgentLearningJavaSearchDetailResult>;
 };
 
 export function createAgentLearningJavaClient(
@@ -269,6 +307,47 @@ export function createAgentLearningJavaClient(
         page: normalizePositiveInteger(response.page, input.page),
         pageSize: normalizePositiveInteger(response.pageSize, input.pageSize),
         total: normalizeNonNegativeInteger(response.count ?? response.total),
+      };
+    },
+
+    async searchDetail(input) {
+      const response = await postJavaRequest<
+        JavaApiResponse<AgentLearningJavaSearchDetailItem[]> & {
+          page?: number | string;
+          pageSize?: number | string;
+          total?: number | string;
+          totalPage?: number | string;
+        }
+      >({
+        baseUrl,
+        body: JSON.stringify({ id: input.id, uid: input.uid }),
+        contentType: "application/json",
+        logContext: input,
+        logger,
+        operation: "agent-learning-search-detail",
+        path: "/third-internal/wap-embed-agent-learning/search-detail",
+        token,
+      });
+
+      if (!isJavaEnvelopeSuccessful(response)) {
+        throw new BadGatewayError(
+          AI_HOSTING_INTERNAL_API_FAILED_CODE,
+          AI_HOSTING_INTERNAL_API_USER_MESSAGE,
+          {
+            code: response.code,
+            error: response.error,
+            errorMsg: response.errorMsg ?? response.message,
+            operation: "agent-learning-search-detail",
+          },
+        );
+      }
+
+      return {
+        items: Array.isArray(response.data) ? response.data : [],
+        page: normalizePositiveInteger(response.page, 1),
+        pageSize: normalizePositiveInteger(response.pageSize, 20),
+        total: normalizeNonNegativeInteger(response.total),
+        totalPages: normalizeNonNegativeInteger(response.totalPage),
       };
     },
   };

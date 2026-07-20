@@ -66,6 +66,30 @@ describe("resolveConversationAIHostingPolicy", () => {
     });
   });
 
+  it("hides group AI dialog when group master switch is off", () => {
+    expect(
+      resolveConversationAIHostingPolicy({
+        account: {
+          seatAIHostingEnabled: false,
+          seatGroupAIHostingEnabled: false,
+        },
+        canUseConversationActions: true,
+        conversation: {
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        },
+      }),
+    ).toEqual({
+      canDisable: false,
+      canEnable: false,
+      canToggle: false,
+      hasCapability: false,
+      isConfiguredOn: true,
+      isEffective: false,
+      shouldShowControl: false,
+    });
+  });
+
   it("shows normal single controls for configuration but hides unavailable group controls", () => {
     expect(
       resolveConversationAIHostingPolicy({

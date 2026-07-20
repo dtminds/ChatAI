@@ -1117,7 +1117,7 @@ describe("AI hosting pages", () => {
       }),
     ).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/kb/16?chunkId=20260717105032070-6&tab=attachments",
+      "/chat/ai-hosting/kb/16?chunkId=20260717105032070-6&docId=90&tab=attachments",
     );
   });
 
@@ -3332,7 +3332,7 @@ describe("AI hosting pages", () => {
 
   it("loads an attachment deep link and resolves its attachment type", async () => {
     const { router } = renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&chunkId=20260717105032070-6",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&docId=90&chunkId=20260717105032070-6",
       <KbDetailPage />,
       "/chat/ai-hosting/kb/:kbId/*",
     );
@@ -3366,7 +3366,7 @@ describe("AI hosting pages", () => {
       {
         attachmentType: undefined,
         chunkId: "20260717105032070-6",
-        docId: "attachment-doc-1",
+        docId: "90",
         page: 1,
         pageSize: 10,
         query: undefined,
@@ -3374,7 +3374,7 @@ describe("AI hosting pages", () => {
     );
     await waitFor(() => {
       expect(router.state.location.search).toBe(
-        "?tab=attachments&chunkId=20260717105032070-6&attachmentType=file",
+        "?tab=attachments&docId=90&chunkId=20260717105032070-6&attachmentType=file",
       );
     });
     expect(screen.getByRole("tab", { name: "文件" })).toHaveAttribute("aria-selected", "true");

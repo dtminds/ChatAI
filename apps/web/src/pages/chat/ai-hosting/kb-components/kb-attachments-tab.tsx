@@ -100,6 +100,7 @@ type KbAttachmentsTabProps = {
   onTargetChunkClear?: () => void;
   onTargetTypeResolved?: (type: KbAttachmentType) => void;
   targetChunkId?: string;
+  targetDocId?: string;
 };
 
 export function KbAttachmentsTab({
@@ -109,6 +110,7 @@ export function KbAttachmentsTab({
   onTargetChunkClear,
   onTargetTypeResolved,
   targetChunkId,
+  targetDocId,
 }: KbAttachmentsTabProps) {
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
@@ -159,7 +161,8 @@ export function KbAttachmentsTab({
     page?: number;
     silent?: boolean;
   }) => {
-    const resolvedDocId = options?.docId ?? attachmentDocId;
+    const resolvedDocId =
+      targetChunkId && targetDocId ? targetDocId : options?.docId ?? attachmentDocId;
 
     if (!kbId || !resolvedDocId) {
       return;
@@ -244,7 +247,15 @@ export function KbAttachmentsTab({
         setLoadingList(false);
       }
     }
-  }, [attachmentDocId, currentPage, kbId, requestedAttachmentType, requestedSearchQuery, targetChunkId]);
+  }, [
+    attachmentDocId,
+    currentPage,
+    kbId,
+    requestedAttachmentType,
+    requestedSearchQuery,
+    targetChunkId,
+    targetDocId,
+  ]);
 
   useEffect(() => {
     if (targetChunkId) {

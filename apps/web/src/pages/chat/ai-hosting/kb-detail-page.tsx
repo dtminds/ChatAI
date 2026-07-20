@@ -198,6 +198,10 @@ export function KbDetailPage() {
     ?? KB_ATTACHMENT_TYPE.IMAGE;
   const targetAttachmentChunkId =
     detailTab === "attachments" ? searchParams.get("chunkId")?.trim() || undefined : undefined;
+  const targetAttachmentDocId =
+    detailTab === "attachments" && targetAttachmentChunkId
+      ? searchParams.get("docId")?.trim() || undefined
+      : undefined;
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -263,6 +267,7 @@ export function KbDetailPage() {
       nextSearchParams.delete(KB_DETAIL_TAB_PARAM);
       nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
       nextSearchParams.delete("chunkId");
+      nextSearchParams.delete("docId");
     }
 
     setSearchParams(nextSearchParams);
@@ -274,6 +279,7 @@ export function KbDetailPage() {
     nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
     nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, resolveKbAttachmentTypeSearchParam(type));
     nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("docId");
     setSearchParams(nextSearchParams);
   }
 
@@ -297,6 +303,7 @@ export function KbDetailPage() {
 
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("docId");
     setSearchParams(nextSearchParams, { replace: true });
   }
 
@@ -631,6 +638,7 @@ export function KbDetailPage() {
               onTargetChunkClear={handleAttachmentTargetClear}
               onTargetTypeResolved={handleAttachmentTargetTypeResolved}
               targetChunkId={targetAttachmentChunkId}
+              targetDocId={targetAttachmentDocId}
             />
           </TabsContent>
         </Tabs>

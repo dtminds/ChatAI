@@ -211,7 +211,7 @@ describe("KbAttachmentService", () => {
           type: 2,
           uid: 9001,
           updateTime: "2026-06-18 15:22:22",
-          volcChunkId: "doc_id_9001_1005_20260717105032070-6",
+          volcChunkId: "attachment_id_9001_1005_20260717105032070-6",
         },
       ],
       page: 1,
@@ -234,7 +234,7 @@ describe("KbAttachmentService", () => {
       page: 1,
       pageSize: 10,
       uid: 9001,
-      volcChunkId: "doc_id_9001_1005_20260717105032070-6",
+      volcChunkId: "attachment_id_9001_1005_20260717105032070-6",
     });
     expect(response.attachments[0]).toMatchObject({
       attachmentType: 2,

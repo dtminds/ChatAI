@@ -258,7 +258,7 @@ describe("ai-hosting kb-attachment routes", () => {
       page: 1,
       pageSize: 10,
       uid: 9001,
-      volcChunkId: "doc_id_9001_1005_20260717105032070-6",
+      volcChunkId: "attachment_id_9001_1005_20260717105032070-6",
     });
     fetchMock.mockRestore();
   });

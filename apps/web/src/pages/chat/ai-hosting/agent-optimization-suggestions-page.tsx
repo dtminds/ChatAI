@@ -1584,6 +1584,7 @@ function buildSearchDetailTargetPath(item: AiHostingLearningCandidateSearchDetai
   if (item.docType === 4) {
     const searchParams = new URLSearchParams({
       chunkId,
+      docId: item.docId,
       tab: "attachments",
     });
 

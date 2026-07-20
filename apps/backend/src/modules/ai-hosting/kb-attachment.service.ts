@@ -170,7 +170,7 @@ export class KbAttachmentService {
       pageSize: pagination.pageSize,
       uid,
       volcChunkId: normalizedChunkId
-        ? `doc_id_${uid}_${attachmentDocId}_${normalizedChunkId}`
+        ? `attachment_id_${uid}_${attachmentDocId}_${normalizedChunkId}`
         : undefined,
     });
 

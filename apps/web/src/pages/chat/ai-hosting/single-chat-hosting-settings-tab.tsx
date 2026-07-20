@@ -3,7 +3,11 @@ import type {
   AiHostingSettingsAccount,
   AiHostingSettingsAgentOption,
 } from "@chatai/contracts";
-import { MoreHorizontalIcon, Search01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  MoreHorizontalIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -36,6 +40,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import { AgentAvatar } from "./agent-avatar";
 import { listAiHostingSettings, updateAiHostingGroupSettings, updateAiHostingSettings } from "./agent-service";
 import {
   GroupChatSettingsDialog,
@@ -44,7 +49,6 @@ import {
 import {
   AgentAssociationField,
   FULL_AUTO_AUTH_UNAVAILABLE_MESSAGE,
-  HostingAgentCapabilityCell,
   PermissionSettingRow,
   getErrorMessage,
 } from "./hosting-settings-shared";
@@ -546,31 +550,44 @@ function HostingSettingsTable({
   selectedAccountIds: string[];
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
-  const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const tableColumnCount = 5;
 
   return (
-    <Table aria-label="托管设置列表" className="table-fixed">
-      <TableHeader>
+    <Table
+      aria-label="托管设置列表"
+      className="table-fixed border-separate border-spacing-y-2"
+    >
+      <colgroup>
+        <col style={{ width: "48px" }} />
+        <col style={{ width: "19%" }} />
+        <col />
+        <col />
+        <col style={{ width: "56px" }} />
+      </colgroup>
+      <TableHeader className="[&_tr]:border-b-0">
         <TableRow className="hover:bg-transparent">
-          <TableHead className="h-11 w-10">
+          <TableHead className="h-11 w-12 min-w-12 max-w-12">
             <Checkbox
-              aria-label="全选托管账号"
+              aria-label="全选账号"
               checked={headerCheckboxState}
               disabled={loading || accounts.length === 0}
               onCheckedChange={(checked) => onToggleAll(checked === true)}
             />
           </TableHead>
-          <TableHead className="h-11 w-[18%]">托管账号</TableHead>
-          <TableHead className="h-11 w-[24%]">单聊Agent</TableHead>
-          <TableHead className="h-11 w-[24%]">群聊Agent</TableHead>
-          <TableHead className="h-11 w-[160px] text-right">操作</TableHead>
+          <TableHead className="h-11">账号</TableHead>
+          <TableHead className="h-11">单聊托管</TableHead>
+          <TableHead className="h-11">群聊托管</TableHead>
+          <TableHead className="h-11 text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading ? (
-          <TableRow>
-            <TableCell className="py-10 text-center" colSpan={tableColumnCount}>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableCell
+              className="rounded-[8px] border border-border/70 py-10 text-center"
+              colSpan={tableColumnCount}
+            >
               <div
                 aria-label="正在加载"
                 className="inline-flex items-center gap-2 text-sm text-muted-foreground"
@@ -582,67 +599,83 @@ function HostingSettingsTable({
             </TableCell>
           </TableRow>
         ) : accounts.length === 0 ? (
-          <TableRow>
-            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={tableColumnCount}>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableCell
+              className="rounded-[8px] border border-border/70 py-10 text-center text-sm text-muted-foreground"
+              colSpan={tableColumnCount}
+            >
               暂无数据
             </TableCell>
           </TableRow>
         ) : (
           accounts.map((account) => {
-            const singleChatAgentName = account.agentId
-              ? agentNameById.get(account.agentId) ?? null
+            const singleChatAgent = account.agentId
+              ? agentById.get(account.agentId) ?? null
               : null;
-            const groupChatAgentName = account.groupChat.agentId
-              ? agentNameById.get(account.groupChat.agentId) ?? null
+            const groupChatAgent = account.groupChat.agentId
+              ? agentById.get(account.groupChat.agentId) ?? null
               : null;
 
             return (
-              <TableRow key={account.id}>
-                <TableCell className="w-10 py-4">
+              <TableRow
+                className="border-0 hover:bg-transparent"
+                key={account.id}
+              >
+                <TableCell className="w-12 min-w-12 max-w-12 rounded-l-[8px] border-y border-l border-border/70 bg-surface py-5">
                   <Checkbox
                     aria-label={`选择${account.name}`}
                     checked={selectedAccountIdSet.has(account.id)}
                     onCheckedChange={() => onToggleAccount(account.id)}
                   />
                 </TableCell>
-                <TableCell className="py-4">
+                <TableCell className="border-y border-border/70 bg-surface py-5">
                   <WeComAccountIdentity avatarUrl={account.avatarUrl} name={account.name} />
                 </TableCell>
-                <TableCell className="py-4">
-                  <HostingAgentCapabilityCell
-                    agentName={singleChatAgentName}
+                <TableCell className="border-y border-border/70 bg-linear-to-r from-primary/[0.03] to-transparent px-5 py-5">
+                  <HostingSummaryCell
+                    agent={singleChatAgent}
                     fullAutoAuth={account.fullAutoAuth}
                     semiAutoAuth={account.semiAutoAuth}
                   />
                 </TableCell>
-                <TableCell className="py-4">
-                  <HostingAgentCapabilityCell
-                    agentName={groupChatAgentName}
+                <TableCell className="border-y border-border/70 bg-linear-to-r from-success-muted/25 to-transparent px-5 py-5">
+                  <HostingSummaryCell
+                    agent={groupChatAgent}
                     fullAutoAuth={account.groupChat.fullAutoAuth}
                     semiAutoAuth={account.groupChat.semiAutoAuth}
                   />
                 </TableCell>
-                <TableCell className="py-4 text-right">
-                  <div className="inline-flex items-center gap-3">
-                    <Button
-                      aria-label={`${account.name}单聊设置`}
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onOpenSingleChatSettings([account.id])}
-                      type="button"
-                      variant="link"
-                    >
-                      单聊设置
-                    </Button>
-                    <Button
-                      aria-label={`${account.name}群聊设置`}
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onOpenGroupChatSettings([account.id])}
-                      type="button"
-                      variant="link"
-                    >
-                      群聊设置
-                    </Button>
-                  </div>
+                <TableCell className="rounded-r-[8px] border-y border-r border-border/70 bg-surface py-5 text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        aria-label={`打开 ${account.name} 托管设置菜单`}
+                        className="size-8 p-0 text-muted-foreground"
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={MoreHorizontalIcon}
+                          size={18}
+                          strokeWidth={1.8}
+                        />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() => onOpenSingleChatSettings([account.id])}
+                      >
+                        单聊设置
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => onOpenGroupChatSettings([account.id])}
+                      >
+                        群聊设置
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             );
@@ -653,10 +686,62 @@ function HostingSettingsTable({
   );
 }
 
+function HostingSummaryCell({
+  agent,
+  fullAutoAuth,
+  semiAutoAuth,
+}: {
+  agent: HostingAgent | null;
+  fullAutoAuth: boolean;
+  semiAutoAuth: boolean;
+}) {
+  return (
+    <div className="grid min-w-0 gap-3">
+      <div className="flex min-w-0 max-w-48 items-center gap-2.5">
+        {agent ? (
+          <>
+            <AgentAvatar agentId={agent.id} agentName={agent.name} size={24} />
+            <span className="truncate text-sm font-medium text-foreground">{agent.name}</span>
+          </>
+        ) : (
+          <span className="truncate text-sm text-muted-foreground">未关联 Agent</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <HostingCapabilityStatus enabled={fullAutoAuth} label="自动回复" />
+        <HostingCapabilityStatus enabled={semiAutoAuth} label="话术推荐" />
+      </div>
+    </div>
+  );
+}
+
+function HostingCapabilityStatus({
+  enabled,
+  label,
+}: {
+  enabled: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-[6px] border bg-surface/80 px-2 text-xs font-bold",
+        enabled
+          ? "border-success/20 text-success"
+          : "border-border/70 text-muted-foreground",
+      )}
+    >
+      <span>{label}</span>
+      <span aria-hidden="true">·</span>
+      <span>{enabled ? "开启" : "关闭"}</span>
+    </span>
+  );
+}
+
 function WeComAccountIdentity({ avatarUrl, name }: { avatarUrl: string; name: string }) {
   return (
     <div className="flex items-center gap-2.5">
-      <Avatar className="size-8 rounded-full">
+      <Avatar className="size-9 rounded-full">
         {avatarUrl ? <AvatarImage alt={`${name}头像`} src={avatarUrl} /> : null}
         <AvatarFallback className="rounded-full bg-emerald-500 text-xs font-medium text-white">
           {name.slice(0, 1)}

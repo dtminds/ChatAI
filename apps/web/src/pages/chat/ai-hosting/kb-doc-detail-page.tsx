@@ -47,6 +47,7 @@ import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import { ImageKnowledgeChunkWorkspace } from "./kb-components/image-chunk-workspace";
+import { KbChunkTargetTag } from "./kb-components/kb-chunk-target-tag";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { resolveKbRequestErrorMessage, TableOverflowTooltip } from "./kb-components/shared";
 import {
@@ -141,6 +142,12 @@ export function KbDocDetailPage() {
     }
   }, [targetChunkId, targetEntryId]);
 
+  useEffect(() => {
+    if (targetChunkId || targetEntryId) {
+      setSearchQuery("");
+    }
+  }, [targetChunkId, targetEntryId]);
+
   const loadChunks = useCallback(async (options?: { page?: number }) => {
     if (!docId || !doc) {
       return;
@@ -152,16 +159,24 @@ export function KbDocDetailPage() {
     try {
       const isImageDoc = doc.type === "image";
       const page = options?.page ?? (isImageDoc ? 1 : currentPage);
+      const requestedChunkId = targetEntryId
+        ? undefined
+        : resolvedEntryChunkIdRef.current || debouncedChunkId || undefined;
+      const hasExactTarget = Boolean(targetEntryId || requestedChunkId);
       const response = await listKbDocChunks(docId, {
-        chunkId: targetEntryId
-          ? undefined
-          : resolvedEntryChunkIdRef.current || debouncedChunkId || undefined,
-        content: !isImageDoc && doc.type !== "qa" ? debouncedSearchQuery || undefined : undefined,
+        chunkId: requestedChunkId,
+        content:
+          !hasExactTarget && !isImageDoc && doc.type !== "qa"
+            ? debouncedSearchQuery || undefined
+            : undefined,
         docType: doc.type,
         entryId: targetEntryId,
         page: isImageDoc ? 1 : page,
         pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : pageSize,
-        title: doc.type === "qa" ? debouncedSearchQuery || undefined : undefined,
+        title:
+          !hasExactTarget && doc.type === "qa"
+            ? debouncedSearchQuery || undefined
+            : undefined,
       });
 
       if (version !== requestVersionRef.current) {
@@ -326,6 +341,15 @@ export function KbDocDetailPage() {
     setCurrentPage(1);
   }
 
+  function handleTargetChunkClear() {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    resolvedEntryChunkIdRef.current = undefined;
+    nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("entryId");
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
   async function handleCreateQaChunk(values: { answer: string; question: string }) {
     if (!doc) {
       return;
@@ -477,73 +501,59 @@ export function KbDocDetailPage() {
         <section aria-label="切片列表区块" className="space-y-4">
           {doc?.type === "image" ? (
             doc ? (
-              <ImageKnowledgeChunkWorkspace
-                chunks={chunks}
-                doc={doc}
-                loading={loadingPage || loadingChunks}
-              />
+              <>
+                {targetChunkId ? (
+                  <div className="flex flex-wrap items-center">
+                    <KbChunkTargetTag
+                      chunkId={targetChunkId}
+                      onClear={handleTargetChunkClear}
+                    />
+                  </div>
+                ) : null}
+                <ImageKnowledgeChunkWorkspace
+                  chunks={chunks}
+                  doc={doc}
+                  loading={loadingPage || loadingChunks}
+                />
+              </>
             ) : null
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <div className="relative w-[220px] max-w-full">
-                    <HugeiconsIcon
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      color="currentColor"
-                      icon={Search01Icon}
-                      size={17}
-                      strokeWidth={1.8}
+                  {targetChunkId ? (
+                    <KbChunkTargetTag
+                      chunkId={targetChunkId}
+                      onClear={handleTargetChunkClear}
                     />
-                    <Input
-                      aria-label="搜索切片 ID"
-                      className="h-10 rounded-[8px] pl-9"
-                      disabled={loadingPage || !doc || doc.status !== "completed"}
-                      onChange={(event) => {
-                        const nextSearchParams = new URLSearchParams(searchParams);
-                        const nextChunkId = event.target.value.trim();
+                  ) : null}
+                  {!targetChunkId && !targetEntryId ? (
+                    <div className="relative w-[280px] max-w-full">
+                      <HugeiconsIcon
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        color="currentColor"
+                        icon={Search01Icon}
+                        size={17}
+                        strokeWidth={1.8}
+                      />
+                      <Input
+                        aria-label={chunkSearchField.ariaLabel}
+                        className="h-10 rounded-[8px] pl-9"
+                        disabled={loadingPage || !doc || doc.status !== "completed"}
+                        onChange={(event) => {
+                          const nextSearchParams = new URLSearchParams(searchParams);
 
-                        resolvedEntryChunkIdRef.current = undefined;
-                        setSearchQuery("");
-
-                        if (nextChunkId) {
-                          nextSearchParams.set("chunkId", nextChunkId);
-                        } else {
+                          resolvedEntryChunkIdRef.current = undefined;
                           nextSearchParams.delete("chunkId");
-                        }
-                        nextSearchParams.delete("entryId");
-
-                        setSearchParams(nextSearchParams, { replace: true });
-                      }}
-                      placeholder="搜索切片 ID"
-                      value={targetChunkId ?? ""}
-                    />
-                  </div>
-                  <div className="relative w-[280px] max-w-full">
-                    <HugeiconsIcon
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      color="currentColor"
-                      icon={Search01Icon}
-                      size={17}
-                      strokeWidth={1.8}
-                    />
-                    <Input
-                      aria-label={chunkSearchField.ariaLabel}
-                      className="h-10 rounded-[8px] pl-9"
-                      disabled={loadingPage || !doc || doc.status !== "completed"}
-                      onChange={(event) => {
-                        const nextSearchParams = new URLSearchParams(searchParams);
-
-                        resolvedEntryChunkIdRef.current = undefined;
-                        nextSearchParams.delete("chunkId");
-                        nextSearchParams.delete("entryId");
-                        setSearchParams(nextSearchParams, { replace: true });
-                        setSearchQuery(event.target.value);
-                      }}
-                      placeholder={chunkSearchField.placeholder}
-                      value={searchQuery}
-                    />
-                  </div>
+                          nextSearchParams.delete("entryId");
+                          setSearchParams(nextSearchParams, { replace: true });
+                          setSearchQuery(event.target.value);
+                        }}
+                        placeholder={chunkSearchField.placeholder}
+                        value={searchQuery}
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 {doc && doc.status === "completed" ? (

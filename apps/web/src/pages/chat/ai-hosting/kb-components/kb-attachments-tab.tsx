@@ -39,6 +39,7 @@ import {
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAddAttachmentDialog } from "./kb-add-attachment-dialog";
 import { KbAttachmentsTable } from "./kb-attachments-table";
+import { KbChunkTargetTag } from "./kb-chunk-target-tag";
 import { KbEmptyStatePanel } from "./kb-empty-state-panel";
 import {
   getKbAttachmentTitle,
@@ -681,7 +682,10 @@ export function KbAttachmentsTab({
   });
   const isListLoading = loadingList;
   const showListTable =
-    isListLoading || attachments.length > 0 || debouncedSearchQuery.length > 0;
+    isListLoading
+    || attachments.length > 0
+    || debouncedSearchQuery.length > 0
+    || Boolean(targetChunkId);
 
   if (phase === "loading") {
     return <KbAttachmentsTabLoadingState />;
@@ -714,25 +718,33 @@ export function KbAttachmentsTab({
             activeType={activeType}
             onActiveTypeChange={onActiveTypeChange}
           />
-          <div className="relative w-[280px] max-w-full">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              color="currentColor"
-              icon={Search01Icon}
-              size={17}
-              strokeWidth={1.8}
+          {targetChunkId ? (
+            <KbChunkTargetTag
+              chunkId={targetChunkId}
+              onClear={() => onTargetChunkClear?.()}
             />
-            <Input
-              aria-label="搜索附件"
-              className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => {
-                onTargetChunkClear?.();
-                setSearchQuery(event.target.value);
-              }}
-              placeholder="搜索附件"
-              value={searchQuery}
-            />
-          </div>
+          ) : null}
+          {!targetChunkId ? (
+            <div className="relative w-[280px] max-w-full">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                color="currentColor"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索附件"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => {
+                  onTargetChunkClear?.();
+                  setSearchQuery(event.target.value);
+                }}
+                placeholder="搜索附件"
+                value={searchQuery}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

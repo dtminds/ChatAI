@@ -3428,6 +3428,7 @@ describe("AI hosting pages", () => {
   });
 
   it("loads an attachment deep link and resolves its attachment type", async () => {
+    const user = userEvent.setup();
     const { router } = renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w?tab=attachments&docId=90&chunkId=20260717105032070-6",
       <KbDetailPage />,
@@ -3476,6 +3477,27 @@ describe("AI hosting pages", () => {
       expect(screen.getByRole("tab", { name: "文件" })).toHaveAttribute(
         "aria-selected",
         "true",
+      );
+    });
+
+    expect(screen.getByText("切片 ID：20260717105032070-6")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索附件" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "清除切片 ID 筛选" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("?tab=attachments&attachmentType=file");
+      expect(screen.getByRole("textbox", { name: "搜索附件" })).toBeInTheDocument();
+      expect(kbAttachmentServiceMock.listKbAttachments).toHaveBeenLastCalledWith(
+        "W7zU2fWkVSp65OTAjDd3-w",
+        {
+          attachmentType: 2,
+          chunkId: undefined,
+          docId: "attachment-doc-1",
+          page: 1,
+          pageSize: 10,
+          query: undefined,
+        },
       );
     });
   });
@@ -4272,7 +4294,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索切片 ID" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索切片 ID" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
     const addQaButton = screen.getByRole("button", { name: "添加问答" });
     expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
@@ -4427,10 +4449,9 @@ describe("AI hosting pages", () => {
       title: undefined,
     });
 
-    const chunkIdSearch = screen.getByRole("textbox", { name: "搜索切片 ID" });
-
     await waitFor(() => {
-      expect(chunkIdSearch).toHaveValue("20260630131921038-3");
+      expect(screen.getByText("切片 ID：20260630131921038-3")).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "搜索问题" })).not.toBeInTheDocument();
       expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
         chunkId: "20260630131921038-3",
         content: undefined,
@@ -4442,9 +4463,10 @@ describe("AI hosting pages", () => {
       });
     });
 
-    await user.clear(chunkIdSearch);
+    await user.click(screen.getByRole("button", { name: "清除切片 ID 筛选" }));
 
     await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
       expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
         chunkId: undefined,
         content: undefined,
@@ -4603,7 +4625,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
     const chunkList = await screen.findByRole("list", { name: "切片列表" });
-    expect(screen.getByRole("textbox", { name: "搜索切片 ID" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索切片 ID" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();
@@ -4690,52 +4712,6 @@ describe("AI hosting pages", () => {
       expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
       expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
       expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
-    });
-  });
-
-  it("filters FAQ and document chunks by display chunk id", async () => {
-    const user = userEvent.setup();
-
-    const qaView = renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
-      <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
-    );
-
-    await screen.findByText("如何恢复出厂设置");
-    await user.type(screen.getByRole("textbox", { name: "搜索切片 ID" }), "20260630131921038-3");
-
-    await waitFor(() => {
-      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
-        chunkId: "20260630131921038-3",
-        content: undefined,
-        docType: "qa",
-        page: 1,
-        pageSize: 10,
-        title: undefined,
-      });
-    });
-
-    qaView.unmount();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
-      <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
-    );
-
-    await screen.findByText("ID 20260630131921038-3");
-    await user.type(screen.getByRole("textbox", { name: "搜索切片 ID" }), "20260630131921038-3");
-
-    await waitFor(() => {
-      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-1", {
-        chunkId: "20260630131921038-3",
-        content: undefined,
-        docType: "document",
-        page: 1,
-        pageSize: 10,
-        title: undefined,
-      });
     });
   });
 

@@ -1915,7 +1915,8 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
   });
 
-  it("shows agent settings load failures in a toast instead of the page", async () => {
+  it("blocks the agent editor after an initial load failure and retries in place", async () => {
+    const user = userEvent.setup();
     vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),
     );
@@ -1926,10 +1927,51 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId",
     );
 
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Agent 设置加载失败，请稍后重试");
+    const loadFailureDialog = await screen.findByRole("alertdialog", {
+      name: "Agent 设置加载失败",
     });
-    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByText("保存", { selector: "button" })).toBeDisabled();
+    expect(
+      within(loadFailureDialog).getByRole("button", { name: "返回 Agent 管理" }),
+    ).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalledWith("Agent 设置加载失败，请稍后重试");
+
+    await user.click(within(loadFailureDialog).getByRole("button", { name: "刷新重试" }));
+
+    await waitFor(() => {
+      expect(agentService.getAiHostingAgent).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: mockAgentDetail.name }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("alertdialog", { name: "Agent 设置加载失败" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  it("returns to agent management from the initial load failure dialog", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/agents/301",
+      <AgentSettingsPage />,
+      "/chat/ai-hosting/agents/:agentId",
+    );
+
+    const loadFailureDialog = await screen.findByRole("alertdialog", {
+      name: "Agent 设置加载失败",
+    });
+    await user.click(
+      within(loadFailureDialog).getByRole("button", { name: "返回 Agent 管理" }),
+    );
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/agents");
   });
 
   it("does not focus the conditional logic editor while restoring agent settings", async () => {

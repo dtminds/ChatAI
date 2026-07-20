@@ -149,7 +149,7 @@ describe("ai-hosting agent-learning routes", () => {
     });
   });
 
-  it("loads search details for a candidate in the route agent scope", async () => {
+  it("loads valid search details and omits entries without chunk targets", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -168,11 +168,26 @@ describe("ai-hosting agent-learning routes", () => {
               score: 0.5689,
               volcChunkId: "doc_id_272_102_20260717105032070-6",
             },
+            {
+              chunkId: 1025,
+              docId: 102,
+              docType: 2,
+              kbId: 5,
+              score: 0.4,
+              volcChunkId: " ",
+            },
+            {
+              chunkId: 1026,
+              docId: 102,
+              docType: 2,
+              kbId: 5,
+              score: 0.3,
+            },
           ],
           message: "success",
           page: 1,
           pageSize: 20,
-          total: 1,
+          total: 3,
           totalPage: 1,
         }),
         {
@@ -211,7 +226,7 @@ describe("ai-hosting agent-learning routes", () => {
         pagination: {
           page: 1,
           pageSize: 20,
-          total: 1,
+          total: 3,
           totalPages: 1,
         },
       },

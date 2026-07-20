@@ -377,8 +377,9 @@ function mapSearchDetailItem(
   const docId = normalizeOptionalId(item.docId);
   const kbId = normalizeOptionalId(item.kbId);
   const score = normalizeConfidence(item.score);
+  const volcChunkId = item.volcChunkId?.trim();
 
-  if (!chunkId || !docId || !kbId || score == null) {
+  if (!chunkId || !docId || !kbId || score == null || !volcChunkId) {
     return null;
   }
 
@@ -393,7 +394,7 @@ function mapSearchDetailItem(
     kbId,
     kbName: item.kbName?.trim() ?? "",
     score,
-    volcChunkId: item.volcChunkId?.trim() ?? "",
+    volcChunkId,
   };
 }
 

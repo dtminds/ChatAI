@@ -30,6 +30,7 @@ import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -147,14 +148,16 @@ export function AgentSettingsPage() {
   const [renameValue, setRenameValue] = useState("");
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [operationErrorDialog, setOperationErrorDialog] =
     useState<OperationErrorDialogState>(null);
+  const initialLoadRequestVersionRef = useRef(0);
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
   const canManage = canManageAiHostingAgents(role);
-  const controlsDisabled = loading || !canManage;
+  const controlsDisabled = loading || initialLoadFailed || !canManage;
   const hasLocalPublishChanges = Boolean(
     agentDetail && hasModelOrPromptChanges(form, agentDetail),
   );
@@ -178,48 +181,49 @@ export function AgentSettingsPage() {
 
   const pageTitle = isEditing ? (agentDetail?.name || form.name || "Agent") : "创建 Agent";
 
-  useEffect(() => {
-    let ignore = false;
+  const loadInitialData = useCallback(async () => {
+    const requestVersion = ++initialLoadRequestVersionRef.current;
+    setLoading(true);
+    setErrorMessage("");
 
-    async function loadInitialData() {
-      setLoading(true);
-      setErrorMessage("");
+    try {
+      const [modelsResponse, detailResponse] = await Promise.all([
+        listAiHostingModels(),
+        agentId ? getAiHostingAgent(agentId) : Promise.resolve(null),
+      ]);
 
-      try {
-        const [modelsResponse, detailResponse] = await Promise.all([
-          listAiHostingModels(),
-          agentId ? getAiHostingAgent(agentId) : Promise.resolve(null),
-        ]);
+      if (requestVersion !== initialLoadRequestVersionRef.current) {
+        return;
+      }
 
-        if (ignore) {
-          return;
-        }
+      setModels(modelsResponse.models);
 
-        setModels(modelsResponse.models);
+      if (detailResponse) {
+        setAgentDetail(detailResponse);
+        setForm(mapAgentDetailToForm(detailResponse));
+      } else if (modelsResponse.models[0]) {
+        setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
+      }
 
-        if (detailResponse) {
-          setAgentDetail(detailResponse);
-          setForm(mapAgentDetailToForm(detailResponse));
-        } else if (modelsResponse.models[0]) {
-          setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
-        }
-      } catch {
-        if (!ignore) {
-          toast.error("Agent 设置加载失败，请稍后重试");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+      setInitialLoadFailed(false);
+    } catch {
+      if (requestVersion === initialLoadRequestVersionRef.current) {
+        setInitialLoadFailed(true);
+      }
+    } finally {
+      if (requestVersion === initialLoadRequestVersionRef.current) {
+        setLoading(false);
       }
     }
+  }, [agentId]);
 
+  useEffect(() => {
     void loadInitialData();
 
     return () => {
-      ignore = true;
+      initialLoadRequestVersionRef.current += 1;
     };
-  }, [agentId]);
+  }, [loadInitialData]);
 
   function updateForm<K extends keyof AgentSettingsForm>(key: K, value: AgentSettingsForm[K]) {
     if (!canManage) {
@@ -582,6 +586,7 @@ export function AgentSettingsPage() {
                   <Button
                     aria-label="编辑 Agent 名称"
                     className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+                    disabled={controlsDisabled}
                     onClick={openRenameDialog}
                     size="icon"
                     type="button"
@@ -612,7 +617,7 @@ export function AgentSettingsPage() {
           {canManage ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                disabled={submitting || loading}
+                disabled={submitting || controlsDisabled}
                 onClick={() => {
                   void handleSave();
                 }}
@@ -630,7 +635,7 @@ export function AgentSettingsPage() {
               */}
               {isEditing ? (
                 <Button
-                  disabled={submitting || loading || !canPublish}
+                  disabled={submitting || controlsDisabled || !canPublish}
                   onClick={() => setPublishDialogOpen(true)}
                   type="button"
                 >
@@ -641,6 +646,34 @@ export function AgentSettingsPage() {
             </div>
           ) : null}
         </header>
+
+        <AlertDialog onOpenChange={() => undefined} open={initialLoadFailed}>
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Agent 设置加载失败</AlertDialogTitle>
+              <AlertDialogDescription>
+                当前 Agent 配置未能加载，请刷新重试或返回 Agent 管理
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => navigate("/chat/ai-hosting/agents")}
+              >
+                返回 Agent 管理
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={loading}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void loadInitialData();
+                }}
+              >
+                {loading ? <ButtonSpinner label="正在加载" /> : null}
+                刷新重试
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AgentSettingsRestoreDialog
           disabled={submitting}

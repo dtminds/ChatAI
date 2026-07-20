@@ -701,7 +701,12 @@ function HostingSummaryCell({
         {agent ? (
           <>
             <AgentAvatar agentId={agent.id} agentName={agent.name} size={24} />
-            <span className="truncate text-sm font-medium text-foreground">{agent.name}</span>
+            <span
+              className="truncate text-sm font-medium text-foreground"
+              title={agent.name}
+            >
+              {agent.name}
+            </span>
           </>
         ) : (
           <span className="truncate text-sm text-muted-foreground">未关联 Agent</span>

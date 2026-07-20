@@ -2103,7 +2103,12 @@ describe("AI hosting pages", () => {
       "src",
       "https://example.com/avatar-102.png",
     );
-    expect(screen.getAllByText("护肤小助理")).toHaveLength(2);
+    const hostedAgentNames = screen.getAllByText("护肤小助理");
+
+    expect(hostedAgentNames).toHaveLength(2);
+    hostedAgentNames.forEach((name) => {
+      expect(name).toHaveAttribute("title", "护肤小助理");
+    });
     expect(screen.getAllByText("未发布小助理")).toHaveLength(2);
     expect(screen.getAllByRole("img", { name: "护肤小助理头像" })).toHaveLength(2);
     expect(screen.getAllByRole("img", { name: "未发布小助理头像" })).toHaveLength(2);

@@ -1902,6 +1902,36 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("status", { name: "正在加载" })).toBeInTheDocument();
   });
 
+  it("shows agent list load failures in a toast instead of the page", async () => {
+    vi.mocked(agentService.listAiHostingAgents).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 列表加载失败，请稍后重试");
+    });
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
+  it("shows agent settings load failures in a toast instead of the page", async () => {
+    vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301",
+      <AgentSettingsPage />,
+      "/chat/ai-hosting/agents/:agentId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 设置加载失败，请稍后重试");
+    });
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
   it("does not focus the conditional logic editor while restoring agent settings", async () => {
     const focusedConditionalLogicEditors: HTMLElement[] = [];
     const focusSpy = vi
@@ -2949,6 +2979,24 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("shows conditional logic knowledge base load failures in a toast", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.listKbs).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库加载失败，请稍后重试");
+    });
+    expect(screen.queryByRole("listbox", { name: "选择知识库" })).not.toBeInTheDocument();
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
   it("keeps long conditional logic knowledge base names inside the fixed picker width", async () => {
     const user = userEvent.setup();
     const longKnowledgeBaseName = "测试超长测试超长测试超长测试超长测试超长测试超长";
@@ -3088,6 +3136,19 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("button", { name: "编辑 华为产品知识" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除 华为产品知识" })).toBeInTheDocument();
+  });
+
+  it("shows knowledge base list load failures in a toast", async () => {
+    vi.mocked(kbService.listKbs).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库列表加载失败，请稍后重试");
+    });
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
   });
 
   it("blocks deleting a knowledge base linked to agents", async () => {
@@ -3276,6 +3337,42 @@ describe("AI hosting pages", () => {
     );
   });
 
+  it("shows knowledge list load failures in a toast", async () => {
+    vi.mocked(kbService.listKbDocs).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识列表加载失败，请稍后重试");
+    });
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
+  it("shows knowledge base detail load failures in a toast instead of not found", async () => {
+    vi.mocked(kbService.getKb).mockRejectedValueOnce({
+      code: "ECONNABORTED",
+      message: "timeout of 15000ms exceeded",
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库加载失败，请稍后重试");
+    });
+    expect(screen.queryByRole("heading", { name: "未找到知识库" })).not.toBeInTheDocument();
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
   it("persists the knowledge and attachment views in the URL history", async () => {
     const user = userEvent.setup();
     const { router } = renderWithRoute(
@@ -3376,8 +3473,11 @@ describe("AI hosting pages", () => {
       expect(router.state.location.search).toBe(
         "?tab=attachments&docId=90&chunkId=20260717105032070-6&attachmentType=file",
       );
+      expect(screen.getByRole("tab", { name: "文件" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
     });
-    expect(screen.getByRole("tab", { name: "文件" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("normalizes invalid knowledge base view parameters", async () => {
@@ -3447,6 +3547,34 @@ describe("AI hosting pages", () => {
     );
   });
 
+  it("shows document summary load failures in a toast", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.getKbDoc).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    const knowledgeName = await screen.findByRole("button", { name: "产品说明大全.doc" });
+    await user.hover(knowledgeName);
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "产品说明大全.doc 摘要" })).getByRole(
+        "button",
+        { name: "全文摘要" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("摘要加载失败，请稍后重试");
+    });
+    expect(screen.queryByRole("dialog", { name: "全文摘要" })).not.toBeInTheDocument();
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
   it("retries a failed knowledge record and refreshes the list status", async () => {
     const user = userEvent.setup();
 
@@ -3507,7 +3635,11 @@ describe("AI hosting pages", () => {
   });
 
   it("shows an empty state for unknown knowledge base ids", async () => {
-    vi.mocked(kbService.getKb).mockRejectedValueOnce(new Error("KB_NOT_FOUND"));
+    vi.mocked(kbService.getKb).mockRejectedValueOnce({
+      code: "KB_NOT_FOUND",
+      message: "知识库不存在",
+      status: 404,
+    });
 
     renderWithRoute(
       "/chat/ai-hosting/kb/not-exist",
@@ -3518,6 +3650,7 @@ describe("AI hosting pages", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
     expect(screen.getByText("当前知识库不存在或已被删除")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "华为产品知识" })).not.toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalledWith("知识库加载失败，请稍后重试");
   });
 
   it("opens the QA import dialog and shows the selected faq xlsx file", async () => {
@@ -4155,6 +4288,42 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("chunk-qa-1")).not.toBeInTheDocument();
     expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
     expect(screen.getByText("保修期多久")).toBeInTheDocument();
+  });
+
+  it("shows document page load failures in a toast instead of not found", async () => {
+    vi.mocked(kbService.getKbDoc).mockRejectedValueOnce({
+      code: "ECONNABORTED",
+      message: "timeout of 15000ms exceeded",
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("文档加载失败，请稍后重试");
+    });
+    expect(screen.queryByRole("heading", { name: "未找到文档" })).not.toBeInTheDocument();
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
+  });
+
+  it("shows chunk list load failures in a toast", async () => {
+    vi.mocked(kbService.listKbDocChunks).mockRejectedValueOnce(
+      new Error("timeout of 15000ms exceeded"),
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("切片列表加载失败，请稍后重试");
+    });
+    expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
   });
 
   it("filters QA chunks by question title only", async () => {

@@ -69,6 +69,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import {
   AiHostingLayout,
@@ -207,6 +208,7 @@ export function KbDetailPage() {
   const [total, setTotal] = useState(0);
   const [loadingKb, setLoadingKb] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [knowledgeBaseNotFound, setKnowledgeBaseNotFound] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
@@ -217,7 +219,6 @@ export function KbDetailPage() {
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [summaryRecord, setSummaryRecord] = useState<KbDocViewItem | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
@@ -335,6 +336,7 @@ export function KbDetailPage() {
 
       setRecords([]);
       setTotal(0);
+      toast.error("知识列表加载失败，请稍后重试");
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingDocs(false);
@@ -346,7 +348,6 @@ export function KbDetailPage() {
     const version = ++summaryRequestVersionRef.current;
     setSummaryRecord(record);
     setLoadingSummary(true);
-    setSummaryError(false);
 
     try {
       const detail = toKbDocViewItem(await getKbDoc(record.id));
@@ -361,7 +362,8 @@ export function KbDetailPage() {
         return;
       }
 
-      setSummaryError(true);
+      setSummaryRecord(null);
+      toast.error("摘要加载失败，请稍后重试");
     } finally {
       if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
         return;
@@ -388,6 +390,7 @@ export function KbDetailPage() {
       }
 
       setLoadingKb(true);
+      setKnowledgeBaseNotFound(false);
 
       try {
         const kb = await getKb(kbId);
@@ -397,9 +400,19 @@ export function KbDetailPage() {
         }
 
         setKnowledgeBase(toKbListViewItem(kb));
-      } catch {
-        if (!cancelled) {
-          setKnowledgeBase(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setKnowledgeBase(null);
+        if (
+          isRequestError(error)
+          && (error.status === 404 || error.code === "KB_NOT_FOUND")
+        ) {
+          setKnowledgeBaseNotFound(true);
+        } else {
+          toast.error("知识库加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -504,7 +517,7 @@ export function KbDetailPage() {
     }
   }
 
-  if (!loadingKb && !knowledgeBase) {
+  if (!loadingKb && knowledgeBaseNotFound) {
     return (
       <AiHostingLayout title="知识库不存在">
         <div className="space-y-6">
@@ -706,10 +719,8 @@ export function KbDetailPage() {
             summaryRequestVersionRef.current += 1;
             setSummaryRecord(null);
             setLoadingSummary(false);
-            setSummaryError(false);
           }
         }}
-        error={summaryError}
         loading={loadingSummary}
         record={summaryRecord}
       />
@@ -1068,12 +1079,10 @@ function KnowledgeNameWithSummary({
 }
 
 function KnowledgeDocSummarySheet({
-  error,
   loading,
   onOpenChange,
   record,
 }: {
-  error: boolean;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
   record: KbDocViewItem | null;
@@ -1104,8 +1113,6 @@ function KnowledgeDocSummarySheet({
               <Spinner aria-hidden="true" size={14} />
               正在加载
             </div>
-          ) : error ? (
-            <p className="text-sm text-muted-foreground">加载失败</p>
           ) : record?.docSummary ? (
             <KnowledgeMarkdown content={record.docSummary} />
           ) : (

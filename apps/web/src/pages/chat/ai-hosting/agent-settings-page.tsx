@@ -203,9 +203,9 @@ export function AgentSettingsPage() {
         } else if (modelsResponse.models[0]) {
           setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
         }
-      } catch (error) {
+      } catch {
         if (!ignore) {
-          setErrorMessage(isRequestError(error) ? error.message : "Agent 设置加载失败");
+          toast.error("Agent 设置加载失败，请稍后重试");
         }
       } finally {
         if (!ignore) {

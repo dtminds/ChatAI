@@ -39,6 +39,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
@@ -106,6 +107,7 @@ export function KbDocDetailPage() {
   const [total, setTotal] = useState(0);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingChunks, setLoadingChunks] = useState(false);
+  const [pageNotFound, setPageNotFound] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -195,6 +197,7 @@ export function KbDocDetailPage() {
 
       setChunks([]);
       setTotal(0);
+      toast.error("切片列表加载失败，请稍后重试");
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingChunks(false);
@@ -228,6 +231,7 @@ export function KbDocDetailPage() {
       }
 
       setLoadingPage(true);
+      setPageNotFound(false);
 
       try {
         const [kb, docDetail] = await Promise.all([getKb(kbId), getKbDoc(docId)]);
@@ -242,15 +246,30 @@ export function KbDocDetailPage() {
         if (mappedDoc.kbId !== mappedKb.id) {
           setKnowledgeBase(null);
           setDoc(null);
+          setPageNotFound(true);
           return;
         }
 
         setKnowledgeBase({ id: mappedKb.id, name: mappedKb.name });
         setDoc(mappedDoc);
-      } catch {
-        if (!cancelled) {
-          setKnowledgeBase(null);
-          setDoc(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setKnowledgeBase(null);
+        setDoc(null);
+        if (
+          isRequestError(error)
+          && (
+            error.status === 404
+            || error.code === "KB_NOT_FOUND"
+            || error.code === "KB_DOC_NOT_FOUND"
+          )
+        ) {
+          setPageNotFound(true);
+        } else {
+          toast.error("文档加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -411,7 +430,7 @@ export function KbDocDetailPage() {
     }
   }
 
-  if (!loadingPage && (!knowledgeBase || !doc || doc.kbId !== knowledgeBase.id)) {
+  if (!loadingPage && pageNotFound) {
     return (
       <AiHostingLayout title="文档不存在">
         <div className="space-y-6">

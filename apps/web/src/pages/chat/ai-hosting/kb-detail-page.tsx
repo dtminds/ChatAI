@@ -6,9 +6,7 @@ import {
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
-  Knowledge02Icon,
   Loading03Icon,
-  MessagePreview01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -557,30 +555,14 @@ export function KbDetailPage() {
         </div>
 
         <Tabs onValueChange={handleDetailTabChange} value={detailTab}>
-          <div className="flex flex-wrap items-center gap-5">
-            <TabsList>
-              <TabsTrigger value="knowledge">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  color="currentColor"
-                  icon={Knowledge02Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                />
-                知识
-              </TabsTrigger>
-              <TabsTrigger value="attachments">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  color="currentColor"
-                  icon={MessagePreview01Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                />
-                附件
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          <TabsList className="mb-2" variant="underline">
+            <TabsTrigger className="text-base" value="knowledge" variant="underline">
+              知识
+            </TabsTrigger>
+            <TabsTrigger className="text-base" value="attachments" variant="underline">
+              附件
+            </TabsTrigger>
+          </TabsList>
 
           <TabsContent value="knowledge">
         <section aria-label="知识列表区块" className="space-y-4">

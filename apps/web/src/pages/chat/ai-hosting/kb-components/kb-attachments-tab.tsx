@@ -852,10 +852,9 @@ export function KbAttachmentTypeTabs({
       }}
       value={String(activeType)}
     >
-      <TabsList aria-label="附件类型筛选" className="h-10">
+      <TabsList aria-label="附件类型筛选">
         {kbAttachmentTypeFilters.map((filter) => (
           <TabsTrigger
-            className="h-8 py-0"
             key={filter.value}
             value={String(filter.value)}
           >

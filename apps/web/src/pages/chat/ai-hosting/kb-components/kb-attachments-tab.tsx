@@ -23,7 +23,7 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   batchDeleteKbAttachments,
@@ -840,29 +840,30 @@ export function KbAttachmentTypeTabs({
   onActiveTypeChange: (type: KbAttachmentType) => void;
 }) {
   return (
-    <div
-      aria-label="附件类型筛选"
-      className="inline-flex h-10 items-center gap-1 rounded-[8px] bg-muted p-1"
-      role="tablist"
+    <Tabs
+      onValueChange={(value) => {
+        const nextType = kbAttachmentTypeFilters.find(
+          (filter) => String(filter.value) === value,
+        )?.value;
+
+        if (nextType !== undefined) {
+          onActiveTypeChange(nextType);
+        }
+      }}
+      value={String(activeType)}
     >
-      {kbAttachmentTypeFilters.map((filter) => (
-        <button
-          aria-selected={activeType === filter.value}
-          className={cn(
-            "inline-flex h-8 min-w-[3.5rem] items-center justify-center rounded-[6px] px-3 text-sm font-medium leading-none transition-colors",
-            activeType === filter.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          key={filter.value}
-          onClick={() => onActiveTypeChange(filter.value)}
-          role="tab"
-          type="button"
-        >
-          {filter.label}
-        </button>
-      ))}
-    </div>
+      <TabsList aria-label="附件类型筛选" className="h-10">
+        {kbAttachmentTypeFilters.map((filter) => (
+          <TabsTrigger
+            className="h-8 py-0"
+            key={filter.value}
+            value={String(filter.value)}
+          >
+            {filter.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 

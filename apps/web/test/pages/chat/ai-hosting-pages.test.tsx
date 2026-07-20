@@ -896,15 +896,15 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/agents",
     );
-    expect(screen.getByRole("button", { name: "待处理" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "智能过滤" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "待处理" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "智能过滤" })).toBeInTheDocument();
     expect(await screen.findAllByText("这个商品现在还有货吗？")).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "采纳" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "忽略" })).toHaveLength(2);
     expect(screen.getByText("置信度：极高")).toBeInTheDocument();
     expect(screen.getByText("置信度：高")).toBeInTheDocument();
     expect(screen.getByText("知识对比")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看 >" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "知识对比详情" })).toBeInTheDocument();
     expect(screen.getByText("敏感肌护理")).toBeInTheDocument();
     expect(screen.getByText("油皮清洁")).toBeInTheDocument();
     expect(screen.getByText("敏感肌护理").previousElementSibling).toHaveAttribute(
@@ -943,7 +943,7 @@ describe("AI hosting pages", () => {
       within(singleIngestDialog).getByRole("heading", { level: 3, name: "对比已有知识" }),
     ).toBeInTheDocument();
     expect(
-      within(singleIngestDialog).getByRole("button", { name: "查看 >" }),
+      within(singleIngestDialog).getByRole("button", { name: "知识对比详情" }),
     ).toBeInTheDocument();
     expect(within(singleIngestDialog).getByText("敏感肌护理")).toBeInTheDocument();
     expect(within(singleIngestDialog).getByText("油皮清洁")).toBeInTheDocument();
@@ -985,7 +985,7 @@ describe("AI hosting pages", () => {
     );
     await user.click(screen.getByRole("button", { name: "确认" }));
 
-    await user.click(screen.getByRole("button", { name: "已采纳" }));
+    await user.click(screen.getByRole("tab", { name: "已采纳" }));
 
     expect(screen.queryByRole("button", { name: "批量操作" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "批量入库" })).not.toBeInTheDocument();
@@ -997,7 +997,7 @@ describe("AI hosting pages", () => {
     expect(knowledgeChunkLink).toHaveAttribute("target", "_blank");
     expect(knowledgeChunkLink).toHaveAttribute("rel", "noopener noreferrer");
 
-    await user.click(screen.getByRole("button", { name: "已忽略" }));
+    await user.click(screen.getByRole("tab", { name: "已忽略" }));
 
     expect(screen.getAllByRole("button", { name: "采纳" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "批量操作" })).toBeInTheDocument();
@@ -1054,7 +1054,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    const cardTrigger = await screen.findByRole("button", { name: "查看 >" });
+    const cardTrigger = await screen.findByRole("button", { name: "知识对比详情" });
     await user.click(cardTrigger);
 
     const searchDetailDialog = await screen.findByRole("dialog", { name: "对比已有知识" });
@@ -1087,7 +1087,7 @@ describe("AI hosting pages", () => {
     await user.click(screen.getAllByRole("button", { name: "采纳" })[0]);
     const ingestDialog = screen.getByRole("dialog", { name: "采纳入库" });
     await user.click(
-      within(ingestDialog).getByRole("button", { name: "查看 >" }),
+      within(ingestDialog).getByRole("button", { name: "知识对比详情" }),
     );
 
     expect(await screen.findByRole("dialog", { name: "对比已有知识" })).toBeInTheDocument();
@@ -1109,7 +1109,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId/optimization-suggestions",
     );
 
-    await user.click(await screen.findByRole("button", { name: "查看 >" }));
+    await user.click(await screen.findByRole("button", { name: "知识对比详情" }));
 
     expect(
       within(await screen.findByRole("dialog", { name: "对比已有知识" })).getByRole("link", {

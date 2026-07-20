@@ -556,13 +556,10 @@ export function KbDetailPage() {
           />
         </div>
 
-        <Tabs className="gap-5" onValueChange={handleDetailTabChange} value={detailTab}>
+        <Tabs onValueChange={handleDetailTabChange} value={detailTab}>
           <div className="flex flex-wrap items-center gap-5">
-            <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
-              <TabsTrigger
-                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                value="knowledge"
-              >
+            <TabsList>
+              <TabsTrigger value="knowledge">
                 <HugeiconsIcon
                   aria-hidden="true"
                   color="currentColor"
@@ -572,10 +569,7 @@ export function KbDetailPage() {
                 />
                 知识
               </TabsTrigger>
-              <TabsTrigger
-                className="h-8 min-w-18 gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                value="attachments"
-              >
+              <TabsTrigger value="attachments">
                 <HugeiconsIcon
                   aria-hidden="true"
                   color="currentColor"

@@ -146,11 +146,11 @@ export function InsightsFollowUpsPage() {
             }}
             value={statusFilter}
           >
-            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
-              <TabsTrigger className="h-8 min-w-20 rounded-[6px] px-4 py-0 text-sm" value="open">
+            <TabsList className="h-10 bg-muted p-1">
+              <TabsTrigger className="h-8 min-w-20 px-4 py-0 text-sm" value="open">
                 待处理
               </TabsTrigger>
-              <TabsTrigger className="h-8 min-w-20 rounded-[6px] px-4 py-0 text-sm" value="processed">
+              <TabsTrigger className="h-8 min-w-20 px-4 py-0 text-sm" value="processed">
                 已处理
               </TabsTrigger>
             </TabsList>

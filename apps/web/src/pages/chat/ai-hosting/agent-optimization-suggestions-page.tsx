@@ -9,7 +9,7 @@ import {
   Add01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  Knowledge02Icon,
+  MoreHorizontalIcon,
   OkFingerIcon,
   Refresh03Icon,
   Search01Icon,
@@ -63,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { isRequestError } from "@/lib/request";
 import { Textarea } from "@/components/ui/textarea";
@@ -437,29 +438,23 @@ export function AgentOptimizationSuggestionsPage() {
 
         <section aria-label="优化建议列表" className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex rounded-[10px] bg-muted p-1">
-              {suggestionTabs.map((tab) => (
-                <Button
-                  className={cn(
-                    "h-8 rounded-[8px] px-3 text-sm font-normal",
-                    activeStatus === tab.value
-                      ? "bg-background text-foreground shadow-sm hover:bg-background"
-                      : "text-muted-foreground",
-                  )}
-                  key={tab.value}
-                  onClick={() => {
-                    setActiveStatus(tab.value);
-                    setBatchMode(false);
-                    setSelectedIds([]);
-                    setCurrentPage(1);
-                  }}
-                  type="button"
-                  variant="ghost"
-                >
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
+            <Tabs
+              onValueChange={(value) => {
+                setActiveStatus(value as SuggestionStatus);
+                setBatchMode(false);
+                setSelectedIds([]);
+                setCurrentPage(1);
+              }}
+              value={activeStatus}
+            >
+              <TabsList aria-label="建议状态">
+                {suggestionTabs.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value}>
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
             {canManage && batchMode ? (
               <div className="flex items-center gap-3">
@@ -1147,7 +1142,7 @@ function SuggestionCard({
   const userName = suggestion.user?.name ?? "客户";
 
   return (
-    <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
+    <article className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-xs transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
       <div className="flex min-h-7 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {status === "pending" ? (
@@ -1192,7 +1187,7 @@ function SuggestionCard({
           </div>
           <EvaluationMeta confidence={suggestion.confidence} status={status} />
         </div>
-        <p className="mt-2 min-h-15 line-clamp-3 text-[13px] leading-5 text-foreground">
+        <p className="mt-2 min-h-15 line-clamp-3 text-[13px] leading-5 text-foreground/60">
           {suggestion.rationale}
         </p>
         <KnowledgeComparison
@@ -1240,18 +1235,12 @@ function SuggestionCard({
           ) : null}
         </div>
         {status === "adopted" && hasKnowledgeChunkTarget(suggestion) ? (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild className="h-auto shrink-0 p-0 text-[13px]" variant="link">
             <Link
               rel="noopener noreferrer"
               target="_blank"
               to={buildKnowledgeChunkPath(suggestion)}
             >
-              <HugeiconsIcon
-                aria-hidden="true"
-                icon={Knowledge02Icon}
-                size={14}
-                strokeWidth={1.8}
-              />
               查看知识切片
               <HugeiconsIcon
                 aria-hidden="true"
@@ -1377,7 +1366,7 @@ function KnowledgeComparison({
 
   const documents = searchResults.map((result) => (
     <span
-      className="flex min-w-0 items-center gap-1.5 rounded-[4px] bg-muted px-2 py-0.5 text-[13px] font-normal text-foreground mix-blend-multiply"
+      className="flex min-w-0 items-center gap-1.5 rounded-[4px] bg-muted px-2 py-0.5 text-[13px] font-normal text-foreground mix-blend-multiply [.dark_&]:mix-blend-normal"
       key={`${result.kbId}:${result.docId}`}
       title={result.docName}
     >
@@ -1386,14 +1375,26 @@ function KnowledgeComparison({
     </span>
   ));
   const viewButton = (
-    <Button
-      className="h-auto shrink-0 p-0 text-[13px] font-medium"
-      onClick={onClick}
-      type="button"
-      variant="link"
-    >
-      查看 &gt;
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label="知识对比详情"
+          className="size-6 shrink-0 rounded-[4px] bg-muted p-0 text-muted-foreground shadow-none mix-blend-multiply hover:bg-muted/80 hover:text-foreground [.dark_&]:mix-blend-normal"
+          onClick={onClick}
+          size="icon"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={MoreHorizontalIcon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>知识对比详情</TooltipContent>
+    </Tooltip>
   );
 
   if (layout === "ingest") {
@@ -1416,7 +1417,7 @@ function KnowledgeComparison({
       )}
     >
       <span className="shrink-0 text-[13px] font-medium text-foreground">知识对比</span>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">{documents}</div>
+      <div className="flex min-w-0 items-center gap-1 overflow-hidden">{documents}</div>
       {viewButton}
     </div>
   );

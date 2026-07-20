@@ -248,11 +248,11 @@ export function InsightsQualityPage() {
               }}
               value={activeView}
             >
-              <TabsList className="h-10 rounded-[8px] bg-muted p-1">
-                <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="agent-report">
+              <TabsList className="h-10 bg-muted p-1">
+                <TabsTrigger className="h-8 min-w-24 px-4 py-0 text-sm" value="agent-report">
                   客服报表
                 </TabsTrigger>
-                <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="quality-results">
+                <TabsTrigger className="h-8 min-w-24 px-4 py-0 text-sm" value="quality-results">
                   质检结果
                 </TabsTrigger>
               </TabsList>

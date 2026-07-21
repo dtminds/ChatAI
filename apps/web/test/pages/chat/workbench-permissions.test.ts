@@ -183,6 +183,7 @@ describe("resolveWorkbenchPermissions", () => {
         account: createAccount({
           seatAIHostingAuth: true,
           seatAIHostingEnabled: true,
+          seatGroupAIHostingEnabled: true,
           takenOverEmployeeId: me.id,
         }),
         activeConversation: createConversation({

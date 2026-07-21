@@ -5,7 +5,7 @@ import {
   MoreVerticalIcon,
   Moon02Icon,
   PaintBoardIcon,
-  Ramadhan01Icon,
+  Progress03Icon,
   Settings03Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
@@ -232,7 +232,6 @@ export function SignedInAccountMenu({
                 color="currentColor"
                 icon={PaintBoardIcon}
                 size={16}
-                strokeWidth={1.8}
               />
               <span className="min-w-0 flex-1 truncate">主题颜色</span>
             </DropdownMenuSubTrigger>
@@ -278,9 +277,8 @@ export function SignedInAccountMenu({
               <HugeiconsIcon
                 aria-hidden="true"
                 color="currentColor"
-                icon={Ramadhan01Icon}
+                icon={Progress03Icon}
                 size={16}
-                strokeWidth={1.8}
               />
               <span className="min-w-0 flex-1 truncate">外观模式</span>
               <HugeiconsIcon

@@ -210,6 +210,15 @@ export function KbDocDetailPage() {
         return;
       }
 
+      if (targetEntryId) {
+        setSearchParams((currentSearchParams) => {
+          const nextSearchParams = new URLSearchParams(currentSearchParams);
+
+          nextSearchParams.delete("entryId");
+          return nextSearchParams;
+        }, { replace: true });
+      }
+
       setChunks([]);
       setTotal(0);
       toast.error("切片列表加载失败，请稍后重试");

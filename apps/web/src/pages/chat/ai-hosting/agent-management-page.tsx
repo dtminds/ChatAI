@@ -565,12 +565,14 @@ function SelfLearningCarousel() {
 
         return (
           <div
-            className="absolute left-0 right-0 flex items-center justify-center rounded-[8px] bg-white px-[4cqw]"
+            className={cn(
+              "absolute left-0 right-0 flex items-center justify-center rounded-[8px] bg-white px-[4cqw]",
+              relativeIndex === 1 ? "shadow-[0_0_26px_var(--shadow-soft)]" : "shadow-none",
+            )}
             data-state={relativeIndex === 1 ? "active" : "inactive"}
             data-testid={`self-learning-carousel-item-${item.id}`}
             key={item.id}
             style={{
-              boxShadow: relativeIndex === 1 ? "0 0 26px rgba(0, 0, 0, 0.08)" : "none",
               gap: "1.6cqw",
               height: slot.height,
               marginInline: "auto",
@@ -582,28 +584,25 @@ function SelfLearningCarousel() {
           >
             <HugeiconsIcon
               aria-hidden="true"
-              className="shrink-0"
+              className="shrink-0 text-foreground"
               icon={item.icon}
               size={24}
               strokeWidth={1.8}
               style={{
-                color: "#000",
                 height: slot.iconSize,
                 transition: sizeTransition,
                 width: slot.iconSize,
               }}
             />
             <span
-              className="whitespace-nowrap text-[rgba(0,0,0,0.9)]"
+              className="whitespace-nowrap"
               style={{
                 fontSize: slot.fontSize,
                 transition: reducedMotion ? "none" : `font-size ${transitionTiming}`,
               }}
             >
-              <span className="font-medium">{item.label}</span>
-              <span
-                className="ml-[1cqw] font-normal text-[rgba(0,0,0,0.5)]"
-              >
+              <span className="font-medium text-foreground">{item.label}</span>
+              <span className="ml-[1cqw] font-normal text-muted-foreground">
                 {item.sub}
               </span>
             </span>

@@ -7,9 +7,13 @@ import {
   AiBookIcon,
   ArrowRight01Icon,
   ArtificialIntelligence03Icon,
+  BookOpenCheckIcon,
   InformationCircleIcon,
+  MessageSquareShareIcon,
+  Knowledge02Icon,
   MoreHorizontalIcon,
   Search01Icon,
+  TestTube01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -82,9 +86,61 @@ const MAX_INLINE_KB_COUNT = 2;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-muted px-1.5 text-[13px] font-normal leading-[22px] text-foreground";
 const AI_SELF_LEARNING_BANNER_URL =
-  "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png";
+  "https://b5.bokr.com.cn/dist/ui/learn_banner_bg.png";
 const AI_SELF_LEARNING_ICON_URL =
   "https://b5.bokr.com.cn/dist/ui/shield-lightning.svg";
+const SELF_LEARNING_CAROUSEL_INTERVAL_MS = 3_000;
+const SELF_LEARNING_CAROUSEL_TRANSITION_MS = 500;
+const SELF_LEARNING_CAROUSEL_ITEMS = [
+  {
+    icon: MessageSquareShareIcon,
+    id: "dialog-mining",
+    label: "对话挖掘",
+    sub: "发现问题",
+  },
+  { icon: Knowledge02Icon, id: "faq-candidate", label: "FAQ候选", sub: "生成问答" },
+  { icon: TestTube01Icon, id: "smart-evaluation", label: "智能评测", sub: "判断价值" },
+  {
+    icon: BookOpenCheckIcon,
+    id: "knowledge-suggestion",
+    label: "建议入库",
+    sub: "沉淀知识",
+  },
+] as const;
+const SELF_LEARNING_CAROUSEL_SLOTS = [
+  {
+    fontSize: "2cqw",
+    height: "14%",
+    iconSize: "2.2cqw",
+    opacity: 0.6,
+    top: "25.23%",
+    width: "49%",
+  },
+  {
+    fontSize: "2.4cqw",
+    height: "18%",
+    iconSize: "2.6cqw",
+    opacity: 0.88,
+    top: "42.06%",
+    width: "64%",
+  },
+  {
+    fontSize: "2cqw",
+    height: "14%",
+    iconSize: "2.2cqw",
+    opacity: 0.6,
+    top: "64.49%",
+    width: "49%",
+  },
+  {
+    fontSize: "1.7cqw",
+    height: "11.3%",
+    iconSize: "1.5cqw",
+    opacity: 0.4,
+    top: "81.31%",
+    width: "39%",
+  },
+] as const;
 const agentIntroSteps = [
   {
     description: "定义 Agent 在对话中的身份、服务边界和风格",
@@ -390,16 +446,9 @@ export function AgentManagementPage() {
         open={Boolean(selfLearningTarget)}
       >
         <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0">
-          <div className="h-64 overflow-hidden bg-muted">
-            <img
-              alt=""
-              aria-hidden="true"
-              className="size-full object-cover"
-              src={AI_SELF_LEARNING_BANNER_URL}
-            />
-          </div>
+          <SelfLearningCarousel />
           <div className="space-y-5 p-6">
-            <DialogHeader className="space-y-2">
+            <DialogHeader className="space-y-2 text-left">
               <DialogTitle aria-label="Agent 自主进化" className="flex items-center gap-2">
                 <span>Agent 自主进化</span>
                 <Badge
@@ -456,6 +505,112 @@ export function AgentManagementPage() {
         </DialogContent>
       </Dialog>
     </AiHostingLayout>
+  );
+}
+
+function SelfLearningCarousel() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncReducedMotion = () => {
+      setReducedMotion(mediaQuery.matches);
+    };
+
+    syncReducedMotion();
+    mediaQuery.addEventListener("change", syncReducedMotion);
+
+    return () => mediaQuery.removeEventListener("change", syncReducedMotion);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % SELF_LEARNING_CAROUSEL_ITEMS.length);
+    }, SELF_LEARNING_CAROUSEL_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [reducedMotion]);
+
+  return (
+    <div
+      aria-label="自主进化流程"
+      className="relative isolate h-64 overflow-hidden bg-muted"
+      data-testid="self-learning-carousel"
+      style={{ containerType: "inline-size" }}
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 size-full object-cover"
+        src={AI_SELF_LEARNING_BANNER_URL}
+      />
+      <div className="absolute inset-0 bg-white/10" />
+      {SELF_LEARNING_CAROUSEL_ITEMS.map((item, index) => {
+        const relativeIndex =
+          (index - activeIndex + SELF_LEARNING_CAROUSEL_ITEMS.length + 1) %
+          SELF_LEARNING_CAROUSEL_ITEMS.length;
+        const slot = SELF_LEARNING_CAROUSEL_SLOTS[relativeIndex];
+        const transitionTiming = `${SELF_LEARNING_CAROUSEL_TRANSITION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+        const transition = reducedMotion
+          ? "none"
+          : `top ${transitionTiming}, width ${transitionTiming}, height ${transitionTiming}, opacity ${transitionTiming}, box-shadow ${transitionTiming}`;
+        const sizeTransition = reducedMotion
+          ? "none"
+          : `width ${transitionTiming}, height ${transitionTiming}`;
+
+        return (
+          <div
+            className="absolute left-0 right-0 flex items-center justify-center rounded-[8px] bg-white px-[4cqw]"
+            data-state={relativeIndex === 1 ? "active" : "inactive"}
+            data-testid={`self-learning-carousel-item-${item.id}`}
+            key={item.id}
+            style={{
+              boxShadow: relativeIndex === 1 ? "0 0 26px rgba(0, 0, 0, 0.08)" : "none",
+              gap: "1.6cqw",
+              height: slot.height,
+              marginInline: "auto",
+              opacity: slot.opacity,
+              top: slot.top,
+              transition,
+              width: slot.width,
+            }}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0"
+              icon={item.icon}
+              size={24}
+              strokeWidth={1.8}
+              style={{
+                color: "#000",
+                height: slot.iconSize,
+                transition: sizeTransition,
+                width: slot.iconSize,
+              }}
+            />
+            <span
+              className="whitespace-nowrap text-[rgba(0,0,0,0.9)]"
+              style={{
+                fontSize: slot.fontSize,
+                transition: reducedMotion ? "none" : `font-size ${transitionTiming}`,
+              }}
+            >
+              <span className="font-medium">{item.label}</span>
+              <span
+                className="ml-[1cqw] font-normal text-[rgba(0,0,0,0.5)]"
+              >
+                {item.sub}
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

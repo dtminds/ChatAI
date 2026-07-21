@@ -883,10 +883,54 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByRole("button", { name: "启用自主进化" })).toBeInTheDocument();
     expect(within(dialog).getByText("未开启")).toBeInTheDocument();
     expect(within(dialog).queryByRole("switch")).not.toBeInTheDocument();
-    expect(dialog.querySelector("img")).toHaveAttribute(
+    const carousel = within(dialog).getByTestId("self-learning-carousel");
+    expect(carousel.querySelector("img")).toHaveAttribute(
       "src",
-      "https://b5.bokr.com.cn/dist/ui/autonomic_learning_1.png",
+      "https://b5.bokr.com.cn/dist/ui/learn_banner_bg.png",
     );
+    expect(within(carousel).getByText("对话挖掘")).toBeInTheDocument();
+    expect(within(carousel).getByText("FAQ候选")).toBeInTheDocument();
+    expect(within(carousel).getByText("智能评测")).toBeInTheDocument();
+    expect(within(carousel).getByText("建议入库")).toBeInTheDocument();
+    expect(carousel.querySelectorAll("svg")).toHaveLength(4);
+    expect(
+      within(carousel).getByTestId("self-learning-carousel-item-dialog-mining"),
+    ).toHaveAttribute("data-state", "active");
+  });
+
+  it("advances the AI self-learning carousel every 3 seconds", async () => {
+    vi.useFakeTimers();
+
+    try {
+      await act(async () => {
+        renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "护肤小助理 自主进化" }));
+
+      const carousel = screen.getByTestId("self-learning-carousel");
+      expect(
+        within(carousel).getByTestId("self-learning-carousel-item-dialog-mining"),
+      ).toHaveAttribute("data-state", "active");
+
+      act(() => {
+        vi.advanceTimersByTime(2_999);
+      });
+      expect(
+        within(carousel).getByTestId("self-learning-carousel-item-dialog-mining"),
+      ).toHaveAttribute("data-state", "active");
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(
+        within(carousel).getByTestId("self-learning-carousel-item-faq-candidate"),
+      ).toHaveAttribute("data-state", "active");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders the static AI optimization suggestions page", async () => {

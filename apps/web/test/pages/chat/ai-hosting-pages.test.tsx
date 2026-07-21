@@ -2107,6 +2107,22 @@ describe("AI hosting pages", () => {
       expect(agentService.listAiHostingSettings).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByText("配置托管账号关联的 Agent 和托管策略")).toBeInTheDocument();
+    const featureOverview = screen.getByRole("region", { name: "托管功能说明" });
+
+    expect(
+      within(featureOverview).getByRole("heading", { name: "AI 自动回复" }),
+    ).toBeInTheDocument();
+    expect(
+      within(featureOverview).getByRole("heading", { name: "话术推荐" }),
+    ).toBeInTheDocument();
+    expect(within(featureOverview).getByText("已为 1 个账号开启")).toBeInTheDocument();
+    expect(within(featureOverview).getByText("已为 2 个账号开启")).toBeInTheDocument();
+    expect(
+      within(featureOverview).getByRole("img", { name: "AI 自动回复功能插图" }),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/ui/hosting-f1.png");
+    expect(
+      within(featureOverview).getByRole("img", { name: "话术推荐功能插图" }),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/ui/hosting-f2.png");
     expect(screen.getByRole("textbox", { name: "搜索托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
     expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();

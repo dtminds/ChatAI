@@ -5,6 +5,7 @@ import type {
 } from "@chatai/contracts";
 import {
   ArrowDown01Icon,
+  CheckmarkCircle01Icon,
   MoreHorizontalIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -63,6 +64,11 @@ type HostingSettingsDraft = {
 };
 
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
+const FULL_AUTO_FEATURE_IMAGE_URL =
+  "https://b5.bokr.com.cn/dist/ui/hosting-f1.png";
+const SEMI_AUTO_FEATURE_IMAGE_URL =
+  "https://b5.bokr.com.cn/dist/ui/hosting-f2.png";
+
 export function SingleChatHostingSettingsTab() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<HostingAgent[]>([]);
@@ -139,6 +145,12 @@ export function SingleChatHostingSettingsTab() {
       : allVisibleSelected
         ? true
         : "indeterminate";
+  const fullAutoEnabledAccountCount = accounts.filter(
+    (account) => account.fullAutoAuth || account.groupChat.fullAutoAuth,
+  ).length;
+  const semiAutoEnabledAccountCount = accounts.filter(
+    (account) => account.semiAutoAuth || account.groupChat.semiAutoAuth,
+  ).length;
 
   function toggleAllAccounts(checked: boolean) {
     if (checked) {
@@ -232,7 +244,13 @@ export function SingleChatHostingSettingsTab() {
         </p>
       ) : null}
 
-      <section aria-label="托管设置列表">
+      <HostingFeatureOverview
+        fullAutoEnabledAccountCount={fullAutoEnabledAccountCount}
+        loading={loading}
+        semiAutoEnabledAccountCount={semiAutoEnabledAccountCount}
+      />
+
+      <section aria-label="托管设置列表" className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-[280px] max-w-full">
             <HugeiconsIcon
@@ -315,6 +333,109 @@ export function SingleChatHostingSettingsTab() {
         targetAccountIds={groupChatSettingsTargetAccountIds}
       />
     </>
+  );
+}
+
+function HostingFeatureOverview({
+  fullAutoEnabledAccountCount,
+  loading,
+  semiAutoEnabledAccountCount,
+}: {
+  fullAutoEnabledAccountCount: number;
+  loading: boolean;
+  semiAutoEnabledAccountCount: number;
+}) {
+  return (
+    <section
+      aria-label="托管功能说明"
+      className="grid gap-4 md:grid-cols-2"
+    >
+      <HostingFeatureOverviewItem
+        count={fullAutoEnabledAccountCount}
+        description="Agent 将自动回复客户的消息"
+        imageUrl={FULL_AUTO_FEATURE_IMAGE_URL}
+        loading={loading}
+        title="AI 自动回复"
+        tone="success"
+      />
+      <HostingFeatureOverviewItem
+        count={semiAutoEnabledAccountCount}
+        description="Agent 会自动生成回复建议"
+        imageUrl={SEMI_AUTO_FEATURE_IMAGE_URL}
+        loading={loading}
+        title="话术推荐"
+        tone="primary"
+      />
+    </section>
+  );
+}
+
+function HostingFeatureOverviewItem({
+  count,
+  description,
+  imageUrl,
+  loading,
+  title,
+  tone,
+}: {
+  count: number;
+  description: string;
+  imageUrl: string;
+  loading: boolean;
+  title: string;
+  tone: "primary" | "success";
+}) {
+  return (
+    <article
+      className={cn(
+        "relative h-28 overflow-hidden rounded-[8px] border px-5 py-4",
+        tone === "success"
+          ? "border-success/10 bg-linear-to-r from-success-muted/25 to-success-muted/15"
+          : "border-mini-program-brand/10 bg-linear-to-r from-mini-program-brand/5 to-mini-program-brand/3",
+      )}
+    >
+      <div className="relative z-10 flex h-full min-w-0 flex-col pr-24 sm:pr-40">
+        <h2
+          className={cn(
+            "truncate text-base font-semibold",
+            tone === "success" ? "text-success" : "text-mini-program-brand",
+          )}
+          title={title}
+        >
+          {title}
+        </h2>
+        <p
+          className="mt-1 truncate text-xs text-muted-foreground"
+          title={description}
+        >
+          {description}
+        </p>
+        <div
+          className={cn(
+            "mt-auto flex min-w-0 items-center gap-1.5 pt-2 text-xs font-medium",
+            tone === "success" ? "text-success" : "text-mini-program-brand",
+          )}
+        >
+          {!loading && count > 0 ? (
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0"
+              icon={CheckmarkCircle01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+          ) : null}
+          <span className="truncate">
+            {loading ? "正在加载" : `已为 ${count} 个账号开启`}
+          </span>
+        </div>
+      </div>
+      <img
+        alt={`${title}功能插图`}
+        className="pointer-events-none absolute bottom-0 right-3 h-24 w-28 object-contain object-bottom sm:right-5 sm:h-24 sm:w-36"
+        src={imageUrl}
+      />
+    </article>
   );
 }
 
@@ -631,14 +752,14 @@ function HostingSettingsTable({
                 <TableCell className="border-y border-border/70 bg-surface py-5">
                   <WeComAccountIdentity avatarUrl={account.avatarUrl} name={account.name} />
                 </TableCell>
-                <TableCell className="border-y border-border/70 bg-linear-to-r from-primary/[0.03] to-transparent px-5 py-5">
+                <TableCell className="border-y border-border/70 bg-linear-to-r from-mini-program-brand/[0.03] to-transparent px-5 py-5">
                   <HostingSummaryCell
                     agent={singleChatAgent}
                     fullAutoAuth={account.fullAutoAuth}
                     semiAutoAuth={account.semiAutoAuth}
                   />
                 </TableCell>
-                <TableCell className="border-y border-border/70 bg-linear-to-r from-success-muted/25 to-transparent px-5 py-5">
+                <TableCell className="border-y border-border/70 bg-linear-to-r from-mini-program-brand/[0.03] to-transparent px-5 py-5">
                   <HostingSummaryCell
                     agent={groupChatAgent}
                     fullAutoAuth={account.groupChat.fullAutoAuth}
@@ -713,8 +834,16 @@ function HostingSummaryCell({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <HostingCapabilityStatus enabled={fullAutoAuth} label="自动回复" />
-        <HostingCapabilityStatus enabled={semiAutoAuth} label="话术推荐" />
+        <HostingCapabilityStatus
+          enabled={fullAutoAuth}
+          label="自动回复"
+          type="auto"
+        />
+        <HostingCapabilityStatus
+          enabled={semiAutoAuth}
+          label="话术推荐"
+          type="semi"
+        />
       </div>
     </div>
   );
@@ -723,16 +852,20 @@ function HostingSummaryCell({
 function HostingCapabilityStatus({
   enabled,
   label,
+  type,
 }: {
   enabled: boolean;
   label: string;
+  type: "auto" | "semi";
 }) {
   return (
     <span
       className={cn(
         "inline-flex h-6 items-center gap-1 rounded-[6px] border bg-surface/80 px-2 text-xs font-bold",
         enabled
-          ? "border-success/20 text-success"
+          ? type === "semi"
+            ? "border-mini-program-brand/20 text-mini-program-brand"
+            : "border-success/20 text-success"
           : "border-border/70 text-muted-foreground",
       )}
     >

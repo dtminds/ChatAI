@@ -318,14 +318,14 @@ function RecordDetailSheet({ detail, onOpenChange }: { detail: WorkflowEntryReco
   return (
     <Sheet onOpenChange={onOpenChange} open={Boolean(detail)}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-[min(680px,calc(100vw-48px))]">
-        {detail ? <><SheetHeader><SheetTitle>{detail.customer.name}</SheetTitle><SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription></SheetHeader><div className="border-t px-6 py-5"><h3 className="mb-5 text-sm font-semibold">运行轨迹</h3><ol className="space-y-0">{detail.steps.map((step, index) => <li className="relative flex gap-4 pb-6" key={`${step.nodeId}-${index}`}><span className={cn("mt-1 size-2.5 rounded-full", step.status === "failed" ? "bg-destructive" : step.status === "current" ? "bg-amber-500" : "bg-emerald-500")} />{index < detail.steps.length - 1 ? <span className="absolute left-[4px] top-3 h-full w-px bg-border" /> : null}<div><div className="text-sm font-medium">{step.title}</div><div className="mt-1 text-xs text-muted-foreground">{formatDate(step.occurredAt)}</div>{step.description ? <div className="mt-1 text-xs text-muted-foreground">{step.description}</div> : null}</div></li>)}</ol></div></> : null}
+        {detail ? <><SheetHeader><SheetTitle>{detail.customer.name}</SheetTitle><SheetDescription>{statusLabel(detail.status)} · {formatDate(detail.createdAt)} 进入</SheetDescription></SheetHeader><div className="border-t px-6 py-5"><h3 className="mb-5 text-sm font-semibold">运行轨迹</h3><ol className="space-y-0">{detail.steps.map((step, index) => <li className="relative flex gap-4 pb-6" key={`${step.nodeId}-${index}`}><span className={cn("mt-1 size-2.5 rounded-full", step.status === "failed" ? "bg-destructive" : step.status === "current" ? "bg-warning" : "bg-success")} />{index < detail.steps.length - 1 ? <span className="absolute left-[4px] top-3 h-full w-px bg-border" /> : null}<div><div className="text-sm font-medium">{step.title}</div><div className="mt-1 text-xs text-muted-foreground">{formatDate(step.occurredAt)}</div>{step.description ? <div className="mt-1 text-xs text-muted-foreground">{step.description}</div> : null}</div></li>)}</ol></div></> : null}
       </SheetContent>
     </Sheet>
   );
 }
 
 function RecordStatus({ record }: { record: WorkflowEntryRecord }) {
-  return <span className={cn(record.status === "failed" || record.status === "cancelled" ? "text-destructive" : record.status === "waiting" ? "text-amber-600" : "text-emerald-600")}>{statusLabel(record.status)}{record.status === "waiting" && record.nextExecuteAt ? ` · ${formatDate(record.nextExecuteAt)} 继续` : ""}</span>;
+  return <span className={cn(record.status === "failed" || record.status === "cancelled" ? "text-destructive" : record.status === "waiting" ? "text-warning" : "text-success")}>{statusLabel(record.status)}{record.status === "waiting" && record.nextExecuteAt ? ` · ${formatDate(record.nextExecuteAt)} 继续` : ""}</span>;
 }
 
 function statusLabel(status: WorkflowEntryRecord["status"]) {

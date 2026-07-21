@@ -26,7 +26,7 @@ export function WorkflowChecks({
         <div
           className={cn(
             "rounded-[12px] border bg-background p-4 shadow-xs",
-            publishAttempted && (publishReady ? "border-emerald-200" : "border-amber-200"),
+            publishAttempted && (publishReady ? "border-success/30" : "border-warning/30"),
           )}
           role={publishAttempted ? "alert" : undefined}
         >
@@ -34,7 +34,7 @@ export function WorkflowChecks({
             <span
               className={cn(
                 "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[10px]",
-                publishReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+                publishReady ? "bg-success-muted text-success" : "bg-warning-muted text-warning",
               )}
             >
               <HugeiconsIcon
@@ -74,7 +74,7 @@ export function WorkflowChecks({
             const content = (
               <div className="flex items-start gap-3">
                 <span
-                  className="mt-0.5 flex size-8 items-center justify-center rounded-[8px] bg-amber-50 text-amber-700"
+                  className="mt-0.5 flex size-8 items-center justify-center rounded-[8px] bg-warning-muted text-warning"
                 >
                   <HugeiconsIcon
                     icon={AlertCircleIcon}

@@ -34,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAppearanceStore } from "@/store/appearance-store";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_MAX_ZOOM,
@@ -135,6 +136,12 @@ export function WorkflowCanvas({
     WorkflowRenderEdge
   >();
   const { zoom } = useViewport();
+  const colorMode = useAppearanceStore((state) =>
+    state.themePreference === "dark" ||
+    (state.themePreference === "system" && state.isSystemDarkMode)
+      ? "dark"
+      : "light",
+  );
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [flowNodes, setFlowNodes] = useState(nodes);
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -207,6 +214,7 @@ export function WorkflowCanvas({
       role="application"
     >
       <ReactFlow
+        colorMode={colorMode}
         connectionRadius={32}
         defaultViewport={initialViewport}
         deleteKeyCode={null}
@@ -279,7 +287,7 @@ function WorkflowMiniMap() {
     <MiniMap
       bgColor="var(--background)"
       className="workflow-minimap"
-      maskColor="oklch(from var(--secondary) l c h / 50%)"
+      maskColor="color-mix(in oklch, var(--workflow-canvas-bg) 72%, transparent)"
       nodeColor="var(--primary)"
       nodeStrokeWidth={3}
       pannable
@@ -406,7 +414,7 @@ function WorkflowBottomToolbar({
     enabled: menuOpen,
     onDismiss: () => setMenuOpen(false),
   });
-  const toolbarButtonClassName = "workflow-toolbar-button size-[30px] shrink-0 rounded-[7px] data-[active=true]:bg-slate-950/6";
+  const toolbarButtonClassName = "workflow-toolbar-button size-[30px] shrink-0 rounded-[7px] data-[active=true]:bg-[var(--workflow-control-active)]";
 
   const handleMenuAction = (action: () => void) => {
     action();
@@ -503,7 +511,7 @@ function WorkflowBottomToolbar({
           ) : null}
         </div>
         {showEditingTools ? <>
-        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
+        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-[var(--workflow-divider)]" />
         <WorkflowToolbarTooltip label="撤销">
           <Button
             aria-label={nextUndoLabel ? `撤销：${nextUndoLabel}` : "撤销"}
@@ -569,7 +577,7 @@ function WorkflowBottomToolbar({
           </WorkflowToolbarTooltip>
         </div>
         {showEditingTools ? <>
-        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-slate-950/10" />
+        <span className="workflow-toolbar-separator h-6 w-px shrink-0 bg-[var(--workflow-divider)]" />
         <div className="workflow-toolbar-palette-wrap relative flex shrink-0">
           {paletteOpen && !disabled ? (
             <WorkflowNodePicker

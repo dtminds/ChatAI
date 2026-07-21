@@ -28,7 +28,7 @@ export function WorkflowVersionHistoryPanel({
   const selectedVersion = versions.find((version) => version.id === currentPreviewVersionId);
 
   return (
-    <div className="workflow-version-panel flex max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-[var(--workflow-panel-bg-blur)] backdrop-blur-[10px]">
+    <div className="workflow-version-panel flex max-h-[min(36rem,calc(100vh-5rem))] w-full flex-col overflow-hidden bg-popover text-popover-foreground">
       <div className="workflow-version-panel-header flex items-start gap-2 px-3 pb-2 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="workflow-version-panel-title text-[15px] font-bold leading-[22px] text-foreground">版本历史</h2>
@@ -65,12 +65,12 @@ export function WorkflowVersionHistoryPanel({
               type="button"
             >
               {index < versions.length - 1 ? (
-                <span className="workflow-version-line absolute left-[13px] top-[22px] h-[calc(100%-8px)] w-0.5 rounded-full bg-[var(--workflow-border)]" />
+                <span className="workflow-version-line absolute left-[13px] top-[22px] h-[calc(100%-8px)] w-0.5 rounded-full bg-border" />
               ) : null}
               <span
                 className={cn(
-                  "workflow-version-dot z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-muted-foreground bg-[var(--workflow-panel-bg)]",
-                  isSelected && "border-[var(--workflow-blue)]",
+                  "workflow-version-dot z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-muted-foreground bg-popover",
+                  isSelected && "border-primary",
                 )}
               />
               <span className="workflow-version-content grid min-w-0 flex-1 gap-[3px]">
@@ -90,7 +90,7 @@ export function WorkflowVersionHistoryPanel({
           );
         }) : (
           <div className="workflow-version-empty flex min-h-40 flex-col items-center justify-center gap-2 text-[13px] text-muted-foreground">
-            <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-[var(--workflow-soft)]">
+            <span className="workflow-version-empty-icon flex size-9 items-center justify-center rounded-[10px] bg-muted">
               <HugeiconsIcon icon={WorkflowSquare01Icon} size={18} strokeWidth={1.8} />
             </span>
             <span>暂无发布版本</span>
@@ -99,7 +99,7 @@ export function WorkflowVersionHistoryPanel({
       </div>
 
       {selectedVersion ? (
-        <div className="workflow-version-preview-actions grid gap-2.5 border-t-[0.5px] border-[var(--workflow-border)] px-3 pb-3 pt-2.5">
+        <div className="workflow-version-preview-actions grid gap-2.5 border-t-[0.5px] border-border px-3 pb-3 pt-2.5">
           <div className="workflow-version-preview-copy grid gap-0.5">
             <span className="workflow-version-preview-title text-[13px] font-bold leading-[18px] text-foreground">
               {selectedVersion.name}

@@ -15,7 +15,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
-import { QuickReplyMaterialPickerDialog } from "@/pages/chat/components/quick-reply/quick-reply-material-picker-dialog";
+import { MessageMaterialPickerDialog as QuickReplyMaterialPickerDialog } from "@/pages/chat/components/message-content/message-material-picker-dialog";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { QUICK_REPLY_IMPORT_HEADERS } from "@/pages/chat/components/quick-reply/quick-reply-import";
 

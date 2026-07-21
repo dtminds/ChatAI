@@ -5,6 +5,7 @@ import {
   createInitialNodes,
 } from "@/pages/chat/workflow/graph";
 import { WorkflowCanvas } from "@/pages/chat/workflow/canvas/workflow-canvas";
+import { useAppearanceStore } from "@/store/appearance-store";
 
 const reactFlowProps = vi.hoisted(() => ({
   latest: undefined as Record<string, unknown> | undefined,
@@ -66,6 +67,34 @@ function renderWorkflowCanvas(overrides: Partial<ComponentProps<typeof WorkflowC
 }
 
 describe("WorkflowCanvas", () => {
+  it("keeps React Flow color mode synchronized with appearance preferences", () => {
+    renderWorkflowCanvas();
+    expect(reactFlowProps.latest?.colorMode).toBe("light");
+
+    act(() => {
+      useAppearanceStore.setState({
+        isSystemDarkMode: true,
+        themePreference: "system",
+      });
+    });
+    expect(reactFlowProps.latest?.colorMode).toBe("dark");
+
+    act(() => {
+      useAppearanceStore.setState({
+        isSystemDarkMode: true,
+        themePreference: "light",
+      });
+    });
+    expect(reactFlowProps.latest?.colorMode).toBe("light");
+
+    act(() => {
+      useAppearanceStore.setState({
+        isSystemDarkMode: false,
+        themePreference: "system",
+      });
+    });
+  });
+
   it("uses left-button pane dragging and wheel zooming", () => {
     renderWorkflowCanvas();
 

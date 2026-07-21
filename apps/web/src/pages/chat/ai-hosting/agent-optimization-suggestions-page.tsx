@@ -1166,8 +1166,8 @@ function SuggestionCard({
         className={cn(
           "mt-3 rounded-[10px] border bg-clip-padding bg-origin-border px-3.5 py-3",
           status === "filtered"
-            ? "border-destructive/15 bg-linear-to-r from-background from-55% to-destructive-muted/70"
-            : "border-success/15 bg-linear-to-r from-background from-55% to-success-muted/70",
+            ? "border-destructive/15 bg-linear-to-r from-transparent from-55% to-destructive-muted/70"
+            : "border-success/15 bg-linear-to-r from-transparent from-55% to-success-muted/70",
         )}
       >
         <div className="flex min-w-0 items-center gap-2 text-sm font-medium">

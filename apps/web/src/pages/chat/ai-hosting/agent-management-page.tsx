@@ -584,7 +584,7 @@ function SelfLearningCarousel() {
           >
             <HugeiconsIcon
               aria-hidden="true"
-              className="shrink-0 text-foreground"
+              className="shrink-0 text-black"
               icon={item.icon}
               size={24}
               strokeWidth={1.8}
@@ -601,8 +601,8 @@ function SelfLearningCarousel() {
                 transition: reducedMotion ? "none" : `font-size ${transitionTiming}`,
               }}
             >
-              <span className="font-medium text-foreground">{item.label}</span>
-              <span className="ml-[1cqw] font-normal text-muted-foreground">
+              <span className="font-medium text-black">{item.label}</span>
+              <span className="ml-[1cqw] font-normal text-black/50">
                 {item.sub}
               </span>
             </span>

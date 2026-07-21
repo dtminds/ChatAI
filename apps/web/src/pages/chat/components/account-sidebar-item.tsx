@@ -109,7 +109,7 @@ export function AccountSidebarItem({
     <AvatarBadge
       aria-label={`${account.name} 状态 ${compactStatusLabel}`}
       className={cn(
-        "size-2.5",
+        "size-2 ring-1",
         (isExpired || isOffline) && "bg-muted-foreground/50",
         !isExpired && !isOffline && isTakenOverByCurrentUser && "bg-success",
         !isExpired && !isOffline && !isTakenOverByCurrentUser && "bg-warning",
@@ -187,7 +187,12 @@ export function AccountSidebarItem({
     const compactButton = (
       <button
         aria-label={`选择 ${account.name}`}
-        className="relative flex size-8 items-center justify-center rounded-[8px] bg-transparent transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
+        className={cn(
+          "relative flex size-9 items-center justify-center rounded-[8px] transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+          isActive
+            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+            : "bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )}
         data-testid={`account-sidebar-item-${account.id}`}
         onBlur={closeTakeoverPopover}
         onClick={onClick}
@@ -197,14 +202,25 @@ export function AccountSidebarItem({
         onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
         type="button"
       >
-        <Avatar className="size-8 rounded-[8px]">
-          <AvatarImage alt={account.name} src={account.avatarUrl} />
-          <AvatarFallback className="rounded-[8px] bg-primary text-primary-foreground">
+        <Avatar className="size-7 rounded-[8px]">
+          <AvatarImage
+            alt={account.name}
+            className={cn("transition-opacity", !isActive && "opacity-45")}
+            src={account.avatarUrl}
+          />
+          <AvatarFallback
+            className={cn(
+              "rounded-[8px] bg-primary text-primary-foreground transition-opacity",
+              !isActive && "opacity-45",
+            )}
+          >
             {account.name.slice(0, 1)}
           </AvatarFallback>
           {compactStatusBadge}
         </Avatar>
-        {shouldShowUnreadCount ? <AccountUnreadBadge account={account} /> : null}
+        {shouldShowUnreadCount ? (
+          <AccountUnreadBadge account={account} className="right-0 top-0" />
+        ) : null}
       </button>
     );
 
@@ -477,12 +493,19 @@ export function AccountSidebarItem({
   );
 }
 
-function AccountUnreadBadge({ account }: { account: Account }) {
+function AccountUnreadBadge({
+  account,
+  className,
+}: {
+  account: Account;
+  className?: string;
+}) {
   const unreadCount = account.unreadCount ?? 0;
 
   return (
     <AvatarUnreadCountBadge
       ariaLabel={`${account.name} 有 ${unreadCount} 条未读消息`}
+      className={className}
       count={unreadCount}
       testId={`account-unread-count-${account.id}`}
     />

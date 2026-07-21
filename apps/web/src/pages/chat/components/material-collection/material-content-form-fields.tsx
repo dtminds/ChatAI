@@ -182,9 +182,9 @@ export function MaterialContentFormFields({
     return renderTitleField({
       disabled,
       id: "material-mini-program-title",
-      label: "小程序标题",
+      label: "小程序备注",
       onChange,
-      placeholder: "请输入小程序标题",
+      placeholder: "请输入小程序备注",
       values,
     });
   }
@@ -239,11 +239,11 @@ export function getMaterialContentFormValidationError(
     const title = values.title.trim();
 
     if (!title) {
-      return "小程序标题不能为空";
+      return "小程序备注不能为空";
     }
 
     if (title.length > MATERIAL_COLLECTION_TITLE_MAX_LENGTH) {
-      return `小程序标题不能超过 ${MATERIAL_COLLECTION_TITLE_MAX_LENGTH} 个字符`;
+      return `小程序备注不能超过 ${MATERIAL_COLLECTION_TITLE_MAX_LENGTH} 个字符`;
     }
 
     return null;

@@ -49,6 +49,8 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     expireTime: dto.expireTime,
     seatAIHostingAuth: dto.seatAIHostingAuth,
     fullAutoSwitch: dto.fullAutoSwitch,
+    seatGroupAIHostingEnabled: dto.seatGroupAIHostingEnabled === true,
+    seatGroupAIAssistantEnabled: dto.seatGroupAIAssistantEnabled === true,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,
@@ -78,6 +80,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
   return {
     accountId: dto.seatId,
     conversationAIHostingSwitch: dto.conversationAIHostingSwitch,
+    handoffMsgId: dto.handoffMsgId,
     bizStatus: dto.bizStatus ?? 0,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
@@ -88,14 +91,14 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     groupOriginalName: dto.groupOriginalName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
+    isShadowGroup: dto.isShadowGroup,
     isVerified: dto.verified,
+    lastMessageId: dto.lastMessageId,
     mode: dto.mode,
     preview: dto.lastMessage,
-    ...(dto.lastMessagePreviewParts
-      ? { previewParts: dto.lastMessagePreviewParts }
-      : {}),
     priority: dto.priority,
     quietFor: formatQuietFor(lastMessageTime),
+    replied: dto.replied,
     thirdExternalUserId: dto.thirdExternalUserId,
     thirdGroupId: dto.thirdGroupId,
     thirdUserId: dto.thirdUserId,
@@ -110,6 +113,8 @@ export function adaptGroupMember(dto: WorkbenchGroupMemberDto) {
     avatarUrl: dto.avatarUrl,
     displayName: dto.displayName,
     id: dto.thirdUserId,
+    isOpeningAccount: dto.isOpeningAccount,
+    isReceptionAccount: dto.isReceptionAccount,
     type: dto.type,
   };
 }
@@ -145,6 +150,7 @@ export function adaptMessage(
       role: "system",
       sentAt,
       seq: dto.seq,
+      source: dto.source,
       status,
       author: "系统",
       updatedAtMs,
@@ -168,6 +174,7 @@ export function adaptMessage(
       role: "system",
       sentAt,
       seq: dto.seq,
+      source: dto.source,
       status,
       author: "系统",
       updatedAtMs,
@@ -182,9 +189,8 @@ export function adaptMessage(
     dto.contentType,
     mergeTopLevelDownloadMetadata(dto),
   );
-  const isOwnMessage = isGroupConversation
-    ? dto.thirdFromId === dto.thirdUserId
-    : isAgent;
+  // 群聊己方消息由后端按「接待号」判定 senderType；勿再用 message.thirdUserId（影子群可能是开通号分区）
+  const isOwnMessage = isAgent;
   const senderName = isAgent
     ? dto.senderName ||
       (me && account
@@ -200,7 +206,7 @@ export function adaptMessage(
         ? ""
         : customer?.avatarUrl);
   const senderUserId = isOwnMessage
-    ? dto.thirdUserId
+    ? dto.thirdFromId || dto.thirdUserId
     : isGroupConversation
       ? dto.thirdFromId
       : dto.thirdExternalUserId ?? dto.customerId;
@@ -234,6 +240,7 @@ export function adaptMessage(
     },
     sentAt,
     seq: dto.seq,
+    source: dto.source,
     status,
     updatedAtMs,
     uiMessageKey,

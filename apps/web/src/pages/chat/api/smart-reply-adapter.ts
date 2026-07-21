@@ -6,13 +6,13 @@ import {
   SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS,
   SMART_REPLY_TERMINAL_GENERATE_STATUSES,
 } from "@chatai/contracts";
-import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
+import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
+import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 export const SMART_REPLY_THINKING_LABEL = "思考中..";
@@ -165,18 +165,11 @@ export function createTriggeredSmartReplySuggestion(
   };
 }
 
-export function isSmartReplySupportedConversation(
-  conversation?: Pick<Conversation, "customerBindType" | "mode"> | null,
-) {
-  return isConversationAIFeatureSupported(conversation);
-}
-
 export function isSmartReplyEligibleMessage(message: ChatMessage) {
   if (
     message.role !== "customer" ||
     message.isOwnMessage ||
-    message.isRevoked ||
-    message.isGroupConversation
+    message.isRevoked
   ) {
     return false;
   }
@@ -275,6 +268,13 @@ export function isSmartReplyKnowledgeMiss(
   );
 }
 
+export function isSmartReplySingleChatOnlyFailure(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  const failReason = suggestion?.failReason?.trim() ?? "";
+  return failReason.includes("仅支持单聊");
+}
+
 export function isSmartReplyGenerationFailed(
   suggestion?: SmartReplySuggestion | null,
 ) {
@@ -283,6 +283,11 @@ export function isSmartReplyGenerationFailed(
   }
 
   if (isSmartReplyContentIncompleteSkip(suggestion)) {
+    return false;
+  }
+
+  // 群聊误打单聊接口留下的历史失败，不再展示
+  if (isSmartReplySingleChatOnlyFailure(suggestion)) {
     return false;
   }
 
@@ -319,6 +324,13 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return true;
   }
 
+  const content = suggestion.content?.trim() ?? "";
+
+  // 群聊历史误走单聊接口时，可能带着「仅支持单聊」失败但仍有可用文案，仍展示推荐卡片
+  if (isSmartReplySingleChatOnlyFailure(suggestion) && content.length > 0) {
+    return true;
+  }
+
   if (readSmartReplyGenerateStatus(suggestion) !== 2) {
     return false;
   }
@@ -327,7 +339,7 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return false;
   }
 
-  return suggestion.content.trim().length > 0;
+  return content.length > 0;
 }
 
 export function shouldShowSmartReplyTriggerIcon(
@@ -556,6 +568,11 @@ export function getSmartReplyInlineState(
     return undefined;
   }
 
+  // 群聊不应展示「仅支持单聊」这类无效失败态
+  if (isSmartReplySingleChatOnlyFailure(suggestion)) {
+    return undefined;
+  }
+
   const generateStatus = readSmartReplyGenerateStatus(suggestion);
 
   if (generateStatus === 5) {
@@ -734,20 +751,114 @@ function normalizeSmartReplyAttachmentId(value: unknown): string | undefined {
   return undefined;
 }
 
-function readSmartReplyGenAnswerSegmentAttachmentId(
+function readSmartReplyGenAnswerSegmentTransMsgInfoId(
   segment: Record<string, unknown>,
 ): string | undefined {
-  for (const key of [
-    "id",
-    "attachId",
-    "refAttachId",
-    "transMsgInfoId",
-    "msgInfoId",
-  ]) {
+  for (const key of ["transMsgInfoId", "msgInfoId"]) {
     const normalized = normalizeSmartReplyAttachmentId(segment[key]);
 
     if (normalized) {
       return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentLibraryAttachmentId(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["id", "attachId", "refAttachId"]) {
+    const normalized = normalizeSmartReplyAttachmentId(segment[key]);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentAttachmentId(
+  segment: Record<string, unknown>,
+): string | undefined {
+  return (
+    readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) ??
+    readSmartReplyGenAnswerSegmentTransMsgInfoId(segment)
+  );
+}
+
+function isSmartReplyForwardOnlyGenAnswerSegment(
+  msgtype: string | undefined,
+  segment: Record<string, unknown>,
+): boolean {
+  const transMsgInfoId = readSmartReplyGenAnswerSegmentTransMsgInfoId(segment);
+
+  if (!transMsgInfoId) {
+    return false;
+  }
+
+  if (msgtype === "weapp" || msgtype === "sphfeed") {
+    return readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) == null;
+  }
+
+  if (msgtype === "video") {
+    return (
+      readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) == null &&
+      !readSmartReplyGenAnswerSegmentPreviewPath(segment)
+    );
+  }
+
+  return false;
+}
+
+function buildSmartReplyForwardAttachmentId(
+  msgtype: string,
+  transMsgInfoId: string,
+) {
+  return `transmsg:${msgtype}:${transMsgInfoId}`;
+}
+
+function readSmartReplyRecommendedAttachmentTransMsgInfoId(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  const explicit = attachment.transMsgInfoId?.trim();
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const match = /^transmsg:(?:weapp|sphfeed|video):(\d+)$/.exec(attachment.id);
+
+  return match?.[1];
+}
+
+function readSmartReplyGenAnswerSegmentLinkHref(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["href", "jumpUrl", "url"]) {
+    const value = readString(segment[key]);
+
+    if (value && isSmartReplyAbsoluteWebUrl(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function isSmartReplyAbsoluteWebUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function resolveSmartReplyAttachmentLinkHref(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  for (const candidate of [attachment.jumpUrl, attachment.content]) {
+    const trimmed = candidate?.trim();
+
+    if (trimmed && isSmartReplyAbsoluteWebUrl(trimmed)) {
+      return trimmed;
     }
   }
 
@@ -778,15 +889,43 @@ function readSmartReplyGenAnswerSegmentPreviewPath(
 function readSmartReplyGenAnswerSegmentFileType(
   msgtype: string | undefined,
 ): string {
-  if (msgtype === "file") {
-    return "5";
+  switch (msgtype) {
+    case "file":
+      return "5";
+    case "video":
+    case "sphfeed":
+      return "3";
+    case "link":
+      return "4";
+    case "weapp":
+      return "7";
+    case "image":
+      return "1";
+    default:
+      return "1";
   }
+}
 
-  if (msgtype === "video") {
-    return "3";
-  }
-
-  return "1";
+function getSmartReplyGenAnswerSegmentFileName(
+  segment: Record<string, unknown>,
+  msgtype: string | undefined,
+) {
+  return (
+    readString(segment.fileName) ??
+    readString(segment.title) ??
+    readString(segment.alt) ??
+    (msgtype === "image"
+      ? "图片"
+      : msgtype === "file"
+        ? "文件"
+        : msgtype === "link"
+          ? "链接"
+          : msgtype === "weapp"
+            ? "小程序"
+            : msgtype === "sphfeed"
+              ? "视频号"
+              : "附件")
+  );
 }
 
 export function extractSmartReplyGenAnswerAttachmentIds(
@@ -821,7 +960,9 @@ export function extractSmartReplyGenAnswerAttachmentIds(
       continue;
     }
 
-    const attachmentId = readSmartReplyGenAnswerSegmentAttachmentId(segment);
+    const attachmentId = isSmartReplyForwardOnlyGenAnswerSegment(msgtype, segment)
+      ? undefined
+      : readSmartReplyGenAnswerSegmentAttachmentId(segment);
 
     if (attachmentId && !seen.has(attachmentId)) {
       seen.add(attachmentId);
@@ -862,12 +1003,41 @@ export function extractSmartReplyGenAnswerInlineAttachments(
       return;
     }
 
+    const previewPath = readSmartReplyGenAnswerSegmentPreviewPath(segment);
+    const transMsgInfoId = readSmartReplyGenAnswerSegmentTransMsgInfoId(segment);
+    const libraryAttachmentId =
+      readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment);
+    const isForwardOnly = isSmartReplyForwardOnlyGenAnswerSegment(
+      msgtype,
+      segment,
+    );
+
+    if (isForwardOnly) {
+      if (!transMsgInfoId) {
+        return;
+      }
+
+      attachments.push({
+        content: readString(segment.content),
+        coverUrl: readString(segment.coverUrl) ?? previewPath,
+        defaultSelected: attachments.length === 0,
+        fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
+        fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
+        id: buildSmartReplyForwardAttachmentId(msgtype, transMsgInfoId),
+        jumpUrl: readSmartReplyGenAnswerSegmentLinkHref(segment),
+        localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
+        slocalPath: readString(segment.slocalPath),
+        transMsgInfoId,
+      });
+      return;
+    }
+
     const attachmentId =
+      libraryAttachmentId ??
       readSmartReplyGenAnswerSegmentAttachmentId(segment) ??
       `genanswer-${msgtype}-${index}`;
-    const previewPath = readSmartReplyGenAnswerSegmentPreviewPath(segment);
 
-    if (!previewPath && readSmartReplyGenAnswerSegmentAttachmentId(segment) == null) {
+    if (!previewPath && libraryAttachmentId == null && transMsgInfoId == null) {
       return;
     }
 
@@ -875,15 +1045,13 @@ export function extractSmartReplyGenAnswerInlineAttachments(
       content: readString(segment.content),
       coverUrl: readString(segment.coverUrl) ?? previewPath,
       defaultSelected: attachments.length === 0,
-      fileName:
-        readString(segment.fileName) ??
-        readString(segment.title) ??
-        readString(segment.alt) ??
-        (msgtype === "image" ? "图片" : msgtype === "file" ? "文件" : "附件"),
+      fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
       fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
       id: attachmentId,
+      jumpUrl: readSmartReplyGenAnswerSegmentLinkHref(segment),
       localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
       slocalPath: readString(segment.slocalPath),
+      ...(transMsgInfoId ? { transMsgInfoId } : {}),
     });
   });
 
@@ -899,8 +1067,11 @@ function enrichSmartReplyRecommendedAttachment(
     content: primary.content ?? fallback.content,
     coverUrl: primary.coverUrl ?? fallback.coverUrl,
     fileName: primary.fileName || fallback.fileName,
+    fileType: primary.fileType || fallback.fileType,
     localPath: primary.localPath ?? fallback.localPath,
     slocalPath: primary.slocalPath ?? fallback.slocalPath,
+    transMsgInfoId: primary.transMsgInfoId ?? fallback.transMsgInfoId,
+    jumpUrl: primary.jumpUrl ?? fallback.jumpUrl,
   };
 }
 
@@ -947,6 +1118,103 @@ function normalizeSmartReplyRecommendedAttachments(
     ...attachment,
     defaultSelected: index === 0,
   }));
+}
+
+function findChatMessageBySeq(messages: Message[], seq: number): ChatMessage | undefined {
+  const message = messages.find(
+    (item) => item && item.role !== "system" && item.seq === seq,
+  );
+
+  return message && message.role !== "system" ? message : undefined;
+}
+
+function readSmartReplyForwardAttachmentMsgtype(
+  attachmentId: string,
+): "sphfeed" | "video" | "weapp" | undefined {
+  const match = /^transmsg:(weapp|sphfeed|video):/.exec(attachmentId);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return match[1] as "sphfeed" | "video" | "weapp";
+}
+
+function mapChatMessageToRecommendedAttachmentFields(
+  message: ChatMessage,
+): Partial<SmartReplyRecommendedAttachment> | null {
+  switch (message.content.type) {
+    case "mini-program":
+      return {
+        coverUrl: message.content.coverImageUrl,
+        fileName:
+          message.content.title?.trim() ||
+          message.content.appName?.trim() ||
+          "小程序",
+        fileType: "7",
+      };
+    case "h5":
+      return {
+        coverUrl: message.content.previewImageUrl,
+        fileName: message.content.title?.trim() || "链接",
+        fileType: "4",
+        jumpUrl: message.content.url,
+      };
+    case "sphfeed":
+      return {
+        coverUrl: message.content.imageUrl,
+        fileName: message.content.title?.trim() || "视频号",
+        fileType: "3",
+      };
+    case "video":
+      return {
+        coverUrl: message.content.coverImageUrl,
+        fileName: message.content.alt?.trim() || "视频",
+        fileType: "3",
+      };
+    default:
+      return null;
+  }
+}
+
+export function enrichSmartReplyRecommendedAttachmentsFromMessages(
+  attachments: SmartReplyRecommendedAttachment[],
+  messages: Message[],
+): SmartReplyRecommendedAttachment[] {
+  return attachments.map((attachment) => {
+    const transMsgInfoId =
+      readSmartReplyRecommendedAttachmentTransMsgInfoId(attachment);
+
+    if (!transMsgInfoId) {
+      return attachment;
+    }
+
+    const seq = Number.parseInt(transMsgInfoId, 10);
+
+    if (!Number.isFinite(seq)) {
+      return attachment;
+    }
+
+    const message = findChatMessageBySeq(messages, seq);
+
+    if (!message) {
+      return attachment;
+    }
+
+    const mapped = mapChatMessageToRecommendedAttachmentFields(message);
+
+    if (!mapped) {
+      return attachment;
+    }
+
+    return {
+      ...attachment,
+      ...mapped,
+      fileName: mapped.fileName || attachment.fileName,
+      fileType: mapped.fileType || attachment.fileType,
+      transMsgInfoId,
+    };
+  });
 }
 
 export function resolveSmartReplyAttachmentIds(
@@ -1149,14 +1417,6 @@ export function getSmartReplyLookupKey(message: { uiMessageKey?: string; seq?: n
   return message.seq != null ? String(message.seq) : (message.uiMessageKey ?? "");
 }
 
-const SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
-
-function joinSmartReplyMediaCdnUrl(path: string) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  return SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX + normalizedPath;
-}
-
 export type SmartReplySendPayload = {
   content: string;
   recommendedAttachments: SmartReplyRecommendedAttachment[];
@@ -1239,6 +1499,66 @@ function mapSmartReplyAttachmentToComposerSegment(
     };
   }
 
+  if (fileType === 4) {
+    const href = resolveSmartReplyAttachmentLinkHref(attachment);
+
+    if (!href) {
+      return null;
+    }
+
+    return {
+      coverUrl: attachment.coverUrl,
+      href,
+      title: attachment.fileName,
+      type: "h5",
+      ...(attachment.transMsgInfoId
+        ? { msgInfoId: attachment.transMsgInfoId }
+        : {}),
+    };
+  }
+
+  if (fileType === 7) {
+    const msgInfoId = readSmartReplyRecommendedAttachmentTransMsgInfoId(
+      attachment,
+    );
+
+    if (!msgInfoId) {
+      return null;
+    }
+
+    return {
+      appName: attachment.fileName,
+      coverImageUrl: attachment.coverUrl,
+      msgInfoId,
+      title: attachment.fileName,
+      type: "weapp",
+    };
+  }
+
+  const forwardMsgtype = readSmartReplyForwardAttachmentMsgtype(attachment.id);
+  const forwardMsgInfoId =
+    readSmartReplyRecommendedAttachmentTransMsgInfoId(attachment);
+
+  if (forwardMsgtype === "sphfeed" && forwardMsgInfoId) {
+    return {
+      imageUrl: attachment.coverUrl,
+      msgInfoId: forwardMsgInfoId,
+      title: attachment.fileName,
+      type: "sphfeed",
+    };
+  }
+
+  if (forwardMsgtype === "video" && forwardMsgInfoId) {
+    return {
+      coverUrl: attachment.coverUrl || "",
+      materialCollectionId: "",
+      msgInfoId: forwardMsgInfoId,
+      title: attachment.fileName,
+      type: "video",
+      url: "",
+    };
+  }
+
   if (fileType !== 5 && fileType !== 3) {
     return null;
   }
@@ -1264,17 +1584,7 @@ function parseSmartReplyAttachmentFileType(fileType: string) {
 }
 
 function resolveSmartReplyMediaUrl(path?: string) {
-  const trimmed = path?.trim();
-
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-
-  return joinSmartReplyMediaCdnUrl(trimmed);
+  return resolveMediaAssetUrl(path);
 }
 
 function resolveSmartReplyAttachmentImageUrl(
@@ -1343,16 +1653,40 @@ function mapSmartReplyAttachment(
     attachment.content?.trim() ||
     attachment.appInfo?.nickName?.trim() ||
     `素材 ${id}`;
+  const fileType = resolveSmartReplyAttachmentFileType(attachment);
 
   return {
     content: attachment.content?.trim(),
     coverUrl: attachment.coverUrl?.trim(),
     defaultSelected,
     fileName,
-    fileType:
-      attachment.fileType != null ? String(attachment.fileType) : "",
+    fileType,
     id,
+    jumpUrl: attachment.jumpUrl?.trim(),
     localPath: attachment.localPath?.trim(),
     slocalPath: attachment.slocalPath?.trim(),
   };
+}
+
+function resolveSmartReplyAttachmentFileType(
+  attachment: WorkbenchAttachmentDto,
+): string {
+  const rawFileType =
+    attachment.fileType != null ? String(attachment.fileType) : "";
+
+  if (
+    attachment.jumpUrl?.trim() &&
+    (rawFileType === "" || rawFileType === "1")
+  ) {
+    return "4";
+  }
+
+  if (
+    attachment.appInfo?.nickName?.trim() &&
+    (rawFileType === "" || rawFileType === "1")
+  ) {
+    return "7";
+  }
+
+  return rawFileType;
 }

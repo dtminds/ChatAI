@@ -139,13 +139,17 @@ describe("KbWriteService", () => {
     });
   });
 
-  it("rejects deleting a kb that still has documents", async () => {
+  it("deletes a kb that still has documents through the Java internal API", async () => {
+    const deleteKb = vi.fn().mockResolvedValue(undefined);
     const db = createKbReadDbMock() as unknown as Kysely<Database>;
-    const service = createService(db, { createKb: vi.fn(), deleteKb: vi.fn(), updateKb: vi.fn() });
+    const service = createService(db, { createKb: vi.fn(), deleteKb, updateKb: vi.fn() });
 
-    await expect(service.deleteKb(tenant, "1")).rejects.toMatchObject({
-      code: "KB_DELETE_HAS_DOCUMENTS",
-      message: "请先删除所有文档后，再删除知识库",
+    const deleted = await service.deleteKb(tenant, "1");
+
+    expect(deleted).toEqual({ deleted: true });
+    expect(deleteKb).toHaveBeenCalledWith({
+      kbId: 1,
+      uid: 9001,
     });
   });
 

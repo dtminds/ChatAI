@@ -1,5 +1,4 @@
 import type {
-  KbChunkListItem,
   KbChunkSource,
   KbChunkType,
   KbDocDetail,
@@ -11,15 +10,20 @@ import type {
 import type { Selectable } from "kysely";
 import type {
   XyWapEmbedAgentKb,
-  XyWapEmbedAgentKbChunk,
   XyWapEmbedAgentKbDoc,
 } from "../../db/schema.js";
 import { normalizeMediaAssetUrl, parseJsonRecord } from "../chat/workbench-content-utils.js";
 import { parseKbChunkContent, type ParsedKbChunkContent } from "./kb-chunk-content-parser.js";
+import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
+import {
+  KB_DOC_TYPE_BLANK_DOCUMENT,
+  KB_DOC_TYPE_BLANK_FAQ,
+  KB_DOC_TYPE_DOCUMENT,
+  KB_DOC_TYPE_FAQ,
+  KB_DOC_TYPE_IMAGE,
+} from "./kb-doc-type.constants.js";
 
-const KB_DOC_TYPE_FAQ = 1;
-const KB_DOC_TYPE_DOCUMENT = 2;
-const KB_DOC_TYPE_IMAGE = 3;
+export { KB_DOC_TYPE_ATTACHMENT };
 
 const KB_CHUNK_SOURCE_MANUAL = 1;
 const KB_CHUNK_SOURCE_SYSTEM = 2;
@@ -113,34 +117,6 @@ export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
   };
 }
 
-export function mapKbChunkListItem(
-  row: Selectable<XyWapEmbedAgentKbChunk>,
-  docType: KbDocType,
-): KbChunkListItem {
-  const parsedContent = parseKbChunkContent(row.content);
-  const rawContent = row.content?.trim() ?? "";
-  const rawIsJson = Boolean(parseJsonRecord(rawContent));
-  const chunkType = resolveKbChunkType(parsedContent, row.type, docType);
-  const source = mapChunkSource(row.source);
-  const imageUrls = resolveKbChunkImageUrls(row, chunkType, docType, parsedContent, rawIsJson);
-  const content = resolveKbChunkContent(row, docType, parsedContent, rawIsJson);
-  const description = row.description?.trim() || undefined;
-
-  return {
-    chunkId: String(row.id),
-    chunkType,
-    content,
-    createdAt: toIsoString(row.create_time),
-    description: docType === "image" ? (description ?? (content || undefined)) : description,
-    docId: String(row.doc_id),
-    imageUrls,
-    kbId: String(row.kb_id),
-    source,
-    title: row.title?.trim() || parsedContent.title || undefined,
-    updatedAt: toIsoString(row.update_time),
-  };
-}
-
 type KbChunkContentRow = {
   content: string | null;
   description?: string | null;
@@ -212,12 +188,20 @@ export function resolveKbChunkContent(
 }
 
 export function mapDocType(docType: number): KbDocType {
-  if (docType === KB_DOC_TYPE_FAQ) {
+  if (docType === KB_DOC_TYPE_FAQ || docType === KB_DOC_TYPE_BLANK_FAQ) {
     return "qa";
   }
 
   if (docType === KB_DOC_TYPE_IMAGE) {
     return "image";
+  }
+
+  if (docType === KB_DOC_TYPE_ATTACHMENT) {
+    return "attachment";
+  }
+
+  if (docType === KB_DOC_TYPE_DOCUMENT || docType === KB_DOC_TYPE_BLANK_DOCUMENT) {
+    return "document";
   }
 
   return "document";
@@ -232,7 +216,23 @@ export function mapDocTypeToDb(docType: KbDocType): number {
     return KB_DOC_TYPE_IMAGE;
   }
 
+  if (docType === "attachment") {
+    return KB_DOC_TYPE_ATTACHMENT;
+  }
+
   return KB_DOC_TYPE_DOCUMENT;
+}
+
+export function mapDocTypeFilterValues(docType: KbDocType): number[] {
+  if (docType === "qa") {
+    return [KB_DOC_TYPE_FAQ, KB_DOC_TYPE_BLANK_FAQ];
+  }
+
+  if (docType === "document") {
+    return [KB_DOC_TYPE_DOCUMENT, KB_DOC_TYPE_BLANK_DOCUMENT];
+  }
+
+  return [mapDocTypeToDb(docType)];
 }
 
 export function mapSyncStatus(syncStatus: number): KbDocStatus {

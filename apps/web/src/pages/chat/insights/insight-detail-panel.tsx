@@ -662,8 +662,8 @@ function QualityFindingItem({
       className={cn(
         "rounded-[12px] border bg-clip-padding bg-origin-border px-3 py-2.5",
         item.passed
-          ? "border-success/15 bg-linear-to-r from-background from-55% to-success-muted/70"
-          : "border-destructive/15 bg-linear-to-r from-background from-55% to-destructive-muted/70",
+          ? "border-success/15 bg-linear-to-r from-transparent from-55% to-success-muted/70"
+          : "border-destructive/15 bg-linear-to-r from-transparent from-55% to-destructive-muted/70",
       )}
     >
       <div className="flex min-w-0 items-center gap-3">

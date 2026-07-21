@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 type MaterialLibraryFooterProps = {
+  actionLabel?: string;
   canSend: boolean;
   isMobileLayout?: boolean;
   isBusy?: boolean;
@@ -12,6 +13,7 @@ type MaterialLibraryFooterProps = {
 };
 
 export function MaterialLibraryFooter({
+  actionLabel = "发送",
   canSend,
   isMobileLayout = false,
   isBusy = false,
@@ -47,7 +49,7 @@ export function MaterialLibraryFooter({
         {isSending ? (
           <Spinner className="text-current" size={14} variant="classic" />
         ) : null}
-        发送
+        {actionLabel}
       </Button>
     </div>
   );

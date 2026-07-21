@@ -7,12 +7,13 @@ import {
   CheckmarkCircle02Icon,
   Clock04Icon,
   Loading03Icon,
+  MoreHorizontalIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import ReactMarkdown from "react-markdown";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import {
@@ -26,7 +27,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import {
+  Spinner,
+} from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,11 +62,13 @@ import {
   TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import {
   AiHostingLayout,
@@ -74,9 +79,14 @@ import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 // import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
+import { KbAttachmentsTab } from "./kb-components/kb-attachments-tab";
+import { KbEmptyStatePanel } from "./kb-components/kb-empty-state-panel";
+import {
+  KB_ATTACHMENT_TYPE,
+  type KbAttachmentType,
+} from "./kb-components/kb-attachment-types";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
-import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   getKbDoc,
   getKb,
@@ -85,13 +95,34 @@ import {
   toKbListViewItem,
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
-import {
-  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
-  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
-  isQuotaReached,
-} from "./quota";
 
 const PAGE_SIZE = 10;
+const KB_DETAIL_TAB_PARAM = "tab";
+const KB_ATTACHMENT_TYPE_PARAM = "attachmentType";
+
+type KbDetailTab = "attachments" | "knowledge";
+
+const kbAttachmentTypeParamEntries = [
+  ["image", KB_ATTACHMENT_TYPE.IMAGE],
+  ["file", KB_ATTACHMENT_TYPE.FILE],
+  ["link", KB_ATTACHMENT_TYPE.LINK],
+  ["miniProgram", KB_ATTACHMENT_TYPE.MINI_PROGRAM],
+] as const;
+
+const kbAttachmentTypeByParam = new Map<string, KbAttachmentType>(
+  kbAttachmentTypeParamEntries,
+);
+const kbAttachmentTypeParamByType = new Map<KbAttachmentType, string>(
+  kbAttachmentTypeParamEntries.map(([param, type]) => [type, param] as const),
+);
+
+const kbKnowledgeEmptyIllustrationUrl =
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
+
+const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
+  "添加各类知识，Agent 会参考相关的知识内容组织回复话术";
+const KB_KNOWLEDGE_EMPTY_SUGGESTION =
+  "建议添加的知识：商品知识、活动规则说明、订单售后问答、常见问题FAQ、退换货政策、物流发货政策等";
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -159,24 +190,36 @@ const statusMeta: Record<
 
 export function KbDetailPage() {
   const { kbId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const detailTab: KbDetailTab =
+    searchParams.get(KB_DETAIL_TAB_PARAM) === "attachments" ? "attachments" : "knowledge";
+  const activeAttachmentType =
+    resolveKbAttachmentTypeParam(searchParams.get(KB_ATTACHMENT_TYPE_PARAM))
+    ?? KB_ATTACHMENT_TYPE.IMAGE;
+  const targetAttachmentChunkId =
+    detailTab === "attachments" ? searchParams.get("chunkId")?.trim() || undefined : undefined;
+  const targetAttachmentDocId =
+    detailTab === "attachments" && targetAttachmentChunkId
+      ? searchParams.get("docId")?.trim() || undefined
+      : undefined;
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loadingKb, setLoadingKb] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [knowledgeBaseNotFound, setKnowledgeBaseNotFound] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
+  const [qaDialogDefaultAddMethod, setQaDialogDefaultAddMethod] = useState<"file" | "new">("file");
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
   // const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [summaryRecord, setSummaryRecord] = useState<KbDocViewItem | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
-  const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const requestVersionRef = useRef(0);
   const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -188,6 +231,81 @@ export function KbDetailPage() {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("addKnowledge") !== "qa:new") {
+      return;
+    }
+
+    setQaDialogDefaultAddMethod("new");
+    setImportQaDialogOpen(true);
+    setSearchParams((currentSearchParams) => {
+      const nextSearchParams = new URLSearchParams(currentSearchParams);
+      nextSearchParams.delete("addKnowledge");
+      return nextSearchParams;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const normalizedSearchParams = normalizeKbDetailViewSearchParams(searchParams);
+
+    if (normalizedSearchParams) {
+      setSearchParams(normalizedSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  function handleDetailTabChange(value: string) {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    if (value === "attachments") {
+      nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+      nextSearchParams.set(
+        KB_ATTACHMENT_TYPE_PARAM,
+        resolveKbAttachmentTypeSearchParam(activeAttachmentType),
+      );
+    } else {
+      nextSearchParams.delete(KB_DETAIL_TAB_PARAM);
+      nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+      nextSearchParams.delete("chunkId");
+      nextSearchParams.delete("docId");
+    }
+
+    setSearchParams(nextSearchParams);
+  }
+
+  function handleAttachmentTypeChange(type: KbAttachmentType) {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+    nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, resolveKbAttachmentTypeSearchParam(type));
+    nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("docId");
+    setSearchParams(nextSearchParams);
+  }
+
+  function handleAttachmentTargetTypeResolved(type: KbAttachmentType) {
+    const nextAttachmentType = resolveKbAttachmentTypeSearchParam(type);
+
+    if (searchParams.get(KB_ATTACHMENT_TYPE_PARAM) === nextAttachmentType) {
+      return;
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set(KB_DETAIL_TAB_PARAM, "attachments");
+    nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, nextAttachmentType);
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  function handleAttachmentTargetClear() {
+    if (!searchParams.has("chunkId")) {
+      return;
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("docId");
+    setSearchParams(nextSearchParams, { replace: true });
+  }
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
@@ -217,6 +335,7 @@ export function KbDetailPage() {
 
       setRecords([]);
       setTotal(0);
+      toast.error("知识列表加载失败，请稍后重试");
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingDocs(false);
@@ -228,7 +347,6 @@ export function KbDetailPage() {
     const version = ++summaryRequestVersionRef.current;
     setSummaryRecord(record);
     setLoadingSummary(true);
-    setSummaryError(false);
 
     try {
       const detail = toKbDocViewItem(await getKbDoc(record.id));
@@ -243,7 +361,8 @@ export function KbDetailPage() {
         return;
       }
 
-      setSummaryError(true);
+      setSummaryRecord(null);
+      toast.error("摘要加载失败，请稍后重试");
     } finally {
       if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
         return;
@@ -270,6 +389,7 @@ export function KbDetailPage() {
       }
 
       setLoadingKb(true);
+      setKnowledgeBaseNotFound(false);
 
       try {
         const kb = await getKb(kbId);
@@ -279,9 +399,19 @@ export function KbDetailPage() {
         }
 
         setKnowledgeBase(toKbListViewItem(kb));
-      } catch {
-        if (!cancelled) {
-          setKnowledgeBase(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setKnowledgeBase(null);
+        if (
+          isRequestError(error)
+          && (error.status === 404 || error.code === "KB_NOT_FOUND")
+        ) {
+          setKnowledgeBaseNotFound(true);
+        } else {
+          toast.error("知识库加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -316,6 +446,8 @@ export function KbDetailPage() {
   });
   const pagedRecords = records;
   const recordsLoading = loadingKb || loadingDocs;
+  const showKnowledgeList =
+    recordsLoading || total > 0 || debouncedSearchQuery.length > 0;
 
   async function handleConfirmDelete() {
     if (!deleteRecord || deleting) {
@@ -373,40 +505,18 @@ export function KbDetailPage() {
     }
   }
 
-  async function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
-    if (checkingKnowledgeQuota) {
-      return;
+  function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
+    if (optionType === "qa") {
+      setQaDialogDefaultAddMethod("file");
+      setImportQaDialogOpen(true);
     }
 
-    setCheckingKnowledgeQuota(true);
-
-    try {
-      const quota = await fetchAiHostingQuota({ force: true });
-
-      if (quota && isQuotaReached(quota.kbDocs)) {
-        toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
-        return;
-      }
-
-      if (optionType === "qa") {
-        setImportQaDialogOpen(true);
-      }
-
-      // if (optionType === "image") {
-      //   setImageDialogOpen(true);
-      // }
-
-      if (optionType === "document") {
-        setDocumentDialogOpen(true);
-      }
-    } catch {
-      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
-    } finally {
-      setCheckingKnowledgeQuota(false);
+    if (optionType === "document") {
+      setDocumentDialogOpen(true);
     }
   }
 
-  if (!loadingKb && !knowledgeBase) {
+  if (!loadingKb && knowledgeBaseNotFound) {
     return (
       <AiHostingLayout title="知识库不存在">
         <div className="space-y-6">
@@ -445,6 +555,17 @@ export function KbDetailPage() {
           />
         </div>
 
+        <Tabs onValueChange={handleDetailTabChange} value={detailTab}>
+          <TabsList className="mb-2" variant="underline">
+            <TabsTrigger value="knowledge" variant="underline">
+              知识
+            </TabsTrigger>
+            <TabsTrigger value="attachments" variant="underline">
+              附件
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="knowledge">
         <section aria-label="知识列表区块" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-[280px] max-w-full">
@@ -469,42 +590,63 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <AddKnowledgeMenu
-                disabled={checkingKnowledgeQuota}
-                onSelect={(type) => void handleAddKnowledgeSelect(type)}
-              />
+              <AddKnowledgeMenu onSelect={handleAddKnowledgeSelect} />
             </div>
           </div>
 
-          <div>
-            <KnowledgeRecordsTable
-              kbId={knowledgeBase?.id ?? kbId}
-              loading={recordsLoading}
-              onDelete={setDeleteRecord}
-              onRetry={handleRetryDoc}
-              onShowSummary={(record) => {
-                void handleShowSummary(record);
-              }}
-              records={pagedRecords}
-              retryingDocId={retryingDocId}
-            />
-            <TablePagination
-              onPageChange={setCurrentPage}
-              page={activePage}
-              total={total}
-              totalPages={totalPages}
-            />
-          </div>
+          {showKnowledgeList ? (
+            <div>
+              <KnowledgeRecordsTable
+                kbId={knowledgeBase?.id ?? kbId}
+                loading={recordsLoading}
+                onDelete={setDeleteRecord}
+                onRetry={handleRetryDoc}
+                onShowSummary={(record) => {
+                  void handleShowSummary(record);
+                }}
+                records={pagedRecords}
+                retryingDocId={retryingDocId}
+              />
+              <TablePagination
+                onPageChange={setCurrentPage}
+                page={activePage}
+                total={total}
+                totalPages={totalPages}
+              />
+            </div>
+          ) : (
+            <KbKnowledgeEmptyState />
+          )}
         </section>
+          </TabsContent>
+
+          <TabsContent value="attachments">
+            <KbAttachmentsTab
+              activeType={activeAttachmentType}
+              kbId={kbId}
+              onActiveTypeChange={handleAttachmentTypeChange}
+              onTargetChunkClear={handleAttachmentTargetClear}
+              onTargetTypeResolved={handleAttachmentTargetTypeResolved}
+              targetChunkId={targetAttachmentChunkId}
+              targetDocId={targetAttachmentDocId}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
       </TooltipProvider>
       <ImportQaDialog
+        defaultAddMethod={qaDialogDefaultAddMethod}
         kbId={kbId}
         onImportComplete={() => {
           void loadDocs();
           notifyAiHostingQuotaChanged();
         }}
-        onOpenChange={setImportQaDialogOpen}
+        onOpenChange={(open) => {
+          setImportQaDialogOpen(open);
+          if (!open) {
+            setQaDialogDefaultAddMethod("file");
+          }
+        }}
         open={importQaDialogOpen}
       />
       {/* 图片添加入口暂时下线
@@ -554,15 +696,50 @@ export function KbDetailPage() {
             summaryRequestVersionRef.current += 1;
             setSummaryRecord(null);
             setLoadingSummary(false);
-            setSummaryError(false);
           }
         }}
-        error={summaryError}
         loading={loadingSummary}
         record={summaryRecord}
       />
     </AiHostingLayout>
   );
+}
+
+function resolveKbAttachmentTypeParam(value: string | null) {
+  return value ? kbAttachmentTypeByParam.get(value) : undefined;
+}
+
+function resolveKbAttachmentTypeSearchParam(type: KbAttachmentType) {
+  return kbAttachmentTypeParamByType.get(type) ?? "image";
+}
+
+function normalizeKbDetailViewSearchParams(searchParams: URLSearchParams) {
+  const tabParam = searchParams.get(KB_DETAIL_TAB_PARAM);
+  const attachmentTypeParam = searchParams.get(KB_ATTACHMENT_TYPE_PARAM);
+  const nextSearchParams = new URLSearchParams(searchParams);
+
+  if (tabParam !== "attachments") {
+    if (tabParam == null && attachmentTypeParam == null) {
+      return null;
+    }
+
+    nextSearchParams.delete(KB_DETAIL_TAB_PARAM);
+    nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+  } else if (!resolveKbAttachmentTypeParam(attachmentTypeParam)) {
+    if (searchParams.get("chunkId")) {
+      if (attachmentTypeParam == null) {
+        return null;
+      }
+
+      nextSearchParams.delete(KB_ATTACHMENT_TYPE_PARAM);
+    } else {
+      nextSearchParams.set(KB_ATTACHMENT_TYPE_PARAM, "image");
+    }
+  } else {
+    return null;
+  }
+
+  return nextSearchParams;
 }
 
 function AddKnowledgeMenu({
@@ -628,6 +805,17 @@ function renderAddKnowledgeOption(
         </span>
       </span>
     </DropdownMenuItem>
+  );
+}
+
+function KbKnowledgeEmptyState() {
+  return (
+    <KbEmptyStatePanel
+      description={KB_KNOWLEDGE_EMPTY_DESCRIPTION}
+      illustrationUrl={kbKnowledgeEmptyIllustrationUrl}
+      suggestionContent={KB_KNOWLEDGE_EMPTY_SUGGESTION}
+      suggestionLabel="查看建议"
+    />
   );
 }
 
@@ -724,31 +912,41 @@ function KnowledgeRecordsTable({
                 <TableCellContent>{record.updatedAt}</TableCellContent>
               </TableCell>
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
-                <div className="flex items-center justify-end gap-3">
-                  <Button
-                    asChild={record.status === "completed"}
-                    className="h-auto p-0 text-primary"
-                    disabled={record.status !== "completed"}
-                    type="button"
-                    variant="link"
-                  >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label={`打开 ${record.nameWithExtension} 操作菜单`}
+                      className="size-8 p-0 text-muted-foreground"
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={MoreHorizontalIcon}
+                        size={18}
+                        strokeWidth={1.8}
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
                     {record.status === "completed" ? (
-                      <Link to={`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`}>
-                        查看
-                      </Link>
+                      <DropdownMenuItem asChild>
+                        <Link to={`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`}>
+                          切片详情
+                        </Link>
+                      </DropdownMenuItem>
                     ) : (
-                      <span>查看</span>
+                      <DropdownMenuItem disabled>切片详情</DropdownMenuItem>
                     )}
-                  </Button>
-                  <Button
-                    className="h-auto p-0 text-primary"
-                    onClick={() => onDelete(record)}
-                    type="button"
-                    variant="link"
-                  >
-                    删除
-                  </Button>
-                </div>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => onDelete(record)}
+                    >
+                      删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TablePinnedCell>
             </TableRow>
           ))
@@ -868,12 +1066,10 @@ function KnowledgeNameWithSummary({
 }
 
 function KnowledgeDocSummarySheet({
-  error,
   loading,
   onOpenChange,
   record,
 }: {
-  error: boolean;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
   record: KbDocViewItem | null;
@@ -904,8 +1100,6 @@ function KnowledgeDocSummarySheet({
               <Spinner aria-hidden="true" size={14} />
               正在加载
             </div>
-          ) : error ? (
-            <p className="text-sm text-muted-foreground">加载失败</p>
           ) : record?.docSummary ? (
             <KnowledgeMarkdown content={record.docSummary} />
           ) : (

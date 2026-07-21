@@ -14,6 +14,7 @@ describe("conversation composer draft", () => {
         {
           accountId: "drc",
           conversationAIHostingSwitch: false,
+          handoffMsgId: 0,
           customerAvatarUrl: "https://example.com/customer.png",
           customerId: "customer-1",
           customerName: "客户 A",

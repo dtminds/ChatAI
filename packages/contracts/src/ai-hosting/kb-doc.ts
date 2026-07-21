@@ -108,6 +108,15 @@ export const KbDocCreateFaqRequestSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
 });
 
+export const KbDocCreateBlankRequestSchema = Type.Object(
+  {
+    description: Type.Optional(Type.String({ maxLength: 1000 })),
+    kbId: Type.String({ minLength: 1 }),
+    name: Type.String({ minLength: 1, maxLength: 100 }),
+  },
+  { additionalProperties: false },
+);
+
 export const KbDocCreateImageRequestSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
   docSize: Type.Number({ minimum: 0 }),
@@ -126,6 +135,7 @@ export const KbDocRetryResponseSchema = Type.Object({
 });
 
 export type KbDocCreateFaqRequest = Static<typeof KbDocCreateFaqRequestSchema>;
+export type KbDocCreateBlankRequest = Static<typeof KbDocCreateBlankRequestSchema>;
 export type KbDocCreateImageRequest = Static<typeof KbDocCreateImageRequestSchema>;
 export type KbDocDeleteResponse = Static<typeof KbDocDeleteResponseSchema>;
 export type KbDocRetryResponse = Static<typeof KbDocRetryResponseSchema>;

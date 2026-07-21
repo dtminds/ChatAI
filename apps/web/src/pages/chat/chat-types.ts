@@ -1,5 +1,4 @@
 import type {
-  WorkbenchConversationPreviewPart,
   WorkbenchGroupMemberType,
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
@@ -26,6 +25,8 @@ export type GroupMember = {
   id: string;
   displayName: string;
   avatarUrl?: string;
+  isOpeningAccount?: boolean;
+  isReceptionAccount?: boolean;
   type: WorkbenchGroupMemberType;
 };
 
@@ -56,6 +57,10 @@ export type Account = {
   takenOverEmployeeId?: string;
   /** 席位 AI 话术推荐能力是否开启，对应 `semiAutoAuth && semiAutoSwitch` */
   seatAIAssistantEnabled?: boolean;
+  /** 席位群聊 AI 托管能力是否开启 */
+  seatGroupAIHostingEnabled?: boolean;
+  /** 席位群聊 AI 话术推荐能力是否开启 */
+  seatGroupAIAssistantEnabled?: boolean;
   /** 席位业务状态：1 已绑定，0 已注销 */
   bizStatus?: number;
   /** 过期时间戳，单位：秒 */
@@ -64,8 +69,16 @@ export type Account = {
 
 export type Conversation = {
   id: string;
+  /** 影子群会话暂不支持消息撤回 */
+  isShadowGroup?: boolean;
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
+  /** 转人工触发消息 ID；`0` 表示当前无接管提醒 */
+  handoffMsgId: number;
+  /** 当前会话最后一条审计消息 ID */
+  lastMessageId?: number;
+  /** 会话是否已经回复 */
+  replied?: boolean;
   /** 托管状态栏展示状态 */
   agentHostingStatus?:
     | "active"
@@ -94,7 +107,6 @@ export type Conversation = {
   groupOriginalName?: string;
   createdAtMs?: number;
   preview: string;
-  previewParts?: WorkbenchConversationPreviewPart[];
   updatedAt: string;
   quietFor: string;
   unread: number;
@@ -307,8 +319,11 @@ type BaseMessage = {
   status: MessageStatus;
   isNew?: boolean;
   optNo?: string;
+  /** 仅用于将无 optNo 的服务端回写与本地乐观消息对账 */
+  reconcileFingerprint?: string;
   rawMsgtype?: string;
   seq?: number;
+  source?: number;
   failReason?: string;
   isRevoked?: boolean;
   revokePending?: boolean;

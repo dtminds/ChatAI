@@ -1,31 +1,22 @@
-import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  startTransition,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   AiIdeaIcon,
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
-  LogoutSquare01Icon,
   DashboardCircleIcon,
-  MoreVerticalIcon,
   PanelLeftIcon,
-  Settings03Icon,
   Notification01Icon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -35,6 +26,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
+import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
 const railItems = [
@@ -79,23 +71,6 @@ type AccountRailProps = {
   takeoverStatusByAccountId?: Record<string, "idle" | "taking-over">;
 };
 
-const userNameSegmenter =
-  typeof Intl !== "undefined" && "Segmenter" in Intl
-    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-    : undefined;
-
-function getFirstGrapheme(value: string) {
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return "";
-  }
-
-  return userNameSegmenter?.segment(trimmedValue)[Symbol.iterator]().next().value?.segment ?? [
-    ...trimmedValue,
-  ][0] ?? "";
-}
-
 export function AccountRail({
   accounts,
   activeAccountId,
@@ -114,73 +89,8 @@ export function AccountRail({
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const location = useLocation();
-  const signedInName = currentEmployee?.displayName.trim() || "未登录";
-  const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
-  const accountMenuContent = (
-    <DropdownMenuContent
-      align="start"
-      className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg p-1 shadow-[0_16px_36px_var(--shadow-medium)] outline-none"
-      side="top"
-      sideOffset={8}
-    >
-      <DropdownMenuLabel className="p-0 font-normal">
-        <div
-          className="flex items-center gap-2 px-1 py-1.5 text-left text-sm"
-          data-testid="account-settings-profile"
-        >
-          <Avatar
-            aria-label={`${signedInName} 账号头像`}
-            className="size-6 shrink-0 rounded-full bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
-          >
-            <AvatarFallback className="rounded-full bg-primary text-sm text-primary-foreground">
-              {signedInAvatarFallback}
-            </AvatarFallback>
-          </Avatar>
-          <div className="grid min-w-0 flex-1 text-left text-[12px] leading-tight">
-            <span
-              className="truncate font-medium"
-              data-testid="account-settings-profile-name"
-            >
-              {signedInName}
-            </span>
-          </div>
-        </div>
-      </DropdownMenuLabel>
-
-      <DropdownMenuSeparator />
-
-      <div className="space-y-1 py-1">
-        <DropdownMenuItem
-          className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
-          onSelect={() => {
-            onOpenSettings?.();
-          }}
-        >
-          <HugeiconsIcon
-            color="currentColor"
-            icon={Settings03Icon}
-            size={16}
-          />
-          <span>设置</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
-          onSelect={() => {
-            void onLogout?.();
-          }}
-        >
-          <HugeiconsIcon
-            color="currentColor"
-            icon={LogoutSquare01Icon}
-            size={16}
-          />
-          <span>退出登录</span>
-        </DropdownMenuItem>
-      </div>
-    </DropdownMenuContent>
-  );
 
   if (isCollapsed) {
     return (
@@ -301,28 +211,12 @@ export function AccountRail({
         </ScrollArea>
 
         <div className="pt-3" data-testid="account-rail-footer">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="打开账号菜单"
-                className="size-9 rounded-[10px] p-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                type="button"
-                variant="ghost"
-              >
-                <Avatar
-                  aria-label={`${signedInName} 登录头像`}
-                  className="size-7 shrink-0 rounded-full bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
-                >
-                  <AvatarFallback className="rounded-full bg-primary text-sm text-primary-foreground">
-                    <span data-testid="account-rail-footer-avatar-fallback">
-                      {signedInAvatarFallback}
-                    </span>
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            {accountMenuContent}
-          </DropdownMenu>
+          <SignedInAccountMenu
+            displayName={currentEmployee?.displayName}
+            onLogout={onLogout}
+            onOpenSettings={onOpenSettings}
+            variant="compact"
+          />
         </div>
       </section>
     );
@@ -448,42 +342,11 @@ export function AccountRail({
       </ScrollArea>
 
       <div className="pt-3" data-testid="account-rail-footer">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label="打开账号菜单"
-              className="h-13 w-full justify-start gap-2 rounded-[10px] px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              type="button"
-              variant="ghost"
-            >
-              <Avatar
-                aria-label={`${signedInName} 登录头像`}
-                className="size-8 shrink-0 rounded-full bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
-              >
-                <AvatarFallback className="rounded-full bg-primary text-sm text-primary-foreground">
-                  <span data-testid="account-rail-footer-avatar-fallback">
-                    {signedInAvatarFallback}
-                  </span>
-                </AvatarFallback>
-              </Avatar>
-              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                <span
-                  className="truncate font-medium"
-                  data-testid="account-rail-footer-name"
-                >
-                  {signedInName}
-                </span>
-              </div>
-              <HugeiconsIcon
-                color="currentColor"
-                data-testid="account-rail-settings-icon"
-                icon={MoreVerticalIcon}
-                size={18}
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          {accountMenuContent}
-        </DropdownMenu>
+        <SignedInAccountMenu
+          displayName={currentEmployee?.displayName}
+          onLogout={onLogout}
+          onOpenSettings={onOpenSettings}
+        />
       </div>
 
       <button

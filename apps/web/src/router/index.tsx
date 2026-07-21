@@ -13,6 +13,11 @@ const LoginPage = lazy(() =>
     default: LoginPage,
   })),
 );
+const NotFoundPage = lazy(() =>
+  import("@/pages/not-found-page").then(({ NotFoundPage }) => ({
+    default: NotFoundPage,
+  })),
+);
 const ChatWorkbenchRoutePage = lazy(() =>
   import("@/pages/chat/chat-workbench-page").then(({ ChatWorkbenchRoutePage }) => ({
     default: ChatWorkbenchRoutePage,
@@ -62,6 +67,13 @@ const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
   })),
+);
+const AgentOptimizationSuggestionsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-optimization-suggestions-page").then(
+    ({ AgentOptimizationSuggestionsPage }) => ({
+      default: AgentOptimizationSuggestionsPage,
+    }),
+  ),
 );
 const KbListPage = lazy(() =>
   import("@/pages/chat/ai-hosting/kb-list-page").then(
@@ -253,6 +265,10 @@ export const routerConfig = [
         element: withRouteSuspense(<AgentSettingsPage />),
       },
       {
+        path: "chat/ai-hosting/agents/:agentId/optimization-suggestions",
+        element: withRouteSuspense(<AgentOptimizationSuggestionsPage />),
+      },
+      {
         path: "chat/ai-hosting/agents/:agentId",
         element: withRouteSuspense(<AgentSettingsPage />),
       },
@@ -275,6 +291,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/subscription",
         element: withRouteSuspense(<AgentSubscriptionPage />),
+      },
+      {
+        path: "*",
+        element: withRouteSuspense(<NotFoundPage />),
       },
     ],
   },

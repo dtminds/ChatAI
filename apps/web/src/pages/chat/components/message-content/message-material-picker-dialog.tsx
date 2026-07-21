@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
+import { MaterialImageGrid } from "@/pages/chat/components/material-collection/material-image-grid";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import type { MaterialCollectionItem } from "@/pages/chat/components/material-collection/material-types";
@@ -43,8 +44,10 @@ export type MessageAttachmentMaterialBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
 export function MessageMaterialPickerDialog({
   bizType,
@@ -290,6 +293,21 @@ export function MessageMaterialPickerDialog({
                       currentId === itemId ? null : itemId,
                     )
                   }
+                />
+              ) : isImageLibrary ? (
+                <MaterialImageGrid
+                  actionLabel="确定"
+                  groups={groups}
+                  hasMoreItems={hasMore}
+                  isBusy={isBusy}
+                  isLoadingMoreItems={isLoadingMore}
+                  items={items as MaterialCollectionItem[]}
+                  onCancel={() => onOpenChange(false)}
+                  onLoadMoreItems={handleLoadMore}
+                  onSendMaterial={(item) => {
+                    onSelect(item);
+                    onOpenChange(false);
+                  }}
                 />
               ) : (
                 <MessageCardPickerGrid
@@ -759,6 +777,14 @@ function getLibraryTitle(bizType: MaterialCollectionBizType | null) {
     return "收录的文件";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    return "收录的图片";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录的视频";
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return "收录的小程序";
   }
@@ -772,6 +798,7 @@ function getLibraryTitle(bizType: MaterialCollectionBizType | null) {
 
 function getLibraryDialogStyle(bizType: MaterialCollectionBizType | null) {
   if (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
   ) {
@@ -789,6 +816,8 @@ function getLibraryDialogStyle(bizType: MaterialCollectionBizType | null) {
 
 function isCardLibraryBizType(bizType: MaterialCollectionBizType | null) {
   return (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
   );

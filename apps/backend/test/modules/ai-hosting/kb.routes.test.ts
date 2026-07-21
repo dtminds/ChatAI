@@ -137,7 +137,21 @@ describe("KB read routes", () => {
     });
   });
 
-  it("rejects deleting a kb that still has documents", async () => {
+  it("deletes a kb that still has documents through the Java internal API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
     const context = await createAuthenticatedKbApp();
     app = context.app;
 
@@ -147,14 +161,21 @@ describe("KB read routes", () => {
       url: "/api/server/ai-hosting/kbs/1/delete",
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "KB_DELETE_HAS_DOCUMENTS",
-        message: "请先删除所有文档后，再删除知识库",
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        deleted: true,
       },
-      success: false,
+      success: true,
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb/del",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 1,
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
   });
 
   it("deletes an empty kb through the Java internal API", async () => {
@@ -450,6 +471,80 @@ describe("KB read routes", () => {
       page: 1,
       pageSize: 10,
       uid: 9001,
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("rebuilds a target volc chunk id before calling the Java page API", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document&chunkId=20260630131921038-3",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("resolves an entry primary key before calling the Java page API", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document&entryId=501",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "doc_id_9001_1001_20260630131921038-3",
     });
     fetchMock.mockRestore();
   });

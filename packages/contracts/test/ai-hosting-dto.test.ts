@@ -8,6 +8,9 @@ import {
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
   AiHostingAgentTestResponseSchema,
+  AiHostingLearningCandidateIdSchema,
+  AiHostingLearningCandidateItemSchema,
+  AiHostingLearningCandidateSearchDetailResponseSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
   KbDocCreateRequestSchema,
@@ -19,6 +22,59 @@ import {
 } from "../src";
 
 describe("AI hosting DTOs", () => {
+  it("accepts only numeric learning candidate ids", () => {
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001")).toBe(true);
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "ENC-CANDIDATE-001")).toBe(false);
+    expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001/2")).toBe(false);
+  });
+
+  it("accepts learning candidate knowledge matches and adoption targets", () => {
+    expect(
+      Value.Check(AiHostingLearningCandidateItemSchema, {
+        answer: "建议答案",
+        confidence: 0.87,
+        id: "1001",
+        question: "建议问题",
+        rationale: "推荐入库",
+        searchResults: [
+          { docId: "1001", docName: "敏感肌护理", docSuffix: "faq.xlsx", kbId: "1" },
+        ],
+        status: "adopted",
+        targetDocId: "1001",
+        targetEntryId: "501",
+        targetKbId: "1",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts learning candidate knowledge match details", () => {
+    expect(
+      Value.Check(AiHostingLearningCandidateSearchDetailResponseSchema, {
+        items: [
+          {
+            chunkId: "1024",
+            chunkTitle: "25+的油皮痘肌如果皮肤不敏感，有什么护肤产品推荐？",
+            content: "25+的油皮痘肌如果皮肤不敏感，可以使用酸C循环套组",
+            docId: "102",
+            docName: "护肤Q&A文档",
+            docSuffix: "pdf",
+            docType: 2,
+            kbId: "5",
+            kbName: "护肤知识库",
+            score: 0.5689,
+            volcChunkId: "doc_id_272_102_20260717105032070-6",
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("accepts Chinese prompt config values for agent saves", () => {
     expect(
       Value.Check(AiHostingAgentSaveRequestSchema, {
@@ -175,6 +231,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentListResponseSchema, {
         agents: [
           {
+            autoLearnEnabled: true,
             id: "301",
             kbList: [
               {
@@ -193,6 +250,7 @@ describe("AI hosting DTOs", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
+            pendingSuggestionCount: 6,
             updatedAt: 1_718_006_460_000,
           },
         ],
@@ -208,6 +266,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentListResponseSchema, {
         agents: [
           {
+            autoLearnEnabled: true,
             id: "301",
             knowledgeBases: ["商品咨询知识库"],
             model: {
@@ -217,6 +276,7 @@ describe("AI hosting DTOs", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
+            pendingSuggestionCount: 6,
           },
         ],
         pagination: {

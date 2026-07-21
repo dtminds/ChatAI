@@ -40,6 +40,11 @@ export const MATERIAL_COLLECTION_BIZ_TYPE = {
   VIDEO: 7,
 } as const;
 
+export const MATERIAL_COLLECTION_SOURCE_TYPE = {
+  COLLECTION: 0,
+  KNOWLEDGE_BASE: 1,
+} as const;
+
 export const MATERIAL_COLLECTION_GROUP_MAX_COUNT = 20;
 
 export const MaterialCollectionBizTypeSchema = Type.Union([

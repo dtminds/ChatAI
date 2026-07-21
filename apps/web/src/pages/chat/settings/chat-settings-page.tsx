@@ -12,6 +12,7 @@ import { Link, Navigate, NavLink, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import { AccountsSettingsPage } from "@/pages/chat/settings/pages/accounts-settings-page";
 import { AppearanceSettingsPage } from "@/pages/chat/settings/pages/appearance-settings-page";
 import { RolePermissionSettingsPage } from "@/pages/chat/settings/pages/role-permission-settings-page";
@@ -122,7 +123,7 @@ function SettingsSidebar({
   activeSectionId: SettingsSectionId;
 }) {
   return (
-    <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
+    <aside className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
       <Button
         asChild
         className="mb-6 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -164,6 +165,10 @@ function SettingsSidebar({
           );
         })}
       </nav>
+
+      <div className="mt-auto pt-3">
+        <SignedInAccountMenu />
+      </div>
     </aside>
   );
 }

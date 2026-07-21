@@ -1,4 +1,5 @@
 import {
+  fireEvent,
   render as testingLibraryRender,
   screen,
   waitFor,
@@ -8,7 +9,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { appearanceThemes } from "@/lib/appearance-theme";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
@@ -71,6 +73,16 @@ function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
 }
 
 describe("AccountRail", () => {
+  beforeEach(() => {
+    document.documentElement.classList.remove("dark");
+    delete document.documentElement.dataset.appearanceTheme;
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("shows only the signed-in sub user name in the footer menu", async () => {
     const user = userEvent.setup();
 
@@ -100,6 +112,145 @@ describe("AccountRail", () => {
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("keeps nested menus open while previewing theme colors and appearance modes", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /主题颜色/ }));
+
+    await screen.findByRole("menuitemradio", { name: "Claude" });
+    for (const theme of appearanceThemes) {
+      expect(
+        screen.getByRole("menuitemradio", { name: theme.name }),
+      ).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Claude" }));
+
+    expect(document.documentElement).toHaveAttribute(
+      "data-appearance-theme",
+      "claude",
+    );
+    expect(window.localStorage.getItem("chat-ai-appearance-theme")).toBe("claude");
+    expect(
+      screen.getByRole("menuitemradio", { name: "Green" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Green" }));
+
+    expect(document.documentElement).toHaveAttribute(
+      "data-appearance-theme",
+      "green",
+    );
+    expect(window.localStorage.getItem("chat-ai-appearance-theme")).toBe("green");
+
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
+    expect(
+      screen.getByRole("menuitemradio", { name: "浅色" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "浅色" }));
+
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("light");
+  });
+
+  it("applies the current system color scheme when selecting follow system", async () => {
+    const user = userEvent.setup();
+    setSystemColorScheme(true);
+    window.localStorage.setItem("chat-ai-theme", "light");
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "跟随系统" }),
+    );
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("system");
+  });
+
+  it("still switches appearance mode when localStorage is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /外观模式/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+  });
+
+  it("resets nested menu state after the account menu closes", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.hover(screen.getByRole("menuitem", { name: /主题颜色/ }));
+    expect(
+      await screen.findByRole("menuitemradio", { name: "Claude" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: /主题颜色/ })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+
+    expect(screen.getByRole("menuitem", { name: /主题颜色/ })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "Claude" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the first user-name grapheme as avatar fallback", () => {
@@ -487,3 +638,38 @@ describe("AccountRail", () => {
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
 });
+
+function setSystemColorScheme(matches: boolean) {
+  let currentMatches = matches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    get matches() {
+      return currentMatches;
+    },
+    media: "(prefers-color-scheme: dark)",
+    onchange: null,
+    addEventListener: vi.fn(
+      (event: string, listener: (event: MediaQueryListEvent) => void) => {
+        if (event === "change") {
+          listeners.add(listener);
+        }
+      },
+    ),
+    removeEventListener: vi.fn(
+      (event: string, listener: (event: MediaQueryListEvent) => void) => {
+        if (event === "change") {
+          listeners.delete(listener);
+        }
+      },
+    ),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  };
+
+  vi.spyOn(window, "matchMedia").mockReturnValue(
+    mediaQuery as unknown as MediaQueryList,
+  );
+
+  return mediaQuery;
+}

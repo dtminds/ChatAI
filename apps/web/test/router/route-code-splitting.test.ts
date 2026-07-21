@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const routePageModules = [
   "@/pages/auth/login-page",
+  "@/pages/not-found-page",
   "@/pages/chat/chat-workbench-page",
   "@/pages/chat/settings/chat-settings-page",
   "@/pages/chat/ai-hosting/agent-management-page",

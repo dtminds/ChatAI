@@ -1,5 +1,8 @@
 import {
   apiSuccess,
+  SettingsGroupChatReceptionOptionsRequestSchema,
+  SettingsGroupChatReceptionUpdateRequestSchema,
+  SettingsGroupChatsQuerySchema,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
   SettingsManagedAccountSyncSeatGroupsRequestSchema,
   SettingsSidebarItemCreateRequestSchema,
@@ -9,6 +12,9 @@ import {
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
+  type SettingsGroupChatReceptionOptionsRequest,
+  type SettingsGroupChatReceptionUpdateRequest,
+  type SettingsGroupChatsQuery,
   type SettingsManagedAccountSubAccountsUpdateRequest,
   type SettingsManagedAccountSyncSeatGroupsRequest,
   type SettingsSidebarItemCreateRequest,
@@ -24,6 +30,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { createGroupChatSettingsService } from "./group-chats.service.js";
 import { createManagedAccountSettingsService } from "./managed-accounts.service.js";
 import { createSidebarItemsSettingsService } from "./sidebar-items.service.js";
 import { createSubAccountSettingsService } from "./sub-accounts.service.js";
@@ -54,6 +61,63 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       ),
     );
   });
+
+  app.get<{ Querystring: SettingsGroupChatsQuery }>(
+    "/api/server/settings/group-chats",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: SettingsGroupChatsQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createGroupChatSettingsService(app.db).list(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.query,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: SettingsGroupChatReceptionUpdateRequest }>(
+    "/api/server/settings/group-chats/reception",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsGroupChatReceptionUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
+        await createGroupChatSettingsService(app.db).updateReception(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body,
+          createWorkbenchJavaClient(app.log),
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: SettingsGroupChatReceptionOptionsRequest }>(
+    "/api/server/settings/group-chats/reception-options",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsGroupChatReceptionOptionsRequestSchema,
+      },
+    },
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
+        await createGroupChatSettingsService(app.db).listReceptionOptions(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body,
+        ),
+      );
+    },
+  );
 
   app.put<{
     Body: SettingsManagedAccountSubAccountsUpdateRequest;

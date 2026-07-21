@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import type { Account, Conversation } from "@/pages/chat/chat-types";
 
@@ -27,6 +27,155 @@ const account: Account = {
 };
 
 describe("ChatPanel", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("runs header actions for the active conversation and toggles the desktop sidebar", async () => {
+    const user = userEvent.setup();
+    const onPinConversation = vi.fn();
+    const onQuickReplyActiveChange = vi.fn();
+
+    const panel = (
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onPinConversation={onPinConversation}
+        onQuickReplyActiveChange={onQuickReplyActiveChange}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />
+    );
+    const { unmount } = render(panel);
+
+    await user.click(screen.getByRole("button", { name: "更多会话操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+    expect(onPinConversation).toHaveBeenCalledWith("conversation-1");
+
+    expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "折叠侧边栏" }));
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+    expect(onQuickReplyActiveChange).toHaveBeenCalledWith(false);
+    expect(
+      window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
+    ).toBe("true");
+
+    unmount();
+    render(panel);
+
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+    expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    expect(
+      window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
+    ).toBe("false");
+  });
+
+  it("opens the mobile sidebar sheet from the persistent header button", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isMobileLayout
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onBackToConversationList={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
+
+    expect(screen.getByRole("complementary", { name: "客户信息栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  });
+
   it("renders the customer side panel resize handle", () => {
     render(
       <ChatPanel
@@ -398,6 +547,7 @@ describe("ChatPanel", () => {
       />,
     );
 
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar-anchor")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toBeInTheDocument();
@@ -495,7 +645,9 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
+        conversationAIHostingConfigured
         conversationAIHostingEnabled
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -573,7 +725,7 @@ describe("ChatPanel", () => {
     expect(onChangeSeatAgentMode).toHaveBeenCalledWith("assistant");
   });
 
-  it("hides the AI dialog button in group conversations", () => {
+  it("hides the AI dialog button in group conversations without group AI reply auth", () => {
     render(
       <ChatPanel
         activeAccount={account}
@@ -583,7 +735,7 @@ describe("ChatPanel", () => {
         }}
         activeHistoryStatus="idle"
         canConfigureSeatAIHosting
-        canToggleConversationAIHosting
+        canToggleConversationAIHosting={false}
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
@@ -634,7 +786,235 @@ describe("ChatPanel", () => {
     );
 
     expect(screen.queryByRole("button", { name: "AI 对话" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AI 对话")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "历史记录" })).toBeInTheDocument();
+  });
+
+  it("shows a group AI popover with auto-reply switch when group AI reply auth is enabled", async () => {
+    const user = userEvent.setup();
+    const onChangeFullAuto = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          seatGroupAIHostingEnabled: true,
+        }}
+        activeConversation={{
+          ...createConversation(),
+          mode: "group",
+        }}
+        activeHistoryStatus="idle"
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
+        canSendMessage
+        seatAIHostingEnabled
+        shouldShowConversationAIHostingControl
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={onChangeFullAuto}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+
+    expect(screen.getByTestId("group-ai-dialog-content")).toBeInTheDocument();
+    expect(screen.getByText("测试席位")).toBeInTheDocument();
+    expect(screen.getByText("AI自动回复")).toBeInTheDocument();
+    expect(
+      screen.getByText("开启后，当前企微号被@时，AI会自动处理"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: "AI自动回复" }));
+
+    expect(onChangeFullAuto).toHaveBeenCalledWith(true);
+    expect(
+      screen.queryByTestId("chat-agent-hosting-status-bar"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the single-chat agent hosting status bar for group conversations", () => {
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          seatGroupAIHostingEnabled: true,
+        }}
+        activeConversation={{
+          ...createConversation(),
+          agentHostingStatus: "thinking",
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }}
+        activeHistoryStatus="idle"
+        canSendMessage
+        canToggleConversationAIHosting
+        conversationAIHostingEnabled
+        conversationAIHostingConfigured
+        shouldShowConversationAIHostingControl
+        composerPlaceholder="请输入消息……"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={vi.fn()}
+        onCancelAgentHosting={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("AI 托管中")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("chat-agent-hosting-status-bar"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer-editor")).toBeInTheDocument();
+  });
+
+  it("keeps the group AI entry visible but disabled when the conversation is not operable", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          seatGroupAIHostingEnabled: true,
+        }}
+        activeConversation={{
+          ...createConversation(),
+          mode: "group",
+        }}
+        activeHistoryStatus="idle"
+        canSendMessage={false}
+        composerPlaceholder="当前账号未接管，暂时无法发送消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        shouldShowConversationAIHostingControl
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    const aiDialogButton = screen.getByRole("button", { name: "AI 对话" });
+
+    expect(aiDialogButton).toBeDisabled();
+    await user.click(aiDialogButton);
+    expect(screen.queryByTestId("group-ai-dialog-content")).not.toBeInTheDocument();
   });
 
   it("hides the AI dialog button in application-message conversations", () => {
@@ -721,6 +1101,7 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled={false}
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -796,6 +1177,7 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto={false}
         canSendMessage
         seatAIHostingEnabled={false}
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -873,6 +1255,7 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage={false}
         seatAIHostingEnabled
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -940,6 +1323,7 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -1006,6 +1390,7 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -1082,7 +1467,9 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
+        conversationAIHostingConfigured
         conversationAIHostingEnabled
+        shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -1134,6 +1521,78 @@ describe("ChatPanel", () => {
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(false);
   });
+
+  it("renders the handoff reminder inside the chat column only", async () => {
+    const user = userEvent.setup();
+    const onMarkHandoffHandled = vi.fn();
+    const onViewHandoffMessage = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={{ ...createConversation(), handoffMsgId: 9001 }}
+        activeHistoryStatus="idle"
+        canMarkHandoffHandled
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMarkHandoffHandled={onMarkHandoffHandled}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+        onViewHandoffMessage={onViewHandoffMessage}
+      />,
+    );
+
+    const statusBar = screen.getByTestId("chat-handoff-status-bar");
+    expect(statusBar.parentElement).toContainElement(
+      screen.getByTestId("message-scroll-area"),
+    );
+    expect(within(statusBar.parentElement!).queryByText("基础信息")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "定位消息" }));
+    await user.click(screen.getByRole("button", { name: "标记已处理" }));
+
+    expect(onViewHandoffMessage).toHaveBeenCalledTimes(1);
+    expect(onMarkHandoffHandled).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createConversation(): Conversation {
@@ -1144,6 +1603,7 @@ function createConversation(): Conversation {
     customerName: "客户",
     id: "conversation-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: 0,
     customerBindType: 1,
     mode: "single",
     preview: "",

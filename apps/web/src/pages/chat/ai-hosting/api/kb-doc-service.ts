@@ -2,6 +2,7 @@ import type {
   ApiSuccessEnvelope,
   KbDocChunkParams,
   KbDocChunkStrategy,
+  KbDocCreateBlankRequest,
   KbDocCreateFaqRequest,
   KbDocCreateImageRequest,
   KbDocCreateRequest,
@@ -34,11 +35,31 @@ export async function createKbDoc(payload: KbDocCreateRequest) {
   return response.data;
 }
 
+export async function createBlankKbDoc(payload: KbDocCreateBlankRequest) {
+  const response = await request<ApiSuccessEnvelope<KbDocCreateResponse>>({
+    data: payload,
+    method: "POST",
+    url: "/server/ai-hosting/kb-docs/create-blank-document",
+  });
+
+  return response.data;
+}
+
 export async function createKbFaqDoc(payload: KbDocCreateFaqRequest) {
   const response = await request<ApiSuccessEnvelope<KbDocCreateResponse>>({
     data: payload,
     method: "POST",
     url: "/server/ai-hosting/kb-docs/create-faq",
+  });
+
+  return response.data;
+}
+
+export async function createBlankKbFaqDoc(payload: KbDocCreateBlankRequest) {
+  const response = await request<ApiSuccessEnvelope<KbDocCreateResponse>>({
+    data: payload,
+    method: "POST",
+    url: "/server/ai-hosting/kb-docs/create-blank-faq",
   });
 
   return response.data;

@@ -12,6 +12,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 
 const insightLogoUrl = "https://b5.bokr.com.cn/dist/insight-color.svg";
 
@@ -53,7 +54,7 @@ export function InsightsLayout({
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
       <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
-        <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground max-lg:hidden">
+        <aside className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground max-lg:hidden">
           <Button
             asChild
             className="mb-5 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -100,6 +101,10 @@ export function InsightsLayout({
               </NavLink>
             ))}
           </nav>
+
+          <div className="mt-auto pt-3">
+            <SignedInAccountMenu />
+          </div>
         </aside>
 
         <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow max-lg:rounded-none">

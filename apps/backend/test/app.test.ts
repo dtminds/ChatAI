@@ -2513,6 +2513,51 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("keeps replied independent from unread and marks it after an accepted send", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getConversation = async () => {
+      const response = await app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/conversations?seatId=drc",
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      return response
+        .json()
+        .items.find(
+          (conversation: { conversationId: string }) =>
+            conversation.conversationId === "conv-002",
+        );
+    };
+
+    await expect(getConversation()).resolves.toMatchObject({
+      replied: false,
+      unreadCount: 0,
+    });
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        content: "人工回复",
+        contentType: "text",
+        conversationId: "conv-002",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+
+    expect(send.statusCode).toBe(200);
+    await expect(getConversation()).resolves.toMatchObject({
+      replied: true,
+      unreadCount: 0,
+    });
+
+    await app.close();
+  });
+
   it("returns unread-only conversations with seat unread summary", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2616,6 +2661,49 @@ describe("backend app", () => {
       type: "upsert",
       unreadCount: 1,
     });
+
+    await app.close();
+  });
+
+  it("clears a handoff reminder by conversation id", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const clearConversationHandoff = vi.fn().mockResolvedValue({
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    app.workbenchService = { clearConversationHandoff } as never;
+    app.createWorkbenchService = () => app.workbenchService;
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-001/handoff/clear",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(clearConversationHandoff).toHaveBeenCalledWith("101", "conv-001");
+    expect(response.json()).toEqual({
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+
+    await app.close();
+  });
+
+  it("rejects viewers clearing a handoff reminder", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+    const clearConversationHandoff = vi.fn();
+    app.workbenchService = { clearConversationHandoff } as never;
+    app.createWorkbenchService = () => app.workbenchService;
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-001/handoff/clear",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(clearConversationHandoff).not.toHaveBeenCalled();
 
     await app.close();
   });
@@ -2746,12 +2834,32 @@ describe("backend app", () => {
       status: "accepted",
     });
     expect(poll.statusCode).toBe(200);
-    expect(poll.json().conversationChanges[0]).toMatchObject({
+    const pollBody = poll.json<{
+      activeConversationMessages: Array<{
+        conversationId: string;
+        optNo?: string;
+        seq: number;
+        status: string;
+      }>;
+      conversationChanges: Array<{
+        conversationId: string;
+        lastMessage: string;
+        lastMessageId?: number;
+        type: string;
+      }>;
+    }>();
+    const sentMessage = pollBody.activeConversationMessages.find(
+      (message) => message.optNo === sendBody.optNo,
+    );
+
+    expect(pollBody.conversationChanges[0]).toMatchObject({
       conversationId: "conv-001",
       lastMessage: "后端 mock 发送测试",
+      lastMessageId: sentMessage?.seq,
       type: "upsert",
     });
-    expect(poll.json().activeConversationMessages).toMatchObject([
+    expect(typeof pollBody.conversationChanges[0]?.lastMessageId).toBe("number");
+    expect(pollBody.activeConversationMessages).toMatchObject([
       {
         conversationId: "conv-001",
         optNo: sendBody.optNo,
@@ -2759,11 +2867,11 @@ describe("backend app", () => {
       },
     ]);
     expect(
-      poll.json().activeConversationMessages.some(
+      pollBody.activeConversationMessages.some(
         (message) => message.optNo === sendBody.optNo,
       ),
     ).toBe(true);
-    expect(poll.json().activeConversationMessages[0]).toMatchObject({
+    expect(pollBody.activeConversationMessages[0]).toMatchObject({
       conversationId: "conv-001",
       optNo: sendBody.optNo,
       status: "sent",

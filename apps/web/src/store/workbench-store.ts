@@ -14,6 +14,7 @@ import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   changeConversationFullAuto,
+  clearConversationHandoff,
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
@@ -53,6 +54,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 import {
@@ -65,13 +67,16 @@ import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import {
-  isConversationAIFeatureSupported,
-  isConversationAIHostingEnabled,
+  resolveConversationAIHostingPolicy,
 } from "@/pages/chat/lib/conversation-ai-hosting";
+import {
+  resolveConversationAIAssistantEligibility,
+} from "@/pages/chat/lib/conversation-ai-assistant";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
+  WORKBENCH_MESSAGE_SOURCE,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchSeatAgentMode,
   type SettingsSidebarItem,
@@ -92,9 +97,11 @@ import {
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
+  isSmartReplyReady,
+  isSmartReplySent,
+  isSmartReplySingleChatOnlyFailure,
   isSmartReplySemanticWait,
   isSmartReplySemanticWaitExpired,
-  isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -145,6 +152,10 @@ type SendMessageResult =
     };
 
 type RetryFailedMessageResult = SendMessageResult;
+
+type MarkConversationHandoffHandledResult =
+  | { ok: true }
+  | { errorMessage: string; ok: false };
 
 type RevokeMessageResult =
   | {
@@ -240,6 +251,7 @@ type WorkbenchState = {
   bootstrapError?: string;
   fullAutoActionError?: string;
   fullAutoStatusByConversationId: Record<string, FullAutoStatusState>;
+  handoffClearPendingByConversationId: Record<string, true>;
   seatAgentModeActionPending: boolean;
   isConversationLoading: boolean;
   readReceiptError?: string;
@@ -278,6 +290,7 @@ type WorkbenchState = {
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
+  markActiveConversationHandoffHandled: () => Promise<MarkConversationHandoffHandledResult>;
   markConversationRead: (conversationId: string) => Promise<void>;
   pinConversation: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
@@ -395,6 +408,7 @@ function createInitialState(): Omit<
   | "clearActiveConversation"
   | "resetWorkbenchSession"
   | "initializeWorkbench"
+  | "markActiveConversationHandoffHandled"
   | "markConversationRead"
   | "pinConversation"
   | "setActiveAccount"
@@ -485,6 +499,7 @@ function createInitialState(): Omit<
     fullAutoActionError: undefined,
     fullAutoActionPending: false,
     fullAutoStatusByConversationId: {},
+    handoffClearPendingByConversationId: {},
     seatAgentModeActionPending: false,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
@@ -728,6 +743,31 @@ function mergeConversationList(
   ]);
 }
 
+function mergePolledConversation(
+  currentList: Conversation[],
+  conversation: Conversation,
+) {
+  const currentConversation = currentList.find(
+    (item) => item.id === conversation.id,
+  );
+  const shouldPreserveOptimisticReply =
+    currentConversation?.replied === true &&
+    conversation.replied === false &&
+    currentConversation.updatedAtMs != null &&
+    conversation.updatedAtMs != null &&
+    currentConversation.updatedAtMs > conversation.updatedAtMs;
+
+  return mergeConversationList(
+    currentList,
+    shouldPreserveOptimisticReply
+      ? {
+          ...conversation,
+          replied: true,
+        }
+      : conversation,
+  );
+}
+
 function mergeConversationLists(
   currentList: Conversation[],
   conversations: Conversation[],
@@ -815,33 +855,7 @@ function upsertMessageList(
     );
 
     if (existingIndex >= 0) {
-      const currentMessage = merged[existingIndex];
-      if (currentMessage.role === "system" || nextMessage.role === "system") {
-        merged[existingIndex] = {
-          ...currentMessage,
-          ...nextMessage,
-        };
-        continue;
-      }
-
-      const nextSender = nextMessage.sender;
-      merged[existingIndex] = {
-        ...currentMessage,
-        ...nextMessage,
-        revokePending: nextMessage.isRevoked
-          ? false
-          : currentMessage.revokePending,
-        sender: {
-          ...currentMessage.sender,
-          ...nextSender,
-          avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
-          name: nextSender.name || currentMessage.sender.name,
-          userId: nextSender.userId || currentMessage.sender.userId,
-        },
-        senderDisplayName:
-          nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
-        author: nextMessage.author || currentMessage.author,
-      };
+      merged[existingIndex] = mergeMessageState(merged[existingIndex], nextMessage);
       continue;
     }
 
@@ -853,6 +867,241 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+type PolledMessageReconciliationResult = {
+  messages: Message[];
+  resolvedPendingKeys: Set<string>;
+};
+
+const OPTIMISTIC_MESSAGE_RECONCILE_WINDOW_MS = 120_000;
+
+function reconcilePolledMessageList(
+  currentMessages: Message[],
+  nextMessages: Message[],
+  options?: { markAppendedAsNew?: boolean },
+): PolledMessageReconciliationResult {
+  const merged = [...currentMessages];
+  const unmatchedMessages: Message[] = [];
+  const resolvedPendingKeys = new Set<string>();
+  const reconciledMessageIndexes = new Set<number>();
+
+  for (const nextMessage of nextMessages) {
+    if (isRevokeSignalMessage(nextMessage)) {
+      const targetIndex = findRevokedMessageIndex(merged, nextMessage);
+
+      if (targetIndex >= 0) {
+        merged[targetIndex] = {
+          ...merged[targetIndex],
+          isRevoked: true,
+          revokePending: false,
+        };
+      } else {
+        const unmatchedIndex = findRevokedMessageIndex(unmatchedMessages, nextMessage);
+
+        if (unmatchedIndex >= 0) {
+          unmatchedMessages[unmatchedIndex] = {
+            ...unmatchedMessages[unmatchedIndex],
+            isRevoked: true,
+            revokePending: false,
+          };
+        }
+      }
+
+      continue;
+    }
+
+    const existingIndex = merged.findIndex((message) =>
+      isSameMessage(message, nextMessage),
+    );
+
+    if (existingIndex >= 0) {
+      const currentMessage = merged[existingIndex];
+      collectResolvedPendingKeys(resolvedPendingKeys, currentMessage);
+      merged[existingIndex] = mergeMessageState(currentMessage, nextMessage);
+      if (isOptimisticAcceptedOwnMessage(currentMessage)) {
+        reconciledMessageIndexes.add(existingIndex);
+      }
+      continue;
+    }
+
+    const unmatchedIndex = unmatchedMessages.findIndex((message) =>
+      isSameMessage(message, nextMessage),
+    );
+
+    if (unmatchedIndex >= 0) {
+      unmatchedMessages[unmatchedIndex] = mergeMessageState(
+        unmatchedMessages[unmatchedIndex],
+        nextMessage,
+      );
+      continue;
+    }
+
+    unmatchedMessages.push(nextMessage);
+  }
+
+  unmatchedMessages.sort((left, right) => (left.seq ?? 0) - (right.seq ?? 0));
+
+  const appendedMessages: Message[] = [];
+
+  for (const nextMessage of unmatchedMessages) {
+    if (!isUnlinkedPolledOwnMessage(nextMessage)) {
+      appendedMessages.push(markPolledMessageAsNew(nextMessage, options));
+      continue;
+    }
+
+    const nextFingerprint = buildMessageReconcileFingerprint(nextMessage);
+    const optimisticIndex = nextFingerprint
+      ? merged.findIndex((message) =>
+          isOptimisticReconcileCandidate(message, nextMessage) &&
+          getMessageReconcileFingerprint(message) === nextFingerprint,
+        )
+      : -1;
+
+    if (optimisticIndex >= 0) {
+      const optimisticMessage = merged[optimisticIndex];
+      collectResolvedPendingKeys(resolvedPendingKeys, optimisticMessage);
+      merged[optimisticIndex] = mergeMessageState(
+        optimisticMessage,
+        nextMessage,
+      );
+      reconciledMessageIndexes.add(optimisticIndex);
+      continue;
+    }
+
+    const fallbackIndex = merged.findIndex((message) =>
+      isOptimisticReconcileCandidate(message, nextMessage),
+    );
+
+    if (fallbackIndex >= 0) {
+      collectResolvedPendingKeys(resolvedPendingKeys, merged[fallbackIndex]);
+      merged[fallbackIndex] = markPolledMessageAsNew(nextMessage, options);
+      reconciledMessageIndexes.add(fallbackIndex);
+      continue;
+    }
+
+    appendedMessages.push(markPolledMessageAsNew(nextMessage, options));
+  }
+
+  return {
+    messages: orderPolledMessagesInSlots(
+      merged,
+      appendedMessages,
+      reconciledMessageIndexes,
+    ),
+    resolvedPendingKeys,
+  };
+}
+
+function orderPolledMessagesInSlots(
+  merged: Message[],
+  appendedMessages: Message[],
+  reconciledMessageIndexes: Set<number>,
+) {
+  const messages = [...merged, ...appendedMessages];
+  const polledMessageIndexes = [
+    ...new Set([
+      ...reconciledMessageIndexes,
+      ...merged.flatMap((message, index) =>
+        isOptimisticAcceptedOwnMessage(message) ? [index] : [],
+      ),
+      ...appendedMessages.map((_, index) => merged.length + index),
+    ]),
+  ].sort((left, right) => left - right);
+  const orderedPolledMessages = sortMessagesForAppend(
+    polledMessageIndexes.map((index) => messages[index]),
+  );
+
+  for (let index = 0; index < polledMessageIndexes.length; index += 1) {
+    messages[polledMessageIndexes[index]] = orderedPolledMessages[index];
+  }
+
+  return messages;
+}
+
+function markPolledMessageAsNew(
+  message: Message,
+  options?: { markAppendedAsNew?: boolean },
+) {
+  return options?.markAppendedAsNew && message.role !== "system"
+    ? { ...message, isNew: true }
+    : message;
+}
+
+function mergeMessageState(currentMessage: Message, nextMessage: Message): Message {
+  if (currentMessage.role === "system" || nextMessage.role === "system") {
+    return {
+      ...currentMessage,
+      ...nextMessage,
+    };
+  }
+
+  const nextSender = nextMessage.sender;
+  return {
+    ...currentMessage,
+    ...nextMessage,
+    optNo: nextMessage.optNo || currentMessage.optNo,
+    reconcileFingerprint:
+      nextMessage.reconcileFingerprint ?? currentMessage.reconcileFingerprint,
+    revokePending: nextMessage.isRevoked
+      ? false
+      : currentMessage.revokePending,
+    sender: {
+      ...currentMessage.sender,
+      ...nextSender,
+      avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
+      name: nextSender.name || currentMessage.sender.name,
+      userId: nextSender.userId || currentMessage.sender.userId,
+    },
+    senderDisplayName:
+      nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
+    author: nextMessage.author || currentMessage.author,
+  };
+}
+
+function collectResolvedPendingKeys(keys: Set<string>, message: Message) {
+  if (!isOptimisticAcceptedOwnMessage(message)) {
+    return;
+  }
+
+  keys.add(message.uiMessageKey);
+  if (message.optNo) {
+    keys.add(message.optNo);
+  }
+}
+
+function findAcknowledgedPolledMessageIndex(
+  messages: Message[],
+  optimisticMessage: Message,
+  sendBaseSeq: number,
+) {
+  const exactIndex = messages.findIndex(
+    (message) =>
+      isValidMessageSeq(message.seq) &&
+      message.seq > sendBaseSeq &&
+      isSameMessage(message, optimisticMessage),
+  );
+
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  const isCandidate = (message: Message) =>
+    isUnlinkedPolledOwnMessage(message) &&
+    message.seq! > sendBaseSeq &&
+    isOptimisticReconcileCandidate(optimisticMessage, message);
+  const optimisticFingerprint = getMessageReconcileFingerprint(optimisticMessage);
+  const fingerprintIndex = optimisticFingerprint
+    ? messages.findIndex(
+        (message) =>
+          isCandidate(message) &&
+          getMessageReconcileFingerprint(message) === optimisticFingerprint,
+      )
+    : -1;
+
+  return fingerprintIndex >= 0
+    ? fingerprintIndex
+    : messages.findIndex(isCandidate);
 }
 
 function hasNewCustomerMessage(
@@ -943,10 +1192,16 @@ function buildSmartReplyHiddenKeys(
 function omitSmartReplyHiddenKeysForSuggestions(
   hidden: Record<string, true>,
   suggestions: Record<string, SmartReplySuggestion>,
+  previousSuggestions: Record<string, SmartReplySuggestion> = {},
 ) {
   let nextHidden = hidden;
 
   for (const key of Object.keys(suggestions)) {
+    // 已发送后用户侧已收起，轮询结果不能把卡片重新翻出来
+    if (isSmartReplySent(previousSuggestions[key])) {
+      continue;
+    }
+
     nextHidden = omitSmartReplyHiddenKey(nextHidden, key);
   }
 
@@ -974,7 +1229,16 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
-  return filterSmartReplyRecordByKeys(page.smartReplies, eligibleMessageKeys);
+  const filtered = filterSmartReplyRecordByKeys(
+    page.smartReplies,
+    eligibleMessageKeys,
+  );
+
+  return Object.fromEntries(
+    Object.entries(filtered).filter(
+      ([, suggestion]) => !isSmartReplySingleChatOnlyFailure(suggestion),
+    ),
+  );
 }
 
 function getPageSmartRepliesForConversation(
@@ -1078,6 +1342,11 @@ function shouldAutoGenerateSmartReply(input: {
   } = input;
 
   if (!message || message.role === "system" || !isSmartReplyEligibleMessage(message)) {
+    return undefined;
+  }
+
+  // 群聊半托管仅手动触发，不自动生成
+  if (message.isGroupConversation) {
     return undefined;
   }
 
@@ -1219,27 +1488,17 @@ function canUseSmartReplyForConversation(
   state: WorkbenchState,
   conversationId: string,
 ) {
-  if (!canDisplaySmartReplyForConversation(state, conversationId)) {
-    return false;
-  }
-
-  const conversation = findConversationById(
-    state.conversationListsByScope,
-    conversationId,
-  );
-
-  if (!conversation) {
-    return false;
-  }
-
-  const account = state.accounts.find(
-    (item) => item.id === conversation.accountId,
-  );
-
-  return canUseConversationActions(state, account);
+  return resolveSmartReplyEligibility(state, conversationId).canUse;
 }
 
 export function canDisplaySmartReplyForConversation(
+  state: WorkbenchState,
+  conversationId: string,
+) {
+  return resolveSmartReplyEligibility(state, conversationId).canDisplay;
+}
+
+function resolveSmartReplyEligibility(
   state: WorkbenchState,
   conversationId: string,
 ) {
@@ -1247,24 +1506,15 @@ export function canDisplaySmartReplyForConversation(
     state.conversationListsByScope,
     conversationId,
   );
+  const account = state.accounts.find(
+    (item) => item.id === conversation?.accountId,
+  );
 
-  if (conversation) {
-    if (isConversationAIHostingEnabledInState(state, conversation)) {
-      return false;
-    }
-
-    const account = state.accounts.find(
-      (item) => item.id === conversation.accountId,
-    );
-
-    return (
-      isSmartReplySupportedConversation(conversation) &&
-      account?.seatAIAssistantEnabled === true &&
-      conversation.bizStatus === 1
-    );
-  }
-
-  return false;
+  return resolveConversationAIAssistantEligibility({
+    account,
+    canUseConversationActions: canUseConversationActions(state, account),
+    conversation,
+  });
 }
 
 function scheduleSmartReplyPoll(
@@ -1414,6 +1664,7 @@ function scheduleSmartReplyPoll(
             [conversationId]: omitSmartReplyHiddenKeysForSuggestions(
               previousHidden,
               smartReplyByMessageId,
+              previousSuggestions,
             ),
           },
         };
@@ -1449,6 +1700,49 @@ function scheduleSmartReplyPoll(
     });
 }
 
+function clearSmartReplyAutoPendingKey(
+  get: () => WorkbenchStore,
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  lookupKey: string,
+) {
+  set((currentState) => {
+    const autoPending =
+      currentState.smartReplyAutoPendingMessageKeysByConversationId[
+        conversationId
+      ] ?? {};
+
+    return {
+      smartReplyAutoPendingMessageKeysByConversationId: {
+        ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
+        [conversationId]: omitPendingSmartReplyKey(autoPending, lookupKey),
+      },
+    };
+  });
+}
+
+function shouldPreserveExistingSmartReplySuggestion(
+  suggestion?: SmartReplySuggestion,
+) {
+  if (!suggestion) {
+    return false;
+  }
+
+  if (isSmartReplySent(suggestion) || isSmartReplyReady(suggestion)) {
+    return true;
+  }
+
+  return (
+    (suggestion.content?.trim() ?? "").length > 0 &&
+    !isSmartReplyGenerationFailed(suggestion) &&
+    !isSmartReplyKnowledgeMiss(suggestion)
+  );
+}
+
 function triggerSmartReplyAutoGeneration(
   get: () => WorkbenchStore,
   set: (
@@ -1468,6 +1762,16 @@ function triggerSmartReplyAutoGeneration(
     ) => void;
   },
 ) {
+  const conversation = findConversationById(
+    get().conversationListsByScope,
+    conversationId,
+  );
+
+  // 群聊半托管仅手动触发，不自动生成
+  if (conversation?.mode === "group" || message.isGroupConversation) {
+    return;
+  }
+
   const lookupKey = getSmartReplyLookupKey(message);
   const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
 
@@ -1490,85 +1794,79 @@ function triggerSmartReplyAutoGeneration(
   });
   options.scheduleAutoPreviewTimeout(conversationId, lookupKey);
 
-  void requestSmartReplyAutoGeneralAnswer(message, conversationId)
-    .then(() => {
-      if (get().activeConversationId !== conversationId) {
-        options.clearAutoPreviewTimeout(conversationId, lookupKey);
-        set((currentState) => {
-          const autoPending =
-            currentState.smartReplyAutoPendingMessageKeysByConversationId[
-              conversationId
-            ] ?? {};
+  const requestPromise = requestSmartReplyAutoGeneralAnswer(
+    message,
+    conversationId,
+  ).then(() => {
+    if (get().activeConversationId !== conversationId) {
+      options.clearAutoPreviewTimeout(conversationId, lookupKey);
+      clearSmartReplyAutoPendingKey(get, set, conversationId, lookupKey);
+      return;
+    }
 
-          return {
-            smartReplyAutoPendingMessageKeysByConversationId: {
-              ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
-              [conversationId]: omitPendingSmartReplyKey(autoPending, lookupKey),
-            },
-          };
-        });
-        return;
-      }
+    let shouldSchedulePoll = false;
 
-      let shouldSchedulePoll = false;
+    set((currentState) => {
+      const autoPending =
+        currentState.smartReplyAutoPendingMessageKeysByConversationId[
+          conversationId
+        ] ?? {};
+      const suggestions =
+        currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
+      const pending =
+        currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ??
+        {};
+      const nextAutoPending = omitPendingSmartReplyKey(autoPending, lookupKey);
 
-      set((currentState) => {
-        const autoPending =
-          currentState.smartReplyAutoPendingMessageKeysByConversationId[
-            conversationId
-          ] ?? {};
-        const suggestions =
-          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
-        const pending =
-          currentState.smartReplyPendingMessageKeysByConversationId[
-            conversationId
-          ] ?? {};
-        const nextAutoPending = omitPendingSmartReplyKey(autoPending, lookupKey);
-
-        if (!autoPending[lookupKey] || suggestions[lookupKey] || pending[lookupKey]) {
-          return {
-            smartReplyAutoPendingMessageKeysByConversationId: {
-              ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
-              [conversationId]: nextAutoPending,
-            },
-          };
-        }
-
-        shouldSchedulePoll = true;
-
+      if (
+        !autoPending[lookupKey] ||
+        shouldPreserveExistingSmartReplySuggestion(suggestions[lookupKey]) ||
+        pending[lookupKey]
+      ) {
         return {
           smartReplyAutoPendingMessageKeysByConversationId: {
             ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
             [conversationId]: nextAutoPending,
           },
-          smartReplyByMessageIdByConversationId: {
-            ...currentState.smartReplyByMessageIdByConversationId,
-            [conversationId]: {
-              ...suggestions,
-              [lookupKey]: optimisticSuggestion,
-            },
-          },
-          smartReplyPendingMessageKeysByConversationId: {
-            ...currentState.smartReplyPendingMessageKeysByConversationId,
-            [conversationId]: {
-              ...pending,
-              [lookupKey]: true,
-            },
-          },
         };
-      });
-      options.clearAutoPreviewTimeout(conversationId, lookupKey);
-      if (!shouldSchedulePoll) {
-        return;
       }
 
-      options.syncRuntimeTimers(
-        conversationId,
-        get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
-      );
-      options.schedulePoll(conversationId, { force: true });
-    })
-    .catch((error) => {
+      shouldSchedulePoll = true;
+
+      return {
+        smartReplyAutoPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
+          [conversationId]: nextAutoPending,
+        },
+        smartReplyByMessageIdByConversationId: {
+          ...currentState.smartReplyByMessageIdByConversationId,
+          [conversationId]: {
+            ...suggestions,
+            [lookupKey]: optimisticSuggestion,
+          },
+        },
+        smartReplyPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyPendingMessageKeysByConversationId,
+          [conversationId]: {
+            ...pending,
+            [lookupKey]: true,
+          },
+        },
+      };
+    });
+    options.clearAutoPreviewTimeout(conversationId, lookupKey);
+    if (!shouldSchedulePoll) {
+      return;
+    }
+
+    options.syncRuntimeTimers(
+      conversationId,
+      get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+    );
+    options.schedulePoll(conversationId, { force: true });
+  });
+
+  void requestPromise.catch((error) => {
       const shouldSkipRecommendation = isSmartReplyContentIncompleteSkipError(error);
       options.clearAutoPreviewTimeout(conversationId, lookupKey);
 
@@ -1577,6 +1875,10 @@ function triggerSmartReplyAutoGeneration(
           return currentState;
         }
 
+        const existing =
+          currentState.smartReplyByMessageIdByConversationId[conversationId]?.[
+            lookupKey
+          ];
         const errorMessage =
           getRequestApiErrorMessage(error) ?? "智能回复生成失败，请稍后重试";
         const nextState: Partial<WorkbenchStore> = {
@@ -1600,6 +1902,11 @@ function triggerSmartReplyAutoGeneration(
           },
         };
 
+        // 已有可用推荐时，自动生成失败不能覆盖成失败卡片
+        if (shouldPreserveExistingSmartReplySuggestion(existing)) {
+          return nextState;
+        }
+
         if (shouldSkipRecommendation) {
           return {
             ...nextState,
@@ -1609,11 +1916,7 @@ function triggerSmartReplyAutoGeneration(
                 ...(currentState.smartReplyByMessageIdByConversationId[
                   conversationId
                 ] ?? {}),
-                [lookupKey]: createSkippedSmartReplySuggestion(
-                  currentState.smartReplyByMessageIdByConversationId[
-                    conversationId
-                  ]?.[lookupKey],
-                ),
+                [lookupKey]: createSkippedSmartReplySuggestion(existing),
               },
             },
             smartReplyAutoSkippedMessageKeysByConversationId: {
@@ -1973,8 +2276,13 @@ function sortMessagesForAppend(messages: Message[]) {
 }
 
 function isSameMessage(left: Message, right: Message) {
+  if (left.conversationId !== right.conversationId) {
+    return false;
+  }
+
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
+    (left.msgid && right.msgid && left.msgid === right.msgid) ||
     (
       isValidMessageSeq(left.seq) &&
       isValidMessageSeq(right.seq) &&
@@ -1987,6 +2295,186 @@ function isSameMessage(left: Message, right: Message) {
       left.uiMessageKey === right.uiMessageKey
     )
   );
+}
+
+type ReconcileMessageKind =
+  | "emotion"
+  | "file"
+  | "h5"
+  | "image"
+  | "mini-program"
+  | "quote"
+  | "text"
+  | "video";
+
+function getReconcileMessageKind(message: Message): ReconcileMessageKind | undefined {
+  if (message.role === "system") {
+    return undefined;
+  }
+
+  if (message.content.type === "image") {
+    return message.content.variant === "emotion" ? "emotion" : "image";
+  }
+
+  switch (message.content.type) {
+    case "file":
+    case "h5":
+    case "mini-program":
+    case "quote":
+    case "text":
+    case "video":
+      return message.content.type;
+    default:
+      return undefined;
+  }
+}
+
+function isOptimisticAcceptedOwnMessage(message: Message) {
+  return (
+    message.role === "agent" &&
+    message.isOwnMessage === true &&
+    message.status === "accepted" &&
+    Boolean(message.optNo?.trim()) &&
+    !isValidMessageSeq(message.seq)
+  );
+}
+
+function isUnlinkedPolledOwnMessage(message: Message) {
+  return (
+    message.role === "agent" &&
+    message.isOwnMessage === true &&
+    (
+      message.source === WORKBENCH_MESSAGE_SOURCE.DEFAULT ||
+      message.source === WORKBENCH_MESSAGE_SOURCE.WORKBENCH
+    ) &&
+    !message.optNo?.trim() &&
+    isValidMessageSeq(message.seq) &&
+    getReconcileMessageKind(message) != null
+  );
+}
+
+function isOptimisticReconcileCandidate(
+  optimistic: Message,
+  synced: Message,
+) {
+  if (
+    !isOptimisticAcceptedOwnMessage(optimistic) ||
+    optimistic.conversationId !== synced.conversationId ||
+    getReconcileMessageKind(optimistic) !== getReconcileMessageKind(synced)
+  ) {
+    return false;
+  }
+
+  const optimisticTime = parseWorkbenchTimestamp(optimistic.sentAt);
+  const syncedTime = parseWorkbenchTimestamp(synced.sentAt);
+
+  return (
+    Number.isFinite(optimisticTime) &&
+    Number.isFinite(syncedTime) &&
+    Math.abs(optimisticTime - syncedTime) <= OPTIMISTIC_MESSAGE_RECONCILE_WINDOW_MS
+  );
+}
+
+function getMessageReconcileFingerprint(message: Message) {
+  return message.reconcileFingerprint ?? buildMessageReconcileFingerprint(message);
+}
+
+function buildMessageReconcileFingerprint(message: Message) {
+  if (message.role === "system") {
+    return undefined;
+  }
+
+  const content = message.content;
+
+  switch (content.type) {
+    case "text":
+      return buildReconcileFingerprint("text", content.text.trim());
+    case "image":
+      return undefined;
+    case "file":
+      return buildReconcileFingerprint(
+        "file",
+        normalizeMediaReconcileUrl(content.fileUrl),
+      );
+    case "video":
+      return buildReconcileFingerprint(
+        "video",
+        normalizeMediaReconcileUrl(content.videoUrl),
+      );
+    case "h5":
+      return buildReconcileFingerprint("h5", normalizeLinkReconcileUrl(content.url));
+    case "mini-program":
+      return buildReconcileFingerprint("mini-program", content.title.trim());
+    case "quote":
+    default:
+      return undefined;
+  }
+}
+
+function buildComposerSegmentReconcileFingerprint(segment: ComposerSegment) {
+  switch (segment.type) {
+    case "text":
+      return buildReconcileFingerprint("text", segment.text.trim());
+    case "image":
+    case "emotion":
+      return undefined;
+    case "file":
+      return buildReconcileFingerprint(
+        "file",
+        normalizeMediaReconcileUrl(segment.url),
+      );
+    case "video":
+      return buildReconcileFingerprint(
+        "video",
+        normalizeMediaReconcileUrl(segment.url),
+      );
+    case "h5":
+      return buildReconcileFingerprint("h5", normalizeLinkReconcileUrl(segment.href));
+    case "weapp":
+      return buildReconcileFingerprint("mini-program", segment.title?.trim());
+    default:
+      return undefined;
+  }
+}
+
+function buildReconcileFingerprint(kind: ReconcileMessageKind, value?: string) {
+  return value ? `${kind}:${value}` : undefined;
+}
+
+function normalizeMediaReconcileUrl(value: string | undefined) {
+  const normalizedUrl = normalizeMediaAssetUrl(value ?? "");
+
+  if (!normalizedUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(normalizedUrl);
+    url.hash = "";
+    url.search = "";
+    return url.pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return normalizedUrl;
+  }
+}
+
+function normalizeLinkReconcileUrl(value: string | undefined) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+    url.hash = "";
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+    return url.toString();
+  } catch {
+    return trimmedValue;
+  }
 }
 
 function parseWorkbenchTimestamp(value: unknown) {
@@ -2127,6 +2615,27 @@ function applyConversationAIHostingSwitchResult(
   };
 }
 
+function applyConversationHandoffCleared(
+  state: WorkbenchStore,
+  conversationId: string,
+  accountId: string,
+) {
+  return {
+    conversationListsByScope: {
+      ...state.conversationListsByScope,
+      [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
+        (conversation): Conversation =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                handoffMsgId: 0,
+              }
+            : conversation,
+      ),
+    },
+  };
+}
+
 function updateConversationPreview(
   conversations: Conversation[],
   conversationId: string,
@@ -2140,6 +2649,13 @@ function updateConversationPreview(
     return conversations;
   }
 
+  if (
+    currentConversation.updatedAtMs != null &&
+    currentConversation.updatedAtMs > updatedAtMs
+  ) {
+    return conversations;
+  }
+
   return mergeConversationList(conversations, {
     ...currentConversation,
     preview: formatConversationPreview(preview),
@@ -2147,6 +2663,23 @@ function updateConversationPreview(
     updatedAt,
     updatedAtMs,
   });
+}
+
+function markConversationReplied(
+  conversations: Conversation[],
+  conversationId: string,
+  repliedAtMs: number,
+) {
+  return conversations.map((conversation) =>
+    conversation.id === conversationId &&
+    conversation.replied !== true &&
+    (conversation.updatedAtMs == null || conversation.updatedAtMs <= repliedAtMs)
+      ? {
+          ...conversation,
+          replied: true,
+        }
+      : conversation,
+  );
 }
 
 function buildOptimisticMessageContent(
@@ -2291,10 +2824,11 @@ function isConversationAIHostingEnabledInState(
     (item) => item.id === conversation?.accountId,
   );
 
-  return isConversationAIHostingEnabled(
+  return resolveConversationAIHostingPolicy({
+    account,
+    canUseConversationActions: false,
     conversation,
-    account?.seatAIHostingEnabled === true,
-  );
+  }).isEffective;
 }
 
 function getLatestCustomerMessage(messages: Message[]) {
@@ -2540,6 +3074,7 @@ export function createWorkbenchStore() {
   const fullAutoPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const fullAutoResetTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
+  const handoffClearRequestsByKey = new Map<string, Promise<void>>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
@@ -2580,6 +3115,7 @@ export function createWorkbenchStore() {
       previewTimestamp: number;
       minimumActiveMessageSeq?: number;
       removeMessageKeys?: string[];
+      sendBaseSeq?: number;
     },
   ) {
     const currentMessages =
@@ -2589,12 +3125,27 @@ export function createWorkbenchStore() {
           input.removeMessageKeys?.some((key) => matchesMessageKey(message, key)) ??
           false
       : undefined;
-    const nextMessages = [
-      ...(shouldRemoveMessage
-        ? currentMessages.filter((message) => !shouldRemoveMessage(message))
-        : currentMessages),
-      input.optimisticMessage,
-    ];
+    const retainedMessages = shouldRemoveMessage
+      ? currentMessages.filter((message) => !shouldRemoveMessage(message))
+      : currentMessages;
+    const acknowledgedMessageIndex =
+      input.sendBaseSeq == null
+        ? -1
+        : findAcknowledgedPolledMessageIndex(
+            retainedMessages,
+            input.optimisticMessage,
+            input.sendBaseSeq,
+          );
+    const nextMessages = [...retainedMessages];
+
+    if (acknowledgedMessageIndex >= 0) {
+      nextMessages[acknowledgedMessageIndex] = mergeMessageState(
+        input.optimisticMessage,
+        retainedMessages[acknowledgedMessageIndex],
+      );
+    } else {
+      nextMessages.push(input.optimisticMessage);
+    }
     const currentConversations = input.activeAccountId
       ? currentState.conversationListsByScope[input.activeAccountId] ?? []
       : [];
@@ -2617,11 +3168,15 @@ export function createWorkbenchStore() {
         ? {
             conversationListsByScope: {
               ...currentState.conversationListsByScope,
-              [input.activeAccountId]: updateConversationPreview(
-                currentConversations,
+              [input.activeAccountId]: markConversationReplied(
+                updateConversationPreview(
+                  currentConversations,
+                  input.activeConversationId,
+                  input.preview,
+                  input.optimisticMessage.sentAt,
+                  input.previewTimestamp,
+                ),
                 input.activeConversationId,
-                input.preview,
-                input.optimisticMessage.sentAt,
                 input.previewTimestamp,
               ),
             },
@@ -2637,7 +3192,7 @@ export function createWorkbenchStore() {
               (message) => !shouldRemoveMessage(message),
             )
           : currentState.pendingMessages),
-        input.optimisticMessage,
+        ...(acknowledgedMessageIndex >= 0 ? [] : [input.optimisticMessage]),
       ],
     };
   }
@@ -2814,6 +3369,7 @@ export function createWorkbenchStore() {
 
     pendingVoicePlaybackConfirmKeys.clear();
     pendingRevokeRequestMessageIds.clear();
+    handoffClearRequestsByKey.clear();
 
     for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
       delete latestTakeoverRequestIdByAccountId[accountId];
@@ -3339,6 +3895,57 @@ export function createWorkbenchStore() {
       }
     }
 
+    function clearConversationHandoffReminder(input: {
+      accountId: string;
+      conversationId: string;
+    }) {
+      const requestKey = input.conversationId;
+      const existingRequest = handoffClearRequestsByKey.get(requestKey);
+
+      if (existingRequest) {
+        return existingRequest;
+      }
+
+      set((currentState) => ({
+        handoffClearPendingByConversationId: {
+          ...currentState.handoffClearPendingByConversationId,
+          [input.conversationId]: true,
+        },
+      }));
+
+      const request = clearConversationHandoff(input.conversationId)
+        .then(() => {
+          set((currentState) =>
+            applyConversationHandoffCleared(
+              currentState,
+              input.conversationId,
+              input.accountId,
+            ),
+          );
+        })
+        .finally(() => {
+          if (handoffClearRequestsByKey.get(requestKey) === request) {
+            handoffClearRequestsByKey.delete(requestKey);
+          }
+
+          const hasAnotherPendingRequest = Array.from(
+            handoffClearRequestsByKey.keys(),
+          ).some((key) => key === input.conversationId);
+
+          if (!hasAnotherPendingRequest) {
+            set((currentState) => ({
+              handoffClearPendingByConversationId: omitByKeys(
+                currentState.handoffClearPendingByConversationId,
+                [input.conversationId],
+              ),
+            }));
+          }
+        });
+
+      handoffClearRequestsByKey.set(requestKey, request);
+      return request;
+    }
+
     async function reloadAccountConversations(accountId: string) {
       const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
@@ -3573,6 +4180,39 @@ export function createWorkbenchStore() {
           void get().triggerSearch(seatIdAtSchedule ?? undefined);
         }, 450);
       },
+      async markActiveConversationHandoffHandled() {
+        const state = get();
+        const conversation = getConversationById(
+          state,
+          state.activeConversationId,
+        );
+        const account = state.accounts.find(
+          (item) => item.id === conversation?.accountId,
+        );
+
+        if (
+          !conversation ||
+          !hasConversationHandoff(conversation.handoffMsgId) ||
+          !state.me ||
+          account?.takenOverEmployeeId !== state.me.id
+        ) {
+          return { errorMessage: "仅当前接管人可以标记已处理", ok: false };
+        }
+
+        try {
+          await clearConversationHandoffReminder({
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+          });
+
+          return { ok: true };
+        } catch (error) {
+          return {
+            errorMessage: getRequestErrorMessage(error, "标记已处理失败"),
+            ok: false,
+          };
+        }
+      },
       async triggerSearch(seatIdOverride?: string) {
         const keyword = get().searchKeyword;
         const seatId = seatIdOverride ?? get().activeAccountId;
@@ -3708,6 +4348,20 @@ export function createWorkbenchStore() {
         }
 
         const lookupKey = getSmartReplyLookupKey(message);
+
+        if (options?.force) {
+          set((currentState) => ({
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...currentState.smartReplyHiddenMessageKeysByConversationId,
+              [conversationId]: omitSmartReplyHiddenKey(
+                currentState.smartReplyHiddenMessageKeysByConversationId[
+                  conversationId
+                ] ?? {},
+                lookupKey,
+              ),
+            },
+          }));
+        }
 
         try {
           const revealedSuggestion = options?.force
@@ -4688,7 +5342,7 @@ export function createWorkbenchStore() {
               continue;
             }
 
-            nextConversationLists[change.accountId] = mergeConversationList(
+            nextConversationLists[change.accountId] = mergePolledConversation(
               currentList,
               change.conversation,
             );
@@ -4729,6 +5383,7 @@ export function createWorkbenchStore() {
             shouldPatchSmartReplyState
               ? { ...clearedResourceState.smartReplyHiddenMessageKeysByConversationId }
               : clearedResourceState.smartReplyHiddenMessageKeysByConversationId;
+          let polledResolvedPendingKeys = new Set<string>();
 
           if (
             hasActiveConversationMessages &&
@@ -4743,11 +5398,14 @@ export function createWorkbenchStore() {
             shouldNotifyPulledCustomerMessage ||= hasPulledNewCustomerMessage;
             shouldAutoGenerateForPulledCustomerMessage ||=
               hasPulledNewCustomerMessage;
-            nextMessagesByConversationId[polledConversationId] = upsertMessageList(
+            const reconciliationResult = reconcilePolledMessageList(
               currentMessages,
               response.activeConversationMessages,
               { markAppendedAsNew: true },
             );
+            nextMessagesByConversationId[polledConversationId] =
+              reconciliationResult.messages;
+            polledResolvedPendingKeys = reconciliationResult.resolvedPendingKeys;
             const currentSuggestions =
               clearedResourceState.smartReplyByMessageIdByConversationId[
                 polledConversationId
@@ -4828,10 +5486,21 @@ export function createWorkbenchStore() {
 
           const filteredPendingMessages = serverMessages.length
             ? currentState.pendingMessages.filter(
-                (pendingMessage) =>
-                  !serverMessages.some((message) =>
-                    isSameMessage(pendingMessage, message),
-                  ),
+                (pendingMessage) => {
+                  const isResolvedByPolledMessage =
+                    pendingMessage.conversationId === polledConversationId &&
+                    (
+                      polledResolvedPendingKeys.has(pendingMessage.uiMessageKey) ||
+                      polledResolvedPendingKeys.has(pendingMessage.optNo ?? "")
+                    );
+
+                  return (
+                    !isResolvedByPolledMessage &&
+                    !serverMessages.some((message) =>
+                      isSameMessage(pendingMessage, message),
+                    )
+                  );
+                },
               )
             : currentState.pendingMessages;
           const pendingMessages =
@@ -5024,7 +5693,11 @@ export function createWorkbenchStore() {
           ok: false,
         };
       }
-      const timestamp = Date.now();
+      const sendBatchStartedAt = Date.now();
+      const shouldClearHandoffAfterSend = hasConversationHandoff(
+        activeConversation.handoffMsgId,
+      );
+      let hasRequestedHandoffClear = false;
 
       set((currentState) => ({
         sendStatusByConversationId: {
@@ -5099,6 +5772,11 @@ export function createWorkbenchStore() {
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
+          const sendStartedAt = Math.max(Date.now(), sendBatchStartedAt + index);
+          const sendBaseSeq = getActiveMessageSeq(
+            get().messagesByConversationId,
+            activeConversationId,
+          );
           const response = await sendTextMessage({
             conversationId: activeConversationId,
             failMsgId: options?.failMsgId,
@@ -5108,6 +5786,15 @@ export function createWorkbenchStore() {
             seatId: activeAccountId,
             segment: payloadSegment,
           });
+          if (shouldClearHandoffAfterSend && !hasRequestedHandoffClear) {
+            hasRequestedHandoffClear = true;
+            void clearConversationHandoffReminder({
+              accountId: activeAccountId,
+              conversationId: activeConversationId,
+            }).catch(() => {
+              // 消息已被 Java 接受；清除失败时保留提醒供人工重试。
+            });
+          }
           optNos.push(response.optNo);
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
@@ -5118,6 +5805,8 @@ export function createWorkbenchStore() {
             conversationId: activeConversationId,
             uiMessageKey: response.optNo,
             optNo: response.optNo,
+            reconcileFingerprint:
+              buildComposerSegmentReconcileFingerprint(optimisticSegment),
             role: "agent" as const,
             sender: {
               avatarUrl: account?.avatarUrl,
@@ -5125,7 +5814,7 @@ export function createWorkbenchStore() {
               name: account ? `${account.name}-${account.operator}` : me.displayName,
               userId: activeConversation.thirdUserId,
             },
-            sentAt: formatWorkbenchTimestamp(timestamp + index),
+            sentAt: formatWorkbenchTimestamp(sendStartedAt),
             status: "accepted" as const,
           } satisfies Message;
           const preview = getComposerSegmentsPreview([originalSegment]);
@@ -5136,10 +5825,11 @@ export function createWorkbenchStore() {
               activeConversationId,
               optimisticMessage,
               preview,
-              previewTimestamp: timestamp + index,
+              previewTimestamp: sendStartedAt,
               removeMessageKeys: options?.removeMessageIdOnAccepted
                 ? [options.removeMessageIdOnAccepted]
                 : undefined,
+              sendBaseSeq,
             }),
           );
         }
@@ -5261,6 +5951,7 @@ export function createWorkbenchStore() {
             : failedMessage.author,
           isNew: true,
           optNo: response.optNo,
+          reconcileFingerprint: buildMessageReconcileFingerprint(failedMessage),
           status: "accepted" as const,
           uiMessageKey: response.optNo,
           sentAt: formatWorkbenchTimestamp(timestamp),
@@ -5319,8 +6010,15 @@ export function createWorkbenchStore() {
         state.messagesByConversationId[state.activeConversationId] ?? [],
         uiMessageKey,
       );
+      const conversation = (
+        state.conversationListsByScope[state.activeAccountId] ?? []
+      ).find((item) => item.id === message?.conversationId);
 
-      if (!message || !canUseMessageRevoke(message)) {
+      if (
+        !message ||
+        conversation?.isShadowGroup ||
+        !canUseMessageRevoke(message)
+      ) {
         return {
           errorCode: "MESSAGE_NOT_REVOKABLE",
           errorMessage: "暂不支持撤回该消息",
@@ -5837,11 +6535,14 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation.accountId,
       );
 
-      if (
-        !canUseConversationActions(state, account) ||
-        !isConversationAIFeatureSupported(conversation) ||
-        account?.seatAIHostingEnabled !== true
-      ) {
+      const policy = resolveConversationAIHostingPolicy({
+        account,
+        canUseConversationActions: canUseConversationActions(state, account),
+        conversation,
+      });
+      const canChange = enabled ? policy.canEnable : policy.canDisable;
+
+      if (!canChange) {
         return;
       }
 
@@ -6177,16 +6878,17 @@ export function createWorkbenchStore() {
     async setActiveConversation(conversationId) {
       const state = get();
 
-      if (
-        !conversationId ||
-        !state.activeAccountId ||
-        state.activeConversationId === conversationId
-      ) {
+      if (!conversationId || !state.activeAccountId) {
+        return;
+      }
+
+      const currentConversation = getConversationById(state, conversationId);
+
+      if (state.activeConversationId === conversationId) {
         return;
       }
 
       const requestId = issueScopeRequestId();
-      const currentConversation = getConversationById(state, conversationId);
       clearSmartReplyRuntimeTimers(state.activeConversationId);
       clearSmartReplyRuntimeTimers(conversationId);
       clearFullAutoRuntime(state.activeConversationId);
@@ -6967,7 +7669,8 @@ function toWorkbenchSendSegment(
     (segment.type === "file" ||
       segment.type === "h5" ||
       segment.type === "weapp" ||
-      segment.type === "sphfeed") &&
+      segment.type === "sphfeed" ||
+      segment.type === "video") &&
     segment.msgInfoId
   ) {
     return segment;

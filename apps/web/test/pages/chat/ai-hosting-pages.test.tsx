@@ -790,6 +790,11 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("未开启")).toBeInTheDocument();
     expect(screen.getByText("已开启")).toBeInTheDocument();
     expect(
+      document.querySelector(
+        'img[src="https://b5.bokr.com.cn/dist/ui/shield-lightning.svg"]',
+      ),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("link", { name: "6 条提升建议" }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /自主进化/ })).toHaveLength(2);
@@ -1415,6 +1420,11 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/agents/302/optimization-suggestions",
     );
+    expect(
+      screen.getByRole("link", { name: "已开启" }).querySelector(
+        'img[src="https://b5.bokr.com.cn/dist/ui/shield-lightning.svg"]',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/条提升建议/)).not.toBeInTheDocument();
   });
 

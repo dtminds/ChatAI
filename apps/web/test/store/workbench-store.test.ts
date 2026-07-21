@@ -979,7 +979,7 @@ describe("useWorkbenchStore", () => {
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
-  it("allows disabling configured group full-auto after group capability is revoked", async () => {
+  it("does not change group full-auto after group capability is revoked", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn().mockResolvedValue({
       conversationAIHostingSwitch: false,
@@ -1015,9 +1015,7 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
 
-    expect(changeConversationFullAuto).toHaveBeenCalledWith("group-001", {
-      enabled: false,
-    });
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
   it("does not change full-auto for application-message conversations", async () => {

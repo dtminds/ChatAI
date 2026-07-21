@@ -525,7 +525,7 @@ describe("ConversationListPanel", () => {
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
     expect(
-      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+      screen.getByRole("menuitemradio", { name: "已读未回" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
@@ -552,7 +552,7 @@ describe("ConversationListPanel", () => {
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("menuitemradio", { name: "已读未回复" }),
+      screen.queryByRole("menuitemradio", { name: "已读未回" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();

@@ -16,7 +16,7 @@ const BASE_VIEW_OPTIONS = [
 ] as const satisfies readonly ConversationViewOption[];
 
 const SINGLE_VIEW_OPTIONS = [
-  { label: "已读未回复", value: "read-unreplied" },
+  { label: "已读未回", value: "read-unreplied" },
 ] as const satisfies readonly ConversationViewOption[];
 
 const SINGLE_AI_VIEW_OPTIONS = [

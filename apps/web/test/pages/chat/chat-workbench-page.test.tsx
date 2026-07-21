@@ -719,7 +719,7 @@ describe("ChatWorkbenchPage", () => {
 
     await user.click(screen.getByRole("tab", { name: "单聊视图" }));
     await user.click(
-      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+      screen.getByRole("menuitemradio", { name: "已读未回" }),
     );
 
     const conversationList = screen.getByTestId("conversation-list-scroll-area");
@@ -761,7 +761,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "全部" }));
     await user.click(screen.getByRole("tab", { name: "单聊视图" }));
     await user.click(
-      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+      screen.getByRole("menuitemradio", { name: "已读未回" }),
     );
 
     expect(

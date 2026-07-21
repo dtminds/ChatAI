@@ -5,7 +5,6 @@ import {
   type AiHostingLearningCandidateSearchDetailItem,
 } from "@chatai/contracts";
 import {
-  AiChemistry02Icon,
   Add01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -100,6 +99,7 @@ const PAGE_SIZE = 10;
 const KNOWLEDGE_PICKER_PAGE_SIZE = 10;
 const VERY_HIGH_CONFIDENCE_THRESHOLD = 0.9;
 const HIGH_CONFIDENCE_THRESHOLD = 0.7;
+const AI_EVALUATION_ICON_URL = "https://b5.bokr.com.cn/dist/ui/shield-lightning.svg";
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -1049,12 +1049,11 @@ function IngestContextPanel({
       <section aria-labelledby="ingest-evaluation-title">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <HugeiconsIcon
+            <img
+              alt=""
               aria-hidden="true"
-              className={candidate.status === "filtered" ? "text-destructive" : "text-success"}
-              icon={AiChemistry02Icon}
-              size={16}
-              strokeWidth={1.8}
+              className="size-4 shrink-0"
+              src={AI_EVALUATION_ICON_URL}
             />
             <h3 className="text-sm font-medium text-foreground" id="ingest-evaluation-title">
               AI 评测
@@ -1173,15 +1172,11 @@ function SuggestionCard({
       >
         <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <div className="flex min-w-0 items-center gap-1.5 text-foreground">
-            <HugeiconsIcon
+            <img
+              alt=""
               aria-hidden="true"
-              className={cn(
-                "shrink-0",
-                status === "filtered" ? "text-destructive" : "text-success",
-              )}
-              icon={AiChemistry02Icon}
-              size={15}
-              strokeWidth={1.8}
+              className="size-4 shrink-0"
+              src={AI_EVALUATION_ICON_URL}
             />
             <span>AI 评测</span>
           </div>

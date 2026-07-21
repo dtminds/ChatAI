@@ -907,6 +907,11 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("置信度：高")).toBeInTheDocument();
     expect(screen.getByText("知识对比")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "知识对比详情" })).toBeInTheDocument();
+    expect(
+      document.querySelectorAll(
+        'img[src="https://b5.bokr.com.cn/dist/ui/shield-lightning.svg"]',
+      ),
+    ).toHaveLength(2);
     expect(screen.getByText("敏感肌护理")).toBeInTheDocument();
     expect(screen.getByText("油皮清洁")).toBeInTheDocument();
     expect(screen.getByText("敏感肌护理").previousElementSibling).toHaveAttribute(
@@ -939,6 +944,11 @@ describe("AI hosting pages", () => {
     expect(within(singleIngestDialog).getByLabelText(/问题/)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByLabelText(/答案/)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByRole("heading", { name: "AI 评测" })).toBeInTheDocument();
+    expect(
+      singleIngestDialog.querySelector(
+        'img[src="https://b5.bokr.com.cn/dist/ui/shield-lightning.svg"]',
+      ),
+    ).toBeInTheDocument();
     expect(within(singleIngestDialog).getByText(mockLearningCandidates[0].rationale)).toBeInTheDocument();
     expect(within(singleIngestDialog).getByText("置信度：极高")).toBeInTheDocument();
     expect(

@@ -4543,6 +4543,44 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("clears a failed adopted entry target and restores the regular chunk list", async () => {
+    vi.mocked(kbService.listKbDocChunks).mockRejectedValueOnce({
+      code: "KB_CHUNK_NOT_FOUND",
+      message: "切片不存在",
+      status: 404,
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3?entryId=501",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("切片列表加载失败，请稍后重试");
+      expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
+      expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
+        chunkId: undefined,
+        content: undefined,
+        docType: "qa",
+        entryId: undefined,
+        page: 1,
+        pageSize: 10,
+        title: undefined,
+      });
+    });
+
+    expect(kbService.listKbDocChunks).toHaveBeenCalledWith("knowledge-3", {
+      chunkId: undefined,
+      content: undefined,
+      docType: "qa",
+      entryId: "501",
+      page: 1,
+      pageSize: 10,
+      title: undefined,
+    });
+  });
+
   it("does not filter QA chunks by answer content", async () => {
     const user = userEvent.setup();
 

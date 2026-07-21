@@ -3230,12 +3230,13 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
-    expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-    );
-    expect(screen.getByRole("button", { name: "编辑 华为产品知识" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除 华为产品知识" })).toBeInTheDocument();
+    const actionTrigger = screen.getByRole("button", {
+      name: "打开 华为产品知识 操作菜单",
+    });
+    await userEvent.setup().click(actionTrigger);
+    expect(screen.getByRole("menuitem", { name: "详情" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
   it("shows knowledge base list load failures in a toast", async () => {
@@ -3261,7 +3262,8 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await screen.findByRole("heading", { level: 1, name: "知识库" });
-    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
     expect(
       await screen.findByText("当前知识库已关联8个Agent，不支持删除"),
@@ -3282,15 +3284,18 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await screen.findByRole("heading", { level: 1, name: "知识库" });
-    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
+    const deleteDialog = await screen.findByRole("alertdialog", { name: "删除知识库？" });
+    expect(deleteDialog).toHaveTextContent(
+      "删除「华为产品知识」后，知识内容和附件将一并删除，且无法恢复",
+    );
     expect(
-      await screen.findByText(
-        "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除",
-      ),
+      within(deleteDialog).getByText("输入知识库名称以确认"),
     ).toBeInTheDocument();
 
-    const deleteButton = screen.getByRole("button", { name: "删除" });
+    const deleteButton = screen.getByRole("button", { name: "永久删除" });
     expect(deleteButton).toBeDisabled();
 
     await user.type(
@@ -3306,6 +3311,29 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("closes the knowledge base delete dialog from the close button", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
+      hasDocuments: true,
+      linkedAgentCount: 0,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(
+      within(await screen.findByRole("alertdialog", { name: "删除知识库？" })).getByRole(
+        "button",
+        { name: "关闭" },
+      ),
+    );
+
+    expect(screen.queryByRole("alertdialog", { name: "删除知识库？" })).not.toBeInTheDocument();
+    expect(kbService.deleteKb).not.toHaveBeenCalled();
+  });
+
   it("requires typing the knowledge base name before deleting an empty kb", async () => {
     const user = userEvent.setup();
     vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
@@ -3316,16 +3344,16 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await screen.findByRole("heading", { level: 1, name: "知识库" });
-    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+    await user.click(screen.getByRole("button", { name: "打开 华为产品知识 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
 
-    expect(await screen.findByText("是否确认删除？")).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除",
-      ),
-    ).not.toBeInTheDocument();
+    const deleteDialog = await screen.findByRole("alertdialog", { name: "删除知识库？" });
+    expect(deleteDialog).toHaveTextContent(
+      "删除「华为产品知识」后将无法恢复",
+    );
+    expect(deleteDialog).not.toHaveTextContent("知识内容和附件将一并删除");
 
-    const deleteButton = screen.getByRole("button", { name: "删除" });
+    const deleteButton = screen.getByRole("button", { name: "永久删除" });
     expect(deleteButton).toBeDisabled();
 
     await user.type(
@@ -3405,6 +3433,17 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("columnheader", { name: "文件大小" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "产品说明大全.doc" })).toBeInTheDocument();
     expect(screen.getByText("12MB")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "打开 产品说明大全.doc 操作菜单" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "切片详情" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    const deleteDialog = screen.getByRole("alertdialog", { name: "确定删除该知识吗" });
+    expect(deleteDialog).toBeInTheDocument();
+    await userEvent.click(within(deleteDialog).getByRole("button", { name: "取消" }));
     await userEvent.click(screen.getByRole("button", { name: "产品说明大全.doc" }));
     expect(router.state.location.pathname).toBe(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
@@ -3431,10 +3470,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
     expect(screen.queryByText("已用 6/100 条知识")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
-    );
   });
 
   it("shows knowledge list load failures in a toast", async () => {

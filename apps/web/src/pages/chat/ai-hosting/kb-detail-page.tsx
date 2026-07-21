@@ -7,6 +7,7 @@ import {
   CheckmarkCircle02Icon,
   Clock04Icon,
   Loading03Icon,
+  MoreHorizontalIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -911,31 +912,41 @@ function KnowledgeRecordsTable({
                 <TableCellContent>{record.updatedAt}</TableCellContent>
               </TableCell>
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
-                <div className="flex items-center justify-end gap-3">
-                  <Button
-                    asChild={record.status === "completed"}
-                    className="h-auto p-0 text-primary"
-                    disabled={record.status !== "completed"}
-                    type="button"
-                    variant="link"
-                  >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label={`打开 ${record.nameWithExtension} 操作菜单`}
+                      className="size-8 p-0 text-muted-foreground"
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={MoreHorizontalIcon}
+                        size={18}
+                        strokeWidth={1.8}
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
                     {record.status === "completed" ? (
-                      <Link to={`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`}>
-                        查看
-                      </Link>
+                      <DropdownMenuItem asChild>
+                        <Link to={`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`}>
+                          切片详情
+                        </Link>
+                      </DropdownMenuItem>
                     ) : (
-                      <span>查看</span>
+                      <DropdownMenuItem disabled>切片详情</DropdownMenuItem>
                     )}
-                  </Button>
-                  <Button
-                    className="h-auto p-0 text-primary"
-                    onClick={() => onDelete(record)}
-                    type="button"
-                    variant="link"
-                  >
-                    删除
-                  </Button>
-                </div>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => onDelete(record)}
+                    >
+                      删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TablePinnedCell>
             </TableRow>
           ))

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  Cancel01Icon,
+  Delete02Icon,
+  MoreHorizontalIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
@@ -13,6 +19,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -23,6 +30,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -67,13 +80,10 @@ type KnowledgeBaseDialogMode = "create" | "edit";
 const PAGE_SIZE = 10;
 const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
 const KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH = 1000;
-const KB_DELETE_WITH_CONTENT_MESSAGE =
-  "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除";
-const KB_DELETE_EMPTY_MESSAGE = "是否确认删除？";
 const KB_DELETE_BLOCKED_DIALOG_CLASSNAME =
   "box-border flex h-[128px] w-[400px] max-w-[400px] flex-col justify-between gap-0 p-6";
 const KB_DELETE_CONFIRM_DIALOG_CLASSNAME =
-  "box-border flex w-[400px] max-w-[400px] flex-col gap-4 p-6";
+  "box-border flex w-[560px] max-w-[calc(100vw-2rem)] flex-col";
 const KB_DELETE_DIALOG_MESSAGE_CLASSNAME =
   "text-left text-sm font-normal text-foreground";
 
@@ -472,33 +482,41 @@ export function KbListPage() {
                         <TableCellContent>{item.createdAt}</TableCellContent>
                       </TableCell>
                       <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <Button
-                            aria-label={`编辑 ${item.name}`}
-                            className="h-auto p-0 text-primary"
-                            disabled={checkingDelete || deleting}
-                            onClick={() => handleOpenEditDialog(item)}
-                            type="button"
-                            variant="link"
-                          >
-                            编辑
-                          </Button>
-                          <Button
-                            aria-label={`删除 ${item.name}`}
-                            className="h-auto p-0 text-primary"
-                            disabled={checkingDelete || deleting}
-                            onClick={() => void handleDeleteClick(item)}
-                            type="button"
-                            variant="link"
-                          >
-                            删除
-                          </Button>
-                          <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
-                            <Link to={`/chat/ai-hosting/kb/${item.id}`}>
-                              查看
-                            </Link>
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              aria-label={`打开 ${item.name} 操作菜单`}
+                              className="size-8 p-0 text-muted-foreground"
+                              disabled={checkingDelete || deleting}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={MoreHorizontalIcon}
+                                size={18}
+                                strokeWidth={1.8}
+                              />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link to={`/chat/ai-hosting/kb/${item.id}`}>
+                                详情
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(item)}>
+                              编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onSelect={() => void handleDeleteClick(item)}
+                            >
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TablePinnedCell>
                     </TableRow>
                   ))
@@ -600,26 +618,55 @@ export function KbListPage() {
         }}
         open={confirmDeleteOpen}
       >
-        <AlertDialogContent className={KB_DELETE_CONFIRM_DIALOG_CLASSNAME}>
-          <AlertDialogHeader className="space-y-2 text-left">
-            <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
-              {confirmDeleteHasDocuments
-                ? KB_DELETE_WITH_CONTENT_MESSAGE
-                : KB_DELETE_EMPTY_MESSAGE}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="kb-delete-confirm-name">知识库名称</Label>
-            <Input
-              aria-label="输入知识库名称确认删除"
-              id="kb-delete-confirm-name"
-              maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
-              onChange={(event) => setDeleteConfirmName(event.target.value)}
-              placeholder="请输入知识库名称"
-              value={deleteConfirmName}
-            />
+        <AlertDialogContent className={`${KB_DELETE_CONFIRM_DIALOG_CLASSNAME} gap-0 overflow-hidden p-0`}>
+          <div className="relative space-y-7 p-6 sm:p-8">
+            <AlertDialogCancel
+              aria-label="关闭"
+              className="absolute right-4 top-4 mt-0 size-8 border-0 bg-transparent p-0 text-muted-foreground shadow-none"
+              disabled={deleting}
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Cancel01Icon}
+                size={20}
+                strokeWidth={1.8}
+              />
+            </AlertDialogCancel>
+            <AlertDialogHeader className="space-y-3 text-left">
+              <div className="flex items-center gap-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={Delete02Icon}
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </div>
+                <AlertDialogTitle className="text-xl font-semibold">
+                  删除知识库？
+                </AlertDialogTitle>
+              </div>
+              <AlertDialogDescription className={`${KB_DELETE_DIALOG_MESSAGE_CLASSNAME} text-base leading-7`}>
+                {confirmDeleteHasDocuments
+                  ? `删除「${deleteTarget?.name}」后，知识内容和附件将一并删除，且无法恢复`
+                  : `删除「${deleteTarget?.name}」后将无法恢复`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="kb-delete-confirm-name">
+                输入知识库名称以确认
+              </Label>
+              <Input
+                aria-label="输入知识库名称确认删除"
+                id="kb-delete-confirm-name"
+                maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+                onChange={(event) => setDeleteConfirmName(event.target.value)}
+                placeholder={`请输入：${deleteTarget?.name ?? ""}`}
+                value={deleteConfirmName}
+              />
+            </div>
           </div>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="px-6 py-5 sm:px-8">
             <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
               disabled={
@@ -629,7 +676,7 @@ export function KbListPage() {
               onClick={() => void handleConfirmDelete()}
               variant="destructive"
             >
-              删除
+              永久删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

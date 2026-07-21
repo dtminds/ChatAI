@@ -58,7 +58,7 @@ export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
   docSize: number;
-  docType: 1 | 2 | 3 | 4;
+  docType: 1 | 2 | 3 | 4 | 5 | 6;
   docUrl: string;
   kbId: number;
   name: string;
@@ -125,6 +125,7 @@ export type AgentKbJavaListChunksInput = {
   pageSize: number;
   title?: string;
   uid: number;
+  volcChunkId?: string;
 };
 
 export type AgentKbJavaListChunksResponse = {
@@ -330,6 +331,7 @@ export function createAgentKbJavaClient(
 
       const normalizedContent = input.content?.trim();
       const normalizedTitle = input.title?.trim();
+      const normalizedVolcChunkId = input.volcChunkId?.trim();
 
       if (normalizedContent) {
         body.content = normalizedContent;
@@ -337,6 +339,10 @@ export function createAgentKbJavaClient(
 
       if (normalizedTitle) {
         body.title = normalizedTitle;
+      }
+
+      if (normalizedVolcChunkId) {
+        body.volcChunkId = normalizedVolcChunkId;
       }
 
       if (input.attachmentType != null) {

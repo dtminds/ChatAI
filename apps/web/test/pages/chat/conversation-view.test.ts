@@ -14,15 +14,18 @@ function createConversation(
   return {
     accountId: "account-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: 0,
     customerAvatarUrl: "",
     customerBindType: mode === "single" ? 1 : undefined,
     customerId: `customer-${id}`,
     customerName: id,
     id,
+    lastMessageId: 100,
     mode,
     preview: "",
     priority: "medium",
     quietFor: "刚刚",
+    replied: true,
     unread: 0,
     updatedAt: "2026-06-24 10:00:00",
     ...rest,
@@ -36,6 +39,10 @@ describe("conversation view helpers", () => {
     expect(resolveConversationView("ai", "single", false)).toBe("all");
     expect(resolveConversationView("human", "single", false)).toBe("all");
     expect(resolveConversationView("unread", "group", false)).toBe("unread");
+    expect(resolveConversationView("read-unreplied", "group", false)).toBe("all");
+    expect(resolveConversationView("read-unreplied", "single", false)).toBe(
+      "read-unreplied",
+    );
   });
 
   it("filters conversations by mode and resolved view", () => {
@@ -128,5 +135,82 @@ describe("conversation view helpers", () => {
         new Set(["single-retained-read", "group-retained-read"]),
       ).map((conversation) => conversation.id),
     ).toEqual(["single-retained-read", "single-new-unread"]);
+  });
+
+  it("filters locally for non-application single conversations that have been read but not replied", () => {
+    const conversations = [
+      createConversation({
+        id: "matching",
+        mode: "single",
+        replied: false,
+      }),
+      createConversation({
+        id: "unread",
+        mode: "single",
+        replied: false,
+        unread: 1,
+      }),
+      createConversation({
+        id: "replied",
+        mode: "single",
+        replied: true,
+      }),
+      createConversation({
+        id: "no-message",
+        lastMessageId: undefined,
+        mode: "single",
+        replied: false,
+      }),
+      createConversation({
+        customerBindType: 2,
+        id: "application-message",
+        mode: "single",
+        replied: false,
+      }),
+      createConversation({
+        id: "missing-reply-state",
+        mode: "single",
+        replied: undefined,
+      }),
+      createConversation({
+        id: "group",
+        mode: "group",
+        replied: false,
+      }),
+    ];
+
+    expect(
+      filterConversationsByView(
+        conversations,
+        "single",
+        "read-unreplied",
+        false,
+      ).map((conversation) => conversation.id),
+    ).toEqual(["matching"]);
+  });
+
+  it("keeps read-unreplied matches stable while accepting new local matches", () => {
+    const conversations = [
+      createConversation({
+        id: "replied-after-entry",
+        mode: "single",
+        replied: true,
+      }),
+      createConversation({
+        id: "new-match",
+        mode: "single",
+        replied: false,
+      }),
+    ];
+
+    expect(
+      filterConversationsByView(
+        conversations,
+        "single",
+        "read-unreplied",
+        false,
+        new Set(["replied-after-entry"]),
+      ).map((conversation) => conversation.id),
+    ).toEqual(["replied-after-entry", "new-match"]);
   });
 });

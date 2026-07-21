@@ -1,5 +1,11 @@
 import type {
   ApiSuccessEnvelope,
+  SettingsGroupChatReceptionOptionsRequest,
+  SettingsGroupChatReceptionOptionsResponse,
+  SettingsGroupChatReceptionUpdateRequest,
+  SettingsGroupChatReceptionUpdateResponse,
+  SettingsGroupChatsQuery,
+  SettingsGroupChatsResponse,
   SettingsManagedAccount,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
@@ -33,6 +39,39 @@ export async function listManagedAccounts() {
   const response = await http.get<ApiSuccessEnvelope<SettingsManagedAccountsResponse>>(
     "/server/settings/managed-accounts",
   );
+
+  return response.data;
+}
+
+export async function listGroupChats(query: SettingsGroupChatsQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<SettingsGroupChatsResponse>>(
+    "/server/settings/group-chats",
+    {
+      params: query,
+    },
+  );
+
+  return response.data;
+}
+
+export async function listGroupChatReceptionOptions(
+  payload: SettingsGroupChatReceptionOptionsRequest,
+) {
+  const response = await http.post<
+    ApiSuccessEnvelope<SettingsGroupChatReceptionOptionsResponse>,
+    SettingsGroupChatReceptionOptionsRequest
+  >("/server/settings/group-chats/reception-options", payload);
+
+  return response.data;
+}
+
+export async function updateGroupChatReception(
+  payload: SettingsGroupChatReceptionUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<SettingsGroupChatReceptionUpdateResponse>,
+    SettingsGroupChatReceptionUpdateRequest
+  >("/server/settings/group-chats/reception", payload);
 
   return response.data;
 }

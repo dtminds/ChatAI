@@ -28,6 +28,7 @@
     "@hugeicons/core-free-icons": "^4.1.0",
     "@hugeicons/react": "^1.0.0",
     "@lexical/react": "^0.45.0",
+    "@oreo-design/avatar": "0.1.0",
     "@paddleocr/paddleocr-js": "^0.4.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

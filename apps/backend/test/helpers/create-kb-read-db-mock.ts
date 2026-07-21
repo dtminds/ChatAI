@@ -27,6 +27,11 @@ type KbReadDbMockOptions = {
   includeAttachmentDoc?: boolean;
   includeFaqDoc?: boolean;
   includeSecondKbWithoutDocs?: boolean;
+  learningCandidates?: Array<{
+    agent_id: number;
+    id: number;
+    uid?: number;
+  }>;
   materialCollections?: Array<Record<string, unknown>>;
   totalDocCount?: number;
   totalKbCount?: number;
@@ -209,7 +214,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       brief_summary: null,
       create_time: mysqlDatetime("2026-06-16 15:22:22"),
       doc_process_time: null,
-      doc_size: 1024,
+      doc_size: options.docSizeBytes?.[2] ?? 1024,
       doc_summary: null,
       doc_suffix: "txt",
       doc_type: 2,
@@ -361,6 +366,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     status: agent.status ?? 1,
     uid: agent.uid ?? 9001,
   }));
+  const learningCandidates = (options.learningCandidates ?? []).map((candidate) => ({
+    agent_id: candidate.agent_id,
+    id: candidate.id,
+    uid: candidate.uid ?? 9001,
+  }));
 
   const chunks = [
     {
@@ -384,7 +394,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       type: "text",
       uid: 9001,
       update_time: mysqlDatetime("2026-06-18 15:22:22"),
-      volc_chunk_id: null,
+      volc_chunk_id: "doc_id_9001_1001_20260630131921038-3",
       volc_doc_id: null,
       volc_resource_id: null,
     },
@@ -583,6 +593,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             rows = filterRows(chunks);
           } else if (table === "xy_wap_embed_agent") {
             rows = filterRows(agents);
+          } else if (table === "xy_wap_embed_agent_kb_learning_candidate") {
+            rows = filterRows(learningCandidates);
           }
 
           return { total: rows.length };
@@ -618,6 +630,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent") {
             return projectRows(filterRows(agents));
+          }
+
+          if (table === "xy_wap_embed_agent_kb_learning_candidate") {
+            return projectRows(filterRows(learningCandidates));
           }
 
           if (table === "xy_wap_embed_material_collection") {

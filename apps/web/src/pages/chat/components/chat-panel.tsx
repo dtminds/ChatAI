@@ -20,6 +20,7 @@ import {
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
+import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -46,8 +47,11 @@ import {
   resolveAgentHostingStatus,
   type AgentHostingStatus,
 } from "@/pages/chat/lib/chat-agent-hosting-status";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
+
+const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
+  "chatai.workbenchSidebarCollapsed";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -59,13 +63,16 @@ type ChatPanelProps = {
   canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  canMarkHandoffHandled?: boolean;
   canUseMessageForward?: boolean;
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
+  conversationAIHostingConfigured?: boolean;
   conversationAIHostingEnabled?: boolean;
+  shouldShowConversationAIHostingControl?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -77,10 +84,12 @@ type ChatPanelProps = {
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
   inputEnterBehavior: InputEnterBehavior;
+  isConversationActionDisabled?: boolean;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
   isMobileLayout?: boolean;
   isSendingDraft: boolean;
+  isHandoffClearPending?: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
   multiSelectMode?: boolean;
@@ -118,6 +127,8 @@ type ChatPanelProps = {
   onEnableAgentHosting?: () => void;
   onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
   onChangeFullAuto?: (enabled: boolean) => void;
+  onMarkHandoffHandled?: () => void;
+  onViewHandoffMessage?: () => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
@@ -144,12 +155,15 @@ type ChatPanelProps = {
   onHistorySetSenderId: (senderId?: string) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
+  onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
+  onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
+  onPinConversation?: (conversationId: string) => void | Promise<void>;
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
@@ -160,6 +174,7 @@ type ChatPanelProps = {
     options?: { force?: boolean },
   ) => void;
   onToggleMessageSelection?: (message: ChatMessage) => void;
+  onUnpinConversation?: (conversationId: string) => void | Promise<void>;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -188,13 +203,16 @@ export function ChatPanel({
   canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  canMarkHandoffHandled = false,
   canUseMessageForward = false,
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
   activeAccount,
   seatAIHostingEnabled = false,
+  conversationAIHostingConfigured = false,
   conversationAIHostingEnabled = false,
+  shouldShowConversationAIHostingControl = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -204,10 +222,12 @@ export function ChatPanel({
   groupMembers,
   isGroupMembersLoading,
   inputEnterBehavior,
+  isConversationActionDisabled = false,
   isConversationLoading,
   isEmojiPickerOpen,
   isMobileLayout = false,
   isSendingDraft,
+  isHandoffClearPending = false,
   isResizingCustomerPanel,
   messages,
   multiSelectMode = false,
@@ -228,6 +248,8 @@ export function ChatPanel({
   onEnableAgentHosting,
   onChangeSeatAgentMode,
   onChangeFullAuto,
+  onMarkHandoffHandled,
+  onViewHandoffMessage,
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
@@ -254,12 +276,15 @@ export function ChatPanel({
   onHistorySetSenderId,
   onRefreshGroupMembers,
   onLoadOlderMessages,
+  onMarkConversationRead,
+  onMarkConversationUnread,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
   onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
+  onPinConversation,
   onRetryMessage,
   onSendSmartReply,
   onFillSmartReplyComposer,
@@ -267,6 +292,7 @@ export function ChatPanel({
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
+  onUnpinConversation,
   onVoicePlaybackReady,
   retryingMessageIds,
   onSendDraft,
@@ -282,17 +308,20 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
+    readDesktopSidebarCollapsedPreference,
+  );
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
   const agentHostingStatus =
-    !conversationAIHostingEnabled || resolvedAgentHostingStatus === "exited"
+    activeConversation?.mode === "group" ||
+    !conversationAIHostingEnabled ||
+    resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
-  const canUseConversationAIFeatures =
-    isConversationAIFeatureSupported(activeConversation);
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -354,15 +383,63 @@ export function ChatPanel({
     }
   }, [isMobileLayout, isMobileSidebarOpen, onQuickReplyActiveChange]);
 
+  const isSidebarOpen = isMobileLayout
+    ? isMobileSidebarOpen
+    : !isDesktopSidebarCollapsed;
+  const handleToggleSidebar = () => {
+    if (isMobileLayout) {
+      setIsMobileSidebarOpen((current) => !current);
+      return;
+    }
+
+    if (!isDesktopSidebarCollapsed && isHistoryPanelOpen) {
+      onHistoryClose();
+    }
+    if (!isDesktopSidebarCollapsed) {
+      onQuickReplyActiveChange?.(false);
+    }
+    setIsDesktopSidebarCollapsed((current) => {
+      const next = !current;
+      writeDesktopSidebarCollapsedPreference(next);
+      return next;
+    });
+  };
+  const handleOpenHistory = () => {
+    if (!isMobileLayout) {
+      setIsDesktopSidebarCollapsed(false);
+      writeDesktopSidebarCollapsedPreference(false);
+    }
+    onOpenHistory();
+  };
+
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
+        isAIHostingEnabled={conversationAIHostingEnabled}
+        isConversationActionDisabled={isConversationActionDisabled}
         isMobileLayout={isMobileLayout}
+        isSidebarOpen={isSidebarOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
-        onOpenSidebar={
-          isMobileLayout && hasActiveConversation
-            ? () => setIsMobileSidebarOpen(true)
+        onMarkConversationRead={
+          activeConversation && onMarkConversationRead
+            ? () => onMarkConversationRead(activeConversation.id)
+            : undefined
+        }
+        onMarkConversationUnread={
+          activeConversation && onMarkConversationUnread
+            ? () => onMarkConversationUnread(activeConversation.id)
+            : undefined
+        }
+        onPinConversation={
+          activeConversation && onPinConversation
+            ? () => onPinConversation(activeConversation.id)
+            : undefined
+        }
+        onToggleSidebar={hasActiveConversation ? handleToggleSidebar : undefined}
+        onUnpinConversation={
+          activeConversation && onUnpinConversation
+            ? () => onUnpinConversation(activeConversation.id)
             : undefined
         }
       />
@@ -371,6 +448,17 @@ export function ChatPanel({
         {hasActiveConversation ? (
           <>
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+              {hasConversationHandoff(activeConversation.handoffMsgId) &&
+              onMarkHandoffHandled &&
+              onViewHandoffMessage ? (
+                <ChatHandoffStatusBar
+                  canMarkHandled={canMarkHandoffHandled}
+                  isPending={isHandoffClearPending}
+                  onMarkHandled={onMarkHandoffHandled}
+                  onViewMessage={onViewHandoffMessage}
+                />
+              ) : null}
+
               <ChatMessagePanel
                 activeHistoryStatus={activeHistoryStatus}
                 bottomOverlay={
@@ -470,7 +558,9 @@ export function ChatPanel({
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
-                      canUseConversationAIFeatures={canUseConversationAIFeatures}
+                      shouldShowConversationAIHostingControl={
+                        shouldShowConversationAIHostingControl
+                      }
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
                       seatAgentModeActionPending={seatAgentModeActionPending}
@@ -488,9 +578,9 @@ export function ChatPanel({
                       accountName={activeAccount?.name ?? accountName}
                       seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
                       seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
+                      conversationAIHostingConfigured={conversationAIHostingConfigured}
                       fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
                       semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
-                      conversationAIHostingEnabled={conversationAIHostingEnabled}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={
@@ -510,7 +600,7 @@ export function ChatPanel({
                       }
                       onOpenCollectedExpressions={onOpenCollectedExpressions}
                       onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
-                      onOpenHistory={onOpenHistory}
+                      onOpenHistory={handleOpenHistory}
                       onSelectCollectedExpression={onSelectCollectedExpression}
                       onSegmentsChange={onComposerSegmentsChange}
                       onSendDraft={onSendDraft}
@@ -550,7 +640,7 @@ export function ChatPanel({
                   {customerSidePanelNode}
                 </SheetContent>
               </Sheet>
-            ) : (
+            ) : isDesktopSidebarCollapsed ? null : (
               <div
                 className="relative flex h-full min-h-0 min-w-0 shrink-0"
                 data-testid="customer-side-panel-shell"
@@ -577,6 +667,28 @@ export function ChatPanel({
       </div>
     </section>
   );
+}
+
+function readDesktopSidebarCollapsedPreference() {
+  try {
+    return (
+      window.localStorage.getItem(WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY) ===
+      "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeDesktopSidebarCollapsedPreference(isCollapsed: boolean) {
+  try {
+    window.localStorage.setItem(
+      WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY,
+      String(isCollapsed),
+    );
+  } catch {
+    // Sidebar persistence is best-effort; the current session still updates.
+  }
 }
 
 function FileUploadQueueBar({

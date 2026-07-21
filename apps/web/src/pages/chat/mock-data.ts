@@ -6,13 +6,18 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 
-type SeedConversation = Omit<Conversation, "conversationAIHostingSwitch"> &
-  Partial<Pick<Conversation, "conversationAIHostingSwitch">>;
+type SeedConversation = Omit<
+  Conversation,
+  "conversationAIHostingSwitch" | "handoffMsgId"
+> &
+  Partial<Pick<Conversation, "conversationAIHostingSwitch" | "handoffMsgId">>;
 
 function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
+    handoffMsgId: conversation.handoffMsgId ?? 0,
+    replied: conversation.replied ?? true,
     customerBindType:
       conversation.mode === "single"
         ? conversation.customerBindType ?? 1
@@ -167,6 +172,7 @@ const rawSeedConversations: Record<string, SeedConversation[]> = {
       updatedAt: "2026-04-13 15:04:16",
       quietFor: "2天没聊了",
       unread: 0,
+      replied: false,
       mode: "single",
       priority: "medium",
     },

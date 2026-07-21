@@ -6,12 +6,12 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
-import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { listKbs } from "../api/kb-service";
 import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
@@ -43,7 +43,6 @@ export function AgentConditionalLogicField({
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
   const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(false);
-  const [knowledgeBasesError, setKnowledgeBasesError] = useState("");
   const editorRef = useRef<LexicalEditor | null>(null);
   const isMountedRef = useRef(false);
 
@@ -94,7 +93,6 @@ export function AgentConditionalLogicField({
 
   const loadKnowledgeBases = useCallback(async () => {
     setKnowledgeBasesLoading(true);
-    setKnowledgeBasesError("");
 
     try {
       const response = await listKbs({
@@ -113,14 +111,13 @@ export function AgentConditionalLogicField({
         })),
       );
       setKnowledgeBasesLoaded(true);
-    } catch (error) {
+    } catch {
       if (!isMountedRef.current) {
         return;
       }
 
-      setKnowledgeBasesError(
-        isRequestError(error) ? error.message : "知识库加载失败",
-      );
+      setOpen(false);
+      toast.error("知识库加载失败，请稍后重试");
     } finally {
       if (isMountedRef.current) {
         setKnowledgeBasesLoading(false);
@@ -129,13 +126,12 @@ export function AgentConditionalLogicField({
   }, []);
 
   useEffect(() => {
-    if (!open || knowledgeBasesLoaded || knowledgeBasesLoading || knowledgeBasesError) {
+    if (!open || knowledgeBasesLoaded || knowledgeBasesLoading) {
       return;
     }
 
     void loadKnowledgeBases();
   }, [
-    knowledgeBasesError,
     knowledgeBasesLoaded,
     knowledgeBasesLoading,
     loadKnowledgeBases,
@@ -234,19 +230,6 @@ export function AgentConditionalLogicField({
                     >
                       <Spinner aria-hidden="true" size={14} />
                       <span>正在加载</span>
-                    </div>
-                  ) : knowledgeBasesError ? (
-                    <div className="space-y-3 px-3 py-5 text-center">
-                      <p className="text-sm text-muted-foreground">{knowledgeBasesError}</p>
-                      <Button
-                        className="h-8 rounded-[8px] px-3"
-                        onClick={() => void loadKnowledgeBases()}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        重试
-                      </Button>
                     </div>
                   ) : filteredKnowledgeBases.length === 0 ? (
                     <p className="px-3 py-6 text-center text-sm text-muted-foreground">

@@ -37,11 +37,13 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -111,7 +113,7 @@ type ChatComposerProps = {
   canConfigureSeatSemiAuto: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
-  canUseConversationAIFeatures: boolean;
+  shouldShowConversationAIHostingControl: boolean;
   accountAvatarUrl?: string;
   accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
@@ -133,7 +135,8 @@ type ChatComposerProps = {
   isHistoryPanelOpen: boolean;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
-  conversationAIHostingEnabled?: boolean;
+  /** 当前会话的 AI 托管开关配置状态 */
+  conversationAIHostingConfigured?: boolean;
   fullAutoSwitch?: boolean;
   semiAutoSwitch?: boolean;
   onClearQuotedMessage: () => void;
@@ -187,7 +190,7 @@ export function ChatComposer({
   canConfigureSeatSemiAuto,
   canToggleConversationAIHosting,
   canSendMessage,
-  canUseConversationAIFeatures,
+  shouldShowConversationAIHostingControl,
   accountAvatarUrl,
   accountName,
   collectedExpressions = [],
@@ -209,7 +212,7 @@ export function ChatComposer({
   isHistoryPanelOpen,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
-  conversationAIHostingEnabled = false,
+  conversationAIHostingConfigured = false,
   fullAutoSwitch = false,
   semiAutoSwitch = false,
   onClearQuotedMessage,
@@ -241,6 +244,7 @@ export function ChatComposer({
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
+  const [isGroupAiPopoverOpen, setIsGroupAiPopoverOpen] = useState(false);
   const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
   const editorConfig = useMemo(
     () => ({
@@ -295,8 +299,7 @@ export function ChatComposer({
       seatSemiAutoAuth,
     ],
   );
-  const canUseCurrentConversationHosting =
-    canToggleConversationAIHosting && seatAIMode === "autoReply";
+  const canUseCurrentConversationHosting = canToggleConversationAIHosting;
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -368,14 +371,34 @@ export function ChatComposer({
     canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const canOpenCollectedFiles = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
-  const showAgentDialogButton = canUseConversationAIFeatures;
+  const showAgentDialogButton =
+    !isGroupConversation && shouldShowConversationAIHostingControl;
+  const showGroupAiIndicator =
+    isGroupConversation && shouldShowConversationAIHostingControl;
+  const groupAiDialogContent = (
+    <GroupAiDialogContent
+      accountAvatarUrl={accountAvatarUrl}
+      accountName={accountName}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
+      canToggleConversationAIHosting={canToggleConversationAIHosting}
+      isPending={isFullAutoButtonPending}
+      onChangeFullAuto={async (enabled) => {
+        setIsFullAutoSubmitting(true);
+        try {
+          await onChangeFullAuto(enabled);
+        } finally {
+          setIsFullAutoSubmitting(false);
+        }
+      }}
+    />
+  );
   const mobileToolbarButtonClass = "size-9 rounded-[10px] p-0 shadow-none";
   const agentDialogContent = (
     <AgentDialogContent
       accountAvatarUrl={accountAvatarUrl}
       accountName={accountName}
       canUseCurrentConversationHosting={canUseCurrentConversationHosting}
-      conversationAIHostingEnabled={conversationAIHostingEnabled}
+      conversationAIHostingConfigured={conversationAIHostingConfigured}
       isFullAutoButtonPending={isFullAutoButtonPending}
       isSeatAIModeOptionDisabled={isSeatAIModeOptionDisabled}
       onChangeFullAuto={onChangeFullAuto}
@@ -808,6 +831,35 @@ export function ChatComposer({
                     {agentDialogContent}
                   </PopoverContent>
                 </Popover>
+              ) : showGroupAiIndicator ? (
+                <Popover
+                  open={isGroupAiPopoverOpen}
+                  onOpenChange={setIsGroupAiPopoverOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      aria-label="AI 对话"
+                      className={mobileToolbarButtonClass}
+                      disabled={isComposerActionDisabled}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        icon={AiChat02Icon}
+                        size={18}
+                        strokeWidth={2}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[min(22rem,calc(100vw-2rem))] p-0"
+                    side="top"
+                  >
+                    {groupAiDialogContent}
+                  </PopoverContent>
+                </Popover>
               ) : null}
 
               <Button
@@ -1094,6 +1146,36 @@ export function ChatComposer({
                     {agentDialogContent}
                   </PopoverContent>
                 </Popover>
+              ) : showGroupAiIndicator ? (
+                <Popover
+                  open={isGroupAiPopoverOpen}
+                  onOpenChange={setIsGroupAiPopoverOpen}
+                >
+                  <ComposerActionTooltip
+                    disabled={isComposerActionDisabled}
+                    label="AI 对话"
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        aria-label="AI 对话"
+                        className={composerActionButtonClass}
+                        disabled={isComposerActionDisabled}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon
+                          icon={AiChat02Icon}
+                          size={18}
+                          strokeWidth={2}
+                        />
+                      </Button>
+                    </PopoverTrigger>
+                  </ComposerActionTooltip>
+                  <PopoverContent align="end" className="w-96 p-0" side="top">
+                    {groupAiDialogContent}
+                  </PopoverContent>
+                </Popover>
               ) : null}
 
               <ComposerActionTooltip label="聊天记录">
@@ -1296,7 +1378,7 @@ function AgentDialogContent({
   accountAvatarUrl,
   accountName,
   canUseCurrentConversationHosting,
-  conversationAIHostingEnabled,
+  conversationAIHostingConfigured,
   isFullAutoButtonPending,
   isSeatAIModeOptionDisabled,
   onChangeFullAuto,
@@ -1310,7 +1392,7 @@ function AgentDialogContent({
   accountAvatarUrl?: string;
   accountName?: string;
   canUseCurrentConversationHosting: boolean;
-  conversationAIHostingEnabled: boolean;
+  conversationAIHostingConfigured: boolean;
   isFullAutoButtonPending?: boolean;
   isSeatAIModeOptionDisabled: (mode: WorkbenchSeatAgentMode) => boolean;
   onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
@@ -1386,7 +1468,7 @@ function AgentDialogContent({
           onClick={async () => {
             onSubmittingChange(true);
             try {
-              await onChangeFullAuto(!conversationAIHostingEnabled);
+              await onChangeFullAuto(!conversationAIHostingConfigured);
             } finally {
               onSubmittingChange(false);
               onSubmitted();
@@ -1402,12 +1484,12 @@ function AgentDialogContent({
               size={14}
               variant="classic"
             />
-          ) : conversationAIHostingEnabled ? null : (
+          ) : conversationAIHostingConfigured ? null : (
             <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
           )}
-          {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+          {conversationAIHostingConfigured ? "关闭当前会话托管" : "托管当前会话"}
         </Button>
-        {seatAIMode !== "autoReply" ? (
+        {!conversationAIHostingConfigured && seatAIMode !== "autoReply" ? (
           <p className="text-center text-xs text-muted-foreground">
             切换 AI 模式为自动回复后，可托管此会话
           </p>
@@ -1565,6 +1647,65 @@ function SeatAIModeOptionContent({
       <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">
         {option.description}
       </p>
+    </div>
+  );
+}
+
+function GroupAiDialogContent({
+  accountAvatarUrl,
+  accountName,
+  canToggleConversationAIHosting,
+  conversationAIHostingConfigured,
+  isPending,
+  onChangeFullAuto,
+}: {
+  accountAvatarUrl?: string;
+  accountName?: string;
+  canToggleConversationAIHosting: boolean;
+  conversationAIHostingConfigured: boolean;
+  isPending?: boolean;
+  onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
+}) {
+  return (
+    <div className="space-y-4 p-3.5" data-testid="group-ai-dialog-content">
+      <div className="flex items-center gap-2">
+        <Avatar className="size-8 rounded-[8px]">
+          {accountAvatarUrl ? (
+            <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
+          ) : null}
+          <AvatarFallback className="text-xs">
+            {accountName?.slice(0, 1)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-popover-foreground">
+            {accountName ?? "当前席位"}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-[8px] bg-surface-muted px-3 py-3">
+        <div className="min-w-0 space-y-1">
+          <Label
+            className="font-medium text-foreground"
+            htmlFor="group-ai-auto-reply"
+          >
+            AI自动回复
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            开启后，当前企微号被@时，AI会自动处理
+          </p>
+        </div>
+        <Switch
+          aria-label="AI自动回复"
+          checked={conversationAIHostingConfigured}
+          disabled={!canToggleConversationAIHosting || isPending}
+          id="group-ai-auto-reply"
+          onCheckedChange={(checked) => {
+            void onChangeFullAuto(checked);
+          }}
+        />
+      </div>
     </div>
   );
 }

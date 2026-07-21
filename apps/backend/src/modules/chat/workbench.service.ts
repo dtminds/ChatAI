@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationClearHandoffResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
   WorkbenchConversationListResponse,
@@ -221,13 +222,26 @@ type SmartReplyMessagePageMetadata = {
   smartReplyScope?: {
     chatType: number;
     thirdExternalId: string;
+    thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   };
 };
 
+type SmartReplyJavaScope = {
+  chatType: number;
+  thirdExternalId: string;
+  thirdGroupId?: string;
+  thirdUserId: string;
+  uid: number;
+};
+
 type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
   SmartReplyMessagePageMetadata;
+
+function getMessageSourceThirdUserId(conversation: ConversationLookup) {
+  return conversation.messageSourceThirdUserId || conversation.thirdUserId;
+}
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
@@ -265,8 +279,11 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
   return msgIds;
 }
 
-function assertSmartReplySingleConversation(conversation: ConversationLookup) {
-  if (conversation.chatType !== CHAT_TYPE.SINGLE) {
+function assertSmartReplySupportedConversation(conversation: ConversationLookup) {
+  if (
+    conversation.chatType !== CHAT_TYPE.SINGLE &&
+    conversation.chatType !== CHAT_TYPE.GROUP
+  ) {
     throw new BadRequestError(
       "SMART_REPLY_SCOPE_INVALID",
       "当前会话暂不支持智能回复",
@@ -274,8 +291,36 @@ function assertSmartReplySingleConversation(conversation: ConversationLookup) {
   }
 }
 
-function getSmartReplyThirdExternalId(conversation: ConversationLookup) {
-  assertSmartReplySingleConversation(conversation);
+function getSmartReplyJavaScope(conversation: ConversationLookup): SmartReplyJavaScope {
+  assertSmartReplySupportedConversation(conversation);
+
+  const thirdUserId = conversation.thirdUserId?.trim();
+
+  if (!thirdUserId) {
+    throw new BadRequestError(
+      "SMART_REPLY_SCOPE_INVALID",
+      "当前会话缺少智能回复所需的席位标识",
+    );
+  }
+
+  if (conversation.chatType === CHAT_TYPE.GROUP) {
+    const thirdGroupId = conversation.thirdGroupId?.trim();
+
+    if (!thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的群标识",
+      );
+    }
+
+    return {
+      chatType: CHAT_TYPE.GROUP,
+      thirdExternalId: "",
+      thirdGroupId,
+      thirdUserId,
+      uid: conversation.uid,
+    };
+  }
 
   const thirdExternalId = conversation.thirdExternalUserId?.trim();
 
@@ -286,7 +331,12 @@ function getSmartReplyThirdExternalId(conversation: ConversationLookup) {
     );
   }
 
-  return thirdExternalId;
+  return {
+    chatType: CHAT_TYPE.SINGLE,
+    thirdExternalId,
+    thirdUserId,
+    uid: conversation.uid,
+  };
 }
 
 export type WorkbenchService = {
@@ -297,6 +347,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchConversationFullAutoResponse>
     | WorkbenchConversationFullAutoResponse;
+  clearConversationHandoff(
+    subUserId: string,
+    conversationId: string,
+  ):
+    | Promise<WorkbenchConversationClearHandoffResponse>
+    | WorkbenchConversationClearHandoffResponse;
   deleteConversation(
     subUserId: string,
     conversationId: string,
@@ -903,6 +959,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         chatType: smartReplyScope.chatType,
         msgIds,
         thirdExternalId: smartReplyScope.thirdExternalId,
+        thirdGroupId: smartReplyScope.thirdGroupId,
         thirdUserId: smartReplyScope.thirdUserId,
         uid: smartReplyScope.uid,
       });
@@ -1115,10 +1172,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const rawContent = await this.repository.getMessageRawContent({
       auditId: input.messageSeq,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -1181,10 +1238,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const rawContent = await this.repository.getMessageRawContent({
       auditId: input.messageSeq,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -1326,12 +1383,32 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
-    if (request.enabled && conversation.chatType !== CHAT_TYPE.SINGLE) {
-      throw new BadRequestError("FULL_AUTO_GROUP_UNSUPPORTED", "群聊暂不支持 AI 托管");
+    if (request.enabled) {
+      const capability = await this.repository.getConversationFullAutoCapability({
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        thirdExternalUserId: conversation.thirdExternalUserId,
+        thirdUserId: conversation.thirdUserId,
+        uid: conversation.uid,
+      });
+      const canEnable =
+        conversation.chatType === CHAT_TYPE.GROUP
+          ? capability?.seatGroupAIHostingEnabled === true
+          : conversation.chatType === CHAT_TYPE.SINGLE &&
+            capability?.seatFullAutoAuth === true &&
+            capability.seatFullAutoSwitch === true &&
+            capability.customerBindType === 1;
+
+      if (!canEnable) {
+        throw new ForbiddenError(
+          "CONVERSATION_FULL_AUTO_NOT_AVAILABLE",
+          "当前会话未开通 AI 托管能力",
+        );
+      }
     }
 
     await this.javaClient.changeConversationFullAuto({
-      change: request.enabled ? 1 : 2,
+      change: request.enabled ? 1 : 0,
       conversationId: conversation.id,
       operatorId: subUserNumericId,
       platform: conversation.platform,
@@ -1341,18 +1418,41 @@ export class MysqlWorkbenchService implements WorkbenchService {
     if (request.enabled) {
       await this.insertFullAutoEnabledSystemMessage({
         conversationId: conversation.id,
+        messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
         operatorId: subUserNumericId,
         platform: conversation.platform,
         subUserId,
         thirdExternalUserId: conversation.thirdExternalUserId,
         thirdGroupId: conversation.thirdGroupId,
-        thirdUserId: conversation.thirdUserId,
         uid: conversation.uid,
       });
     }
 
     return {
       conversationAIHostingSwitch: request.enabled,
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+    };
+  }
+
+  async clearConversationHandoff(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationClearHandoffResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
+
+    await this.repository.clearConversationHandoff({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
     };
@@ -1512,7 +1612,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
 
@@ -1520,17 +1620,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return { suggestions: [] };
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
-
-    const javaRequest = {
-      chatType: CHAT_TYPE.SINGLE,
+    return this.javaClient.listUserHistoryAnswers({
+      chatType: javaScope.chatType,
       msgIds: javaMsgIds,
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
-    };
-
-    return this.javaClient.listUserHistoryAnswers(javaRequest);
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
+    });
   }
 
   async requestSmartReplyGeneralAnswer(
@@ -1548,15 +1645,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     return this.javaClient.requestGeneralAnswer({
-      chatType: CHAT_TYPE.SINGLE,
+      chatType: javaScope.chatType,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
     });
   }
 
@@ -1571,18 +1669,26 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope,
     );
 
+    if (conversation.chatType === CHAT_TYPE.GROUP) {
+      throw new BadRequestError(
+        "SMART_REPLY_AUTO_GENERAL_ANSWER_UNSUPPORTED",
+        "群聊不支持自动生成智能回复",
+      );
+    }
+
     if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
+    const javaScope = getSmartReplyJavaScope(conversation);
 
     return this.javaClient.requestAutoGeneralAnswer({
-      chatType: CHAT_TYPE.SINGLE,
+      chatType: javaScope.chatType,
       msgId: request.msgId,
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
+      thirdExternalId: javaScope.thirdExternalId,
+      thirdGroupId: javaScope.thirdGroupId,
+      thirdUserId: javaScope.thirdUserId,
+      uid: javaScope.uid,
     });
   }
 
@@ -1596,7 +1702,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const content = request.content.trim();
 
@@ -1645,7 +1751,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const recordId = request.recordId.trim();
 
@@ -1680,7 +1786,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const ids = normalizeAttachmentIds(request.ids);
 
@@ -1710,7 +1816,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     return this.javaClient.checkTextModerationPlus({
       content,
@@ -1728,7 +1834,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const response = await this.javaClient.listKnowledgePage({
       page: 1,
@@ -1760,7 +1866,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     return this.javaClient.getKnowledgeConfig({
       uid: conversation.uid,
@@ -1777,7 +1883,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
 
@@ -1826,7 +1932,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       request.conversationId,
       scope,
     );
-    assertSmartReplySingleConversation(conversation);
+    assertSmartReplySupportedConversation(conversation);
 
     const docId = normalizeKnowledgeId(request.docId);
 
@@ -1954,18 +2060,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const failedMessage = await this.repository.findRetryMessage({
       conversationId: conversation.id,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       messageSeq: payload.messageSeq,
       platform: conversation.platform,
+      receptionThirdUserId: conversation.thirdUserId,
       ...(conversation.thirdExternalUserId
         ? { thirdExternalUserId: conversation.thirdExternalUserId }
         : {}),
       ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
-    if (!failedMessage?.optNo) {
-      throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    const retryLogContext = {
+      conversationId: conversation.id,
+      messageSeq: payload.messageSeq,
+    };
+
+    if (!failedMessage) {
+      throw retryMessageFailed("retry_message_not_found", retryLogContext);
+    }
+
+    if (!failedMessage.optNo) {
+      throw new BadRequestError("retry_message_opt_no_missing", "暂不支持重发该消息");
     }
 
     if (failedMessage.senderType !== "agent") {
@@ -1977,7 +2093,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
-    const msgData = buildRetryJavaMessageData(operation?.optParams);
+    if (!operation) {
+      throw retryMessageFailed("retry_operation_not_found", {
+        ...retryLogContext,
+        retryOptNo: failedMessage.optNo,
+      });
+    }
+
+    const msgData = buildRetryJavaMessageData(operation.optParams, {
+      ...retryLogContext,
+      retryOptNo: failedMessage.optNo,
+    });
 
     const response = await this.javaClient.sendMessage({
       failMsgId: failedMessage.id,
@@ -2105,13 +2231,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
     }
 
+    if (conversation.isShadowGroup) {
+      throw new ForbiddenError("MESSAGE_REVOKE_FORBIDDEN", "暂不支持撤回该消息");
+    }
+
     const message = await this.repository.getMessageForRevoke({
       conversationId: conversation.id,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
       messageSeq,
       platform: conversation.platform,
+      receptionThirdUserId: conversation.thirdUserId,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
-      thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
     });
 
@@ -3853,21 +3984,21 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
   private async insertFullAutoEnabledSystemMessage(input: {
     conversationId: string;
+    messageSourceThirdUserId: string;
     operatorId: number;
     platform: number;
     subUserId: string;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
-    thirdUserId: string;
     uid: number;
   }) {
     try {
       const latestMessage =
         await this.repository.getLatestConversationMessageSummary({
+          messageSourceThirdUserId: input.messageSourceThirdUserId,
           platform: input.platform,
           thirdExternalUserId: input.thirdExternalUserId,
           thirdGroupId: input.thirdGroupId,
-          thirdUserId: input.thirdUserId,
           uid: input.uid,
         });
 
@@ -5307,20 +5438,33 @@ function buildJavaSendMessageData(
   return message;
 }
 
-function buildRetryJavaMessageData(rawOptParams: string | null | undefined): JavaSendMessageData {
+function retryMessageFailed(
+  reason: string,
+  context?: Record<string, unknown>,
+): BadRequestError {
+  return new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败", undefined, {
+    ...context,
+    reason,
+  });
+}
+
+function buildRetryJavaMessageData(
+  rawOptParams: string | null | undefined,
+  logContext?: Record<string, unknown>,
+): JavaSendMessageData {
   if (!rawOptParams?.trim()) {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_operation_params_missing", logContext);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawOptParams);
   } catch {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_operation_params_invalid_json", logContext);
   }
 
   if (!isRecord(parsed) || !isRecord(parsed.msgData)) {
-    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    throw retryMessageFailed("retry_message_data_missing", logContext);
   }
 
   const msgData = parsed.msgData;
@@ -5328,7 +5472,7 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
   switch (msgData.msgtype) {
     case "text":
       if (typeof msgData.text !== "string") {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_text_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     case "quote":
@@ -5336,12 +5480,12 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
         typeof msgData.text !== "string" ||
         !Number.isSafeInteger(msgData.quoteMsgId)
       ) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_quote_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     case "image":
       if (typeof msgData.fileUrl !== "string" || !msgData.fileUrl.trim()) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_image_url_missing", logContext);
       }
       return msgData as JavaSendMessageData;
     case "file":
@@ -5351,7 +5495,7 @@ function buildRetryJavaMessageData(rawOptParams: string | null | undefined): Jav
         !msgData.fileName.trim() ||
         !msgData.fileUrl.trim()
       ) {
-        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+        throw retryMessageFailed("retry_file_data_invalid", logContext);
       }
       return msgData as JavaSendMessageData;
     default:

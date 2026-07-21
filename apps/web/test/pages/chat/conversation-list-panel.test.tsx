@@ -42,28 +42,35 @@ function createConversation({
   customerBindType,
   id,
   customerName,
+  lastMessageId = 100,
   mode,
+  replied = true,
   unread = 0,
 }: {
   conversationAIHostingSwitch?: boolean;
   customerBindType?: number;
   id: string;
   customerName: string;
+  lastMessageId?: number;
   mode: ChatMode;
+  replied?: boolean;
   unread?: number;
 }): Conversation {
   return {
     accountId: "account-1",
     conversationAIHostingSwitch,
+    handoffMsgId: 0,
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerBindType: mode === "single" ? customerBindType ?? 1 : undefined,
     customerId: `customer-${id}`,
     customerName,
     id,
+    lastMessageId,
     mode,
     preview: mode === "group" ? "包含：星云客户、运营客服" : "客户成功部 / 运营客服",
     priority: "medium",
     quietFor: "刚刚",
+    replied,
     unread,
     updatedAt: "2026-05-07 09:00:00",
   };
@@ -517,6 +524,9 @@ describe("ConversationListPanel", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitemradio", { name: "已读未回复" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });
@@ -541,8 +551,79 @@ describe("ConversationListPanel", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "已读未回复" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
+  });
+
+  it("shows the AI hosting badge on group conversations with auto-reply enabled", async () => {
+    const user = userEvent.setup();
+    const groupConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        customerName: "已开启自动回复群",
+        id: "group-hosting-1",
+        mode: "group",
+      }),
+      createConversation({
+        conversationAIHostingSwitch: false,
+        customerName: "未开启自动回复群",
+        id: "group-hosting-2",
+        mode: "group",
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={groupConversations}
+        seatGroupAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={groupConversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    const enabledCard = screen.getByText("已开启自动回复群").closest("button");
+    const disabledCard = screen.getByText("未开启自动回复群").closest("button");
+
+    expect(enabledCard).not.toBeNull();
+    expect(disabledCard).not.toBeNull();
+    expect(within(enabledCard!).getByLabelText("AI托管")).toBeInTheDocument();
+    expect(within(disabledCard!).queryByLabelText("AI托管")).not.toBeInTheDocument();
+  });
+
+  it("hides the AI hosting badge on group conversations when seat group AI reply auth is off", async () => {
+    const user = userEvent.setup();
+    const groupConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        customerName: "无权限自动回复群",
+        id: "group-hosting-auth-off",
+        mode: "group",
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={groupConversations}
+        seatGroupAIHostingEnabled={false}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={groupConversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
   });
 
   it("closes search results when clicking outside the dropdown", async () => {

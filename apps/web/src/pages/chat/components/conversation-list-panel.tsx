@@ -66,6 +66,8 @@ type ConversationListPanelProps = {
   composerDraftsByConversationId?: Record<string, ConversationComposerDraft>;
   conversations: Conversation[];
   isSeatAIHostingEnabled?: boolean;
+  /** 席位群聊 AI 托管能力；用于群聊列表头像 AI 托管角标 */
+  seatGroupAIHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
   isConversationLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
@@ -91,6 +93,7 @@ export function ConversationListPanel({
   composerDraftsByConversationId = {},
   conversations,
   isSeatAIHostingEnabled = false,
+  seatGroupAIHostingEnabled = false,
   isConversationActionDisabled = false,
   isConversationLoading = false,
   onMarkConversationRead,
@@ -392,6 +395,7 @@ export function ConversationListPanel({
                           isAIHostingEnabled={isConversationAIHostingEnabled(
                             conversation,
                             isSeatAIHostingEnabled,
+                            seatGroupAIHostingEnabled,
                           )}
                           key={conversation.id}
                           onDelete={() => {
@@ -494,7 +498,7 @@ function ConversationModeTab({
           />
         </TabsTrigger>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="min-w-28">
+      <DropdownMenuContent align="center" className="min-w-36">
         <DropdownMenuRadioGroup
           onValueChange={(value) => {
             void onSelectView?.(value as ConversationView);
@@ -504,7 +508,7 @@ function ConversationModeTab({
           {getConversationViewOptions(mode, isSeatAIHostingEnabled).map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value}>
               <span
-                className="w-16 shrink-0"
+                className="min-w-16 shrink-0 whitespace-nowrap"
                 data-testid={`conversation-view-label-${mode}-${option.value}`}
               >
                 {option.label}

@@ -123,6 +123,22 @@ describe("workbench gateway message paging", () => {
     ]);
   });
 
+  it("keeps mock replied state independent from unread state", async () => {
+    const service = createMockWorkbenchService();
+    const conversations = await service.getConversations("drc", {
+      mode: "single",
+    });
+
+    expect(
+      conversations.items.find(
+        (conversation) => conversation.conversationId === "conv-002",
+      ),
+    ).toMatchObject({
+      replied: false,
+      unreadCount: 0,
+    });
+  });
+
   it("loads unread conversations with unread-only mode limits and keeps unread summary", async () => {
     const observedConversationRequests: Array<{
       limit?: number;
@@ -334,6 +350,7 @@ describe("workbench gateway message paging", () => {
         description: "私域客户管理",
         expireTime: undefined,
         fullAutoSwitch: undefined,
+        groupUnreadCount: undefined,
         id: "drc",
         lastMessageTime: 1_778_840_020_000,
         loginStatus: "offline",
@@ -349,9 +366,12 @@ describe("workbench gateway message paging", () => {
         seatAIAssistantEnabled: false,
         seatAIHostingAuth: undefined,
         seatAIHostingEnabled: false,
+        seatGroupAIAssistantEnabled: false,
+        seatGroupAIHostingEnabled: false,
         seatId: "drc",
         semiAutoAuth: undefined,
         semiAutoSwitch: undefined,
+        singleUnreadCount: undefined,
         takenOverEmployeeId: "202",
         tone: "linear-gradient(135deg, var(--muted-foreground), var(--primary))",
         unreadCount: 3,
@@ -373,6 +393,7 @@ describe("workbench gateway message paging", () => {
               {
                 conversationId: "recent-unpinned",
                 conversationAIHostingSwitch: false,
+                handoffMsgId: 0,
                 customerAvatar: "",
                 customerId: "customer-recent",
                 customerName: "最近未置顶",
@@ -380,6 +401,7 @@ describe("workbench gateway message paging", () => {
                 lastMessageTime: now,
                 mode: "single",
                 priority: "medium",
+                replied: true,
                 seatId: "drc",
                 unreadCount: 0,
               },
@@ -394,6 +416,7 @@ describe("workbench gateway message paging", () => {
             {
               conversationId: "old-pinned",
               conversationAIHostingSwitch: false,
+              handoffMsgId: 0,
               customerAvatar: "",
               customerId: "customer-pinned",
               customerName: "较早置顶",
@@ -402,6 +425,7 @@ describe("workbench gateway message paging", () => {
               lastMessageTime: now - 60_000,
               mode: "group",
               priority: "medium",
+              replied: true,
               seatId: "drc",
               unreadCount: 0,
             },
@@ -563,6 +587,7 @@ describe("temporary conversation visibility", () => {
         accountId: "drc",
         createdAtMs: now - 60_000,
         conversationAIHostingSwitch: false,
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "customer-pending",
         customerName: "识别中的客户",
@@ -580,6 +605,7 @@ describe("temporary conversation visibility", () => {
         accountId: "drc",
         createdAtMs: now - 181_000,
         conversationAIHostingSwitch: false,
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "customer-expired",
         customerName: "超过等待窗口的客户",
@@ -597,6 +623,7 @@ describe("temporary conversation visibility", () => {
         accountId: "drc",
         createdAtMs: now - 30_000,
         conversationAIHostingSwitch: false,
+        handoffMsgId: 0,
         customerAvatarUrl: "",
         customerId: "customer-verified",
         customerName: "已识别客户",

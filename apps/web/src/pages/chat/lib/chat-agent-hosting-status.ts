@@ -33,7 +33,7 @@ export function resolveAgentHostingStatus(
   conversation?: Conversation,
   conversationAIHostingEnabled = false,
 ): AgentHostingStatus | null {
-  if (!conversation) {
+  if (!conversation || conversation.mode === "group") {
     return null;
   }
 

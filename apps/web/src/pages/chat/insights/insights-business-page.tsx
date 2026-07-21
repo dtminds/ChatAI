@@ -330,22 +330,22 @@ function BusinessDimensionTabs({
       onValueChange={(value) => onChangeDimension(value as BusinessDimension)}
       value={activeDimension}
     >
-      <div className="flex items-center justify-between gap-4 border-b border-divider">
-        <TabsList
-          aria-label="业务洞察维度"
-          className="h-auto min-w-0 flex-1 justify-start gap-8 overflow-x-auto rounded-none bg-transparent p-0 text-muted-foreground"
-        >
-          {dimensionConfigs.map((dimension) => (
-            <TabsTrigger
-              className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-3 text-sm font-medium shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              key={dimension.key}
-              value={dimension.key}
-            >
-              {dimension.title}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </div>
+      <TabsList
+        aria-label="业务洞察维度"
+        className="scrollbar-none min-w-0 overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        variant="underline"
+      >
+        {dimensionConfigs.map((dimension) => (
+          <TabsTrigger
+            className="whitespace-nowrap"
+            key={dimension.key}
+            value={dimension.key}
+            variant="underline"
+          >
+            {dimension.title}
+          </TabsTrigger>
+        ))}
+      </TabsList>
     </Tabs>
   );
 }

@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createSubAccount,
   deleteSubAccount,
+  listGroupChatReceptionOptions,
+  listGroupChats,
   listSubAccounts,
   syncManagedAccountSeatGroups,
+  updateGroupChatReception,
   updateSubAccount,
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
@@ -88,6 +91,64 @@ describe("settings service", () => {
     );
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       syncMembers: true,
+    });
+  });
+
+  it("uses public /server settings endpoints for group chat listing", async () => {
+    mock.onGet("/server/settings/group-chats").reply(200, {
+      data: {
+        filterManagedAccounts: [{ id: "101", name: "德瑞可" }],
+        groupChats: [],
+        page: 2,
+        pageSize: 20,
+        total: 0,
+        totalPages: 1,
+      },
+      success: true,
+    });
+
+    await listGroupChats({ keyword: "护肤", managedAccountId: "101", page: 2, pageSize: 20 });
+
+    expect(mock.history.get[0]?.url).toBe("/server/settings/group-chats");
+    expect(mock.history.get[0]?.params).toEqual({
+      keyword: "护肤",
+      managedAccountId: "101",
+      page: 2,
+      pageSize: 20,
+    });
+  });
+
+  it("loads group chat reception options only from the dedicated endpoint", async () => {
+    mock.onPost("/server/settings/group-chats/reception-options").reply(200, {
+      data: {
+        availableManagedAccounts: [{ avatarUrl: "", id: "102", name: "念都堂" }],
+      },
+      success: true,
+    });
+
+    await listGroupChatReceptionOptions({ groupChatIds: ["501", "502"] });
+
+    expect(mock.history.post[0]?.url).toBe("/server/settings/group-chats/reception-options");
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      groupChatIds: ["501", "502"],
+    });
+  });
+
+  it("uses public /server settings endpoints for group chat reception updates", async () => {
+    mock.onPut("/server/settings/group-chats/reception").reply(200, {
+      data: { updated: true },
+      success: true,
+    });
+
+    await updateGroupChatReception({
+      groupChatId: "501",
+      hostUserSeatIds: ["102"],
+    });
+
+    expect(mock.history.put[0]?.url).toBe("/server/settings/group-chats/reception");
+    expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
+      groupChatId: "501",
+      hostUserSeatIds: ["102"],
     });
   });
 });

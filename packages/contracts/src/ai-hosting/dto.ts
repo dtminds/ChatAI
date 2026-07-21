@@ -48,12 +48,29 @@ export const AiHostingAgentKbSummarySchema = Type.Object({
 });
 
 export const AiHostingAgentListItemSchema = Type.Object({
+  autoLearnEnabled: Type.Boolean(),
   id: Type.String(),
   kbList: Type.Array(AiHostingAgentKbSummarySchema),
   model: AiHostingAgentModelSummarySchema,
   name: Type.String(),
+  pendingSuggestionCount: Type.Number(),
   updatedAt: Type.Optional(Type.Number()),
 });
+
+export const AiHostingAgentAutoLearnUpdateRequestSchema = Type.Object(
+  {
+    enabled: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const AiHostingAgentAutoLearnUpdateResponseSchema = Type.Object(
+  {
+    autoLearnEnabled: Type.Boolean(),
+    pendingSuggestionCount: Type.Number(),
+  },
+  { additionalProperties: false },
+);
 
 export const AiHostingAgentDetailSchema = Type.Object({
   hasUnpublishedChanges: Type.Boolean(),
@@ -139,10 +156,23 @@ export const AiHostingAgentTestResponseSchema = Type.Object({
   reply: Type.Array(AiHostingAgentTestReplyItemSchema),
 }, { additionalProperties: false });
 
+export const AiHostingGroupChatReplyModeSchema = Type.Union([
+  Type.Literal(1),
+  Type.Literal(2),
+]);
+
+export const AiHostingSettingsGroupChatSchema = Type.Object({
+  agentId: Type.Union([Type.String(), Type.Null()]),
+  fullAutoAuth: Type.Boolean(),
+  replyMode: Type.Union([AiHostingGroupChatReplyModeSchema, Type.Null()]),
+  semiAutoAuth: Type.Boolean(),
+});
+
 export const AiHostingSettingsAccountSchema = Type.Object({
   agentId: Type.Union([Type.String(), Type.Null()]),
   avatarUrl: Type.String(),
   fullAutoAuth: Type.Boolean(),
+  groupChat: AiHostingSettingsGroupChatSchema,
   id: Type.String(),
   name: Type.String(),
   semiAutoAuth: Type.Boolean(),
@@ -167,6 +197,14 @@ export const AiHostingSettingsUpdateRequestSchema = Type.Object({
   userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
 }, { additionalProperties: false });
 
+export const AiHostingGroupSettingsUpdateRequestSchema = Type.Object({
+  agentId: Type.String({ minLength: 1 }),
+  fullAutoAuth: Type.Boolean(),
+  replyMode: AiHostingGroupChatReplyModeSchema,
+  semiAutoAuth: Type.Boolean(),
+  userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
+}, { additionalProperties: false });
+
 export type AiHostingAgentPromptConfig = Static<typeof AiHostingAgentPromptConfigSchema>;
 export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
@@ -182,14 +220,24 @@ export type AiHostingAgentSettingsSaveRequest =
   Static<typeof AiHostingAgentSettingsSaveRequestSchema>;
 export type AiHostingAgentRenameRequest = Static<typeof AiHostingAgentRenameRequestSchema>;
 export type AiHostingAgentRemoveResponse = Static<typeof AiHostingAgentRemoveResponseSchema>;
+export type AiHostingAgentAutoLearnUpdateRequest =
+  Static<typeof AiHostingAgentAutoLearnUpdateRequestSchema>;
+export type AiHostingAgentAutoLearnUpdateResponse =
+  Static<typeof AiHostingAgentAutoLearnUpdateResponseSchema>;
 export type AiHostingAgentTestMessageContent =
   Static<typeof AiHostingAgentTestMessageContentSchema>;
 export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageSchema>;
 export type AiHostingAgentTestRequest = Static<typeof AiHostingAgentTestRequestSchema>;
 export type AiHostingAgentTestReplyItem = Static<typeof AiHostingAgentTestReplyItemSchema>;
 export type AiHostingAgentTestResponse = Static<typeof AiHostingAgentTestResponseSchema>;
+export type AiHostingGroupChatReplyMode = Static<
+  typeof AiHostingGroupChatReplyModeSchema
+>;
 export type AiHostingSettingsAccount = Static<typeof AiHostingSettingsAccountSchema>;
+export type AiHostingSettingsGroupChat = Static<typeof AiHostingSettingsGroupChatSchema>;
 export type AiHostingSettingsAgentOption = Static<typeof AiHostingSettingsAgentOptionSchema>;
 export type AiHostingSettingsResponse = Static<typeof AiHostingSettingsResponseSchema>;
 export type AiHostingSettingsUpdateRequest =
   Static<typeof AiHostingSettingsUpdateRequestSchema>;
+export type AiHostingGroupSettingsUpdateRequest =
+  Static<typeof AiHostingGroupSettingsUpdateRequestSchema>;

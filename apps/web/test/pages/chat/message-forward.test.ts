@@ -238,6 +238,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
   return {
     accountId: "seat-1",
     bizStatus: 1,
+    handoffMsgId: 0,
     customerAvatarUrl: "",
     customerId: "customer-1",
     customerName: "客户",

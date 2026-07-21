@@ -6,8 +6,7 @@ import {
   SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS,
   SMART_REPLY_TERMINAL_GENERATE_STATUSES,
 } from "@chatai/contracts";
-import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
-import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
+import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
@@ -166,18 +165,11 @@ export function createTriggeredSmartReplySuggestion(
   };
 }
 
-export function isSmartReplySupportedConversation(
-  conversation?: Pick<Conversation, "customerBindType" | "mode"> | null,
-) {
-  return isConversationAIFeatureSupported(conversation);
-}
-
 export function isSmartReplyEligibleMessage(message: ChatMessage) {
   if (
     message.role !== "customer" ||
     message.isOwnMessage ||
-    message.isRevoked ||
-    message.isGroupConversation
+    message.isRevoked
   ) {
     return false;
   }
@@ -276,6 +268,13 @@ export function isSmartReplyKnowledgeMiss(
   );
 }
 
+export function isSmartReplySingleChatOnlyFailure(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  const failReason = suggestion?.failReason?.trim() ?? "";
+  return failReason.includes("仅支持单聊");
+}
+
 export function isSmartReplyGenerationFailed(
   suggestion?: SmartReplySuggestion | null,
 ) {
@@ -284,6 +283,11 @@ export function isSmartReplyGenerationFailed(
   }
 
   if (isSmartReplyContentIncompleteSkip(suggestion)) {
+    return false;
+  }
+
+  // 群聊误打单聊接口留下的历史失败，不再展示
+  if (isSmartReplySingleChatOnlyFailure(suggestion)) {
     return false;
   }
 
@@ -320,6 +324,13 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return true;
   }
 
+  const content = suggestion.content?.trim() ?? "";
+
+  // 群聊历史误走单聊接口时，可能带着「仅支持单聊」失败但仍有可用文案，仍展示推荐卡片
+  if (isSmartReplySingleChatOnlyFailure(suggestion) && content.length > 0) {
+    return true;
+  }
+
   if (readSmartReplyGenerateStatus(suggestion) !== 2) {
     return false;
   }
@@ -328,7 +339,7 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return false;
   }
 
-  return suggestion.content.trim().length > 0;
+  return content.length > 0;
 }
 
 export function shouldShowSmartReplyTriggerIcon(
@@ -554,6 +565,11 @@ export function getSmartReplyInlineState(
   suggestion?: SmartReplySuggestion | null,
 ): SmartReplyInlineState | undefined {
   if (!suggestion) {
+    return undefined;
+  }
+
+  // 群聊不应展示「仅支持单聊」这类无效失败态
+  if (isSmartReplySingleChatOnlyFailure(suggestion)) {
     return undefined;
   }
 

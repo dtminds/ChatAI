@@ -27,6 +27,10 @@ import {
   hasConversationComposerDraftContent,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import {
+  getConversationHandoffTakeoverPreviewParts,
+  hasConversationHandoff,
+} from "@/pages/chat/lib/conversation-handoff-preview";
 
 export function ConversationCard({
   composerDraft,
@@ -58,7 +62,11 @@ export function ConversationCard({
     composerDraft && hasConversationComposerDraftContent(composerDraft)
       ? getConversationComposerDraftPreviewParts(composerDraft)
       : null;
-  const previewParts = draftPreviewParts ? null : conversation.previewParts;
+  const handoffPreviewParts =
+    !draftPreviewParts && hasConversationHandoff(conversation.handoffMsgId)
+      ? getConversationHandoffTakeoverPreviewParts(conversation.preview)
+      : null;
+  const taggedPreviewParts = draftPreviewParts ?? handoffPreviewParts;
   const conversationMenuItems = [
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
@@ -143,35 +151,25 @@ export function ConversationCard({
               )}
               data-testid="conversation-preview"
             >
-              {draftPreviewParts ? (
+              {taggedPreviewParts ? (
                 <>
                   <span
-                    className="shrink-0 text-destructive"
-                    data-testid="conversation-draft-prefix"
-                  >
-                    {draftPreviewParts.prefix}
-                  </span>
-                  {draftPreviewParts.body ? (
-                    <span className="truncate">{draftPreviewParts.body}</span>
-                  ) : null}
-                </>
-              ) : previewParts?.length ? (
-                previewParts.map((part, index) => (
-                  <span
                     className={cn(
-                      index === previewParts.length - 1 ? "truncate" : "shrink-0",
-                      part.tone === "danger" && !isActive && "text-destructive",
+                      "shrink-0",
+                      (draftPreviewParts || !isActive) && "text-destructive",
                     )}
                     data-testid={
-                      part.kind
-                        ? `conversation-preview-part-${part.kind}`
-                        : `conversation-preview-part-${index}`
+                      draftPreviewParts
+                        ? "conversation-draft-prefix"
+                        : "conversation-handoff-takeover-prefix"
                     }
-                    key={`${part.kind ?? "text"}-${index}`}
                   >
-                    {part.text}
+                    {taggedPreviewParts.prefix}
                   </span>
-                ))
+                  {taggedPreviewParts.body ? (
+                    <span className="truncate">{taggedPreviewParts.body}</span>
+                  ) : null}
+                </>
               ) : (
                 conversation.preview
               )}

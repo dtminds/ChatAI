@@ -639,8 +639,8 @@ export function QuickReplyPanel({
                   <img
                     alt=""
                     aria-hidden="true"
-                    className="h-48 w-48 mx-auto opacity-45"
-                    src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
+                    className="h-36 w-48 mx-auto opacity-45"
+                    src="https://b5.bokr.com.cn/dist/ui/empty-state.svg"
                   />
                   <div>添加分类，如售前、售后、物流等</div>
                   <QuickReplyManualLink />
@@ -658,8 +658,8 @@ export function QuickReplyPanel({
                   <img
                     alt=""
                     aria-hidden="true"
-                    className="h-48 w-48 mx-auto opacity-45"
-                    src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
+                    className="h-36 w-48 mx-auto opacity-45"
+                    src="https://b5.bokr.com.cn/dist/ui/empty-state.svg"
                   />
                   <div className="text-[13px] text-muted-foreground">
                     添加一个话术分组，即可开始创建话术

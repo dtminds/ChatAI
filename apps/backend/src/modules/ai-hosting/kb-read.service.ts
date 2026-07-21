@@ -15,7 +15,7 @@ import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
 import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
 import {
-  mapDocTypeToDb,
+  mapDocTypeFilterValues,
   mapKbDocDetail,
   mapKbDocListItem,
   mapKbListItem,
@@ -45,7 +45,6 @@ const kbDocListColumns = [
   "update_time",
 ] as const;
 const kbDocDetailColumns = [...kbDocListColumns, "doc_summary", "doc_url", "volc_doc_id"] as const;
-
 export class KbReadService {
   constructor(
     private readonly db: Kysely<Database>,
@@ -143,7 +142,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (options.docType) {
-      query = query.where("doc_type", "=", mapDocTypeToDb(options.docType));
+      query = query.where("doc_type", "in", mapDocTypeFilterValues(options.docType));
     } else {
       query = query.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }
@@ -200,8 +199,10 @@ export class KbReadService {
     tenant: AgentKbTenant,
     docId: string,
     options: {
+      chunkId?: string;
       content?: string;
       docType: KbDocType;
+      entryId?: string;
       page?: number;
       pageSize?: number;
       title?: string;
@@ -217,6 +218,18 @@ export class KbReadService {
     const pagination = normalizePagination(options);
     const normalizedContent = normalizeSearchQuery(options.content);
     const normalizedTitle = normalizeSearchQuery(options.title);
+    const normalizedChunkId = normalizeChunkDisplayId(options.chunkId);
+    const entryNumericId = options.entryId ? parsePositiveInteger(options.entryId) : undefined;
+
+    if (options.entryId && entryNumericId == null) {
+      throw new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
+    }
+
+    const volcChunkId = entryNumericId
+      ? await this.resolveEntryVolcChunkId(uid, docNumericId, entryNumericId)
+      : normalizedChunkId
+        ? `doc_id_${uid}_${docNumericId}_${normalizedChunkId}`
+        : undefined;
 
     const response = await this.agentKbJavaClient.listKbChunks({
       content: normalizedContent,
@@ -225,6 +238,7 @@ export class KbReadService {
       pageSize: pagination.pageSize,
       title: normalizedTitle,
       uid,
+      volcChunkId,
     });
 
     const chunks = response.list.map((item) => mapJavaChunkPageItem(item, options.docType));
@@ -237,6 +251,25 @@ export class KbReadService {
         total: response.count,
       },
     };
+  }
+
+  private async resolveEntryVolcChunkId(uid: number, docId: number, entryId: number) {
+    const chunk = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_chunk")
+      .select("volc_chunk_id")
+      .where("id", "=", entryId)
+      .where("doc_id", "=", docId)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+
+    const volcChunkId = chunk?.volc_chunk_id?.trim();
+
+    if (!volcChunkId) {
+      throw new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
+    }
+
+    return volcChunkId;
   }
 
   private async countKbs(uid: number, query?: string) {
@@ -269,7 +302,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (docType) {
-      countQuery = countQuery.where("doc_type", "=", mapDocTypeToDb(docType));
+      countQuery = countQuery.where("doc_type", "in", mapDocTypeFilterValues(docType));
     } else {
       countQuery = countQuery.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }
@@ -315,4 +348,14 @@ function normalizeSearchQuery(query?: string) {
   }
 
   return normalizedQuery;
+}
+
+function normalizeChunkDisplayId(value?: string) {
+  const normalized = value?.trim();
+
+  if (!normalized || normalized.includes("_")) {
+    return undefined;
+  }
+
+  return normalized;
 }

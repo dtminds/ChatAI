@@ -16,6 +16,10 @@ import { createKbWriteService } from "./kb-write.service.js";
 import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
+const ChunkDisplayIdSchema = Type.String({
+  maxLength: KB_SEARCH_QUERY_MAX_LENGTH,
+  pattern: "^[^_]+$",
+});
 
 const KbListQuerySchema = Type.Object({
   page: Type.Optional(NumericStringSchema),
@@ -39,8 +43,10 @@ const KbDocParamsSchema = Type.Object({
 });
 
 const KbDocChunkListQuerySchema = Type.Object({
+  chunkId: Type.Optional(ChunkDisplayIdSchema),
   content: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
   docType: KbDocTypeSchema,
+  entryId: Type.Optional(NumericStringSchema),
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
   title: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
@@ -227,10 +233,12 @@ export async function registerKbRoutes(app: FastifyInstance) {
           getAgentKbTenant(request),
           request.params.docId,
           {
+            chunkId: request.query.chunkId,
             page: parseOptionalInteger(request.query.page),
             pageSize: parseOptionalInteger(request.query.pageSize),
             content: request.query.content,
             docType: request.query.docType,
+            entryId: request.query.entryId,
             title: request.query.title,
           },
         ),

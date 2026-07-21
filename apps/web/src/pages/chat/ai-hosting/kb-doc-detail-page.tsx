@@ -7,7 +7,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -39,6 +39,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
@@ -46,6 +47,7 @@ import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import { ImageKnowledgeChunkWorkspace } from "./kb-components/image-chunk-workspace";
+import { KbChunkTargetTag } from "./kb-components/kb-chunk-target-tag";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { resolveKbRequestErrorMessage, TableOverflowTooltip } from "./kb-components/shared";
 import {
@@ -94,6 +96,9 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 
 export function KbDocDetailPage() {
   const { docId = "", kbId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetChunkId = searchParams.get("chunkId")?.trim() || undefined;
+  const targetEntryId = searchParams.get("entryId")?.trim() || undefined;
   const [knowledgeBase, setKnowledgeBase] = useState<{
     id: string;
     name: string;
@@ -103,6 +108,7 @@ export function KbDocDetailPage() {
   const [total, setTotal] = useState(0);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingChunks, setLoadingChunks] = useState(false);
+  const [pageNotFound, setPageNotFound] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,6 +118,7 @@ export function KbDocDetailPage() {
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
   const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
   const requestVersionRef = useRef(0);
+  const resolvedEntryChunkIdRef = useRef<string | undefined>(undefined);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -123,6 +130,23 @@ export function KbDocDetailPage() {
   }, []);
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
+  const debouncedChunkId = useDebouncedValue(targetChunkId ?? "", 300).trim();
+
+  useEffect(() => {
+    if (
+      !targetEntryId
+      && resolvedEntryChunkIdRef.current
+      && targetChunkId !== resolvedEntryChunkIdRef.current
+    ) {
+      resolvedEntryChunkIdRef.current = undefined;
+    }
+  }, [targetChunkId, targetEntryId]);
+
+  useEffect(() => {
+    if (targetChunkId || targetEntryId) {
+      setSearchQuery("");
+    }
+  }, [targetChunkId, targetEntryId]);
 
   const loadChunks = useCallback(async (options?: { page?: number }) => {
     if (!docId || !doc) {
@@ -135,35 +159,75 @@ export function KbDocDetailPage() {
     try {
       const isImageDoc = doc.type === "image";
       const page = options?.page ?? (isImageDoc ? 1 : currentPage);
+      const requestedChunkId = targetEntryId
+        ? undefined
+        : resolvedEntryChunkIdRef.current || debouncedChunkId || undefined;
+      const hasExactTarget = Boolean(targetEntryId || requestedChunkId);
       const response = await listKbDocChunks(docId, {
-        content: !isImageDoc && doc.type !== "qa" ? debouncedSearchQuery || undefined : undefined,
+        chunkId: requestedChunkId,
+        content:
+          !hasExactTarget && !isImageDoc && doc.type !== "qa"
+            ? debouncedSearchQuery || undefined
+            : undefined,
         docType: doc.type,
+        entryId: targetEntryId,
         page: isImageDoc ? 1 : page,
         pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : pageSize,
-        title: doc.type === "qa" ? debouncedSearchQuery || undefined : undefined,
+        title:
+          !hasExactTarget && doc.type === "qa"
+            ? debouncedSearchQuery || undefined
+            : undefined,
       });
 
       if (version !== requestVersionRef.current) {
         return;
       }
 
-      setChunks(
-        response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)),
-      );
+      const mappedChunks = response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type));
+
+      if (targetEntryId) {
+        const targetChunk =
+          mappedChunks.find((chunk) => chunk.id === targetEntryId)
+          ?? (mappedChunks.length === 1 ? mappedChunks[0] : undefined);
+        const normalizedChunkId = resolveVolcChunkIdTail(targetChunk?.volcChunkId);
+
+        if (normalizedChunkId) {
+          resolvedEntryChunkIdRef.current = normalizedChunkId;
+          setSearchParams((currentSearchParams) => {
+            const nextSearchParams = new URLSearchParams(currentSearchParams);
+
+            nextSearchParams.delete("entryId");
+            nextSearchParams.set("chunkId", normalizedChunkId);
+            return nextSearchParams;
+          }, { replace: true });
+        }
+      }
+
+      setChunks(mappedChunks);
       setTotal(response.pagination.total);
     } catch {
       if (version !== requestVersionRef.current) {
         return;
       }
 
+      if (targetEntryId) {
+        setSearchParams((currentSearchParams) => {
+          const nextSearchParams = new URLSearchParams(currentSearchParams);
+
+          nextSearchParams.delete("entryId");
+          return nextSearchParams;
+        }, { replace: true });
+      }
+
       setChunks([]);
       setTotal(0);
+      toast.error("切片列表加载失败，请稍后重试");
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingChunks(false);
       }
     }
-  }, [currentPage, debouncedSearchQuery, doc, docId, pageSize]);
+  }, [currentPage, debouncedChunkId, debouncedSearchQuery, doc, docId, pageSize, setSearchParams, targetEntryId]);
 
   const refreshChunksFromFirstPage = useCallback(async () => {
     if (currentPage !== 1) {
@@ -191,6 +255,7 @@ export function KbDocDetailPage() {
       }
 
       setLoadingPage(true);
+      setPageNotFound(false);
 
       try {
         const [kb, docDetail] = await Promise.all([getKb(kbId), getKbDoc(docId)]);
@@ -205,15 +270,30 @@ export function KbDocDetailPage() {
         if (mappedDoc.kbId !== mappedKb.id) {
           setKnowledgeBase(null);
           setDoc(null);
+          setPageNotFound(true);
           return;
         }
 
         setKnowledgeBase({ id: mappedKb.id, name: mappedKb.name });
         setDoc(mappedDoc);
-      } catch {
-        if (!cancelled) {
-          setKnowledgeBase(null);
-          setDoc(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setKnowledgeBase(null);
+        setDoc(null);
+        if (
+          isRequestError(error)
+          && (
+            error.status === 404
+            || error.code === "KB_NOT_FOUND"
+            || error.code === "KB_DOC_NOT_FOUND"
+          )
+        ) {
+          setPageNotFound(true);
+        } else {
+          toast.error("文档加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -239,7 +319,25 @@ export function KbDocDetailPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchQuery, docId, pageSize]);
+  }, [debouncedChunkId, debouncedSearchQuery, docId, pageSize]);
+
+  useEffect(() => {
+    if ((!targetChunkId && !targetEntryId) || loadingChunks) {
+      return;
+    }
+
+    const targetChunk = chunks.find((chunk) =>
+      targetEntryId ? chunk.id === targetEntryId : resolveChunkDisplayId(chunk) === targetChunkId,
+    );
+
+    if (!targetChunk) {
+      return;
+    }
+
+    document.getElementById(`kb-chunk-${targetChunk.id}`)?.scrollIntoView?.({
+      block: "center",
+    });
+  }, [chunks, loadingChunks, targetChunkId, targetEntryId]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
@@ -250,6 +348,15 @@ export function KbDocDetailPage() {
   function handlePageSizeChange(nextPageSize: number) {
     setPageSize(nextPageSize);
     setCurrentPage(1);
+  }
+
+  function handleTargetChunkClear() {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    resolvedEntryChunkIdRef.current = undefined;
+    nextSearchParams.delete("chunkId");
+    nextSearchParams.delete("entryId");
+    setSearchParams(nextSearchParams, { replace: true });
   }
 
   async function handleCreateQaChunk(values: { answer: string; question: string }) {
@@ -356,7 +463,7 @@ export function KbDocDetailPage() {
     }
   }
 
-  if (!loadingPage && (!knowledgeBase || !doc || doc.kbId !== knowledgeBase.id)) {
+  if (!loadingPage && pageNotFound) {
     return (
       <AiHostingLayout title="文档不存在">
         <div className="space-y-6">
@@ -403,33 +510,59 @@ export function KbDocDetailPage() {
         <section aria-label="切片列表区块" className="space-y-4">
           {doc?.type === "image" ? (
             doc ? (
-              <ImageKnowledgeChunkWorkspace
-                chunks={chunks}
-                doc={doc}
-                loading={loadingPage || loadingChunks}
-              />
+              <>
+                {targetChunkId ? (
+                  <div className="flex flex-wrap items-center">
+                    <KbChunkTargetTag
+                      chunkId={targetChunkId}
+                      onClear={handleTargetChunkClear}
+                    />
+                  </div>
+                ) : null}
+                <ImageKnowledgeChunkWorkspace
+                  chunks={chunks}
+                  doc={doc}
+                  loading={loadingPage || loadingChunks}
+                />
+              </>
             ) : null
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="relative w-[280px] max-w-full">
-                  <HugeiconsIcon
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    color="currentColor"
-                    icon={Search01Icon}
-                    size={17}
-                    strokeWidth={1.8}
-                  />
-                  <Input
-                    aria-label={chunkSearchField.ariaLabel}
-                    className="h-10 rounded-[8px] pl-9"
-                    disabled={loadingPage || !doc || doc.status !== "completed"}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                    }}
-                    placeholder={chunkSearchField.placeholder}
-                    value={searchQuery}
-                  />
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {targetChunkId ? (
+                    <KbChunkTargetTag
+                      chunkId={targetChunkId}
+                      onClear={handleTargetChunkClear}
+                    />
+                  ) : null}
+                  {!targetChunkId && !targetEntryId ? (
+                    <div className="relative w-[280px] max-w-full">
+                      <HugeiconsIcon
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        color="currentColor"
+                        icon={Search01Icon}
+                        size={17}
+                        strokeWidth={1.8}
+                      />
+                      <Input
+                        aria-label={chunkSearchField.ariaLabel}
+                        className="h-10 rounded-[8px] pl-9"
+                        disabled={loadingPage || !doc || doc.status !== "completed"}
+                        onChange={(event) => {
+                          const nextSearchParams = new URLSearchParams(searchParams);
+
+                          resolvedEntryChunkIdRef.current = undefined;
+                          nextSearchParams.delete("chunkId");
+                          nextSearchParams.delete("entryId");
+                          setSearchParams(nextSearchParams, { replace: true });
+                          setSearchQuery(event.target.value);
+                        }}
+                        placeholder={chunkSearchField.placeholder}
+                        value={searchQuery}
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 {doc && doc.status === "completed" ? (
@@ -448,6 +581,8 @@ export function KbDocDetailPage() {
                     loading={loadingPage || loadingChunks}
                     onDelete={setDeleteChunk}
                     onEdit={setEditChunk}
+                    targetChunkId={targetChunkId}
+                    targetEntryId={targetEntryId}
                   />
                 ) : (
                   <KnowledgeDocumentChunkCards
@@ -593,16 +728,24 @@ function resolveChunkDisplayId(chunk: KbDocChunkViewItem) {
   return chunk.displayChunkId || chunk.volcChunkId || chunk.id;
 }
 
+function resolveVolcChunkIdTail(volcChunkId?: string) {
+  return volcChunkId?.split("_").pop()?.trim() || undefined;
+}
+
 function KnowledgeChunksTable({
   chunks,
   loading,
   onDelete,
   onEdit,
+  targetEntryId,
+  targetChunkId,
 }: {
   chunks: KbDocChunkViewItem[];
   loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
+  targetEntryId?: string;
+  targetChunkId?: string;
 }) {
   const columnCount = 5;
 
@@ -625,7 +768,15 @@ function KnowledgeChunksTable({
           <KbTableLoadingRow colSpan={columnCount} />
         ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
-            <TableRow key={chunk.id}>
+            <TableRow
+              aria-current={
+                (targetEntryId ? chunk.id === targetEntryId : resolveChunkDisplayId(chunk) === targetChunkId)
+                  ? "true"
+                  : undefined
+              }
+              id={`kb-chunk-${chunk.id}`}
+              key={chunk.id}
+            >
               <TableCell className="px-4 py-4">
                 <TableOverflowTooltip
                   className="inline-block rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground"
@@ -753,7 +904,10 @@ function KnowledgeDocumentChunkCard({
   const displayChunkId = resolveChunkDisplayId(chunk);
 
   return (
-    <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
+    <li
+      className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]"
+      id={`kb-chunk-${chunk.id}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">

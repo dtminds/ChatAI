@@ -314,6 +314,8 @@ export function ChatMessageList({
                   onVoicePlaybackReady={onVoicePlaybackReady}
                   isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
                   isSmartReplyAutoPending={
+                    item.message.role === "customer" &&
+                    !item.message.isOwnMessage &&
                     Boolean(
                       smartReplyAutoPendingByMessageId?.[
                         getSmartReplyLookupKey(item.message)
@@ -321,13 +323,19 @@ export function ChatMessageList({
                     )
                   }
                   isSmartReplyPending={
+                    item.message.role === "customer" &&
+                    !item.message.isOwnMessage &&
                     Boolean(
                       smartReplyPendingByMessageId?.[
                         getSmartReplyLookupKey(item.message)
                       ],
                     )
                   }
-                  smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
+                  smartReply={
+                    item.message.role === "customer" && !item.message.isOwnMessage
+                      ? smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]
+                      : undefined
+                  }
                 />
               </div>
             ),

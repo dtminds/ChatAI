@@ -1,8 +1,10 @@
 import {
   apiSuccess,
+  KbDocCreateBlankRequestSchema,
   KbDocCreateFaqRequestSchema,
   KbDocCreateImageRequestSchema,
   KbDocCreateRequestSchema,
+  type KbDocCreateBlankRequest,
   type KbDocCreateFaqRequest,
   type KbDocCreateImageRequest,
   type KbDocCreateRequest,
@@ -55,6 +57,23 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: KbDocCreateBlankRequest }>(
+    "/api/server/ai-hosting/kb-docs/create-blank-document",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KbDocCreateBlankRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await getKbDocService(app).createBlankKbDoc(getAgentKbTenant(request), request.body),
+      );
+    },
+  );
+
   app.post<{ Body: KbDocCreateFaqRequest }>(
     "/api/server/ai-hosting/kb-docs/create-faq",
     {
@@ -68,6 +87,23 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
 
       return apiSuccess(
         await getKbDocService(app).createKbFaqDoc(getAgentKbTenant(request), request.body),
+      );
+    },
+  );
+
+  app.post<{ Body: KbDocCreateBlankRequest }>(
+    "/api/server/ai-hosting/kb-docs/create-blank-faq",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KbDocCreateBlankRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await getKbDocService(app).createBlankKbFaqDoc(getAgentKbTenant(request), request.body),
       );
     },
   );

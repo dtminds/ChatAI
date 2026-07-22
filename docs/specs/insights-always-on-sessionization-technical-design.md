@@ -295,7 +295,7 @@ Repository 在现有 UID 任务领取方法上增加 `sessionize_uid` 分支：
 4. 批次完成后按最后一条消息更新具体 UID 复合水位。
 5. 洞察开启时执行现有 open-session Live 补偿扫描；随后处理该 UID 的到期会话。
 
-消息读取顺序、会话边界、迟到消息、消息归属写入和水位推进的现有实现均保持不变。本期不新增逐消息 claim 校验、transaction-scoped repository 或消息与水位原子重写。两类任务采用简单的重刷优先级：同 UID 存在已到执行时间的 `sync_messages pending/running` 时不领取 `sessionize_uid`；`sync_messages` 则等待已经 `running` 的 `sessionize_uid` 完成。互斥只收敛在现有候选领取查询，不新增锁表、分布式锁或长期持有的数据库锁。
+消息读取顺序、会话边界、迟到消息、消息归属写入和水位推进的现有实现均保持不变。本期不新增逐消息 claim 校验、transaction-scoped repository 或消息与水位原子重写。两类任务采用简单的重刷优先级：同 UID 存在已到执行时间的 `sync_messages pending/running` 时不领取 `sessionize_uid`；`sync_messages` 领取事务使用唯一幂等键 `sessionize_uid:{uid}` 锁定对应任务行，若其已经 `running` 则本轮不领取，否则在持有该短事务行锁时将 `sync_messages` 改为 `running`。互斥仅覆盖任务领取，不新增锁表、分布式锁或覆盖任务执行期的数据库锁。
 
 ### 6.4 到期处理与完成
 

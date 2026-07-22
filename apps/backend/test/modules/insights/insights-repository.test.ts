@@ -3608,23 +3608,27 @@ describe("MysqlInsightWorkerRepository", () => {
   it("claims historical rescan sync jobs from stored message timestamp watermarks", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
+    let selectCall = 0;
     const db = {
       transaction: vi.fn(),
       selectFrom: vi.fn((table: string) => {
         const builder = createSelectBuilder(
-          [
-            {
-              analysis_scope: "classification",
-              id: 702,
-              rescan_from_time: 1_780_272_000_000,
-              rescan_task_id: 9901,
-              rescan_to_time: 1_780_275_600_000,
-              target_id: "9001",
-              uid: 9001,
-            },
-          ],
+          selectCall === 0
+            ? [
+                {
+                  analysis_scope: "classification",
+                  id: 702,
+                  rescan_from_time: 1_780_272_000_000,
+                  rescan_task_id: 9901,
+                  rescan_to_time: 1_780_275_600_000,
+                  target_id: "9001",
+                  uid: 9001,
+                },
+              ]
+            : [{ status: "pending" }],
           table,
         );
+        selectCall += 1;
         builders.push(builder);
         return builder;
       }),
@@ -3654,7 +3658,53 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.whereRawCalls.join("\n")).toContain(
       "sessionization_job.status = 'running'",
     );
+    expect(builders[1]?.whereCalls).toContainEqual([
+      "idempotency_key",
+      "=",
+      "sessionize_uid:9001",
+    ]);
+    expect(builders[1]?.forUpdateCalls).toBe(1);
     expect(updateExecute).toHaveBeenCalled();
+  });
+
+  it("leaves a sync job pending while the same uid sessionization job is running", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let selectCall = 0;
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          selectCall === 0
+            ? [{
+                analysis_scope: "all",
+                id: 702,
+                rescan_task_id: null,
+                target_id: "1780272000000",
+                uid: 9001,
+              }]
+            : [{ status: "running" }],
+          table,
+        );
+        selectCall += 1;
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextSyncMessagesJob()).resolves.toBeUndefined();
+
+    expect(builders[1]?.whereCalls).toContainEqual([
+      "idempotency_key",
+      "=",
+      "sessionize_uid:9001",
+    ]);
+    expect(builders[1]?.forUpdateCalls).toBe(1);
+    expect(db.updateTable).not.toHaveBeenCalled();
   });
 
   it("claims sessionization uid jobs through the uid job skip-locked path", async () => {

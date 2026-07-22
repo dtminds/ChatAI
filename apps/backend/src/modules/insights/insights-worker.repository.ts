@@ -1338,6 +1338,17 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       }
 
       const uid = parseNumber(row.uid);
+      const sessionizationJob = await trx
+        .selectFrom("xy_wap_embed_insight_job")
+        .select("status")
+        .where("idempotency_key", "=", `${sessionizationUidJobType}:${uid}`)
+        .forUpdate()
+        .executeTakeFirst() as { status: string } | undefined;
+
+      if (sessionizationJob?.status === "running") {
+        return undefined;
+      }
+
       const claimed = await this.markUidJobRunning(trx, row.id, "sync_messages");
 
       if (!claimed) {

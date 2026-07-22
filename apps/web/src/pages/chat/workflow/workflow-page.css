@@ -6,17 +6,41 @@
  */
 
 .workflow-page {
-  --workflow-canvas-bg: #EFEFEF;
-  --workflow-grid: rgba(16, 24, 40, 0.36);
-  --workflow-edge: #9aa4b2;
-  --workflow-border: rgba(15, 23, 42, 0.12);
-  --workflow-soft: #f4f6f8;
-  --workflow-panel-bg: #ffffff;
-  --workflow-panel-bg-blur: rgba(255, 255, 255, 0.88);
-  --workflow-panel-section: #f7f8fa;
-  --workflow-param-bg: #f5f7fb;
-  --workflow-text-tertiary: #667085;
-  --workflow-blue: #155DFB;
+  color-scheme: light;
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 95%, var(--foreground));
+  --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
+  --workflow-edge: color-mix(in oklch, var(--foreground) 42%, var(--workflow-canvas-bg));
+  --workflow-border: color-mix(in oklch, var(--border) 82%, transparent);
+  --workflow-soft: var(--muted);
+  --workflow-panel-bg: var(--card);
+  --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 88%, transparent);
+  --workflow-panel-section: var(--accent);
+  --workflow-param-bg: var(--surface-muted);
+  --workflow-text-tertiary: var(--muted-foreground);
+  --workflow-node-card-border: #fff;
+  --workflow-node-card-border-width: 1px;
+  --workflow-node-handle-ring: #fff;
+  --workflow-node-accent-strong: 0.07;
+  --workflow-node-accent-soft: 0.03;
+  --workflow-control-active: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --workflow-divider: color-mix(in oklch, var(--foreground) 10%, transparent);
+  --workflow-blue: var(--primary);
+}
+
+.dark .workflow-page {
+  color-scheme: dark;
+  --workflow-canvas-bg: color-mix(in oklch, var(--background) 86%, black);
+  --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
+  --workflow-edge: color-mix(in oklch, var(--foreground) 38%, var(--workflow-canvas-bg));
+  --workflow-border: color-mix(in oklch, var(--border) 74%, transparent);
+  --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 90%, transparent);
+  --workflow-node-card-border: transparent;
+  --workflow-node-card-border-width: 0px;
+  --workflow-node-handle-ring: color-mix(in oklch, var(--foreground) 24%, var(--workflow-panel-bg));
+  --workflow-node-accent-strong: 0.08;
+  --workflow-node-accent-soft: 0.025;
+  --workflow-control-active: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --workflow-divider: color-mix(in oklch, var(--foreground) 14%, transparent);
 }
 
 .workflow-page .react-flow {
@@ -51,16 +75,16 @@
   border: 0.5px solid var(--workflow-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--background) 88%, transparent);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 12px 32px var(--shadow-medium);
   backdrop-filter: blur(8px);
 }
 
 .agent-workflow-canvas .react-flow__controls-button {
   width: 32px;
   height: 32px;
-  border-bottom-color: hsl(var(--border));
+  border-bottom-color: var(--border);
   background: transparent;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
 }
 
 .workflow-bottom-toolbar > .react-flow__minimap.workflow-minimap {
@@ -73,7 +97,7 @@
   border: 0.5px solid var(--workflow-border);
   border-radius: 8px;
   background: var(--background);
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 3px 10px var(--shadow-soft);
 }
 
 .agent-workflow-canvas .react-flow__attribution {
@@ -94,12 +118,12 @@
 .workflow-node-card {
   position: relative;
   width: 320px;
-  border: 1px solid #fff;
+  border: var(--workflow-node-card-border-width) solid var(--workflow-node-card-border);
   border-radius: 15px;
   background: var(--workflow-panel-bg);
   padding-bottom: 4px;
   box-shadow:
-    0 6px 14px -12px var(--shadow-strong)
+    0 6px 14px -12px var(--shadow-strong);
 }
 
 .workflow-node-card::before {
@@ -109,8 +133,8 @@
   border-radius: 14px 14px 0 0;
   background: linear-gradient(
     180deg,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.07) 0%,
-    rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0.03) 48%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / var(--workflow-node-accent-strong)) 0%,
+    rgb(var(--workflow-node-accent-rgb, 37 99 235) / var(--workflow-node-accent-soft)) 48%,
     rgb(var(--workflow-node-accent-rgb, 37 99 235) / 0) 100%
   );
   content: "";
@@ -137,7 +161,7 @@
 
 .workflow-node-select:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px hsl(var(--ring) / 0.28);
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--ring) 28%, transparent);
 }
 
 .workflow-node-actionbar {
@@ -162,7 +186,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #667085;
+  color: var(--workflow-text-tertiary);
   transition:
     background 150ms ease,
     color 150ms ease;
@@ -170,7 +194,7 @@
 
 .workflow-node-actionbar-button:hover,
 .workflow-node-actionbar-button[aria-expanded="true"] {
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--workflow-control-active);
   color: var(--workflow-blue);
 }
 
@@ -204,7 +228,7 @@
   box-sizing: border-box;
   width: 12px;
   height: 12px;
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--workflow-node-handle-ring);
   border-radius: 999px;
   background: var(--workflow-blue);
   content: "";
@@ -254,7 +278,7 @@
   border: 0.5px solid var(--workflow-border);
   border-radius: 8px;
   background: var(--workflow-panel-bg-blur);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 12px 32px var(--shadow-medium);
   color: var(--workflow-text-tertiary);
   font-size: 12px;
   line-height: 18px;
@@ -272,7 +296,7 @@
 }
 
 .workflow-node-handle-tip-title {
-  color: hsl(var(--foreground));
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -289,7 +313,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--workflow-blue);
-  color: #fff;
+  color: var(--primary-foreground);
   opacity: 0;
   pointer-events: none;
   transform: none;
@@ -316,8 +340,8 @@
 }
 
 .workflow-node-insert:hover {
-  background: #3d7dff;
-  color: #fff;
+  background: color-mix(in oklch, var(--workflow-blue) 88%, white);
+  color: var(--primary-foreground);
   transform: scale(1.125);
 }
 

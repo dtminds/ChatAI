@@ -13,7 +13,7 @@ import type {
   KbAttachmentUpdateResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
-import type { QuickReplyDraftAttachment } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
+import type { MessageDraftAttachment as QuickReplyDraftAttachment } from "@/pages/chat/components/message-content/message-attachment-picker";
 import { toKbAttachmentItem } from "@/pages/chat/ai-hosting/kb-components/kb-attachment-types";
 import { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
 

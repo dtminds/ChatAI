@@ -910,10 +910,10 @@ function KnowledgeDocumentChunkCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+          <span className="shrink-0 rounded-[6px] bg-surface-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
             #{displayIndex}
           </span>
-          <span className="min-w-0 truncate rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+          <span className="min-w-0 truncate rounded-[6px] bg-surface-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
             ID {displayChunkId}
           </span>
         </div>

@@ -62,7 +62,7 @@ export function WorkflowListCard({
   return (
     <article
       aria-labelledby={titleId}
-      className="relative flex flex-col rounded-lg border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm"
+      className="relative flex flex-col rounded-[14px] border bg-background p-4 shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_10px_24px_var(--shadow-soft)]"
     >
       <Badge className={cn("w-fit gap-1 rounded-md px-1.5 py-0.5", status.className)}>
         <HugeiconsIcon icon={status.icon} size={12} strokeWidth={1.8} />
@@ -72,7 +72,7 @@ export function WorkflowListCard({
       <div className="mt-2 min-w-0">
         <Link
           aria-label={`打开 ${workflow.name}`}
-          className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
+          className="after:absolute after:inset-0 after:rounded-[14px] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/40"
           to={`/chat/workflows/${workflow.id}`}
         >
           <h2 className="truncate text-base font-semibold" id={titleId}>{workflow.name}</h2>

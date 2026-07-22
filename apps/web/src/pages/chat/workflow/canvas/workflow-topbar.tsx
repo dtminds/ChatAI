@@ -199,7 +199,7 @@ export function WorkflowTopBar({
                 </span>
               )}
               {hasUnpublishedChanges ? (
-                <span className="inline-flex shrink-0 items-center gap-1 !rounded-[2px] bg-amber-50 px-1.5 py-0.5 text-amber-600">
+                <span className="inline-flex shrink-0 items-center gap-1 !rounded-[2px] bg-warning-muted px-1.5 py-0.5 text-warning">
                   <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={2} />
                   有尚未发布的修改
                 </span>
@@ -355,7 +355,7 @@ function getRuntimeStatusClassName(
   const ready = status === "paused" || (status === "inactive" && validatedForActivation);
   return cn(
     "shrink-0 rounded-md px-1.5 py-0.5",
-    status === "active" && "bg-emerald-50 text-emerald-700",
+    status === "active" && "bg-success-muted text-success",
     status === "inactive" && !ready && "bg-muted text-muted-foreground",
     ready && "bg-warning-muted text-warning",
     status === "stopped" && "bg-muted text-muted-foreground",

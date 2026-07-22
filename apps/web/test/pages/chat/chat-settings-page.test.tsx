@@ -2023,6 +2023,20 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("slider", { name: "质检抽样比例" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "媒体比例预览" })).toBeInTheDocument();
 
+    const surfaceRegression = screen.getByRole("region", {
+      name: "surface-muted 视觉回归",
+    });
+    for (const scenario of [
+      "搜索输入框",
+      "分段选择器",
+      "卡片内部 Block",
+      "选中行与 Hover",
+      "消息与占位",
+      "按钮与禁用态",
+    ]) {
+      expect(within(surfaceRegression).getByRole("region", { name: scenario })).toBeInTheDocument();
+    }
+
     await user.click(screen.getByRole("button", { name: "打开右侧抽屉" }));
 
     expect(screen.getByRole("dialog", { name: "编辑账号详情" })).toBeInTheDocument();

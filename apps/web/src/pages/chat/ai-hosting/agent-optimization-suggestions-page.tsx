@@ -1361,7 +1361,7 @@ function KnowledgeComparison({
 
   const documents = searchResults.map((result) => (
     <span
-      className="flex min-w-0 items-center gap-1.5 rounded-[4px] bg-muted px-2 py-0.5 text-[13px] font-normal text-foreground mix-blend-multiply [.dark_&]:mix-blend-normal"
+      className="flex min-w-0 items-center gap-1.5 rounded-[4px] bg-surface-muted px-2 py-0.5 text-[13px] font-normal text-foreground mix-blend-multiply [.dark_&]:mix-blend-normal"
       key={`${result.kbId}:${result.docId}`}
       title={result.docName}
     >
@@ -1374,7 +1374,7 @@ function KnowledgeComparison({
       <TooltipTrigger asChild>
         <Button
           aria-label="知识对比详情"
-          className="size-6 shrink-0 rounded-[4px] bg-muted p-0 text-muted-foreground shadow-none mix-blend-multiply hover:bg-muted/80 hover:text-foreground [.dark_&]:mix-blend-normal"
+          className="size-6 shrink-0 rounded-[4px] bg-surface-muted p-0 text-muted-foreground shadow-none mix-blend-multiply hover:bg-surface-muted/80 hover:text-foreground [.dark_&]:mix-blend-normal"
           onClick={onClick}
           size="icon"
           type="button"

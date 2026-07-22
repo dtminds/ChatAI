@@ -328,7 +328,7 @@ export function AgentManagementPage() {
       <div className="space-y-6">
         <AiHostingPageHeader
           description="创建和管理负责客户接待的智能体"
-          title="Agent 管理"
+          title="Agent"
         />
 
         <AiHostingIntroGuide ariaLabel="Agent 使用引导" steps={agentIntroSteps} />

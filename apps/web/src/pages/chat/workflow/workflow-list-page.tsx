@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
+import {
+  AiHostingLayout,
+  AiHostingPageHeader,
+} from "../ai-hosting/ai-hosting-layout";
 import {
   getWorkflowDraftRepository,
 } from "./workflow-draft-service";
@@ -190,24 +193,22 @@ export function WorkflowListPage({
   return (
     <AiHostingLayout title="Workflow">
       <section className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-normal">Workflow</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              管理营销旅程
-            </p>
-          </div>
-          <Button
-            className="h-9 gap-1.5 rounded-lg px-3 text-sm"
-            onClick={() => {
-              setOperationError(null);
-              setCreateDialogOpen(true);
-            }}
-          >
-            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-            新建 Workflow
-          </Button>
-        </div>
+        <AiHostingPageHeader
+          actions={(
+            <Button
+              className="h-9 gap-1.5 rounded-lg px-3 text-sm"
+              onClick={() => {
+                setOperationError(null);
+                setCreateDialogOpen(true);
+              }}
+            >
+              <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
+              新建 Workflow
+            </Button>
+          )}
+          description="管理营销旅程"
+          title="工作流"
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs

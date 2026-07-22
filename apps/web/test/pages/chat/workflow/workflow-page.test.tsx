@@ -507,12 +507,13 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/workflows");
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Workflow" }),
+      await screen.findByRole("heading", { level: 1, name: "工作流" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Workflow" })).toHaveAttribute(
-      "href",
-      "/chat/workflows",
-    );
+    expect(
+      screen
+        .getAllByRole("link")
+        .find((link) => link.getAttribute("href") === "/chat/workflows"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索 Workflow" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建 Workflow" })).toBeInTheDocument();
     expect(screen.getByText("新人转化旅程")).toBeInTheDocument();

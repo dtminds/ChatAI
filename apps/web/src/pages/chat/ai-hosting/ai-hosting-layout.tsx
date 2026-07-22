@@ -28,12 +28,12 @@ const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 const aiHostingNavItems = [
   {
     icon: RoboticIcon,
-    label: "Agent 管理",
+    label: "Agent",
     to: "/chat/ai-hosting/agents",
   },
   {
     icon: WorkflowSquare06Icon,
-    label: "Workflow",
+    label: "工作流",
     to: "/chat/workflows",
   },
   {

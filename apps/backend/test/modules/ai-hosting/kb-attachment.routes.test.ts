@@ -232,6 +232,37 @@ describe("ai-hosting kb-attachment routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("forwards a target attachment display chunk id to Java", async () => {
+    const fetchMock = mockJavaFetch({
+      count: 0,
+      error: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+      success: true,
+    });
+    const context = await createAuthenticatedApp("viewer", {
+      includeAttachmentDoc: true,
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs/1/attachments?docId=1005&chunkId=20260717105032070-6",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1005,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+      volcChunkId: "attachment_id_9001_1005_20260717105032070-6",
+    });
+    fetchMock.mockRestore();
+  });
+
   it("creates attachment via Java with attachmentIds", async () => {
     const fetchMock = mockJavaFetch({
       data: 503,

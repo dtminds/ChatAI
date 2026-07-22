@@ -1,4 +1,6 @@
 import type {
+  AiHostingAgentAutoLearnUpdateRequest,
+  AiHostingAgentAutoLearnUpdateResponse,
   AiHostingAgentDetail,
   AiHostingAgentListResponse,
   AiHostingAgentRenameRequest,
@@ -8,6 +10,7 @@ import type {
   AiHostingAgentTestRequest,
   AiHostingAgentTestResponse,
   AiHostingQuotaOverview,
+  AiHostingGroupSettingsUpdateRequest,
   AiHostingSettingsResponse,
   AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
@@ -77,6 +80,15 @@ export async function updateAiHostingSettings(payload: AiHostingSettingsUpdateRe
   return response.data;
 }
 
+export async function updateAiHostingGroupSettings(payload: AiHostingGroupSettingsUpdateRequest) {
+  const response = await http.put<
+    ApiSuccessEnvelope<AiHostingSettingsResponse>,
+    AiHostingGroupSettingsUpdateRequest
+  >("/server/ai-hosting/group-hosting-settings", payload);
+
+  return response.data;
+}
+
 export async function getAiHostingAgent(agentId: string) {
   const response = await http.get<ApiSuccessEnvelope<AiHostingAgentDetail>>(
     `/server/ai-hosting/agents/${agentId}`,
@@ -114,6 +126,18 @@ export async function renameAiHostingAgent(
     ApiSuccessEnvelope<AiHostingAgentDetail>,
     AiHostingAgentRenameRequest
   >(`/server/ai-hosting/agents/${agentId}/name`, payload);
+
+  return response.data;
+}
+
+export async function updateAiHostingAgentAutoLearn(
+  agentId: string,
+  payload: AiHostingAgentAutoLearnUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<AiHostingAgentAutoLearnUpdateResponse>,
+    AiHostingAgentAutoLearnUpdateRequest
+  >(`/server/ai-hosting/agents/${agentId}/auto-learn`, payload);
 
   return response.data;
 }

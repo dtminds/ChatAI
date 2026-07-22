@@ -1,7 +1,7 @@
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
 import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 
-export type ConversationView = "all" | "ai" | "human" | "unread";
+export type ConversationView = "all" | "ai" | "human" | "read-unreplied" | "unread";
 
 export const DEFAULT_CONVERSATION_VIEW = "all" satisfies ConversationView;
 
@@ -15,6 +15,10 @@ const BASE_VIEW_OPTIONS = [
   { label: "未读", value: "unread" },
 ] as const satisfies readonly ConversationViewOption[];
 
+const SINGLE_VIEW_OPTIONS = [
+  { label: "已读未回", value: "read-unreplied" },
+] as const satisfies readonly ConversationViewOption[];
+
 const SINGLE_AI_VIEW_OPTIONS = [
   { label: "人工接待", value: "human" },
   { label: "AI托管", value: "ai" },
@@ -24,11 +28,15 @@ export function getConversationViewOptions(
   mode: ChatMode,
   isSeatAIHostingEnabled: boolean,
 ): ConversationViewOption[] {
-  if (mode !== "single" || !isSeatAIHostingEnabled) {
+  if (mode !== "single") {
     return [...BASE_VIEW_OPTIONS];
   }
 
-  return [...BASE_VIEW_OPTIONS, ...SINGLE_AI_VIEW_OPTIONS];
+  if (!isSeatAIHostingEnabled) {
+    return [...BASE_VIEW_OPTIONS, ...SINGLE_VIEW_OPTIONS];
+  }
+
+  return [...BASE_VIEW_OPTIONS, ...SINGLE_VIEW_OPTIONS, ...SINGLE_AI_VIEW_OPTIONS];
 }
 
 export function isConversationViewAvailable(
@@ -104,6 +112,15 @@ function isConversationIncludedInView(
       return conversation.unread > 0;
     }
 
+    if (resolvedView === "read-unreplied") {
+      return (
+        conversation.unread === 0 &&
+        conversation.replied === false &&
+        Boolean(conversation.lastMessageId) &&
+        conversation.customerBindType !== 2
+      );
+    }
+
     if (resolvedView === "ai") {
       return isConversationAIHostingEnabled(conversation, isSeatAIHostingEnabled);
     }
@@ -119,7 +136,7 @@ function isConversationIncludedInView(
 }
 
 export function getConversationViewLabel(view: ConversationView) {
-  return [...BASE_VIEW_OPTIONS, ...SINGLE_AI_VIEW_OPTIONS].find(
+  return [...BASE_VIEW_OPTIONS, ...SINGLE_VIEW_OPTIONS, ...SINGLE_AI_VIEW_OPTIONS].find(
     (option) => option.value === view,
   )?.label ?? "全部";
 }

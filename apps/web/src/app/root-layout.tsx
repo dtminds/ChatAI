@@ -2,10 +2,8 @@ import { useEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Toaster } from "@/components/ui/sonner";
-import {
-  applyAppearanceTheme,
-  getInitialAppearanceTheme,
-} from "@/lib/appearance-theme";
+import { useAppearancePreferences } from "@/hooks/use-appearance-preferences";
+import { buildLoginRedirectPath } from "@/pages/auth/auth-redirect";
 import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
@@ -14,6 +12,8 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export function RootLayout() {
+  useAppearancePreferences();
+
   const location = useLocation();
   const clearSession = useAuthStore((state) => state.clearSession);
   const checkedPath = useAuthStore((state) => state.checkedPath);
@@ -35,10 +35,6 @@ export function RootLayout() {
   useEffect(() => {
     authSubUserIdRef.current = subUserId;
   }, [subUserId]);
-
-  useEffect(() => {
-    applyAppearanceTheme(getInitialAppearanceTheme());
-  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -138,7 +134,7 @@ export function RootLayout() {
   }
 
   if (!isPublicPath && status === "anonymous") {
-    return <Navigate replace state={{ from: location }} to="/login" />;
+    return <Navigate replace to={buildLoginRedirectPath(location)} />;
   }
 
   return (

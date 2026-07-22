@@ -38,8 +38,10 @@ export type ListKbDocsParams = {
 };
 
 export type ListKbDocChunksParams = {
+  chunkId?: string;
   content?: string;
   docType: KbDocType;
+  entryId?: string;
   page?: number;
   pageSize?: number;
   title?: string;

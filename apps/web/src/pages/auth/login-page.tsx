@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
+import { resolveLoginRedirect } from "./auth-redirect";
 import { login } from "./auth-service";
 import { notifyAuthSessionChanged } from "./auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
@@ -42,6 +43,7 @@ export function LoginPage() {
 function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const accountId = useId();
   const passwordId = useId();
+  const location = useLocation();
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,7 +85,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
       shouldResetSubmitting = false;
       setSession(response.data.subUser);
       notifyAuthSessionChanged();
-      navigate("/chat", { replace: true });
+      navigate(resolveLoginRedirect(location.search), { replace: true });
     } catch (error) {
       if (!isMountedRef.current) {
         return;

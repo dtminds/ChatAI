@@ -19,6 +19,8 @@ See [LICENSE](LICENSE) for the full terms.
 
 backend 工作台路由默认依赖 MySQL 和 Java 写侧接口，缺少关键配置时应视为不可用。
 
+群聊「AI 对话」入口依赖席位总开关「允许开启 AI回复」：总开关关闭时，工作台不再展示该入口（即使某个群之前单独开过）。
+
 ## 技术栈
 
 - Monorepo：pnpm workspace

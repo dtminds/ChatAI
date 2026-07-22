@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
@@ -7,6 +7,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 const conversation: Conversation = {
   accountId: "account-1",
   conversationAIHostingSwitch: false,
+  handoffMsgId: 0,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -37,59 +38,6 @@ describe("ConversationCard", () => {
     expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
       "[草稿]还没发出去",
     );
-  });
-
-  it("renders takeover reminder previews with a separate label and body", () => {
-    render(
-      <ConversationCard
-        conversation={{
-          ...conversation,
-          preview: "[接管提醒]请及时接管",
-          previewParts: [
-            {
-              kind: "takeover-reminder",
-              text: "[接管提醒]",
-              tone: "danger",
-            },
-            {
-              text: "请及时接管",
-            },
-          ],
-        }}
-        isActive={false}
-        onSelect={vi.fn()}
-      />,
-    );
-
-    const preview = screen.getByTestId("conversation-preview");
-
-    expect(
-      within(preview).getByTestId("conversation-preview-part-takeover-reminder"),
-    ).toHaveTextContent("[接管提醒]");
-    expect(
-      within(preview).getByTestId("conversation-preview-part-1"),
-    ).toHaveTextContent("请及时接管");
-    expect(preview).toHaveTextContent("[接管提醒]请及时接管");
-  });
-
-  it("does not render takeover reminder labels without the preview marker", () => {
-    render(
-      <ConversationCard
-        conversation={{
-          ...conversation,
-          preview: "[接管提醒]，请及时接管",
-        }}
-        isActive={false}
-        onSelect={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
-      "[接管提醒]，请及时接管",
-    );
-    expect(
-      screen.queryByTestId("conversation-preview-part-takeover-reminder"),
-    ).not.toBeInTheDocument();
   });
 
   it("keeps showing unread badges for active conversations until unread reaches zero", () => {
@@ -186,6 +134,76 @@ describe("ConversationCard", () => {
     expect(container.querySelector("[aria-label='AI托管'] svg")).toBeInTheDocument();
     expect(
       container.querySelector("[aria-label='AI托管'] [class*='mask-image']"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a takeover reminder prefix when handoffMsgId is positive", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          mode: "group",
+          preview:
+            "Agent 转人工处理：客户明确要求转人工，同时存在不满情绪，符合handoff规则",
+          handoffMsgId: 9001,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("conversation-handoff-takeover-prefix"),
+    ).toHaveTextContent("[接管提醒]");
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "[接管提醒]客户明确要求转人工，同时存在不满情绪，符合handoff规则",
+    );
+  });
+
+  it("hides takeover reminder prefix when handoffMsgId is zero", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          preview: "Agent 转人工处理：客户明确要求转人工",
+          handoffMsgId: 0,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("conversation-handoff-takeover-prefix"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "Agent 转人工处理：客户明确要求转人工",
+    );
+  });
+
+  it("prefers draft preview over the takeover reminder", () => {
+    render(
+      <ConversationCard
+        composerDraft={{
+          draft: "还没发出去",
+          quotedMessage: null,
+          segments: [{ text: "还没发出去", type: "text" }],
+        }}
+        conversation={{
+          ...conversation,
+          preview: "Agent 转人工处理：客户明确要求转人工",
+          handoffMsgId: 9001,
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-draft-prefix")).toHaveTextContent(
+      "[草稿]",
+    );
+    expect(
+      screen.queryByTestId("conversation-handoff-takeover-prefix"),
     ).not.toBeInTheDocument();
   });
 

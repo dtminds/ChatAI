@@ -10,6 +10,7 @@ import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchConversationFullAutoResponse,
+  WorkbenchConversationClearHandoffResponse,
   WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
@@ -506,6 +507,12 @@ export async function changeConversationFullAuto(
   return getWorkbenchService().changeConversationFullAuto(conversationId, {
     enabled,
   });
+}
+
+export async function clearConversationHandoff(
+  conversationId: string,
+): Promise<WorkbenchConversationClearHandoffResponse> {
+  return getWorkbenchService().clearConversationHandoff(conversationId);
 }
 
 export async function updateSeatAgentMode(

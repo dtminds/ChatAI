@@ -14,6 +14,7 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
+  type WorkbenchConversationClearHandoffResponse,
   type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
@@ -228,6 +229,9 @@ export type WorkbenchService = {
     conversationId: string,
     request: { enabled: boolean },
   ) => Promise<WorkbenchConversationFullAutoResponse>;
+  clearConversationHandoff: (
+    conversationId: string,
+  ) => Promise<WorkbenchConversationClearHandoffResponse>;
   updateSeatAgentMode: (
     seatId: string,
     request: WorkbenchSeatAgentModeSwitchRequest,
@@ -1676,6 +1680,26 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
+    async clearConversationHandoff(conversationId) {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new Error("Conversation not found");
+      }
+
+      const nextConversation = {
+        ...conversation,
+        handoffMsgId: 0,
+      };
+
+      upsertConversation(state, nextConversation);
+      pushConversationEvent(state, nextConversation);
+
+      return {
+        conversationId,
+        seatId: conversation.seatId,
+      };
+    },
     async updateSeatAgentMode(seatId, request) {
       const seat = state.seats.find((item) => item.seatId === seatId);
 
@@ -1897,7 +1921,12 @@ export function createMockWorkbenchService(): WorkbenchService {
       const nextConversation = {
         ...conversation,
         lastMessage: getPayloadPreview(segments),
+        lastMessageId:
+          outcome.status === "sent"
+            ? backendMessages.at(-1)?.seq
+            : conversation.lastMessageId,
         lastMessageTime: now,
+        replied: outcome.status === "sent" ? true : conversation.replied,
       };
 
       upsertConversation(state, nextConversation);
@@ -1977,14 +2006,17 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: existingConversation.conversationId,
           conversationAIHostingSwitch:
             existingConversation.conversationAIHostingSwitch ?? false,
+          handoffMsgId: existingConversation.handoffMsgId,
           customerAvatar: existingConversation.customerAvatar,
           customerBindType: existingConversation.customerBindType,
           customerId: existingConversation.customerId,
           customerName: existingConversation.customerName,
           lastMessage: existingConversation.lastMessage,
+          lastMessageId: existingConversation.lastMessageId,
           lastMessageTime: existingConversation.lastMessageTime,
           mode: existingConversation.mode,
           priority: existingConversation.priority,
+          replied: existingConversation.replied,
           seatId: existingConversation.seatId,
           thirdExternalUserId: existingConversation.thirdExternalUserId,
           thirdGroupId: existingConversation.thirdGroupId,
@@ -2000,6 +2032,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         bizStatus: 1,
         conversationId,
         conversationAIHostingSwitch: false,
+        handoffMsgId: 0,
         customerAvatar: "",
         customerBindType: payload.chatType === 2 ? undefined : 1,
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
@@ -2008,6 +2041,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         lastMessageTime: now,
         mode: payload.chatType === 2 ? "group" : "single",
         priority: "medium",
+        replied: false,
         seatId: payload.seatId,
         thirdExternalUserId: payload.thirdExternalUserId,
         thirdGroupId: payload.thirdGroupId,
@@ -2456,6 +2490,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
         request,
       );
     },
+    clearConversationHandoff(conversationId) {
+      return http.post<WorkbenchConversationClearHandoffResponse>(
+        `/server/conversations/${conversationId}/handoff/clear`,
+      );
+    },
     updateSeatAgentMode(seatId, request) {
       return http.patch<
         WorkbenchSeatAgentModeSwitchResponse,
@@ -2767,6 +2806,7 @@ function buildInitialState(): MockState {
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
           conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
+          handoffMsgId: conversation.handoffMsgId,
           customerAvatar: conversation.customerAvatarUrl,
           customerBindType:
             conversation.mode === "single"
@@ -2775,10 +2815,12 @@ function buildInitialState(): MockState {
           customerId: conversation.customerId,
           customerName: conversation.customerName,
           lastMessage: conversation.preview,
+          lastMessageId: conversation.preview ? 1 : undefined,
           lastMessageTime: new Date(conversation.updatedAt.replace(" ", "T")).getTime(),
           isPinned: conversation.isPinned,
           mode: conversation.mode,
           priority: conversation.priority,
+          replied: conversation.replied ?? true,
           unreadCount: conversation.unread,
           thirdUserId: `third-user-${seatId}`,
           ...(conversation.mode === "group"
@@ -2802,6 +2844,8 @@ function buildInitialState(): MockState {
     semiAutoAuth: true,
     semiAutoSwitch: true,
     seatAIAssistantEnabled: true,
+    seatGroupAIHostingEnabled: true,
+    seatGroupAIAssistantEnabled: true,
     unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 

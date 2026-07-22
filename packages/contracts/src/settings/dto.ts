@@ -1,6 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { AccountRoleSchema } from "../auth/dto.js";
 
+const PositiveIntegerStringSchema = Type.String({ pattern: "^[1-9]\\d*$" });
+
 export const SettingsSubAccountStatusSchema = Type.Union([
   Type.Literal("active"),
   Type.Literal("disabled"),
@@ -70,6 +72,63 @@ export const SettingsManagedAccountSyncSeatGroupsRequestSchema = Type.Object({
 
 export const SettingsManagedAccountSyncSeatGroupsResponseSchema = Type.Object({
   synced: Type.Boolean(),
+});
+
+export const SettingsGroupChatOpeningManagedAccountSchema = Type.Object({
+  avatarUrl: Type.String(),
+  id: Type.String(),
+  name: Type.String(),
+});
+
+export const SettingsGroupChatReceptionManagedAccountSchema =
+  SettingsGroupChatOpeningManagedAccountSchema;
+
+export const SettingsGroupChatSchema = Type.Object({
+  avatarUrl: Type.String(),
+  id: Type.String(),
+  name: Type.String(),
+  openingManagedAccount: SettingsGroupChatOpeningManagedAccountSchema,
+  receptionManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
+  receptionSeatCount: Type.Integer({ minimum: 0 }),
+  thirdGroupId: Type.String(),
+});
+
+export const SettingsGroupChatFilterManagedAccountSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+});
+
+export const SettingsGroupChatsResponseSchema = Type.Object({
+  filterManagedAccounts: Type.Array(SettingsGroupChatFilterManagedAccountSchema),
+  groupChats: Type.Array(SettingsGroupChatSchema),
+  page: Type.Integer({ minimum: 1 }),
+  pageSize: Type.Integer({ minimum: 1 }),
+  total: Type.Integer({ minimum: 0 }),
+  totalPages: Type.Integer({ minimum: 1 }),
+});
+
+export const SettingsGroupChatsQuerySchema = Type.Object({
+  keyword: Type.Optional(Type.String()),
+  managedAccountId: Type.Optional(PositiveIntegerStringSchema),
+  page: Type.Optional(Type.Integer({ minimum: 1 })),
+  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+}, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionOptionsRequestSchema = Type.Object({
+  groupChatIds: Type.Array(PositiveIntegerStringSchema, { minItems: 1, maxItems: 50 }),
+}, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionOptionsResponseSchema = Type.Object({
+  availableManagedAccounts: Type.Array(SettingsGroupChatReceptionManagedAccountSchema),
+});
+
+export const SettingsGroupChatReceptionUpdateRequestSchema = Type.Object({
+  groupChatId: PositiveIntegerStringSchema,
+  hostUserSeatIds: Type.Array(PositiveIntegerStringSchema),
+}, { additionalProperties: false });
+
+export const SettingsGroupChatReceptionUpdateResponseSchema = Type.Object({
+  updated: Type.Boolean(),
 });
 
 export const SettingsSubAccountCreateRequestSchema = Type.Object({
@@ -165,6 +224,30 @@ export type SettingsManagedAccountSyncSeatGroupsRequest = Static<
 >;
 export type SettingsManagedAccountSyncSeatGroupsResponse = Static<
   typeof SettingsManagedAccountSyncSeatGroupsResponseSchema
+>;
+export type SettingsGroupChatOpeningManagedAccount = Static<
+  typeof SettingsGroupChatOpeningManagedAccountSchema
+>;
+export type SettingsGroupChatReceptionManagedAccount = Static<
+  typeof SettingsGroupChatReceptionManagedAccountSchema
+>;
+export type SettingsGroupChat = Static<typeof SettingsGroupChatSchema>;
+export type SettingsGroupChatFilterManagedAccount = Static<
+  typeof SettingsGroupChatFilterManagedAccountSchema
+>;
+export type SettingsGroupChatsResponse = Static<typeof SettingsGroupChatsResponseSchema>;
+export type SettingsGroupChatsQuery = Static<typeof SettingsGroupChatsQuerySchema>;
+export type SettingsGroupChatReceptionOptionsRequest = Static<
+  typeof SettingsGroupChatReceptionOptionsRequestSchema
+>;
+export type SettingsGroupChatReceptionOptionsResponse = Static<
+  typeof SettingsGroupChatReceptionOptionsResponseSchema
+>;
+export type SettingsGroupChatReceptionUpdateRequest = Static<
+  typeof SettingsGroupChatReceptionUpdateRequestSchema
+>;
+export type SettingsGroupChatReceptionUpdateResponse = Static<
+  typeof SettingsGroupChatReceptionUpdateResponseSchema
 >;
 export type SettingsSubAccountCreateRequest = Static<
   typeof SettingsSubAccountCreateRequestSchema

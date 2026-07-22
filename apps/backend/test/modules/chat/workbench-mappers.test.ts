@@ -21,6 +21,8 @@ describe("workbench MySQL mappers", () => {
         expire_time: 1778240000,
         full_auto_auth: 1,
         full_auto_switch: 1,
+        group_full_auto_auth: 1,
+        group_semi_auto_auth: 1,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
@@ -42,6 +44,8 @@ describe("workbench MySQL mappers", () => {
       expireTime: 1778240000,
       seatAIHostingAuth: true,
       fullAutoSwitch: true,
+      seatGroupAIHostingEnabled: true,
+      seatGroupAIAssistantEnabled: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",
@@ -66,13 +70,16 @@ describe("workbench MySQL mappers", () => {
         customer_bind_type: 1,
         customer_name: "客户备注",
         full_auto_switch: 1,
+        handoff_msg_id: 9001,
         group_avatar: "",
         group_name: "",
         id: 88,
+        last_audit_info_id: 9002,
         last_message_content: "最近一条文本",
         last_message_type: "text",
         last_msgtime: 1778240100000,
         pinned_time: 0,
+        reply: 0,
         seat_id: 12,
         third_external_userid: "external-1",
         third_group_id: "",
@@ -84,12 +91,15 @@ describe("workbench MySQL mappers", () => {
     expect(conversation).toMatchObject({
       conversationId: "88",
       conversationAIHostingSwitch: true,
+      handoffMsgId: 9001,
       customerAvatar: "https://example.com/customer.png",
       customerBindType: 1,
       customerId: "external-1",
       customerName: "客户备注",
       lastMessage: "最近一条文本",
+      lastMessageId: 9002,
       mode: "single",
+      replied: false,
       seatId: "12",
       thirdExternalUserId: "external-1",
       thirdUserId: "third-user-1",
@@ -231,6 +241,58 @@ describe("workbench MySQL mappers", () => {
     });
 
     expect(conversation.bizStatus).toBe(0);
+  });
+
+  it("marks group conversations with an opening member as shadow groups", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "",
+        group_name: "影子群",
+        id: 89,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-001",
+        third_group_origin_userid: "opening-seat-001",
+        third_userid: "reception-seat-001",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      isShadowGroup: true,
+      mode: "group",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "",
+        group_name: "普通群",
+        id: 90,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-002",
+        third_group_origin_userid: "",
+        third_userid: "reception-seat-001",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      isShadowGroup: false,
+      mode: "group",
+    });
   });
 
   it("does not fall back to customer or group ids for display names", () => {
@@ -405,10 +467,8 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
-  it("formats agent handoff system previews as takeover reminders", () => {
-    const conversationRow = (
-      overrides: Partial<Parameters<typeof mapConversationRow>[0]>,
-    ) =>
+  it("keeps Agent handoff system messages as ordinary conversation previews", () => {
+    expect(
       mapConversationRow({
         chat_type: 1,
         create_time: null,
@@ -427,54 +487,10 @@ describe("workbench MySQL mappers", () => {
         third_userid: "third-user-1",
         unread_cnt: 0,
         verified: 0,
-        ...overrides,
-      });
-
-    const reminderPart = {
-      kind: "takeover-reminder",
-      text: "[接管提醒]",
-      tone: "danger",
-    };
-
-    for (const content of [
-      "Agent 转人工处理：请及时接管",
-      "Agent 转人工处理：请及时接管\n",
-    ]) {
-      expect(
-        conversationRow({
-          last_message_content: content,
-          last_message_type: "system",
-        }),
-      ).toMatchObject({
-        lastMessage: "[接管提醒]请及时接管",
-        lastMessagePreviewParts: [
-          reminderPart,
-          {
-            text: "请及时接管",
-          },
-        ],
-      });
-    }
-
-    expect(
-      conversationRow({
-        last_message_content: "Agent 转人工处理： \n",
-        last_message_type: "system",
       }),
     ).toMatchObject({
-      lastMessage: "[接管提醒]",
-      lastMessagePreviewParts: [reminderPart],
-    });
-
-    const textPreviewConversation = conversationRow({
-      last_message_content: "Agent 转人工处理：请及时接管",
-      last_message_type: "text",
-    });
-
-    expect(textPreviewConversation).toMatchObject({
       lastMessage: "Agent 转人工处理：请及时接管",
     });
-    expect(textPreviewConversation).not.toHaveProperty("lastMessagePreviewParts");
   });
 
   it("does not coerce conversations without a last message time to epoch", () => {
@@ -1084,6 +1100,56 @@ describe("workbench MySQL mappers", () => {
     ]);
   });
 
+  it("maps shadow group own messages by reception third_userid, not origin partition", () => {
+    expect(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "reception-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "group-member-1",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          conversation_third_userid: "reception-seat-001",
+          from_type: null,
+          third_from_id: "opening-seat-001",
+          third_group_id: "group-1",
+          third_user_id: "opening-seat-001",
+        }),
+      ].map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderType: "agent",
+        thirdFromId: "reception-seat-001",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "group-member-1",
+        thirdUserId: "opening-seat-001",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "opening-seat-001",
+        thirdUserId: "opening-seat-001",
+      },
+    ]);
+  });
+
   it("maps group messages with missing sender identifiers without throwing", () => {
     expect(
       mapMessageRow(messageRow({
@@ -1287,6 +1353,7 @@ describe("workbench MySQL mappers", () => {
         last_message_content: "",
         last_message_type: "text",
         full_auto_switch: 0,
+        handoff_msg_id: 0,
         last_msgtime: "2026-05-09T08:31:00.000Z",
         pinned_time: 0,
         seat_id: 12,
@@ -1297,6 +1364,7 @@ describe("workbench MySQL mappers", () => {
       }),
     ).toMatchObject({
       conversationAIHostingSwitch: false,
+      handoffMsgId: 0,
       lastMessageTime: 1778315460000,
     });
 

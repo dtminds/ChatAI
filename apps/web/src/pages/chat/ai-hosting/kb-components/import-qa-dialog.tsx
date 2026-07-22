@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import {
   FileUploadDropzone,
   FileUploadSelectedFile,
@@ -28,7 +29,13 @@ import {
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
-import { importKbQaDoc, getKbQaDocSuffix } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  createBlankKbFaqDoc,
+  importKbQaDoc,
+  getKbQaDocSuffix,
+} from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -55,11 +62,13 @@ async function readAllQaImportSheets(file: File): Promise<Sheet[]> {
 }
 
 export function ImportQaDialog({
+  defaultAddMethod = "file",
   kbId,
   onImportComplete,
   onOpenChange,
   open,
 }: {
+  defaultAddMethod?: "file" | "new";
   kbId: string;
   onImportComplete?: (result: {
     docId: string;
@@ -76,6 +85,8 @@ export function ImportQaDialog({
     useAsyncValidation();
   const isMountedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [addMethod, setAddMethod] = useState<"file" | "new">(defaultAddMethod);
+  const [blankName, setBlankName] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -88,6 +99,8 @@ export function ImportQaDialog({
   function reset() {
     abortControllerRef.current?.abort();
     invalidateValidation();
+    setAddMethod(defaultAddMethod);
+    setBlankName("");
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);
@@ -106,8 +119,54 @@ export function ImportQaDialog({
   useEffect(() => {
     if (!open) {
       reset();
+      return;
     }
-  }, [open]);
+
+    setAddMethod(defaultAddMethod);
+    setBlankName("");
+  }, [defaultAddMethod, open]);
+
+  async function handleCreateBlank() {
+    const name = blankName.trim();
+
+    if (!name || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const result = await createBlankKbFaqDoc({
+        kbId,
+        name,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success("已创建");
+      onImportComplete?.({
+        docId: result.docId,
+        docSuffix: "faq.xlsx",
+        docUrl: "",
+        entries: [],
+        name,
+        url: "",
+      });
+      onOpenChange(false);
+    } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.error(isRequestError(error) ? error.message : "创建失败");
+    } finally {
+      if (isMountedRef.current) {
+        setIsImporting(false);
+      }
+    }
+  }
 
   async function handleImport() {
     if (!selectedFile || isImporting) {
@@ -309,13 +368,64 @@ export function ImportQaDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>批量导入问答</DialogTitle>
+          <DialogTitle>添加问答知识</DialogTitle>
           <DialogDescription className="sr-only">
             上传 Excel 文件批量导入问答
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">选择添加方式</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                className={cn(
+                  "h-auto items-start justify-start rounded-[8px] border p-4 text-left",
+                  addMethod === "file"
+                    ? "border-primary bg-primary/5 hover:bg-primary/5"
+                    : "border-border bg-background",
+                )}
+                onClick={() => {
+                  setAddMethod("file");
+                  setBlankName("");
+                  clearSelectedFile();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-foreground">从本地文件导入</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    已有整理好的问答内容，可通过文件批量导入
+                  </span>
+                </span>
+              </Button>
+              <Button
+                className={cn(
+                  "h-auto items-start justify-start rounded-[8px] border p-4 text-left",
+                  addMethod === "new"
+                    ? "border-primary bg-primary/5 hover:bg-primary/5"
+                    : "border-border bg-background",
+                )}
+                onClick={() => {
+                  setAddMethod("new");
+                  setBlankName("");
+                  clearSelectedFile();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-foreground">新建</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    先创建空的问答知识，创建后可随时添加内容
+                  </span>
+                </span>
+              </Button>
+            </div>
+          </div>
+          {addMethod === "file" ? (
+            <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted/60 text-sm">
@@ -422,6 +532,22 @@ export function ImportQaDialog({
               onClear={clearSelectedFile}
             />
           ) : null}
+            </>
+          ) : null}
+          {addMethod === "new" ? (
+            <div className="space-y-2">
+              <Label htmlFor="qa-blank-name">
+                知识名称 <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="qa-blank-name"
+                maxLength={100}
+                onChange={(event) => setBlankName(event.target.value)}
+                placeholder="请输入知识名称"
+                value={blankName}
+              />
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -434,11 +560,22 @@ export function ImportQaDialog({
             取消
           </Button>
           <Button
-            disabled={!selectedFile || isCheckingFile || isImporting}
-            onClick={() => void handleImport()}
+            disabled={
+              isCheckingFile ||
+              isImporting ||
+              (addMethod === "file" ? !selectedFile : !blankName.trim())
+            }
+            onClick={() => {
+              if (addMethod === "new") {
+                void handleCreateBlank();
+                return;
+              }
+
+              void handleImport();
+            }}
             type="button"
           >
-            {isImporting ? "提交中" : "导入文档"}
+            {isImporting ? "提交中" : addMethod === "new" ? "确认创建" : "确认提交"}
           </Button>
         </DialogFooter>
       </DialogContent>

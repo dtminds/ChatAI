@@ -1588,6 +1588,7 @@ function createConversation(): Conversation {
     customerName: "测试客户",
     id: "conversation-1",
     conversationAIHostingSwitch: false,
+    handoffMsgId: 0,
     mode: "single",
     preview: "",
     priority: "medium",

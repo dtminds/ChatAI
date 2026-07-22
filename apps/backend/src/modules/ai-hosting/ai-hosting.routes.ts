@@ -1,14 +1,18 @@
 import {
+  AiHostingAgentAutoLearnUpdateRequestSchema,
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
+  AiHostingGroupSettingsUpdateRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
+  type AiHostingAgentAutoLearnUpdateRequest,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
   type AiHostingAgentTestRequest,
+  type AiHostingGroupSettingsUpdateRequest,
   type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -109,6 +113,25 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
   );
 
+  app.put<{ Body: AiHostingGroupSettingsUpdateRequest }>(
+    "/api/server/ai-hosting/group-hosting-settings",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingGroupSettingsUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingSettingsService(app.db).updateGroupHostingSettings(
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body,
+        ),
+      );
+    },
+  );
+
   app.get<{ Params: AgentParams }>(
     "/api/server/ai-hosting/agents/:agentId",
     {
@@ -189,6 +212,30 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
           getAgentWriteContext(request),
           request.params.agentId,
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{
+    Body: AiHostingAgentAutoLearnUpdateRequest;
+    Params: AgentParams;
+  }>(
+    "/api/server/ai-hosting/agents/:agentId/auto-learn",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingAgentAutoLearnUpdateRequestSchema,
+        params: AgentParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingAgentService(app.db).updateAutoLearn(
+          getAgentWriteContext(request),
+          request.params.agentId,
+          request.body.enabled,
         ),
       );
     },

@@ -23,7 +23,7 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   batchDeleteKbAttachments,
@@ -39,6 +39,7 @@ import {
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAddAttachmentDialog } from "./kb-add-attachment-dialog";
 import { KbAttachmentsTable } from "./kb-attachments-table";
+import { KbChunkTargetTag } from "./kb-chunk-target-tag";
 import { KbEmptyStatePanel } from "./kb-empty-state-panel";
 import {
   getKbAttachmentTitle,
@@ -50,10 +51,10 @@ import {
 const PAGE_SIZE = 10;
 
 const kbAttachmentInitIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_1.png";
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const kbAttachmentEmptyIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 const kbAttachmentInitLoadingIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_4.gif";
@@ -62,7 +63,7 @@ const ATTACHMENT_SYNC_POLL_MS = 5000;
 const ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS = 3 * 60 * 1000;
 
 const KB_ATTACHMENT_EMPTY_DESCRIPTION =
-  "你可以添加各类附件，用于Agent在做话术推荐或自动回复时，检索并发送该附件";
+  "添加各类附件，Agent 会根据附件描述，自动检索并发送该附件";
 const KB_ATTACHMENT_EMPTY_SUGGESTION =
   "建议添加的附件：产品说明书、营销活动海报、直播预告海报、产品安装视频、小程序商城链接、公众号文章、小红书链接等";
 
@@ -97,12 +98,20 @@ type KbAttachmentsTabProps = {
   activeType: KbAttachmentType;
   kbId: string;
   onActiveTypeChange: (type: KbAttachmentType) => void;
+  onTargetChunkClear?: () => void;
+  onTargetTypeResolved?: (type: KbAttachmentType) => void;
+  targetChunkId?: string;
+  targetDocId?: string;
 };
 
 export function KbAttachmentsTab({
   activeType,
   kbId,
   onActiveTypeChange,
+  onTargetChunkClear,
+  onTargetTypeResolved,
+  targetChunkId,
+  targetDocId,
 }: KbAttachmentsTabProps) {
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
@@ -124,9 +133,13 @@ export function KbAttachmentsTab({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextListLoadRef = useRef(false);
   const phaseRef = useRef(phase);
+  const onTargetTypeResolvedRef = useRef(onTargetTypeResolved);
   const pollAttachmentSyncStatusRef = useRef<PollAttachmentSyncStatus | null>(null);
   phaseRef.current = phase;
   kbIdRef.current = kbId;
+  onTargetTypeResolvedRef.current = onTargetTypeResolved;
+  const requestedAttachmentType = targetChunkId ? undefined : activeType;
+  const requestedSearchQuery = targetChunkId ? undefined : debouncedSearchQuery || undefined;
 
   const clearPollTimer = useCallback(() => {
     if (pollTimerRef.current) {
@@ -149,7 +162,8 @@ export function KbAttachmentsTab({
     page?: number;
     silent?: boolean;
   }) => {
-    const resolvedDocId = options?.docId ?? attachmentDocId;
+    const resolvedDocId =
+      targetChunkId && targetDocId ? targetDocId : options?.docId ?? attachmentDocId;
 
     if (!kbId || !resolvedDocId) {
       return;
@@ -159,13 +173,14 @@ export function KbAttachmentsTab({
     setLoadingList(true);
 
     try {
-      const requestedPage = options?.page ?? currentPage;
+      const requestedPage = options?.page ?? (targetChunkId ? 1 : currentPage);
       const response = await listKbAttachments(kbId, {
-        attachmentType: activeType,
+        attachmentType: requestedAttachmentType,
+        chunkId: targetChunkId,
         docId: resolvedDocId,
         page: requestedPage,
         pageSize: PAGE_SIZE,
-        query: debouncedSearchQuery || undefined,
+        query: requestedSearchQuery,
       });
 
       if (version !== requestVersionRef.current || !isMountedRef.current) {
@@ -179,11 +194,12 @@ export function KbAttachmentsTab({
 
       if (resolvedPage !== requestedPage && newTotal > 0) {
         const corrected = await listKbAttachments(kbId, {
-          attachmentType: activeType,
+          attachmentType: requestedAttachmentType,
+          chunkId: targetChunkId,
           docId: resolvedDocId,
           page: resolvedPage,
           pageSize: PAGE_SIZE,
-          query: debouncedSearchQuery || undefined,
+          query: requestedSearchQuery,
         });
 
         if (version !== requestVersionRef.current || !isMountedRef.current) {
@@ -200,7 +216,13 @@ export function KbAttachmentsTab({
         return;
       }
 
-      setAttachments(response.attachments.map(toKbAttachmentItem));
+      const mappedAttachments = response.attachments.map(toKbAttachmentItem);
+
+      if (targetChunkId && mappedAttachments[0]) {
+        onTargetTypeResolvedRef.current?.(mappedAttachments[0].attachmentType);
+      }
+
+      setAttachments(mappedAttachments);
       setTotal(newTotal);
       if (resolvedPage !== currentPage) {
         skipNextListLoadRef.current = true;
@@ -226,7 +248,21 @@ export function KbAttachmentsTab({
         setLoadingList(false);
       }
     }
-  }, [activeType, attachmentDocId, currentPage, debouncedSearchQuery, kbId]);
+  }, [
+    attachmentDocId,
+    currentPage,
+    kbId,
+    requestedAttachmentType,
+    requestedSearchQuery,
+    targetChunkId,
+    targetDocId,
+  ]);
+
+  useEffect(() => {
+    if (targetChunkId) {
+      setSearchQuery("");
+    }
+  }, [targetChunkId]);
 
   const finishAttachmentSync = useCallback(async (currentKbId: string, docId: string) => {
     setCurrentPage(1);
@@ -397,7 +433,7 @@ export function KbAttachmentsTab({
 
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [activeType, debouncedSearchQuery, phase]);
+  }, [debouncedSearchQuery, phase, requestedAttachmentType, targetChunkId]);
 
   useEffect(() => {
     if (phase !== "ready" || !kbId || !attachmentDocId) {
@@ -411,13 +447,14 @@ export function KbAttachmentsTab({
 
     void loadAttachments();
   }, [
-    activeType,
     attachmentDocId,
     currentPage,
     debouncedSearchQuery,
     kbId,
     loadAttachments,
     phase,
+    requestedAttachmentType,
+    targetChunkId,
   ]);
 
   const handleAttachmentSyncResult = useCallback(async (
@@ -645,7 +682,10 @@ export function KbAttachmentsTab({
   });
   const isListLoading = loadingList;
   const showListTable =
-    isListLoading || attachments.length > 0 || debouncedSearchQuery.length > 0;
+    isListLoading
+    || attachments.length > 0
+    || debouncedSearchQuery.length > 0
+    || Boolean(targetChunkId);
 
   if (phase === "loading") {
     return <KbAttachmentsTabLoadingState />;
@@ -678,22 +718,33 @@ export function KbAttachmentsTab({
             activeType={activeType}
             onActiveTypeChange={onActiveTypeChange}
           />
-          <div className="relative w-[280px] max-w-full">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              color="currentColor"
-              icon={Search01Icon}
-              size={17}
-              strokeWidth={1.8}
+          {targetChunkId ? (
+            <KbChunkTargetTag
+              chunkId={targetChunkId}
+              onClear={() => onTargetChunkClear?.()}
             />
-            <Input
-              aria-label="搜索附件"
-              className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="搜索附件"
-              value={searchQuery}
-            />
-          </div>
+          ) : null}
+          {!targetChunkId ? (
+            <div className="relative w-[280px] max-w-full">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                color="currentColor"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索附件"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => {
+                  onTargetChunkClear?.();
+                  setSearchQuery(event.target.value);
+                }}
+                placeholder="搜索附件"
+                value={searchQuery}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -789,29 +840,29 @@ export function KbAttachmentTypeTabs({
   onActiveTypeChange: (type: KbAttachmentType) => void;
 }) {
   return (
-    <div
-      aria-label="附件类型筛选"
-      className="inline-flex h-10 items-center gap-1 rounded-[8px] bg-muted p-1"
-      role="tablist"
+    <Tabs
+      onValueChange={(value) => {
+        const nextType = kbAttachmentTypeFilters.find(
+          (filter) => String(filter.value) === value,
+        )?.value;
+
+        if (nextType !== undefined) {
+          onActiveTypeChange(nextType);
+        }
+      }}
+      value={String(activeType)}
     >
-      {kbAttachmentTypeFilters.map((filter) => (
-        <button
-          aria-selected={activeType === filter.value}
-          className={cn(
-            "inline-flex h-8 min-w-[3.5rem] items-center justify-center rounded-[6px] px-3 text-sm font-medium leading-none transition-colors",
-            activeType === filter.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          key={filter.value}
-          onClick={() => onActiveTypeChange(filter.value)}
-          role="tab"
-          type="button"
-        >
-          {filter.label}
-        </button>
-      ))}
-    </div>
+      <TabsList aria-label="附件类型筛选">
+        {kbAttachmentTypeFilters.map((filter) => (
+          <TabsTrigger
+            key={filter.value}
+            value={String(filter.value)}
+          >
+            {filter.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -916,7 +967,7 @@ function KbAttachmentsEmptyState() {
       illustrationUrl={kbAttachmentEmptyIllustrationUrl}
       keepSuggestionOnSameLine
       suggestionContent={KB_ATTACHMENT_EMPTY_SUGGESTION}
-      suggestionLabel="建议添加附件"
+      suggestionLabel="查看建议"
     />
   );
 }

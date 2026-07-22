@@ -507,10 +507,15 @@ export function createMockKbDocDetail(docId: string): KbDocDetail {
   };
 }
 
-export function createMockKbDocChunksResponse(docId: string, query?: string) {
+export function createMockKbDocChunksResponse(docId: string, query?: string, chunkId?: string) {
   const normalizedQuery = query?.trim().toLowerCase();
+  const normalizedChunkId = chunkId?.trim();
   const chunks = mockKbChunkItems.filter((chunk) => {
     if (chunk.docId !== docId) {
+      return false;
+    }
+
+    if (normalizedChunkId && chunk.volcChunkId?.split("_").pop() !== normalizedChunkId) {
       return false;
     }
 

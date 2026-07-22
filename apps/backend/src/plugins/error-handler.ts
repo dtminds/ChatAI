@@ -28,6 +28,8 @@ export async function registerErrorHandler(app: FastifyInstance) {
         {
           code: error.code,
           details: error.details,
+          errorMessage: error.message,
+          logDetails: error.logDetails,
           requestId: request.id,
           statusCode: error.statusCode,
           url: request.url,

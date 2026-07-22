@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../src/plugins/error-handler.js";
 import {
+  BadRequestError,
   BusinessError,
   UpstreamHttpError,
 } from "../../src/shared/errors.js";
@@ -69,6 +70,55 @@ describe("error handler logging", () => {
         message: "对话语意未完整",
       },
       success: false,
+    });
+
+    await app.close();
+  });
+
+  it("logs business error messages and private diagnostic details without exposing them", async () => {
+    const app = Fastify({
+      logger: false,
+    });
+    const loggedWarnings: unknown[] = [];
+
+    await registerErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      request.log.warn = vi.fn((payload: unknown) => {
+        loggedWarnings.push(payload);
+      });
+    });
+    app.get("/retry-failed", async () => {
+      throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败", undefined, {
+        conversationId: "conv-001",
+        messageSeq: 538,
+        reason: "retry_operation_not_found",
+      });
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/retry-failed",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "RETRY_MESSAGE_FAILED",
+        message: "重发失败",
+      },
+      success: false,
+    });
+    expect(loggedWarnings).toHaveLength(1);
+    expect(loggedWarnings[0]).toMatchObject({
+      code: "RETRY_MESSAGE_FAILED",
+      errorMessage: "重发失败",
+      logDetails: {
+        conversationId: "conv-001",
+        messageSeq: 538,
+        reason: "retry_operation_not_found",
+      },
+      statusCode: 400,
+      url: "/retry-failed",
     });
 
     await app.close();

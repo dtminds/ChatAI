@@ -20,6 +20,10 @@ import { KbAttachmentService } from "./kb-attachment.service.js";
 import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
+const ChunkDisplayIdSchema = Type.String({
+  maxLength: KB_SEARCH_QUERY_MAX_LENGTH,
+  pattern: "^[^_]+$",
+});
 
 const KbParamsSchema = Type.Object({
   kbId: NumericStringSchema,
@@ -30,7 +34,8 @@ const KbAttachmentParamsSchema = Type.Object({
 });
 
 const KbAttachmentListQuerySchema = Type.Object({
-  attachmentType: KbAttachmentTypeSchema,
+  attachmentType: Type.Optional(KbAttachmentTypeSchema),
+  chunkId: Type.Optional(ChunkDisplayIdSchema),
   docId: NumericStringSchema,
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
@@ -95,7 +100,8 @@ export async function registerKbAttachmentRoutes(app: FastifyInstance) {
           getAgentKbTenant(request),
           request.params.kbId,
           {
-            attachmentType: request.query.attachmentType as KbAttachmentType,
+            attachmentType: request.query.attachmentType as KbAttachmentType | undefined,
+            chunkId: request.query.chunkId,
             docId: request.query.docId,
             page: parseOptionalInteger(request.query.page),
             pageSize: parseOptionalInteger(request.query.pageSize),

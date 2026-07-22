@@ -1,4 +1,5 @@
 import type {
+  KbDocCreateBlankRequest,
   KbDocCreateFaqRequest,
   KbDocCreateImageRequest,
   KbDocCreateRequest,
@@ -25,12 +26,27 @@ import {
   resolveVolcStrategyResourceId,
 } from "./kb-doc-strategy-mappers.js";
 import { resolveKbDocUrlForJava } from "./kb-doc-url.js";
+import {
+  KB_BLANK_DOCUMENT_DOC_SUFFIX,
+  KB_BLANK_DOCUMENT_DOC_URL,
+  KB_BLANK_FAQ_DOC_SUFFIX,
+  KB_BLANK_FAQ_DOC_URL,
+  KB_DOC_TYPE_BLANK_DOCUMENT,
+  KB_DOC_TYPE_BLANK_FAQ,
+  KB_DOC_TYPE_DOCUMENT,
+  KB_DOC_TYPE_FAQ,
+  KB_DOC_TYPE_IMAGE,
+} from "./kb-doc-type.constants.js";
 import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
 import { AiHostingQuotaService } from "./quota.service.js";
 
-export const KB_DOC_TYPE_FAQ = 1;
-export const KB_DOC_TYPE_DOCUMENT = 2;
-export const KB_DOC_TYPE_IMAGE = 3;
+export {
+  KB_DOC_TYPE_BLANK_DOCUMENT,
+  KB_DOC_TYPE_BLANK_FAQ,
+  KB_DOC_TYPE_DOCUMENT,
+  KB_DOC_TYPE_FAQ,
+  KB_DOC_TYPE_IMAGE,
+} from "./kb-doc-type.constants.js";
 
 const PLAIN_TEXT_DOC_SUFFIXES = new Set(["md", "txt"]);
 const SUPPORTED_DOC_SUFFIXES = new Set([
@@ -134,6 +150,19 @@ export class KbDocService {
     return { docId };
   }
 
+  async createBlankKbDoc(
+    tenant: AgentKbTenant,
+    request: KbDocCreateBlankRequest,
+  ): Promise<KbDocCreateResponse> {
+    return this.createBlankDoc(tenant, request, {
+      docSuffix: KB_BLANK_DOCUMENT_DOC_SUFFIX,
+      docType: KB_DOC_TYPE_BLANK_DOCUMENT,
+      docUrl: KB_BLANK_DOCUMENT_DOC_URL,
+      operation: "kb-doc-create-blank-document",
+      successMessage: "空白文档创建成功",
+    });
+  }
+
   async createKbFaqDoc(
     tenant: AgentKbTenant,
     request: KbDocCreateFaqRequest,
@@ -179,6 +208,19 @@ export class KbDocService {
     );
 
     return { docId };
+  }
+
+  async createBlankKbFaqDoc(
+    tenant: AgentKbTenant,
+    request: KbDocCreateBlankRequest,
+  ): Promise<KbDocCreateResponse> {
+    return this.createBlankDoc(tenant, request, {
+      docSuffix: KB_BLANK_FAQ_DOC_SUFFIX,
+      docType: KB_DOC_TYPE_BLANK_FAQ,
+      docUrl: KB_BLANK_FAQ_DOC_URL,
+      operation: "kb-doc-create-blank-faq",
+      successMessage: "空白 FAQ 创建成功",
+    });
   }
 
   async createKbImageDoc(
@@ -291,6 +333,63 @@ export class KbDocService {
     );
 
     return { retried: true };
+  }
+
+  private async createBlankDoc(
+    tenant: AgentKbTenant,
+    request: KbDocCreateBlankRequest,
+    options: {
+      docSuffix: string;
+      docType: typeof KB_DOC_TYPE_BLANK_DOCUMENT | typeof KB_DOC_TYPE_BLANK_FAQ;
+      docUrl: string;
+      operation: string;
+      successMessage: string;
+    },
+  ): Promise<KbDocCreateResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const name = request.name.trim();
+    const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
+
+    if (!name) {
+      throw new BadRequestError("INVALID_KB_DOC_NAME", "知识名称不能为空");
+    }
+
+    await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocStorageQuotaAvailable(uid, 0);
+
+    const docUrl = resolveKbDocUrlForJava(options.docUrl);
+    const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();
+    const docId = await this.agentKbJavaClient.createKbDoc({
+      description: request.description,
+      docSize: 0,
+      docSuffix: options.docSuffix,
+      docType: options.docType,
+      docUrl,
+      kbId: kbNumericId,
+      name,
+      operatorId: subUserId,
+      uid,
+      volcStrategyResourceId,
+    });
+
+    this.logger.info(
+      {
+        docId,
+        docSuffix: options.docSuffix,
+        docType: options.docType,
+        docUrl,
+        kbId: request.kbId,
+        name,
+        operation: options.operation,
+        subUserId,
+        uid,
+        volcStrategyResourceId,
+      },
+      options.successMessage,
+    );
+
+    return { docId };
   }
 
   private assertDocumentCreateRequest(request: KbDocCreateRequest) {

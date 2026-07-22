@@ -342,6 +342,9 @@ export type InsightWorkerRepositoryPort = {
   reclaimExpiredRunningJobs?(input: {
     now: Date;
   }): Promise<number>;
+  reclaimExpiredSessionizationUidJobs?(input: {
+    now: Date;
+  }): Promise<number>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
   claimNextSessionizationUidJob(input?: {
     excludeJobIds?: string[];
@@ -373,6 +376,11 @@ export type InsightWorkerRepositoryPort = {
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getFeatureConfig(uid: number): Promise<InsightWorkerFeatureConfig>;
   getCursor(uid?: number): Promise<InsightWorkerCursor>;
+  hasPendingMessages(input: {
+    cursorAuditId: number;
+    cursorMsgtime: number;
+    uid: number;
+  }): Promise<boolean>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
   listPreviousSessionContexts(input: {
@@ -512,6 +520,9 @@ export class InsightsWorkerService {
   }
 
   async runSessionizationOnce() {
+    await this.repository.reclaimExpiredSessionizationUidJobs?.({
+      now: new Date(this.now()),
+    });
     await this.repository.enqueueClosableSessionUids({
       limit: this.batchSize,
       now: this.now(),
@@ -662,7 +673,21 @@ export class InsightsWorkerService {
     if (featureConfig.insightEnabled) {
       await this.scheduleLiveAnalysisForOpenSessions(activeUids);
     }
-    await this.closeTimedOutOpenSessions(activeUids);
+    const latestCursor = lastMessage
+      ? {
+          cursorAuditId: Number(lastMessage.id),
+          cursorMsgtime: lastMessage.msgtime,
+        }
+      : cursor;
+    const hasPendingMessages = messages.length >= this.batchSize
+      || await this.repository.hasPendingMessages({
+        ...latestCursor,
+        uid,
+      });
+
+    if (!hasPendingMessages) {
+      await this.closeTimedOutOpenSessions(activeUids);
+    }
 
     return {
       scannedMessages: messages.length,

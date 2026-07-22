@@ -570,7 +570,7 @@ analysisPhase?: "live" | "final";
 - `analysisPhase = live` 且逻辑会话已经结束：表示“已有实时结果但未生成最终洞察”，不能映射为 `skipped` 或“最终分析完成”。
 - “已分析”“最终洞察完成”等指标只统计 `analysisPhase = final` 且快照状态符合对应口径的会话。
 - `skipped` 不进入已分析、分析中、质检完成、经营分析结果、问题解决度或待办等 AI 指标；这些页面和接口仍以当前快照及其维度数据为准。
-- 洞察模式的分析状态筛选需要单独支持 `skipped`。“待分析”只匹配 `closed_pending_analysis`，以及 `live_analysis_enabled = true` 时的 `open + current_snapshot_id IS NULL`；`analyzed + current_snapshot_id IS NULL` 只能匹配 `skipped`，永远不得进入“待分析”。
+- 洞察模式的分析状态筛选需要单独支持 `skipped`。“待分析”只匹配 `closed_pending_analysis`，以及 `live_analysis_enabled = true` 时的 `open + current_snapshot_id IS NULL`；`analyzed + current_snapshot_id IS NULL` 只能匹配 `skipped`，永远不得进入“待分析”。“已完成”“部分完成”“分析失败”“已过期”只筛选当前 Final 快照，不命中仅有 Live 结果的会话。
 
 基础指标口径：
 

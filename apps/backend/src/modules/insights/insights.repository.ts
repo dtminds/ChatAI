@@ -5015,7 +5015,7 @@ function applyCurrentSessionFilters<Query>(
       `) as typeof next;
     } else if (filters.analysisStatus === "failed") {
       next = next.where(sql<boolean>`
-        snapshot.status = 'failed'
+        (snapshot.phase = 'final' and snapshot.status = 'failed')
         or (
           session.status in ('analyzed', 'canceled')
           and exists (
@@ -5038,6 +5038,7 @@ function applyCurrentSessionFilters<Query>(
         )
       `) as typeof next;
     } else {
+      next = next.where("snapshot.phase", "=", "final") as typeof next;
       next = next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
     }
   }

@@ -457,6 +457,30 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }));
   }
 
+  async hasPendingMessages(input: {
+    cursorAuditId: number;
+    cursorMsgtime: number;
+    uid: number;
+  }): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select("id")
+      .where("uid", "=", input.uid)
+      .where((eb) => eb.or([
+        eb("msgtime", ">", input.cursorMsgtime),
+        eb.and([
+          eb("msgtime", "=", input.cursorMsgtime),
+          eb("id", ">", input.cursorAuditId),
+        ]),
+      ]))
+      .orderBy("msgtime", "asc")
+      .orderBy("id", "asc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row != null;
+  }
+
   async findPlatformConversation(message: InsightWorkerMessage) {
     const base = this.db
       .selectFrom("xy_wap_embed_conversation")
@@ -1050,6 +1074,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return getAffectedRows(result);
   }
 
+  async reclaimExpiredSessionizationUidJobs(input: { now: Date }): Promise<number> {
+    const result = await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        lease_until: null,
+        locked_by: null,
+        status: "pending",
+        update_time: input.now,
+      })
+      .where("job_type", "=", sessionizationUidJobType)
+      .where("status", "=", "running")
+      .where("lease_until", "<=", input.now)
+      .execute();
+
+    return getAffectedRows(result);
+  }
+
   async createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string> {
     const idempotencyKey = [
       input.jobType,
@@ -1259,6 +1300,14 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .where("xy_wap_embed_insight_job.job_type", "=", "sync_messages")
         .where("xy_wap_embed_insight_job.run_after", "<=", new Date())
         .where("xy_wap_embed_insight_job.status", "=", "pending")
+        .where(sql<boolean>`not exists (
+          select 1
+          from xy_wap_embed_insight_job as sessionization_job
+          where sessionization_job.target_type = 'uid'
+            and sessionization_job.job_type = ${sessionizationUidJobType}
+            and sessionization_job.uid = xy_wap_embed_insight_job.uid
+            and sessionization_job.status = 'running'
+        )`)
         .orderBy("xy_wap_embed_insight_job.priority", "desc")
         .orderBy("xy_wap_embed_insight_job.id", "asc")
         .forUpdate()
@@ -1288,6 +1337,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         throw new Error(`Invalid sync_messages rescan to_time: ${row.rescan_to_time}`);
       }
 
+      const uid = parseNumber(row.uid);
       const claimed = await this.markUidJobRunning(trx, row.id, "sync_messages");
 
       if (!claimed) {
@@ -1300,7 +1350,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         jobId: String(row.id),
         rescanTaskId: row.rescan_task_id == null ? undefined : String(row.rescan_task_id),
         scanUntilMsgtime,
-        uid: parseNumber(row.uid),
+        uid,
       };
     });
   }
@@ -1324,6 +1374,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         return undefined;
       }
 
+      const uid = parseNumber(row.uid);
       const claimToken = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const result = await trx
         .updateTable("xy_wap_embed_insight_job")
@@ -1343,7 +1394,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         ? {
             claimToken,
             jobId: String(row.id),
-            uid: parseNumber(row.uid),
+            uid,
           }
         : undefined;
     });
@@ -1467,6 +1518,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("run_after", "<=", new Date());
 
     query = query.where("status", "=", "pending");
+
+    if (jobType === sessionizationUidJobType) {
+      query = query.where(sql<boolean>`not exists (
+        select 1
+        from xy_wap_embed_insight_job as sync_job
+        where sync_job.target_type = 'uid'
+          and sync_job.job_type = 'sync_messages'
+          and sync_job.uid = xy_wap_embed_insight_job.uid
+          and sync_job.status in ('pending', 'running')
+          and sync_job.run_after <= now()
+      )`);
+    }
 
     return query
       .orderBy("priority", "desc")

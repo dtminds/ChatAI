@@ -82,6 +82,7 @@ function createRepository(
       deletedJobs: 0,
     })),
     reclaimExpiredRunningJobs: vi.fn(async () => 0),
+    reclaimExpiredSessionizationUidJobs: vi.fn(async () => 0),
     claimNextSessionizationUidJob: vi.fn(async (input) =>
       input?.excludeJobIds?.includes(defaultSessionizationJob.jobId)
         ? undefined
@@ -132,6 +133,7 @@ function createRepository(
       todoEnabled: true,
       uid: 9001,
     })),
+    hasPendingMessages: vi.fn(async () => false),
     getPromptContext: vi.fn(async () => ({
       entityDictionary: [],
       intentConfigs: [],
@@ -214,6 +216,9 @@ describe("InsightsWorkerService", () => {
     expect(repository.enqueueClosableSessionUids).toHaveBeenCalledWith({
       limit: 50,
       now: expect.any(Number),
+    });
+    expect(repository.reclaimExpiredSessionizationUidJobs).toHaveBeenCalledWith({
+      now: expect.any(Date),
     });
     expect(repository.reclaimExpiredRunningJobs).toHaveBeenCalledWith({
       now: expect.any(Date),
@@ -390,6 +395,56 @@ describe("InsightsWorkerService", () => {
       cursorMsgtime: 1_780_244_060_000,
       uid: 9001,
     });
+  });
+
+  it("does not close sessions while the current uid message batch is full", async () => {
+    const repository = createRepository({
+      listClosableOpenSessions: vi.fn(async () => [{
+        analysisDelayMinutes: 10,
+        closeReason: "idle_timeout",
+        endedAt: 1_780_244_000_000,
+        sessionId: "501",
+        uid: 9001,
+      }]),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 2 });
+
+    await service.runSessionizationOnce();
+
+    expect(repository.listClosableOpenSessions).not.toHaveBeenCalled();
+    expect(repository.hasPendingMessages).not.toHaveBeenCalled();
+    expect(repository.finalizeOpenSession).not.toHaveBeenCalled();
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalled();
+  });
+
+  it("does not close sessions when messages arrive after a non-full batch", async () => {
+    const repository = createRepository({
+      hasPendingMessages: vi.fn(async () => true),
+      listIncrementalMessages: vi.fn(async () => [{
+        chatType: 1,
+        content: JSON.stringify({ content: "物流不更新" }),
+        fromType: 2,
+        id: "9001",
+        msgtime: 1_780_244_000_000,
+        msgtype: "text",
+        platform: 5,
+        uid: 9001,
+        thirdExternalId: "external-1",
+        thirdGroupId: "",
+        thirdUserId: "user-1",
+      }]),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 2 });
+
+    await service.runSessionizationOnce();
+
+    expect(repository.hasPendingMessages).toHaveBeenCalledWith({
+      cursorAuditId: 9001,
+      cursorMsgtime: 1_780_244_000_000,
+      uid: 9001,
+    });
+    expect(repository.listClosableOpenSessions).not.toHaveBeenCalled();
+    expect(repository.finalizeOpenSession).not.toHaveBeenCalled();
   });
 
   it("logs incremental worker activity when messages are scanned", async () => {

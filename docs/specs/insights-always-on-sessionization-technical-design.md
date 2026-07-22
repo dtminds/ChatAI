@@ -295,7 +295,7 @@ Repository 在现有 UID 任务领取方法上增加 `sessionize_uid` 分支：
 4. 批次完成后按最后一条消息更新具体 UID 复合水位。
 5. 洞察开启时执行现有 open-session Live 补偿扫描；随后处理该 UID 的到期会话。
 
-消息读取顺序、会话边界、迟到消息、消息归属写入和水位推进的现有实现均保持不变。本期不新增逐消息 claim 校验、transaction-scoped repository、消息与水位原子重写或 `sync_messages` 的新互斥协议。
+消息读取顺序、会话边界、迟到消息、消息归属写入和水位推进的现有实现均保持不变。本期不新增逐消息 claim 校验、transaction-scoped repository 或消息与水位原子重写。两类任务采用简单的重刷优先级：同 UID 存在已到执行时间的 `sync_messages pending/running` 时不领取 `sessionize_uid`；`sync_messages` 则等待已经 `running` 的 `sessionize_uid` 完成。互斥只收敛在现有候选领取查询，不新增锁表、分布式锁或长期持有的数据库锁。
 
 ### 6.4 到期处理与完成
 
@@ -550,7 +550,7 @@ skipped:
   AND current_snapshot_id IS NULL
 ```
 
-其它状态继续匹配当前快照状态。
+`ready`、`partial`、`failed`、`stale` 筛选只匹配 `phase = final` 的当前快照，避免“已完成”等最终分析口径命中仅有 Live 结果的会话。列表仍可展示 Live 快照及其当前状态。
 
 ### 9.4 基础与洞察查询
 

@@ -1211,6 +1211,11 @@ describe("InsightsRepository", () => {
     );
     expect(countQuery.whereCalls).toContainEqual(["session.uid", "=", 9001]);
     expect(countQuery.whereCalls).toContainEqual([
+      "snapshot.phase",
+      "=",
+      "final",
+    ]);
+    expect(countQuery.whereCalls).toContainEqual([
       "snapshot.status",
       "=",
       "ready",
@@ -3646,6 +3651,9 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.selectRawCalls.join("\n")).toContain(
       "rescan_task.to_time as rescan_to_time",
     );
+    expect(builders[0]?.whereRawCalls.join("\n")).toContain(
+      "sessionization_job.status = 'running'",
+    );
     expect(updateExecute).toHaveBeenCalled();
   });
 
@@ -3693,6 +3701,9 @@ describe("MysqlInsightWorkerRepository", () => {
     ]);
     expect(builders[0]?.forUpdateCalls).toBe(1);
     expect(builders[0]?.skipLockedCalls).toBe(1);
+    const sessionizationClaimSql = builders[0]?.whereRawCalls.join("\n") ?? "";
+    expect(sessionizationClaimSql).toContain("sync_job.status in ('pending', 'running')");
+    expect(sessionizationClaimSql).toContain("sync_job.run_after <= now()");
     expect(updateExecute).toHaveBeenCalled();
     expect(setCalls[0]).toMatchObject({
       lease_until: expect.any(Date),
@@ -4179,6 +4190,32 @@ describe("MysqlInsightWorkerRepository", () => {
     });
   });
 
+  it("reclaims expired sessionization uid jobs without touching analysis runs", async () => {
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 2n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+    const now = new Date("2026-06-11T08:00:00Z");
+
+    await expect(repository.reclaimExpiredSessionizationUidJobs({ now })).resolves.toBe(2);
+
+    expect(db.updateTable).toHaveBeenCalledTimes(1);
+    expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(updateBuilders[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["lease_until", "<=", now]);
+  });
+
   it("returns failed sessionization uid jobs to pending with a retry delay", async () => {
     const setCalls: Record<string, unknown>[] = [];
     const updateBuilders: UpdateBuilderStub[] = [];
@@ -4275,6 +4312,33 @@ describe("MysqlInsightWorkerRepository", () => {
       "<=",
       1_780_000_030_000,
     ]);
+  });
+
+  it("probes for uid messages after the current composite cursor", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([{ id: 8002 }], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.hasPendingMessages({
+      cursorAuditId: 8001,
+      cursorMsgtime: 1_780_000_000_000,
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("id");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["msgtime", ">", 1_780_000_000_000]);
+    expect(builders[0]?.whereCalls).toContainEqual(["msgtime", "=", 1_780_000_000_000]);
+    expect(builders[0]?.whereCalls).toContainEqual(["id", ">", 8001]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["msgtime", "asc"]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["id", "asc"]);
+    expect(builders[0]?.limitCalls).toContain(1);
   });
 
   it("checks pending live analysis jobs with exact indexed columns", async () => {

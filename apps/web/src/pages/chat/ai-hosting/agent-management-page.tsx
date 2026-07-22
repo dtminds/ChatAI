@@ -84,7 +84,7 @@ type AgentRecord = AiHostingAgentListItem;
 const AGENT_PAGE_SIZE = 9;
 const MAX_INLINE_KB_COUNT = 2;
 const agentKnowledgeBaseChipClassName =
-  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-muted px-1.5 text-[13px] font-normal leading-[22px] text-foreground";
+  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-surface-muted px-1.5 text-[13px] font-normal leading-[22px] text-foreground";
 const AI_SELF_LEARNING_BANNER_URL =
   "https://b5.bokr.com.cn/dist/ui/learn_banner_bg.png";
 const AI_SELF_LEARNING_ICON_URL =

@@ -103,6 +103,10 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -156,6 +160,129 @@ export function UiComponentDemoPage() {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+
+      <section
+        aria-label="surface-muted 视觉回归"
+        className="mb-4 rounded-[10px] border border-border bg-card p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-card-foreground">
+              表面层级回归
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              集中检查卡片与次级表面在各颜色主题下的层级，并覆盖常见交互状态
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="size-3 rounded-[3px] border border-border bg-card" />
+            Card
+            <span className="ml-2 size-3 rounded-[3px] bg-surface-muted" />
+            Surface muted
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <SurfaceRegressionItem label="搜索输入框">
+            <Label className="sr-only" htmlFor="surface-search-input">
+              搜索客户
+            </Label>
+            <Input
+              className="border-transparent bg-surface-muted shadow-none focus-visible:bg-background"
+              id="surface-search-input"
+              placeholder="搜索客户"
+            />
+          </SurfaceRegressionItem>
+
+          <SurfaceRegressionItem label="分段选择器">
+            <SegmentedControl
+              aria-label="表面层级展示模式"
+              className="h-9 rounded-[10px]"
+              defaultValue="compact"
+              type="single"
+            >
+              <SegmentedControlItem
+                className="h-7 w-auto rounded-[7px] px-3 text-xs"
+                value="compact"
+              >
+                紧凑
+              </SegmentedControlItem>
+              <SegmentedControlItem
+                className="h-7 w-auto rounded-[7px] px-3 text-xs"
+                value="comfortable"
+              >
+                舒适
+              </SegmentedControlItem>
+            </SegmentedControl>
+          </SurfaceRegressionItem>
+
+          <SurfaceRegressionItem label="卡片内部 Block">
+            <div className="rounded-[8px] border border-border bg-card p-3">
+              <p className="text-sm font-medium text-card-foreground">回复规则</p>
+              <div className="mt-2 rounded-[7px] bg-surface-muted px-3 py-2 text-xs text-muted-foreground">
+                仅在工作时间内自动回复
+              </div>
+            </div>
+          </SurfaceRegressionItem>
+
+          <SurfaceRegressionItem label="选中行与 Hover">
+            <div className="space-y-1">
+              <Button
+                aria-pressed="true"
+                className="h-9 w-full justify-between rounded-[7px] bg-surface-muted px-3 text-foreground hover:bg-surface-muted/80"
+                type="button"
+                variant="ghost"
+              >
+                已选客户
+                <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] text-primary">
+                  当前
+                </span>
+              </Button>
+              <Button
+                className="h-9 w-full justify-start rounded-[7px] px-3 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                type="button"
+                variant="ghost"
+              >
+                Hover 检查
+              </Button>
+            </div>
+          </SurfaceRegressionItem>
+
+          <SurfaceRegressionItem label="消息与占位">
+            <div className="rounded-[8px] border border-border bg-card p-3">
+              <div className="inline-flex min-h-9 items-center rounded-[7px] bg-surface-muted px-3 text-sm text-foreground">
+                您好，订单预计今天发出
+              </div>
+              <div className="mt-2 flex h-9 items-center gap-2 rounded-[7px] bg-surface-muted px-3 text-xs text-muted-foreground">
+                <Spinner size={14} />
+                正在加载
+              </div>
+            </div>
+          </SurfaceRegressionItem>
+
+          <SurfaceRegressionItem label="按钮与禁用态">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="bg-surface-muted hover:bg-surface-hover"
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                次级操作
+              </Button>
+              <Button
+                className="bg-surface-muted"
+                disabled
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                暂不可用
+              </Button>
+            </div>
+          </SurfaceRegressionItem>
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_23rem]">
         <div className="space-y-4">
@@ -724,5 +851,23 @@ export function UiComponentDemoPage() {
         </aside>
       </section>
     </>
+  );
+}
+
+function SurfaceRegressionItem({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <section
+      aria-label={label}
+      className="min-w-0 rounded-[8px] border border-border/80 bg-background/55 p-3"
+    >
+      <h3 className="mb-3 text-xs font-semibold text-muted-foreground">{label}</h3>
+      {children}
+    </section>
   );
 }

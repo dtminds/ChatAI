@@ -17,6 +17,8 @@ const appearanceThemeBlocks = [
     /html(?:\.dark)?\[data-appearance-theme="[^"]+"\]\s*\{[\s\S]*?\n\}/g,
   ),
 ].map((match) => match[0]);
+const rootThemeBlock = themeCss.match(/:root\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+const darkThemeBlock = themeCss.match(/\.dark\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
 const hardcodedColorPatterns = [
   /#[0-9a-fA-F]{3,8}\b/g,
   /\b(?:rgb|rgba|hsl|hsla)\((?!var\(--)/g,
@@ -129,6 +131,25 @@ describe("color token policy", () => {
     expect(themeCss).not.toContain("--surface-selected");
     expect(themeCss).not.toContain("--color-surface-active");
     expect(themeCss).not.toContain("--color-surface-selected");
+  });
+
+  test("separates muted surfaces from cards in dark themes that previously collapsed", () => {
+    const nestedSurface =
+      "--surface-muted: color-mix(in oklch, var(--card) 94%, var(--foreground));";
+    const affectedThemeSelectors = ["green", "slack", "sunset", "nature"];
+
+    expect(rootThemeBlock).toContain("--surface-muted: var(--muted);");
+    expect(darkThemeBlock).toContain(nestedSurface);
+
+    for (const themeId of affectedThemeSelectors) {
+      const block = themeCss.match(
+        new RegExp(
+          `html\\.dark\\[data-appearance-theme="${themeId}"\\]\\s*\\{[\\s\\S]*?\\n\\}`,
+        ),
+      )?.[0];
+
+      expect(block).toContain(nestedSurface);
+    }
   });
 
   test("exposes workbench conversation state tokens", () => {

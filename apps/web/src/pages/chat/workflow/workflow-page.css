@@ -15,7 +15,7 @@
   --workflow-panel-bg: var(--card);
   --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 88%, transparent);
   --workflow-panel-section: var(--accent);
-  --workflow-param-bg: var(--muted);
+  --workflow-param-bg: var(--surface-muted);
   --workflow-text-tertiary: var(--muted-foreground);
   --workflow-node-card-border: #fff;
   --workflow-node-card-border-width: 1px;

@@ -46,7 +46,7 @@ describe("Workflow theme contract", () => {
 
     expect(lightBlock).toContain("--workflow-panel-bg: var(--card);");
     expect(lightBlock).toContain("--workflow-panel-section: var(--accent);");
-    expect(lightBlock).toContain("--workflow-param-bg: var(--muted);");
+    expect(lightBlock).toContain("--workflow-param-bg: var(--surface-muted);");
     expect(lightBlock).toContain("--workflow-text-tertiary: var(--muted-foreground);");
     expect(lightBlock).toContain("--workflow-blue: var(--primary);");
   });

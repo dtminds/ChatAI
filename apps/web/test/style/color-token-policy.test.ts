@@ -152,6 +152,13 @@ describe("color token policy", () => {
     }
   });
 
+  test("keeps the default dark popover highlight distinct from its container", () => {
+    expect(darkThemeBlock).toContain("--popover: oklch(0.27 0 0);");
+    expect(darkThemeBlock).toContain("--accent: oklch(0.33 0 0);");
+    expect(darkThemeBlock).toContain("--accent-foreground: oklch(0.985 0 0);");
+    expect(darkThemeBlock).toContain("--surface-hover: var(--accent);");
+  });
+
   test("exposes workbench conversation state tokens", () => {
     expect(themeCss).toContain("--conversation-active: linear-gradient(");
     expect(themeCss).toContain("111deg,");

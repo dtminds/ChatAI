@@ -697,7 +697,7 @@ function AgentCard({
               <TooltipTrigger asChild>
                 <Button
                   aria-label={`${agent.name} 自主进化`}
-                  className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  className="size-8 rounded-[6px] bg-surface-muted p-0 text-muted-foreground hover:bg-surface-muted/80 hover:text-foreground"
                   onClick={() => onOpenSelfLearning(agent)}
                   type="button"
                   variant="ghost"
@@ -719,7 +719,7 @@ function AgentCard({
             <DropdownMenuTrigger asChild>
               <Button
                 aria-label={`${agent.name} 更多操作`}
-                className="size-8 rounded-[6px] bg-muted p-0 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                className="size-8 rounded-[6px] bg-surface-muted p-0 text-muted-foreground hover:bg-surface-muted/80 hover:text-foreground"
                 type="button"
                 variant="ghost"
               >

@@ -38,6 +38,8 @@ describe("insights DTOs", () => {
           ready: 30,
           stale: 3,
         },
+        comparisonAvailable: true,
+        mode: "insight",
         problemSessions: 20,
         readySessions: 30,
         resolution: {
@@ -102,20 +104,49 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
+  it("accepts basic overview responses without AI aggregate fields", () => {
+    expect(
+      Value.Check(InsightsOverviewResponseSchema, {
+        comparison: {
+          agentMessages: { current: 12, delta: 2, deltaRate: 0.2, previous: 10 },
+          consultingCustomers: { current: 4, delta: 1, deltaRate: 1 / 3, previous: 3 },
+          customerMessages: { current: 18, delta: 3, deltaRate: 0.2, previous: 15 },
+          logicalSessions: { current: 5, delta: 1, deltaRate: 0.25, previous: 4 },
+          messages: { current: 30, delta: 5, deltaRate: 0.2, previous: 25 },
+        },
+        comparisonAvailable: true,
+        mode: "basic",
+        totals: {
+          agentMessages: 12,
+          consultingCustomers: 4,
+          customerMessages: 18,
+          logicalSessions: 5,
+          messages: 30,
+        },
+        trend: [],
+      }),
+    ).toBe(true);
+  });
+
   it("accepts overview session list responses separately", () => {
     expect(
       Value.Check(InsightOverviewSessionsResponseSchema, {
         items: [
           {
+            agentMessageCount: 2,
             analysisStatus: "ready",
             conversationId: "301",
+            customerMessageCount: 3,
             customerName: "张三",
+            messageCount: 5,
             resolutionStatus: "unresolved",
             sessionId: "session-1",
+            sessionState: "ended",
             startedAt: 1780243200000,
             summarySessionTitle: "退款进度咨询",
           },
         ],
+        mode: "insight",
         page: 1,
         pageSize: 20,
         total: 36,

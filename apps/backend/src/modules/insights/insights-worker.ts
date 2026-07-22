@@ -17,7 +17,6 @@ type WorkerLogger = {
   info(payload: Record<string, unknown>, message: string): void;
 };
 
-const CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES = 1_000;
 const SYNC_MESSAGES_MAX_BATCHES = 10_000;
 
 export type InsightWorkerCursor = {
@@ -100,12 +99,6 @@ export type InsightWorkerOpenSession = {
   status?: "canceled" | "open";
 };
 
-export type CleanupDisabledInsightsJob = {
-  enableEpoch: number;
-  jobId: string;
-  uid: number;
-};
-
 export type ClosableOpenSession = {
   analysisDelayMinutes: number;
   closeReason: CloseSessionInput["closeReason"];
@@ -147,9 +140,27 @@ export type AppendSessionMessageInput = {
 };
 
 export type CloseSessionInput = {
-  closeReason: "hard_max_duration" | "idle_timeout" | "insight_disabled";
+  closeReason: "hard_max_duration" | "idle_timeout";
   endedAt: number;
   sessionId: string;
+};
+
+export type FinalizeOpenSessionInput = CloseSessionInput & {
+  analysisDelayMinutes: number;
+  uid: number;
+};
+
+export type ClaimedSessionizationUidJob = {
+  claimToken: string;
+  jobId: string;
+  uid: number;
+};
+
+export type DiscoverMessageUidsResult = {
+  cursorAuditId: number;
+  discoveredMessages: number;
+  discoveredUids: number;
+  skipped: boolean;
 };
 
 export type CreateAnalyzeJobInput = {
@@ -165,6 +176,7 @@ export type CreateAnalyzeJobInput = {
 export type ClaimedAnalyzeJob = {
   analysisScope: InsightRescanAnalysisScope;
   attemptCount: number;
+  inputReadinessPostponed?: boolean;
   jobId: string;
   maxAttempts: number;
   mode: "final" | "live" | "manual_reanalyze";
@@ -179,11 +191,6 @@ export type ClaimedSyncMessagesJob = {
   jobId: string;
   rescanTaskId?: string;
   scanUntilMsgtime?: number;
-  uid: number;
-};
-
-export type ClaimedUidMaintenanceJob = {
-  jobId: string;
   uid: number;
 };
 
@@ -335,18 +342,17 @@ export type InsightWorkerRepositoryPort = {
   reclaimExpiredRunningJobs?(input: {
     now: Date;
   }): Promise<number>;
-  claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
+  claimNextSessionizationUidJob(input?: {
+    excludeJobIds?: string[];
+  }): Promise<ClaimedSessionizationUidJob | undefined>;
   claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
-  claimNextUidMaintenanceJob(): Promise<ClaimedUidMaintenanceJob | undefined>;
-  closeDisabledOpenSessions(input: {
-    endedAt: number;
-    limit: number;
-    uid: number;
-  }): Promise<number>;
-  closeSession(input: CloseSessionInput): Promise<void>;
+  completeSessionizationUidJob(input: ClaimedSessionizationUidJob): Promise<"deleted" | "pending">;
   createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string>;
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
+  discoverMessageUids(input: { batchSize: number; now: Date }): Promise<DiscoverMessageUidsResult>;
+  enqueueClosableSessionUids(input: { limit: number; now: number }): Promise<number>;
+  finalizeOpenSession(input: FinalizeOpenSessionInput): Promise<boolean>;
   findOpenSession(input: {
     conversationId: string;
     uid: number;
@@ -413,8 +419,8 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<InsightLiveGateSkipRecord | undefined>;
-  getActiveFeatureConfigs(input: { limit?: number }): Promise<InsightWorkerFeatureConfig[]>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
+  retryAnalysisJob(jobId: string, error: unknown, input: { delayMs: number }): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   // The run completed successfully, but model analysis was skipped before publishing a snapshot.
@@ -425,10 +431,10 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
-  markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
-  markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void>;
-  deleteUidMaintenanceJob(jobId: string): Promise<void>;
-  markUidMaintenanceJobFailed(jobId: string, error: unknown): Promise<void>;
+  markSessionizationUidJobFailed(
+    input: ClaimedSessionizationUidJob,
+    error: unknown,
+  ): Promise<void>;
   postponeAnalysisJobForInputReadiness(
     jobId: string,
     input: { delayMs: number; reason: string },
@@ -437,15 +443,8 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<boolean>;
-  rescheduleUidMaintenanceJob(
-    jobId: string,
-    input: { runAfter: Date },
-  ): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
-  seedUidMaintenanceJobs(input: {
-    limit: number;
-    runAfter: Date;
-  }): Promise<{ insertedJobs: number; scannedUids: number }>;
+  skipAutomaticAnalysisJob(job: ClaimedAnalyzeJob): Promise<void>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
   updateRescanTaskAfterAnalysis(input: {
@@ -474,14 +473,12 @@ const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
-const UID_MAINTENANCE_INTERVAL_MS = 10_000;
 const UID_MAINTENANCE_JOBS_PER_TICK = 10;
+const ANALYSIS_RETRY_DELAY_MS = 60_000;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
   private readonly model?: InsightSessionAnalyzer;
-  private uidSessionConfigCache?: Map<number, InsightWorkerSessionizationConfig>;
-  private uidFeatureConfigCache?: Map<number, InsightWorkerFeatureConfig>;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
@@ -490,66 +487,47 @@ export class InsightsWorkerService {
       logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
       now?: () => number;
-      startLookbackDays?: number;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.logger = options.logger;
     this.model = options.model;
     this.now = options.now ?? Date.now;
-    this.startLookbackDays = options.startLookbackDays ?? 3;
   }
 
   private readonly logger?: WorkerLogger;
   private readonly now: () => number;
-  private readonly startLookbackDays: number;
 
   async runOnce() {
-    this.uidSessionConfigCache = new Map();
-    this.uidFeatureConfigCache = new Map();
-
-    try {
-      await this.repository.seedUidMaintenanceJobs({
-        limit: this.batchSize,
-        runAfter: new Date(),
-      });
-      await this.repository.reclaimExpiredRunningJobs?.({
-        now: new Date(),
-      });
-      await this.runSyncMessagesJob();
-      await this.runCleanupDisabledInsightsJob();
-      await this.runUidMaintenanceJobs();
-
-      if (this.model) {
-        await this.runAnalyzeJobs(3);
-      }
-
-      await this.archiveTerminalJobs();
-    } finally {
-      this.uidSessionConfigCache = undefined;
-      this.uidFeatureConfigCache = undefined;
-    }
+    await this.runDiscoveryOnce();
+    await this.runSessionizationOnce();
+    await this.runAnalysisOnce();
   }
 
-  private resolveIncrementalStart(input: {
-    cursor: InsightWorkerCursor;
-    lastEnableTime?: number;
-  }): InsightWorkerCursor {
-    const lookbackMs = this.startLookbackDays * 24 * 60 * 60_000;
-    const currentLookbackStart = this.now() - lookbackMs;
-    const enableLookbackStart = input.lastEnableTime == null
-      ? currentLookbackStart
-      : input.lastEnableTime - lookbackMs;
-    const cursorMsgtime = Math.max(
-      input.cursor.cursorMsgtime,
-      enableLookbackStart,
-      currentLookbackStart,
-    );
+  async runDiscoveryOnce() {
+    return this.repository.discoverMessageUids({
+      batchSize: this.batchSize,
+      now: new Date(this.now()),
+    });
+  }
 
-    return {
-      cursorAuditId: cursorMsgtime === input.cursor.cursorMsgtime ? input.cursor.cursorAuditId : 0,
-      cursorMsgtime,
-    };
+  async runSessionizationOnce() {
+    await this.repository.enqueueClosableSessionUids({
+      limit: this.batchSize,
+      now: this.now(),
+    });
+    await this.runUidMaintenanceJobs();
+  }
+
+  async runAnalysisOnce() {
+    await this.repository.reclaimExpiredRunningJobs?.({
+      now: new Date(),
+    });
+    await this.runSyncMessagesJob();
+    if (this.model) {
+      await this.runAnalyzeJobs(3);
+    }
+    await this.archiveTerminalJobs();
   }
 
   private async archiveTerminalJobs() {
@@ -598,9 +576,11 @@ export class InsightsWorkerService {
     const claimedJobIds = new Set<string>();
 
     for (let i = 0; i < limit; i += 1) {
-      const job = await this.repository.claimNextUidMaintenanceJob();
+      const job = await this.repository.claimNextSessionizationUidJob({
+        excludeJobIds: Array.from(claimedJobIds),
+      });
 
-      if (!job || claimedJobIds.has(job.jobId)) {
+      if (!job) {
         break;
       }
 
@@ -609,14 +589,9 @@ export class InsightsWorkerService {
     }
   }
 
-  private async runUidMaintenanceJob(job: ClaimedUidMaintenanceJob) {
+  private async runUidMaintenanceJob(job: ClaimedSessionizationUidJob) {
     try {
-      const { insightEnabled, scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
-
-      if (!insightEnabled) {
-        await this.repository.deleteUidMaintenanceJob(job.jobId);
-        return;
-      }
+      const { scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
 
       if (scannedMessages > 0) {
         this.logger?.info(
@@ -630,11 +605,9 @@ export class InsightsWorkerService {
         );
       }
 
-      await this.repository.rescheduleUidMaintenanceJob(job.jobId, {
-        runAfter: new Date(Date.now() + UID_MAINTENANCE_INTERVAL_MS),
-      });
+      await this.repository.completeSessionizationUidJob(job);
     } catch (error) {
-      await this.repository.markUidMaintenanceJobFailed(job.jobId, error);
+      await this.repository.markSessionizationUidJobFailed(job, error);
       this.logger?.error(
         { err: error, jobId: job.jobId, uid: job.uid },
         "会话洞察 worker UID 维护任务失败",
@@ -644,24 +617,12 @@ export class InsightsWorkerService {
 
   private async maintainUid(uid: number) {
     const featureConfig = await this.repository.getFeatureConfig(uid);
-    this.uidFeatureConfigCache?.set(featureConfig.uid, featureConfig);
-
-    if (!featureConfig.insightEnabled) {
-      return {
-        insightEnabled: false,
-        scannedMessages: 0,
-        sessionizedMessages: 0,
-      };
-    }
+    const sessionizationConfig = await this.repository.getSessionizationConfig(uid);
 
     const cursor = await this.repository.getCursor(uid);
-    const start = this.resolveIncrementalStart({
-      cursor,
-      lastEnableTime: featureConfig.lastEnableTime,
-    });
     const messages = await this.repository.listIncrementalMessages({
-      cursorAuditId: start.cursorAuditId,
-      cursorMsgtime: start.cursorMsgtime,
+      cursorAuditId: cursor.cursorAuditId,
+      cursorMsgtime: cursor.cursorMsgtime,
       limit: this.batchSize,
       uid,
     });
@@ -682,7 +643,7 @@ export class InsightsWorkerService {
         continue;
       }
 
-      if (await this.sessionizeMessage(message)) {
+      if (await this.sessionizeMessage(message, { config: sessionizationConfig })) {
         sessionizedMessages += 1;
       }
     }
@@ -698,11 +659,12 @@ export class InsightsWorkerService {
     }
 
     const activeUids = new Set([uid]);
-    await this.scheduleLiveAnalysisForOpenSessions(activeUids);
+    if (featureConfig.insightEnabled) {
+      await this.scheduleLiveAnalysisForOpenSessions(activeUids);
+    }
     await this.closeTimedOutOpenSessions(activeUids);
 
     return {
-      insightEnabled: true,
       scannedMessages: messages.length,
       sessionizedMessages,
     };
@@ -730,6 +692,7 @@ export class InsightsWorkerService {
       let scannedMessages = 0;
       let sessionizedMessages = 0;
       let scanCompleted = false;
+      const sessionizationConfig = await this.repository.getSessionizationConfig(job.uid);
       const sessionsToAnalyze = new Map<
         string,
         {
@@ -770,7 +733,10 @@ export class InsightsWorkerService {
             continue;
           }
 
-          const sessionizedMessage = await this.sessionizeMessage(message, { skipLiveAnalysis: true });
+          const sessionizedMessage = await this.sessionizeMessage(message, {
+            config: sessionizationConfig,
+            skipLiveAnalysis: true,
+          });
 
           if (sessionizedMessage) {
             sessionizedMessages += 1;
@@ -860,57 +826,6 @@ export class InsightsWorkerService {
     }
   }
 
-  private async runCleanupDisabledInsightsJob() {
-    const job = await this.repository.claimNextCleanupDisabledInsightsJob();
-
-    if (!job) {
-      return;
-    }
-
-    try {
-      let featureConfig = this.uidFeatureConfigCache?.get(job.uid);
-      if (!featureConfig) {
-        featureConfig = await this.repository.getFeatureConfig(job.uid);
-        this.uidFeatureConfigCache?.set(job.uid, featureConfig);
-      }
-
-      if (
-        featureConfig.insightEnabled
-        || featureConfig.lastEnableTime !== job.enableEpoch
-      ) {
-        await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
-        return;
-      }
-
-      let cleanupCompleted = false;
-
-      for (let batchIndex = 0; batchIndex < CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES; batchIndex += 1) {
-        const closedSessions = await this.repository.closeDisabledOpenSessions({
-          endedAt: Date.now(),
-          limit: this.batchSize,
-          uid: job.uid,
-        });
-
-        if (closedSessions < this.batchSize) {
-          cleanupCompleted = true;
-          break;
-        }
-      }
-
-      if (!cleanupCompleted) {
-        throw new Error("cleanup_disabled_insights exceeded batch safety limit");
-      }
-
-      await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
-    } catch (error) {
-      await this.repository.markCleanupDisabledInsightsJobFailed(job.jobId, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker 清理已关闭洞察会话失败",
-      );
-    }
-  }
-
   private async closeTimedOutOpenSessions(activeUids: Set<number>) {
     const sessions = await this.repository.listClosableOpenSessions({
       activeUids,
@@ -919,18 +834,12 @@ export class InsightsWorkerService {
     });
 
     for (const session of sessions) {
-      await this.repository.createAnalyzeJob({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "final",
-        runAfter: new Date(session.endedAt + session.analysisDelayMinutes * 60_000),
-        sessionId: session.sessionId,
-        uid: session.uid,
-      });
-      await this.repository.closeSession({
+      await this.repository.finalizeOpenSession({
+        analysisDelayMinutes: session.analysisDelayMinutes,
         closeReason: session.closeReason,
         endedAt: session.endedAt,
         sessionId: session.sessionId,
+        uid: session.uid,
       });
     }
 
@@ -947,7 +856,10 @@ export class InsightsWorkerService {
 
   private async sessionizeMessage(
     message: InsightWorkerMessage,
-    options: { skipLiveAnalysis?: boolean } = {},
+    options: {
+      config?: InsightWorkerSessionizationConfig;
+      skipLiveAnalysis?: boolean;
+    } = {},
   ): Promise<SessionizedMessageResult | undefined> {
     const conversation = await this.repository.findPlatformConversation(message);
 
@@ -957,11 +869,8 @@ export class InsightsWorkerService {
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
 
-    let config = this.uidSessionConfigCache?.get(conversation.uid);
-    if (!config) {
-      config = await this.repository.getSessionizationConfig(conversation.uid);
-      this.uidSessionConfigCache?.set(conversation.uid, config);
-    }
+    const config = options.config
+      ?? await this.repository.getSessionizationConfig(conversation.uid);
 
     const openSession = await this.repository.findReusableSession({
       conversationId: conversation.conversationId,
@@ -1019,6 +928,11 @@ export class InsightsWorkerService {
   }
 
   private async createLiveAnalyzeJobIfNeeded(input: LiveAnalyzeCandidate) {
+    const featureConfig = await this.repository.getFeatureConfig(input.uid);
+    if (!featureConfig.insightEnabled) {
+      return false;
+    }
+
     if (
       !await this.repository.shouldCreateLiveAnalyzeJob({
         occurredAt: input.occurredAt,
@@ -1131,16 +1045,10 @@ export class InsightsWorkerService {
     }
 
     if (openSession.status !== "canceled") {
-      await this.repository.closeSession({
+      await this.repository.finalizeOpenSession({
+        analysisDelayMinutes: config.analysisDelayMinutes,
         closeReason,
         endedAt: occurredAt,
-        sessionId: openSession.sessionId,
-      });
-      await this.repository.createAnalyzeJob({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "final",
-        runAfter: new Date(occurredAt + config.analysisDelayMinutes * 60_000),
         sessionId: openSession.sessionId,
         uid: conversation.uid,
       });
@@ -1216,6 +1124,14 @@ export class InsightsWorkerService {
     );
 
     try {
+      if (job.mode !== "manual_reanalyze") {
+        const featureConfig = await this.repository.getFeatureConfig(job.uid);
+        if (!featureConfig.insightEnabled) {
+          await this.repository.skipAutomaticAnalysisJob(job);
+          return;
+        }
+      }
+
       const sourceRows = await this.repository.listSessionMessagesForAnalysis(job.sessionId);
       const messages = sourceRows.map((row) =>
         buildInsightMessageInput(toAnalysisMessageSourceRow(row)),
@@ -1225,7 +1141,11 @@ export class InsightsWorkerService {
         message.contentStatus === "pending_transcription"
       ).length;
 
-      if (pendingTranscriptionCount > 0 && job.attemptCount <= INPUT_READINESS_MAX_POSTPONES) {
+      if (
+        pendingTranscriptionCount > 0
+        && !job.inputReadinessPostponed
+        && job.attemptCount <= INPUT_READINESS_MAX_POSTPONES
+      ) {
         await this.repository.postponeAnalysisJobForInputReadiness(job.jobId, {
           delayMs: INPUT_READINESS_RETRY_DELAY_MS,
           reason: "pending_transcription",
@@ -1431,8 +1351,15 @@ export class InsightsWorkerService {
         await this.repository.markAnalysisRunFailed(runId, error);
       }
 
-      await this.repository.markAnalysisJobFailed(job.jobId, error);
-      if (job.rescanTaskId) {
+      const willRetry = job.mode === "final" && job.attemptCount < job.maxAttempts;
+      if (willRetry) {
+        await this.repository.retryAnalysisJob(job.jobId, error, {
+          delayMs: ANALYSIS_RETRY_DELAY_MS,
+        });
+      } else {
+        await this.repository.markAnalysisJobFailed(job.jobId, error);
+      }
+      if (job.rescanTaskId && !willRetry) {
         await this.repository.updateRescanTaskAfterAnalysis({
           failedSessions: 1,
           rescanTaskId: job.rescanTaskId,
@@ -1998,5 +1925,44 @@ export function startInsightsWorker(options: {
       await ticker.waitForIdle();
     },
     ticker,
+  };
+}
+
+export function startInsightsWorkerPipelines(options: {
+  analysis: () => Promise<void>;
+  discovery: () => Promise<void>;
+  intervalMs?: number;
+  logger: WorkerLogger;
+  sessionization: () => Promise<void>;
+}) {
+  const intervalMs = options.intervalMs ?? 3_000;
+  const pipelines = [
+    ["discovery", options.discovery],
+    ["sessionization", options.sessionization],
+    ["analysis", options.analysis],
+  ] as const;
+  const runtimes = pipelines.map(([name, run]) => {
+    const ticker = createNonOverlappingTicker(run);
+    const timer = setInterval(() => {
+      void ticker.tick().catch((error: unknown) => {
+        options.logger.error({ err: error, pipeline: name }, "会话洞察 worker pipeline tick 失败");
+      });
+    }, intervalMs);
+
+    return { name, ticker, timer };
+  });
+
+  options.logger.info({ intervalMs }, "会话洞察 worker 已启动独立处理管线");
+
+  return {
+    async stop() {
+      for (const runtime of runtimes) {
+        clearInterval(runtime.timer);
+      }
+      await Promise.all(runtimes.map((runtime) => runtime.ticker.waitForIdle()));
+    },
+    tickers: Object.fromEntries(
+      runtimes.map((runtime) => [runtime.name, runtime.ticker]),
+    ) as Record<(typeof pipelines)[number][0], NonOverlappingTicker>,
   };
 }

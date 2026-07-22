@@ -13,7 +13,6 @@ export const EnvSchema = Type.Object({
   INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
   INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
   INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),
-  INSIGHTS_WORKER_START_LOOKBACK_DAYS: Type.Optional(Type.String()),
   INSIGHTS_WORKER_UID_ALLOWLIST: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),

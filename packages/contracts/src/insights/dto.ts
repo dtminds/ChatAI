@@ -7,6 +7,12 @@ export const InsightAnalysisStatusSchema = Type.Union([
   Type.Literal("failed"),
   Type.Literal("stale"),
   Type.Literal("partial"),
+  Type.Literal("skipped"),
+]);
+
+export const InsightModeSchema = Type.Union([
+  Type.Literal("basic"),
+  Type.Literal("insight"),
 ]);
 
 export const InsightActionStatusSchema = Type.Union([
@@ -83,23 +89,29 @@ export const InsightOverviewTrendPointSchema = Type.Object({
 });
 
 export const InsightOverviewSessionItemSchema = Type.Object({
+  agentMessageCount: Type.Number(),
   agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.Optional(Type.String()),
-  analysisStatus: InsightAnalysisStatusSchema,
+  analysisPhase: Type.Optional(Type.Union([Type.Literal("live"), Type.Literal("final")])),
+  analysisStatus: Type.Optional(InsightAnalysisStatusSchema),
   conversationId: Type.String(),
+  customerMessageCount: Type.Number(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   endedAt: Type.Optional(Type.Number()),
   lastMessageAt: Type.Optional(Type.Number()),
+  messageCount: Type.Number(),
   problemSummary: Type.Optional(Type.String()),
-  resolutionStatus: InsightResolutionStatusSchema,
+  resolutionStatus: Type.Optional(InsightResolutionStatusSchema),
   sessionId: Type.String(),
+  sessionState: Type.Union([Type.Literal("open"), Type.Literal("ended")]),
   startedAt: Type.Number(),
-  summarySessionTitle: Type.String(),
+  summarySessionTitle: Type.Optional(Type.String()),
 });
 
 export const InsightOverviewSessionsPageSchema = Type.Object({
   items: Type.Array(InsightOverviewSessionItemSchema),
+  mode: InsightModeSchema,
   page: Type.Number(),
   pageSize: Type.Number(),
   total: Type.Number(),
@@ -109,27 +121,35 @@ export const InsightOverviewSessionsPageSchema = Type.Object({
 export const InsightOverviewSessionsResponseSchema = InsightOverviewSessionsPageSchema;
 
 export const InsightsOverviewResponseSchema = Type.Object({
-  actionItemsOpen: Type.Number(),
-  analysis: Type.Object({
+  actionItemsOpen: Type.Optional(Type.Number()),
+  analysis: Type.Optional(Type.Object({
     failed: Type.Number(),
     partial: Type.Number(),
     ready: Type.Number(),
     stale: Type.Number(),
-  }),
+  })),
   comparison: InsightOverviewComparisonSchema,
-  problemSessions: Type.Number(),
-  readySessions: Type.Number(),
-  resolution: Type.Object({
+  comparisonAvailable: Type.Boolean(),
+  mode: InsightModeSchema,
+  problemSessions: Type.Optional(Type.Number()),
+  readySessions: Type.Optional(Type.Number()),
+  resolution: Type.Optional(Type.Object({
     noCustomerProblem: Type.Number(),
     partiallyResolved: Type.Number(),
     resolved: Type.Number(),
     unknown: Type.Number(),
     unresolved: Type.Number(),
-  }),
-  totalSessions: Type.Number(),
+  })),
+  totalSessions: Type.Optional(Type.Number()),
   totals: InsightOverviewTotalsSchema,
   trend: Type.Array(InsightOverviewTrendPointSchema),
-  unresolvedSessions: Type.Number(),
+  unresolvedSessions: Type.Optional(Type.Number()),
+});
+
+export const InsightCapabilitiesResponseSchema = Type.Object({
+  canManageInsights: Type.Boolean(),
+  insightAvailable: Type.Boolean(),
+  mode: InsightModeSchema,
 });
 
 export const InsightFilterOptionSchema = Type.Object({
@@ -395,7 +415,7 @@ export const InsightCreateActionItemResponseSchema = Type.Object({
 
 export const InsightDetailResponseSchema = Type.Object({
   actionItems: Type.Array(InsightDetailActionItemSchema),
-  analysisStatus: InsightAnalysisStatusSchema,
+  analysisStatus: Type.Optional(InsightAnalysisStatusSchema),
   currentSnapshotId: Type.Optional(Type.String()),
   entities: Type.Array(InsightDetailEntitySchema),
   evidenceItems: Type.Array(InsightEvidenceItemSchema),
@@ -653,6 +673,8 @@ export const InsightConfigDeletedResponseSchema = Type.Object({
 
 export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
+export type InsightMode = Static<typeof InsightModeSchema>;
+export type InsightCapabilitiesResponse = Static<typeof InsightCapabilitiesResponseSchema>;
 export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScopeSchema>;
 export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
 export type InsightCreateActionItemRequest = Static<typeof InsightCreateActionItemRequestSchema>;

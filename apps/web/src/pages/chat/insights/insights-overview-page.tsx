@@ -67,8 +67,9 @@ import {
 import { cn } from "@/lib/utils";
 import { getInsightFilterOptions, getInsightOverview, getInsightOverviewSessions } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
+import { AnalysisPhaseBadge, AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
+import { BasicSessionMessagesPanel } from "./basic-session-messages-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
 import { InsightTablePagination } from "./insight-table-pagination";
@@ -77,6 +78,7 @@ import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { insightChartColors, insightResolutionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 type TrendMetric = keyof InsightsOverviewResponse["totals"];
 type OverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
@@ -123,10 +125,12 @@ const analysisStatusFilterOptions = [
   { label: "已完成", value: "ready" },
   { label: "部分完成", value: "partial" },
   { label: "分析失败", value: "failed" },
+  { label: "已跳过分析", value: "skipped" },
   { label: "已过期", value: "stale" },
 ];
 
 export function InsightsOverviewPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
   const [overviewError, setOverviewError] = useState(false);
   const [sessionsPage, setSessionsPage] = useState<InsightOverviewSessionsResponse>();
@@ -144,7 +148,24 @@ export function InsightsOverviewPage() {
   const [resolutionFilter, setResolutionFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [to, setTo] = useState(() => getRecentDateRange(7).to);
+  const [basicDetailSession, setBasicDetailSession] = useState<InsightOverviewSessionsResponse["items"][number]>();
   const detail = useInsightDetail();
+  const insightMode = capabilities.mode === "insight";
+
+  useEffect(() => {
+    if (insightMode) {
+      setBasicDetailSession(undefined);
+      return;
+    }
+
+    setAnalysisStatusFilter("all");
+    setEntityFilter("all");
+    setIntentFilter("all");
+    setProblemFilter("all");
+    setResolutionFilter("all");
+    setTagFilter("all");
+    detail.onOpenChange(false);
+  }, [insightMode]);
 
   useEffect(() => {
     setPage(1);
@@ -161,6 +182,11 @@ export function InsightsOverviewPage() {
   ]);
 
   useEffect(() => {
+    if (!insightMode) {
+      setFilterOptionsResponse(undefined);
+      return;
+    }
+
     let isActive = true;
 
     void getInsightFilterOptions()
@@ -178,7 +204,7 @@ export function InsightsOverviewPage() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [insightMode]);
 
   useEffect(() => {
     let isActive = true;
@@ -202,23 +228,27 @@ export function InsightsOverviewPage() {
     return () => {
       isActive = false;
     };
-  }, [from, to]);
+  }, [from, insightMode, to]);
 
   useEffect(() => {
     let isActive = true;
 
     setIsSessionsLoading(true);
     void getInsightOverviewSessions({
-      analysisStatus: normalizeAnalysisStatusFilter(analysisStatusFilter),
-      entityId: entityFilter === "all" ? undefined : entityFilter,
+      analysisStatus: insightMode
+        ? normalizeAnalysisStatusFilter(analysisStatusFilter)
+        : undefined,
+      entityId: insightMode && entityFilter !== "all" ? entityFilter : undefined,
       from: toBoundaryDate(from, "start"),
-      intentId: intentFilter === "all" ? undefined : intentFilter,
+      intentId: insightMode && intentFilter !== "all" ? intentFilter : undefined,
       keyword: debouncedKeyword || undefined,
       page,
       pageSize: overviewPageSize,
-      problemScope: normalizeProblemScopeFilter(problemFilter),
-      resolutionStatus: normalizeResolutionStatusFilter(resolutionFilter),
-      tagId: tagFilter === "all" ? undefined : tagFilter,
+      problemScope: insightMode ? normalizeProblemScopeFilter(problemFilter) : undefined,
+      resolutionStatus: insightMode
+        ? normalizeResolutionStatusFilter(resolutionFilter)
+        : undefined,
+      tagId: insightMode && tagFilter !== "all" ? tagFilter : undefined,
       to: toBoundaryDate(to, "end"),
     }).then((response) => {
       if (isActive) {
@@ -240,6 +270,7 @@ export function InsightsOverviewPage() {
     debouncedKeyword,
     entityFilter,
     from,
+    insightMode,
     intentFilter,
     page,
     problemFilter,
@@ -249,7 +280,6 @@ export function InsightsOverviewPage() {
   ]);
 
   const sessions = sessionsPage?.items ?? [];
-
   const filterOptions = useMemo(
     () => buildSessionFilterOptions(filterOptionsResponse),
     [filterOptionsResponse],
@@ -277,8 +307,8 @@ export function InsightsOverviewPage() {
           onMetricChange={setActiveMetric}
           overview={overview}
         />
-        <div className="grid gap-5 xl:grid-cols-[520px_minmax(0,1fr)]">
-          <ResolutionDistribution from={from} overview={overview} to={to} />
+        <div className={cn("grid gap-5", insightMode && "xl:grid-cols-[520px_minmax(0,1fr)]")}>
+          {insightMode ? <ResolutionDistribution from={from} overview={overview} to={to} /> : null}
           <TrendPanel
             activeMetric={activeMetric}
             from={from}
@@ -292,12 +322,20 @@ export function InsightsOverviewPage() {
           entityFilter={entityFilter}
           filterOptions={filterOptions}
           intentFilter={intentFilter}
+          insightMode={insightMode}
           keyword={keyword}
           onAnalysisStatusFilterChange={setAnalysisStatusFilter}
           onEntityFilterChange={setEntityFilter}
           onIntentFilterChange={setIntentFilter}
           onKeywordChange={setKeyword}
-          onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
+          onOpenDetail={(sessionId) => {
+            if (insightMode) {
+              void detail.openDetail(sessionId);
+              return;
+            }
+
+            setBasicDetailSession(sessions.find((session) => session.sessionId === sessionId));
+          }}
           onProblemFilterChange={setProblemFilter}
           onPageChange={setPage}
           onResolutionFilterChange={setResolutionFilter}
@@ -311,7 +349,7 @@ export function InsightsOverviewPage() {
         />
       </div>
 
-      <InsightDetailPanel
+      {insightMode ? <InsightDetailPanel
         detail={detail.detail}
         error={detail.error}
         isOpen={detail.isOpen}
@@ -321,7 +359,16 @@ export function InsightsOverviewPage() {
         messagesError={detail.messagesError}
         onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
-      />
+      /> : (
+        <BasicSessionMessagesPanel
+          onOpenChange={(open) => {
+            if (!open) {
+              setBasicDetailSession(undefined);
+            }
+          }}
+          session={basicDetailSession}
+        />
+      )}
     </InsightsLayout>
   );
 }
@@ -597,6 +644,7 @@ function SessionTableCard({
   entityFilter,
   filterOptions,
   intentFilter,
+  insightMode,
   isLoading,
   keyword,
   onAnalysisStatusFilterChange,
@@ -618,6 +666,7 @@ function SessionTableCard({
   entityFilter: string;
   filterOptions: SessionFilterOptions;
   intentFilter: string;
+  insightMode: boolean;
   isLoading: boolean;
   keyword: string;
   onAnalysisStatusFilterChange: (value: string) => void;
@@ -672,28 +721,28 @@ function SessionTableCard({
                 size={17}
               />
               <Input
-                aria-label="搜索摘要"
+                aria-label={insightMode ? "搜索摘要" : "搜索会话"}
                 className="h-9 w-full pl-9 sm:w-[220px]"
                 onChange={(event) => onKeywordChange(event.target.value)}
-                placeholder="搜索摘要"
+                placeholder={insightMode ? "搜索摘要" : "搜索客户或客服"}
                 value={keyword}
               />
             </div>
-            <FilterSelect
+            {insightMode ? <FilterSelect
               label="问题范围"
               onValueChange={onProblemFilterChange}
               options={problemFilterOptions}
               value={problemFilter}
               widthClassName="w-[132px]"
-            />
-            <FilterSelect
+            /> : null}
+            {insightMode ? <FilterSelect
               label="AI 诊断"
               onValueChange={onResolutionFilterChange}
               options={resolutionFilterOptions}
               value={resolutionFilter}
               widthClassName="w-[136px]"
-            />
-            <AdvancedSessionFilterDropdown
+            /> : null}
+            {insightMode ? <AdvancedSessionFilterDropdown
               activeCount={advancedFilterCount}
               analysisStatusFilter={analysisStatusFilter}
               entityFilter={entityFilter}
@@ -710,10 +759,10 @@ function SessionTableCard({
               }}
               onTagFilterChange={onTagFilterChange}
               tagFilter={tagFilter}
-            />
+            /> : null}
           </div>
         </div>
-        {activeFilters.length > 0 ? (
+        {insightMode && activeFilters.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             {activeFilters.map((filter) => (
               <button
@@ -736,17 +785,17 @@ function SessionTableCard({
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[180px]">客户</TableHead>
               <TableHead className="h-11 min-w-[180px]">接待客服</TableHead>
-              <TableHead className="h-11 min-w-[260px]">摘要</TableHead>
-              <TableHead className="h-11 min-w-[160px]">
+              <TableHead className="h-11 min-w-[260px]">{insightMode ? "摘要" : "消息"}</TableHead>
+              {insightMode ? <TableHead className="h-11 min-w-[160px]">
                 <ResolutionDiagnosisHeader />
-              </TableHead>
+              </TableHead> : null}
               <TableHead className="h-11 min-w-[150px]">时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <InsightTableLoadingRow colSpan={6} />
+              <InsightTableLoadingRow colSpan={insightMode ? 6 : 5} />
             ) : rows.length > 0 ? (
               rows.map((row) => (
                 <TableRow key={row.sessionId}>
@@ -763,17 +812,21 @@ function SessionTableCard({
                     />
                   </TableCell>
                   <TableCell className="max-w-[300px] py-4">
-                    <div className="truncate text-sm font-medium text-foreground">
+                    {insightMode ? <div className="truncate text-sm font-medium text-foreground">
                       {formatSessionSummaryCell(row.summarySessionTitle, row.problemSummary)}
-                    </div>
+                    </div> : <div className="text-sm text-muted-foreground">
+                      共 {row.messageCount} 条，客户 {row.customerMessageCount} 条，客服 {row.agentMessageCount} 条
+                    </div>}
                   </TableCell>
-                  <TableCell className="py-4">
-                    {row.analysisStatus === "analyzing" ? (
-                      <AnalysisStatusBadge />
-                    ) : (
+                  {insightMode ? <TableCell className="py-4">
+                    {row.analysisPhase === "live" && row.sessionState === "ended" ? (
+                      <AnalysisPhaseBadge phase={row.analysisPhase} />
+                    ) : row.analysisStatus === "analyzing" || row.analysisStatus === "skipped" ? (
+                      <AnalysisStatusBadge status={row.analysisStatus} />
+                    ) : row.resolutionStatus ? (
                       <ResolutionBadge status={row.resolutionStatus} />
-                    )}
-                  </TableCell>
+                    ) : <span className="text-sm text-muted-foreground">-</span>}
+                  </TableCell> : null}
                   <TableCell className="py-4 text-sm text-muted-foreground">
                     {formatInsightTime(row.startedAt)}
                   </TableCell>
@@ -791,7 +844,7 @@ function SessionTableCard({
               ))
             ) : (
               <TableRow>
-                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={7}>
+                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={insightMode ? 6 : 5}>
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -1216,8 +1269,8 @@ function getComparisonDelta(
 ) {
   const comparison = overview?.comparison?.[metric];
 
-  if (!comparison) {
-    return { label: "暂无对比", value: 0 };
+  if (!comparison || !overview?.comparisonAvailable || comparison.deltaRate == null) {
+    return { label: "暂无对比数据", value: 0 };
   }
 
   const delta = comparison.delta;

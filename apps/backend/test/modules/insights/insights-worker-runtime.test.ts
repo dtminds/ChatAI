@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   createInsightsWorkerRuntime,
-  getInitialInsightWorkerCursor,
   parseInsightsWorkerRuntimeConfig,
 } from "../../../src/modules/insights/insights-worker-runtime";
 
 describe("insights worker runtime config", () => {
-  it("defaults to a disabled standalone worker with a three-day cursor lookback", () => {
+  it("defaults to a disabled standalone worker", () => {
     expect(parseInsightsWorkerRuntimeConfig({})).toEqual({
       batchSize: 200,
       enabled: false,
       intervalMs: 3_000,
       modelEnabled: false,
-      startLookbackDays: 3,
     });
   });
 
@@ -23,7 +21,6 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_ENABLED: "true",
         INSIGHTS_WORKER_INTERVAL_MS: "10000",
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
-        INSIGHTS_WORKER_START_LOOKBACK_DAYS: "7",
         VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
         VOLCENGINE_ARK_LITE_MODEL: "ep-lite",
       }),
@@ -32,7 +29,6 @@ describe("insights worker runtime config", () => {
       enabled: true,
       intervalMs: 10_000,
       modelEnabled: true,
-      startLookbackDays: 7,
     });
   });
 
@@ -48,18 +44,6 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_INTERVAL_MS: "100",
       }),
     ).toThrow("INSIGHTS_WORKER_INTERVAL_MS must be at least 1000");
-  });
-
-  it("creates an initial cursor from the configured lookback window", () => {
-    expect(
-      getInitialInsightWorkerCursor({
-        now: new Date("2026-06-02T00:00:00.000Z"),
-        startLookbackDays: 3,
-      }),
-    ).toEqual({
-      cursorAuditId: 0,
-      cursorMsgtime: Date.parse("2026-05-30T00:00:00.000Z"),
-    });
   });
 
   it("does not start the standalone worker when disabled", () => {

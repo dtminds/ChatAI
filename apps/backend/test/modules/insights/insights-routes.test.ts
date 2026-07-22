@@ -18,7 +18,9 @@ describe("insights routes", () => {
   });
 
   it("serves authenticated P0 insight data and commands", async () => {
-    const { app, authorization, db } = await createInsightsApp("operator");
+    const { app, authorization, db } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
 
     const overview = await app.inject({
       headers: { authorization },
@@ -426,7 +428,9 @@ describe("insights routes", () => {
   });
 
   it("returns action status update misses as a business error envelope", async () => {
-    const { app, authorization } = await createInsightsApp("operator");
+    const { app, authorization } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
 
     const response = await app.inject({
       headers: {
@@ -447,6 +451,38 @@ describe("insights routes", () => {
         message: "待处理事项不存在",
       },
       success: false,
+    });
+  });
+
+  it("blocks AI detail in basic mode while keeping session messages available", async () => {
+    const { app, authorization } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 0 },
+    });
+
+    const [detail, messages] = await Promise.all([
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/sessions/501",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/sessions/501/messages",
+      }),
+    ]);
+
+    await app.close();
+
+    expect(detail.statusCode).toBe(403);
+    expect(detail.json()).toMatchObject({
+      error: { code: "INSIGHT_NOT_ENABLED" },
+      success: false,
+    });
+    expect(messages.statusCode).toBe(200);
+    expect(messages.json()).toMatchObject({
+      data: { messages: expect.any(Array) },
+      success: true,
     });
   });
 
@@ -741,7 +777,7 @@ describe("insights routes", () => {
     expect(admin.db.upsertedFeatureConfig).toBeUndefined();
   });
 
-  it("queues cleanup when admins disable tenant insights", async () => {
+  it("only updates the feature switch when admins disable tenant insights", async () => {
     const admin = await createInsightsApp("admin", {
       initialFeatureConfig: {
         entity_enabled: 1,
@@ -776,15 +812,7 @@ describe("insights routes", () => {
       last_enable_time: 1_780_243_000_000,
       uid: 9001,
     });
-    expect(admin.db.insertedJob).toMatchObject({
-      analysis_scope: "all",
-      job_type: "cleanup_disabled_insights",
-      status: "pending",
-      target_id: "1780243000000",
-      target_type: "uid",
-      uid: 9001,
-    });
-    expect(admin.db.insertedJob?.idempotency_key).toBe("cleanup_disabled_insights:9001:1780243000000");
+    expect(admin.db.insertedJob).toBeUndefined();
   });
 
   it("returns system preset candidates when business config tables are empty", async () => {
@@ -1987,6 +2015,15 @@ function createInsightsDbMock(options: {
             },
           ];
         });
+      }
+
+      if (table === "xy_wap_embed_insight_sync_cursor") {
+        return createBuilder(() => [
+          {
+            create_time: new Date("2026-05-01T00:00:00.000Z"),
+            uid: 0,
+          },
+        ]);
       }
 
       throw new Error(`Unexpected select table: ${table}`);

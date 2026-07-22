@@ -1461,7 +1461,7 @@ export interface XyWapEmbedInsightJob {
    */
   idempotency_key: string;
   /**
-   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   * 任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话
    */
   job_type: string;
   /**
@@ -1473,7 +1473,7 @@ export interface XyWapEmbedInsightJob {
    */
   locked_by: string | null;
   /**
-   * 最大尝试次数
+   * 最大执行次数，首次失败后重试1次
    */
   max_attempts: Generated<number>;
   /**
@@ -1544,7 +1544,7 @@ export interface XyWapEmbedInsightJobArchive {
    */
   idempotency_key: string;
   /**
-   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   * 任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话
    */
   job_type: string;
   /**
@@ -1556,7 +1556,7 @@ export interface XyWapEmbedInsightJobArchive {
    */
   locked_by: string | null;
   /**
-   * 最大尝试次数
+   * 最大执行次数，首次失败后重试1次
    */
   max_attempts: Generated<number>;
   /**

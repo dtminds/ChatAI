@@ -3,9 +3,8 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   InsightsWorkerService,
-  startInsightsWorker,
+  startInsightsWorkerPipelines,
   type InsightSessionAnalyzer,
-  type InsightWorkerCursor,
 } from "./insights-worker.js";
 import { MysqlInsightWorkerRepository } from "./insights-worker.repository.js";
 import {
@@ -19,7 +18,6 @@ export type InsightsWorkerRuntimeConfig = {
   enabled: boolean;
   intervalMs: number;
   modelEnabled: boolean;
-  startLookbackDays: number;
 };
 
 type WorkerRuntimeEnv = {
@@ -27,7 +25,6 @@ type WorkerRuntimeEnv = {
   INSIGHTS_WORKER_ENABLED?: string;
   INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
-  INSIGHTS_WORKER_START_LOOKBACK_DAYS?: string;
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
   VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
@@ -58,23 +55,6 @@ export function parseInsightsWorkerRuntimeConfig(
       1_000,
     ),
     modelEnabled: parseBoolean(env.INSIGHTS_WORKER_MODEL_ENABLED),
-    startLookbackDays: parsePositiveInteger(
-      env.INSIGHTS_WORKER_START_LOOKBACK_DAYS,
-      "INSIGHTS_WORKER_START_LOOKBACK_DAYS",
-      3,
-    ),
-  };
-}
-
-export function getInitialInsightWorkerCursor(input: {
-  now?: Date;
-  startLookbackDays: number;
-}): InsightWorkerCursor {
-  const now = input.now ?? new Date();
-
-  return {
-    cursorAuditId: 0,
-    cursorMsgtime: now.getTime() - input.startLookbackDays * 24 * 60 * 60_000,
   };
 }
 
@@ -90,21 +70,20 @@ export function createInsightsWorkerRuntime(input: {
     return undefined;
   }
 
-  const repository = new MysqlInsightWorkerRepository(input.db, {
-    startLookbackDays: config.startLookbackDays,
-  });
+  const repository = new MysqlInsightWorkerRepository(input.db);
   const model = config.modelEnabled ? createInsightAnalyzer(input.env, input.logger) : undefined;
   const service = new InsightsWorkerService(repository, {
     batchSize: config.batchSize,
     logger: input.logger,
     model,
-    startLookbackDays: config.startLookbackDays,
   });
 
-  return startInsightsWorker({
+  return startInsightsWorkerPipelines({
+    analysis: () => service.runAnalysisOnce(),
+    discovery: () => service.runDiscoveryOnce().then(() => undefined),
     intervalMs: config.intervalMs,
     logger: input.logger,
-    runOnce: () => service.runOnce(),
+    sessionization: () => service.runSessionizationOnce(),
   });
 }
 

@@ -61,11 +61,25 @@ export function StatusBadge({
   );
 }
 
-export function AnalysisStatusBadge() {
+export function AnalysisStatusBadge({ status = "analyzing" }: { status?: "analyzing" | "skipped" }) {
   return (
     <span className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground">
-      <HugeiconsIcon icon={Loading03Icon} size={13} strokeWidth={2} />
-      {formatAnalysisStatus("analyzing")}
+      {status === "analyzing" ? (
+        <HugeiconsIcon icon={Loading03Icon} size={13} strokeWidth={2} />
+      ) : null}
+      {formatAnalysisStatus(status)}
+    </span>
+  );
+}
+
+export function AnalysisPhaseBadge({ phase }: { phase?: "final" | "live" }) {
+  if (phase !== "live") {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-center text-xs font-medium text-muted-foreground">
+      仅实时结果
     </span>
   );
 }

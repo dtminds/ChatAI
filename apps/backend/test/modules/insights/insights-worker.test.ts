@@ -69,6 +69,11 @@ function createRepository(
   overrides: Partial<InsightWorkerRepositoryPort> = {},
 ): InsightWorkerRepositoryPort {
   let createdSessionId: string | undefined;
+  const defaultSessionizationJob = {
+    claimToken: "claim-9001",
+    jobId: "sessionize-9001",
+    uid: 9001,
+  };
 
   return {
     appendSessionMessage: vi.fn(async () => undefined),
@@ -77,13 +82,22 @@ function createRepository(
       deletedJobs: 0,
     })),
     reclaimExpiredRunningJobs: vi.fn(async () => 0),
-    closeSession: vi.fn(async () => undefined),
-    closeDisabledOpenSessions: vi.fn(async () => 0),
-    createAnalyzeJob: vi.fn(async () => "job-1"),
-    claimNextUidMaintenanceJob: vi.fn(async () => ({
-      jobId: "maintain-9001",
-      uid: 9001,
+    claimNextSessionizationUidJob: vi.fn(async (input) =>
+      input?.excludeJobIds?.includes(defaultSessionizationJob.jobId)
+        ? undefined
+        : defaultSessionizationJob,
+    ),
+    completeSessionizationUidJob: vi.fn(async () => "deleted"),
+    discoverMessageUids: vi.fn(async () => ({
+      cursorAuditId: 9002,
+      discoveredMessages: 2,
+      discoveredUids: 1,
+      skipped: false,
     })),
+    enqueueClosableSessionUids: vi.fn(async () => 0),
+    finalizeOpenSession: vi.fn(async () => true),
+    markSessionizationUidJobFailed: vi.fn(async () => undefined),
+    createAnalyzeJob: vi.fn(async () => "job-1"),
     claimNextAnalyzeJob: vi.fn(async () => undefined),
     claimNextSyncMessagesJob: vi.fn(async () => undefined),
     createLogicalSession: vi.fn(async () => {
@@ -107,19 +121,6 @@ function createRepository(
       conversationId: "301",
       uid: 9001,
     })),
-    getActiveFeatureConfigs: vi.fn(async () => [
-      {
-        entityEnabled: true,
-        insightEnabled: true,
-        intentEnabled: true,
-        labelEnabled: true,
-        lastEnableTime: 1_780_243_000_000,
-        qaEnabled: true,
-        todoEnabled: true,
-        uid: 9001,
-      },
-    ]),
-    claimNextCleanupDisabledInsightsJob: vi.fn(async () => undefined),
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
     getFeatureConfig: vi.fn(async () => ({
       entityEnabled: true,
@@ -179,23 +180,16 @@ function createRepository(
     listSessionMessagesForAnalysis: vi.fn(async () => []),
     getCurrentAnalysisOutput: vi.fn(async () => undefined),
     markAnalysisJobFailed: vi.fn(async () => undefined),
+    retryAnalysisJob: vi.fn(async () => undefined),
     postponeAnalysisJobForInputReadiness: vi.fn(async () => undefined),
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
     markAnalysisRunFailed: vi.fn(async () => undefined),
     markAnalysisRunSucceededWithoutSnapshot: vi.fn(async () => undefined),
     markSyncMessagesJobFailed: vi.fn(async () => undefined),
     markSyncMessagesJobSucceeded: vi.fn(async () => undefined),
-    markCleanupDisabledInsightsJobFailed: vi.fn(async () => undefined),
-    markCleanupDisabledInsightsJobSucceeded: vi.fn(async () => undefined),
-    deleteUidMaintenanceJob: vi.fn(async () => undefined),
-    markUidMaintenanceJobFailed: vi.fn(async () => undefined),
     reopenSession: vi.fn(async () => true),
-    rescheduleUidMaintenanceJob: vi.fn(async () => undefined),
     saveAnalysisResult: vi.fn(async () => "7001"),
-    seedUidMaintenanceJobs: vi.fn(async () => ({
-      insertedJobs: 0,
-      scannedUids: 0,
-    })),
+    skipAutomaticAnalysisJob: vi.fn(async () => undefined),
     shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
     updateRescanTaskAfterAnalysis: vi.fn(async () => undefined),
@@ -207,29 +201,26 @@ function createRepository(
 }
 
 describe("InsightsWorkerService", () => {
-  it("seeds and runs one claimed uid maintenance job without directly scanning active configs", async () => {
-    const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => ({
-        jobId: "maintain-9001",
-        uid: 9001,
-      })),
-      getActiveFeatureConfigs: vi.fn(async () => []),
-    });
+  it("discovers messages and runs one claimed sessionization uid job", async () => {
+    const repository = createRepository();
     const service = new InsightsWorkerService(repository, { batchSize: 50 });
 
     await service.runOnce();
 
-    expect(repository.seedUidMaintenanceJobs).toHaveBeenCalledWith({
+    expect(repository.discoverMessageUids).toHaveBeenCalledWith({
+      batchSize: 50,
+      now: expect.any(Date),
+    });
+    expect(repository.enqueueClosableSessionUids).toHaveBeenCalledWith({
       limit: 50,
-      runAfter: expect.any(Date),
+      now: expect.any(Number),
     });
     expect(repository.reclaimExpiredRunningJobs).toHaveBeenCalledWith({
       now: expect.any(Date),
     });
-    expect(repository.getActiveFeatureConfigs).not.toHaveBeenCalled();
     expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
       cursorAuditId: 0,
-      cursorMsgtime: expect.any(Number),
+      cursorMsgtime: 0,
       limit: 50,
       uid: 9001,
     });
@@ -242,22 +233,21 @@ describe("InsightsWorkerService", () => {
       limit: 50,
       now: expect.any(Number),
     });
-    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
-      "maintain-9001",
-      expect.objectContaining({
-        runAfter: expect.any(Date),
-      }),
-    );
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalledWith({
+      claimToken: "claim-9001",
+      jobId: "sessionize-9001",
+      uid: 9001,
+    });
   });
 
-  it("runs multiple uid maintenance jobs in one worker tick", async () => {
+  it("runs multiple sessionization uid jobs in one worker tick", async () => {
     const jobs = [
-      { jobId: "maintain-9001", uid: 9001 },
-      { jobId: "maintain-9002", uid: 9002 },
+      { claimToken: "claim-9001", jobId: "sessionize-9001", uid: 9001 },
+      { claimToken: "claim-9002", jobId: "sessionize-9002", uid: 9002 },
       undefined,
     ];
     const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => jobs.shift()),
+      claimNextSessionizationUidJob: vi.fn(async () => jobs.shift()),
       getFeatureConfig: vi.fn(async (uid: number) => ({
         entityEnabled: true,
         insightEnabled: true,
@@ -274,25 +264,73 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.claimNextUidMaintenanceJob).toHaveBeenCalledTimes(3);
+    expect(repository.claimNextSessionizationUidJob).toHaveBeenCalledTimes(3);
     expect(repository.listIncrementalMessages).toHaveBeenCalledTimes(2);
-    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledTimes(2);
-    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
-      "maintain-9001",
-      expect.objectContaining({ runAfter: expect.any(Date) }),
-    );
-    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
-      "maintain-9002",
-      expect.objectContaining({ runAfter: expect.any(Date) }),
-    );
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalledTimes(2);
   });
 
-  it("marks uid maintenance jobs failed when incremental maintenance throws", async () => {
+  it("does not reclaim a sessionization job restored to pending in the same tick", async () => {
+    const firstJob = {
+      claimToken: "claim-9001",
+      jobId: "sessionize-9001",
+      uid: 9001,
+    };
+    const secondJob = {
+      claimToken: "claim-9002",
+      jobId: "sessionize-9002",
+      uid: 9002,
+    };
     const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => ({
-        jobId: "maintain-9001",
-        uid: 9001,
+      claimNextSessionizationUidJob: vi.fn(async ({ excludeJobIds } = {}) => {
+        if (!excludeJobIds?.includes(firstJob.jobId)) {
+          return firstJob;
+        }
+        if (!excludeJobIds.includes(secondJob.jobId)) {
+          return secondJob;
+        }
+        return undefined;
+      }),
+      completeSessionizationUidJob: vi
+        .fn()
+        .mockResolvedValueOnce("pending")
+        .mockResolvedValueOnce("deleted"),
+      getFeatureConfig: vi.fn(async (uid: number) => ({
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid,
       })),
+      listIncrementalMessages: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.claimNextSessionizationUidJob).toHaveBeenNthCalledWith(1, {
+      excludeJobIds: [],
+    });
+    expect(repository.claimNextSessionizationUidJob).toHaveBeenNthCalledWith(2, {
+      excludeJobIds: [firstJob.jobId],
+    });
+    expect(repository.claimNextSessionizationUidJob).toHaveBeenNthCalledWith(3, {
+      excludeJobIds: [firstJob.jobId, secondJob.jobId],
+    });
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalledTimes(2);
+    expect(repository.getCursor).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries sessionization uid jobs when incremental maintenance throws", async () => {
+    const job = {
+      claimToken: "claim-9001",
+      jobId: "sessionize-9001",
+      uid: 9001,
+    };
+    const repository = createRepository({
+      claimNextSessionizationUidJob: vi.fn(async () => job),
       listIncrementalMessages: vi.fn(async () => {
         throw new Error("platform unavailable");
       }),
@@ -301,22 +339,17 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.markUidMaintenanceJobFailed).toHaveBeenCalledWith(
-      "maintain-9001",
+    expect(repository.markSessionizationUidJobFailed).toHaveBeenCalledWith(
+      job,
       expect.objectContaining({
         message: "platform unavailable",
       }),
     );
-    expect(repository.rescheduleUidMaintenanceJob).not.toHaveBeenCalled();
+    expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
   });
 
   it("sessionizes incremental messages and creates a live analysis job", async () => {
-    const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => ({
-        jobId: "maintain-9001",
-        uid: 9001,
-      })),
-    });
+    const repository = createRepository();
     const service = new InsightsWorkerService(repository, { batchSize: 50 });
 
     await service.runOnce();
@@ -337,6 +370,7 @@ describe("InsightsWorkerService", () => {
       }),
     );
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.getSessionizationConfig).toHaveBeenCalledTimes(1);
     expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
       expect.objectContaining({
         analysisScope: "all",
@@ -612,27 +646,13 @@ describe("InsightsWorkerService", () => {
       limit: 200,
       now: expect.any(Number),
     });
-    expect(repository.createAnalyzeJob).toHaveBeenCalled();
-    expect(repository.closeSession).toHaveBeenCalled();
-    expect(
-      vi.mocked(repository.createAnalyzeJob).mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      vi.mocked(repository.closeSession).mock.invocationCallOrder[0],
-    );
-    expect(repository.closeSession).toHaveBeenCalledWith({
+    expect(repository.finalizeOpenSession).toHaveBeenCalledWith({
+      analysisDelayMinutes: 10,
       closeReason: "idle_timeout",
       endedAt: 1_780_244_000_000,
       sessionId: "501",
+      uid: 9001,
     });
-    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobType: "analyze_session",
-        mode: "final",
-        runAfter: new Date(1_780_244_000_000 + 10 * 60_000),
-        sessionId: "501",
-        uid: 9001,
-      }),
-    );
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
         closedSessions: 1,
@@ -689,10 +709,11 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.closeSession).toHaveBeenCalledWith(
+    expect(repository.finalizeOpenSession).toHaveBeenCalledWith(
       expect.objectContaining({
         closeReason: "idle_timeout",
         sessionId: "500",
+        uid: 9001,
       }),
     );
     expect(repository.createLogicalSession).toHaveBeenCalled();
@@ -775,10 +796,12 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.closeSession).toHaveBeenCalledWith({
+    expect(repository.finalizeOpenSession).toHaveBeenCalledWith({
+      analysisDelayMinutes: 10,
       closeReason: "idle_timeout",
       endedAt: 1_780_251_200_001,
       sessionId: "501",
+      uid: 9001,
     });
     expect(repository.createLogicalSession).toHaveBeenCalledTimes(2);
     expect(repository.createLogicalSession).toHaveBeenNthCalledWith(
@@ -887,7 +910,7 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(repository.reopenSession).not.toHaveBeenCalled();
-    expect(repository.closeSession).not.toHaveBeenCalled();
+    expect(repository.finalizeOpenSession).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
       expect.objectContaining({
         jobType: "analyze_session",
@@ -970,33 +993,21 @@ describe("InsightsWorkerService", () => {
     });
   });
 
-  it("does not scan incremental messages when no tenant has enabled insights", async () => {
+  it("does not process a uid when discovery has not produced a sessionization job", async () => {
     const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
-      seedUidMaintenanceJobs: vi.fn(async () => ({
-        insertedJobs: 0,
-        scannedUids: 0,
-      })),
+      claimNextSessionizationUidJob: vi.fn(async () => undefined),
     });
     const service = new InsightsWorkerService(repository);
 
     await service.runOnce();
 
-    expect(repository.seedUidMaintenanceJobs).toHaveBeenCalledWith({
-      limit: 200,
-      runAfter: expect.any(Date),
-    });
     expect(repository.findPlatformConversation).not.toHaveBeenCalled();
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
   });
 
-  it("does not scan incremental messages when the tenant has not enabled insights", async () => {
+  it("continues sessionization but does not schedule live analysis when insights are disabled", async () => {
     const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => ({
-        jobId: "maintain-9001",
-        uid: 9001,
-      })),
       getFeatureConfig: vi.fn(async () => ({
         entityEnabled: true,
         insightEnabled: false,
@@ -1012,144 +1023,15 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.listIncrementalMessages).not.toHaveBeenCalled();
-    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
-    expect(repository.updateCursor).not.toHaveBeenCalled();
-    expect(repository.deleteUidMaintenanceJob).toHaveBeenCalledWith(
-      "maintain-9001",
-    );
-    expect(repository.rescheduleUidMaintenanceJob).not.toHaveBeenCalled();
+    expect(repository.listIncrementalMessages).toHaveBeenCalled();
+    expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.updateCursor).toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalled();
   });
-
-  it("uses the current lookback window when it is newer than the enable lookback window", async () => {
-    const now = 1_780_300_000_000;
-    const lastEnableTime = now - 2 * 24 * 60 * 60_000;
-    const currentLookbackStart = now - 3 * 24 * 60 * 60_000;
-    const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => [
-        {
-          entityEnabled: true,
-          insightEnabled: true,
-          intentEnabled: true,
-          labelEnabled: true,
-          lastEnableTime,
-          qaEnabled: true,
-          todoEnabled: true,
-          uid: 9001,
-        },
-      ]),
-      getCursor: vi.fn(async () => ({
-        cursorAuditId: 8888,
-        cursorMsgtime: now - 6 * 24 * 60 * 60_000,
-        uid: 9001,
-      })),
-      listIncrementalMessages: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository, {
-      now: () => now,
-      startLookbackDays: 3,
-    });
-
-    await service.runOnce();
-
-    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
-      cursorAuditId: 0,
-      cursorMsgtime: currentLookbackStart,
-      limit: 200,
-      uid: 9001,
-    });
-  });
-
-  it("uses the sync cursor when it is newer than the enable lookback window", async () => {
-    const now = 1_780_300_000_000;
-    const cursorMsgtime = now - 60_000;
-    const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => [
-        {
-          entityEnabled: true,
-          insightEnabled: true,
-          intentEnabled: true,
-          labelEnabled: true,
-          lastEnableTime: now - 2 * 24 * 60 * 60_000,
-          qaEnabled: true,
-          todoEnabled: true,
-          uid: 9001,
-        },
-      ]),
-      getCursor: vi.fn(async () => ({
-        cursorAuditId: 9200,
-        cursorMsgtime,
-        uid: 9001,
-      })),
-      listIncrementalMessages: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository, {
-      now: () => now,
-      startLookbackDays: 3,
-    });
-
-    await service.runOnce();
-
-    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
-      cursorAuditId: 9200,
-      cursorMsgtime,
-      limit: 200,
-      uid: 9001,
-    });
-  });
-
-  it("does not scan older than the current lookback window when the worker has been interrupted", async () => {
+  it("continues from the stored uid cursor without applying an enable-time lookback", async () => {
     const now = 1_780_300_000_000;
     const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => [
-        {
-          entityEnabled: true,
-          insightEnabled: true,
-          intentEnabled: true,
-          labelEnabled: true,
-          lastEnableTime: now - 40 * 24 * 60 * 60_000,
-          qaEnabled: true,
-          todoEnabled: true,
-          uid: 9001,
-        },
-      ]),
-      getCursor: vi.fn(async () => ({
-        cursorAuditId: 8888,
-        cursorMsgtime: now - 30 * 24 * 60 * 60_000,
-        uid: 9001,
-      })),
-      listIncrementalMessages: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository, {
-      now: () => now,
-      startLookbackDays: 3,
-    });
-
-    await service.runOnce();
-
-    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
-      cursorAuditId: 0,
-      cursorMsgtime: now - 3 * 24 * 60 * 60_000,
-      limit: 200,
-      uid: 9001,
-    });
-  });
-
-  it("does not rewind a fresh cursor back to last enable time on every tick", async () => {
-    const now = 1_780_300_000_000;
-    const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => [
-        {
-          entityEnabled: true,
-          insightEnabled: true,
-          intentEnabled: true,
-          labelEnabled: true,
-          lastEnableTime: now - 2 * 24 * 60 * 60_000,
-          qaEnabled: true,
-          todoEnabled: true,
-          uid: 9001,
-        },
-      ]),
       getCursor: vi.fn(async () => ({
         cursorAuditId: 9200,
         cursorMsgtime: now - 60_000,
@@ -1159,7 +1041,6 @@ describe("InsightsWorkerService", () => {
     });
     const service = new InsightsWorkerService(repository, {
       now: () => now,
-      startLookbackDays: 3,
     });
 
     await service.runOnce();
@@ -1172,17 +1053,13 @@ describe("InsightsWorkerService", () => {
     });
   });
 
-  it("does not run analysis scheduling or close sessions when insights are disabled", async () => {
+  it("closes sessions but skips automatic analysis when insights are disabled", async () => {
     const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => ({
-        jobId: "maintain-9001",
-        uid: 9001,
-      })),
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
         attemptCount: 1,
         jobId: "job-1",
-        maxAttempts: 3,
+        maxAttempts: 2,
         mode: "live",
         sessionId: "501",
         uid: 9001,
@@ -1224,116 +1101,18 @@ describe("InsightsWorkerService", () => {
 
     expect(repository.claimNextAnalyzeJob).toHaveBeenCalledWith();
     expect(repository.listOpenSessionsForLiveAnalysis).not.toHaveBeenCalled();
-    expect(repository.listClosableOpenSessions).not.toHaveBeenCalled();
-    expect(repository.closeSession).not.toHaveBeenCalled();
-    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
-  });
-
-  it("runs cleanup-disabled-insights jobs in batches", async () => {
-    const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
-      claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
-        enableEpoch: 1_780_243_000_000,
-        jobId: "cleanup-job-1",
-        uid: 9001,
-      })),
-      closeDisabledOpenSessions: vi
-        .fn()
-        .mockResolvedValueOnce(200)
-        .mockResolvedValueOnce(25),
-      getFeatureConfig: vi.fn(async () => ({
-        entityEnabled: true,
-        insightEnabled: false,
-        intentEnabled: true,
-        labelEnabled: true,
-        lastEnableTime: 1_780_243_000_000,
-        qaEnabled: true,
-        todoEnabled: true,
-        uid: 9001,
-      })),
-      getActiveFeatureConfigs: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository, { batchSize: 200 });
-
-    await service.runOnce();
-
-    expect(repository.closeDisabledOpenSessions).toHaveBeenCalledWith({
-      endedAt: expect.any(Number),
-      limit: 200,
+    expect(repository.listClosableOpenSessions).toHaveBeenCalled();
+    expect(repository.finalizeOpenSession).toHaveBeenCalledWith({
+      analysisDelayMinutes: 10,
+      closeReason: "idle_timeout",
+      endedAt: 1_780_244_000_000,
+      sessionId: "501",
       uid: 9001,
     });
-    expect(repository.closeDisabledOpenSessions).toHaveBeenCalledTimes(2);
-    expect(
-      repository.markCleanupDisabledInsightsJobSucceeded,
-    ).toHaveBeenCalledWith("cleanup-job-1");
-  });
-
-  it("fails cleanup-disabled-insights jobs when cleanup exceeds the batch safety limit", async () => {
-    const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
-      claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
-        enableEpoch: 1_780_243_000_000,
-        jobId: "cleanup-job-1",
-        uid: 9001,
-      })),
-      closeDisabledOpenSessions: vi.fn(async () => 2),
-      getFeatureConfig: vi.fn(async () => ({
-        entityEnabled: true,
-        insightEnabled: false,
-        intentEnabled: true,
-        labelEnabled: true,
-        lastEnableTime: 1_780_243_000_000,
-        qaEnabled: true,
-        todoEnabled: true,
-        uid: 9001,
-      })),
-      getActiveFeatureConfigs: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository, { batchSize: 2 });
-
-    await service.runOnce();
-
-    expect(
-      repository.markCleanupDisabledInsightsJobFailed,
-    ).toHaveBeenCalledWith(
-      "cleanup-job-1",
-      expect.objectContaining({
-        message: expect.stringContaining("exceeded"),
-      }),
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.skipAutomaticAnalysisJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "job-1", mode: "live" }),
     );
-    expect(
-      repository.markCleanupDisabledInsightsJobSucceeded,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("skips stale cleanup-disabled-insights jobs after insights are re-enabled", async () => {
-    const repository = createRepository({
-      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
-      claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
-        enableEpoch: 1_780_243_000_000,
-        jobId: "cleanup-job-1",
-        uid: 9001,
-      })),
-      getFeatureConfig: vi.fn(async () => ({
-        entityEnabled: true,
-        insightEnabled: true,
-        intentEnabled: true,
-        labelEnabled: true,
-        lastEnableTime: 1_780_250_000_000,
-        qaEnabled: true,
-        todoEnabled: true,
-        uid: 9001,
-      })),
-      getActiveFeatureConfigs: vi.fn(async () => []),
-    });
-    const service = new InsightsWorkerService(repository);
-
-    await service.runOnce();
-
-    expect(repository.closeDisabledOpenSessions).not.toHaveBeenCalled();
-    expect(
-      repository.markCleanupDisabledInsightsJobSucceeded,
-    ).toHaveBeenCalledWith("cleanup-job-1");
   });
 
   it("runs one due historical rescan job from the requested time", async () => {
@@ -2718,6 +2497,94 @@ describe("InsightsWorkerService", () => {
         }),
       }),
     );
+  });
+
+  it("retries a final analysis once after the first execution failure", async () => {
+    const failure = new Error("model unavailable");
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const service = new InsightsWorkerService(repository, {
+      model: {
+        analyzeSession: vi.fn(async () => {
+          throw failure;
+        }),
+      },
+    });
+
+    await service.runOnce();
+
+    expect(repository.markAnalysisRunFailed).toHaveBeenCalledWith("run-1", failure);
+    expect(repository.retryAnalysisJob).toHaveBeenCalledWith("job-1", failure, {
+      delayMs: 60_000,
+    });
+    expect(repository.markAnalysisJobFailed).not.toHaveBeenCalled();
+  });
+
+  it("marks a final analysis failed after its single retry also fails", async () => {
+    const failure = new Error("model unavailable");
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 2,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const service = new InsightsWorkerService(repository, {
+      model: {
+        analyzeSession: vi.fn(async () => {
+          throw failure;
+        }),
+      },
+    });
+
+    await service.runOnce();
+
+    expect(repository.markAnalysisRunFailed).toHaveBeenCalledWith("run-1", failure);
+    expect(repository.retryAnalysisJob).not.toHaveBeenCalled();
+    expect(repository.markAnalysisJobFailed).toHaveBeenCalledWith("job-1", failure);
   });
 
   it("passes recent conversation action items to final analysis", async () => {

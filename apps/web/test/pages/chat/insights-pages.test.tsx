@@ -19,6 +19,7 @@ const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
   getInsightBusinessRelatedSessions: vi.fn(),
   getInsightBusinessTopics: vi.fn(),
+  getInsightCapabilities: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
@@ -481,9 +482,16 @@ function createMockInsightSessionMessages() {
 }
 
 function installInsightMocks() {
+  serviceMocks.getInsightCapabilities.mockResolvedValue({
+    canManageInsights: true,
+    insightAvailable: true,
+    mode: "insight",
+  });
   serviceMocks.getInsightOverview.mockResolvedValue({
     actionItemsOpen: 3,
     analysis: { failed: 1, partial: 2, ready: 18, stale: 1 },
+    comparisonAvailable: true,
+    mode: "insight",
     problemSessions: 11,
     readySessions: 18,
     resolution: {
@@ -556,62 +564,79 @@ function installInsightMocks() {
   serviceMocks.getInsightOverviewSessions.mockResolvedValue({
     items: [
       {
+        agentMessageCount: 4,
         agentAvatarUrl: "https://example.com/agent-1.png",
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
+        customerMessageCount: 6,
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         lastMessageAt: 1_780_244_950_000,
+        messageCount: 10,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
+        sessionState: "ended",
         startedAt: 1_780_243_200_000,
         summarySessionTitle: "物流异常待跟进",
       },
       {
+        agentMessageCount: 3,
         agentAvatarUrl: "https://example.com/agent-2.png",
         agentName: "客服二号",
         analysisStatus: "partial",
         conversationId: "302",
+        customerMessageCount: 4,
         customerAvatarUrl: "https://example.com/customer-2.png",
         customerName: "李四",
         lastMessageAt: 1_780_244_500_000,
+        messageCount: 7,
         problemSummary: "客户咨询退款到账时间",
         resolutionStatus: "resolved",
         sessionId: "502",
+        sessionState: "ended",
         startedAt: 1_780_244_000_000,
         summarySessionTitle: "退款到账咨询",
       },
       {
+        agentMessageCount: 1,
         agentAvatarUrl: "https://example.com/agent-3.png",
         agentName: "客服三号",
         analysisStatus: "ready",
         conversationId: "303",
+        customerMessageCount: 1,
         customerAvatarUrl: "https://example.com/customer-3.png",
         customerName: "赵六",
         lastMessageAt: 1_780_243_500_000,
+        messageCount: 2,
         problemSummary: "",
         resolutionStatus: "unknown",
         sessionId: "503",
+        sessionState: "ended",
         startedAt: 1_780_243_400_000,
         summarySessionTitle: "",
       },
       {
+        agentMessageCount: 2,
         agentAvatarUrl: "https://example.com/agent-4.png",
         agentName: "客服四号",
         analysisStatus: "analyzing",
         conversationId: "304",
+        customerMessageCount: 3,
         customerAvatarUrl: "https://example.com/customer-4.png",
         customerName: "孙七",
         lastMessageAt: 1_780_245_500_000,
+        messageCount: 5,
         problemSummary: "",
         resolutionStatus: "unknown",
         sessionId: "504",
+        sessionState: "open",
         startedAt: 1_780_245_000_000,
         summarySessionTitle: "",
       },
     ],
+    mode: "insight",
     page: 1,
     pageSize: 20,
     total: 4,
@@ -774,20 +799,25 @@ function installInsightMocks() {
   serviceMocks.getInsightBusinessRelatedSessions.mockResolvedValue({
     items: [
       {
+        agentMessageCount: 4,
         agentAvatarUrl: "https://example.com/agent-1.png",
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
+        customerMessageCount: 6,
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         lastMessageAt: 1_780_244_950_000,
+        messageCount: 10,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
+        sessionState: "ended",
         startedAt: 1_780_243_200_000,
         summarySessionTitle: "物流异常待跟进",
       },
     ],
+    mode: "insight",
     page: 1,
     pageSize: 20,
     total: 1,
@@ -2845,7 +2875,8 @@ describe("conversation insights pages", () => {
       screen.queryByText("个性化调整洞察策略、标签、质检规则和实体词库"),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
-    expect(screen.getByText("会话切分规则")).toBeInTheDocument();
+    expect(screen.getByText("服务会话规则")).toBeInTheDocument();
+    expect(screen.getByText("AI 洞察规则")).toBeInTheDocument();
     expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
     expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
     expect(screen.queryByText("自定义")).not.toBeInTheDocument();
@@ -2862,7 +2893,6 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
     ).toHaveTextContent("标准（推荐）");
-    expect(screen.getByText("准入规则")).toBeInTheDocument();
     expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -4251,6 +4281,87 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the basic overview without AI data requests and opens raw messages", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      insightAvailable: true,
+      mode: "basic",
+    });
+    serviceMocks.getInsightOverview.mockResolvedValue({
+      ...(await serviceMocks.getInsightOverview()),
+      mode: "basic",
+    });
+    serviceMocks.getInsightOverviewSessions.mockResolvedValue({
+      items: [
+        {
+          agentMessageCount: 4,
+          agentName: "客服一号",
+          conversationId: "301",
+          customerMessageCount: 6,
+          customerName: "张三",
+          endedAt: 1_780_244_950_000,
+          lastMessageAt: 1_780_244_950_000,
+          messageCount: 10,
+          sessionId: "501",
+          sessionState: "ended",
+          startedAt: 1_780_243_200_000,
+        },
+      ],
+      mode: "basic",
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    expect(serviceMocks.getInsightFilterOptions).not.toHaveBeenCalled();
+    expect(screen.queryByText("AI 诊断")).not.toBeInTheDocument();
+    expect(screen.getByText("共 10 条，客户 6 条，客服 4 条")).toBeInTheDocument();
+    expect(serviceMocks.getInsightOverviewSessions).toHaveBeenCalledWith({
+      analysisStatus: undefined,
+      entityId: undefined,
+      from: expect.any(String),
+      intentId: undefined,
+      keyword: undefined,
+      page: 1,
+      pageSize: 20,
+      problemScope: undefined,
+      resolutionStatus: undefined,
+      tagId: undefined,
+      to: expect.any(String),
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "详情" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightSessionMessages).toHaveBeenCalledWith("501");
+    });
+    expect(serviceMocks.getInsightDetail).not.toHaveBeenCalled();
+    expect(screen.getAllByText("共 10 条，客户 6 条，客服 4 条")).toHaveLength(2);
+  });
+
+  it("blocks AI-only pages in basic mode before requesting their data", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      insightAvailable: true,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByText("请先开启会话洞察")).toBeInTheDocument();
+    expect(serviceMocks.getInsightQualityOverview).not.toHaveBeenCalled();
+    expect(serviceMocks.getInsightQualityResults).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: "前往洞察配置" }),
+    ).toHaveAttribute("href", "/chat/insights/settings");
+  });
+
   it("shows a loading row when switching quality result views", async () => {
     serviceMocks.getInsightQualityResults.mockImplementationOnce(
       () => new Promise(() => undefined),
@@ -4271,6 +4382,7 @@ describe("conversation insights pages", () => {
   it("shows a centered empty state for overview sessions", async () => {
     serviceMocks.getInsightOverviewSessions.mockResolvedValue({
       items: [],
+      mode: "insight",
       page: 1,
       pageSize: 20,
       total: 0,

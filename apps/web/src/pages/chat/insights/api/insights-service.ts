@@ -1,6 +1,7 @@
 import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
+  InsightCapabilitiesResponse,
   InsightOverviewQuery as ContractInsightOverviewQuery,
   InsightOverviewSessionsQuery as ContractInsightOverviewSessionsQuery,
   InsightOverviewSessionsResponse,
@@ -103,6 +104,14 @@ export async function getInsightOverview(query: InsightOverviewQuery = {}) {
     {
       params: compactQuery(query),
     },
+  );
+
+  return response.data;
+}
+
+export async function getInsightCapabilities() {
+  const response = await http.get<ApiSuccessEnvelope<InsightCapabilitiesResponse>>(
+    "/server/insights/capabilities",
   );
 
   return response.data;

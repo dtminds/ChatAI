@@ -9,6 +9,7 @@ import {
   MaterialGroupSelectDialog,
   MaterialLibraryDialog,
 } from "@/pages/chat/components/material-collection";
+import { MaterialImageGrid } from "@/pages/chat/components/material-collection/material-image-grid";
 import { MaterialItemFormDialog } from "@/pages/chat/components/material-collection/material-item-form-dialog";
 import { getMaterialContentFormValues } from "@/pages/chat/components/material-collection/material-types";
 import type {
@@ -980,6 +981,48 @@ describe("material collection components", () => {
 
     expect(handleSelect).toHaveBeenCalledWith(item);
     expect(handleEdit).not.toHaveBeenCalled();
+  });
+
+  it("does not offer material moves when an image grid is selection-only", async () => {
+    const user = userEvent.setup();
+    const item = createItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      content: {
+        alt: "商品图",
+        fileUrl: "https://b5.bokr.com.cn/product.png",
+      },
+      contentType: "image",
+      groupId: "group-image",
+      id: "image-1",
+      title: "图片",
+    });
+
+    render(
+      <MaterialImageGrid
+        groups={[
+          createGroup({ id: "group-image", title: "常用图片" }),
+          createGroup({ id: "group-target", title: "目标分组" }),
+        ]}
+        hasMoreItems={false}
+        isBusy={false}
+        isLoadingMoreItems={false}
+        items={[item]}
+        onCancel={() => undefined}
+        onSendMaterial={() => undefined}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "选择图片 商品图" }), {
+      clientX: 120,
+      clientY: 220,
+    });
+
+    const moveAction = await screen.findByRole("menuitem", { name: "移动分组" });
+    expect(moveAction).toBeDisabled();
+
+    await user.click(moveAction);
+
+    expect(screen.queryByRole("dialog", { name: "移动分组" })).not.toBeInTheDocument();
   });
 
   it("renders video materials as selectable cover cards with a play action", async () => {

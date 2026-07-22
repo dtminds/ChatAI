@@ -17,8 +17,9 @@
   --workflow-panel-section: var(--accent);
   --workflow-param-bg: var(--muted);
   --workflow-text-tertiary: var(--muted-foreground);
-  --workflow-node-outline: color-mix(in oklch, var(--foreground) 16%, var(--workflow-panel-bg));
-  --workflow-node-ring: color-mix(in oklch, var(--workflow-panel-bg) 88%, var(--foreground));
+  --workflow-node-card-border: #fff;
+  --workflow-node-card-border-width: 1px;
+  --workflow-node-handle-ring: #fff;
   --workflow-node-accent-strong: 0.07;
   --workflow-node-accent-soft: 0.03;
   --workflow-control-active: color-mix(in oklch, var(--foreground) 6%, transparent);
@@ -29,14 +30,15 @@
 .dark .workflow-page {
   color-scheme: dark;
   --workflow-canvas-bg: color-mix(in oklch, var(--background) 86%, black);
-  --workflow-grid: color-mix(in oklch, var(--foreground) 18%, transparent);
+  --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
   --workflow-edge: color-mix(in oklch, var(--foreground) 38%, var(--workflow-canvas-bg));
   --workflow-border: color-mix(in oklch, var(--border) 74%, transparent);
   --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 90%, transparent);
-  --workflow-node-outline: color-mix(in oklch, var(--foreground) 18%, var(--workflow-panel-bg));
-  --workflow-node-ring: color-mix(in oklch, var(--foreground) 14%, var(--workflow-panel-bg));
-  --workflow-node-accent-strong: 0.14;
-  --workflow-node-accent-soft: 0.06;
+  --workflow-node-card-border: transparent;
+  --workflow-node-card-border-width: 0px;
+  --workflow-node-handle-ring: color-mix(in oklch, var(--foreground) 24%, var(--workflow-panel-bg));
+  --workflow-node-accent-strong: 0.08;
+  --workflow-node-accent-soft: 0.025;
   --workflow-control-active: color-mix(in oklch, var(--foreground) 9%, transparent);
   --workflow-divider: color-mix(in oklch, var(--foreground) 14%, transparent);
 }
@@ -116,12 +118,12 @@
 .workflow-node-card {
   position: relative;
   width: 320px;
-  border: 1px solid var(--workflow-node-ring);
+  border: var(--workflow-node-card-border-width) solid var(--workflow-node-card-border);
   border-radius: 15px;
   background: var(--workflow-panel-bg);
   padding-bottom: 4px;
   box-shadow:
-    0 6px 14px -8px var(--shadow-strong);
+    0 6px 14px -12px var(--shadow-strong);
 }
 
 .workflow-node-card::before {
@@ -226,7 +228,7 @@
   box-sizing: border-box;
   width: 12px;
   height: 12px;
-  border: 1.5px solid var(--workflow-node-ring);
+  border: 1.5px solid var(--workflow-node-handle-ring);
   border-radius: 999px;
   background: var(--workflow-blue);
   content: "";

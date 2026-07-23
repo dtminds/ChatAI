@@ -78,6 +78,20 @@ function placeContentEditableCaretAtTextOffset(element: HTMLElement, offset: num
   element.focus();
 }
 
+function createFileDragData(files: File[]) {
+  return {
+    dropEffect: "none",
+    files,
+    getData: vi.fn(() => ""),
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+    })),
+    setData: vi.fn(),
+    types: ["Files"],
+  };
+}
+
 function getConversationCardMainButton(conversationId: string) {
   const card = screen.getByTestId(`conversation-card-${conversationId}`);
   const title = within(card).getByText("丹阳草莓，得利市大樱桃");
@@ -843,6 +857,136 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     expect(screen.getByRole("button", { name: "发送消息" })).not.toBeDisabled();
+  });
+
+  it("accepts image drops across the composer and appends them to the draft", async () => {
+    const user = userEvent.setup();
+    const image = new File(["image-bytes"], "dropped.png", {
+      type: "image/png",
+    });
+    const pdfFile = new File(["document-bytes"], "ignored.pdf", {
+      type: "application/pdf",
+    });
+    const dataTransfer = createFileDragData([image, pdfFile]);
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "已有内容");
+    placeContentEditableCaretAtTextOffset(composer, 0);
+
+    const toolbarButton = screen.getByRole("button", { name: "历史记录" });
+    fireEvent.dragEnter(toolbarButton, {
+      dataTransfer,
+    });
+
+    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toBeInTheDocument();
+
+    fireEvent.dragLeave(toolbarButton, {
+      dataTransfer,
+    });
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.dragEnter(toolbarButton, {
+      dataTransfer,
+    });
+    fireEvent.dragOver(toolbarButton, {
+      dataTransfer,
+    });
+    expect(dataTransfer.dropEffect).toBe("copy");
+
+    fireEvent.drop(toolbarButton, {
+      dataTransfer,
+    });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+    expect(
+      await within(composer).findByRole("img", { name: "dropped.png" }),
+    ).toBeInTheDocument();
+    expect(mediaUploadMocks.uploadWorkbenchFile).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    const savedSegments =
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"]
+        ?.segments;
+
+    expect(savedSegments?.map((segment) => segment.type)).toEqual(["text", "image"]);
+    expect(savedSegments?.[0]).toMatchObject({
+      text: "已有内容",
+      type: "text",
+    });
+    expect(savedSegments?.[1]).toMatchObject({
+      alt: "dropped.png",
+      type: "image",
+    });
+  });
+
+  it("does not activate image dropping for unsupported image formats", async () => {
+    const image = new File(["image-bytes"], "dropped.webp", {
+      type: "image/webp",
+    });
+    const dataTransfer = createFileDragData([image]);
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    fireEvent.dragEnter(composer, {
+      dataTransfer,
+    });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.drop(composer, {
+      dataTransfer,
+    });
+
+    expect(
+      within(composer).queryByRole("img", { name: "dropped.webp" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
+
+  it("does not accept dropped images when messages cannot be sent", async () => {
+    const image = new File(["image-bytes"], "dropped.png", {
+      type: "image/png",
+    });
+    const dataTransfer = createFileDragData([image]);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+      uid: 1,
+    });
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+    fireEvent.dragEnter(composer, {
+      dataTransfer,
+    });
+    fireEvent.drop(composer, {
+      dataTransfer,
+    });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(composer).queryByRole("img", { name: "dropped.png" }),
+    ).not.toBeInTheDocument();
   });
 
   it("only accepts jpeg and png files from the composer image picker", async () => {
@@ -2330,6 +2474,24 @@ describe("ChatWorkbenchPage composer flows", () => {
       expect(sendButton).toHaveAttribute("aria-busy", "true");
       expect(composer).toHaveAttribute("contenteditable", "false");
     });
+
+    const image = new File(["image-bytes"], "while-sending.png", {
+      type: "image/png",
+    });
+    const dataTransfer = createFileDragData([image]);
+    fireEvent.dragEnter(composer, {
+      dataTransfer,
+    });
+    fireEvent.drop(composer, {
+      dataTransfer,
+    });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(composer).queryByRole("img", { name: "while-sending.png" }),
+    ).not.toBeInTheDocument();
 
     sendMessageGate.resolve({
       optNo: "opt-msg-test",

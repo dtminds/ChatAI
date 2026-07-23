@@ -1,4 +1,5 @@
 import {
+  type DragEvent as ReactDragEvent,
   type ReactElement,
   type RefObject,
   useCallback,
@@ -34,7 +35,7 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
-import type { LexicalEditor } from "lexical";
+import { $getRoot, type LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -100,6 +101,7 @@ import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
 import {
   COMPOSER_IMAGE_FILE_ACCEPT,
   isSupportedComposerImageFile,
+  isSupportedComposerImageMimeType,
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
@@ -238,6 +240,7 @@ export function ChatComposer({
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageDragDepthRef = useRef(0);
   const [draftText, setDraftText] = useState(draft);
   const [segments, setSegments] = useState<ComposerSegment[]>([]);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
@@ -246,6 +249,7 @@ export function ChatComposer({
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
   const [isGroupAiPopoverOpen, setIsGroupAiPopoverOpen] = useState(false);
   const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
+  const [isImageDragActive, setIsImageDragActive] = useState(false);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
@@ -419,6 +423,15 @@ export function ChatComposer({
   );
 
   useEffect(() => {
+    if (canEditComposer) {
+      return;
+    }
+
+    imageDragDepthRef.current = 0;
+    setIsImageDragActive(false);
+  }, [canEditComposer]);
+
+  useEffect(() => {
     setActiveMentionIndex(0);
     setIsMentionPickerDismissed(false);
   }, [mentionTrigger?.query]);
@@ -516,7 +529,12 @@ export function ChatComposer({
     activeMentionIndex,
   ]);
 
-  const handleImageFiles = async (fileList: FileList | File[] | null) => {
+  const handleImageFiles = async (
+    fileList: FileList | File[] | null,
+    options?: {
+      appendToEnd?: boolean;
+    },
+  ) => {
     if (isSending || !canSendMessage) {
       return;
     }
@@ -549,6 +567,12 @@ export function ChatComposer({
       })),
     );
 
+    if (options?.appendToEnd && images.some((image) => image.src)) {
+      composerRef.current?.update(() => {
+        $getRoot().selectEnd();
+      });
+    }
+
     for (const image of images) {
       if (!image.src) {
         continue;
@@ -563,6 +587,75 @@ export function ChatComposer({
     }
 
     composerRef.current?.focus();
+  };
+
+  const resetImageDragState = () => {
+    imageDragDepthRef.current = 0;
+    setIsImageDragActive(false);
+  };
+
+  const handleComposerDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (
+      !canEditComposer ||
+      !hasSupportedComposerImageDrag(event.dataTransfer)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    imageDragDepthRef.current += 1;
+    setIsImageDragActive(true);
+  };
+
+  const handleComposerDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!isImageDragActive) {
+      return;
+    }
+
+    event.preventDefault();
+    imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
+
+    if (imageDragDepthRef.current === 0) {
+      setIsImageDragActive(false);
+    }
+  };
+
+  const handleComposerDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (
+      !canEditComposer ||
+      !hasSupportedComposerImageDrag(event.dataTransfer)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleComposerDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasFileDrag(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resetImageDragState();
+
+    if (!canEditComposer) {
+      return;
+    }
+
+    const imageFiles = Array.from(event.dataTransfer.files).filter(
+      isSupportedComposerImageFile,
+    );
+
+    if (imageFiles.length === 0) {
+      return;
+    }
+
+    void handleImageFiles(imageFiles, {
+      appendToEnd: true,
+    });
   };
 
   const handleEmojiSelect = (name: WechatEmojiName) => {
@@ -604,7 +697,32 @@ export function ChatComposer({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="space-y-1.5 bg-surface">
+      <div
+        className="relative space-y-1.5 bg-surface"
+        data-testid="chat-composer"
+        onDragEnter={handleComposerDragEnter}
+        onDragLeave={handleComposerDragLeave}
+        onDragOver={handleComposerDragOver}
+        onDropCapture={handleComposerDrop}
+      >
+        {isImageDragActive ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[8px] border border-primary/45 bg-surface/95 text-sm font-medium text-primary shadow-sm"
+            data-testid="chat-composer-image-drop-overlay"
+            role="status"
+          >
+            <span className="flex items-center gap-2">
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Image01Icon}
+                size={18}
+                strokeWidth={2}
+              />
+              松开以添加图片
+            </span>
+          </div>
+        ) : null}
+
         {isMobileLayout ? (
           <div
             className="flex items-center justify-between gap-3 text-sm text-muted-foreground"
@@ -1782,6 +1900,26 @@ function shouldPadMentionPrefix(draft: string, mentionStart: number) {
   }
 
   return !/\s/.test(draft[mentionStart - 1] ?? "");
+}
+
+function hasFileDrag(dataTransfer: DataTransfer) {
+  return (
+    Array.from(dataTransfer.items).some((item) => item.kind === "file") ||
+    Array.from(dataTransfer.types).includes("Files") ||
+    dataTransfer.files.length > 0
+  );
+}
+
+function hasSupportedComposerImageDrag(dataTransfer: DataTransfer) {
+  const fileItems = Array.from(dataTransfer.items).filter(
+    (item) => item.kind === "file",
+  );
+  const files = Array.from(dataTransfer.files);
+
+  return (
+    fileItems.some((item) => isSupportedComposerImageMimeType(item.type)) ||
+    files.some(isSupportedComposerImageFile)
+  );
 }
 
 function readImageFileAsDataUrl(file: File) {

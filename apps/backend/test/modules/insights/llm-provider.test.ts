@@ -1211,7 +1211,7 @@ describe("LLM provider config", () => {
       "ep-lite",
       "ep-lite",
     ]);
-    expect(recoverSpy).toHaveBeenCalledWith(
+    expect(recoverSpy).not.toHaveBeenCalledWith(
       "provider_optional_step",
       "analysis",
       9001,

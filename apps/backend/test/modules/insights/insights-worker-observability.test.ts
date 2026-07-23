@@ -110,6 +110,28 @@ describe("insights worker observability", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
+  it("does not recover terminal analysis failures from provider success", () => {
+    const { logger, observability } = createHarness();
+
+    observability.event({
+      errorCode: "LLM_REQUEST_FAILED",
+      eventCode: "insights_worker.analysis_failed",
+      level: "error",
+      message: "failed",
+      pipeline: "analysis",
+      throttleKey: "analysis_terminal",
+      uid: 9001,
+    });
+    observability.recover("provider", "analysis", 9002);
+
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.error_recovered",
+      }),
+      expect.any(String),
+    );
+  });
+
   it("promotes ordinary diagnostic events to info only for trace UIDs", () => {
     const { logger, observability } = createHarness({
       traceUids: new Set([9001]),

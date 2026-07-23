@@ -2775,13 +2775,15 @@ describe("InsightsWorkerService", () => {
     expect(observability.event).toHaveBeenCalledWith(
       expect.objectContaining({
         eventCode: "insights_worker.analysis_retry_scheduled",
-        throttleKey: "analysis_job",
+        throttleKey: "analysis_retry",
       }),
     );
   });
 
   it("marks a final analysis failed after its single retry also fails", async () => {
-    const failure = new Error("model unavailable");
+    const failure = Object.assign(new Error("model unavailable"), {
+      failedStep: "summary",
+    });
     const observability = {
       event: vi.fn(),
       increment: vi.fn(),
@@ -2830,8 +2832,18 @@ describe("InsightsWorkerService", () => {
     expect(observability.event).toHaveBeenCalledWith(
       expect.objectContaining({
         eventCode: "insights_worker.analysis_failed",
-        throttleKey: "analysis_job",
+        throttleKey: "analysis_terminal",
       }),
+    );
+    expect(observability.recover).not.toHaveBeenCalledWith(
+      "analysis_job",
+      "analysis",
+      9001,
+    );
+    expect(observability.recover).not.toHaveBeenCalledWith(
+      "provider",
+      "analysis",
+      9001,
     );
   });
 

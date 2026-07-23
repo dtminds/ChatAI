@@ -1857,9 +1857,11 @@ export class InsightsWorkerService {
             ...errorPayload,
           },
           pipeline: "analysis",
-          throttleKey: errorPayload.failedStep
-            ? "provider"
-            : "analysis_job",
+          throttleKey: willRetry
+            ? errorPayload.failedStep
+              ? "provider"
+              : "analysis_retry"
+            : "analysis_terminal",
           uid: job.uid,
         });
       } else {
@@ -1887,7 +1889,6 @@ export class InsightsWorkerService {
         succeededSessions: 1,
       });
     }
-    this.observability?.recover("analysis_job", "analysis", job.uid);
   }
 
   private async resolveActionItemGenerationPolicy(input: {

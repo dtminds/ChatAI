@@ -797,7 +797,7 @@ discovery、sessionization、analysis 三条管线共用一个 Worker observabil
 
 Worker 启动时立即 UPSERT 三条 pipeline 心跳，之后每 60 秒刷新。表记录最近 started/success/failure、稳定 errorCode、最近完成耗时、`reported_by` 和 `reported_at`，不存派生 health、连续失败次数或逐批事件。
 
-多实例共享同一 pipeline 行时，事件时间和关联字段按时间单调合并；旧实例的延迟写入不得覆盖较新的 started/success/failure。`reported_at` 使用数据库 `CURRENT_TIMESTAMP(3)`，API 读取同一数据库时钟作为 `observedAt`，禁止用 Node `Date.now()` 与数据库时间直接比较。
+多实例共享同一 pipeline 行时，事件时间和关联字段按时间单调合并；旧实例的延迟写入不得覆盖较新的 started/success/failure。`reported_at` 使用数据库 `CURRENT_TIMESTAMP(3)`，API 读取同一数据库时钟作为 `observedAt`，保证 heartbeat 新鲜度不受应用时钟影响。started/success/failure 使用 Worker 应用事件时间，运行时长依赖部署环境常规时钟同步，只作为人工诊断弱信号；本期不为此增加逐 tick DB 取时或实例级状态机。
 
 状态派生：
 

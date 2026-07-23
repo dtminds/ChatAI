@@ -309,7 +309,6 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
         this.config.retry,
         () => this.observability?.increment("analysis", "modelRetries"),
       );
-      this.observability?.recover("provider_optional_step", "analysis", input.uid);
       return output;
     } catch (error) {
       if (isResponseFormatUnsupportedError(error)) {

@@ -17,7 +17,7 @@ This document is the handoff source of truth. Do not assume access to prior chat
 - `pending` 任务无论排队多久都不因队龄直接升级为 `blocked`；页面返回 `queueAgeMs`，管线是否停止推进由 runtime state 独立判断。
 - `blocked` 只表达有权威证据支持的故障态，例如 running 租约已过期，或超期 open 会话长期没有 active sessionization job；不得把健康积压、正常延迟调度或单纯队龄较长映射为 `blocked`。
 - 多实例共享三行 runtime state 时，`possibly_stalled` 只是聚合弱信号，不用于确认具体实例卡死、自动告警、摘除实例或触发业务补偿。
-- API 的 heartbeat 新鲜度、租约、排队时长和持续时间统一基于同次请求读取的数据库 `CURRENT_TIMESTAMP(3)`，禁止混用 Node 本地时钟。
+- API 的 heartbeat 新鲜度、租约和排队时长统一基于同次请求读取的数据库 `CURRENT_TIMESTAMP(3)`。`last_started_at/last_success_at/last_failure_at` 记录 Worker 应用时钟下的事件时间，因此 running duration 和 `possibly_stalled` 依赖应用实例与数据库的常规时钟同步，只作为人工诊断弱信号。
 - runtime state 使用 `DATETIME(3)` 是有意区别于现有秒级 insight 表的设计，用于区分多实例同秒事件并保持关联字段的单调合并；schema snapshot 和 change-log 必须保留该精度。
 - capabilities 与观测 API 复用 Backend 启动时解析的同一份 observer subjects 快照；`uid` 保持 number，`subUserId` 保持 string，通过 `${uid}:${subUserId}` 精确匹配。
 - 生产默认 `LOG_LEVEL=info` 时普通批次 DEBUG 不可见属于预期；定向排障优先配置 trace UID，相关配置均在进程启动时读取，不支持热更新。
@@ -376,6 +376,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
 - Worker 启动时立即为三条 pipeline 各 UPSERT 一次，之后每管线每 60 秒上报一次；不得等满第一个 60 秒窗口才出现心跳。
 - `reported_at` 证明至少一个实例仍在上报；`last_started_at` 只在实际开始执行 tick 时推进，non-overlap busy skip 只进入日志汇总。
 - `reported_at` 在 UPSERT SQL 中使用数据库 `CURRENT_TIMESTAMP(3)`，不用应用实例本地时钟判断 heartbeat 新鲜度。
+- `last_started_at/last_success_at/last_failure_at` 由 Worker 应用时钟生成。本期沿用部署环境的 NTP 时钟同步前提，不增加逐 tick 的 DB 取时或实例级状态机；这些字段只用于人工观察最近推进和近似运行时长。
 - tick 成功推进 `last_success_at`；tick 失败推进 `last_failure_at` 和对应 `last_error_code`。
 - `last_duration_ms` 对应 `last_success_at`、`last_failure_at` 二者中时间更新的那一次已完成 tick。
 - 表内不存 `status`、`last_tick_outcome` 或 `consecutive_failures`；健康状态由 API 根据时间字段派生，连续失败次数由结构化日志汇总观察。
@@ -394,7 +395,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
 
 页面状态：
 
-- runtime-state repository 必须读取一次数据库 `CURRENT_TIMESTAMP(3)` 作为 `observedAt`；心跳新鲜度、运行时长和疑似卡住时长均基于该 DB 时间派生，禁止使用 `Date.now()`。
+- runtime-state repository 必须读取一次数据库 `CURRENT_TIMESTAMP(3)` 作为 `observedAt`；心跳新鲜度必须完全以 DB `reported_at` 为准。运行时长和疑似卡住时长以 DB `observedAt` 减应用时钟生成的 `last_started_at` 近似派生，不得作为自动告警、实例摘除或业务补偿依据。
 - 以下时间比较均为 NULL-safe；缺失的成功/失败完成时间视为尚未发生。
 - runtime state 行缺失：health `unknown`、activity `unknown`
 - `observedAt - reported_at > 150s`：health `offline`、activity `unknown`
@@ -524,7 +525,7 @@ UID 列表不得逐 UID 查询 `xy_wap_embed_msg_audit_info`。
 
 ### 7.6 状态派生
 
-每次 summary/list/detail 请求都由 repository 读取一次数据库 `CURRENT_TIMESTAMP(3)` 作为本次 `observedAt`。所有 `run_after`、`lease_until`、`reported_at`、`next_close_at` 和持续时长比较都复用该值；状态派生代码禁止混入 `Date.now()`。
+每次 summary/list/detail 请求都由 repository 读取一次数据库 `CURRENT_TIMESTAMP(3)` 作为本次 `observedAt`。所有 `run_after`、`lease_until`、`reported_at`、`next_close_at` 比较都复用该值；状态派生代码禁止另取 `Date.now()` 作为当前时间。running duration 使用同一 `observedAt` 与应用时钟生成的 `last_started_at` 计算，是依赖常规时钟同步的近似诊断值。
 
 Sessionization 状态：
 
@@ -855,7 +856,7 @@ LIMIT 1;
 - [x] 在 authenticate 和 schema validation 之前通过 scoped hook 设置 `Cache-Control: no-store`。
 - [x] repository 为每次请求读取一次 DB `CURRENT_TIMESTAMP(3)` 并作为 `observedAt`；实现 runtime state、全局 cursor/source head 和全局 job/session 聚合。
 - [x] `observedAt` 在每个 summary/list/detail repository 调用开始时通过数据库查询取得一次，后续查询和状态派生复用该值；不得分别用 Node 时钟计算 heartbeat、租约和队龄。
-- [x] 在 SQL 或同一次 repository 请求上下文中基于该 DB `observedAt` 派生 heartbeat 新鲜度和所有持续时间，不得用 Node `Date.now()` 与数据库时间字段直接比较。
+- [x] 在 SQL 或同一次 repository 请求上下文中基于该 DB `observedAt` 派生 heartbeat 新鲜度、租约和队龄；running duration 以应用事件时间近似计算并明确标记为弱信号。
 - [x] 新 observability repository 负责 `listWorkerPipelineRuntimeStates` 和全部 API 只读查询；Task 2 的 Worker repository 只负责 heartbeat writer。
 - [x] 实现 observed UID 集合批量查询；在 service 内对完整集合派生、筛选、排序并计算 total，最后分页。
 - [x] 列表禁止逐 UID 消息表查询。
@@ -998,7 +999,7 @@ LIMIT 1;
 - tick 开始后 reporter 持续上报但尚未结束：先显示 running；超过 15 分钟显示 possibly_stalled/degraded。
 - 多实例中一个实例卡住、另一个继续成功：聚合状态允许恢复 healthy，页面和文档不得声称已经检测到具体卡住实例。
 - 多实例灰度期间出现 `possibly_stalled`：仅显示弱信号，不触发自动告警、自动摘除实例或业务补偿动作。
-- Node 应用时钟与 DB 时钟存在偏差：offline、running duration 和 possibly_stalled 仍只按 DB `observedAt` 正确派生。
+- Node 应用时钟与 DB 时钟存在轻微偏差：offline 仍由 DB `reported_at/observedAt` 正确派生；running duration 和 `possibly_stalled` 允许出现同量级近似偏差。分钟级异常时钟漂移属于部署告警范围，不由本页面增加状态机补偿。
 
 ### 11.3 UID 状态
 

@@ -530,7 +530,7 @@ export function ChatPanel({
                   </div>
                 ) : null}
 
-                <div className="relative overflow-visible bg-surface pb-3">
+                <div className="relative overflow-visible bg-surface">
                   {agentHostingStatus ? (
                     <div
                       className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
@@ -545,7 +545,7 @@ export function ChatPanel({
                   ) : null}
                   <div
                     className={cn(
-                      "relative px-4 pt-3",
+                      "relative",
                       multiSelectMode && "z-40",
                     )}
                   >

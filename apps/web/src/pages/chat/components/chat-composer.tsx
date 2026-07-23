@@ -698,7 +698,7 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="relative space-y-1.5 bg-surface"
+        className="relative space-y-1.5 bg-surface px-4 pb-3 pt-3"
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
@@ -707,7 +707,7 @@ export function ChatComposer({
       >
         {isImageDragActive ? (
           <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[8px] border border-border bg-surface-muted/95 text-sm font-medium text-muted-foreground shadow-sm"
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-surface-muted/95 text-sm font-medium text-muted-foreground"
             data-testid="chat-composer-image-drop-overlay"
             role="status"
           >

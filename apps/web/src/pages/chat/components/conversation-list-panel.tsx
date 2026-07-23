@@ -1,4 +1,5 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
@@ -75,7 +76,9 @@ type ConversationListPanelProps = {
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
   onRefreshUnreadConversations?: (mode: ChatMode) => void | Promise<void>;
-  onSelectConversation: (conversationId: string) => void | Promise<void>;
+  onSelectConversation: (
+    conversationId: string,
+  ) => boolean | void | Promise<boolean | void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
   onSelectView?: (view: ConversationView) => void | Promise<void>;
   onUnpinConversation?: (conversationId: string) => void | Promise<void>;
@@ -85,7 +88,7 @@ type ConversationListPanelProps = {
   unreadCountByMode?: Partial<Record<ChatMode, number>>;
 };
 
-export function ConversationListPanel({
+export const ConversationListPanel = memo(function ConversationListPanel({
   activeConversation,
   activeMode,
   activeView = DEFAULT_CONVERSATION_VIEW,
@@ -138,6 +141,11 @@ export function ConversationListPanel({
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ChatMode>>(
     () => new Set([activeMode]),
   );
+  const activeConversationId = activeConversation?.id;
+  const [highlightedConversationId, setHighlightedConversationId] = useState(
+    activeConversationId,
+  );
+  const selectRequestIdRef = useRef(0);
   const viewsByMode = useMemo(
     () => conversationViews ?? {
       group: activeView,
@@ -192,6 +200,76 @@ export function ConversationListPanel({
       return new Set([...currentModes, activeMode]);
     });
   }, [activeMode]);
+
+  useEffect(() => {
+    setHighlightedConversationId(activeConversationId);
+  }, [activeConversationId]);
+
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      const requestId = ++selectRequestIdRef.current;
+
+      flushSync(() => {
+        setHighlightedConversationId(conversationId);
+      });
+
+      // Defer store selection to the next task so the optimistic highlight can paint
+      // before the workbench's broad Zustand subscription re-renders the shell.
+      window.setTimeout(() => {
+        if (selectRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        void Promise.resolve(onSelectConversation(conversationId)).then(
+          (accepted) => {
+            if (selectRequestIdRef.current !== requestId) {
+              return;
+            }
+
+            if (accepted === false) {
+              setHighlightedConversationId(activeConversationId);
+            }
+          },
+        );
+      }, 0);
+    },
+    [activeConversationId, onSelectConversation],
+  );
+
+  const handleDeleteConversation = useCallback(
+    (conversationId: string) => {
+      void onDeleteConversation?.(conversationId);
+    },
+    [onDeleteConversation],
+  );
+
+  const handleMarkConversationRead = useCallback(
+    (conversationId: string) => {
+      void onMarkConversationRead?.(conversationId);
+    },
+    [onMarkConversationRead],
+  );
+
+  const handleMarkConversationUnread = useCallback(
+    (conversationId: string) => {
+      void onMarkConversationUnread?.(conversationId);
+    },
+    [onMarkConversationUnread],
+  );
+
+  const handlePinConversation = useCallback(
+    (conversationId: string) => {
+      void onPinConversation?.(conversationId);
+    },
+    [onPinConversation],
+  );
+
+  const handleUnpinConversation = useCallback(
+    (conversationId: string) => {
+      void onUnpinConversation?.(conversationId);
+    },
+    [onUnpinConversation],
+  );
 
   const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
@@ -308,9 +386,7 @@ export function ConversationListPanel({
         <Tabs
           className="flex h-full min-h-0 flex-col"
           onValueChange={(value) => {
-            startTransition(() => {
-              void onSelectMode(value as ChatMode);
-            });
+            void onSelectMode(value as ChatMode);
           }}
           value={activeMode}
         >
@@ -385,39 +461,25 @@ export function ConversationListPanel({
                       {modeConversations.map((conversation) => (
                         <ConversationCard
                           composerDraft={
-                            conversation.id === activeConversation?.id
+                            conversation.id === highlightedConversationId
                               ? undefined
                               : composerDraftsByConversationId[conversation.id]
                           }
                           conversation={conversation}
                           isActionDisabled={isConversationActionDisabled}
-                          isActive={conversation.id === activeConversation?.id}
+                          isActive={conversation.id === highlightedConversationId}
                           isAIHostingEnabled={isConversationAIHostingEnabled(
                             conversation,
                             isSeatAIHostingEnabled,
                             seatGroupAIHostingEnabled,
                           )}
                           key={conversation.id}
-                          onDelete={() => {
-                            void onDeleteConversation?.(conversation.id);
-                          }}
-                          onMarkRead={() => {
-                            void onMarkConversationRead?.(conversation.id);
-                          }}
-                          onMarkUnread={() => {
-                            void onMarkConversationUnread?.(conversation.id);
-                          }}
-                          onPin={() => {
-                            void onPinConversation?.(conversation.id);
-                          }}
-                          onSelect={() => {
-                            startTransition(() => {
-                              void onSelectConversation(conversation.id);
-                            });
-                          }}
-                          onUnpin={() => {
-                            void onUnpinConversation?.(conversation.id);
-                          }}
+                          onDelete={handleDeleteConversation}
+                          onMarkRead={handleMarkConversationRead}
+                          onMarkUnread={handleMarkConversationUnread}
+                          onPin={handlePinConversation}
+                          onSelect={handleSelectConversation}
+                          onUnpin={handleUnpinConversation}
                         />
                       ))}
                       {viewsByMode[mode] === "unread" && hasMoreUnreadByMode?.[mode] ? (
@@ -445,7 +507,7 @@ export function ConversationListPanel({
     </section>
     </>
   );
-}
+});
 
 const conversationModeTabClassName =
   "relative rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";

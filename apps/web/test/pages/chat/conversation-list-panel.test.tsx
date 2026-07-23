@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -169,6 +169,96 @@ describe("ConversationListPanel", () => {
     expect(screen.getByText("正在加载会话")).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "暂无数据" })).not.toBeInTheDocument();
     expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
+  });
+
+  it("highlights the clicked conversation before selection finishes", async () => {
+    const user = userEvent.setup();
+    let resolveSelect!: (accepted: boolean) => void;
+    const onSelectConversation = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve;
+        }),
+    );
+    const activeConversation = conversations[0];
+    const nextConversation = conversations[1];
+
+    render(
+      <ConversationListPanel
+        activeConversation={activeConversation}
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={onSelectConversation}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        current: true,
+        name: new RegExp(activeConversation.customerName),
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(nextConversation.customerName),
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        current: true,
+        name: new RegExp(nextConversation.customerName),
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        current: true,
+        name: new RegExp(activeConversation.customerName),
+      }),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(onSelectConversation).toHaveBeenCalledWith(nextConversation.id);
+    });
+
+    resolveSelect(true);
+  });
+
+  it("reverts the optimistic highlight when conversation selection is rejected", async () => {
+    const user = userEvent.setup();
+    const onSelectConversation = vi.fn(async () => false);
+    const activeConversation = conversations[0];
+    const nextConversation = conversations[1];
+
+    render(
+      <ConversationListPanel
+        activeConversation={activeConversation}
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={onSelectConversation}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(nextConversation.customerName),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(onSelectConversation).toHaveBeenCalledWith(nextConversation.id);
+    });
+    expect(
+      await screen.findByRole("button", {
+        current: true,
+        name: new RegExp(activeConversation.customerName),
+      }),
+    ).toBeInTheDocument();
   });
 
   it("keeps inactive mode conversation cards mounted while switching tabs", () => {

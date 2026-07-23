@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { InsightCapabilitiesResponse } from "@chatai/contracts";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, matchPath, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getInsightCapabilities } from "./api/insights-service";
@@ -13,11 +13,11 @@ type InsightsCapabilitiesContextValue = {
 
 const InsightsCapabilitiesContext = createContext<InsightsCapabilitiesContextValue | null>(null);
 
-const aiOnlyPaths = new Set([
+const aiOnlyPaths = [
   "/chat/insights/business",
   "/chat/insights/follow-ups",
   "/chat/insights/quality",
-]);
+] as const;
 
 export function InsightsCapabilitiesRoute() {
   const location = useLocation();
@@ -59,7 +59,11 @@ export function InsightsCapabilitiesRoute() {
     );
   }
 
-  if (capabilities.mode === "basic" && aiOnlyPaths.has(location.pathname)) {
+  const isAiOnlyPath = aiOnlyPaths.some((path) =>
+    matchPath({ end: true, path }, location.pathname)
+  );
+
+  if (capabilities.mode === "basic" && isAiOnlyPath) {
     return (
       <InsightsLayout
         canViewWorkerObservability={capabilities.canViewWorkerObservability}

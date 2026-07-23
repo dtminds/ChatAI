@@ -187,7 +187,9 @@ export class InsightsWorkerObservability {
     this.event({
       errorCode,
       eventCode: "insights_worker.pipeline_tick_failed",
-      level: errorCode.startsWith("GLOBAL_CURSOR_") ? "error" : "warn",
+      level: errorCode.startsWith("GLOBAL_SESSIONIZATION_CURSOR_")
+        ? "error"
+        : "warn",
       message: "会话洞察 Worker 管线执行失败",
       payload: safeErrorPayload(error),
       pipeline,

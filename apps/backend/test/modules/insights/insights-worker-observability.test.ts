@@ -110,6 +110,30 @@ describe("insights worker observability", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    "GLOBAL_SESSIONIZATION_CURSOR_NOT_INITIALIZED",
+    "GLOBAL_SESSIONIZATION_CURSOR_CREATE_TIME_INVALID",
+  ])("logs global sessionization cursor failures as errors: %s", (errorCode) => {
+    const { logger, observability } = createHarness();
+    const startedAt = observability.pipelineStarted("discovery");
+
+    observability.pipelineFailed(
+      "discovery",
+      startedAt,
+      new Error(errorCode),
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode,
+        eventCode: "insights_worker.pipeline_tick_failed",
+        pipeline: "discovery",
+      }),
+      expect.any(String),
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("does not recover terminal analysis failures from provider success", () => {
     const { logger, observability } = createHarness();
 

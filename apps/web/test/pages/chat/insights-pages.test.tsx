@@ -4523,6 +4523,28 @@ describe("conversation insights pages", () => {
     ).toHaveAttribute("href", "/chat/insights/settings");
   });
 
+  it("blocks routed variants of AI-only pages in basic mode", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "basic",
+    });
+
+    for (const path of [
+      "/chat/insights/quality/",
+      "/CHAT/INSIGHTS/QUALITY",
+    ]) {
+      renderRoute(path);
+
+      expect(await screen.findByText("请先开启会话洞察")).toBeInTheDocument();
+      expect(serviceMocks.getInsightQualityOverview).not.toHaveBeenCalled();
+      expect(serviceMocks.getInsightQualityResults).not.toHaveBeenCalled();
+
+      cleanup();
+    }
+  });
+
   it("keeps worker observability navigation available on the basic-mode AI guard", async () => {
     serviceMocks.getInsightCapabilities.mockResolvedValue({
       canManageInsights: true,

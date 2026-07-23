@@ -707,7 +707,7 @@ export function ChatComposer({
       >
         {isImageDragActive ? (
           <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[8px] border border-primary/45 bg-surface/95 text-sm font-medium text-primary shadow-sm"
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[8px] border border-border bg-surface-muted/95 text-sm font-medium text-muted-foreground shadow-sm"
             data-testid="chat-composer-image-drop-overlay"
             role="status"
           >

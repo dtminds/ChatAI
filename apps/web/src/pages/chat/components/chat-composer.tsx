@@ -637,6 +637,7 @@ export function ChatComposer({
       : "none";
   };
 
+  // Composer owns all file drops, including unsupported files, before Lexical sees them.
   const handleComposerDrop = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasFileDrag(event.dataTransfer)) {
       return;

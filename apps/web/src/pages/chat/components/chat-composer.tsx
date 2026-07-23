@@ -608,7 +608,7 @@ export function ChatComposer({
   };
 
   const handleComposerDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!isImageDragActive) {
+    if (imageDragDepthRef.current === 0) {
       return;
     }
 

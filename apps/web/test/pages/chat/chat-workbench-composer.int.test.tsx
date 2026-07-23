@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
@@ -926,6 +926,38 @@ describe("ChatWorkbenchPage composer flows", () => {
       alt: "dropped.png",
       type: "image",
     });
+  });
+
+  it("clears a batched drag state when the pointer leaves before React rerenders", async () => {
+    const image = new File(["image-bytes"], "dropped.png", {
+      type: "image/png",
+    });
+    const dataTransfer = createFileDragData([image]);
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const createDragEvent = (type: "dragenter" | "dragleave") => {
+      const event = new Event(type, {
+        bubbles: true,
+        cancelable: true,
+      });
+
+      Object.defineProperty(event, "dataTransfer", {
+        configurable: true,
+        value: dataTransfer,
+      });
+      return event;
+    };
+
+    act(() => {
+      composer.dispatchEvent(createDragEvent("dragenter"));
+      composer.dispatchEvent(createDragEvent("dragleave"));
+    });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not activate image dropping for unsupported image formats", async () => {

@@ -77,7 +77,6 @@ import {
   INPUT_ENTER_BEHAVIOR_LABELS,
 } from "@/pages/chat/components/input-enter-behavior";
 import {
-  CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
@@ -119,7 +118,6 @@ type ChatComposerProps = {
   accountAvatarUrl?: string;
   accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
-  draft: string;
   hasMoreCollectedExpressions?: boolean;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
@@ -198,7 +196,6 @@ export function ChatComposer({
   accountAvatarUrl,
   accountName,
   collectedExpressions = [],
-  draft,
   hasMoreCollectedExpressions,
   hasActiveFileUpload,
   groupMembers,
@@ -243,9 +240,9 @@ export function ChatComposer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageDragDepthRef = useRef(0);
-  const [draftText, setDraftText] = useState(draft);
+  const [draftText, setDraftText] = useState("");
   const [segments, setSegments] = useState<ComposerSegment[]>([]);
-  const [cursorPosition, setCursorPosition] = useState(draft.length);
+  const [cursorPosition, setCursorPosition] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
@@ -438,12 +435,6 @@ export function ChatComposer({
     setActiveMentionIndex(0);
     setIsMentionPickerDismissed(false);
   }, [mentionTrigger?.query]);
-
-  useEffect(() => {
-    if (draft === "" && draftText !== "") {
-      composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    }
-  }, [composerRef, draft, draftText]);
 
   useEffect(() => {
     if (!isEmojiPickerOpen) {

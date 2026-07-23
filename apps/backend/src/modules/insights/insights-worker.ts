@@ -345,6 +345,7 @@ export type InsightWorkerRepositoryPort = {
   reclaimExpiredSessionizationUidJobs?(input: {
     now: Date;
   }): Promise<number>;
+  renewSessionizationUidJobLease(input: ClaimedSessionizationUidJob): Promise<boolean>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
   claimNextSessionizationUidJob(input?: {
     excludeJobIds?: string[];
@@ -482,6 +483,7 @@ const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
 const UID_MAINTENANCE_JOBS_PER_TICK = 10;
+const SESSIONIZATION_CLAIM_HEARTBEAT_MS = 60_000;
 const ANALYSIS_RETRY_DELAY_MS = 60_000;
 
 export class InsightsWorkerService {
@@ -601,8 +603,13 @@ export class InsightsWorkerService {
   }
 
   private async runUidMaintenanceJob(job: ClaimedSessionizationUidJob) {
+    const heartbeat = this.startSessionizationClaimHeartbeat(job);
+
     try {
-      const { scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
+      const { scannedMessages, sessionizedMessages } = await this.maintainUid(
+        job.uid,
+        heartbeat.assertActive,
+      );
 
       if (scannedMessages > 0) {
         this.logger?.info(
@@ -616,8 +623,12 @@ export class InsightsWorkerService {
         );
       }
 
+      await heartbeat.renewNow();
+      await heartbeat.stop();
+      heartbeat.assertActive();
       await this.repository.completeSessionizationUidJob(job);
     } catch (error) {
+      await heartbeat.stop();
       await this.repository.markSessionizationUidJobFailed(job, error);
       this.logger?.error(
         { err: error, jobId: job.jobId, uid: job.uid },
@@ -626,7 +637,65 @@ export class InsightsWorkerService {
     }
   }
 
-  private async maintainUid(uid: number) {
+  private startSessionizationClaimHeartbeat(job: ClaimedSessionizationUidJob) {
+    let failure: unknown;
+    let renewal: Promise<void> | undefined;
+    let stopped = false;
+
+    const assertActive = () => {
+      if (failure) {
+        throw failure;
+      }
+    };
+    const renew = () => {
+      if (renewal) {
+        return renewal;
+      }
+
+      renewal = this.repository.renewSessionizationUidJobLease(job)
+        .then((renewed) => {
+          if (!renewed) {
+            throw new Error("SESSIONIZATION_UID_CLAIM_LOST");
+          }
+        })
+        .catch((error: unknown) => {
+          failure ??= error;
+        })
+        .finally(() => {
+          renewal = undefined;
+        });
+      return renewal;
+    };
+    const timer = setInterval(() => {
+      if (!stopped) {
+        void renew();
+      }
+    }, SESSIONIZATION_CLAIM_HEARTBEAT_MS);
+
+    return {
+      assertActive,
+      async renewNow() {
+        if (renewal) {
+          await renewal;
+        }
+        assertActive();
+        await renew();
+        assertActive();
+      },
+      async stop() {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        clearInterval(timer);
+        if (renewal) {
+          await renewal;
+        }
+      },
+    };
+  }
+
+  private async maintainUid(uid: number, assertClaimActive: () => void) {
     const featureConfig = await this.repository.getFeatureConfig(uid);
     const sessionizationConfig = await this.repository.getSessionizationConfig(uid);
 
@@ -650,6 +719,7 @@ export class InsightsWorkerService {
     let sessionizedMessages = 0;
 
     for (const message of messages) {
+      assertClaimActive();
       if (existingByMessageId.has(message.id)) {
         continue;
       }
@@ -657,11 +727,13 @@ export class InsightsWorkerService {
       if (await this.sessionizeMessage(message, { config: sessionizationConfig })) {
         sessionizedMessages += 1;
       }
+      assertClaimActive();
     }
 
     const lastMessage = messages.at(-1);
 
     if (lastMessage) {
+      assertClaimActive();
       await this.repository.updateCursor({
         cursorAuditId: Number(lastMessage.id),
         cursorMsgtime: lastMessage.msgtime,
@@ -671,8 +743,10 @@ export class InsightsWorkerService {
 
     const activeUids = new Set([uid]);
     if (featureConfig.insightEnabled) {
+      assertClaimActive();
       await this.scheduleLiveAnalysisForOpenSessions(activeUids);
     }
+    assertClaimActive();
     const latestCursor = lastMessage
       ? {
           cursorAuditId: Number(lastMessage.id),
@@ -686,6 +760,7 @@ export class InsightsWorkerService {
       });
 
     if (!hasPendingMessages) {
+      assertClaimActive();
       await this.closeTimedOutOpenSessions(activeUids);
     }
 

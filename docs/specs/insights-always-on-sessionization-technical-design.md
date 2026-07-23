@@ -275,7 +275,7 @@ Repository 在现有 UID 任务领取方法上增加 `sessionize_uid` 分支：
 5. 写入 5 分钟 `lease_until`，覆盖默认单批 200 条消息的执行预算。
 6. 返回 `jobId`、`uid` 和 claim token。
 
-租约过期仍由现有 `reclaimExpiredRunningJobs()` 恢复为 `pending`。claim token 本身作为 fencing identity，不新增 `lease_version` 字段。
+处理期间每 1 分钟按 `job_id + status = running + locked_by` 条件把租约续回 5 分钟。续租影响行数为 0 或续租失败时，Worker 标记 claim 已失效，并在下一条消息、水位推进或会话关闭前停止。真正失活且租约过期的任务仍由现有回收逻辑恢复为 `pending`。claim token 本身作为 fencing identity，不新增 `lease_version` 字段。
 
 5 分钟仅适用于 `sessionize_uid`；现有分析和历史重刷任务继续沿用原租约口径。
 
@@ -322,7 +322,7 @@ Repository 在现有 UID 任务领取方法上增加 `sessionize_uid` 分支：
 - 成功完成一轮处理：重置连续失败信息；如果仍有工作则立即 `pending`。
 - 达到告警阈值：继续保留 `pending` 和退避，不进入会被归档的终态；即使该 UID 没有下一条消息，也必须保留原唤醒。
 - 人工重试：只清除错误和退避、设置 `run_after = now`，不得重置具体 UID 水位。
-- 租约过期：现有回收器恢复任务；旧 Worker 在完成阶段因 claim token 不匹配而不能删除或重排当前任务。
+- 租约过期：现有回收器恢复任务；旧 Worker 在消息间检查点、水位推进或会话关闭前停止，并在完成阶段因 claim token 不匹配而不能删除或重排当前任务。
 
 ## 7. 到期扫描与会话终结
 
@@ -803,7 +803,7 @@ GET /api/server/insights/sessions/:sessionId/messages
 5. 具体 UID 仍按 `(msgtime, id)` 查询和推进；首次发现 UID 时使用切换基线，不能用首条发现消息的 `id - 1` 代替复合水位。
 6. 无有效 conversation 的消息只推进 UID 水位。
 7. 消息归属重复时不重复增加计数。
-8. 失租 Worker 的完成事务被 claim token 校验拒绝，不能误删或重排当前任务。
+8. 失租 Worker 在下一条消息、水位推进或会话关闭前停止；完成事务被 claim token 校验拒绝，不能误删或重排当前任务。
 9. 到期扫描和 Worker 完成并发时不会丢失仍然到期的会话，也不需要关闭请求版本。
 10. UID 无消息且无到期会话时删除临时任务，不写成功终态或归档记录。
 11. UID 仍有消息或到期会话时立即恢复 `pending`，不固定等待 10 秒。

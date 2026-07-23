@@ -412,7 +412,7 @@ LIMIT :batch_size
 
 ### 8.3 UID 处理
 
-1. Worker 复用现有 `xy_wap_embed_insight_job` 的 `FOR UPDATE SKIP LOCKED` 路径领取 `pending` 的 `sessionize_uid`；单次领取使用 5 分钟租约，租约过期后由现有任务回收逻辑恢复为 `pending`。
+1. Worker 复用现有 `xy_wap_embed_insight_job` 的 `FOR UPDATE SKIP LOCKED` 路径领取 `pending` 的 `sessionize_uid`；单次领取使用 5 分钟租约，处理期间每 1 分钟按 `job_id + status = running + locked_by` 条件续租，真正失活且租约过期的任务由现有任务回收逻辑恢复为 `pending`。
 2. `locked_by` 必须从固定的 `node-worker` 改为每次领取唯一的 claim token。任务完成事务锁定并校验 `job_id + status = running + locked_by`；校验失败时不得删除或重排当前任务。
 3. 同一 UID 任意时刻只能有一个有效写入者；不同 UID 可以并行。
 4. 已处理水位继续写入 `xy_wap_embed_insight_sync_cursor` 的对应 `source + uid` 记录。
@@ -420,7 +420,7 @@ LIMIT :batch_size
 6. UID 内消息读取、`sessionizeMessage()`、消息归属写入、会话统计和复合水位推进继续沿用现有实现，本期不重构其事务边界。
 7. 现有 `uid + source_message_id` 唯一约束继续作为消息归属幂等防线。
 8. 单次抢占设置批次数或执行时长上限，避免单个热点 UID 长时间占用 Worker。
-9. claim token 只用于任务领取、租约和完成阶段 fencing，不扩展到逐消息处理事务。
+9. claim token 用于任务领取、周期续租、消息间检查点、水位推进前检查和完成阶段 fencing；不扩展到每条业务写入的数据库事务。
 10. 消息批次处理后，先用现有 UID 复合水位查询探测是否还有未处理消息。仍有消息时不执行到期关闭，直接把任务恢复为 `pending`、`run_after = now`。
 11. 没有未处理消息时，在同一 UID 写入权下重新查询并处理该 UID 当前到期的 `open` 会话。
 12. 完成事务重新锁定任务行并执行两项权威复查：UID 水位后是否仍有消息、当前是否仍有到期 `open` 会话。任一存在时立即恢复 `pending`；两者都不存在时删除任务。
@@ -614,7 +614,7 @@ analysisPhase?: "live" | "final";
 ### 10.3 失败重试
 
 - 可重试错误复用任务行的 `attempt_count`、`run_after`、`error_code` 和 `error_message` 记录退避。
-- 租约过期的 `running` 任务由现有任务回收逻辑恢复为 `pending`。
+- 活跃 `running` 任务按固定间隔条件续租；续租失败的 Worker 在下一条消息、水位推进或会话关闭前停止写入。真正失活且租约过期的任务由现有任务回收逻辑恢复为 `pending`。
 - 单个 UID 连续失败不能阻塞其它 UID 和全局水位发现。
 - `sessionize_uid` 失败时不得进入 `succeeded` 或 `failed` 后归档，也不得删除任务；使用有上限的退避持续重试，并在达到告警阈值后通知运维。
 - 人工重试只清除退避并恢复立即执行，不得重置具体 UID 处理水位。
@@ -743,7 +743,7 @@ analysisPhase?: "live" | "final";
 7. 到期会话扫描不依赖该 UID 是否刚好有新消息，但真正关闭前必须确认具体 UID 复合水位之后已无可处理消息。
 8. 一条已经提交、尚未完成切分的消息不会导致旧会话被提前关闭或被错误分配到新会话。
 9. 多实例运行时同一 UID 和同一到期会话不会被并发处理。
-10. Worker 失去租约后即使继续运行，也会因唯一 claim token 校验而无法完成、删除或重排旧任务。
+10. Worker 失去租约后会在消息间检查点、水位推进或会话关闭前停止，并因唯一 claim token 校验而无法完成、删除或重排旧任务。
 11. 处理新消息触发的边界关闭与到期扫描触发的关闭使用同一终结器，并遵守相同洞察开关逻辑。
 12. 晚到的实时分析结果不会把已经结束的会话重新改为 `open`，也不会覆盖最终快照。
 13. UID Worker 处理到期会话期间再次出现到期会话时，完成阶段的权威复查或下一次到期扫描会保留后续处理，不依赖关闭请求版本。

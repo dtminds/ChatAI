@@ -4266,6 +4266,40 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateBuilders[0]?.whereCalls).toContainEqual(["lease_until", "<=", now]);
   });
 
+  it("renews only the currently claimed sessionization uid job", async () => {
+    const setCalls: Record<string, unknown>[] = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          onSet: (values) => setCalls.push(values),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.renewSessionizationUidJobLease({
+      claimToken: "claim-704",
+      jobId: "704",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(setCalls[0]).toMatchObject({
+      lease_until: expect.any(Date),
+      update_time: expect.any(Date),
+    });
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "claim-704"]);
+  });
+
   it("returns failed sessionization uid jobs to pending with a retry delay", async () => {
     const setCalls: Record<string, unknown>[] = [];
     const updateBuilders: UpdateBuilderStub[] = [];

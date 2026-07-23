@@ -2,6 +2,24 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-23
+
+- Replaced the retired `maintain_insight_uid` and `cleanup_disabled_insights` insight-job type documentation with the temporary `sessionize_uid` task used by always-on logical-session generation.
+- Changed the default `max_attempts` for insight jobs and archived insight jobs from `3` to `2`, meaning the first failed execution is retried once.
+- No new table, column, or index is required for sessionization claim renewal; it reuses `locked_by`, `lease_until`, and `status`.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_job
+  MODIFY COLUMN job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  MODIFY COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次';
+
+ALTER TABLE xy_wap_embed_insight_job_archive
+  MODIFY COLUMN job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  MODIFY COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次';
+```
+
 ## 2026-07-05
 
 - Cleared the old system-generated title for video material collections. New unnamed video collections store an empty title, so title search and edit dialogs do not treat the default `视频` label as user input.

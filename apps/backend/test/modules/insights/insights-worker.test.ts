@@ -83,6 +83,7 @@ function createRepository(
     })),
     reclaimExpiredRunningJobs: vi.fn(async () => 0),
     reclaimExpiredSessionizationUidJobs: vi.fn(async () => 0),
+    renewSessionizationUidJobLease: vi.fn(async () => true),
     claimNextSessionizationUidJob: vi.fn(async (input) =>
       input?.excludeJobIds?.includes(defaultSessionizationJob.jobId)
         ? undefined
@@ -351,6 +352,96 @@ describe("InsightsWorkerService", () => {
       }),
     );
     expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
+  });
+
+  it("renews a sessionization claim while uid maintenance is still running", async () => {
+    vi.useFakeTimers();
+    let resolveMessages: ((messages: []) => void) | undefined;
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () =>
+        await new Promise<[]>((resolve) => {
+          resolveMessages = resolve;
+        }),
+      ),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    try {
+      const run = service.runSessionizationOnce();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(repository.listIncrementalMessages).toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(repository.renewSessionizationUidJobLease).toHaveBeenCalledWith({
+        claimToken: "claim-9001",
+        jobId: "sessionize-9001",
+        uid: 9001,
+      });
+
+      resolveMessages?.([]);
+      await run;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops sessionization writes after the claim heartbeat is rejected", async () => {
+    vi.useFakeTimers();
+    let resolveMessages: ((messages: Array<{
+      chatType: number;
+      content: string;
+      fromType: number;
+      id: string;
+      msgtime: number;
+      msgtype: string;
+      platform: number;
+      thirdExternalId: string;
+      thirdGroupId: string;
+      thirdUserId: string;
+      uid: number;
+    }>) => void) | undefined;
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () =>
+        await new Promise((resolve) => {
+          resolveMessages = resolve;
+        }),
+      ),
+      renewSessionizationUidJobLease: vi.fn(async () => false),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    try {
+      const run = service.runSessionizationOnce();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(repository.listIncrementalMessages).toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      resolveMessages?.([{
+        chatType: 1,
+        content: JSON.stringify({ content: "物流不更新" }),
+        fromType: 2,
+        id: "9001",
+        msgtime: 1_780_244_000_000,
+        msgtype: "text",
+        platform: 5,
+        thirdExternalId: "external-1",
+        thirdGroupId: "",
+        thirdUserId: "user-1",
+        uid: 9001,
+      }]);
+      await run;
+
+      expect(repository.createLogicalSession).not.toHaveBeenCalled();
+      expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+      expect(repository.updateCursor).not.toHaveBeenCalled();
+      expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
+      expect(repository.markSessionizationUidJobFailed).toHaveBeenCalledWith(
+        expect.objectContaining({ claimToken: "claim-9001" }),
+        expect.objectContaining({ message: "SESSIONIZATION_UID_CLAIM_LOST" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sessionizes incremental messages and creates a live analysis job", async () => {

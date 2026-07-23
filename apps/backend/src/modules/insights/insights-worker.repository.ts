@@ -1411,6 +1411,25 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     });
   }
 
+  async renewSessionizationUidJobLease(
+    input: ClaimedSessionizationUidJob,
+  ): Promise<boolean> {
+    const now = new Date();
+    const result = await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        lease_until: new Date(now.getTime() + SESSIONIZATION_JOB_LEASE_MS),
+        update_time: now,
+      })
+      .where("id", "=", parsePositiveInteger(input.jobId) ?? -1)
+      .where("job_type", "=", sessionizationUidJobType)
+      .where("status", "=", "running")
+      .where("locked_by", "=", input.claimToken)
+      .executeTakeFirst();
+
+    return getAffectedRows(result) > 0;
+  }
+
   async completeSessionizationUidJob(
     input: ClaimedSessionizationUidJob,
   ): Promise<"deleted" | "pending"> {

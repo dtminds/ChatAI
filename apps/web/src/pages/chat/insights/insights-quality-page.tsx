@@ -50,6 +50,7 @@ import {
 } from "./insights-utils";
 import { insightQualityRuleColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 type QualityView = "agent-report" | "quality-results";
 type QualityResultFilter = "all" | "failed" | "passed";
@@ -68,6 +69,7 @@ const qualityResultFilterItems: Array<{
 ];
 
 export function InsightsQualityPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [overview, setOverview] = useState<InsightsQualityOverviewResponse["overview"]>();
   const [agentStats, setAgentStats] = useState<InsightsQualityAgentStatsResponse["agentStats"]>([]);
   const [qualityResults, setQualityResults] = useState<InsightsQualityResultsResponse["qualityResults"]>([]);
@@ -182,7 +184,10 @@ export function InsightsQualityPage() {
   const ruleDistribution = overview?.ruleDistribution ?? [];
 
   return (
-    <InsightsLayout title="服务质检">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="服务质检"
+    >
       <div className="space-y-5">
         <div
           className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"

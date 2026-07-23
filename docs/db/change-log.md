@@ -7,6 +7,7 @@ Manual database changes for the backend should be recorded here.
 - Replaced the retired `maintain_insight_uid` and `cleanup_disabled_insights` insight-job type documentation with the temporary `sessionize_uid` task used by always-on logical-session generation.
 - Changed the default `max_attempts` for insight jobs and archived insight jobs from `3` to `2`, meaning the first failed execution is retried once.
 - No new table, column, or index is required for sessionization claim renewal; it reuses `locked_by`, `lease_until`, and `status`.
+- Added the fixed-capacity `xy_wap_embed_insight_worker_runtime_state` table with one row per Worker pipeline. Its `DATETIME(3)` precision is intentional: multi-instance reports can occur within the same second, and associated error/duration fields are replaced only when their event timestamp is strictly newer. Do not reduce these columns to second-precision `DATETIME`.
 
 Manual migration for existing databases:
 
@@ -18,6 +19,20 @@ ALTER TABLE xy_wap_embed_insight_job
 ALTER TABLE xy_wap_embed_insight_job_archive
   MODIFY COLUMN job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
   MODIFY COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
+  pipeline VARCHAR(32) NOT NULL COMMENT 'Worker管线，discovery、sessionization、analysis',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次开始实际执行tick的时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次实际执行成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次实际执行失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '时间最新的一次已完成执行耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近状态上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近一次状态上报时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (pipeline)
+) COMMENT='会话洞察Worker管线运行状态表';
 ```
 
 ## 2026-07-05

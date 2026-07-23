@@ -286,7 +286,10 @@ export function InsightsOverviewPage() {
   );
 
   return (
-    <InsightsLayout title="总览">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="总览"
+    >
       <div className="space-y-5">
         <OverviewHeader
           from={from}

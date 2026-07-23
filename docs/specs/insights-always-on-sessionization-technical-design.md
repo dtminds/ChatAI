@@ -767,28 +767,98 @@ GET /api/server/insights/sessions/:sessionId/messages
 
 ## 13. 监控
 
-### 13.1 发现层
+### 13.1 日志架构
 
-- 消息表 `MAX(id) - global cursor_audit_id`
-- 发现批次大小、UID 数、查询耗时
-- 空批次数和全局水位锁竞争次数
-- UID 空唤醒数和比例
+discovery、sessionization、analysis 三条管线共用一个 Worker observability reporter，不新增业务状态机或第二套调度器。
 
-### 13.2 UID 工作层
+- 每个 Worker 实例启动时记录一条生命周期 INFO。
+- 每条管线每 60 秒输出一条结构化 INFO 汇总；空闲窗口也输出，便于区分“没有工作”和“Worker 未运行”。
+- 普通 UID 的领取、批次完成、正常跳过和模型请求完成默认是 DEBUG；UID 批次完成与 Live 调度分别使用独立的 `eventCode`，避免把调度数计入批次完成数。
+- `INSIGHTS_WORKER_TRACE_UID_ALLOWLIST` 中的 UID 将普通 DEBUG 诊断事件提升为 INFO，用于线上定向排查。
+- 同类 WARN/ERROR 按稳定 errorCode 和 throttle key 做 5 分钟节流，恢复后仅输出一次 recovery。
+- 默认 `LOG_LEVEL=info`，因此生产环境默认看不到普通 DEBUG 批次；全局批次细节只在短期排障时临时启用 debug。
+- 禁止记录消息正文、Prompt、模型原始输出、provider response body、Authorization、API key 和原始 `error_message`。错误日志只允许稳定 errorCode、errorName、HTTP 状态和 timeout 等白名单字段。
 
-- `sessionize_uid` pending/running 数量
-- 最老 pending 等待时间
-- 每分钟处理消息、创建会话和关闭会话数
-- 每 UID 水位落后、租约过期、claim token 拒绝和重试次数
-- 完成阶段因消息或到期会话仍存在而立即续跑的次数
-- 连续失败达到告警阈值的 UID 数
+三条管线汇总至少覆盖：
 
-### 13.3 成本与容量
+- discovery：批次数、发现消息数、UID 数、空批次、全局水位锁竞争和异常。
+- sessionization：任务领取/删除/续跑/失败、扫描与切片消息、关闭会话、Live 调度、租约回收和 claim lost。
+- analysis：任务领取/跳过/重试/终态失败、模型真实请求数、请求失败、超时、重试、可选步骤失败和 response-format fallback。
 
-- `insight_enabled = 0` 下自动任务创建数和自动模型调用数，目标均为 0
-- 因关闭洞察跳过的自动任务数
-- 逻辑会话和消息归属表每日新增、总行数与容量
-- 单 UID 增长分布和异常热点
+日志及观测写入失败不得改变 cursor、job、session、snapshot 或分析结果的提交语义。
+
+### 13.2 管线运行状态表
+
+新增 `xy_wap_embed_insight_worker_runtime_state`，主键为 pipeline，业务上固定最多三行：
+
+- `discovery`
+- `sessionization`
+- `analysis`
+
+Worker 启动时立即 UPSERT 三条 pipeline 心跳，之后每 60 秒刷新。表记录最近 started/success/failure、稳定 errorCode、最近完成耗时、`reported_by` 和 `reported_at`，不存派生 health、连续失败次数或逐批事件。
+
+多实例共享同一 pipeline 行时，事件时间和关联字段按时间单调合并；旧实例的延迟写入不得覆盖较新的 started/success/failure。`reported_at` 使用数据库 `CURRENT_TIMESTAMP(3)`，API 读取同一数据库时钟作为 `observedAt`，禁止用 Node `Date.now()` 与数据库时间直接比较。
+
+状态派生：
+
+- `observedAt - reportedAt > 150s`：offline。
+- 最新失败晚于最新成功：degraded。
+- started 晚于最近完成：running；超过 15 分钟为 `possibly_stalled`。
+- 其它新鲜且存在完成记录：healthy/idle。
+
+`possibly_stalled` 只是多实例共享行上的聚合弱信号，不能证明某个实例已经卡死。页面使用“可能长时间运行（聚合判断）”，首轮灰度不据此自动告警、摘除实例或触发业务补偿。
+
+Worker disabled 时只输出稳定 disabled 事件，不刷新 runtime state，使旧心跳自然变为 offline。
+
+### 13.3 跨租户观测 API 与页面
+
+当前没有独立管理后台，本期使用启动时配置的精确身份对授权：
+
+```env
+INSIGHTS_WORKER_OBSERVER_SUBJECTS=10001:operator-a,10002:operator-b
+```
+
+条目格式是 `<uid>:<subUserId>`。空配置表示无人可访问；非法非空配置使 Backend 启动失败。授权只由 JWT 中 `${uid}:${subUserId}` 精确匹配决定，不复用洞察商业 allowlist，不依赖 role、`insight_enabled`、`insightAvailable` 或 basic/insight mode。
+
+只读 API：
+
+```text
+GET /api/server/insights/worker-observability/summary
+GET /api/server/insights/worker-observability/uids
+GET /api/server/insights/worker-observability/uids/:uid
+```
+
+- 所有接口必须正常鉴权并再次执行 observer guard。
+- 所有响应包括 400、401、403 和 5xx 均使用 `Cache-Control: no-store`。
+- 自动 Fastify request INFO 对该前缀关闭，避免页面轮询造成日志爆炸；显式业务 WARN/ERROR 保留。
+- UID 列表用常数次批量查询合并 cursor、hot job、logical session 和分析聚合，不逐 UID 扫消息表。
+- 只有 UID 详情使用 `idx_sync(uid,msgtime,id)` 查询 source head 和 pending probe。
+- API 不返回 `locked_by`、claim token、idempotency key、原始错误文本、消息内容或模型内容。
+
+页面路由为 `/chat/insights/worker-observability`，作为会话洞察条件导航项：
+
+- observer 即使处于 basic 模式或 `insightAvailable = false` 仍可进入。
+- 非 observer 隐藏入口，直链时也不发起跨租户数据请求。
+- 展示全局摘要、三管线状态、全部 observed UID 列表和单 UID 详情。
+- observed UID 是已经进入 cursor、Insight Job 或 logical session 链路的 UID 并集，不是平台注册租户全集。
+- summary/list 页面可见时每 30 秒刷新；详情打开时每 15 秒刷新；页面隐藏时暂停，恢复可见后立即刷新；单轮请求未完成时不叠加下一轮。
+- 第一版只读，不提供重试、重置水位、回收租约、强制关闭、暂停 Worker 或重刷按钮。
+
+UID 状态中，pending 等待时间使用 `queueAgeMs = max(0, observedAt - runAfter)` 展示，但不能仅因等待超过 5 分钟标为 blocked。blocked 只用于 running 租约过期，或超期 open session 持续存在且没有 active sessionization job。管线是否 offline/degraded 由全局 runtime state 独立表达。
+
+### 13.4 配置与上线语义
+
+- `INSIGHTS_WORKER_OBSERVER_SUBJECTS`、`INSIGHTS_WORKER_TRACE_UID_ALLOWLIST` 和 `LOG_LEVEL` 均在进程启动时读取，修改后必须重新部署或重启对应 Backend/Worker，不承诺热更新。
+- runtime state 表必须先于新版 Worker 创建；schema snapshot、change-log、Kysely 类型、writable allowlist 和 codegen 配置保持一致。
+- `DATETIME(3)` 是有意选择，用于区分多实例同秒事件并保障关联字段严格单调合并；不得抄成现有 insight 表常用的秒级 `DATETIME`。
+- 清空 observer subjects 并重启 Backend 后，入口隐藏且 API 返回无权访问；清空 trace UID 并重启 Worker 后恢复默认日志量。
+
+### 13.5 成本与容量
+
+- `insight_enabled = 0` 下自动模型调用数目标为 0。
+- 观测模型真实 HTTP 请求数、重试、超时、失败、response-format fallback 和 optional step failure。
+- 逻辑会话和消息归属表每日新增、总行数、单 UID 增长分布和异常热点。
+- 消息表 `MAX(id) - global cursor_audit_id` 只表示 ID 位置差，不命名为消息积压条数。
 
 ## 14. 测试设计
 

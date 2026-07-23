@@ -61,7 +61,10 @@ export function InsightsCapabilitiesRoute() {
 
   if (capabilities.mode === "basic" && aiOnlyPaths.has(location.pathname)) {
     return (
-      <InsightsLayout title="会话洞察">
+      <InsightsLayout
+        canViewWorkerObservability={capabilities.canViewWorkerObservability}
+        title="会话洞察"
+      >
         <div className="flex min-h-[420px] items-center justify-center">
           <div className="max-w-sm text-center">
             <h1 className="text-lg font-semibold">请先开启会话洞察</h1>

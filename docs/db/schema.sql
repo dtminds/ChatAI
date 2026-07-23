@@ -14,6 +14,20 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   UNIQUE KEY uk_insight_sync_source_uid (source, uid)
 ) COMMENT='会话洞察消息同步水位表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
+  pipeline VARCHAR(32) NOT NULL COMMENT 'Worker管线，discovery、sessionization、analysis',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次开始实际执行tick的时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次实际执行成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次实际执行失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '时间最新的一次已完成执行耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近状态上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近一次状态上报时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (pipeline)
+) COMMENT='会话洞察Worker管线运行状态表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_feature_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

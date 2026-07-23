@@ -6,6 +6,7 @@ import {
   InsightBusinessTopicSchema,
   InsightBusinessTrendPointSchema,
   InsightBusinessTopicsResponseSchema,
+  InsightCapabilitiesResponseSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightFilterOptionsResponseSchema,
@@ -25,9 +26,115 @@ import {
   InsightsQualityOverviewResponseSchema,
   InsightsQualityResultsResponseSchema,
   InsightsRescanRequestSchema,
+  InsightsWorkerSummaryResponseSchema,
+  InsightsWorkerUidDetailResponseSchema,
+  InsightsWorkerUidListResponseSchema,
 } from "../src/insights/dto";
 
 describe("insights DTOs", () => {
+  it("requires worker observability capability and validates observer responses", () => {
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(true);
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(false);
+
+    const pipeline = {
+      activity: "idle",
+      health: "healthy",
+      lastDurationMs: 12,
+      lastSuccessAt: 1784800000000,
+      pipeline: "discovery",
+      reportedAt: 1784800001000,
+      reportedBy: "worker-a:101",
+    };
+    const sessionization = {
+      queueAgeMs: 0,
+      state: "idle",
+    };
+    const analysis = {
+      failedLast24h: 0,
+      pending: 0,
+      processing: 0,
+      queueAgeMs: 0,
+      retrying: 0,
+      state: "idle",
+    };
+    const sessions = {
+      open: 0,
+      overdue: 0,
+    };
+
+    expect(Value.Check(InsightsWorkerSummaryResponseSchema, {
+      analysisJobs: {
+        expiredLease: 0,
+        failedLast24h: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      discovery: {
+        auditIdGap: 0,
+        cursorAuditId: 100,
+        hasBacklog: false,
+        sourceHeadAuditId: 100,
+      },
+      observedAt: 1784800001000,
+      observedUids: {
+        blocked: 0,
+        error: 0,
+        idle: 1,
+        processing: 0,
+        queued: 0,
+        retrying: 0,
+        total: 1,
+      },
+      pipelines: [pipeline],
+      sessionizationJobs: {
+        expiredLease: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      sessions,
+    })).toBe(true);
+
+    const uidItem = {
+      analysis,
+      overallState: "idle",
+      sessionization,
+      sessions,
+      uid: 9001,
+    };
+    expect(Value.Check(InsightsWorkerUidListResponseSchema, {
+      items: [uidItem],
+      observedAt: 1784800001000,
+      page: 1,
+      pageSize: 50,
+      total: 1,
+      totalPages: 1,
+    })).toBe(true);
+    expect(Value.Check(InsightsWorkerUidDetailResponseSchema, {
+      ...uidItem,
+      hasPendingMessages: false,
+      observedAt: 1784800001000,
+      recentAnalysisRuns: [],
+      recentErrors: [],
+      recentRescans: [],
+      recentSessions: [],
+      sourceHead: {
+        auditId: 100,
+        msgtime: 1784800000000,
+      },
+    })).toBe(true);
+  });
+
   it("accepts overview responses with statistics only", () => {
     expect(
       Value.Check(InsightsOverviewResponseSchema, {

@@ -23,6 +23,7 @@ import type {
   ClaimedSyncMessagesJob,
   InsightWorkerCursor,
   InsightWorkerMessage,
+  InsightWorkerPipelineRuntimeReport,
   InsightWorkerRepositoryPort,
   InsightWorkerSessionizationConfig,
   DiscoverMessageUidsResult,
@@ -176,6 +177,72 @@ const SESSIONIZATION_JOB_LEASE_MS = 5 * 60_000;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
   constructor(private readonly db: Kysely<Database>) {}
+
+  async upsertWorkerPipelineRuntimeState(
+    input: InsightWorkerPipelineRuntimeReport,
+  ): Promise<void> {
+    await sql`
+      insert into xy_wap_embed_insight_worker_runtime_state (
+        pipeline,
+        last_started_at,
+        last_success_at,
+        last_failure_at,
+        last_error_code,
+        last_duration_ms,
+        reported_by,
+        reported_at
+      ) values (
+        ${input.pipeline},
+        ${input.lastStartedAt ?? null},
+        ${input.lastSuccessAt ?? null},
+        ${input.lastFailureAt ?? null},
+        ${input.lastErrorCode ?? null},
+        ${input.lastDurationMs ?? null},
+        ${input.reportedBy},
+        current_timestamp(3)
+      )
+      on duplicate key update
+        reported_by = case
+          when current_timestamp(3) > reported_at then values(reported_by)
+          else reported_by
+        end,
+        last_error_code = case
+          when values(last_failure_at) is not null
+            and (last_failure_at is null or values(last_failure_at) > last_failure_at)
+            then values(last_error_code)
+          else last_error_code
+        end,
+        last_duration_ms = case
+          when greatest(
+            coalesce(values(last_success_at), '1000-01-01 00:00:00.000'),
+            coalesce(values(last_failure_at), '1000-01-01 00:00:00.000')
+          ) > greatest(
+            coalesce(last_success_at, '1000-01-01 00:00:00.000'),
+            coalesce(last_failure_at, '1000-01-01 00:00:00.000')
+          ) then values(last_duration_ms)
+          else last_duration_ms
+        end,
+        last_started_at = case
+          when values(last_started_at) is not null
+            and (last_started_at is null or values(last_started_at) > last_started_at)
+            then values(last_started_at)
+          else last_started_at
+        end,
+        last_success_at = case
+          when values(last_success_at) is not null
+            and (last_success_at is null or values(last_success_at) > last_success_at)
+            then values(last_success_at)
+          else last_success_at
+        end,
+        last_failure_at = case
+          when values(last_failure_at) is not null
+            and (last_failure_at is null or values(last_failure_at) > last_failure_at)
+            then values(last_failure_at)
+          else last_failure_at
+        end,
+        reported_at = current_timestamp(3)
+    `.execute(this.db);
+  }
 
   async getCursor(uid = globalCursorUid): Promise<InsightWorkerCursor> {
     let query = this.db

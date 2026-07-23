@@ -57,6 +57,9 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../shared/errors.js";
+import {
+  canViewInsightsWorkerObservability,
+} from "./insights-worker-observer-access.js";
 
 type InsightConfigLimitType = "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs";
 
@@ -462,7 +465,10 @@ const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimit
 const insightConfigTotalLimit = 50;
 
 export class InsightsService {
-  constructor(private readonly repository: InsightsRepositoryPort) {}
+  constructor(
+    private readonly repository: InsightsRepositoryPort,
+    private readonly workerObserverSubjects: ReadonlySet<string> = new Set(),
+  ) {}
 
   async getOverview(
     scope: InsightsUidScope,
@@ -540,11 +546,16 @@ export class InsightsService {
   async getCapabilities(
     scope: InsightsUidScope,
     role: AccountRole | string | undefined,
+    subUserId: string,
   ): Promise<InsightCapabilitiesResponse> {
     const featureConfig = await this.repository.getFeatureConfig(scope);
 
     return {
       canManageInsights: role === "admin" || role === "owner",
+      canViewWorkerObservability: canViewInsightsWorkerObservability(
+        this.workerObserverSubjects,
+        { subUserId, uid: scope.uid },
+      ),
       insightAvailable: isInsightAvailable(scope),
       mode: featureConfig.insightEnabled ? "insight" : "basic",
     };

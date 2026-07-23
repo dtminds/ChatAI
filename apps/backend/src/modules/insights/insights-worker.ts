@@ -10,11 +10,17 @@ import type {
   InsightPromptContext,
 } from "./insight-prompt-builder.js";
 import type { AiMessageInput, InsightMessageSourceRow } from "./insights.types.js";
+import {
+  getWorkerErrorCode,
+  safeErrorPayload,
+  type InsightsWorkerObservability,
+} from "./insights-worker-observability.js";
 
 type WorkerLogger = {
   error(payload: Record<string, unknown>, message: string): void;
   debug?(payload: Record<string, unknown>, message: string): void;
   info(payload: Record<string, unknown>, message: string): void;
+  warn?(payload: Record<string, unknown>, message: string): void;
 };
 
 const SYNC_MESSAGES_MAX_BATCHES = 10_000;
@@ -314,6 +320,16 @@ export type InsightWorkerAnalysisPolicy = {
   minAnalysisMessages: number;
 };
 
+export type InsightWorkerPipelineRuntimeReport = {
+  lastDurationMs?: number;
+  lastErrorCode?: string;
+  lastFailureAt?: Date;
+  lastStartedAt?: Date;
+  lastSuccessAt?: Date;
+  pipeline: "analysis" | "discovery" | "sessionization";
+  reportedBy: string;
+};
+
 export type InsightSessionAnalyzer = {
   analyzeSession(input: {
     context: InsightPromptContext;
@@ -468,6 +484,9 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<void>;
   updateRescanTaskRunning(rescanTaskId: string): Promise<void>;
   updateCursor(cursor: InsightWorkerCursor & { uid?: number }): Promise<void>;
+  upsertWorkerPipelineRuntimeState?(
+    input: InsightWorkerPipelineRuntimeReport,
+  ): Promise<void>;
 };
 
 export type NonOverlappingTicker = {
@@ -497,16 +516,19 @@ export class InsightsWorkerService {
       logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
       now?: () => number;
+      observability?: InsightsWorkerObservability;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.logger = options.logger;
     this.model = options.model;
     this.now = options.now ?? Date.now;
+    this.observability = options.observability;
   }
 
   private readonly logger?: WorkerLogger;
   private readonly now: () => number;
+  private readonly observability?: InsightsWorkerObservability;
 
   async runOnce() {
     await this.runDiscoveryOnce();
@@ -515,16 +537,52 @@ export class InsightsWorkerService {
   }
 
   async runDiscoveryOnce() {
-    return this.repository.discoverMessageUids({
+    const result = await this.repository.discoverMessageUids({
       batchSize: this.batchSize,
       now: new Date(this.now()),
     });
+    this.observability?.increment(
+      "discovery",
+      "discoveredMessages",
+      result.discoveredMessages,
+    );
+    this.observability?.increment(
+      "discovery",
+      "discoveredUids",
+      result.discoveredUids,
+    );
+    this.observability?.set("discovery", "cursorAuditId", result.cursorAuditId);
+    if (result.skipped) {
+      this.observability?.increment("discovery", "lockSkipped");
+    } else if (result.discoveredMessages === 0) {
+      this.observability?.increment("discovery", "emptyBatches");
+    }
+    this.observability?.event({
+      eventCode: "insights_worker.discovery_batch",
+      level: "debug",
+      message: "会话洞察 Worker 完成消息发现批次",
+      payload: result,
+      pipeline: "discovery",
+    });
+
+    return result;
   }
 
   async runSessionizationOnce() {
-    await this.repository.reclaimExpiredSessionizationUidJobs?.({
+    const reclaimed = await this.repository.reclaimExpiredSessionizationUidJobs?.({
       now: new Date(this.now()),
-    });
+    }) ?? 0;
+    if (reclaimed > 0) {
+      this.observability?.increment("sessionization", "leasesReclaimed", reclaimed);
+      this.observability?.event({
+        eventCode: "insights_worker.lease_reclaimed",
+        level: "warn",
+        message: "会话洞察 Worker 回收过期切片租约",
+        payload: { reclaimed },
+        pipeline: "sessionization",
+        throttleKey: "lease_reclaimed",
+      });
+    }
     await this.repository.enqueueClosableSessionUids({
       limit: this.batchSize,
       now: this.now(),
@@ -533,9 +591,19 @@ export class InsightsWorkerService {
   }
 
   async runAnalysisOnce() {
-    await this.repository.reclaimExpiredRunningJobs?.({
-      now: new Date(),
-    });
+    const reclaimed = await this.repository.reclaimExpiredRunningJobs?.({
+      now: new Date(this.now()),
+    }) ?? 0;
+    if (reclaimed > 0) {
+      this.observability?.event({
+        eventCode: "insights_worker.lease_reclaimed",
+        level: "warn",
+        message: "会话洞察 Worker 回收过期分析租约",
+        payload: { reclaimed },
+        pipeline: "analysis",
+        throttleKey: "lease_reclaimed",
+      });
+    }
     await this.runSyncMessagesJob();
     if (this.model) {
       await this.runAnalyzeJobs(3);
@@ -555,8 +623,22 @@ export class InsightsWorkerService {
         before,
         limit: TERMINAL_JOB_ARCHIVE_LIMIT,
       });
+      this.observability?.recover("archive", "analysis");
     } catch (error) {
-      this.logger?.error({ err: error }, "会话洞察 worker 归档终态任务失败");
+      this.observability?.increment("analysis", "archiveFailures");
+      if (this.observability) {
+        this.observability.event({
+          errorCode: getWorkerErrorCode(error),
+          eventCode: "insights_worker.archive_failed",
+          level: "warn",
+          message: "会话洞察 Worker 归档终态任务失败",
+          payload: safeErrorPayload(error),
+          pipeline: "analysis",
+          throttleKey: "archive",
+        });
+      } else {
+        this.logger?.error({ err: error }, "会话洞察 worker 归档终态任务失败");
+      }
     }
   }
 
@@ -566,6 +648,7 @@ export class InsightsWorkerService {
       limit: this.batchSize,
     });
     let scheduledJobs = 0;
+    const scheduledJobsByUid = new Map<number, number>();
 
     for (const session of sessions) {
       if (await this.createLiveAnalyzeJobIfNeeded({
@@ -574,14 +657,36 @@ export class InsightsWorkerService {
         uid: session.uid,
       })) {
         scheduledJobs += 1;
+        scheduledJobsByUid.set(
+          session.uid,
+          (scheduledJobsByUid.get(session.uid) ?? 0) + 1,
+        );
       }
     }
 
     if (scheduledJobs > 0) {
-      this.logger?.info(
-        { checkedOpenSessions: sessions.length, scheduledJobs },
-        "会话洞察 worker 已创建未完结会话提前分析任务",
+      this.observability?.increment(
+        "sessionization",
+        "liveJobsScheduled",
+        scheduledJobs,
       );
+      if (this.observability) {
+        for (const [uid, uidScheduledJobs] of scheduledJobsByUid) {
+          this.observability.event({
+            eventCode: "insights_worker.live_analysis_scheduled",
+            level: "debug",
+            message: "会话洞察 Worker 已调度实时分析",
+            payload: { scheduledJobs: uidScheduledJobs },
+            pipeline: "sessionization",
+            uid,
+          });
+        }
+      } else {
+        this.logger?.info(
+          { checkedOpenSessions: sessions.length, scheduledJobs },
+          "会话洞察 worker 已创建未完结会话提前分析任务",
+        );
+      }
     }
   }
 
@@ -598,6 +703,7 @@ export class InsightsWorkerService {
       }
 
       claimedJobIds.add(job.jobId);
+      this.observability?.increment("sessionization", "jobsClaimed");
       await this.runUidMaintenanceJob(job);
     }
   }
@@ -611,7 +717,17 @@ export class InsightsWorkerService {
         heartbeat.assertActive,
       );
 
-      if (scannedMessages > 0) {
+      this.observability?.increment(
+        "sessionization",
+        "scannedMessages",
+        scannedMessages,
+      );
+      this.observability?.increment(
+        "sessionization",
+        "sessionizedMessages",
+        sessionizedMessages,
+      );
+      if (scannedMessages > 0 && !this.observability) {
         this.logger?.info(
           {
             activeUids: 1,
@@ -626,14 +742,57 @@ export class InsightsWorkerService {
       await heartbeat.renewNow();
       await heartbeat.stop();
       heartbeat.assertActive();
-      await this.repository.completeSessionizationUidJob(job);
+      const result = await this.repository.completeSessionizationUidJob(job);
+      this.observability?.increment(
+        "sessionization",
+        result === "deleted" ? "jobsDeleted" : "jobsRequeued",
+      );
+      this.observability?.event({
+        eventCode: "insights_worker.sessionization_uid_completed",
+        level: "debug",
+        message: "会话洞察 Worker 完成 UID 切片维护",
+        payload: {
+          jobId: job.jobId,
+          result,
+          scannedMessages,
+          sessionizedMessages,
+        },
+        pipeline: "sessionization",
+        uid: job.uid,
+      });
+      this.observability?.recover(`uid:${job.uid}`, "sessionization", job.uid);
     } catch (error) {
       await heartbeat.stop();
       await this.repository.markSessionizationUidJobFailed(job, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker UID 维护任务失败",
-      );
+      this.observability?.increment("sessionization", "jobsFailed");
+      const errorCode = getWorkerErrorCode(error);
+      if (this.observability) {
+        this.observability.event({
+          errorCode,
+          eventCode: errorCode === "SESSIONIZATION_UID_CLAIM_LOST"
+            ? "insights_worker.claim_lost"
+            : "insights_worker.sessionization_uid_failed",
+          level: "warn",
+          message: "会话洞察 Worker UID 维护任务失败",
+          payload: {
+            jobId: job.jobId,
+            ...safeErrorPayload(error),
+          },
+          pipeline: "sessionization",
+          throttleKey: errorCode === "SESSIONIZATION_UID_CLAIM_LOST"
+            ? `claim_lost:${job.uid}`
+            : `uid:${job.uid}`,
+          uid: job.uid,
+        });
+        if (errorCode === "SESSIONIZATION_UID_CLAIM_LOST") {
+          this.observability.increment("sessionization", "claimLost");
+        }
+      } else {
+        this.logger?.error(
+          { err: error, jobId: job.jobId, uid: job.uid },
+          "会话洞察 worker UID 维护任务失败",
+        );
+      }
     }
   }
 
@@ -777,10 +936,24 @@ export class InsightsWorkerService {
       return;
     }
 
-    this.logger?.info(
-      { cursorMsgtime: job.cursorMsgtime, jobId: job.jobId, uid: job.uid },
-      "会话洞察 worker 开始历史重刷",
-    );
+    if (this.observability) {
+      this.observability.event({
+        eventCode: "insights_worker.rescan_started",
+        level: "info",
+        message: "会话洞察 Worker 开始历史重刷",
+        payload: {
+          jobId: job.jobId,
+          rescanTaskId: job.rescanTaskId,
+        },
+        pipeline: "analysis",
+        uid: job.uid,
+      });
+    } else {
+      this.logger?.info(
+        { cursorMsgtime: job.cursorMsgtime, jobId: job.jobId, uid: job.uid },
+        "会话洞察 worker 开始历史重刷",
+      );
+    }
 
     try {
       if (job.rescanTaskId) {
@@ -907,22 +1080,57 @@ export class InsightsWorkerService {
       }
 
       await this.repository.markSyncMessagesJobSucceeded(job.jobId);
-      this.logger?.info(
-        {
-          jobId: job.jobId,
-          reanalyzeSessions: queuedFinalSessions,
-          scannedMessages,
-          sessionizedMessages,
+      this.observability?.increment("analysis", "syncSucceeded");
+      if (this.observability) {
+        this.observability.event({
+          eventCode: "insights_worker.rescan_completed",
+          level: "info",
+          message: "会话洞察 Worker 历史重刷完成",
+          payload: {
+            jobId: job.jobId,
+            reanalyzeSessions: queuedFinalSessions,
+            rescanTaskId: job.rescanTaskId,
+            scannedMessages,
+            sessionizedMessages,
+          },
+          pipeline: "analysis",
           uid: job.uid,
-        },
-        "会话洞察 worker 历史重刷完成",
-      );
+        });
+      } else {
+        this.logger?.info(
+          {
+            jobId: job.jobId,
+            reanalyzeSessions: queuedFinalSessions,
+            scannedMessages,
+            sessionizedMessages,
+            uid: job.uid,
+          },
+          "会话洞察 worker 历史重刷完成",
+        );
+      }
     } catch (error) {
       await this.repository.markSyncMessagesJobFailed(job.jobId, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker 历史重刷失败",
-      );
+      this.observability?.increment("analysis", "syncFailed");
+      if (this.observability) {
+        this.observability.event({
+          errorCode: getWorkerErrorCode(error),
+          eventCode: "insights_worker.rescan_failed",
+          level: "error",
+          message: "会话洞察 Worker 历史重刷失败",
+          payload: {
+            jobId: job.jobId,
+            rescanTaskId: job.rescanTaskId,
+            ...safeErrorPayload(error),
+          },
+          pipeline: "analysis",
+          uid: job.uid,
+        });
+      } else {
+        this.logger?.error(
+          { err: error, jobId: job.jobId, uid: job.uid },
+          "会话洞察 worker 历史重刷失败",
+        );
+      }
     }
   }
 
@@ -933,24 +1141,53 @@ export class InsightsWorkerService {
       now: Date.now(),
     });
 
+    const closedSessionIdsByUid = new Map<number, string[]>();
     for (const session of sessions) {
-      await this.repository.finalizeOpenSession({
+      const finalized = await this.repository.finalizeOpenSession({
         analysisDelayMinutes: session.analysisDelayMinutes,
         closeReason: session.closeReason,
         endedAt: session.endedAt,
         sessionId: session.sessionId,
         uid: session.uid,
       });
+      if (finalized) {
+        const closedSessionIds = closedSessionIdsByUid.get(session.uid) ?? [];
+        closedSessionIds.push(session.sessionId);
+        closedSessionIdsByUid.set(session.uid, closedSessionIds);
+      }
     }
 
-    if (sessions.length > 0) {
-      this.logger?.info(
-        {
-          closedSessions: sessions.length,
-          sessionIds: sessions.map((session) => session.sessionId),
-        },
-        "会话洞察 worker 已关闭超时逻辑会话",
+    const closedSessions = Array.from(closedSessionIdsByUid.values())
+      .reduce((total, sessionIds) => total + sessionIds.length, 0);
+    if (closedSessions > 0) {
+      this.observability?.increment(
+        "sessionization",
+        "closedSessions",
+        closedSessions,
       );
+      if (this.observability) {
+        for (const [uid, sessionIds] of closedSessionIdsByUid) {
+          this.observability.event({
+            eventCode: "insights_worker.sessions_closed",
+            level: "debug",
+            message: "会话洞察 Worker 已关闭超时逻辑会话",
+            payload: {
+              closedSessions: sessionIds.length,
+              sessionIdSamples: sessionIds.slice(0, 10),
+            },
+            pipeline: "sessionization",
+            uid,
+          });
+        }
+      } else {
+        this.logger?.info(
+          {
+            closedSessions,
+            sessionIds: Array.from(closedSessionIdsByUid.values()).flat(),
+          },
+          "会话洞察 worker 已关闭超时逻辑会话",
+        );
+      }
     }
   }
 
@@ -1181,6 +1418,7 @@ export class InsightsWorkerService {
       const job = await this.repository.claimNextAnalyzeJob();
       if (!job) break;
       jobs.push(job);
+      this.observability?.increment("analysis", "jobsClaimed");
     }
 
     if (jobs.length === 0) return;
@@ -1213,21 +1451,53 @@ export class InsightsWorkerService {
     let runId: string | undefined;
     const startedAt = Date.now();
 
-    this.logger?.info(
-      {
-        jobId: job.jobId,
-        mode: job.mode,
-        sessionId: job.sessionId,
+    if (this.observability) {
+      this.observability.event({
+        eventCode: "insights_worker.analysis_started",
+        level: "debug",
+        message: "会话洞察 Worker 开始分析任务",
+        payload: {
+          analysisScope: job.analysisScope,
+          attempt: job.attemptCount,
+          jobId: job.jobId,
+          maxAttempts: job.maxAttempts,
+          mode: job.mode,
+          sessionId: job.sessionId,
+        },
+        pipeline: "analysis",
         uid: job.uid,
-      },
-      "会话洞察 worker 开始分析任务",
-    );
+      });
+    } else {
+      this.logger?.info(
+        {
+          jobId: job.jobId,
+          mode: job.mode,
+          sessionId: job.sessionId,
+          uid: job.uid,
+        },
+        "会话洞察 worker 开始分析任务",
+      );
+    }
 
     try {
       if (job.mode !== "manual_reanalyze") {
         const featureConfig = await this.repository.getFeatureConfig(job.uid);
         if (!featureConfig.insightEnabled) {
           await this.repository.skipAutomaticAnalysisJob(job);
+          this.observability?.increment("analysis", "skippedInsightDisabled");
+          this.observability?.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 已跳过自动分析",
+            payload: {
+              jobId: job.jobId,
+              mode: job.mode,
+              reason: "insight_disabled",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
+            uid: job.uid,
+          });
           return;
         }
       }
@@ -1250,15 +1520,32 @@ export class InsightsWorkerService {
           delayMs: INPUT_READINESS_RETRY_DELAY_MS,
           reason: "pending_transcription",
         });
-        this.logger?.info(
-          {
-            jobId: job.jobId,
-            pendingTranscriptionCount,
-            sessionId: job.sessionId,
+        this.observability?.increment("analysis", "postponedTranscription");
+        if (this.observability) {
+          this.observability.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 延后分析任务",
+            payload: {
+              jobId: job.jobId,
+              pendingTranscriptionCount,
+              reason: "pending_transcription",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
             uid: job.uid,
-          },
-          "会话洞察 worker 延后分析任务，等待语音转写",
-        );
+          });
+        } else {
+          this.logger?.info(
+            {
+              jobId: job.jobId,
+              pendingTranscriptionCount,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 延后分析任务，等待语音转写",
+          );
+        }
         return;
       }
 
@@ -1307,20 +1594,40 @@ export class InsightsWorkerService {
             sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
             validationWarnings: [],
           });
+          this.observability?.increment("analysis", "snapshotsPublished");
         }
 
         await this.finishAnalyzeJobSucceeded(job);
-        this.logger?.info(
-          {
-            jobId: job.jobId,
-            messageCount: modelMessages.length,
-            minAnalysisMessages: policy.minAnalysisMessages,
-            mode: job.mode,
-            sessionId: job.sessionId,
+        this.observability?.increment("analysis", "skippedInsufficientMessages");
+        if (this.observability) {
+          this.observability.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 跳过模型分析",
+            payload: {
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              minAnalysisMessages: policy.minAnalysisMessages,
+              mode: job.mode,
+              reason: "insufficient_messages",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
             uid: job.uid,
-          },
-          "会话洞察 worker 跳过模型分析，消息不足",
-        );
+          });
+        } else {
+          this.logger?.info(
+            {
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              minAnalysisMessages: policy.minAnalysisMessages,
+              mode: job.mode,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 跳过模型分析，消息不足",
+          );
+        }
         return;
       }
       const context = await this.repository.getPromptContext(job.uid);
@@ -1359,16 +1666,34 @@ export class InsightsWorkerService {
             previousSessionContexts,
           });
         } catch (error) {
-          this.logger?.error(
-            {
-              err: error,
-              jobId: job.jobId,
-              messageCount: modelMessages.length,
-              sessionId: job.sessionId,
+          if (this.observability) {
+            this.observability.event({
+              errorCode: getWorkerErrorCode(error),
+              eventCode: "insights_worker.live_gate_degraded",
+              level: "warn",
+              message: "会话洞察 Worker 实时分析 gate 降级",
+              payload: {
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                sessionId: job.sessionId,
+                ...safeErrorPayload(error),
+              },
+              pipeline: "analysis",
+              throttleKey: "provider",
               uid: job.uid,
-            },
-            "会话洞察 worker 未完结会话 gate 执行失败，按策略跳过完整分析",
-          );
+            });
+          } else {
+            this.logger?.error(
+              {
+                err: error,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                sessionId: job.sessionId,
+                uid: job.uid,
+              },
+              "会话洞察 worker 未完结会话 gate 执行失败，按策略跳过完整分析",
+            );
+          }
           gateDecision = {
             changeType: "no_material_change",
             reason: `live gate failed: ${formatError(error)}`,
@@ -1383,17 +1708,35 @@ export class InsightsWorkerService {
             runId,
           });
           await this.finishAnalyzeJobSucceeded(job);
-          this.logger?.info(
-            {
-              changeType: gateDecision.changeType,
-              jobId: job.jobId,
-              messageCount: modelMessages.length,
-              reason: gateDecision.reason,
-              sessionId: job.sessionId,
+          this.observability?.increment("analysis", "liveGateSkipped");
+          if (this.observability) {
+            this.observability.event({
+              eventCode: "insights_worker.analysis_skipped",
+              level: "debug",
+              message: "会话洞察 Worker 跳过实时分析",
+              payload: {
+                changeType: gateDecision.changeType,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                reason: "live_gate_no_material_change",
+                sessionId: job.sessionId,
+              },
+              pipeline: "analysis",
               uid: job.uid,
-            },
-            "会话洞察 worker 跳过未完结会话提前分析，未发现实质变化",
-          );
+            });
+          } else {
+            this.logger?.info(
+              {
+                changeType: gateDecision.changeType,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                reason: gateDecision.reason,
+                sessionId: job.sessionId,
+                uid: job.uid,
+              },
+              "会话洞察 worker 跳过未完结会话提前分析，未发现实质变化",
+            );
+          }
           return;
         }
       }
@@ -1434,18 +1777,39 @@ export class InsightsWorkerService {
         validationWarnings,
       });
       await this.finishAnalyzeJobSucceeded(job);
-      this.logger?.info(
-        {
-          durationMs: Date.now() - startedAt,
-          jobId: job.jobId,
-          messageCount: messages.length,
-          mode: job.mode,
-          sessionId: job.sessionId,
-          snapshotId,
-          validationWarningCount: validationWarnings.length,
-        },
-        "会话洞察 worker 分析任务完成",
-      );
+      this.observability?.increment("analysis", "succeeded");
+      this.observability?.increment("analysis", "snapshotsPublished");
+      if (this.observability) {
+        this.observability.event({
+          eventCode: "insights_worker.analysis_completed",
+          level: "debug",
+          message: "会话洞察 Worker 分析任务完成",
+          payload: {
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            messageCount: messages.length,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            snapshotId,
+            validationWarningCount: validationWarnings.length,
+          },
+          pipeline: "analysis",
+          uid: job.uid,
+        });
+      } else {
+        this.logger?.info(
+          {
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            messageCount: messages.length,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            snapshotId,
+            validationWarningCount: validationWarnings.length,
+          },
+          "会话洞察 worker 分析任务完成",
+        );
+      }
     } catch (error) {
       if (runId) {
         await this.repository.markAnalysisRunFailed(runId, error);
@@ -1466,17 +1830,51 @@ export class InsightsWorkerService {
           succeededSessions: 0,
         });
       }
-      this.logger?.error(
-        {
-          durationMs: Date.now() - startedAt,
-          err: error,
-          jobId: job.jobId,
-          mode: job.mode,
-          sessionId: job.sessionId,
+      const errorCode = getWorkerErrorCode(error);
+      const errorPayload = safeErrorPayload(error);
+      if (this.observability) {
+        this.observability.increment(
+          "analysis",
+          willRetry ? "retried" : "failed",
+        );
+        this.observability.event({
+          errorCode,
+          eventCode: willRetry
+            ? "insights_worker.analysis_retry_scheduled"
+            : "insights_worker.analysis_failed",
+          level: willRetry ? "warn" : "error",
+          message: willRetry
+            ? "会话洞察 Worker 分析失败，已安排重试"
+            : "会话洞察 Worker 分析任务终态失败",
+          payload: {
+            attempt: job.attemptCount,
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            maxAttempts: job.maxAttempts,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            willRetry,
+            ...errorPayload,
+          },
+          pipeline: "analysis",
+          throttleKey: errorPayload.failedStep
+            ? "provider"
+            : "analysis_job",
           uid: job.uid,
-        },
-        "会话洞察 worker 分析任务失败",
-      );
+        });
+      } else {
+        this.logger?.error(
+          {
+            durationMs: Date.now() - startedAt,
+            err: error,
+            jobId: job.jobId,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            uid: job.uid,
+          },
+          "会话洞察 worker 分析任务失败",
+        );
+      }
     }
   }
 
@@ -1489,6 +1887,7 @@ export class InsightsWorkerService {
         succeededSessions: 1,
       });
     }
+    this.observability?.recover("analysis_job", "analysis", job.uid);
   }
 
   private async resolveActionItemGenerationPolicy(input: {
@@ -2033,6 +2432,7 @@ export function startInsightsWorkerPipelines(options: {
   discovery: () => Promise<void>;
   intervalMs?: number;
   logger: WorkerLogger;
+  observability?: InsightsWorkerObservability;
   sessionization: () => Promise<void>;
 }) {
   const intervalMs = options.intervalMs ?? 3_000;
@@ -2042,17 +2442,44 @@ export function startInsightsWorkerPipelines(options: {
     ["analysis", options.analysis],
   ] as const;
   const runtimes = pipelines.map(([name, run]) => {
-    const ticker = createNonOverlappingTicker(run);
+    const trackedRun = async () => {
+      const startedAt = options.observability?.pipelineStarted(name);
+      try {
+        await run();
+        if (startedAt != null) {
+          options.observability?.pipelineSucceeded(name, startedAt);
+        }
+      } catch (error) {
+        if (startedAt != null) {
+          options.observability?.pipelineFailed(name, startedAt, error);
+        }
+        throw error;
+      }
+    };
+    const ticker = createNonOverlappingTicker(trackedRun);
     const timer = setInterval(() => {
-      void ticker.tick().catch((error: unknown) => {
-        options.logger.error({ err: error, pipeline: name }, "会话洞察 worker pipeline tick 失败");
-      });
+      void ticker.tick()
+        .then((accepted) => {
+          if (!accepted) {
+            options.observability?.pipelineBusy(name);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!options.observability) {
+            options.logger.error(
+              { err: error, pipeline: name },
+              "会话洞察 worker pipeline tick 失败",
+            );
+          }
+        });
     }, intervalMs);
 
     return { name, ticker, timer };
   });
 
-  options.logger.info({ intervalMs }, "会话洞察 worker 已启动独立处理管线");
+  if (!options.observability) {
+    options.logger.info({ intervalMs }, "会话洞察 worker 已启动独立处理管线");
+  }
 
   return {
     async stop() {
@@ -2060,6 +2487,7 @@ export function startInsightsWorkerPipelines(options: {
         clearInterval(runtime.timer);
       }
       await Promise.all(runtimes.map((runtime) => runtime.ticker.waitForIdle()));
+      await options.observability?.stop();
     },
     tickers: Object.fromEntries(
       runtimes.map((runtime) => [runtime.name, runtime.ticker]),

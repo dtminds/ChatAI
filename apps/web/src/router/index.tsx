@@ -118,6 +118,13 @@ const InsightsSettingsPage = lazy(() =>
     }),
   ),
 );
+const InsightsWorkerObservabilityPage = lazy(() =>
+  import("@/pages/chat/insights/insights-worker-observability-page").then(
+    ({ InsightsWorkerObservabilityPage }) => ({
+      default: InsightsWorkerObservabilityPage,
+    }),
+  ),
+);
 
 function withRouteSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -226,6 +233,10 @@ export const routerConfig = [
           {
             path: "settings",
             element: withRouteSuspense(<InsightsSettingsPage />),
+          },
+          {
+            path: "worker-observability",
+            element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
           },
         ],
       },

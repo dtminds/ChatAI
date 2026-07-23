@@ -1964,16 +1964,22 @@ describe("InsightsService", () => {
   });
 
   it("reports both owner and admin roles as able to manage insights", async () => {
-    const service = new InsightsService(createRepository());
+    const service = new InsightsService(
+      createRepository(),
+      new Set(["9001:observer-1"]),
+    );
 
-    await expect(service.getCapabilities(scope, "owner")).resolves.toMatchObject({
+    await expect(service.getCapabilities(scope, "owner", "observer-1")).resolves.toMatchObject({
       canManageInsights: true,
+      canViewWorkerObservability: true,
     });
-    await expect(service.getCapabilities(scope, "admin")).resolves.toMatchObject({
+    await expect(service.getCapabilities(scope, "admin", "other")).resolves.toMatchObject({
       canManageInsights: true,
+      canViewWorkerObservability: false,
     });
-    await expect(service.getCapabilities(scope, "operator")).resolves.toMatchObject({
+    await expect(service.getCapabilities(scope, "operator", "observer-1")).resolves.toMatchObject({
       canManageInsights: false,
+      canViewWorkerObservability: true,
     });
   });
 

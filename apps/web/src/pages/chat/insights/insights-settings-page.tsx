@@ -641,7 +641,10 @@ export function InsightsSettingsPage() {
 
   if (!canAccessSettings) {
     return (
-      <InsightsLayout title="洞察配置">
+      <InsightsLayout
+        canViewWorkerObservability={capabilities.canViewWorkerObservability}
+        title="洞察配置"
+      >
         <div className="rounded-[8px] border bg-background p-8 text-center">
           <h2 className="text-lg font-semibold">仅管理员可查看洞察配置</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -660,7 +663,10 @@ export function InsightsSettingsPage() {
   const rescanData = tabData?.tab === "rescan" ? tabData : undefined;
 
   return (
-    <InsightsLayout title="洞察配置">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="洞察配置"
+    >
       <div className="space-y-5">
         <InsightsPageHeader
           actions={(

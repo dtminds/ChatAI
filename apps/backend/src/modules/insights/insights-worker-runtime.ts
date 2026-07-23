@@ -12,12 +12,19 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "./llm-provider.js";
+import { parseInsightsWorkerTraceUids } from "./insights-worker-observer-access.js";
+import {
+  InsightsWorkerObservability,
+  type InsightsWorkerLogger,
+} from "./insights-worker-observability.js";
+import os from "node:os";
 
 export type InsightsWorkerRuntimeConfig = {
   batchSize: number;
   enabled: boolean;
   intervalMs: number;
   modelEnabled: boolean;
+  traceUids: ReadonlySet<number>;
 };
 
 type WorkerRuntimeEnv = {
@@ -25,6 +32,7 @@ type WorkerRuntimeEnv = {
   INSIGHTS_WORKER_ENABLED?: string;
   INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
+  INSIGHTS_WORKER_TRACE_UID_ALLOWLIST?: string;
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
   VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
@@ -33,10 +41,7 @@ type WorkerRuntimeEnv = {
   VOLCENGINE_ARK_MODEL?: string;
 };
 
-type WorkerLogger = {
-  error(payload: Record<string, unknown>, message: string): void;
-  info(payload: Record<string, unknown>, message: string): void;
-};
+type WorkerLogger = InsightsWorkerLogger;
 
 export function parseInsightsWorkerRuntimeConfig(
   env: WorkerRuntimeEnv = process.env,
@@ -55,6 +60,9 @@ export function parseInsightsWorkerRuntimeConfig(
       1_000,
     ),
     modelEnabled: parseBoolean(env.INSIGHTS_WORKER_MODEL_ENABLED),
+    traceUids: parseInsightsWorkerTraceUids(
+      env.INSIGHTS_WORKER_TRACE_UID_ALLOWLIST,
+    ),
   };
 }
 
@@ -66,23 +74,37 @@ export function createInsightsWorkerRuntime(input: {
   const config = parseInsightsWorkerRuntimeConfig(input.env);
 
   if (!config.enabled) {
-    input.logger.info({}, "会话洞察 worker 未启用");
+    input.logger.info({
+      component: "insights-worker",
+      eventCode: "insights_worker.disabled",
+    }, "会话洞察 worker 未启用");
     return undefined;
   }
 
   const repository = new MysqlInsightWorkerRepository(input.db);
-  const model = config.modelEnabled ? createInsightAnalyzer(input.env, input.logger) : undefined;
+  const observability = new InsightsWorkerObservability({
+    logger: input.logger,
+    reportedBy: `${os.hostname()}:${process.pid}`,
+    repository,
+    traceUids: config.traceUids,
+  });
+  const model = config.modelEnabled
+    ? createInsightAnalyzer(input.env, input.logger, observability)
+    : undefined;
   const service = new InsightsWorkerService(repository, {
     batchSize: config.batchSize,
     logger: input.logger,
     model,
+    observability,
   });
+  observability.start();
 
   return startInsightsWorkerPipelines({
     analysis: () => service.runAnalysisOnce(),
     discovery: () => service.runDiscoveryOnce().then(() => undefined),
     intervalMs: config.intervalMs,
     logger: input.logger,
+    observability,
     sessionization: () => service.runSessionizationOnce(),
   });
 }
@@ -90,6 +112,7 @@ export function createInsightsWorkerRuntime(input: {
 function createInsightAnalyzer(
   env: WorkerRuntimeEnv | undefined,
   logger: WorkerLogger,
+  observability: InsightsWorkerObservability,
 ): InsightSessionAnalyzer {
   const providerConfig = createVolcengineArkProviderConfig(env);
 
@@ -98,7 +121,7 @@ function createInsightAnalyzer(
     "会话洞察模型 provider 已配置",
   );
 
-  return new OpenAiCompatibleInsightAnalyzer(providerConfig);
+  return new OpenAiCompatibleInsightAnalyzer(providerConfig, observability);
 }
 
 function parseBoolean(value: string | undefined) {

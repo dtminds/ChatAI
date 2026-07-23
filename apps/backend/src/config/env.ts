@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
+import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insights-worker-observer-access.js";
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
@@ -13,6 +14,8 @@ export const EnvSchema = Type.Object({
   INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
   INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
   INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_OBSERVER_SUBJECTS: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: Type.Optional(Type.String()),
   INSIGHTS_WORKER_UID_ALLOWLIST: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),
@@ -133,4 +136,10 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
   if (env.REDIS_ENABLED === "true" && !env.REDIS_URL) {
     throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
+
+  return {
+    workerObserverSubjects: parseInsightsWorkerObserverSubjects(
+      env.INSIGHTS_WORKER_OBSERVER_SUBJECTS,
+    ),
+  };
 }

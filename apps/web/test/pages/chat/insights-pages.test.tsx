@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -33,6 +34,9 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightRescanTasks: vi.fn(),
   getInsightSettings: vi.fn(),
   getInsightSettingsSummary: vi.fn(),
+  getInsightsWorkerSummary: vi.fn(),
+  getInsightsWorkerUidDetail: vi.fn(),
+  getInsightsWorkerUids: vi.fn(),
   getInsightPolicyAndSessionization: vi.fn(),
   getInsightFeatureConfig: vi.fn(),
   listInsightIntentConfigs: vi.fn(),
@@ -484,6 +488,7 @@ function createMockInsightSessionMessages() {
 function installInsightMocks() {
   serviceMocks.getInsightCapabilities.mockResolvedValue({
     canManageInsights: true,
+    canViewWorkerObservability: false,
     insightAvailable: true,
     mode: "insight",
   });
@@ -1112,6 +1117,154 @@ function installInsightMocks() {
     ],
     total: 1,
   });
+  serviceMocks.getInsightsWorkerSummary.mockResolvedValue({
+    analysisJobs: {
+      expiredLease: 0,
+      failedLast24h: 1,
+      pending: 2,
+      retrying: 0,
+      running: 1,
+    },
+    discovery: {
+      auditIdGap: 12,
+      cursorAuditId: 9000,
+      hasBacklog: true,
+      sourceHeadAuditId: 9012,
+    },
+    observedAt: 1_780_300_000_000,
+    observedUids: {
+      blocked: 0,
+      error: 1,
+      idle: 1,
+      processing: 0,
+      queued: 1,
+      retrying: 0,
+      total: 3,
+    },
+    pipelines: [
+      {
+        activity: "idle",
+        health: "healthy",
+        lastSuccessAt: 1_780_299_990_000,
+        pipeline: "discovery",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+      },
+      {
+        activity: "possibly_stalled",
+        health: "degraded",
+        lastStartedAt: 1_780_299_040_000,
+        pipeline: "sessionization",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+        runningDurationMs: 960_000,
+      },
+      {
+        activity: "idle",
+        health: "degraded",
+        lastErrorCode: "LLM_TIMEOUT",
+        lastFailureAt: 1_780_299_980_000,
+        pipeline: "analysis",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+      },
+    ],
+    sessionizationJobs: {
+      expiredLease: 0,
+      pending: 1,
+      retrying: 0,
+      running: 1,
+    },
+    sessions: {
+      open: 4,
+      overdue: 1,
+    },
+  });
+  serviceMocks.getInsightsWorkerUids.mockResolvedValue({
+    items: [
+      {
+        analysis: {
+          failedLast24h: 0,
+          pending: 1,
+          processing: 0,
+          queueAgeMs: 60_000,
+          retrying: 0,
+          state: "queued",
+        },
+        cursor: {
+          cursorAuditId: 8990,
+          cursorMsgtime: 1_780_299_900_000,
+          updateTime: 1_780_299_990_000,
+        },
+        overallState: "queued",
+        sessionization: {
+          attempt: 0,
+          jobId: "3001",
+          maxAttempts: 2,
+          queueAgeMs: 60_000,
+          runAfter: 1_780_299_940_000,
+          state: "queued",
+        },
+        sessions: {
+          open: 1,
+          overdue: 0,
+        },
+        uid: 2002,
+      },
+    ],
+    observedAt: 1_780_300_000_000,
+    page: 1,
+    pageSize: 50,
+    total: 1,
+    totalPages: 1,
+  });
+  serviceMocks.getInsightsWorkerUidDetail.mockResolvedValue({
+    analysis: {
+      failedLast24h: 0,
+      pending: 1,
+      processing: 0,
+      queueAgeMs: 60_000,
+      retrying: 0,
+      state: "queued",
+    },
+    cursor: {
+      cursorAuditId: 8990,
+      cursorMsgtime: 1_780_299_900_000,
+      updateTime: 1_780_299_990_000,
+    },
+    hasPendingMessages: true,
+    observedAt: 1_780_300_000_000,
+    overallState: "queued",
+    recentAnalysisRuns: [],
+    recentErrors: [],
+    recentRescans: [],
+    recentSessions: [
+      {
+        nextCloseAt: 1_780_300_060_000,
+        sessionId: "5001",
+        startedAt: 1_780_299_800_000,
+        status: "open",
+      },
+    ],
+    sessionization: {
+      attempt: 0,
+      jobId: "3001",
+      maxAttempts: 2,
+      queueAgeMs: 60_000,
+      runAfter: 1_780_299_940_000,
+      state: "queued",
+    },
+    sessions: {
+      earliestNextCloseAt: 1_780_300_060_000,
+      open: 1,
+      overdue: 0,
+    },
+    sourceHead: {
+      auditId: 9012,
+      msgtime: 1_780_299_999_000,
+    },
+    uid: 2002,
+  });
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
     status: 1,
     id: "15",
@@ -1214,6 +1367,7 @@ describe("conversation insights pages", () => {
       import("@/pages/chat/insights/insights-follow-ups-page"),
       import("@/pages/chat/insights/insights-business-page"),
       import("@/pages/chat/insights/insights-settings-page"),
+      import("@/pages/chat/insights/insights-worker-observability-page"),
     ]);
   });
 
@@ -4240,6 +4394,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "经营洞察" }),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalled();
+    });
     const relatedSessionsTable = screen.getByRole("table", {
       name: "相关会话",
     });
@@ -4284,6 +4441,7 @@ describe("conversation insights pages", () => {
   it("renders the basic overview without AI data requests and opens raw messages", async () => {
     serviceMocks.getInsightCapabilities.mockResolvedValue({
       canManageInsights: true,
+      canViewWorkerObservability: false,
       insightAvailable: true,
       mode: "basic",
     });
@@ -4321,7 +4479,9 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
     expect(serviceMocks.getInsightFilterOptions).not.toHaveBeenCalled();
     expect(screen.queryByText("AI 诊断")).not.toBeInTheDocument();
-    expect(screen.getByText("共 10 条，客户 6 条，客服 4 条")).toBeInTheDocument();
+    expect(
+      await screen.findByText("共 10 条，客户 6 条，客服 4 条"),
+    ).toBeInTheDocument();
     expect(serviceMocks.getInsightOverviewSessions).toHaveBeenCalledWith({
       analysisStatus: undefined,
       entityId: undefined,
@@ -4348,6 +4508,7 @@ describe("conversation insights pages", () => {
   it("blocks AI-only pages in basic mode before requesting their data", async () => {
     serviceMocks.getInsightCapabilities.mockResolvedValue({
       canManageInsights: true,
+      canViewWorkerObservability: false,
       insightAvailable: true,
       mode: "basic",
     });
@@ -4360,6 +4521,204 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("link", { name: "前往洞察配置" }),
     ).toHaveAttribute("href", "/chat/insights/settings");
+  });
+
+  it("keeps worker observability navigation available on the basic-mode AI guard", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByText("请先开启会话洞察")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "运行观测" }),
+    ).toHaveAttribute("href", "/chat/insights/worker-observability");
+    expect(serviceMocks.getInsightQualityOverview).not.toHaveBeenCalled();
+  });
+
+  it("lets an observer use worker observability in basic mode and inspect another UID", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "运行观测" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "运行观测" }),
+    ).toHaveAttribute("href", "/chat/insights/worker-observability");
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledWith(
+        {
+          page: 1,
+          pageSize: 50,
+          state: undefined,
+          uid: undefined,
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(screen.getByText("可能长时间运行（聚合判断）")).toBeInTheDocument();
+    expect(screen.getByText(/已运行 16 分钟/)).toBeInTheDocument();
+    expect(screen.getByText("最近上报 worker-a:1")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "2002" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "UID 2002" }),
+    ).toBeInTheDocument();
+    expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledWith(
+      2002,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      within(screen.getByRole("dialog", { name: "UID 2002" })).getByText("3001"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "UID 2002" })).getByRole(
+        "button",
+        { name: "刷新 UID 详情" },
+      ),
+    );
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("does not request cross-tenant worker data for a non-observer direct route", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "insight",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    expect(
+      await screen.findByRole("heading", { name: "无权查看运行观测" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightsWorkerSummary).not.toHaveBeenCalled();
+    expect(serviceMocks.getInsightsWorkerUids).not.toHaveBeenCalled();
+    expect(serviceMocks.getInsightsWorkerUidDetail).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last worker snapshot visible when a refresh fails", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(1);
+    });
+    serviceMocks.getInsightsWorkerSummary.mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+    serviceMocks.getInsightsWorkerUids.mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "刷新运行观测" }));
+
+    expect(
+      await screen.findByText("刷新失败，当前展示上次结果"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2002" })).toBeInTheDocument();
+  });
+
+  it("polls only while visible and does not overlap worker refreshes", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+
+    try {
+      renderRoute("/chat/insights/worker-observability");
+
+      await waitFor(() => {
+        expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(1);
+      });
+      expect(
+        setIntervalSpy.mock.calls.some(([, delay]) => delay === 30_000),
+      ).toBe(true);
+
+      await userEvent.click(screen.getByRole("button", { name: "2002" }));
+      await screen.findByRole("dialog", { name: "UID 2002" });
+      expect(
+        setIntervalSpy.mock.calls.some(([, delay]) => delay === 15_000),
+      ).toBe(true);
+
+      const summarySnapshot = await serviceMocks.getInsightsWorkerSummary.mock
+        .results[0]?.value;
+      const uidSnapshot = await serviceMocks.getInsightsWorkerUids.mock
+        .results[0]?.value;
+      let resolveSummary!: (value: unknown) => void;
+      let resolveUids!: (value: unknown) => void;
+      serviceMocks.getInsightsWorkerSummary.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveSummary = resolve;
+        }),
+      );
+      serviceMocks.getInsightsWorkerUids.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveUids = resolve;
+        }),
+      );
+
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        document.dispatchEvent(new Event("visibilitychange"));
+        await Promise.resolve();
+      });
+
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(2);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(2);
+
+      visibility.mockReturnValue("hidden");
+      await act(async () => {
+        resolveSummary(summarySnapshot);
+        resolveUids(uidSnapshot);
+        await Promise.resolve();
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(2);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(2);
+
+      visibility.mockReturnValue("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await waitFor(() => {
+        expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(3);
+        expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(3);
+      });
+    } finally {
+      setIntervalSpy.mockRestore();
+      visibility.mockRestore();
+    }
   });
 
   it("shows a loading row when switching quality result views", async () => {

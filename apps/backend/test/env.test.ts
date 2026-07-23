@@ -14,6 +14,8 @@ const ENV_KEYS = [
   "INSIGHTS_WORKER_ENABLED",
   "INSIGHTS_WORKER_INTERVAL_MS",
   "INSIGHTS_WORKER_MODEL_ENABLED",
+  "INSIGHTS_WORKER_OBSERVER_SUBJECTS",
+  "INSIGHTS_WORKER_TRACE_UID_ALLOWLIST",
   "INSIGHTS_WORKER_UID_ALLOWLIST",
   "JAVA_INTERNAL_API_BASE_URL",
   "JWT_DEV_SECRET",
@@ -173,5 +175,21 @@ describe("backend env config", () => {
         NODE_ENV: "test",
       }),
     ).toThrow("Missing required environment variables for test: DATABASE_URL");
+  });
+
+  it("validates worker observer subjects before backend startup", () => {
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://test",
+        INSIGHTS_WORKER_OBSERVER_SUBJECTS: "9001:2001,9002:operator-a",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://test",
+        INSIGHTS_WORKER_OBSERVER_SUBJECTS: "9001",
+      }),
+    ).toThrow("INSIGHTS_WORKER_OBSERVER_SUBJECTS must be a comma-separated list");
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { MysqlDialect } from "kysely";
 import { InsightsRepository } from "../../../src/modules/insights/insights.repository";
 import { MysqlInsightWorkerRepository } from "../../../src/modules/insights/insights-worker.repository";
 
@@ -2987,6 +2988,61 @@ describe("InsightsRepository", () => {
 });
 
 describe("MysqlInsightWorkerRepository", () => {
+  it("upserts pipeline runtime state with database time and monotonic event guards", async () => {
+    const compiler = new MysqlDialect({ pool: {} as never }).createQueryCompiler();
+    const executeQuery = vi.fn(async () => ({ rows: [] }));
+    const executor = {
+      compileQuery: (node: unknown) => compiler.compileQuery(node as never),
+      executeQuery,
+      transformQuery: (node: unknown) => node,
+    };
+    const repository = new MysqlInsightWorkerRepository({
+      getExecutor: () => executor,
+    } as never);
+    const lastStartedAt = new Date("2026-07-23T04:00:00.100Z");
+    const lastSuccessAt = new Date("2026-07-23T04:00:00.200Z");
+
+    await repository.upsertWorkerPipelineRuntimeState({
+      lastDurationMs: 100,
+      lastStartedAt,
+      lastSuccessAt,
+      pipeline: "discovery",
+      reportedBy: "worker-a:1",
+    });
+
+    const compiled = executeQuery.mock.calls[0]?.[0] as {
+      parameters: unknown[];
+      sql: string;
+    };
+    const normalizedSql = compiled.sql.replace(/\s+/g, " ").trim();
+
+    expect(normalizedSql).toContain(
+      "insert into xy_wap_embed_insight_worker_runtime_state",
+    );
+    expect(normalizedSql).toContain("reported_at ) values ( ?, ?, ?, ?, ?, ?, ?, current_timestamp(3) )");
+    expect(normalizedSql).toContain(
+      "values(last_started_at) > last_started_at",
+    );
+    expect(normalizedSql).toContain(
+      "values(last_success_at) > last_success_at",
+    );
+    expect(normalizedSql).toContain(
+      "values(last_failure_at) > last_failure_at",
+    );
+    expect(normalizedSql).toContain(
+      "reported_at = current_timestamp(3)",
+    );
+    expect(compiled.parameters).toEqual([
+      "discovery",
+      lastStartedAt,
+      lastSuccessAt,
+      null,
+      null,
+      100,
+      "worker-a:1",
+    ]);
+  });
+
   it("loads worker analysis policy including minimum analysis messages and falls back to defaults", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {

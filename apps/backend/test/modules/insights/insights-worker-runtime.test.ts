@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createInsightsWorkerRuntime,
   parseInsightsWorkerRuntimeConfig,
@@ -11,6 +11,7 @@ describe("insights worker runtime config", () => {
       enabled: false,
       intervalMs: 3_000,
       modelEnabled: false,
+      traceUids: new Set(),
     });
   });
 
@@ -21,6 +22,7 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_ENABLED: "true",
         INSIGHTS_WORKER_INTERVAL_MS: "10000",
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
+        INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: "9001,9002",
         VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
         VOLCENGINE_ARK_LITE_MODEL: "ep-lite",
       }),
@@ -29,6 +31,7 @@ describe("insights worker runtime config", () => {
       enabled: true,
       intervalMs: 10_000,
       modelEnabled: true,
+      traceUids: new Set([9001, 9002]),
     });
   });
 
@@ -44,18 +47,34 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_INTERVAL_MS: "100",
       }),
     ).toThrow("INSIGHTS_WORKER_INTERVAL_MS must be at least 1000");
+
+    expect(() =>
+      parseInsightsWorkerRuntimeConfig({
+        INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: "9001,invalid",
+      }),
+    ).toThrow("INSIGHTS_WORKER_TRACE_UID_ALLOWLIST");
   });
 
   it("does not start the standalone worker when disabled", () => {
+    const logger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
     const runtime = createInsightsWorkerRuntime({
       db: {} as never,
       env: { INSIGHTS_WORKER_ENABLED: "false" },
-      logger: {
-        error() {},
-        info() {},
-      },
+      logger,
     });
 
     expect(runtime).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.disabled",
+      }),
+      expect.any(String),
+    );
   });
 });

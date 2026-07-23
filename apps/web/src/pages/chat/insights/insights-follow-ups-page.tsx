@@ -48,6 +48,7 @@ import {
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
 import { InsightTablePagination } from "./insight-table-pagination";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 const followUpsPageSize = 10;
 type PriorityFilter = "high" | "low" | "medium";
@@ -61,6 +62,7 @@ const priorityFilterOptions: Array<{ label: string; value: PriorityFilter | "non
 ];
 
 export function InsightsFollowUpsPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [followUps, setFollowUps] = useState<InsightsFollowUpsResponse>();
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -131,7 +133,10 @@ export function InsightsFollowUpsPage() {
   const endRow = Math.min(total, currentPage * pageSize);
 
   return (
-    <InsightsLayout title="待处理">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="待处理"
+    >
       <div className="space-y-5">
         <InsightsPageHeader
           description="由 AI 智能识别未解决的问题、或待跟进的事项，自动为你生成待办"

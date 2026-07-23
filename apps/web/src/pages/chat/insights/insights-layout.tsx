@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   Analytics02Icon,
   ArrowLeft02Icon,
+  ChartBreakoutCircleIcon,
   ClipboardCheckIcon,
   DashboardSquare01Icon,
   Setting07Icon,
@@ -44,13 +45,25 @@ const insightNavItems = [
   },
 ] as const;
 
+const workerObservabilityNavItem = {
+  icon: ChartBreakoutCircleIcon,
+  label: "运行观测",
+  to: "/chat/insights/worker-observability",
+} as const;
+
 export function InsightsLayout({
+  canViewWorkerObservability = false,
   children,
   title,
 }: {
+  canViewWorkerObservability?: boolean;
   children: ReactNode;
   title: string;
 }) {
+  const navigationItems = canViewWorkerObservability
+    ? [...insightNavItems, workerObservabilityNavItem]
+    : insightNavItems;
+
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
       <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
@@ -82,7 +95,7 @@ export function InsightsLayout({
           </div>
 
           <nav aria-label="会话洞察导航" className="space-y-1">
-            {insightNavItems.map((item) => (
+            {navigationItems.map((item) => (
               <NavLink
                 className={({ isActive }) =>
                   cn(

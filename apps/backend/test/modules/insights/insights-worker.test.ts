@@ -4,8 +4,10 @@ import {
   InsightsWorkerService,
   parseWorkerMessageAsset,
   startInsightsWorker,
+  startInsightsWorkerPipelines,
   type InsightWorkerRepositoryPort,
 } from "../../../src/modules/insights/insights-worker";
+import type { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
 
 const defaultConfig = {
   analysisDelayMinutes: 10,
@@ -1992,7 +1994,16 @@ describe("InsightsWorkerService", () => {
         );
       }),
     };
-    const service = new InsightsWorkerService(repository, { model });
+    const observability = {
+      event: vi.fn(),
+      increment: vi.fn(),
+      recover: vi.fn(),
+      set: vi.fn(),
+    } as unknown as InsightsWorkerObservability;
+    const service = new InsightsWorkerService(repository, {
+      model,
+      observability,
+    });
 
     await service.runOnce();
 
@@ -2033,6 +2044,10 @@ describe("InsightsWorkerService", () => {
       repository.markAnalysisRunSucceededWithoutSnapshot,
     ).not.toHaveBeenCalled();
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+    expect(observability.increment).toHaveBeenCalledWith(
+      "analysis",
+      "snapshotsPublished",
+    );
   });
 
   it("skips live LLM analysis without writing a snapshot when AI-ready messages are below policy threshold", async () => {
@@ -2690,8 +2705,88 @@ describe("InsightsWorkerService", () => {
     expect(repository.markAnalysisJobFailed).not.toHaveBeenCalled();
   });
 
+  it("does not classify result persistence retries as provider failures", async () => {
+    const failure = new Error("database unavailable");
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+      saveAnalysisResult: vi.fn(async () => {
+        throw failure;
+      }),
+    });
+    const observability = {
+      event: vi.fn(),
+      increment: vi.fn(),
+      recover: vi.fn(),
+    } as unknown as InsightsWorkerObservability;
+    const service = new InsightsWorkerService(repository, {
+      model: {
+        analyzeSession: vi.fn(async () => ({
+          actionItems: [],
+          entities: [],
+          faqCandidates: [],
+          intents: [],
+          problemResolution: {
+            confidence: 0.8,
+            evidence: [],
+            evidenceMessageIds: [],
+            problemDetected: false,
+            problemSummary: "",
+            resolutionStatus: "no_customer_problem",
+          },
+          qaFindings: [],
+          sentiment: [],
+          summary: {
+            sessionTitle: "物流咨询",
+            text: "客户咨询物流进度",
+          },
+          tags: [],
+        })),
+      },
+      observability,
+    });
+
+    await service.runAnalysisOnce();
+
+    expect(repository.retryAnalysisJob).toHaveBeenCalledWith("job-1", failure, {
+      delayMs: 60_000,
+    });
+    expect(observability.event).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.analysis_retry_scheduled",
+        throttleKey: "analysis_job",
+      }),
+    );
+  });
+
   it("marks a final analysis failed after its single retry also fails", async () => {
     const failure = new Error("model unavailable");
+    const observability = {
+      event: vi.fn(),
+      increment: vi.fn(),
+      recover: vi.fn(),
+    } as unknown as InsightsWorkerObservability;
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn()
         .mockResolvedValueOnce({
@@ -2724,13 +2819,20 @@ describe("InsightsWorkerService", () => {
           throw failure;
         }),
       },
+      observability,
     });
 
-    await service.runOnce();
+    await service.runAnalysisOnce();
 
     expect(repository.markAnalysisRunFailed).toHaveBeenCalledWith("run-1", failure);
     expect(repository.retryAnalysisJob).not.toHaveBeenCalled();
     expect(repository.markAnalysisJobFailed).toHaveBeenCalledWith("job-1", failure);
+    expect(observability.event).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.analysis_failed",
+        throttleKey: "analysis_job",
+      }),
+    );
   });
 
   it("passes recent conversation action items to final analysis", async () => {
@@ -3626,6 +3728,35 @@ describe("insights worker ticker", () => {
     resolveRun?.();
     await stopPromise;
     expect(stopped).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("retains pipeline error logs when observability is not configured", async () => {
+    vi.useFakeTimers();
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const worker = startInsightsWorkerPipelines({
+      analysis: async () => {},
+      discovery: async () => {
+        throw new Error("discovery failed");
+      },
+      intervalMs: 1_000,
+      logger,
+      sessionization: async () => {},
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pipeline: "discovery",
+      }),
+      "会话洞察 worker pipeline tick 失败",
+    );
+
+    await worker.stop();
     vi.useRealTimers();
   });
 });

@@ -880,7 +880,9 @@ describe("ChatWorkbenchPage composer flows", () => {
       dataTransfer,
     });
 
-    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toHaveTextContent(
+      "松开以添加图片",
+    );
 
     fireEvent.dragLeave(toolbarButton, {
       dataTransfer,
@@ -960,11 +962,14 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not activate image dropping for unsupported image formats", async () => {
+  it("shows unsupported feedback when dragged files contain no accepted images", async () => {
     const image = new File(["image-bytes"], "dropped.webp", {
       type: "image/webp",
     });
-    const dataTransfer = createFileDragData([image]);
+    const pdfFile = new File(["document-bytes"], "dropped.pdf", {
+      type: "application/pdf",
+    });
+    const dataTransfer = createFileDragData([image, pdfFile]);
 
     renderChatWorkbenchPage();
 
@@ -973,14 +978,21 @@ describe("ChatWorkbenchPage composer flows", () => {
       dataTransfer,
     });
 
-    expect(
-      screen.queryByTestId("chat-composer-image-drop-overlay"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toHaveTextContent(
+      "仅支持 JPG、PNG 图片",
+    );
+    fireEvent.dragOver(composer, {
+      dataTransfer,
+    });
+    expect(dataTransfer.dropEffect).toBe("none");
 
     fireEvent.drop(composer, {
       dataTransfer,
     });
 
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
     expect(
       within(composer).queryByRole("img", { name: "dropped.webp" }),
     ).not.toBeInTheDocument();

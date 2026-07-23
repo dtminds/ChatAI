@@ -183,6 +183,8 @@ type MentionDropdownItem =
       memberId: string;
     };
 
+type ComposerImageDragState = "supported" | "unsupported" | null;
+
 function createComposerImageClientId() {
   return `composer-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -249,7 +251,8 @@ export function ChatComposer({
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
   const [isGroupAiPopoverOpen, setIsGroupAiPopoverOpen] = useState(false);
   const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
-  const [isImageDragActive, setIsImageDragActive] = useState(false);
+  const [imageDragState, setImageDragState] =
+    useState<ComposerImageDragState>(null);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
@@ -428,7 +431,7 @@ export function ChatComposer({
     }
 
     imageDragDepthRef.current = 0;
-    setIsImageDragActive(false);
+    setImageDragState(null);
   }, [canEditComposer]);
 
   useEffect(() => {
@@ -591,20 +594,21 @@ export function ChatComposer({
 
   const resetImageDragState = () => {
     imageDragDepthRef.current = 0;
-    setIsImageDragActive(false);
+    setImageDragState(null);
   };
 
   const handleComposerDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (
-      !canEditComposer ||
-      !hasSupportedComposerImageDrag(event.dataTransfer)
-    ) {
+    if (!canEditComposer || !hasFileDrag(event.dataTransfer)) {
       return;
     }
 
     event.preventDefault();
     imageDragDepthRef.current += 1;
-    setIsImageDragActive(true);
+    setImageDragState(
+      hasSupportedComposerImageDrag(event.dataTransfer)
+        ? "supported"
+        : "unsupported",
+    );
   };
 
   const handleComposerDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -616,20 +620,21 @@ export function ChatComposer({
     imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
 
     if (imageDragDepthRef.current === 0) {
-      setIsImageDragActive(false);
+      setImageDragState(null);
     }
   };
 
   const handleComposerDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (
-      !canEditComposer ||
-      !hasSupportedComposerImageDrag(event.dataTransfer)
-    ) {
+    if (!canEditComposer || !hasFileDrag(event.dataTransfer)) {
       return;
     }
 
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect = hasSupportedComposerImageDrag(
+      event.dataTransfer,
+    )
+      ? "copy"
+      : "none";
   };
 
   const handleComposerDrop = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -705,9 +710,9 @@ export function ChatComposer({
         onDragOver={handleComposerDragOver}
         onDropCapture={handleComposerDrop}
       >
-        {isImageDragActive ? (
+        {imageDragState ? (
           <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-surface-muted/95 text-sm font-medium text-muted-foreground"
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-surface-muted/80 text-sm font-medium text-muted-foreground backdrop-blur-sm"
             data-testid="chat-composer-image-drop-overlay"
             role="status"
           >
@@ -718,7 +723,9 @@ export function ChatComposer({
                 size={18}
                 strokeWidth={2}
               />
-              松开以添加图片
+              {imageDragState === "supported"
+                ? "松开以添加图片"
+                : "仅支持 JPG、PNG 图片"}
             </span>
           </div>
         ) : null}

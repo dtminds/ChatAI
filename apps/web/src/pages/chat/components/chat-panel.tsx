@@ -80,7 +80,6 @@ type ChatPanelProps = {
   /** 侧栏 iframe `sendStatus`：发送能力状态码 */
   sidebarIframeSendStatus?: SidebarIframeSendStatus;
   customerPanelWidth: number;
-  draft: string;
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
   inputEnterBehavior: InputEnterBehavior;
@@ -218,7 +217,6 @@ export function ChatPanel({
   sidebarIframeTos,
   sidebarIframeSendStatus,
   customerPanelWidth,
-  draft,
   groupMembers,
   isGroupMembersLoading,
   inputEnterBehavior,
@@ -561,7 +559,6 @@ export function ChatPanel({
                       shouldShowConversationAIHostingControl={
                         shouldShowConversationAIHostingControl
                       }
-                      draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
                       seatAgentModeActionPending={seatAgentModeActionPending}
                       hasActiveFileUpload={hasActiveFileUpload}

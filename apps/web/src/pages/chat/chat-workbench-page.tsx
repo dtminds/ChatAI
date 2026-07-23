@@ -439,11 +439,7 @@ function ChatWorkbenchContent({
   );
   const subUser = useAuthStore((state) => state.subUser);
 
-  const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>(
-    [],
-  );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
     description?: string;
     title: string;
@@ -514,12 +510,19 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
-  const draftRef = useRef(draft);
-  const composerSegmentsRef = useRef(composerSegments);
+  const draftRef = useRef("");
+  const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
-  draftRef.current = draft;
-  composerSegmentsRef.current = composerSegments;
   quotedMessageRef.current = quotedMessage;
+  const handleDraftChange = useCallback((nextDraft: string) => {
+    draftRef.current = nextDraft;
+  }, []);
+  const handleComposerSegmentsChange = useCallback(
+    (nextSegments: ComposerSegment[]) => {
+      composerSegmentsRef.current = nextSegments;
+    },
+    [],
+  );
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -1240,8 +1243,8 @@ function ChatWorkbenchContent({
 
   const resetComposerUI = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    setDraft("");
-    setComposerSegments([]);
+    draftRef.current = "";
+    composerSegmentsRef.current = [];
     if (!options?.keepQuote) {
       setQuotedMessage(null);
     }
@@ -1255,8 +1258,8 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setDraft(savedDraft.draft);
-    setComposerSegments(savedDraft.segments);
+    draftRef.current = savedDraft.draft;
+    composerSegmentsRef.current = savedDraft.segments;
     setQuotedMessage(savedDraft.quotedMessage);
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
       segments: savedDraft.segments,
@@ -1411,8 +1414,8 @@ function ChatWorkbenchContent({
     isSendingDraftRef.current = false;
     shouldRestoreComposerFocusRef.current = false;
     composerDraftHydratedConversationIdRef.current = undefined;
-    setDraft("");
-    setComposerSegments([]);
+    draftRef.current = "";
+    composerSegmentsRef.current = [];
     setFileUploadQueue([]);
     setFileUploadTransitionError(undefined);
     setIsEmojiPickerOpen(false);
@@ -1459,7 +1462,7 @@ function ChatWorkbenchContent({
     dismissSmartReply,
     isMountedRef,
     isSendingDraftRef,
-    onDraftChange: setDraft,
+    onDraftChange: handleDraftChange,
     onSendFailure: handleSmartReplySendFailure,
     onSendingChange: setIsSendingDraft,
     onSent: scrollMessageViewportToBottom,
@@ -1766,14 +1769,6 @@ function ChatWorkbenchContent({
     return transcribeVoiceMessage(message.conversationId, message.uiMessageKey);
   };
 
-  const handleDraftChange = (nextDraft: string) => {
-    setDraft(nextDraft);
-  };
-
-  const handleComposerSegmentsChange = (nextSegments: ComposerSegment[]) => {
-    setComposerSegments(nextSegments);
-  };
-
   const handleSelectQuickReply = (quickReply: WorkbenchQuickReplyDto) => {
     if (!canSendMessage) {
       toast.warning("当前无法发送消息");
@@ -1796,8 +1791,8 @@ function ChatWorkbenchContent({
     const nextDraft =
       segments.find((segment) => segment.type === "text")?.text ?? "";
 
-    setDraft(nextDraft);
-    setComposerSegments(segments);
+    draftRef.current = nextDraft;
+    composerSegmentsRef.current = segments;
     setQuotedMessage(null);
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
       segments,
@@ -2138,7 +2133,6 @@ function ChatWorkbenchContent({
       sidebarIframeTos={sidebarIframeTos}
       sidebarIframeSendStatus={sidebarIframeSendStatus}
       customerPanelWidth={customerPanelWidth}
-      draft={draft}
       fullAutoDisplayStatus={fullAutoDisplayStatus}
       groupMembers={activeGroupMembers}
       fullAutoActionPending={fullAutoActionPending}

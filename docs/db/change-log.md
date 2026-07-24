@@ -828,3 +828,10 @@ ALTER TABLE xy_wap_embed_insight_analysis_policy
 
 ANALYZE TABLE xy_wap_embed_logical_session;
 ```
+
+## 2026-07-24 Agent 用户记忆
+
+- 新增 `xy_wap_embed_agent_user_memory_config`、`xy_wap_embed_agent_user_memory`、`xy_wap_embed_agent_user_memory_run`、`xy_wap_embed_agent_user_memory_run_item`。
+- 新增 `idx_logical_session_uid_ended_message (uid, ended_at, message_count, id)` 支持按租户和自然日选择有界候选会话。
+- 四张新表默认无数据，所有租户默认关闭；不初始化水位、不回刷历史。
+- 用户记忆表只保存当前 JSON、版本和维护时间；不增加 pending、cursor、cooldown 或跨日消费状态。

@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   KEY idx_logical_session_uid_open_live (uid, status, last_message_at, id),
   KEY idx_logical_session_uid_started (uid, started_at),
   KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id),
+  KEY idx_logical_session_uid_ended_message (uid, ended_at, message_count, id),
   KEY idx_logical_session_current_snapshot (current_snapshot_id, id)
 ) COMMENT='会话洞察逻辑会话表';
 
@@ -559,3 +560,109 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   PRIMARY KEY (`id`),
   KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  enabled TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '自动维护开关',
+  generation INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '启停代次，用于拒绝旧运行结果',
+  enabled_at BIGINT UNSIGNED NULL COMMENT '本代次启用时间，Unix毫秒',
+  next_run_at DATETIME(3) NULL COMMENT '下一调度槽位',
+  active_run_id BIGINT UNSIGNED NULL COMMENT '当前活动运行ID',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_config_uid (uid),
+  KEY idx_agent_user_memory_config_due (enabled, next_run_at, uid)
+) COMMENT='Agent用户记忆租户配置';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  platform INT UNSIGNED NOT NULL COMMENT '接入平台',
+  third_external_userid VARCHAR(128) NOT NULL COMMENT '平台外部联系人ID',
+  memories_json JSON NOT NULL COMMENT '当前有效记忆JSON，最多20条',
+  version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '记忆JSON乐观锁版本',
+  manual_updated_at BIGINT UNSIGNED NULL COMMENT '最近人工维护时间，Unix毫秒',
+  last_auto_quota_date DATE NULL COMMENT '最近成功自动维护的目标自然日',
+  last_auto_updated_at BIGINT UNSIGNED NULL COMMENT '最近自动维护时间，Unix毫秒',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_customer (
+    uid, platform, third_external_userid
+  ),
+  KEY idx_agent_user_memory_uid_updated (uid, update_time, id)
+) COMMENT='Agent客户当前用户记忆';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  config_generation INT UNSIGNED NOT NULL COMMENT '配置代次快照',
+  quota_date DATE NOT NULL COMMENT '目标自然日，Asia/Shanghai',
+  scheduled_for DATETIME(3) NOT NULL COMMENT '计划调度时间',
+  execution_mode VARCHAR(32) NOT NULL COMMENT 'sync或volcengine_batch',
+  status VARCHAR(32) NOT NULL COMMENT 'pending/running/waiting/终态',
+  phase VARCHAR(32) NOT NULL COMMENT 'selecting/inference/merging/completed',
+  customer_limit INT UNSIGNED NOT NULL COMMENT '当日客户额度快照',
+  candidate_session_limit INT UNSIGNED NOT NULL COMMENT '当日候选会话上限快照',
+  candidate_session_count INT UNSIGNED NOT NULL DEFAULT 0,
+  candidate_customer_count INT UNSIGNED NOT NULL DEFAULT 0,
+  selected_customer_count INT UNSIGNED NOT NULL DEFAULT 0,
+  success_count INT UNSIGNED NOT NULL DEFAULT 0,
+  failure_count INT UNSIGNED NOT NULL DEFAULT 0,
+  skipped_count INT UNSIGNED NOT NULL DEFAULT 0,
+  input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  locked_by VARCHAR(128) NULL COMMENT 'Worker实例标识',
+  claim_token VARCHAR(64) NULL COMMENT '每次领取生成的新围栏token',
+  lease_until DATETIME(3) NULL,
+  run_after DATETIME(3) NULL,
+  last_error_code VARCHAR(128) NULL,
+  started_at DATETIME(3) NULL,
+  finished_at DATETIME(3) NULL,
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
+  KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
+  KEY idx_agent_user_memory_run_uid (uid, id)
+) COMMENT='Agent用户记忆每日维护运行';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT '运行ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  platform INT UNSIGNED NOT NULL COMMENT '接入平台',
+  third_external_userid VARCHAR(128) NOT NULL COMMENT '平台外部联系人ID',
+  session_ids_json JSON NOT NULL COMMENT '本项固定来源逻辑会话ID',
+  session_count INT UNSIGNED NOT NULL COMMENT '来源会话数',
+  message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际输入消息数',
+  status VARCHAR(32) NOT NULL COMMENT 'prepared/submitted/终态',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME(3) NULL,
+  base_memory_version INT UNSIGNED NULL,
+  base_manual_updated_at BIGINT UNSIGNED NULL,
+  provider_item_key VARCHAR(128) NULL,
+  provider_batch_id VARCHAR(256) NULL,
+  input_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  output_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  last_error_code VARCHAR(128) NULL,
+  finished_at DATETIME(3) NULL,
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_run_customer (
+    run_id, platform, third_external_userid
+  ),
+  KEY idx_agent_user_memory_item_run_status (run_id, status, next_attempt_at, id),
+  KEY idx_agent_user_memory_item_provider (provider_batch_id, provider_item_key)
+) COMMENT='Agent用户记忆客户维护项';

@@ -46,6 +46,7 @@ export const AgentUserMemoryErrorCodeSchema = Type.Union([
   Type.Literal("AGENT_USER_MEMORY_DISABLED"),
   Type.Literal("AGENT_USER_MEMORY_RUN_ACTIVE"),
   Type.Literal("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE"),
+  Type.Literal("AGENT_USER_MEMORY_RUN_NOT_FOUND"),
   Type.Literal("AGENT_USER_MEMORY_ITEM_SUPERSEDED"),
   Type.Literal("AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES"),
   Type.Literal("AGENT_USER_MEMORY_CUSTOMER_NOT_FOUND"),

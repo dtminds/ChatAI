@@ -249,7 +249,7 @@ function parseJsonDocument(value: JsonValue | string) {
   const parsed = typeof value === "string" ? JSON.parse(value) : value;
   return parseUserMemoryDocument(parsed);
 }
-function dateOnly(value: Date) { return value.toISOString().slice(0, 10); }
+function dateOnly(value: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(value); }
 function mapRun(row: Selectable<Database["xy_wap_embed_agent_user_memory_run"]>): AgentUserMemoryRun {
   return {
     id: row.id, quotaDate: dateOnly(row.quota_date), scheduledFor: row.scheduled_for.getTime(), executionMode: row.execution_mode as never,

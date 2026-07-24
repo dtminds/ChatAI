@@ -20,6 +20,7 @@ import { resetMockKbData } from "./kb-service-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import * as agentLearningService from "@/pages/chat/ai-hosting/api/agent-learning-service";
 import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
+import * as customFieldService from "@/pages/chat/ai-hosting/api/custom-field-service";
 import { useAuthStore } from "@/store/auth-store";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
@@ -89,12 +90,16 @@ const kbServiceMock = vi.hoisted(() => ({
   listKbs: vi.fn(),
   updateKb: vi.fn(),
 }));
+const customFieldServiceMock = vi.hoisted(() => ({
+  listCustomFields: vi.fn(),
+}));
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
 }));
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/agent-learning-service", () => agentLearningServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => customFieldServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/kb-service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/pages/chat/ai-hosting/api/kb-service")>();
 
@@ -570,6 +575,26 @@ describe("AI hosting pages", () => {
     vi.mocked(kbService.listKbs).mockImplementation(async (params) =>
       createMockKbListResponse(params?.query),
     );
+    vi.mocked(customFieldService.listCustomFields).mockResolvedValue({
+      fields: [
+        {
+          id: 1,
+          key: "gender",
+          options: [],
+          sort: 10,
+          title: "性别",
+          type: 1,
+        },
+        {
+          id: 2,
+          key: "level",
+          options: [],
+          sort: 20,
+          title: "客户等级",
+          type: 1,
+        },
+      ],
+    });
     vi.mocked(kbService.createKb).mockImplementation(async (payload) => {
       const created = addMockKbListItem({
         description: payload.description ?? "",
@@ -1750,11 +1775,12 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("系统变量")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "添加客户自定义属性" }));
-    expect(screen.getByLabelText(/字段/)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/字段/)).toBeInTheDocument();
+    expect(customFieldService.listCustomFields).toHaveBeenCalledWith({ status: 1 });
     expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
 
     await user.click(screen.getByRole("combobox", { name: /字段/ }));
-    await user.click(screen.getByRole("option", { name: "性别" }));
+    await user.click(await screen.findByRole("option", { name: "性别" }));
     expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "确认插入" }));

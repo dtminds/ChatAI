@@ -5,6 +5,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -28,8 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { listCustomFields } from "./api/custom-field-service";
 import {
   buildVariablePlaceholder,
   skillVariableStorageId,
@@ -57,6 +60,11 @@ type TagGroup = {
   tags: readonly TagItem[];
 };
 
+type CustomInfoFieldOption = {
+  id: number;
+  name: string;
+};
+
 const variableOptions: ReadonlyArray<{
   description: string;
   kind: VariableKind;
@@ -78,13 +86,6 @@ const variableOptions: ReadonlyArray<{
     title: "系统变量",
   },
 ];
-
-const customInfoFields = [
-  { id: 1, name: "性别" },
-  { id: 2, name: "客户等级" },
-  { id: 3, name: "所属门店" },
-  { id: 4, name: "会员编号" },
-] as const;
 
 const systemVariables = [
   { key: "last_handoff_time", name: "上一次转人工时间" },
@@ -174,6 +175,11 @@ export function InsertVariableDialog({
   const [step, setStep] = useState<"pick" | "configure">("pick");
   const [variableKind, setVariableKind] = useState<VariableKind | null>(null);
   const [customFieldId, setCustomFieldId] = useState("");
+  const [customInfoFields, setCustomInfoFields] = useState<CustomInfoFieldOption[]>(
+    [],
+  );
+  const [customInfoFieldsLoading, setCustomInfoFieldsLoading] = useState(false);
+  const [customInfoFieldsError, setCustomInfoFieldsError] = useState(false);
   const [systemVariableKey, setSystemVariableKey] = useState("");
   const [tagKind, setTagKind] = useState<TagKind>("work_tag");
   const [wecomMode, setWecomMode] = useState<WecomTagMode>("normal");
@@ -196,6 +202,49 @@ export function InsertVariableDialog({
 
     resetToPick();
   }, [initialConfigure, open]);
+
+  useEffect(() => {
+    if (!open || step !== "configure" || variableKind !== "custom_field") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadCustomFields() {
+      setCustomInfoFieldsLoading(true);
+      setCustomInfoFieldsError(false);
+
+      try {
+        const response = await listCustomFields({ status: 1 });
+        if (cancelled) {
+          return;
+        }
+
+        setCustomInfoFields(
+          response.fields.map((field) => ({
+            id: field.id,
+            name: field.title,
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setCustomInfoFields([]);
+          setCustomInfoFieldsError(true);
+          toast.error("自定义属性加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setCustomInfoFieldsLoading(false);
+        }
+      }
+    }
+
+    void loadCustomFields();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, variableKind]);
 
   const tagGroups = useMemo(() => {
     if (tagKind === "work_tag") {
@@ -472,21 +521,45 @@ export function InsertVariableDialog({
                   <Label htmlFor="skill-variable-custom-field">
                     <span className="text-destructive">*</span> 字段
                   </Label>
-                  <Select onValueChange={setCustomFieldId} value={customFieldId || undefined}>
-                    <SelectTrigger
-                      className="h-10 w-full"
-                      id="skill-variable-custom-field"
+                  {customInfoFieldsLoading ? (
+                    <div
+                      className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                      role="status"
                     >
-                      <SelectValue placeholder="请选择" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customInfoFields.map((field) => (
-                        <SelectItem key={field.id} value={String(field.id)}>
-                          {field.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <Spinner size={14} />
+                      <span>正在加载</span>
+                    </div>
+                  ) : customInfoFieldsError ? (
+                    <div
+                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                      role="alert"
+                    >
+                      加载失败
+                    </div>
+                  ) : customInfoFields.length === 0 ? (
+                    <div
+                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                      role="status"
+                    >
+                      暂无数据
+                    </div>
+                  ) : (
+                    <Select onValueChange={setCustomFieldId} value={customFieldId || undefined}>
+                      <SelectTrigger
+                        className="h-10 w-full"
+                        id="skill-variable-custom-field"
+                      >
+                        <SelectValue placeholder="请选择" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customInfoFields.map((field) => (
+                          <SelectItem key={field.id} value={String(field.id)}>
+                            {field.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <p className="text-sm leading-5 text-muted-foreground">
                     <span className="font-medium text-foreground">温馨提示：</span>
                     工具会查询指定的自定义属性字段，然后告诉智能体该自定义属性字段的内容。

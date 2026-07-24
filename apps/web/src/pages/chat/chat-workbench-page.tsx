@@ -582,15 +582,29 @@ function ChatWorkbenchContent({
     conversationViewRetainedState.isSeatAIHostingEnabled === isActiveSeatAIHostingEnabled
       ? conversationViewRetainedState.ids
       : undefined;
-  const activeModeConversations = visibleSearchableConversations.filter(
-    (conversation) => conversation.mode === activeMode,
+  const activeModeConversations = useMemo(
+    () =>
+      visibleSearchableConversations.filter(
+        (conversation) => conversation.mode === activeMode,
+      ),
+    [activeMode, visibleSearchableConversations],
   );
-  const activeViewConversations = filterConversationsByView(
-    visibleSearchableConversations,
-    activeMode,
-    resolvedConversationView,
-    isActiveSeatAIHostingEnabled,
-    activeViewRetainedConversationIds,
+  const activeViewConversations = useMemo(
+    () =>
+      filterConversationsByView(
+        visibleSearchableConversations,
+        activeMode,
+        resolvedConversationView,
+        isActiveSeatAIHostingEnabled,
+        activeViewRetainedConversationIds,
+      ),
+    [
+      activeMode,
+      activeViewRetainedConversationIds,
+      isActiveSeatAIHostingEnabled,
+      resolvedConversationView,
+      visibleSearchableConversations,
+    ],
   );
   const firstActiveViewConversationId = activeViewConversations[0]?.id;
   const hasActiveConversationInView = activeViewConversations.some(
@@ -1848,37 +1862,46 @@ function ChatWorkbenchContent({
     />
   );
 
-  const handleSelectConversation = async (conversationId: string) => {
-    if (conversationId === activeConversationId) {
+  const handleSelectConversation = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      if (
+        conversationId === useWorkbenchStore.getState().activeConversationId
+      ) {
+        if (isMobileWorkbenchLayout) {
+          setMobilePane("chat");
+        }
+        return true;
+      }
+
+      if (hasActiveFileUploads()) {
+        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        return false;
+      }
+
+      await setActiveConversation(conversationId);
       if (isMobileWorkbenchLayout) {
         setMobilePane("chat");
       }
-      return;
-    }
+      return true;
+    },
+    [isMobileWorkbenchLayout, setActiveConversation],
+  );
 
-    if (hasActiveFileUploads()) {
-      setFileUploadTransitionError("文件上传中，暂不能切换会话");
-      return;
-    }
+  const handleSelectMode = useCallback(
+    async (mode: ChatMode) => {
+      if (mode === activeMode) {
+        return;
+      }
 
-    await setActiveConversation(conversationId);
-    if (isMobileWorkbenchLayout) {
-      setMobilePane("chat");
-    }
-  };
+      if (hasActiveFileUploads()) {
+        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        return;
+      }
 
-  const handleSelectMode = async (mode: ChatMode) => {
-    if (mode === activeMode) {
-      return;
-    }
-
-    if (hasActiveFileUploads()) {
-      setFileUploadTransitionError("文件上传中，暂不能切换会话");
-      return;
-    }
-
-    await setActiveMode(mode);
-  };
+      await setActiveMode(mode);
+    },
+    [activeMode, setActiveMode],
+  );
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
     const quoteSeq = Number(quoteMsgId);
@@ -2083,6 +2106,16 @@ function ChatWorkbenchContent({
     />
   );
 
+  const conversationListUnreadCountByMode = useMemo(
+    () => ({
+      group: activeAccount?.groupUnreadCount,
+      single: activeAccount?.singleUnreadCount,
+    }),
+    [activeAccount?.groupUnreadCount, activeAccount?.singleUnreadCount],
+  );
+  const isConversationListEmptyLoading =
+    isConversationLoading && activeViewConversations.length === 0;
+
   const conversationListNode = (
     <ConversationListPanel
       activeConversation={activeConversation}
@@ -2094,7 +2127,7 @@ function ChatWorkbenchContent({
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
       seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
-      isConversationLoading={isConversationLoading}
+      isEmptyStateLoading={isConversationListEmptyLoading}
       onDeleteConversation={deleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
@@ -2107,10 +2140,7 @@ function ChatWorkbenchContent({
       retainedConversationIds={activeViewRetainedConversationIds}
       searchableConversations={visibleSearchableConversations}
       hasMoreUnreadByMode={hasMoreUnreadByScope[activeAccountId]}
-      unreadCountByMode={{
-        group: activeAccount?.groupUnreadCount,
-        single: activeAccount?.singleUnreadCount,
-      }}
+      unreadCountByMode={conversationListUnreadCountByMode}
     />
   );
 

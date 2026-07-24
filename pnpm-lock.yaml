@@ -196,8 +196,8 @@ importers:
         specifier: ^1.9.0
         version: 1.18.1
       border-beam:
-        specifier: 1.2.0
-        version: 1.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 1.3.0
+        version: 1.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -2275,8 +2275,8 @@ packages:
   bn.js@4.12.5:
     resolution: {integrity: sha512-3aRg6/JxfffFD+OlOjOFR3Vo79l39ooBTFucxx+MT3dhCtzn3EmiUPQo+6/OZuI2jbXi3YKgmiTFBgChQMwIRQ==}
 
-  border-beam@1.2.0:
-    resolution: {integrity: sha512-WDcuwqVgd0SqIw1VQhXoSzXS4r3YhGBdd1pb+RqDmBe7+umydR9GrnazJkRs+7ngQV/PSP/4lZHhwu36DE2+bQ==}
+  border-beam@1.3.0:
+    resolution: {integrity: sha512-oZSISp3aQau4ASTmzm5pzxeBinO6Fh2HW0gyEixJgtpUZvRiU0vNpP+IwGRrNpIyqPjA7Rf5EBnVqDSJ49cm5w==}
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
@@ -5954,7 +5954,7 @@ snapshots:
 
   bn.js@4.12.5: {}
 
-  border-beam@1.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  border-beam@1.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)

@@ -877,7 +877,9 @@ DELETE /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:
 | `AGENT_USER_MEMORY_DISABLED` | 功能关闭，不能重试自动运行 |
 | `AGENT_USER_MEMORY_RUN_ACTIVE` | 当前存在其它活动运行 |
 | `AGENT_USER_MEMORY_RUN_NOT_RETRYABLE` | 运行没有可重试失败项 |
+| `AGENT_USER_MEMORY_RUN_NOT_FOUND` | 运行不存在或不属于当前租户 |
 | `AGENT_USER_MEMORY_ITEM_SUPERSEDED` | 较早自然日运行项已被更晚自动维护覆盖 |
+| `AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES` | 入选会话没有可供模型读取的消息，运行项直接跳过 |
 | `AGENT_USER_MEMORY_CUSTOMER_NOT_FOUND` | 客户不存在或不在访问范围 |
 | `AGENT_USER_MEMORY_ITEM_NOT_FOUND` | 记忆条目不存在 |
 | `AGENT_USER_MEMORY_LIMIT_REACHED` | 当前有效记忆达到 20 条 |

@@ -2646,7 +2646,7 @@ describe("conversation insights pages", () => {
       name: "质检分布",
     });
     const distributionItems =
-      within(qualityDistribution).getAllByRole("listitem");
+      await within(qualityDistribution).findAllByRole("listitem");
 
     expect(distributionItems).toHaveLength(10);
     expect(

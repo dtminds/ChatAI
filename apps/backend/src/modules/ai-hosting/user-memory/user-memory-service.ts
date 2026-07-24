@@ -9,14 +9,15 @@ import type {
   AgentUserMemoryRunDetailResponse,
   AgentUserMemoryRunListResponse,
 } from "@chatai/contracts";
-import type { Kysely, Selectable, Transaction } from "kysely";
+import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import type { Database, JsonValue } from "../../../db/schema.js";
-import { BadRequestError, NotFoundError } from "../../../shared/errors.js";
+import { BadRequestError, InternalServerError, NotFoundError } from "../../../shared/errors.js";
 import type { WorkbenchService } from "../../chat/workbench.service.js";
 import {
   createManualMemory,
   deleteManualMemory,
   emptyUserMemoryDocument,
+  filterActiveUserMemoryDocument,
   parseUserMemoryDocument,
   updateManualMemory,
   UserMemoryDomainError,
@@ -25,8 +26,12 @@ import {
 const DEFAULT_CUSTOMER_LIMIT = 100;
 const CANDIDATE_SESSION_MULTIPLIER = 2;
 const MIN_CANDIDATE_SESSION_LIMIT = 200;
-const SCHEDULE = "02:00";
-const TIMEZONE = "Asia/Shanghai";
+export const USER_MEMORY_SCHEDULE = "02:00" as const;
+export const USER_MEMORY_TIMEZONE = "Asia/Shanghai" as const;
+const SUPPORTED_CUSTOMER_LIMITS = new Set([100, 200, 500]);
+
+export interface UserMemoryCustomerLimitResolver { resolve(uid: number): number }
+export const DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER: UserMemoryCustomerLimitResolver = { resolve: () => DEFAULT_CUSTOMER_LIMIT };
 
 type CustomerKey = { platform: number; thirdExternalUserId: string };
 type CustomerSummary = CustomerKey & { avatarUrl?: string; customerName: string };
@@ -36,6 +41,7 @@ export class UserMemoryService {
   constructor(
     private readonly db: Kysely<Database>,
     private readonly workbenchService?: WorkbenchService,
+    private readonly customerLimitResolver: UserMemoryCustomerLimitResolver = DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER,
   ) {}
 
   async getOverview(uid: number): Promise<AgentUserMemoryOverviewResponse> {
@@ -44,12 +50,13 @@ export class UserMemoryService {
       config?.active_run_id ? this.getRunRow(uid, config.active_run_id) : undefined,
       this.db.selectFrom("xy_wap_embed_agent_user_memory_run").selectAll().where("uid", "=", uid).orderBy("id", "desc").executeTakeFirst(),
     ]);
+    const customerLimit = resolveUserMemoryCustomerLimit(this.customerLimitResolver, uid);
     return {
       enabled: config?.enabled === 1,
-      schedule: SCHEDULE,
-      timezone: TIMEZONE,
+      schedule: USER_MEMORY_SCHEDULE,
+      timezone: USER_MEMORY_TIMEZONE,
       executionMode: "sync",
-      customerLimit: DEFAULT_CUSTOMER_LIMIT,
+      customerLimit,
       ...(config?.next_run_at ? { nextRunAt: config.next_run_at.getTime() } : {}),
       ...(activeRun ? { activeRun: mapRun(activeRun) } : {}),
       ...(recentRun ? { recentRun: mapRun(recentRun) } : {}),
@@ -60,7 +67,8 @@ export class UserMemoryService {
     await this.db.transaction().execute(async (trx) => {
       let config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirst();
       if (!config) {
-        await trx.insertInto("xy_wap_embed_agent_user_memory_config").values({ uid }).execute();
+        await trx.insertInto("xy_wap_embed_agent_user_memory_config").values({ uid })
+          .onDuplicateKeyUpdate({ generation: sql<number>`generation` }).execute();
         config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirstOrThrow();
       }
       if ((config.enabled === 1) === enabled) return;
@@ -121,19 +129,43 @@ export class UserMemoryService {
       const run = await trx.selectFrom("xy_wap_embed_agent_user_memory_run").selectAll().where("uid", "=", uid).where("id", "=", runId).forUpdate().executeTakeFirst();
       if (!run || !["partial", "failed"].includes(run.status) || run.config_generation !== config.generation) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行不可重试");
       const failed = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").selectAll().where("run_id", "=", runId).where("status", "=", "failed").forUpdate().execute();
-      let resetCount = 0; let skippedCount = 0;
       const quotaDate = dateOnly(run.quota_date);
+      const platforms = [...new Set(failed.map((item) => item.platform))];
+      const externalIds = [...new Set(failed.map((item) => item.third_external_userid))];
+      const memories = failed.length === 0 ? [] : await trx.selectFrom("xy_wap_embed_agent_user_memory")
+        .select(["platform", "third_external_userid", "last_auto_quota_date"])
+        .where("uid", "=", uid).where("platform", "in", platforms).where("third_external_userid", "in", externalIds).execute();
+      const quotaByCustomer = new Map(memories.map((memory) => [customerKey(memory.platform, memory.third_external_userid), memory.last_auto_quota_date]));
+      const skippedIds: number[] = [];
+      const resetIds: number[] = [];
       for (const item of failed) {
-        const memory = await trx.selectFrom("xy_wap_embed_agent_user_memory").select(["last_auto_quota_date"]).where("uid", "=", uid).where("platform", "=", item.platform).where("third_external_userid", "=", item.third_external_userid).executeTakeFirst();
-        if (memory?.last_auto_quota_date && dateOnly(memory.last_auto_quota_date) > quotaDate) {
-          await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "skipped", last_error_code: "AGENT_USER_MEMORY_ITEM_SUPERSEDED", finished_at: new Date() }).where("id", "=", item.id).execute();
-          skippedCount += 1;
-        } else {
-          await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "prepared", attempt_count: 0, next_attempt_at: null, last_error_code: null, finished_at: null }).where("id", "=", item.id).execute();
-          resetCount += 1;
-        }
+        const lastQuotaDate = quotaByCustomer.get(customerKey(item.platform, item.third_external_userid));
+        (lastQuotaDate && dateOnly(lastQuotaDate) > quotaDate ? skippedIds : resetIds).push(item.id);
       }
-      if (resetCount === 0) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行没有可重试失败项");
+      if (skippedIds.length > 0) await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
+        .set({ status: "skipped", last_error_code: "AGENT_USER_MEMORY_ITEM_SUPERSEDED", finished_at: new Date() })
+        .where("id", "in", skippedIds).execute();
+      if (resetIds.length > 0) await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
+        .set({ status: "prepared", attempt_count: 0, next_attempt_at: null, last_error_code: null, finished_at: null })
+        .where("id", "in", resetIds).execute();
+      const resetCount = resetIds.length;
+      const skippedCount = skippedIds.length;
+      if (resetCount === 0) {
+        if (skippedCount === 0) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行没有可重试失败项");
+        const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", runId).execute();
+        const counts = {
+          success: items.filter((item) => item.status === "succeeded").length,
+          failure: items.filter((item) => item.status === "failed").length,
+          skipped: items.filter((item) => item.status === "skipped").length,
+        };
+        const status = resolveTerminalRunStatus(counts);
+        await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
+          status, phase: "completed", success_count: counts.success, failure_count: counts.failure, skipped_count: counts.skipped,
+          finished_at: new Date(), last_error_code: null, locked_by: null, claim_token: null, lease_until: null,
+        }).where("id", "=", runId).execute();
+        await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({ active_run_id: null }).where("id", "=", config.id).where("active_run_id", "=", runId).execute();
+        return { resetCount, skippedCount };
+      }
       await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status: "pending", phase: "inference", run_after: new Date(), finished_at: null, last_error_code: null, locked_by: null, claim_token: null, lease_until: null }).where("id", "=", runId).execute();
       await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({ active_run_id: runId }).where("id", "=", config.id).execute();
       return { resetCount, skippedCount };
@@ -143,12 +175,18 @@ export class UserMemoryService {
   async getEvidence(uid: number, subUserId: string, customer: CustomerSummary, itemId: number) {
     if (!this.workbenchService) throw new Error("Workbench service is required");
     const row = await this.getMemoryRow(this.db, uid, customer);
-    const item = row ? parseJsonDocument(row.memories_json).ai.find((entry) => entry.id === itemId) : undefined;
+    const item = row ? readStoredUserMemoryDocument(row.memories_json).ai.find((entry) => entry.id === itemId) : undefined;
     if (!item) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆条目不存在");
     const session = await this.db.selectFrom("xy_wap_embed_logical_session").select(["conversation_id", "third_external_userid"]).where("uid", "=", uid).where("id", "=", item.sourceSessionId).executeTakeFirst();
     if (!session || session.third_external_userid !== customer.thirdExternalUserId) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆证据不存在");
     const page = await this.workbenchService.getMessagesBySeqs(subUserId, String(session.conversation_id), item.evidenceMessageIds);
-    return { messages: page.messages.map((message) => ({ content: JSON.stringify(message.content), messageId: message.seq, occurredAt: message.createdAt ?? 0, senderRole: message.senderType, sessionId: item.sourceSessionId })) };
+    const messagesById = new Map(page.messages.map((message) => [message.seq, message]));
+    const messages = item.evidenceMessageIds.flatMap((messageId) => {
+      const message = messagesById.get(messageId);
+      return message ? [{ content: summarizeEvidenceContent(message.content), messageId: message.seq, occurredAt: message.createdAt ?? 0, senderRole: message.senderType, sessionId: item.sourceSessionId }] : [];
+    });
+    if (messages.length === 0) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆证据不存在");
+    return { messages };
   }
 
   async listCustomers(uid: number, subUserId: string, roles: string[], options: { cursor?: string; pageSize?: number; query?: string }): Promise<AgentUserMemoryCustomerListResponse> {
@@ -161,7 +199,7 @@ export class UserMemoryService {
     return {
       items: page.items.map((item) => {
         const memory = memories.get(customerKey(item.platform, item.thirdExternalUserId));
-        const document = memory ? parseJsonDocument(memory.memories_json) : emptyUserMemoryDocument();
+        const document = memory ? readStoredUserMemoryDocument(memory.memories_json) : emptyUserMemoryDocument();
         return {
           platform: item.platform, thirdExternalUserId: item.thirdExternalUserId,
           customerName: item.name || item.realName || item.thirdExternalUserId,
@@ -177,7 +215,7 @@ export class UserMemoryService {
 
   async getCustomer(uid: number, customer: CustomerSummary): Promise<AgentUserMemoryCustomerDetailResponse> {
     const row = await this.getMemoryRow(this.db, uid, customer);
-    const document = row ? parseJsonDocument(row.memories_json) : emptyUserMemoryDocument();
+    const document = row ? readStoredUserMemoryDocument(row.memories_json) : emptyUserMemoryDocument();
     return mapCustomerDetail(customer, row?.version ?? 0, document, row);
   }
 
@@ -198,16 +236,27 @@ export class UserMemoryService {
         const version = row?.version ?? 0;
         if (version !== expectedVersion) throw new BadRequestError("AGENT_USER_MEMORY_VERSION_CONFLICT", "记忆已更新，请刷新后重试");
         const now = Date.now();
-        const document = mutate(row ? parseJsonDocument(row.memories_json) : emptyUserMemoryDocument(), now);
+        const document = mutate(row ? parseStoredUserMemoryDocument(row.memories_json) : emptyUserMemoryDocument(), now);
         if (row) {
           await trx.updateTable("xy_wap_embed_agent_user_memory").set({ memories_json: JSON.stringify(document), version: version + 1, manual_updated_at: now }).where("id", "=", row.id).where("version", "=", version).executeTakeFirstOrThrow();
         } else {
           await trx.insertInto("xy_wap_embed_agent_user_memory").values({ uid, platform: customer.platform, third_external_userid: customer.thirdExternalUserId, memories_json: JSON.stringify(document), version: 1, manual_updated_at: now }).execute();
         }
-        return { document, version: version + 1, now };
+        return {
+          document,
+          version: version + 1,
+          now,
+          lastAutoQuotaDate: row?.last_auto_quota_date ?? null,
+          lastAutoUpdatedAt: row?.last_auto_updated_at ?? null,
+        };
       });
-      return mapCustomerDetail(customer, result.version, result.document, { manual_updated_at: result.now });
+      return mapCustomerDetail(customer, result.version, result.document, {
+        manual_updated_at: result.now,
+        last_auto_quota_date: result.lastAutoQuotaDate,
+        last_auto_updated_at: result.lastAutoUpdatedAt,
+      });
     } catch (error) {
+      if (isDuplicateKeyError(error)) throw new BadRequestError("AGENT_USER_MEMORY_VERSION_CONFLICT", "记忆已更新，请刷新后重试");
       if (error instanceof UserMemoryDomainError) throw new BadRequestError(error.code, error.message);
       throw error;
     }
@@ -231,8 +280,16 @@ export class UserMemoryService {
   }
 }
 
-export function createUserMemoryService(db: Kysely<Database>, workbenchService?: WorkbenchService) { return new UserMemoryService(db, workbenchService); }
+export function createUserMemoryService(db: Kysely<Database>, workbenchService?: WorkbenchService, customerLimitResolver?: UserMemoryCustomerLimitResolver) { return new UserMemoryService(db, workbenchService, customerLimitResolver); }
+export function resolveUserMemoryCustomerLimit(resolver: UserMemoryCustomerLimitResolver, uid: number) {
+  const value = resolver.resolve(uid);
+  if (!Number.isSafeInteger(value) || !SUPPORTED_CUSTOMER_LIMITS.has(value)) throw new Error("AGENT_USER_MEMORY_CUSTOMER_LIMIT_UNSUPPORTED");
+  return value;
+}
 export function resolveCandidateSessionLimit(customerLimit: number) { return Math.max(MIN_CANDIDATE_SESSION_LIMIT, customerLimit * CANDIDATE_SESSION_MULTIPLIER); }
+export function resolveTerminalRunStatus(counts: { success: number; failure: number; skipped: number }) {
+  return counts.failure === 0 ? "succeeded" as const : counts.success > 0 || counts.skipped > 0 ? "partial" as const : "failed" as const;
+}
 export function nextShanghaiRunAt(nowMs: number) {
   const local = new Date(nowMs + 8 * 60 * 60 * 1000);
   const candidate = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 2 - 8, 0, 0, 0);
@@ -245,9 +302,28 @@ function decodeIdCursor(value?: string) {
   throw new BadRequestError("INVALID_CURSOR", "分页游标无效");
 }
 function customerKey(platform: number, externalId: string) { return `${platform}:${externalId}`; }
-function parseJsonDocument(value: JsonValue | string) {
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  return parseUserMemoryDocument(parsed);
+export function parseStoredUserMemoryDocument(value: JsonValue | string) {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return parseUserMemoryDocument(parsed);
+  } catch (error) {
+    throw new InternalServerError("AGENT_USER_MEMORY_DATA_INVALID", "用户记忆数据异常");
+  }
+}
+function readStoredUserMemoryDocument(value: JsonValue | string) {
+  return filterActiveUserMemoryDocument(parseStoredUserMemoryDocument(value), Date.now());
+}
+function isDuplicateKeyError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; errno?: unknown };
+  return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
+}
+export function summarizeEvidenceContent(content: Record<string, unknown>) {
+  for (const key of ["text", "content", "title", "transVoiceText", "description", "fileName"]) {
+    const value = content[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return JSON.stringify(content);
 }
 function dateOnly(value: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(value); }
 function mapRun(row: Selectable<Database["xy_wap_embed_agent_user_memory_run"]>): AgentUserMemoryRun {

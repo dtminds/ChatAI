@@ -96,6 +96,10 @@ function filterExpired(document: AgentUserMemoryDocument, now: number): AgentUse
   };
 }
 
+export function filterActiveUserMemoryDocument(documentValue: unknown, now: number): AgentUserMemoryDocument {
+  return filterExpired(parseUserMemoryDocument(documentValue), now);
+}
+
 export function createManualMemory(
   documentValue: unknown,
   input: { category: AgentUserMemoryCategory; content: string; expiresAt?: number | null },

@@ -324,6 +324,7 @@ prepared -> submitted -> succeeded | failed | skipped | canceled
 
 - 选择完成后直接创建 `prepared` 项，不引入 `discovered` 或 `deferred`。
 - 临时错误在同一运行项内按短退避自动重试，达到最大次数后为 `failed`。
+- 同一运行还有未到重试时间的非终态项时，run 的 `run_after` 对齐最早 `next_attempt_at`；不得在短退避窗口内反复领取和释放形成数据库热循环。
 - 模型重调、版本冲突后的重新准备和提供商轮询都必须有统一的最大尝试或最大等待时长，不能无限停留在 `running/waiting/prepared`。
 - 所有项终态后，运行聚合为 `succeeded`、`partial`、`failed` 或 `canceled`。
 - 运行终态时清除配置 `active_run_id`，后续日期可以继续。
@@ -339,12 +340,13 @@ prepared -> submitted -> succeeded | failed | skipped | canceled
 4. 将仍未被更晚日期覆盖的 `failed` 项重置为 `prepared`，清理临时错误和自动尝试计数。
 5. 将已被更晚日期成功处理的失败项转为 `skipped/superseded`。
 6. 如果至少一个项目被重置，将同一 run 重新置为 `pending` 并设为 `active_run_id`。
+7. 如果失败项全部已被更晚日期覆盖，则直接重聚合原 run 并保持终态，不创建无意义的活动运行，也不持续暴露不可恢复的重试入口。
 
 它不是新运行，也不产生新额度。较早日期失败项永远不能覆盖 `last_auto_quota_date` 更晚的客户状态。
 
 ### 5.4 Worker 租约与围栏
 
-1. 使用 `FOR UPDATE SKIP LOCKED` 领取 `pending`、到期 `waiting` 或租约过期的 `running` 运行。
+1. 先无锁读取最早可领取的 `pending`、到期 `waiting` 或租约过期 `running` 候选，再按统一顺序 `config FOR UPDATE -> run FOR UPDATE` 锁定并重新校验资格；不得为追求 `SKIP LOCKED` 而形成 `run -> config` 的反向锁顺序。
 2. 每次领取生成新的随机 `claim_token`，同时保存 `locked_by` 和 `lease_until`。
 3. 模型和提供商调用期间不持有数据库事务。
 4. 所有运行、运行项和客户记忆写入必须在数据库层验证：
@@ -558,6 +560,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
   KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
+  KEY idx_agent_user_memory_run_terminal (status, finished_at, id),
   KEY idx_agent_user_memory_run_uid (uid, id)
 ) COMMENT='Agent用户记忆每日维护运行';
 ```
@@ -765,8 +768,8 @@ remove -> update -> confirm -> add
 
 每个模型结果在短事务中：
 
-1. 锁定并验证运行处于 `running`，claim 和 lease 有效。
-2. 锁定配置并验证 `enabled = 1`、代次一致、`active_run_id = run.id`。
+1. 锁定配置并验证 `enabled = 1`、代次一致、`active_run_id = run.id`。
+2. 锁定并验证运行处于 `running`，claim 和 lease 有效。
 3. 锁定运行项并验证 `status = submitted`。
 4. 锁定或创建客户行，验证 version、人工时间和自动日期围栏。
 5. 执行结构、证据、去重和数量规则。
@@ -888,6 +891,7 @@ DELETE /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:
 | `AGENT_USER_MEMORY_CONTENT_INVALID` | 分类、内容或过期时间非法 |
 | `AGENT_USER_MEMORY_DATA_INVALID` | 已存 JSON 或运行快照损坏 |
 | `AGENT_USER_MEMORY_MODEL_OUTPUT_INVALID` | 模型输出或证据校验失败 |
+| `AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED` | 自动尝试次数耗尽 |
 
 ## 12. Java 直接读表边界
 
@@ -968,7 +972,7 @@ AGENT_USER_MEMORY_EXECUTION_MODE=sync
 
 候选会话基数 200、额度倍数 2、最少 5 条、每会话 50 条和默认客户额度 100 先作为集中策略常量/套餐 resolver，不增加环境变量或页面设置。
 
-Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独立 runtime、Repository、错误码和观测，不得并入 Insights service。
+Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独立 runtime、模块内持久化代码、错误码和观测，不得并入 Insights service；本期不为仅代理 Kysely 的空壳 Repository 增加层级。
 
 ## 17. 上线与回滚
 

@@ -8,6 +8,7 @@ import type {
   AgentUserMemoryOverviewResponse,
   AgentUserMemoryRetryFailedResponse,
   AgentUserMemoryRunDetailResponse,
+  AgentUserMemoryRunItemStatus,
   AgentUserMemoryRunListResponse,
   AgentUserMemorySettingsRequest,
   ApiSuccessEnvelope,
@@ -23,7 +24,7 @@ export async function updateUserMemorySettings(payload: AgentUserMemorySettingsR
 export async function listUserMemoryRuns(params: { cursor?: string; pageSize?: number } = {}) {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunListResponse>>(`/server/ai-hosting/user-memory/runs${queryString(params)}`)).data;
 }
-export async function getUserMemoryRun(runId: number, params: { itemCursor?: string; itemPageSize?: number; status?: string } = {}) {
+export async function getUserMemoryRun(runId: number, params: { itemCursor?: string; itemPageSize?: number; status?: AgentUserMemoryRunItemStatus } = {}) {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunDetailResponse>>(`/server/ai-hosting/user-memory/runs/${runId}${queryString(params)}`)).data;
 }
 export async function retryUserMemoryRun(runId: number) {

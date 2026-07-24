@@ -57,6 +57,7 @@ export const AgentUserMemoryErrorCodeSchema = Type.Union([
   Type.Literal("AGENT_USER_MEMORY_CONTENT_INVALID"),
   Type.Literal("AGENT_USER_MEMORY_DATA_INVALID"),
   Type.Literal("AGENT_USER_MEMORY_MODEL_OUTPUT_INVALID"),
+  Type.Literal("AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED"),
 ]);
 
 const BaseMemoryItemSchema = Type.Object({
@@ -71,15 +72,15 @@ const BaseMemoryItemSchema = Type.Object({
 export const AgentUserMemoryManualItemSchema = Type.Composite([
   BaseMemoryItemSchema,
   Type.Object({
-    updatedBySubUserId: Type.Number(),
+    updatedBySubUserId: Type.Integer({ minimum: 1 }),
   }, { additionalProperties: false }),
 ], { additionalProperties: false });
 
 export const AgentUserMemoryAiItemSchema = Type.Composite([
   BaseMemoryItemSchema,
   Type.Object({
-    evidenceMessageIds: Type.Array(Type.Number(), { minItems: 1, maxItems: 3 }),
-    sourceSessionId: Type.Number(),
+    evidenceMessageIds: Type.Array(Type.Integer({ minimum: 1 }), { minItems: 1, maxItems: 3 }),
+    sourceSessionId: Type.Integer({ minimum: 1 }),
   }, { additionalProperties: false }),
 ], { additionalProperties: false });
 

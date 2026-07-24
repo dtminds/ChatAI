@@ -4,6 +4,7 @@ import {
   createManualMemory,
   deleteManualMemory,
   emptyUserMemoryDocument,
+  filterActiveUserMemoryDocument,
   normalizeUserMemoryContent,
   parseUserMemoryDocument,
   updateManualMemory,
@@ -42,8 +43,10 @@ describe("user memory domain", () => {
     expect(updated.manual[0]).not.toHaveProperty("sourceSessionId");
   });
 
-  it("rejects invalid recent context expiry", () => {
+  it("rejects invalid recent context expiry and removes expired context from read/model views", () => {
     expect(() => createManualMemory(emptyUserMemoryDocument(), { category: "recent_context", content: "准备婚礼", expiresAt: now }, 1, now)).toThrowError(expect.objectContaining({ code: "AGENT_USER_MEMORY_CONTENT_INVALID" }));
+    const document = createManualMemory(emptyUserMemoryDocument(), { category: "recent_context", content: "准备婚礼", expiresAt: now + 1 }, 1, now).document;
+    expect(filterActiveUserMemoryDocument(document, now + 2).manual).toEqual([]);
   });
 
   it("applies AI operations only with customer evidence in the input window", () => {

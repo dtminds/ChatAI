@@ -42,6 +42,11 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/skills",
   },
   {
+    icon: AiGenerativeIcon,
+    label: "用户记忆",
+    to: "/chat/ai-hosting/user-memory",
+  },
+  {
     icon: UserAiIcon,
     label: "托管设置",
     to: "/chat/ai-hosting/hosting-settings",

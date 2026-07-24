@@ -62,6 +62,11 @@ const AiSkillSettingsPage = lazy(() =>
     }),
   ),
 );
+const UserMemoryPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/user-memory-page").then(
+    ({ UserMemoryPage }) => ({ default: UserMemoryPage }),
+  ),
+);
 const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
@@ -298,6 +303,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/skills/:skillId/edit",
         element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/user-memory",
+        element: withRouteSuspense(<UserMemoryPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

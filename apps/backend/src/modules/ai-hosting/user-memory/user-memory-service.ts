@@ -75,7 +75,12 @@ export class UserMemoryService {
       const now = Date.now();
       if (!enabled && config.active_run_id) {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "canceled", finished_at: new Date() }).where("run_id", "=", config.active_run_id).where("status", "in", ["prepared", "submitted"]).execute();
-        await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status: "canceled", phase: "completed", finished_at: new Date(), locked_by: null, claim_token: null, lease_until: null }).where("id", "=", config.active_run_id).where("uid", "=", uid).execute();
+        const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", config.active_run_id).execute();
+        const counts = countUserMemoryRunItems(items);
+        await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
+          status: "canceled", phase: "completed", success_count: counts.success, failure_count: counts.failure,
+          skipped_count: counts.skipped, finished_at: new Date(), locked_by: null, claim_token: null, lease_until: null,
+        }).where("id", "=", config.active_run_id).where("uid", "=", uid).execute();
       }
       await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({
         enabled: enabled ? 1 : 0,
@@ -153,11 +158,7 @@ export class UserMemoryService {
       if (resetCount === 0) {
         if (skippedCount === 0) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行没有可重试失败项");
         const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", runId).execute();
-        const counts = {
-          success: items.filter((item) => item.status === "succeeded").length,
-          failure: items.filter((item) => item.status === "failed").length,
-          skipped: items.filter((item) => item.status === "skipped").length,
-        };
+        const counts = countUserMemoryRunItems(items);
         const status = resolveTerminalRunStatus(counts);
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
           status, phase: "completed", success_count: counts.success, failure_count: counts.failure, skipped_count: counts.skipped,
@@ -289,6 +290,13 @@ export function resolveUserMemoryCustomerLimit(resolver: UserMemoryCustomerLimit
 export function resolveCandidateSessionLimit(customerLimit: number) { return Math.max(MIN_CANDIDATE_SESSION_LIMIT, customerLimit * CANDIDATE_SESSION_MULTIPLIER); }
 export function resolveTerminalRunStatus(counts: { success: number; failure: number; skipped: number }) {
   return counts.failure === 0 ? "succeeded" as const : counts.success > 0 || counts.skipped > 0 ? "partial" as const : "failed" as const;
+}
+export function countUserMemoryRunItems(items: Array<{ status: string }>) {
+  return {
+    success: items.filter((item) => item.status === "succeeded").length,
+    failure: items.filter((item) => item.status === "failed").length,
+    skipped: items.filter((item) => item.status === "skipped").length,
+  };
 }
 export function nextShanghaiRunAt(nowMs: number) {
   const local = new Date(nowMs + 8 * 60 * 60 * 1000);

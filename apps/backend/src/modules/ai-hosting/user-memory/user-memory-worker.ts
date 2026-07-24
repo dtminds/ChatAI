@@ -4,7 +4,7 @@ import type { Database, JsonValue } from "../../../db/schema.js";
 import type { AppLogger } from "../../../shared/logger.js";
 import { applyAiMemoryOperations, emptyUserMemoryDocument, filterActiveUserMemoryDocument, parseUserMemoryDocument } from "./user-memory-domain.js";
 import { UserMemoryProviderError, type UserMemoryInputMessage, type UserMemoryProvider } from "./user-memory-provider.js";
-import { resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, type UserMemoryCustomerLimitResolver } from "./user-memory-service.js";
+import { countUserMemoryRunItems, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, type UserMemoryCustomerLimitResolver } from "./user-memory-service.js";
 
 const LEASE_MS = 5 * 60_000;
 const MAX_ITEM_ATTEMPTS = 3;
@@ -161,10 +161,18 @@ export class UserMemoryWorker {
     try {
       const prepared = await this.prepareInput(claim, item);
       if (!prepared) return;
-      await this.input.db.transaction().execute(async (trx) => {
+      const submitted = await this.input.db.transaction().execute(async (trx) => {
         await assertClaim(trx, claim);
-        await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "submitted", attempt_count: item.attempt_count + 1, base_memory_version: prepared.version, base_manual_updated_at: prepared.manualUpdatedAt, message_count: prepared.messages.length, last_error_code: null }).where("id", "=", item.id).where("status", "in", ["prepared", "submitted"]).executeTakeFirstOrThrow();
+        const result = await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
+          .set({ status: "submitted", attempt_count: item.attempt_count + 1, base_memory_version: prepared.version, base_manual_updated_at: prepared.manualUpdatedAt, message_count: prepared.messages.length, last_error_code: null })
+          .where("id", "=", item.id).where("run_id", "=", claim.run.id).where("attempt_count", "=", item.attempt_count)
+          .where("status", "in", ["prepared", "submitted"]).executeTakeFirst();
+        return result.numUpdatedRows > 0n;
       });
+      if (!submitted) {
+        await this.aggregateOrRelease(claim);
+        return;
+      }
       const result = await this.input.provider.complete({ document: prepared.document, messages: prepared.messages, now: Date.now() });
       providerUsage = result;
       await this.mergeResult(claim, item, prepared, result);
@@ -355,7 +363,7 @@ async function releaseRun(trx: Transaction<Database>, claim: Claim, runAfter: Da
 }
 async function aggregateRun(trx: Transaction<Database>, claim: Claim) {
   const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status", "next_attempt_at"]).where("run_id", "=", claim.run.id).execute();
-  const counts = { success: items.filter((i) => i.status === "succeeded").length, failure: items.filter((i) => i.status === "failed").length, skipped: items.filter((i) => i.status === "skipped").length };
+  const counts = countUserMemoryRunItems(items);
   if (items.length === 0) {
     await finishRun(trx, claim, "succeeded", counts);
   } else if (items.every((i) => TERMINAL_ITEM_STATUSES.includes(i.status))) {

@@ -991,7 +991,7 @@ describe("InsightsService", () => {
     });
   });
 
-  it("omits AI aggregates from the basic overview response", async () => {
+  it("keeps AI aggregates in the basic overview response", async () => {
     const repository = createRepository({
       getFeatureConfig: vi.fn(async () => ({
         entityEnabled: true,
@@ -1010,17 +1010,18 @@ describe("InsightsService", () => {
     });
 
     expect(result).toMatchObject({
+      actionItemsOpen: overviewAggregate.actionItemsOpen,
+      analysis: overviewAggregate.analysis,
       comparisonAvailable: true,
       mode: "basic",
+      problemSessions: overviewAggregate.problemSessions,
+      readySessions: overviewAggregate.readySessions,
+      resolution: overviewAggregate.resolution,
+      totalSessions: overviewAggregate.totalSessions,
       totals: overviewAggregate.totals,
       trend: overviewAggregate.trend,
+      unresolvedSessions: overviewAggregate.unresolvedSessions,
     });
-    expect(result).not.toHaveProperty("actionItemsOpen");
-    expect(result).not.toHaveProperty("analysis");
-    expect(result).not.toHaveProperty("problemSessions");
-    expect(result).not.toHaveProperty("readySessions");
-    expect(result).not.toHaveProperty("resolution");
-    expect(result).not.toHaveProperty("unresolvedSessions");
   });
 
   it("paginates overview sessions separately from overview metrics", async () => {
@@ -1397,7 +1398,16 @@ describe("InsightsService", () => {
       items: [baseRows[0]],
       total: 1,
     }));
+    const getFeatureConfig = vi.fn(async () => ({
+      entityEnabled: true,
+      insightEnabled: false,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: true,
+    }));
     const repository = createRepository({
+      getFeatureConfig,
       listBusinessRelatedSessions,
       listCurrentSessions: vi.fn(async (_scope, filters) => ({
         items: [baseRows[0]],
@@ -1422,6 +1432,7 @@ describe("InsightsService", () => {
           sessionId: "501",
         }),
       ],
+      mode: "basic",
       page: 2,
       pageSize: 1,
       total: 1,
@@ -1438,6 +1449,7 @@ describe("InsightsService", () => {
         to: "2026-06-30",
       }),
     );
+    expect(getFeatureConfig).toHaveBeenCalledWith(scope);
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
   });
@@ -1806,7 +1818,7 @@ describe("InsightsService", () => {
     expect(repository.findDetail).not.toHaveBeenCalled();
   });
 
-  it("blocks AI-only data and actions in basic mode without blocking messages or manual rescan", async () => {
+  it("keeps historical AI data and actions available in basic mode", async () => {
     const repository = createRepository({
       getFeatureConfig: vi.fn(async () => ({
         entityEnabled: true,
@@ -1819,26 +1831,30 @@ describe("InsightsService", () => {
     });
     const service = new InsightsService(repository);
 
-    const aiOnlyRequests = [
-      service.getDetail(scope, "501"),
-      service.getFilterOptions(scope),
-      service.getMessageContext(scope, "301", "9002"),
-      service.updateActionStatus(scope, "801", "done"),
-      service.createActionItem(scope, {
-        conversationId: "301",
-        priority: "high",
-        sessionId: "501",
-        title: "回访物流状态",
-      }),
-    ];
-
-    for (const request of aiOnlyRequests) {
-      await expect(request).rejects.toMatchObject({
-        code: "INSIGHT_NOT_ENABLED",
-        statusCode: 403,
-      });
-    }
-
+    await expect(service.getDetail(scope, "501")).resolves.toMatchObject({
+      currentSnapshotId: "7001",
+      summary: { sessionTitle: "查物流" },
+    });
+    await expect(service.getFilterOptions(scope)).resolves.toMatchObject({
+      entities: expect.any(Array),
+      intents: expect.any(Array),
+      tags: expect.any(Array),
+    });
+    await expect(service.getMessageContext(scope, "301", "9002")).resolves.toMatchObject({
+      messages: expect.any(Array),
+    });
+    await expect(service.updateActionStatus(scope, "801", "done")).resolves.toMatchObject({
+      actionItemId: "801",
+      status: "done",
+    });
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      priority: "high",
+      sessionId: "501",
+      title: "回访物流状态",
+    })).resolves.toMatchObject({
+      actionItemId: expect.any(String),
+    });
     await expect(service.getSessionMessages(scope, "501")).resolves.toMatchObject({
       messages: expect.any(Array),
     });
@@ -1847,11 +1863,11 @@ describe("InsightsService", () => {
       from: "2026-06-01T00:00:00.000Z",
       to: "2026-06-02T00:00:00.000Z",
     })).resolves.toMatchObject({ status: "accepted" });
-    expect(repository.findDetail).not.toHaveBeenCalled();
-    expect(repository.getFilterOptions).not.toHaveBeenCalled();
-    expect(repository.listMessageContext).not.toHaveBeenCalled();
-    expect(repository.updateActionStatus).not.toHaveBeenCalled();
-    expect(repository.createActionItem).not.toHaveBeenCalled();
+    expect(repository.findDetail).toHaveBeenCalledWith(scope, "501");
+    expect(repository.getFilterOptions).toHaveBeenCalledWith(scope);
+    expect(repository.listMessageContext).toHaveBeenCalled();
+    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
+    expect(repository.createActionItem).toHaveBeenCalled();
   });
 
   it("throws not found when session messages are requested outside uid scope", async () => {

@@ -142,7 +142,6 @@ export function InsightsFollowUpsPage() {
           description="由 AI 智能识别未解决的问题、或待跟进的事项，自动为你生成待办"
           title="待处理"
         />
-
         <div className="flex flex-wrap items-center gap-2">
           <Tabs
             onValueChange={(value) => {

@@ -47,7 +47,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
-import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
+import {
+  filterHistoryChatMessages,
+  HistoryCompactMessageList,
+} from "@/pages/chat/components/message-history-side-panel";
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
 import { AnalysisPhaseBadge, AnalysisStatusBadge, ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
@@ -80,7 +83,7 @@ export function InsightDetailPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const evidenceRecordMessages = messages
-    ? adaptInsightMessages(messages)
+    ? filterHistoryChatMessages(adaptInsightMessages(messages))
     : [];
   const evidenceByMessageId = detail ? buildEvidenceByMessageId(detail.evidenceItems) : new Map<string, EvidenceViewItem[]>();
 

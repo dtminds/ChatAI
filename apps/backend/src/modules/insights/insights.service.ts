@@ -492,15 +492,7 @@ export class InsightsService {
     const mode = featureConfig.insightEnabled ? "insight" : "basic";
 
     return {
-      ...(mode === "insight" ? {
-        actionItemsOpen: aggregate.actionItemsOpen,
-        analysis: aggregate.analysis,
-        problemSessions: aggregate.problemSessions,
-        readySessions: aggregate.readySessions,
-        resolution: aggregate.resolution,
-        totalSessions: aggregate.totalSessions,
-        unresolvedSessions: aggregate.unresolvedSessions,
-      } : {}),
+      ...aggregate,
       comparison: buildOverviewComparison(
         aggregate.totals,
         previousAggregate.totals,
@@ -527,14 +519,13 @@ export class InsightsService {
     };
     const featureConfig = await this.repository.getFeatureConfig(scope);
     const mode = featureConfig.insightEnabled ? "insight" : "basic";
-    assertOverviewFiltersAvailable(mode, normalizedFilters);
     const sessions = await this.repository.listCurrentSessions(scope, {
       ...normalizedFilters,
-      searchMode: mode,
+      searchMode: "insight",
     });
 
     return {
-      items: buildOverviewSessions(sessions.items, mode),
+      items: buildOverviewSessions(sessions.items),
       mode,
       page: normalizedPage,
       pageSize: normalizedPageSize,
@@ -565,7 +556,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: Pick<InsightsQualityFilters, "from" | "to"> = {},
   ): Promise<InsightsQualityOverviewResponse> {
-    await this.assertInsightEnabled(scope);
     const boundedFilters = withDefaultOverviewDateRange(filters);
     const [overview, qaAggregate] = await Promise.all([
       this.repository.getQualityAggregate?.(scope, { from: boundedFilters.from, to: boundedFilters.to }),
@@ -585,7 +575,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: Pick<InsightsQualityFilters, "from" | "to"> = {},
   ): Promise<InsightsQualityAgentStatsResponse> {
-    await this.assertInsightEnabled(scope);
     const boundedFilters = withDefaultOverviewDateRange(filters);
 
     return {
@@ -600,7 +589,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsQualityFilters = {},
   ): Promise<InsightsQualityResultsResponse> {
-    await this.assertInsightEnabled(scope);
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
     const boundedFilters = withDefaultOverviewDateRange(filters);
@@ -629,7 +617,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsBusinessTopicFilters,
   ): Promise<InsightBusinessTopicsResponse> {
-    await this.assertInsightEnabled(scope);
     const boundedFilters = filters.dimension === "asset"
       ? withAssetBusinessDateRange(filters)
       : withDefaultOverviewDateRange(filters);
@@ -654,7 +641,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsBusinessRelatedSessionFilters,
   ): Promise<InsightBusinessRelatedSessionsResponse> {
-    await this.assertInsightEnabled(scope);
     const boundedFilters = filters.dimension === "asset"
       ? withAssetBusinessDateRange(filters)
       : withDefaultOverviewDateRange(filters);
@@ -668,15 +654,18 @@ export class InsightsService {
       );
     }
 
-    const sessions = await this.repository.listBusinessRelatedSessions(scope, {
-      ...boundedFilters,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    });
+    const [sessions, featureConfig] = await Promise.all([
+      this.repository.listBusinessRelatedSessions(scope, {
+        ...boundedFilters,
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+      }),
+      this.repository.getFeatureConfig(scope),
+    ]);
 
     return {
-      items: buildOverviewSessions(sessions.items, "insight"),
-      mode: "insight",
+      items: buildOverviewSessions(sessions.items),
+      mode: featureConfig.insightEnabled ? "insight" : "basic",
       page: normalizedPage,
       pageSize: normalizedPageSize,
       total: sessions.total,
@@ -688,7 +677,6 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsFollowUpFilters = {},
   ): Promise<InsightsFollowUpsResponse> {
-    await this.assertInsightEnabled(scope);
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
     const pageResult = await this.repository.listActionItemsPage(scope, {
@@ -708,7 +696,6 @@ export class InsightsService {
   }
 
   async getDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailResponse> {
-    await this.assertInsightEnabled(scope);
     const detail = await this.repository.findDetail(scope, sessionId);
 
     if (!detail) {
@@ -753,14 +740,6 @@ export class InsightsService {
     };
   }
 
-  private async assertInsightEnabled(scope: InsightsUidScope) {
-    const featureConfig = await this.repository.getFeatureConfig(scope);
-
-    if (!featureConfig.insightEnabled) {
-      throw new ForbiddenError("INSIGHT_NOT_ENABLED", "请先开启会话洞察");
-    }
-  }
-
   async getSessionMessages(
     scope: InsightsUidScope,
     sessionId: string,
@@ -781,7 +760,6 @@ export class InsightsService {
     conversationId: string,
     messageId: string,
   ): Promise<InsightMessageContextResponse> {
-    await this.assertInsightEnabled(scope);
     const context = await this.repository.listMessageContext(
       scope,
       conversationId,
@@ -842,7 +820,6 @@ export class InsightsService {
   }
 
   async getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse> {
-    await this.assertInsightEnabled(scope);
     return this.repository.getFilterOptions(scope);
   }
 
@@ -1281,7 +1258,6 @@ export class InsightsService {
     actionItemId: string,
     status: InsightActionStatus,
   ) {
-    await this.assertInsightEnabled(scope);
     if (status !== "done" && status !== "dismissed" && status !== "open") {
       throw new BadRequestError("INVALID_ACTION_STATUS", "不支持的处理状态");
     }
@@ -1303,7 +1279,6 @@ export class InsightsService {
     input: InsightCreateActionItemRequest,
     createdBySubUserId?: string,
   ): Promise<InsightCreateActionItemResponse> {
-    await this.assertInsightEnabled(scope);
     const title = input.title.trim();
 
     if (!title) {
@@ -1550,16 +1525,13 @@ function raiseConfigNotFound(): never {
   throw new NotFoundError("INSIGHT_CONFIG_NOT_FOUND", "配置不存在");
 }
 
-function buildOverviewSessions(
-  rows: InsightCurrentSessionRow[],
-  mode: "basic" | "insight",
-) {
+function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
   return rows.map((row) => ({
       agentMessageCount: row.agentMessageCount,
       agentAvatarUrl: row.agentAvatarUrl ?? undefined,
       agentName: row.agentName ?? undefined,
-      analysisPhase: mode === "insight" ? row.phase : undefined,
-      analysisStatus: mode === "insight" ? row.analysisStatus : undefined,
+      analysisPhase: row.phase,
+      analysisStatus: row.analysisStatus,
       conversationId: row.conversationId,
       customerMessageCount: row.customerMessageCount,
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
@@ -1567,36 +1539,13 @@ function buildOverviewSessions(
       endedAt: row.endedAt ?? undefined,
       lastMessageAt: row.lastMessageAt ?? undefined,
       messageCount: row.messageCount,
-      problemSummary: mode === "insight" ? row.problemSummary || undefined : undefined,
-      resolutionStatus: mode === "insight" ? row.resolutionStatus : undefined,
+      problemSummary: row.problemSummary || undefined,
+      resolutionStatus: row.resolutionStatus,
       sessionId: row.sessionId,
       sessionState: row.logicalSessionStatus === "open" ? "open" as const : "ended" as const,
       startedAt: row.startedAt,
-      summarySessionTitle: mode === "insight" ? row.summarySessionTitle || undefined : undefined,
+      summarySessionTitle: row.summarySessionTitle || undefined,
     }));
-}
-
-function assertOverviewFiltersAvailable(
-  mode: "basic" | "insight",
-  filters: InsightOverviewSessionFilters,
-) {
-  if (mode === "insight") {
-    return;
-  }
-
-  if (
-    filters.analysisStatus
-    || filters.entityId
-    || filters.intentId
-    || filters.resolutionStatus
-    || filters.tagId
-    || (filters.problemScope && filters.problemScope !== "all")
-  ) {
-    throw new BadRequestError(
-      "INSIGHT_FILTER_NOT_AVAILABLE_IN_BASIC_MODE",
-      "基础模式不支持 AI 洞察筛选",
-    );
-  }
 }
 
 function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityAggregateRow {

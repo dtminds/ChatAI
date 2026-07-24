@@ -266,7 +266,6 @@ export function InsightsBusinessPage() {
             )}
           </div>
         </section>
-
         {businessError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             数据加载失败

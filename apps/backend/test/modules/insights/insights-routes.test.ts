@@ -454,7 +454,7 @@ describe("insights routes", () => {
     });
   });
 
-  it("blocks AI detail in basic mode while keeping session messages available", async () => {
+  it("keeps AI detail available in basic mode", async () => {
     const { app, authorization } = await createInsightsApp("operator", {
       initialFeatureConfig: { insight_enabled: 0 },
     });
@@ -474,10 +474,13 @@ describe("insights routes", () => {
 
     await app.close();
 
-    expect(detail.statusCode).toBe(403);
+    expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
-      error: { code: "INSIGHT_NOT_ENABLED" },
-      success: false,
+      data: {
+        currentSnapshotId: "7001",
+        summary: { sessionTitle: "查物流" },
+      },
+      success: true,
     });
     expect(messages.statusCode).toBe(200);
     expect(messages.json()).toMatchObject({

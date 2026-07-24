@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { InsightCapabilitiesResponse } from "@chatai/contracts";
-import { Link, Outlet, matchPath, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getInsightCapabilities } from "./api/insights-service";
@@ -13,14 +13,7 @@ type InsightsCapabilitiesContextValue = {
 
 const InsightsCapabilitiesContext = createContext<InsightsCapabilitiesContextValue | null>(null);
 
-const aiOnlyPaths = [
-  "/chat/insights/business",
-  "/chat/insights/follow-ups",
-  "/chat/insights/quality",
-] as const;
-
 export function InsightsCapabilitiesRoute() {
-  const location = useLocation();
   const [capabilities, setCapabilities] = useState<InsightCapabilitiesResponse>();
   const [error, setError] = useState(false);
 
@@ -54,37 +47,6 @@ export function InsightsCapabilitiesRoute() {
               <span>正在加载</span>
             </div>
           )}
-        </div>
-      </InsightsLayout>
-    );
-  }
-
-  const isAiOnlyPath = aiOnlyPaths.some((path) =>
-    matchPath({ end: true, path }, location.pathname)
-  );
-
-  if (capabilities.mode === "basic" && isAiOnlyPath) {
-    return (
-      <InsightsLayout
-        canViewWorkerObservability={capabilities.canViewWorkerObservability}
-        title="会话洞察"
-      >
-        <div className="flex min-h-[420px] items-center justify-center">
-          <div className="max-w-sm text-center">
-            <h1 className="text-lg font-semibold">请先开启会话洞察</h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              开启后可使用服务质检、待处理和业务洞察
-            </p>
-            {capabilities.canManageInsights && capabilities.insightAvailable ? (
-              <Button asChild className="mt-5">
-                <Link to="/chat/insights/settings">前往洞察配置</Link>
-              </Button>
-            ) : (
-              <p className="mt-4 text-sm text-muted-foreground">
-                {capabilities.canManageInsights ? "当前账号暂未开通会话洞察" : "请联系管理员开启"}
-              </p>
-            )}
-          </div>
         </div>
       </InsightsLayout>
     );

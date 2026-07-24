@@ -13,12 +13,21 @@ import type {
   InsightsWorkerUidState,
 } from "@chatai/contracts";
 import {
+  File02Icon,
   Refresh03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -43,6 +52,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   getInsightsWorkerSummary,
@@ -55,6 +65,10 @@ import {
   InsightsLayout,
   InsightsPageHeader,
 } from "./insights-layout";
+import {
+  interpretWorkerLog,
+  type WorkerLogInterpretation,
+} from "./insights-worker-log-interpreter";
 
 const pageSize = 50;
 const pipelineLabels = {
@@ -90,6 +104,7 @@ export function InsightsWorkerObservabilityPage() {
   const [detail, setDetail] = useState<InsightsWorkerUidDetailResponse>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
   const canView = capabilities.canViewWorkerObservability;
 
   const refresh = useCallback(() => {
@@ -245,22 +260,37 @@ export function InsightsWorkerObservabilityPage() {
       <div className="space-y-5">
         <InsightsPageHeader
           actions={(
-            <Button
-              aria-label="刷新运行观测"
-              disabled={loading}
-              onClick={refresh}
-              variant="outline"
-            >
-              {loading ? (
-                <Spinner size={16} variant="classic" />
-              ) : (
-                <HugeiconsIcon icon={Refresh03Icon} size={17} />
-              )}
-              刷新
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                aria-label="解读 Worker 日志"
+                onClick={() => setLogDialogOpen(true)}
+                variant="outline"
+              >
+                <HugeiconsIcon icon={File02Icon} size={17} />
+                日志解读
+              </Button>
+              <Button
+                aria-label="刷新运行观测"
+                disabled={loading}
+                onClick={refresh}
+                variant="outline"
+              >
+                {loading ? (
+                  <Spinner size={16} variant="classic" />
+                ) : (
+                  <HugeiconsIcon icon={Refresh03Icon} size={17} />
+                )}
+                刷新
+              </Button>
+            </div>
           )}
           description="跨租户查看消息发现、会话切片和分析任务的当前推进状态"
           title="运行观测"
+        />
+
+        <WorkerLogInterpreterDialog
+          onOpenChange={setLogDialogOpen}
+          open={logDialogOpen}
         />
 
         {error && (summary || uidPage) ? (
@@ -685,6 +715,109 @@ function StateBadge({ state }: { state: InsightsWorkerUidState }) {
     >
       {labels[state]}
     </Badge>
+  );
+}
+
+function WorkerLogInterpreterDialog({
+  onOpenChange,
+  open,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const [rawLog, setRawLog] = useState("");
+  const [error, setError] = useState(false);
+  const [results, setResults] = useState<WorkerLogInterpretation[]>([]);
+
+  const analyze = () => {
+    const next = interpretWorkerLog(rawLog);
+    setResults(next);
+    setError(next.length === 0);
+  };
+
+  return (
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) {
+          setError(false);
+        }
+      }}
+      open={open}
+    >
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Worker 日志解读</DialogTitle>
+          <DialogDescription>
+            粘贴一条或多条 insights-worker 结构化日志，解析为字段说明表
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-2">
+          <Textarea
+            aria-label="Worker 日志原文"
+            className="min-h-36 font-mono text-xs"
+            onChange={(event) => setRawLog(event.target.value)}
+            placeholder='粘贴 JSON 日志，例如 {"eventCode":"insights_worker.pipeline_summary",...}'
+            value={rawLog}
+          />
+
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              未识别到有效 JSON 日志对象
+            </p>
+          ) : null}
+
+          {results.map((result, index) => (
+            <section
+              className="space-y-3 rounded-[8px] border p-4"
+              key={`${result.eventCode ?? "log"}-${index}`}
+            >
+              <div>
+                <h3 className="text-sm font-semibold">{result.title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{result.summary}</p>
+              </div>
+              {result.sections.map((section) => (
+                <div key={section.title}>
+                  <h4 className="mb-2 text-xs font-medium text-muted-foreground">
+                    {section.title}
+                  </h4>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[28%]">字段</TableHead>
+                        <TableHead className="w-[42%]">含义</TableHead>
+                        <TableHead>值</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {section.rows.map((row) => (
+                        <TableRow key={`${section.title}-${row.field}`}>
+                          <TableCell className="font-mono text-xs">{row.field}</TableCell>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell className="break-all font-mono text-xs">
+                            {row.value}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+            </section>
+          ))}
+        </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            支持单条 JSON 或按行粘贴多条
+          </p>
+          <Button onClick={analyze} type="button">
+            分析
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

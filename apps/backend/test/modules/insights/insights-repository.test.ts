@@ -3851,7 +3851,10 @@ describe("MysqlInsightWorkerRepository", () => {
     const cutoverAt = new Date("2026-06-11T08:00:00.000Z");
     const now = new Date("2026-06-13T08:00:00.000Z");
     const operations: string[] = [];
-    const insertValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const insertValues: Array<{
+      table: string;
+      values: Record<string, unknown> | Record<string, unknown>[];
+    }> = [];
     const selectBuilders: SelectBuilderStub[] = [];
     const updateValues: Array<{ table: string; values: Record<string, unknown> }> = [];
     const db = {
@@ -3865,7 +3868,7 @@ describe("MysqlInsightWorkerRepository", () => {
         }, {
           onValues: (values) => insertValues.push({
             table,
-            values: values as Record<string, unknown>,
+            values,
           }),
           table,
         }),
@@ -3905,7 +3908,7 @@ describe("MysqlInsightWorkerRepository", () => {
     await expect(repository.discoverMessageUids({ batchSize: 200, now })).resolves.toEqual({
       cursorAuditId: 103,
       discoveredMessages: 3,
-      discoveredUids: 2,
+      discoveredUidIds: [9001, 9002],
       skipped: false,
     });
 
@@ -3917,28 +3920,35 @@ describe("MysqlInsightWorkerRepository", () => {
     const cursorRows = insertValues.filter(
       (entry) => entry.table === "xy_wap_embed_insight_sync_cursor",
     );
-    expect(cursorRows).toHaveLength(2);
-    expect(cursorRows).toEqual(expect.arrayContaining([
+    expect(cursorRows).toHaveLength(1);
+    expect(cursorRows[0]?.values).toEqual([
       expect.objectContaining({
-        values: expect.objectContaining({
-          create_time: cutoverAt,
-          cursor_audit_id: 100,
-          cursor_msgtime: cutoverAt.getTime(),
-          uid: 9001,
-        }),
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 9001,
       }),
       expect.objectContaining({
-        values: expect.objectContaining({
-          create_time: cutoverAt,
-          cursor_audit_id: 100,
-          cursor_msgtime: cutoverAt.getTime(),
-          uid: 9002,
-        }),
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 9002,
       }),
-    ]));
-    expect(
-      insertValues.filter((entry) => entry.table === "xy_wap_embed_insight_job"),
-    ).toHaveLength(2);
+    ]);
+    const jobRows = insertValues.filter(
+      (entry) => entry.table === "xy_wap_embed_insight_job",
+    );
+    expect(jobRows).toHaveLength(1);
+    expect(jobRows[0]?.values).toEqual([
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:9001",
+        uid: 9001,
+      }),
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:9002",
+        uid: 9002,
+      }),
+    ]);
     expect(updateValues).toContainEqual({
       table: "xy_wap_embed_insight_sync_cursor",
       values: expect.objectContaining({
@@ -3976,7 +3986,7 @@ describe("MysqlInsightWorkerRepository", () => {
     ).resolves.toEqual({
       cursorAuditId: 0,
       discoveredMessages: 0,
-      discoveredUids: 0,
+      discoveredUidIds: [],
       skipped: true,
     });
   });
@@ -4967,6 +4977,7 @@ describe("MysqlInsightWorkerRepository", () => {
   it("archives terminal insight jobs before pruning them from the hot queue", async () => {
     const insertBuilders: InsertBuilderStub[] = [];
     const deleteBuilders: DeleteBuilderStub[] = [];
+    const selectBuilders: SelectBuilderStub[] = [];
     const db = {
       deleteFrom: vi.fn((table: string) => {
         const builder = createDeleteBuilder(
@@ -4984,7 +4995,23 @@ describe("MysqlInsightWorkerRepository", () => {
         insertBuilders.push(builder);
         return builder;
       }),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_insight_job"
+            || table === "xy_wap_embed_insight_job_archive"
+            ? [{ id: 701 }, { id: 702 }, { id: 703 }]
+            : [],
+          table,
+        );
+        selectBuilders.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n }), { table }),
+      ),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(
@@ -4997,20 +5024,79 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(db.insertInto).toHaveBeenCalledWith(
       "xy_wap_embed_insight_job_archive",
     );
-    expect(insertBuilders[0]?.columnsCalls[0]).toContain("archived_at");
-    expect(insertBuilders[0]?.expressionCalls).toBe(1);
-    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+    expect(selectBuilders[0]?.whereCalls).toContainEqual([
       "status",
       "in",
       ["succeeded", "failed"],
     ]);
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+    expect(selectBuilders[0]?.whereCalls).toContainEqual([
       "update_time",
       "<",
       new Date("2026-06-01T00:00:00.000Z"),
     ]);
-    expect(deleteBuilders[0]?.limitCalls).toEqual([5000]);
+    expect(selectBuilders[0]?.orderByCalls).toEqual([
+      ["update_time", "asc"],
+      ["id", "asc"],
+    ]);
+    expect(selectBuilders[0]?.forUpdateCalls).toBe(1);
+    expect(selectBuilders[0]?.skipLockedCalls).toBe(1);
+    expect(insertBuilders[0]?.columnsCalls[0]).toContain("archived_at");
+    expect(insertBuilders[0]?.expressionCalls).toBe(1);
+    expect(
+      insertBuilders[0]?.expressionSelectBuilders[0]?.whereCalls,
+    ).toContainEqual(["id", "in", [701, 702, 703]]);
+    expect(selectBuilders[1]?.table).toBe(
+      "xy_wap_embed_insight_job_archive",
+    );
+    expect(selectBuilders[1]?.whereCalls).toContainEqual([
+      "id",
+      "in",
+      [701, 702, 703],
+    ]);
+    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+      "id",
+      "in",
+      [701, 702, 703],
+    ]);
+    expect(deleteBuilders[0]?.limitCalls).toEqual([]);
+  });
+
+  it("keeps hot jobs when the exact archive ID set cannot be verified", async () => {
+    const deleteFrom = vi.fn((table: string) =>
+      createDeleteBuilder(async () => ({ numDeletedRows: 0n }), table),
+    );
+    const db = {
+      deleteFrom,
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(
+          async () => ({ numInsertedOrUpdatedRows: 1n }),
+          { table },
+        ),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_insight_job"
+            ? [{ id: 701 }, { id: 702 }]
+            : [{ id: 701 }],
+          table,
+        ),
+      ),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n }), { table }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.archiveTerminalJobs({
+        before: new Date("2026-06-01T00:00:00.000Z"),
+        limit: 5000,
+      }),
+    ).rejects.toThrow("INSIGHT_JOB_ARCHIVE_INCOMPLETE");
+    expect(deleteFrom).not.toHaveBeenCalled();
   });
 
   it("loads closable open sessions through the indexed next close timestamp", async () => {
@@ -6814,14 +6900,26 @@ function createInsertBuilder(
     executeTakeFirstOrThrow,
     execute: async () => [await executeTakeFirstOrThrow()],
     expressionCalls: 0,
+    expressionSelectBuilders: [] as SelectBuilderStub[],
     ignoreCalls: 0,
     valuesCalls: [] as Array<Record<string, unknown> | Record<string, unknown>[]>,
     columns: (columns: string[]) => {
       builder.columnsCalls.push(columns);
       return builder;
     },
-    expression: () => {
+    expression: (
+      callback?: (expressionBuilder: {
+        selectFrom: (table: string) => SelectBuilderStub;
+      }) => unknown,
+    ) => {
       builder.expressionCalls += 1;
+      callback?.({
+        selectFrom: (table: string) => {
+          const selectBuilder = createSelectBuilder([], table);
+          builder.expressionSelectBuilders.push(selectBuilder);
+          return selectBuilder;
+        },
+      });
       return builder;
     },
     ignore: () => {
@@ -6832,7 +6930,9 @@ function createInsertBuilder(
       options.onDuplicateKeyUpdate?.(values);
       return builder;
     },
-    values: (values: Record<string, unknown>) => {
+    values: (
+      values: Record<string, unknown> | Record<string, unknown>[],
+    ) => {
       builder.valuesCalls.push(values);
       options.onValues?.(values);
       return builder;

@@ -8,6 +8,8 @@ describe("insights worker runtime config", () => {
   it("defaults to a disabled standalone worker", () => {
     expect(parseInsightsWorkerRuntimeConfig({})).toEqual({
       batchSize: 200,
+      discoveryBatchSize: 1_000,
+      discoveryMaxBatchesPerTick: 20,
       enabled: false,
       intervalMs: 3_000,
       modelEnabled: false,
@@ -19,6 +21,8 @@ describe("insights worker runtime config", () => {
     expect(
       parseInsightsWorkerRuntimeConfig({
         INSIGHTS_WORKER_BATCH_SIZE: "500",
+        INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE: "2000",
+        INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: "12",
         INSIGHTS_WORKER_ENABLED: "true",
         INSIGHTS_WORKER_INTERVAL_MS: "10000",
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
@@ -28,6 +32,8 @@ describe("insights worker runtime config", () => {
       }),
     ).toEqual({
       batchSize: 500,
+      discoveryBatchSize: 2_000,
+      discoveryMaxBatchesPerTick: 12,
       enabled: true,
       intervalMs: 10_000,
       modelEnabled: true,
@@ -47,6 +53,14 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_INTERVAL_MS: "100",
       }),
     ).toThrow("INSIGHTS_WORKER_INTERVAL_MS must be at least 1000");
+
+    expect(() =>
+      parseInsightsWorkerRuntimeConfig({
+        INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: "0",
+      }),
+    ).toThrow(
+      "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK must be a positive integer",
+    );
 
     expect(() =>
       parseInsightsWorkerRuntimeConfig({

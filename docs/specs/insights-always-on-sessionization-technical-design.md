@@ -287,15 +287,17 @@ Repository 在现有 UID 任务领取方法上增加 `sessionize_uid` 分支：
 
 ### 6.3 UID 内消息处理
 
-本期不改造 UID Worker 内部消息处理协议。领取 `sessionize_uid` 后直接复用现有流程：
+领取 `sessionize_uid` 后复用现有切片逻辑，并把每条消息的业务写入与水位推进收敛到同一个受 claim token 保护的小事务：
 
 1. 从具体 UID 的 `(msgtime, id)` 水位调用现有 `listIncrementalMessages()`。
 2. 批量查询已有 `uid + source_message_id` 归属并跳过已处理消息。
-3. 对剩余消息继续调用现有 `sessionizeMessage()`、`findPlatformConversation()`、`resolveSessionId()` 和 `appendSessionMessage()`。
-4. 批次完成后按最后一条消息更新具体 UID 复合水位。
-5. 洞察开启时执行现有 open-session Live 补偿扫描；随后处理该 UID 的到期会话。
+3. 每条消息开始时锁定 `sessionize_uid` 任务行，并校验 `job_id + uid + status = running + locked_by + lease_until`。
+4. 对未处理消息继续调用现有 `sessionizeMessage()`、`findPlatformConversation()`、`resolveSessionId()` 和 `appendSessionMessage()`；已经归属或业务上无需切片的消息直接进入水位推进。
+5. 在同一事务内把具体 UID 复合水位推进到当前消息，提交后再处理下一条。后续消息遇到瞬时错误时，前面已完成消息不会重扫。
+6. `ER_DATA_TOO_LONG`、字段数值越界等确定性单行数据错误会先回滚该消息的业务写入，再在新的受围栏事务中只推进该消息水位并记录 WARN；连接中断、超时和死锁等瞬时错误不跳过。
+7. 洞察开启时执行现有 open-session Live 补偿扫描；随后处理该 UID 的到期会话。
 
-消息读取顺序、会话边界、迟到消息、消息归属写入和水位推进的现有实现均保持不变。本期不新增逐消息 claim 校验、transaction-scoped repository 或消息与水位原子重写。两类任务采用简单的重刷优先级：同 UID 存在已到执行时间的 `sync_messages pending/running` 时不领取 `sessionize_uid`；`sync_messages` 领取事务使用唯一幂等键 `sessionize_uid:{uid}` 锁定对应任务行，若其已经 `running` 则本轮不领取，否则在持有该短事务行锁时将 `sync_messages` 改为 `running`。互斥仅覆盖任务领取，不新增锁表、分布式锁或覆盖任务执行期的数据库锁。
+逐消息事务只覆盖当前消息和对应水位，不扩大为整批或跨分析表大事务。消息读取顺序、会话边界和迟到消息算法保持不变。两类任务采用简单的重刷优先级：同 UID 存在已到执行时间的 `sync_messages pending/running` 时不领取 `sessionize_uid`；`sync_messages` 领取事务使用唯一幂等键 `sessionize_uid:{uid}` 锁定对应任务行，若其已经 `running` 则本轮不领取，否则在持有该短事务行锁时将 `sync_messages` 改为 `running`。互斥不新增锁表或分布式锁。
 
 ### 6.4 到期处理与完成
 
@@ -690,7 +692,7 @@ GET /api/server/insights/sessions/:sessionId/messages
 `apps/backend/src/modules/insights/insights-worker-runtime.ts`
 
 - 启动三个独立 ticker。
-- 为 discovery batch、UID claim 数、UID 单次预算和 analysis concurrency 分别配置默认值。
+- discovery 使用独立的 `INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE=1000` 和 `INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK=20`，每个 tick 有界 drain；UID claim 数、UID 单次预算和 analysis concurrency 继续使用各自默认值。
 - `INSIGHTS_WORKER_UID_ALLOWLIST` 不进入发现或切片判断。
 
 ### 11.2 Backend API

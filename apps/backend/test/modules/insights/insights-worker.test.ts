@@ -65,12 +65,26 @@ describe("parseWorkerMessageAsset", () => {
       type: "file",
     });
   });
+
+  it("bounds asset keys and names to the database column length", () => {
+    const asset = parseWorkerMessageAsset({
+      content: JSON.stringify({
+        title: "名".repeat(600),
+        url: `https://example.com/${"a".repeat(600)}`,
+      }),
+      msgtype: "link",
+    });
+
+    expect(Array.from(asset?.key ?? "")).toHaveLength(512);
+    expect(Array.from(asset?.name ?? "")).toHaveLength(512);
+  });
 });
 
 function createRepository(
   overrides: Partial<InsightWorkerRepositoryPort> = {},
 ): InsightWorkerRepositoryPort {
   let createdSessionId: string | undefined;
+  let discoveryBatchIndex = 0;
   let repository: InsightWorkerRepositoryPort;
   const defaultSessionizationJob = {
     claimToken: "claim-9001",
@@ -93,12 +107,21 @@ function createRepository(
         : defaultSessionizationJob,
     ),
     completeSessionizationUidJob: vi.fn(async () => "deleted"),
-    discoverMessageUids: vi.fn(async () => ({
-      cursorAuditId: 9002,
-      discoveredMessages: 2,
-      discoveredUids: 1,
-      skipped: false,
-    })),
+    discoverMessageUids: vi.fn(async () =>
+      discoveryBatchIndex++ === 0
+        ? {
+            cursorAuditId: 9002,
+            discoveredMessages: 2,
+            discoveredUidIds: [9001],
+            skipped: false,
+          }
+        : {
+            cursorAuditId: 9002,
+            discoveredMessages: 0,
+            discoveredUidIds: [],
+            skipped: false,
+          }
+    ),
     enqueueClosableSessionUids: vi.fn(async () => 0),
     finalizeOpenSession: vi.fn(async () => true),
     markSessionizationUidJobFailed: vi.fn(async () => undefined),
@@ -219,7 +242,7 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(repository.discoverMessageUids).toHaveBeenCalledWith({
-      batchSize: 50,
+      batchSize: 1000,
       now: expect.any(Date),
     });
     expect(repository.enqueueClosableSessionUids).toHaveBeenCalledWith({
@@ -252,6 +275,64 @@ describe("InsightsWorkerService", () => {
       jobId: "sessionize-9001",
       uid: 9001,
     });
+  });
+
+  it("drains multiple bounded discovery batches in one tick", async () => {
+    const discoverMessageUids = vi
+      .fn()
+      .mockResolvedValueOnce({
+        cursorAuditId: 100,
+        discoveredMessages: 100,
+        discoveredUidIds: [9001, 9002],
+        skipped: false,
+      })
+      .mockResolvedValueOnce({
+        cursorAuditId: 200,
+        discoveredMessages: 100,
+        discoveredUidIds: [9001, 9003, 9004],
+        skipped: false,
+      })
+      .mockResolvedValueOnce({
+        cursorAuditId: 200,
+        discoveredMessages: 0,
+        discoveredUidIds: [],
+        skipped: false,
+      });
+    const repository = createRepository({ discoverMessageUids });
+    const service = new InsightsWorkerService(repository, {
+      discoveryBatchSize: 100,
+      discoveryMaxBatchesPerTick: 10,
+    });
+
+    await expect(service.runDiscoveryOnce()).resolves.toEqual({
+      cursorAuditId: 200,
+      discoveredMessages: 200,
+      discoveredUids: 4,
+      skipped: false,
+    });
+    expect(discoverMessageUids).toHaveBeenCalledTimes(3);
+    expect(discoverMessageUids).toHaveBeenCalledWith({
+      batchSize: 100,
+      now: expect.any(Date),
+    });
+  });
+
+  it("caps discovery work per tick", async () => {
+    const discoverMessageUids = vi.fn(async () => ({
+      cursorAuditId: 100,
+      discoveredMessages: 100,
+      discoveredUidIds: [9001],
+      skipped: false,
+    }));
+    const repository = createRepository({ discoverMessageUids });
+    const service = new InsightsWorkerService(repository, {
+      discoveryBatchSize: 100,
+      discoveryMaxBatchesPerTick: 3,
+    });
+
+    await service.runDiscoveryOnce();
+
+    expect(discoverMessageUids).toHaveBeenCalledTimes(3);
   });
 
   it("runs multiple sessionization uid jobs in one worker tick", async () => {
@@ -472,6 +553,137 @@ describe("InsightsWorkerService", () => {
     );
   });
 
+  it("commits each successful message cursor before a later transient failure", async () => {
+    const transientError = Object.assign(new Error("connection lost"), {
+      code: "PROTOCOL_CONNECTION_LOST",
+    });
+    const appendSessionMessage = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(transientError);
+    const repository = createRepository({ appendSessionMessage });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runSessionizationOnce();
+
+    expect(repository.updateCursor).toHaveBeenCalledTimes(1);
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9001,
+      cursorMsgtime: 1_780_244_000_000,
+      uid: 9001,
+    });
+    expect(repository.markSessionizationUidJobFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ claimToken: "claim-9001" }),
+      transientError,
+    );
+    expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
+  });
+
+  it("skips deterministic bad rows and continues sessionization", async () => {
+    const dataTooLongError = Object.assign(new Error("Data too long"), {
+      code: "ER_DATA_TOO_LONG",
+      errno: 1406,
+    });
+    const messages = [
+      {
+        chatType: 1,
+        content: JSON.stringify({ content: "第一条" }),
+        fromType: 2,
+        id: "9001",
+        msgtime: 1_780_244_000_000,
+        msgtype: "text",
+        platform: 5,
+        uid: 9001,
+        thirdExternalId: "external-1",
+        thirdGroupId: "",
+        thirdUserId: "user-1",
+      },
+      {
+        chatType: 1,
+        content: JSON.stringify({ content: "坏消息" }),
+        fromType: 1,
+        id: "9002",
+        msgtime: 1_780_244_060_000,
+        msgtype: "text",
+        platform: 5,
+        uid: 9001,
+        thirdExternalId: "external-1",
+        thirdGroupId: "",
+        thirdUserId: "user-1",
+      },
+      {
+        chatType: 1,
+        content: JSON.stringify({ content: "第三条" }),
+        fromType: 1,
+        id: "9003",
+        msgtime: 1_780_244_120_000,
+        msgtype: "text",
+        platform: 5,
+        uid: 9001,
+        thirdExternalId: "external-1",
+        thirdGroupId: "",
+        thirdUserId: "user-1",
+      },
+    ];
+    const appendSessionMessage = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(dataTooLongError)
+      .mockResolvedValueOnce(undefined);
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const repository = createRepository({
+      appendSessionMessage,
+      listIncrementalMessages: vi.fn(async () => messages),
+    });
+    const service = new InsightsWorkerService(repository, { logger });
+
+    await service.runSessionizationOnce();
+
+    expect(appendSessionMessage).toHaveBeenCalledTimes(3);
+    expect(repository.updateCursor).toHaveBeenCalledTimes(3);
+    expect(repository.updateCursor).toHaveBeenLastCalledWith({
+      cursorAuditId: 9003,
+      cursorMsgtime: 1_780_244_120_000,
+      uid: 9001,
+    });
+    expect(repository.completeSessionizationUidJob).toHaveBeenCalled();
+    expect(repository.markSessionizationUidJobFailed).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "9002",
+        uid: 9001,
+      }),
+      "会话洞察 worker 跳过无法持久化的消息",
+    );
+  });
+
+  it("does not advance a skipped message after losing the database claim", async () => {
+    const dataTooLongError = Object.assign(new Error("Data too long"), {
+      code: "ER_DATA_TOO_LONG",
+      errno: 1406,
+    });
+    const withSessionizationClaim = vi
+      .fn()
+      .mockRejectedValueOnce(dataTooLongError)
+      .mockRejectedValueOnce(new Error("SESSIONIZATION_UID_CLAIM_LOST"));
+    const repository = createRepository({ withSessionizationClaim });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runSessionizationOnce();
+
+    expect(withSessionizationClaim).toHaveBeenCalledTimes(2);
+    expect(repository.updateCursor).not.toHaveBeenCalled();
+    expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
+    expect(repository.markSessionizationUidJobFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ claimToken: "claim-9001" }),
+      expect.objectContaining({ message: "SESSIONIZATION_UID_CLAIM_LOST" }),
+    );
+  });
+
   it("sessionizes incremental messages and creates a live analysis job", async () => {
     const repository = createRepository();
     const service = new InsightsWorkerService(repository, { batchSize: 50 });
@@ -495,6 +707,7 @@ describe("InsightsWorkerService", () => {
     );
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
     expect(repository.getSessionizationConfig).toHaveBeenCalledTimes(1);
+    expect(repository.getFeatureConfig).toHaveBeenCalledTimes(1);
     expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
       expect.objectContaining({
         analysisScope: "all",
@@ -601,12 +814,12 @@ describe("InsightsWorkerService", () => {
     });
   });
 
-  it("logs terminal job archive failures without blocking the worker pass", async () => {
-    const repository = createRepository({
-      archiveTerminalJobs: vi.fn(async () => {
-        throw new Error("archive failed");
-      }),
+  it("retries terminal job archive failures after a short backoff", async () => {
+    let now = Date.parse("2026-07-24T00:00:00.000Z");
+    const archiveTerminalJobs = vi.fn(async () => {
+      throw new Error("archive failed");
     });
+    const repository = createRepository({ archiveTerminalJobs });
     const logger = {
       error: vi.fn(),
       info: vi.fn(),
@@ -614,17 +827,45 @@ describe("InsightsWorkerService", () => {
     const service = new InsightsWorkerService(repository, {
       batchSize: 50,
       logger,
+      now: () => now,
     });
 
     await service.runOnce();
+    await service.runAnalysisOnce();
+    now += 5 * 60_000;
+    await service.runAnalysisOnce();
 
     expect(repository.updateCursor).toHaveBeenCalled();
+    expect(archiveTerminalJobs).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         err: expect.any(Error),
       }),
       "会话洞察 worker 归档终态任务失败",
     );
+  });
+
+  it("attempts terminal job archival at most once per hour", async () => {
+    let now = Date.parse("2026-07-24T00:00:00.000Z");
+    const archiveTerminalJobs = vi.fn(async () => ({
+      archivedJobs: 0,
+      deletedJobs: 0,
+    }));
+    const repository = createRepository({ archiveTerminalJobs });
+    const service = new InsightsWorkerService(repository, {
+      now: () => now,
+    });
+
+    await service.runAnalysisOnce();
+    await service.runAnalysisOnce();
+    now += 60 * 60_000;
+    await service.runAnalysisOnce();
+
+    expect(archiveTerminalJobs).toHaveBeenCalledTimes(2);
+    expect(archiveTerminalJobs).toHaveBeenNthCalledWith(1, {
+      before: new Date("2026-06-24T00:00:00.000Z"),
+      limit: 5000,
+    });
   });
 
   it("does not create a live analysis job before policy thresholds are reached", async () => {
@@ -1257,6 +1498,7 @@ describe("InsightsWorkerService", () => {
     expect(repository.listIncrementalMessages).toHaveBeenCalled();
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
     expect(repository.updateCursor).toHaveBeenCalled();
+    expect(repository.getFeatureConfig).toHaveBeenCalledTimes(1);
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.completeSessionizationUidJob).toHaveBeenCalled();
   });

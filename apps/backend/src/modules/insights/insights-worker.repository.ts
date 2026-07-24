@@ -26,7 +26,7 @@ import type {
   InsightWorkerPipelineRuntimeReport,
   InsightWorkerRepositoryPort,
   InsightWorkerSessionizationConfig,
-  DiscoverMessageUidsResult,
+  DiscoverMessageUidsBatchResult,
   FinalizeOpenSessionInput,
 } from "./insights-worker.js";
 import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js";
@@ -1252,7 +1252,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async discoverMessageUids(input: {
     batchSize: number;
     now: Date;
-  }): Promise<DiscoverMessageUidsResult> {
+  }): Promise<DiscoverMessageUidsBatchResult> {
     return this.db.transaction().execute(async (trx) => {
       const globalCursor = await trx
         .selectFrom("xy_wap_embed_insight_sync_cursor")
@@ -1275,7 +1275,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           return {
             cursorAuditId: 0,
             discoveredMessages: 0,
-            discoveredUids: 0,
+            discoveredUidIds: [],
             skipped: true,
           };
         }
@@ -1295,7 +1295,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         return {
           cursorAuditId: parseNumber(globalCursor.cursor_audit_id),
           discoveredMessages: 0,
-          discoveredUids: 0,
+          discoveredUidIds: [],
           skipped: false,
         };
       }
@@ -1307,20 +1307,43 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       const baselineAuditId = parseNumber(globalCursor.cursor_audit_id);
       const uids = Array.from(new Set(messages.map((message) => parseNumber(message.uid))));
 
-      for (const uid of uids) {
-        await trx
-          .insertInto("xy_wap_embed_insight_sync_cursor")
-          .values({
+      await trx
+        .insertInto("xy_wap_embed_insight_sync_cursor")
+        .values(
+          uids.map((uid) => ({
             create_time: globalCursor.create_time,
             cursor_audit_id: baselineAuditId,
             cursor_msgtime: baselineMsgtime as number,
             source: cursorSource,
             uid,
-          })
-          .ignore()
-          .executeTakeFirst();
-        await this.mergeSessionizationUidJob(trx, uid, input.now);
-      }
+          })),
+        )
+        .ignore()
+        .executeTakeFirst();
+      await trx
+        .insertInto("xy_wap_embed_insight_job")
+        .values(
+          uids.map((uid) => ({
+            analysis_scope: "all",
+            idempotency_key: `${sessionizationUidJobType}:${uid}`,
+            job_type: sessionizationUidJobType,
+            priority: 5,
+            rescan_task_id: null,
+            run_after: input.now,
+            status: "pending",
+            target_id: String(uid),
+            target_type: "uid",
+            uid,
+          })),
+        )
+        .onDuplicateKeyUpdate({
+          status: sql<string>`case
+            when status in ('succeeded', 'failed') then 'pending'
+            else status
+          end`,
+          update_time: input.now,
+        })
+        .executeTakeFirst();
 
       const cursorAuditId = parseNumber(messages.at(-1)?.id);
       await trx
@@ -1337,7 +1360,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return {
         cursorAuditId,
         discoveredMessages: messages.length,
-        discoveredUids: uids.length,
+        discoveredUidIds: uids,
         skipped: false,
       };
     });
@@ -1805,74 +1828,105 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     limit: number;
   }): Promise<{ archivedJobs: number; deletedJobs: number }> {
     const boundedLimit = Math.max(1, Math.min(Math.floor(input.limit), 10_000));
-    const archiveResult = await this.db
-      .insertInto("xy_wap_embed_insight_job_archive")
-      .columns([
-        "id",
-        "uid",
-        "rescan_task_id",
-        "job_type",
-        "analysis_scope",
-        "target_type",
-        "target_id",
-        "status",
-        "priority",
-        "run_after",
-        "attempt_count",
-        "max_attempts",
-        "locked_by",
-        "lease_until",
-        "idempotency_key",
-        "error_code",
-        "error_message",
-        "create_time",
-        "update_time",
-        "archived_at",
-      ])
-      .expression((eb) =>
-        eb
-          .selectFrom("xy_wap_embed_insight_job")
-          .select([
-            "id",
-            "uid",
-            "rescan_task_id",
-            "job_type",
-            "analysis_scope",
-            "target_type",
-            "target_id",
-            "status",
-            "priority",
-            "run_after",
-            "attempt_count",
-            "max_attempts",
-            "locked_by",
-            "lease_until",
-            "idempotency_key",
-            "error_code",
-            "error_message",
-            "create_time",
-            "update_time",
-            sql<Date>`CURRENT_TIMESTAMP`.as("archived_at"),
-          ])
-          .where("status", "in", terminalJobStatuses)
-          .where("update_time", "<", input.before)
-          .orderBy("id", "asc")
-          .limit(boundedLimit)
-      )
-      .ignore()
-      .executeTakeFirst() as InsertResult;
+    return this.db.transaction().execute(async (trx) => {
+      const jobs = await trx
+        .selectFrom("xy_wap_embed_insight_job")
+        .select("id")
+        .where("status", "in", terminalJobStatuses)
+        .where("update_time", "<", input.before)
+        .orderBy("update_time", "asc")
+        .orderBy("id", "asc")
+        .limit(boundedLimit)
+        .forUpdate()
+        .skipLocked()
+        .execute() as Array<{ id: number | string }>;
+      const jobIds = jobs.map((job) => parseNumber(job.id));
 
-    const deleteResult = await this.db
-      .deleteFrom("xy_wap_embed_insight_job")
-      .where("status", "in", terminalJobStatuses)
-      .where("update_time", "<", input.before)
-      .limit(boundedLimit)
-      .executeTakeFirst() as DeleteResult;
+      if (jobIds.length === 0) {
+        return {
+          archivedJobs: 0,
+          deletedJobs: 0,
+        };
+      }
 
-    return {
-      archivedJobs: parseAffectedCount(archiveResult.numInsertedOrUpdatedRows),
-      deletedJobs: parseAffectedCount(deleteResult.numDeletedRows ?? deleteResult.numAffectedRows),
-    };
+      const archiveResult = await trx
+        .insertInto("xy_wap_embed_insight_job_archive")
+        .columns([
+          "id",
+          "uid",
+          "rescan_task_id",
+          "job_type",
+          "analysis_scope",
+          "target_type",
+          "target_id",
+          "status",
+          "priority",
+          "run_after",
+          "attempt_count",
+          "max_attempts",
+          "locked_by",
+          "lease_until",
+          "idempotency_key",
+          "error_code",
+          "error_message",
+          "create_time",
+          "update_time",
+          "archived_at",
+        ])
+        .expression((eb) =>
+          eb
+            .selectFrom("xy_wap_embed_insight_job")
+            .select([
+              "id",
+              "uid",
+              "rescan_task_id",
+              "job_type",
+              "analysis_scope",
+              "target_type",
+              "target_id",
+              "status",
+              "priority",
+              "run_after",
+              "attempt_count",
+              "max_attempts",
+              "locked_by",
+              "lease_until",
+              "idempotency_key",
+              "error_code",
+              "error_message",
+              "create_time",
+              "update_time",
+              sql<Date>`CURRENT_TIMESTAMP`.as("archived_at"),
+            ])
+            .where("id", "in", jobIds)
+        )
+        .ignore()
+        .executeTakeFirst() as InsertResult;
+
+      const archivedJobs = await trx
+        .selectFrom("xy_wap_embed_insight_job_archive")
+        .select("id")
+        .where("id", "in", jobIds)
+        .execute() as Array<{ id: number | string }>;
+      const archivedJobIds = new Set(
+        archivedJobs.map((job) => parseNumber(job.id)),
+      );
+      if (jobIds.some((jobId) => !archivedJobIds.has(jobId))) {
+        throw new Error("INSIGHT_JOB_ARCHIVE_INCOMPLETE");
+      }
+
+      const deleteResult = await trx
+        .deleteFrom("xy_wap_embed_insight_job")
+        .where("id", "in", jobIds)
+        .executeTakeFirst() as DeleteResult;
+
+      return {
+        archivedJobs: parseAffectedCount(archiveResult.numInsertedOrUpdatedRows),
+        deletedJobs: parseAffectedCount(
+          deleteResult.numDeletedRows ?? deleteResult.numAffectedRows,
+        ),
+      };
+    });
   }
 
   async getCurrentAnalysisOutput(input: {

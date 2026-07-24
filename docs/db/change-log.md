@@ -2,6 +2,19 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-24
+
+- Added `xy_wap_embed_insight_job.idx_insight_job_archive_scan` so hourly terminal-job archival can select bounded batches by status and update time without scanning the hot queue.
+- Terminal-job archival now locks one exact ID batch and uses the same IDs for archive insertion and hot-table deletion.
+- Successful archive attempts wait one hour before the next scan; failed attempts retry after five minutes instead of waiting for the full hourly interval or retrying every Worker tick.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_job
+  ADD KEY idx_insight_job_archive_scan (status, update_time, id);
+```
+
 ## 2026-07-23
 
 - Replaced the retired `maintain_insight_uid` and `cleanup_disabled_insights` insight-job type documentation with the temporary `sessionize_uid` task used by always-on logical-session generation.

@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
+  KEY idx_insight_job_archive_scan (status, update_time, id),
   KEY idx_insight_job_claim (target_type, job_type, status, run_after ASC, priority DESC, id ASC),
   KEY idx_insight_job_expired_lease (status, lease_until, id),
   KEY idx_insight_job_rescan_task (rescan_task_id),

@@ -21,6 +21,8 @@ import os from "node:os";
 
 export type InsightsWorkerRuntimeConfig = {
   batchSize: number;
+  discoveryBatchSize: number;
+  discoveryMaxBatchesPerTick: number;
   enabled: boolean;
   intervalMs: number;
   modelEnabled: boolean;
@@ -29,6 +31,8 @@ export type InsightsWorkerRuntimeConfig = {
 
 type WorkerRuntimeEnv = {
   INSIGHTS_WORKER_BATCH_SIZE?: string;
+  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE?: string;
+  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK?: string;
   INSIGHTS_WORKER_ENABLED?: string;
   INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
@@ -51,6 +55,16 @@ export function parseInsightsWorkerRuntimeConfig(
       env.INSIGHTS_WORKER_BATCH_SIZE,
       "INSIGHTS_WORKER_BATCH_SIZE",
       200,
+    ),
+    discoveryBatchSize: parsePositiveInteger(
+      env.INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE,
+      "INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE",
+      1_000,
+    ),
+    discoveryMaxBatchesPerTick: parsePositiveInteger(
+      env.INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK,
+      "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK",
+      20,
     ),
     enabled: parseBoolean(env.INSIGHTS_WORKER_ENABLED),
     intervalMs: parseMinimumInteger(
@@ -93,6 +107,8 @@ export function createInsightsWorkerRuntime(input: {
     : undefined;
   const service = new InsightsWorkerService(repository, {
     batchSize: config.batchSize,
+    discoveryBatchSize: config.discoveryBatchSize,
+    discoveryMaxBatchesPerTick: config.discoveryMaxBatchesPerTick,
     logger: input.logger,
     model,
     observability,

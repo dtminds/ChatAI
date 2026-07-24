@@ -11,6 +11,8 @@ export const EnvSchema = Type.Object({
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
   INSIGHTS_WORKER_BATCH_SIZE: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: Type.Optional(Type.String()),
   INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
   INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
   INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),

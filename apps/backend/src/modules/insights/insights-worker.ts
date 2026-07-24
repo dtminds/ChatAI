@@ -170,6 +170,13 @@ export type DiscoverMessageUidsResult = {
   skipped: boolean;
 };
 
+export type DiscoverMessageUidsBatchResult = Omit<
+  DiscoverMessageUidsResult,
+  "discoveredUids"
+> & {
+  discoveredUidIds: number[];
+};
+
 export type CreateAnalyzeJobInput = {
   analysisScope: InsightRescanAnalysisScope;
   jobType: "analyze_session" | "reanalyze_session";
@@ -371,7 +378,10 @@ export type InsightWorkerRepositoryPort = {
   completeSessionizationUidJob(input: ClaimedSessionizationUidJob): Promise<"deleted" | "pending">;
   createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string>;
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
-  discoverMessageUids(input: { batchSize: number; now: Date }): Promise<DiscoverMessageUidsResult>;
+  discoverMessageUids(input: {
+    batchSize: number;
+    now: Date;
+  }): Promise<DiscoverMessageUidsBatchResult>;
   enqueueClosableSessionUids(input: { limit: number; now: number }): Promise<number>;
   finalizeOpenSession(input: FinalizeOpenSessionInput): Promise<boolean>;
   findOpenSession(input: {
@@ -505,21 +515,35 @@ const PREVIOUS_SESSION_LOOKBACK_HOURS = 48;
 const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
+const TERMINAL_JOB_ARCHIVE_INTERVAL_MS = 60 * 60_000;
+const TERMINAL_JOB_ARCHIVE_RETRY_DELAY_MS = 5 * 60_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
 const UID_MAINTENANCE_JOBS_PER_TICK = 10;
 const SESSIONIZATION_CLAIM_HEARTBEAT_MS = 60_000;
 const ANALYSIS_RETRY_DELAY_MS = 60_000;
 const SINGLE_CHAT_TYPE = 1;
 const APPLICATION_MESSAGE_BIND_TYPE = 2;
+const ASSET_TEXT_MAX_LENGTH = 512;
+const SKIPPABLE_SESSIONIZATION_ERROR_CODES = new Set([
+  "ER_DATA_TOO_LONG",
+  "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD",
+  "ER_WARN_DATA_OUT_OF_RANGE",
+]);
+const SKIPPABLE_SESSIONIZATION_ERROR_NUMBERS = new Set([1264, 1366, 1406]);
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
+  private readonly discoveryBatchSize: number;
+  private readonly discoveryMaxBatchesPerTick: number;
   private readonly model?: InsightSessionAnalyzer;
+  private nextTerminalJobArchiveAttemptAt = 0;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
     options: {
       batchSize?: number;
+      discoveryBatchSize?: number;
+      discoveryMaxBatchesPerTick?: number;
       logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
       now?: () => number;
@@ -527,6 +551,8 @@ export class InsightsWorkerService {
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
+    this.discoveryBatchSize = options.discoveryBatchSize ?? 1_000;
+    this.discoveryMaxBatchesPerTick = options.discoveryMaxBatchesPerTick ?? 20;
     this.logger = options.logger;
     this.model = options.model;
     this.now = options.now ?? Date.now;
@@ -544,10 +570,38 @@ export class InsightsWorkerService {
   }
 
   async runDiscoveryOnce() {
-    const result = await this.repository.discoverMessageUids({
-      batchSize: this.batchSize,
-      now: new Date(this.now()),
-    });
+    const discoveredUidIds = new Set<number>();
+    const result: DiscoverMessageUidsResult = {
+      cursorAuditId: 0,
+      discoveredMessages: 0,
+      discoveredUids: 0,
+      skipped: false,
+    };
+
+    for (
+      let batchIndex = 0;
+      batchIndex < this.discoveryMaxBatchesPerTick;
+      batchIndex += 1
+    ) {
+      const batch = await this.repository.discoverMessageUids({
+        batchSize: this.discoveryBatchSize,
+        now: new Date(this.now()),
+      });
+      result.discoveredMessages += batch.discoveredMessages;
+      for (const uid of batch.discoveredUidIds) {
+        discoveredUidIds.add(uid);
+      }
+      result.discoveredUids = discoveredUidIds.size;
+      result.skipped ||= batch.skipped;
+      if (!batch.skipped) {
+        result.cursorAuditId = batch.cursorAuditId;
+      }
+
+      if (batch.skipped || batch.discoveredMessages === 0) {
+        break;
+      }
+    }
+
     this.observability?.increment(
       "discovery",
       "discoveredMessages",
@@ -623,15 +677,25 @@ export class InsightsWorkerService {
       return;
     }
 
-    const before = new Date(Date.now() - TERMINAL_JOB_ARCHIVE_RETENTION_DAYS * 24 * 60 * 60_000);
+    const now = this.now();
+    if (now < this.nextTerminalJobArchiveAttemptAt) {
+      return;
+    }
+    const before = new Date(
+      now - TERMINAL_JOB_ARCHIVE_RETENTION_DAYS * 24 * 60 * 60_000,
+    );
 
     try {
       await this.repository.archiveTerminalJobs({
         before,
         limit: TERMINAL_JOB_ARCHIVE_LIMIT,
       });
+      this.nextTerminalJobArchiveAttemptAt =
+        this.now() + TERMINAL_JOB_ARCHIVE_INTERVAL_MS;
       this.observability?.recover("archive", "analysis");
     } catch (error) {
+      this.nextTerminalJobArchiveAttemptAt =
+        this.now() + TERMINAL_JOB_ARCHIVE_RETRY_DELAY_MS;
       this.observability?.increment("analysis", "archiveFailures");
       if (this.observability) {
         this.observability.event({
@@ -652,6 +716,7 @@ export class InsightsWorkerService {
   private async scheduleLiveAnalysisForOpenSessions(
     activeUids: Set<number>,
     sessionizationClaim?: ClaimedSessionizationUidJob,
+    insightEnabled?: boolean,
   ) {
     const sessions = await this.repository.listOpenSessionsForLiveAnalysis({
       activeUids,
@@ -666,7 +731,7 @@ export class InsightsWorkerService {
           occurredAt: Date.now(),
           sessionId: session.sessionId,
           uid: session.uid,
-        }, repository);
+        }, repository, insightEnabled);
       const scheduled = sessionizationClaim
         ? await this.repository.withSessionizationClaim(
             sessionizationClaim,
@@ -902,40 +967,53 @@ export class InsightsWorkerService {
 
     for (const message of messages) {
       assertClaimActive();
-      if (existingByMessageId.has(message.id)) {
-        continue;
-      }
+      try {
+        const sessionizedMessage = await this.repository.withSessionizationClaim(
+          job,
+          async (repository) => {
+            const sessionized = existingByMessageId.has(message.id)
+              ? undefined
+              : await this.sessionizeMessage(message, {
+                  config: sessionizationConfig,
+                  insightEnabled: featureConfig.insightEnabled,
+                  repository,
+                });
+            await repository.updateCursor({
+              cursorAuditId: Number(message.id),
+              cursorMsgtime: message.msgtime,
+              uid,
+            });
+            return sessionized;
+          },
+        );
+        if (sessionizedMessage) {
+          sessionizedMessages += 1;
+        }
+      } catch (error) {
+        if (!isSkippableSessionizationMessageError(error)) {
+          throw error;
+        }
 
-      if (await this.repository.withSessionizationClaim(
-        job,
-        (repository) => this.sessionizeMessage(message, {
-          config: sessionizationConfig,
-          repository,
-        }),
-      )) {
-        sessionizedMessages += 1;
+        assertClaimActive();
+        await this.repository.withSessionizationClaim(
+          job,
+          (repository) => repository.updateCursor({
+            cursorAuditId: Number(message.id),
+            cursorMsgtime: message.msgtime,
+            uid,
+          }),
+        );
+        this.recordSkippedSessionizationMessage(message, error);
       }
       assertClaimActive();
     }
 
     const lastMessage = messages.at(-1);
 
-    if (lastMessage) {
-      assertClaimActive();
-      await this.repository.withSessionizationClaim(
-        job,
-        (repository) => repository.updateCursor({
-          cursorAuditId: Number(lastMessage.id),
-          cursorMsgtime: lastMessage.msgtime,
-          uid,
-        }),
-      );
-    }
-
     const activeUids = new Set([uid]);
     if (featureConfig.insightEnabled) {
       assertClaimActive();
-      await this.scheduleLiveAnalysisForOpenSessions(activeUids, job);
+      await this.scheduleLiveAnalysisForOpenSessions(activeUids, job, true);
     }
     assertClaimActive();
     const latestCursor = lastMessage
@@ -1237,6 +1315,7 @@ export class InsightsWorkerService {
     message: InsightWorkerMessage,
     options: {
       config?: InsightWorkerSessionizationConfig;
+      insightEnabled?: boolean;
       repository?: InsightWorkerRepositoryPort;
       skipLiveAnalysis?: boolean;
     } = {},
@@ -1307,7 +1386,7 @@ export class InsightsWorkerService {
         occurredAt: input.occurredAt,
         sessionId: session.sessionId,
         uid: conversation.uid,
-      }, repository);
+      }, repository, options.insightEnabled);
     }
 
     return {
@@ -1321,9 +1400,11 @@ export class InsightsWorkerService {
   private async createLiveAnalyzeJobIfNeeded(
     input: LiveAnalyzeCandidate,
     repository = this.repository,
+    insightEnabled?: boolean,
   ) {
-    const featureConfig = await repository.getFeatureConfig(input.uid);
-    if (!featureConfig.insightEnabled) {
+    const enabled = insightEnabled
+      ?? (await repository.getFeatureConfig(input.uid)).insightEnabled;
+    if (!enabled) {
       return false;
     }
 
@@ -1347,6 +1428,33 @@ export class InsightsWorkerService {
     });
 
     return true;
+  }
+
+  private recordSkippedSessionizationMessage(
+    message: InsightWorkerMessage,
+    error: unknown,
+  ) {
+    const payload = {
+      errorCode: getWorkerErrorCode(error),
+      messageId: message.id,
+      ...safeErrorPayload(error),
+    };
+    if (this.observability) {
+      this.observability.event({
+        errorCode: payload.errorCode,
+        eventCode: "insights_worker.sessionization_message_skipped",
+        level: "warn",
+        message: "会话洞察 Worker 跳过无法持久化的消息",
+        payload,
+        pipeline: "sessionization",
+        uid: message.uid,
+      });
+    } else {
+      this.logger?.warn?.(
+        { ...payload, uid: message.uid },
+        "会话洞察 worker 跳过无法持久化的消息",
+      );
+    }
   }
 
   private async appendPreContextMessages(input: {
@@ -2381,11 +2489,11 @@ export function parseWorkerMessageAsset(
       normalizedUrl ||
       "未知链接";
 
-    return {
+    return constrainWorkerMessageAsset({
       key: normalizedUrl || `link:${title}`,
       name: title,
       type: "link",
-    };
+    });
   }
 
   if (message.msgtype === "weapp") {
@@ -2405,11 +2513,11 @@ export function parseWorkerMessageAsset(
       "未知小程序";
     const key = [appId, normalizedPath].filter(Boolean).join(":");
 
-    return {
+    return constrainWorkerMessageAsset({
       key: key || `miniapp:${title}`,
       name: title,
       type: "miniapp",
-    };
+    });
   }
 
   if (message.msgtype === "file") {
@@ -2423,14 +2531,51 @@ export function parseWorkerMessageAsset(
       fileUrl ||
       fileName;
 
-    return {
+    return constrainWorkerMessageAsset({
       key: stableId,
       name: fileName,
       type: "file",
-    };
+    });
   }
 
   return undefined;
+}
+
+function constrainWorkerMessageAsset(
+  asset: NonNullable<AppendSessionMessageInput["asset"]>,
+) {
+  return {
+    ...asset,
+    key: truncateByCodePoint(asset.key, ASSET_TEXT_MAX_LENGTH),
+    name: truncateByCodePoint(asset.name, ASSET_TEXT_MAX_LENGTH),
+  };
+}
+
+function truncateByCodePoint(value: string, maxLength: number) {
+  return Array.from(value).slice(0, maxLength).join("");
+}
+
+function isSkippableSessionizationMessageError(error: unknown) {
+  let current = error;
+  const visited = new Set<unknown>();
+
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const candidate = current as {
+      cause?: unknown;
+      code?: unknown;
+      errno?: unknown;
+    };
+    if (
+      SKIPPABLE_SESSIONIZATION_ERROR_CODES.has(String(candidate.code ?? ""))
+      || SKIPPABLE_SESSIONIZATION_ERROR_NUMBERS.has(Number(candidate.errno))
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+
+  return false;
 }
 
 function normalizeAssetUrlWithoutQuery(value: string) {

@@ -8,6 +8,7 @@ import { registerAiHostingRoutes as registerKbDocRoutes } from "./modules/ai-hos
 import { registerKbRoutes } from "./modules/ai-hosting/kb.routes.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
+import { registerUserMemoryRoutes } from "./modules/ai-hosting/user-memory/user-memory.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
@@ -47,6 +48,7 @@ export async function buildApp() {
   await registerAuthRoutes(app);
   await registerAiHostingRoutes(app);
   await registerAgentLearningRoutes(app);
+  await registerUserMemoryRoutes(app);
   await registerKbDocRoutes(app);
   await registerKbChunkRoutes(app);
   await registerKbAttachmentRoutes(app);

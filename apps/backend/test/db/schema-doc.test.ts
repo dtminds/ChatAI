@@ -26,6 +26,27 @@ describe("database schema document", () => {
     expect(logicalSessionTable).not.toContain("final_snapshot_id");
   });
 
+  it("defines the bounded Agent user-memory schema without backlog state", () => {
+    const config = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory_config");
+    const memory = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory");
+    const run = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory_run");
+    const item = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory_run_item");
+    const logicalSession = extractCreateTable(schemaSql, "xy_wap_embed_logical_session");
+
+    expect(config).toContain("UNIQUE KEY uk_agent_user_memory_config_uid (uid)");
+    expect(memory).toContain("UNIQUE KEY uk_agent_user_memory_customer");
+    expect(run).toContain("UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date)");
+    expect(run).toContain("candidate_session_limit INT UNSIGNED NOT NULL");
+    expect(run).toContain("KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id)");
+    expect(run).toContain("KEY idx_agent_user_memory_run_terminal (status, finished_at, id)");
+    expect(item).toContain("UNIQUE KEY uk_agent_user_memory_run_customer");
+    expect(logicalSession).toContain("KEY idx_logical_session_uid_ended_message (uid, ended_at, message_count, id)");
+
+    for (const table of [config, memory, run, item]) {
+      expect(table).not.toMatch(/pending_after|pending_through|discovery_cursor|cooldown_until|selection_order_at/);
+    }
+  });
+
   it("keeps analysis policy enabled column used by runtime queries", () => {
     const analysisPolicyTable = extractCreateTable(schemaSql, "xy_wap_embed_insight_analysis_policy");
 

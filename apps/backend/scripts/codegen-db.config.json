@@ -56,6 +56,10 @@
     "xy_wap_embed_agent_kb",
     "xy_wap_embed_agent_kb_doc",
     "xy_wap_embed_agent_kb_chunk",
-    "xy_wap_embed_agent_kb_learning_candidate"
+    "xy_wap_embed_agent_kb_learning_candidate",
+    "xy_wap_embed_agent_user_memory_config",
+    "xy_wap_embed_agent_user_memory",
+    "xy_wap_embed_agent_user_memory_run",
+    "xy_wap_embed_agent_user_memory_run_item"
   ]
 }

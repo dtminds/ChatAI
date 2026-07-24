@@ -4,6 +4,7 @@ export * from "./ai-hosting/kb.js";
 export * from "./ai-hosting/kb-attachment.js";
 export * from "./ai-hosting/kb-chunk.js";
 export * from "./ai-hosting/kb-doc.js";
+export * from "./ai-hosting/user-memory.js";
 export * from "./auth/dto.js";
 export * from "./chat/dto.js";
 export * from "./chat/enums.js";

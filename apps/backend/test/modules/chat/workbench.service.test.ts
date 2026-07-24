@@ -137,6 +137,40 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("looks up one accessible customer by exact external id and authenticated scope", async () => {
+    const javaClient = createJavaClient();
+    const getAccessibleCustomer = vi.fn().mockResolvedValue(undefined);
+    const service = createWorkbenchService(
+      {
+        getAccessibleCustomer,
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getAccessibleCustomer("101", {
+        scope: "mine",
+        thirdExternalUserId: "external-target",
+      }),
+    ).resolves.toBeUndefined();
+    expect(getAccessibleCustomer).toHaveBeenCalledWith({
+      platform: 5,
+      scope: "mine",
+      subUserId: "101",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    });
+  });
+
   it("loads tenant-level customer recent conversation", async () => {
     const javaClient = createJavaClient();
     const getCustomerLastConversation = vi.fn().mockResolvedValue({

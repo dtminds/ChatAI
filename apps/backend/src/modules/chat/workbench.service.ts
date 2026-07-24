@@ -64,6 +64,7 @@ import type {
   WorkbenchVoiceTranscriptionRequest,
   WorkbenchVoiceTranscriptionResponse,
   WorkbenchCustomerListResponse,
+  WorkbenchCustomerSummaryDto,
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
   MaterialCollectionBizType,
@@ -445,6 +446,16 @@ export type WorkbenchService = {
       seatIds?: string[];
     },
   ): Promise<WorkbenchCustomerListResponse> | WorkbenchCustomerListResponse;
+  getAccessibleCustomer(
+    subUserId: string,
+    options: {
+      scope: "all" | "mine";
+      thirdExternalUserId: string;
+    },
+  ):
+    | Promise<WorkbenchCustomerSummaryDto | undefined>
+    | WorkbenchCustomerSummaryDto
+    | undefined;
   getCustomerLastConversation(
     subUserId: string,
     thirdExternalUserId: string,
@@ -857,6 +868,33 @@ export class MysqlWorkbenchService implements WorkbenchService {
       scope: "mine",
       seatIds: options.seatIds,
       subUserId,
+      uid: scope.uid,
+    });
+  }
+
+  async getAccessibleCustomer(
+    subUserId: string,
+    options: {
+      scope: "all" | "mine";
+      thirdExternalUserId: string;
+    },
+  ): Promise<WorkbenchCustomerSummaryDto | undefined> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+
+    if (options.scope === "all") {
+      return this.repository.getAccessibleCustomer({
+        platform: scope.platform,
+        scope: "all",
+        thirdExternalUserId: options.thirdExternalUserId,
+        uid: scope.uid,
+      });
+    }
+
+    return this.repository.getAccessibleCustomer({
+      platform: scope.platform,
+      scope: "mine",
+      subUserId,
+      thirdExternalUserId: options.thirdExternalUserId,
       uid: scope.uid,
     });
   }

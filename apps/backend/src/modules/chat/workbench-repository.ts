@@ -309,6 +309,21 @@ type CustomerListScope =
       uid: number;
     };
 
+type CustomerAccessScope =
+  | {
+      platform: number;
+      scope: "all";
+      thirdExternalUserId: string;
+      uid: number;
+    }
+  | {
+      platform: number;
+      scope: "mine";
+      subUserId: string;
+      thirdExternalUserId: string;
+      uid: number;
+    };
+
 type CustomerRow = {
   add_time: Date | number | string | null;
   avatar: string | null;
@@ -2754,6 +2769,89 @@ export class WorkbenchRepository {
     return this.listAllCustomersFromContact(input);
   }
 
+  async getAccessibleCustomer(
+    input: CustomerAccessScope,
+  ): Promise<WorkbenchCustomerSummaryDto | undefined> {
+    if (input.scope === "mine") {
+      const subUserId = parseMySqlId(input.subUserId);
+      if (subUserId == null) {
+        return undefined;
+      }
+
+      const visibleSeats = await this.listAccessibleSeatContexts({
+        platform: input.platform,
+        subUserId,
+        uid: input.uid,
+      });
+      if (visibleSeats.length === 0) {
+        return undefined;
+      }
+
+      let query = this.db
+        .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+        .select([
+          "bind.add_time as add_time",
+          "bind.bind_type as bind_type",
+          "bind.biz_status as biz_status",
+          "bind.description as description",
+          "bind.id as id",
+          "bind.third_external_userid as third_external_userid",
+          "bind.third_userid as third_userid",
+          "bind.uid as uid",
+          "bind.platform as platform",
+        ])
+        .where("bind.uid", "=", input.uid)
+        .where("bind.platform", "=", input.platform)
+        .where("bind.third_external_userid", "=", input.thirdExternalUserId);
+
+      const visibleThirdUserIds = uniqueNonEmpty(
+        visibleSeats.map((seat) => seat.thirdUserId),
+      );
+      if (visibleThirdUserIds.length === 0) {
+        return undefined;
+      }
+      query = visibleThirdUserIds.length === 1
+        ? query.where("bind.third_userid", "=", visibleThirdUserIds[0] ?? "")
+        : query.where("bind.third_userid", "in", visibleThirdUserIds);
+
+      const rows = (await query
+        .orderBy("bind.add_time", "desc")
+        .orderBy("bind.id", "desc")
+        .execute()) as CustomerBindPageRow[];
+      const customers = await this.hydrateCustomerBindRows(rows, {
+        hydrateTenantRelations: true,
+      });
+      return customers[0];
+    }
+
+    const row = (await this.db
+      .selectFrom("xy_wap_embed_contact as contact")
+      .select([
+        "contact.avatar as avatar",
+        "contact.biz_status as biz_status",
+        "contact.gender as gender",
+        "contact.name as name",
+        "contact.platform as platform",
+        "contact.real_name as real_name",
+        "contact.third_external_userid as third_external_userid",
+        "contact.uid as uid",
+        "contact.update_time as update_time",
+      ])
+      .where("contact.uid", "=", input.uid)
+      .where("contact.platform", "=", input.platform)
+      .where("contact.third_external_userid", "=", input.thirdExternalUserId)
+      .executeTakeFirst()) as CustomerContactPageRow | undefined;
+    if (!row) {
+      return undefined;
+    }
+
+    return (await this.hydrateCustomerContactRows(
+      [row],
+      input.uid,
+      input.platform,
+    ))[0];
+  }
+
   private async listMyCustomersFromBinds(input: {
     cursor?: string;
     keyword?: string;
@@ -2803,6 +2901,7 @@ export class WorkbenchRepository {
             expressionBuilder("contact.name", "like", pattern),
             expressionBuilder("contact.real_name", "like", pattern),
             expressionBuilder("bind.remark", "like", pattern),
+            expressionBuilder("bind.third_external_userid", "like", pattern),
           ]),
         );
     }
@@ -2926,45 +3025,15 @@ export class WorkbenchRepository {
 
     const rows = (await query.execute()) as CustomerContactPageRow[];
     const pageRows = rows.slice(0, limit);
-    const customerKeys = pageRows.map((row) => ({
-      platform: toNumber(row.platform) ?? input.platform ?? 0,
-      thirdExternalUserId: row.third_external_userid,
-      uid: toNumber(row.uid) ?? input.uid ?? 0,
-    }));
-    const thirdExternalUserIds = uniqueNonEmpty(
-      customerKeys.map((key) => key.thirdExternalUserId),
-    );
-    const relationCustomers = await this.listCustomerRelationRowsForKeys(
+    const items = await this.hydrateCustomerContactRows(
+      pageRows,
       input.uid,
       input.platform,
-      thirdExternalUserIds,
-    );
-    const relationsByCustomerKey = new Map(
-      relationCustomers.map((customer) => [customer.customerKey, customer]),
     );
 
     return {
       hasMore: rows.length > limit,
-      items: pageRows.map((row) => {
-        const uid = toNumber(row.uid) ?? input.uid ?? 0;
-        const platform = toNumber(row.platform) ?? input.platform ?? 0;
-        const customerKey = buildCustomerKey(uid, platform, row.third_external_userid);
-        const relationCustomer = relationsByCustomerKey.get(customerKey);
-
-        return {
-          avatar: row.avatar ?? "",
-          bizStatus: row.biz_status ?? 0,
-          customerKey,
-          gender: row.gender ?? null,
-          name: row.name ?? "",
-          platform,
-          realName: row.real_name ?? "",
-          relationCount: relationCustomer?.relationCount ?? 0,
-          seatRelations: relationCustomer?.seatRelations ?? [],
-          thirdExternalUserId: row.third_external_userid,
-          uid,
-        };
-      }),
+      items,
       nextCursor:
         rows.length > limit && pageRows.at(-1)
           ? encodeCustomerListCursor({
@@ -2974,6 +3043,49 @@ export class WorkbenchRepository {
           : undefined,
       total: pageRows.length,
     };
+  }
+
+  private async hydrateCustomerContactRows(
+    rows: CustomerContactPageRow[],
+    fallbackUid: number,
+    fallbackPlatform: number,
+  ): Promise<WorkbenchCustomerSummaryDto[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const thirdExternalUserIds = uniqueNonEmpty(
+      rows.map((row) => row.third_external_userid),
+    );
+    const relationCustomers = await this.listCustomerRelationRowsForKeys(
+      fallbackUid,
+      fallbackPlatform,
+      thirdExternalUserIds,
+    );
+    const relationsByCustomerKey = new Map(
+      relationCustomers.map((customer) => [customer.customerKey, customer]),
+    );
+
+    return rows.map((row) => {
+      const uid = toNumber(row.uid) ?? fallbackUid;
+      const platform = toNumber(row.platform) ?? fallbackPlatform;
+      const customerKey = buildCustomerKey(uid, platform, row.third_external_userid);
+      const relationCustomer = relationsByCustomerKey.get(customerKey);
+
+      return {
+        avatar: row.avatar ?? "",
+        bizStatus: row.biz_status ?? 0,
+        customerKey,
+        gender: row.gender ?? null,
+        name: row.name ?? "",
+        platform,
+        realName: row.real_name ?? "",
+        relationCount: relationCustomer?.relationCount ?? 0,
+        seatRelations: relationCustomer?.seatRelations ?? [],
+        thirdExternalUserId: row.third_external_userid,
+        uid,
+      };
+    });
   }
 
   private async listAccessibleSeatContexts(

@@ -3500,6 +3500,106 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("looks up an all-scope customer by exact external id without pagination", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/target.png",
+              biz_status: 1,
+              gender: null,
+              name: "目标客户",
+              platform: 5,
+              real_name: "",
+              third_external_userid: "external-target",
+              uid: 9001,
+              update_time: new Date(),
+            });
+            queries.push({ table, query });
+            return query;
+          }
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getAccessibleCustomer({
+      platform: 5,
+      scope: "all",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    })).resolves.toMatchObject({
+      customerKey: "9001:5:external-target",
+      name: "目标客户",
+      thirdExternalUserId: "external-target",
+    });
+    expect(queries[0]?.query.wheres).toContainEqual([
+      "contact.third_external_userid",
+      "=",
+      "external-target",
+    ]);
+    expect(queries[0]?.query.whereExpressions).toEqual([]);
+    expect(queries[0]?.query.limits).toEqual([]);
+  });
+
+  it("checks mine-scope exact customer access through visible seat bindings", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_avatar: "",
+              third_user_name: "销售一号",
+              third_userid: "seat-user-12",
+              uid: 9001,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getAccessibleCustomer({
+      platform: 5,
+      scope: "mine",
+      subUserId: "101",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.wheres).toContainEqual([
+      "bind.third_external_userid",
+      "=",
+      "external-target",
+    ]);
+    expect(bindQuery?.wheres).toContainEqual([
+      "bind.third_userid",
+      "=",
+      "seat-user-12",
+    ]);
+    expect(bindQuery?.whereExpressions).toEqual([]);
+    expect(bindQuery?.limits).toEqual([]);
+  });
+
   it("limits my customer visible seat contexts to the explicit workbench scope", async () => {
     const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
     const repository = new WorkbenchRepository(
@@ -3625,6 +3725,7 @@ describe("WorkbenchRepository", () => {
         { column: "contact.name", operator: "like", value: "%张三%" },
         { column: "contact.real_name", operator: "like", value: "%张三%" },
         { column: "bind.remark", operator: "like", value: "%张三%" },
+        { column: "bind.third_external_userid", operator: "like", value: "%张三%" },
       ],
     });
   });

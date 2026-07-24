@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Kysely, MysqlDialect } from "kysely";
 import type { Database } from "../../../../src/db/schema.js";
 import {
@@ -6,6 +6,7 @@ import {
   buildUserMemoryMessagesQuery,
   groupCandidateSessions,
   resolveNextRunAfter,
+  UserMemoryWorker,
 } from "../../../../src/modules/ai-hosting/user-memory/user-memory-worker.js";
 
 function createCompileOnlyDb() {
@@ -61,5 +62,79 @@ describe("user memory candidate selection", () => {
     expect(resolveNextRunAfter([
       { status: "prepared", next_attempt_at: new Date(now - 1) },
     ], now).getTime()).toBe(now);
+  });
+
+  it("does not call the model when the selected item transition updates zero rows", async () => {
+    const leaseUntil = new Date(Date.now() + 60_000);
+    const run = {
+      claim_token: "claim-1",
+      config_generation: 2,
+      id: 7,
+      lease_until: leaseUntil,
+      locked_by: "worker-1",
+      status: "running",
+      uid: 272,
+    };
+    const item = {
+      attempt_count: 0,
+      id: 11,
+      run_id: 7,
+      status: "prepared",
+    };
+    const query = (result: unknown) => {
+      const builder = {
+        executeTakeFirst: vi.fn().mockResolvedValue(result),
+        forUpdate: () => builder,
+        orderBy: () => builder,
+        selectAll: () => builder,
+        where: () => builder,
+      };
+      return builder;
+    };
+    const trx = {
+      selectFrom: (table: string) => query(
+        table === "xy_wap_embed_agent_user_memory_config"
+          ? { active_run_id: 7, enabled: 1, generation: 2, uid: 272 }
+          : run,
+      ),
+      updateTable: () => {
+        const builder = {
+          executeTakeFirst: vi.fn().mockResolvedValue({ numUpdatedRows: 0n }),
+          set: () => builder,
+          where: () => builder,
+        };
+        return builder;
+      },
+    };
+    const db = {
+      selectFrom: () => query(item),
+      transaction: () => ({ execute: (callback: (transaction: typeof trx) => unknown) => callback(trx) }),
+    };
+    const complete = vi.fn();
+    const worker = new UserMemoryWorker({
+      customerLimitResolver: { resolve: () => 100 },
+      db: db as never,
+      logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } as never,
+      provider: { complete } as never,
+      workerId: "worker-1",
+    });
+    const internals = worker as unknown as {
+      aggregateOrRelease: (claim: unknown) => Promise<void>;
+      prepareInput: () => Promise<unknown>;
+      processNextItem: (claim: unknown) => Promise<void>;
+    };
+    internals.prepareInput = vi.fn().mockResolvedValue({
+      document: { ai: [], manual: [], nextId: 1, schemaVersion: 1 },
+      manualUpdatedAt: null,
+      messages: [{ occurredAt: 1, senderRole: "customer", sessionId: 1, sourceMessageId: 1, text: "偏好无糖" }],
+      sessionIds: [1],
+      version: 0,
+    });
+    internals.aggregateOrRelease = vi.fn().mockResolvedValue(undefined);
+
+    await internals.processNextItem({ run, token: "claim-1" });
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(internals.aggregateOrRelease).toHaveBeenCalledOnce();
   });
 });

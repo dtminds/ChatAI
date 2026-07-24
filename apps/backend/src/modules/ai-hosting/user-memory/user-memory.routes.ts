@@ -116,9 +116,11 @@ function createService(app: FastifyInstance, request: FastifyRequest) {
 async function resolveAccessibleCustomer(app: FastifyInstance, request: FastifyRequest, platform: number, externalId: string) {
   const workbench = app.createWorkbenchService(withRequestId(request.log, request.id), getAuthenticatedWorkbenchScope(request.user));
   const roles = request.user.roles ?? [];
-  const page = await workbench.getCustomers(request.user.subUserId, { keyword: externalId, limit: 100, scope: roles.includes("owner") || roles.includes("admin") ? "all" : "mine" });
-  const item = page.items.find((candidate) => candidate.platform === platform && candidate.thirdExternalUserId === externalId);
-  if (!item) throw new NotFoundError("AGENT_USER_MEMORY_CUSTOMER_NOT_FOUND", "客户不存在或无权访问");
+  const item = await workbench.getAccessibleCustomer(request.user.subUserId, {
+    scope: roles.includes("owner") || roles.includes("admin") ? "all" : "mine",
+    thirdExternalUserId: externalId,
+  });
+  if (item?.platform !== platform) throw new NotFoundError("AGENT_USER_MEMORY_CUSTOMER_NOT_FOUND", "客户不存在或无权访问");
   return { platform, thirdExternalUserId: externalId, customerName: item.name || item.realName || externalId, ...(item.avatar ? { avatarUrl: item.avatar } : {}) };
 }
 function assertManage(request: FastifyRequest) {

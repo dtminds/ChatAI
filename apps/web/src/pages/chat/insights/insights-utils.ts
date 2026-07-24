@@ -83,6 +83,7 @@ export function formatAnalysisStatus(status: InsightAnalysisStatus) {
     failed: "失败",
     partial: "部分完成",
     ready: "已完成",
+    skipped: "未运行",
     stale: "已过期",
   } as const;
 

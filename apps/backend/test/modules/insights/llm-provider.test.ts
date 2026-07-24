@@ -4,6 +4,26 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
+import { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
+
+function createObservabilityHarness() {
+  const logger = {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  };
+  const observability = new InsightsWorkerObservability({
+    logger,
+    reportedBy: "worker-test:1",
+    repository: {
+      upsertWorkerPipelineRuntimeState: vi.fn(async () => undefined),
+    },
+    traceUids: new Set(),
+  });
+
+  return { logger, observability };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -1126,6 +1146,8 @@ describe("LLM provider config", () => {
       },
     );
     vi.stubGlobal("fetch", fetchMock);
+    const { observability } = createObservabilityHarness();
+    const recoverSpy = vi.spyOn(observability, "recover");
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -1140,7 +1162,7 @@ describe("LLM provider config", () => {
         baseDelayMs: 100,
         maxAttempts: 2,
       },
-    });
+    }, observability);
 
     const resultPromise = analyzer.analyzeSession({
       context: {
@@ -1189,6 +1211,11 @@ describe("LLM provider config", () => {
       "ep-lite",
       "ep-lite",
     ]);
+    expect(recoverSpy).not.toHaveBeenCalledWith(
+      "provider_optional_step",
+      "analysis",
+      9001,
+    );
     vi.useRealTimers();
   });
 
@@ -1275,8 +1302,125 @@ describe("LLM provider config", () => {
     vi.useRealTimers();
   });
 
+  it("reports each real request and retry without logging provider response text", async () => {
+    vi.useFakeTimers();
+    const providerBody = "rate limited customer-content-marker";
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) {
+        return new Response(providerBody, { status: 429 });
+      }
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  actionItems: [],
+                  entities: [],
+                  faqCandidates: [],
+                  intents: [],
+                  problemResolution: {
+                    confidence: 0.8,
+                    evidence: [],
+                    evidenceMessageIds: [],
+                    problemDetected: false,
+                    problemSummary: "",
+                    resolutionStatus: "no_customer_problem",
+                  },
+                  qaFindings: [],
+                  sentiment: [],
+                  summary: {
+                    sessionTitle: "寒暄",
+                    text: "无明确问题",
+                  },
+                  tags: [],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { logger, observability } = createObservabilityHarness();
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      retry: {
+        baseDelayMs: 100,
+        maxAttempts: 2,
+      },
+    }, observability);
+
+    const resultPromise = analyzer.analyzeSession({
+      job: {
+        analysisScope: "all",
+        attemptCount: 0,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(resultPromise).resolves.toMatchObject({
+      summary: { sessionTitle: "寒暄" },
+    });
+
+    const requestEvents = logger.debug.mock.calls.filter(
+      ([payload]) => payload.eventCode === "insights_worker.llm_request_completed",
+    );
+    expect(requestEvents).toHaveLength(2);
+    expect(requestEvents[0]?.[0]).toMatchObject({
+      errorCode: "LLM_REQUEST_FAILED",
+      httpStatus: 429,
+      outcome: "failed",
+      step: "single",
+      uid: 9001,
+    });
+    expect(requestEvents[1]?.[0]).toMatchObject({
+      httpStatus: 200,
+      outcome: "succeeded",
+      step: "single",
+      uid: 9001,
+    });
+    expect(JSON.stringify(requestEvents)).not.toContain(providerBody);
+
+    await observability.stop();
+    const summary = logger.info.mock.calls.find(
+      ([payload]) => payload.eventCode === "insights_worker.pipeline_summary"
+        && payload.pipeline === "analysis",
+    )?.[0];
+    expect(summary).toMatchObject({
+      modelFailures: 1,
+      modelRequests: 2,
+      modelRetries: 1,
+    });
+    vi.useRealTimers();
+  });
+
   it("falls back without JSON response format when the model does not support it", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
+    const { logger, observability } = createObservabilityHarness();
     const fetchMock = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
         requestBodies.push(JSON.parse(String(init?.body)));
@@ -1347,10 +1491,19 @@ describe("LLM provider config", () => {
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
-    });
+    }, observability);
 
     await expect(
       analyzer.analyzeSession({
+        job: {
+          analysisScope: "all",
+          attemptCount: 0,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        },
         messages: [
           {
             aiText: "你好",
@@ -1368,6 +1521,18 @@ describe("LLM provider config", () => {
 
     expect(requestBodies[0]).toHaveProperty("response_format");
     expect(requestBodies[1]).not.toHaveProperty("response_format");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.llm_response_format_fallback",
+        uid: 9001,
+      }),
+      expect.any(String),
+    );
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventCode: "insights_worker.error_recovered" }),
+      expect.any(String),
+    );
+    await observability.stop();
   });
 
   it("times out stalled LLM requests", async () => {
@@ -1419,6 +1584,79 @@ describe("LLM provider config", () => {
 
     await vi.advanceTimersByTimeAsync(2_000);
     await expectation;
+    vi.useRealTimers();
+  });
+
+  it("reports model timeouts with a stable error code", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
+    const { logger, observability } = createObservabilityHarness();
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      requestTimeoutMs: 2_000,
+      retry: {
+        baseDelayMs: 1_000,
+        maxAttempts: 1,
+      },
+    }, observability);
+
+    const resultPromise = analyzer.analyzeSession({
+      job: {
+        analysisScope: "all",
+        attemptCount: 0,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+    const expectation = expect(resultPromise).rejects.toThrow(
+      "LLM request timed out after 2000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expectation;
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: "LLM_TIMEOUT",
+        errorName: "LlmTimeoutError",
+        eventCode: "insights_worker.llm_request_completed",
+        failedStep: "single",
+        timeoutMs: 2_000,
+      }),
+      expect.any(String),
+    );
+    await observability.stop();
     vi.useRealTimers();
   });
 

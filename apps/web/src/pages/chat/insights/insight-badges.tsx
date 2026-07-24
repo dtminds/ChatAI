@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  BeanIcon,
   CheckmarkCircle02Icon,
   DashedLineCircleIcon,
   InformationCircleIcon,
@@ -7,6 +8,7 @@ import {
   Loading03Icon,
   MessageSquareDashedIcon,
   Progress03Icon,
+  UnavailableIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
@@ -61,11 +63,45 @@ export function StatusBadge({
   );
 }
 
-export function AnalysisStatusBadge() {
+export function AnalysisStatusBadge({
+  status = "analyzing",
+}: {
+  status?: "analyzing" | "skipped" | "disabled";
+}) {
+  if (status === "disabled") {
+    return (
+      <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-400">
+        <HugeiconsIcon icon={UnavailableIcon} size={13} strokeWidth={2} />
+        未启用
+      </span>
+    );
+  }
+
+  if (status === "skipped") {
+    return (
+      <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-400">
+        <HugeiconsIcon icon={BeanIcon} size={13} strokeWidth={2} />
+        {formatAnalysisStatus("skipped")}
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground">
       <HugeiconsIcon icon={Loading03Icon} size={13} strokeWidth={2} />
-      {formatAnalysisStatus("analyzing")}
+      {formatAnalysisStatus(status)}
+    </span>
+  );
+}
+
+export function AnalysisPhaseBadge({ phase }: { phase?: "final" | "live" }) {
+  if (phase !== "live") {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-center text-xs font-medium text-muted-foreground">
+      仅实时结果
     </span>
   );
 }
@@ -90,7 +126,49 @@ export function ResolutionBadge({
   );
 }
 
-export function ResolutionDiagnosisHeader() {
+export const insightFeatureRequiredHint = "该功能依赖会话洞察，当前暂未开启";
+
+export function InsightFeatureRequiredHint({
+  ariaLabel = "查看会话洞察依赖说明",
+}: {
+  ariaLabel?: string;
+} = {}) {
+  return (
+    <HoverCard closeDelay={80} openDelay={120}>
+      <HoverCardTrigger asChild>
+        <button
+          aria-label={ariaLabel}
+          className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden
+            color="currentColor"
+            icon={InformationCircleIcon}
+            size={14}
+            strokeWidth={1.9}
+          />
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent
+        align="start"
+        className="w-[260px] rounded-[8px] border-border bg-popover p-3 text-popover-foreground shadow-sm"
+        side="top"
+        sideOffset={8}
+      >
+        <p className="text-xs leading-5 text-warning">
+          {insightFeatureRequiredHint}
+        </p>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+export function ResolutionDiagnosisHeader({
+  showInsightRequiredHint = false,
+}: {
+  showInsightRequiredHint?: boolean;
+} = {}) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span>AI 诊断</span>
@@ -117,6 +195,11 @@ export function ResolutionDiagnosisHeader() {
           sideOffset={8}
         >
           <div className="space-y-2">
+            {showInsightRequiredHint ? (
+              <p className="text-xs leading-5 text-warning">
+                {insightFeatureRequiredHint}
+              </p>
+            ) : null}
             <p className="text-xs leading-5 text-muted-foreground">
               按本轮会话内容判断，不代表后续处理状态
             </p>

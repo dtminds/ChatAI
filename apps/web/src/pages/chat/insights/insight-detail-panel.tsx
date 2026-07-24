@@ -47,9 +47,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
-import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
+import {
+  filterHistoryChatMessages,
+  HistoryCompactMessageList,
+} from "@/pages/chat/components/message-history-side-panel";
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
-import { AnalysisStatusBadge, ResolutionBadge } from "./insight-badges";
+import { AnalysisPhaseBadge, AnalysisStatusBadge, ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
 import { formatInsightTime } from "./insights-utils";
 
@@ -80,7 +83,7 @@ export function InsightDetailPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const evidenceRecordMessages = messages
-    ? adaptInsightMessages(messages)
+    ? filterHistoryChatMessages(adaptInsightMessages(messages))
     : [];
   const evidenceByMessageId = detail ? buildEvidenceByMessageId(detail.evidenceItems) : new Map<string, EvidenceViewItem[]>();
 
@@ -186,7 +189,7 @@ function InsightLoadingState({ text }: { text: string }) {
   );
 }
 
-function adaptInsightMessages(messages: InsightMessageContextResponse["messages"]) {
+export function adaptInsightMessages(messages: InsightMessageContextResponse["messages"]) {
   const customerProfiles = buildInsightCustomerProfiles(messages);
   const accounts = buildInsightAccounts(messages);
 
@@ -268,15 +271,18 @@ function DetailSummarySection({
     <section className="space-y-7">
       <div className="space-y-1">
         {detail.session.generatedAt ? (
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
-            <HugeiconsIcon
-              aria-hidden
-              color="currentColor"
-              icon={Timer01Icon}
-              size={14}
-              strokeWidth={1.8}
-            />
-            <span>生成于 {formatInsightTime(detail.session.generatedAt)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
+              <HugeiconsIcon
+                aria-hidden
+                color="currentColor"
+                icon={Timer01Icon}
+                size={14}
+                strokeWidth={1.8}
+              />
+              <span>生成于 {formatInsightTime(detail.session.generatedAt)}</span>
+            </div>
+            {detail.session.endedAt ? <AnalysisPhaseBadge phase={detail.session.phase} /> : null}
           </div>
         ) : isAnalyzing ? (
           <AnalysisStatusBadge />

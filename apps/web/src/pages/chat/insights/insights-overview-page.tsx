@@ -67,7 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getInsightFilterOptions, getInsightOverview, getInsightOverviewSessions } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
+import { AnalysisPhaseBadge, AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader, InsightFeatureRequiredHint } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
@@ -77,6 +77,7 @@ import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { insightChartColors, insightResolutionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 type TrendMetric = keyof InsightsOverviewResponse["totals"];
 type OverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
@@ -127,6 +128,7 @@ const analysisStatusFilterOptions = [
 ];
 
 export function InsightsOverviewPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
   const [overviewError, setOverviewError] = useState(false);
   const [sessionsPage, setSessionsPage] = useState<InsightOverviewSessionsResponse>();
@@ -249,14 +251,16 @@ export function InsightsOverviewPage() {
   ]);
 
   const sessions = sessionsPage?.items ?? [];
-
   const filterOptions = useMemo(
     () => buildSessionFilterOptions(filterOptionsResponse),
     [filterOptionsResponse],
   );
 
   return (
-    <InsightsLayout title="总览">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="总览"
+    >
       <div className="space-y-5">
         <OverviewHeader
           from={from}
@@ -278,7 +282,12 @@ export function InsightsOverviewPage() {
           overview={overview}
         />
         <div className="grid gap-5 xl:grid-cols-[520px_minmax(0,1fr)]">
-          <ResolutionDistribution from={from} overview={overview} to={to} />
+          <ResolutionDistribution
+            from={from}
+            insightEnabled={capabilities.mode === "insight"}
+            overview={overview}
+            to={to}
+          />
           <TrendPanel
             activeMetric={activeMetric}
             from={from}
@@ -291,6 +300,7 @@ export function InsightsOverviewPage() {
           analysisStatusFilter={analysisStatusFilter}
           entityFilter={entityFilter}
           filterOptions={filterOptions}
+          insightEnabled={capabilities.mode === "insight"}
           intentFilter={intentFilter}
           keyword={keyword}
           onAnalysisStatusFilterChange={setAnalysisStatusFilter}
@@ -405,10 +415,12 @@ function MetricStrip({
 
 const ResolutionDistribution = memo(function ResolutionDistribution({
   from,
+  insightEnabled,
   overview,
   to,
 }: {
   from: string;
+  insightEnabled: boolean;
   overview: InsightsOverviewResponse | undefined;
   to: string;
 }) {
@@ -421,6 +433,7 @@ const ResolutionDistribution = memo(function ResolutionDistribution({
       <PanelTitle
         icon={ChartBubbleIcon}
         title="AI 诊断"
+        titleAccessory={insightEnabled ? undefined : <InsightFeatureRequiredHint />}
         trailing={<DateRangeSummary from={from} to={to} />}
       />
       {hasData ? (
@@ -596,6 +609,7 @@ function SessionTableCard({
   analysisStatusFilter,
   entityFilter,
   filterOptions,
+  insightEnabled,
   intentFilter,
   isLoading,
   keyword,
@@ -617,6 +631,7 @@ function SessionTableCard({
   analysisStatusFilter: string;
   entityFilter: string;
   filterOptions: SessionFilterOptions;
+  insightEnabled: boolean;
   intentFilter: string;
   isLoading: boolean;
   keyword: string;
@@ -736,9 +751,14 @@ function SessionTableCard({
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[180px]">客户</TableHead>
               <TableHead className="h-11 min-w-[180px]">接待客服</TableHead>
-              <TableHead className="h-11 min-w-[260px]">摘要</TableHead>
+              <TableHead className="h-11 min-w-[260px]">
+                <span className="inline-flex items-center gap-1.5">
+                  <span>摘要</span>
+                  {insightEnabled ? null : <InsightFeatureRequiredHint />}
+                </span>
+              </TableHead>
               <TableHead className="h-11 min-w-[160px]">
-                <ResolutionDiagnosisHeader />
+                <ResolutionDiagnosisHeader showInsightRequiredHint={!insightEnabled} />
               </TableHead>
               <TableHead className="h-11 min-w-[150px]">时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
@@ -768,11 +788,15 @@ function SessionTableCard({
                     </div>
                   </TableCell>
                   <TableCell className="py-4">
-                    {row.analysisStatus === "analyzing" ? (
-                      <AnalysisStatusBadge />
-                    ) : (
+                    {!insightEnabled ? (
+                      <AnalysisStatusBadge status="disabled" />
+                    ) : row.analysisPhase === "live" && row.sessionState === "ended" ? (
+                      <AnalysisPhaseBadge phase={row.analysisPhase} />
+                    ) : row.analysisStatus === "analyzing" || row.analysisStatus === "skipped" ? (
+                      <AnalysisStatusBadge status={row.analysisStatus} />
+                    ) : row.resolutionStatus ? (
                       <ResolutionBadge status={row.resolutionStatus} />
-                    )}
+                    ) : <span className="text-sm text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell className="py-4 text-sm text-muted-foreground">
                     {formatInsightTime(row.startedAt)}
@@ -791,7 +815,7 @@ function SessionTableCard({
               ))
             ) : (
               <TableRow>
-                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={7}>
+                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -1097,10 +1121,12 @@ function findOptionLabel(options: Array<{ label: string; value: string }>, value
 function PanelTitle({
   icon,
   title,
+  titleAccessory,
   trailing,
 }: {
   icon: typeof ChartAreaIcon;
   title: string;
+  titleAccessory?: ReactNode;
   trailing?: ReactNode;
 }) {
   return (
@@ -1108,7 +1134,10 @@ function PanelTitle({
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
         <HugeiconsIcon icon={icon} size={17} />
       </span>
-      <h2 className="text-base font-medium">{title}</h2>
+      <div className="inline-flex min-w-0 items-center gap-1.5">
+        <h2 className="text-base font-medium">{title}</h2>
+        {titleAccessory}
+      </div>
       {trailing ? <div className="ml-auto">{trailing}</div> : null}
     </div>
   );
@@ -1216,8 +1245,8 @@ function getComparisonDelta(
 ) {
   const comparison = overview?.comparison?.[metric];
 
-  if (!comparison) {
-    return { label: "暂无对比", value: 0 };
+  if (!comparison || !overview?.comparisonAvailable || comparison.deltaRate == null) {
+    return { label: "暂无对比数据", value: 0 };
   }
 
   const delta = comparison.delta;

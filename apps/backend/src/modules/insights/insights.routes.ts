@@ -81,6 +81,7 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("partial"),
     Type.Literal("failed"),
     Type.Literal("stale"),
+    Type.Literal("skipped"),
   ])),
   entityId: Type.Optional(Type.String()),
   from: Type.Optional(DateQuerySchema),
@@ -169,7 +170,29 @@ type ConfigParams = Static<typeof ConfigParamsSchema>;
 type PresetConfigParams = Static<typeof PresetConfigParamsSchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
-export async function registerInsightsRoutes(app: FastifyInstance) {
+export async function registerInsightsRoutes(
+  app: FastifyInstance,
+  workerObserverSubjects: ReadonlySet<string>,
+) {
+  const createService = () => new InsightsService(
+    new InsightsRepository(app.db),
+    workerObserverSubjects,
+  );
+
+  app.get(
+    "/api/server/insights/capabilities",
+    { preHandler: app.authenticate },
+    async (request) => {
+      return apiSuccess(
+        await createService().getCapabilities(
+          getUidScope(request),
+          getAccountRole(request),
+          request.user.subUserId,
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: OverviewQuery }>(
     "/api/server/insights/overview",
     {

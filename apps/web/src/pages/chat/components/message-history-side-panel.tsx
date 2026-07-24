@@ -492,7 +492,7 @@ export function HistoryCompactMessageList({
   renderMetaSuffix?: (message: ChatMessage) => ReactNode;
   textWeight?: "medium" | "normal";
 }) {
-  const chatMessages = messages.filter(isChatMessage);
+  const chatMessages = filterHistoryChatMessages(messages);
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4">
@@ -1037,6 +1037,10 @@ function HistoryDateDivider({ label }: { label: string }) {
 
 function isChatMessage(message: Message): message is ChatMessage {
   return message.role !== "system";
+}
+
+export function filterHistoryChatMessages(messages: Message[]): ChatMessage[] {
+  return messages.filter(isChatMessage);
 }
 
 function isMediaMessage(message: Message): message is MediaHistoryMessage {

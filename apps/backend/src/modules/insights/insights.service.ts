@@ -1,5 +1,6 @@
 import type {
   AccountRole,
+  InsightCapabilitiesResponse,
   InsightActionStatus,
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
@@ -56,6 +57,9 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../shared/errors.js";
+import {
+  canViewInsightsWorkerObservability,
+} from "./insights-worker-observer-access.js";
 
 type InsightConfigLimitType = "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs";
 
@@ -85,9 +89,11 @@ export type InsightCurrentSessionRow = {
   agentAvatarUrl: string | null;
   agentName: string | null;
   agentSeatId: string | null;
-  analysisStatus: InsightAnalysisStatus;
+  analysisStatus?: InsightAnalysisStatus;
+  agentMessageCount: number;
   conversationId: string;
   currentSnapshotId?: string;
+  customerMessageCount: number;
   customerAvatarUrl: string | null;
   customerName: string;
   endedAt: number | null;
@@ -95,6 +101,8 @@ export type InsightCurrentSessionRow = {
   generatedAt?: number;
   intents?: Array<Pick<InsightDetailResponse["intents"][number], "intentId" | "intentLabel">>;
   lastMessageAt: number | null;
+  logicalSessionStatus: "analyzed" | "canceled" | "closed_pending_analysis" | "open";
+  messageCount: number;
   lastCustomerMessageAt: number | null;
   phase?: InsightDetailResponse["session"]["phase"];
   problemDetected: boolean;
@@ -166,6 +174,7 @@ export type InsightsOverviewFilters = {
   pageSize?: number;
   problemScope?: InsightOverviewSessionsQuery["problemScope"];
   resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
+  searchMode?: "basic" | "insight";
   sessionIds?: string[];
   tagId?: string;
   to?: string;
@@ -219,7 +228,7 @@ export type InsightCurrentSessionPage = {
 
 export type InsightOverviewAggregateRow = Omit<
   InsightsOverviewResponse,
-  "comparison" | "sessions"
+  "comparison" | "comparisonAvailable" | "mode" | "sessions"
 >;
 
 export type InsightBusinessTopicAnalytics = Pick<
@@ -290,6 +299,7 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightOverviewAggregateRow>;
+  getSessionizationCoverageStart(scope: InsightsUidScope): Promise<number | undefined>;
   getBusinessTopicAnalytics?(
     scope: InsightsUidScope,
     filters: InsightsBusinessTopicFilters,
@@ -439,6 +449,7 @@ const analysisStatuses: InsightAnalysisStatus[] = [
   "partial",
   "failed",
   "stale",
+  "skipped",
 ];
 
 const defaultMessageContextSize = 30;
@@ -454,7 +465,10 @@ const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimit
 const insightConfigTotalLimit = 50;
 
 export class InsightsService {
-  constructor(private readonly repository: InsightsRepositoryPort) {}
+  constructor(
+    private readonly repository: InsightsRepositoryPort,
+    private readonly workerObserverSubjects: ReadonlySet<string> = new Set(),
+  ) {}
 
   async getOverview(
     scope: InsightsUidScope,
@@ -466,14 +480,28 @@ export class InsightsService {
       to: boundedFilters.to,
     };
     const comparisonFilters = getPreviousOverviewDateRange(aggregateFilters);
-    const [aggregate, previousAggregate] = await Promise.all([
+    const [aggregate, previousAggregate, featureConfig, coverageStart] = await Promise.all([
       this.repository.getOverviewAggregate(scope, aggregateFilters),
       this.repository.getOverviewAggregate(scope, comparisonFilters),
+      this.repository.getFeatureConfig(scope),
+      this.repository.getSessionizationCoverageStart(scope),
     ]);
+    const previousFrom = parseOverviewBoundary(comparisonFilters.from);
+    const comparisonAvailable = coverageStart == null
+      || (previousFrom != null && previousFrom >= coverageStart);
+    const mode = featureConfig.insightEnabled ? "insight" : "basic";
 
     return {
       ...aggregate,
-      comparison: buildOverviewComparison(aggregate.totals, previousAggregate.totals),
+      comparison: buildOverviewComparison(
+        aggregate.totals,
+        previousAggregate.totals,
+        comparisonAvailable,
+      ),
+      comparisonAvailable,
+      mode,
+      totals: aggregate.totals,
+      trend: aggregate.trend,
     };
   }
 
@@ -489,14 +517,38 @@ export class InsightsService {
       page: normalizedPage,
       pageSize: normalizedPageSize,
     };
-    const sessions = await this.repository.listCurrentSessions(scope, normalizedFilters);
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+    const mode = featureConfig.insightEnabled ? "insight" : "basic";
+    const sessions = await this.repository.listCurrentSessions(scope, {
+      ...normalizedFilters,
+      searchMode: mode,
+    });
 
     return {
       items: buildOverviewSessions(sessions.items),
+      mode,
       page: normalizedPage,
       pageSize: normalizedPageSize,
       total: sessions.total,
       totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
+    };
+  }
+
+  async getCapabilities(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    subUserId: string,
+  ): Promise<InsightCapabilitiesResponse> {
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+
+    return {
+      canManageInsights: role === "admin" || role === "owner",
+      canViewWorkerObservability: canViewInsightsWorkerObservability(
+        this.workerObserverSubjects,
+        { subUserId, uid: scope.uid },
+      ),
+      insightAvailable: isInsightAvailable(scope),
+      mode: featureConfig.insightEnabled ? "insight" : "basic",
     };
   }
 
@@ -602,14 +654,18 @@ export class InsightsService {
       );
     }
 
-    const sessions = await this.repository.listBusinessRelatedSessions(scope, {
-      ...boundedFilters,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    });
+    const [sessions, featureConfig] = await Promise.all([
+      this.repository.listBusinessRelatedSessions(scope, {
+        ...boundedFilters,
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+      }),
+      this.repository.getFeatureConfig(scope),
+    ]);
 
     return {
       items: buildOverviewSessions(sessions.items),
+      mode: featureConfig.insightEnabled ? "insight" : "basic",
       page: normalizedPage,
       pageSize: normalizedPageSize,
       total: sessions.total,
@@ -1471,19 +1527,24 @@ function raiseConfigNotFound(): never {
 
 function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
   return rows.map((row) => ({
+      agentMessageCount: row.agentMessageCount,
       agentAvatarUrl: row.agentAvatarUrl ?? undefined,
       agentName: row.agentName ?? undefined,
+      analysisPhase: row.phase,
       analysisStatus: row.analysisStatus,
       conversationId: row.conversationId,
+      customerMessageCount: row.customerMessageCount,
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
       lastMessageAt: row.lastMessageAt ?? undefined,
+      messageCount: row.messageCount,
       problemSummary: row.problemSummary || undefined,
       resolutionStatus: row.resolutionStatus,
       sessionId: row.sessionId,
+      sessionState: row.logicalSessionStatus === "open" ? "open" as const : "ended" as const,
       startedAt: row.startedAt,
-      summarySessionTitle: row.summarySessionTitle,
+      summarySessionTitle: row.summarySessionTitle || undefined,
     }));
 }
 
@@ -1604,23 +1665,30 @@ function formatOverviewBoundary(value: number, boundary: "end" | "start") {
 function buildOverviewComparison(
   current: InsightsOverviewResponse["totals"],
   previous: InsightsOverviewResponse["totals"],
+  comparisonAvailable = true,
 ): InsightsOverviewResponse["comparison"] {
   return {
-    agentMessages: buildOverviewComparisonValue(current.agentMessages, previous.agentMessages),
-    consultingCustomers: buildOverviewComparisonValue(current.consultingCustomers, previous.consultingCustomers),
-    customerMessages: buildOverviewComparisonValue(current.customerMessages, previous.customerMessages),
-    logicalSessions: buildOverviewComparisonValue(current.logicalSessions, previous.logicalSessions),
-    messages: buildOverviewComparisonValue(current.messages, previous.messages),
+    agentMessages: buildOverviewComparisonValue(current.agentMessages, previous.agentMessages, comparisonAvailable),
+    consultingCustomers: buildOverviewComparisonValue(current.consultingCustomers, previous.consultingCustomers, comparisonAvailable),
+    customerMessages: buildOverviewComparisonValue(current.customerMessages, previous.customerMessages, comparisonAvailable),
+    logicalSessions: buildOverviewComparisonValue(current.logicalSessions, previous.logicalSessions, comparisonAvailable),
+    messages: buildOverviewComparisonValue(current.messages, previous.messages, comparisonAvailable),
   };
 }
 
-function buildOverviewComparisonValue(current: number, previous: number) {
+function buildOverviewComparisonValue(
+  current: number,
+  previous: number,
+  comparisonAvailable: boolean,
+) {
   const delta = current - previous;
 
   return {
     current,
     delta,
-    deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0,
+    ...(comparisonAvailable
+      ? { deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0 }
+      : {}),
     previous,
   };
 }

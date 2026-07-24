@@ -7,6 +7,7 @@ import {
 import { RootLayout } from "@/app/root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -117,6 +118,13 @@ const InsightsSettingsPage = lazy(() =>
     }),
   ),
 );
+const InsightsWorkerObservabilityPage = lazy(() =>
+  import("@/pages/chat/insights/insights-worker-observability-page").then(
+    ({ InsightsWorkerObservabilityPage }) => ({
+      default: InsightsWorkerObservabilityPage,
+    }),
+  ),
+);
 
 function withRouteSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -200,27 +208,37 @@ export const routerConfig = [
       },
       {
         path: "chat/insights",
-        element: withRouteSuspense(<InsightsOverviewPage />),
-      },
-      {
-        path: "chat/insights/quality",
-        element: withRouteSuspense(<InsightsQualityPage />),
-      },
-      {
-        path: "chat/insights/follow-ups",
-        element: withRouteSuspense(<InsightsFollowUpsPage />),
-      },
-      {
-        path: "chat/insights/business",
-        element: withRouteSuspense(<InsightsBusinessPage />),
-      },
-      {
-        path: "chat/insights/records",
-        element: <Navigate replace to="/chat/insights" />,
-      },
-      {
-        path: "chat/insights/settings",
-        element: withRouteSuspense(<InsightsSettingsPage />),
+        element: <InsightsCapabilitiesRoute />,
+        children: [
+          {
+            index: true,
+            element: withRouteSuspense(<InsightsOverviewPage />),
+          },
+          {
+            path: "quality",
+            element: withRouteSuspense(<InsightsQualityPage />),
+          },
+          {
+            path: "follow-ups",
+            element: withRouteSuspense(<InsightsFollowUpsPage />),
+          },
+          {
+            path: "business",
+            element: withRouteSuspense(<InsightsBusinessPage />),
+          },
+          {
+            path: "records",
+            element: <Navigate replace to="/chat/insights" />,
+          },
+          {
+            path: "settings",
+            element: withRouteSuspense(<InsightsSettingsPage />),
+          },
+          {
+            path: "worker-observability",
+            element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
+          },
+        ],
       },
       {
         path: "chat/ai-hosting",

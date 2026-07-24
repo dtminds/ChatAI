@@ -10,14 +10,19 @@ import type {
   InsightPromptContext,
 } from "./insight-prompt-builder.js";
 import type { AiMessageInput, InsightMessageSourceRow } from "./insights.types.js";
+import {
+  getWorkerErrorCode,
+  safeErrorPayload,
+  type InsightsWorkerObservability,
+} from "./insights-worker-observability.js";
 
 type WorkerLogger = {
   error(payload: Record<string, unknown>, message: string): void;
   debug?(payload: Record<string, unknown>, message: string): void;
   info(payload: Record<string, unknown>, message: string): void;
+  warn?(payload: Record<string, unknown>, message: string): void;
 };
 
-const CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES = 1_000;
 const SYNC_MESSAGES_MAX_BATCHES = 10_000;
 
 export type InsightWorkerCursor = {
@@ -60,6 +65,7 @@ export type InsightAnalysisMessageRow = Omit<
 
 export type InsightWorkerConversation = {
   conversationId: string;
+  customerBindType?: number;
   uid: number;
 };
 
@@ -98,12 +104,6 @@ export type InsightWorkerOpenSession = {
   sessionId: string;
   startedAt: number;
   status?: "canceled" | "open";
-};
-
-export type CleanupDisabledInsightsJob = {
-  enableEpoch: number;
-  jobId: string;
-  uid: number;
 };
 
 export type ClosableOpenSession = {
@@ -147,9 +147,34 @@ export type AppendSessionMessageInput = {
 };
 
 export type CloseSessionInput = {
-  closeReason: "hard_max_duration" | "idle_timeout" | "insight_disabled";
+  closeReason: "hard_max_duration" | "idle_timeout";
   endedAt: number;
   sessionId: string;
+};
+
+export type FinalizeOpenSessionInput = CloseSessionInput & {
+  analysisDelayMinutes: number;
+  uid: number;
+};
+
+export type ClaimedSessionizationUidJob = {
+  claimToken: string;
+  jobId: string;
+  uid: number;
+};
+
+export type DiscoverMessageUidsResult = {
+  cursorAuditId: number;
+  discoveredMessages: number;
+  discoveredUids: number;
+  skipped: boolean;
+};
+
+export type DiscoverMessageUidsBatchResult = Omit<
+  DiscoverMessageUidsResult,
+  "discoveredUids"
+> & {
+  discoveredUidIds: number[];
 };
 
 export type CreateAnalyzeJobInput = {
@@ -165,6 +190,7 @@ export type CreateAnalyzeJobInput = {
 export type ClaimedAnalyzeJob = {
   analysisScope: InsightRescanAnalysisScope;
   attemptCount: number;
+  inputReadinessPostponed?: boolean;
   jobId: string;
   maxAttempts: number;
   mode: "final" | "live" | "manual_reanalyze";
@@ -179,11 +205,6 @@ export type ClaimedSyncMessagesJob = {
   jobId: string;
   rescanTaskId?: string;
   scanUntilMsgtime?: number;
-  uid: number;
-};
-
-export type ClaimedUidMaintenanceJob = {
-  jobId: string;
   uid: number;
 };
 
@@ -307,6 +328,16 @@ export type InsightWorkerAnalysisPolicy = {
   minAnalysisMessages: number;
 };
 
+export type InsightWorkerPipelineRuntimeReport = {
+  lastDurationMs?: number;
+  lastErrorCode?: string;
+  lastFailureAt?: Date;
+  lastStartedAt?: Date;
+  lastSuccessAt?: Date;
+  pipeline: "analysis" | "discovery" | "sessionization";
+  reportedBy: string;
+};
+
 export type InsightSessionAnalyzer = {
   analyzeSession(input: {
     context: InsightPromptContext;
@@ -335,18 +366,24 @@ export type InsightWorkerRepositoryPort = {
   reclaimExpiredRunningJobs?(input: {
     now: Date;
   }): Promise<number>;
-  claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined>;
-  claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
-  claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
-  claimNextUidMaintenanceJob(): Promise<ClaimedUidMaintenanceJob | undefined>;
-  closeDisabledOpenSessions(input: {
-    endedAt: number;
-    limit: number;
-    uid: number;
+  reclaimExpiredSessionizationUidJobs?(input: {
+    now: Date;
   }): Promise<number>;
-  closeSession(input: CloseSessionInput): Promise<void>;
+  renewSessionizationUidJobLease(input: ClaimedSessionizationUidJob): Promise<boolean>;
+  claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
+  claimNextSessionizationUidJob(input?: {
+    excludeJobIds?: string[];
+  }): Promise<ClaimedSessionizationUidJob | undefined>;
+  claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
+  completeSessionizationUidJob(input: ClaimedSessionizationUidJob): Promise<"deleted" | "pending">;
   createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string>;
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
+  discoverMessageUids(input: {
+    batchSize: number;
+    now: Date;
+  }): Promise<DiscoverMessageUidsBatchResult>;
+  enqueueClosableSessionUids(input: { limit: number; now: number }): Promise<number>;
+  finalizeOpenSession(input: FinalizeOpenSessionInput): Promise<boolean>;
   findOpenSession(input: {
     conversationId: string;
     uid: number;
@@ -367,6 +404,11 @@ export type InsightWorkerRepositoryPort = {
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getFeatureConfig(uid: number): Promise<InsightWorkerFeatureConfig>;
   getCursor(uid?: number): Promise<InsightWorkerCursor>;
+  hasPendingMessages(input: {
+    cursorAuditId: number;
+    cursorMsgtime: number;
+    uid: number;
+  }): Promise<boolean>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
   listPreviousSessionContexts(input: {
@@ -413,8 +455,8 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<InsightLiveGateSkipRecord | undefined>;
-  getActiveFeatureConfigs(input: { limit?: number }): Promise<InsightWorkerFeatureConfig[]>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
+  retryAnalysisJob(jobId: string, error: unknown, input: { delayMs: number }): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   // The run completed successfully, but model analysis was skipped before publishing a snapshot.
@@ -425,10 +467,10 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
-  markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
-  markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void>;
-  deleteUidMaintenanceJob(jobId: string): Promise<void>;
-  markUidMaintenanceJobFailed(jobId: string, error: unknown): Promise<void>;
+  markSessionizationUidJobFailed(
+    input: ClaimedSessionizationUidJob,
+    error: unknown,
+  ): Promise<void>;
   postponeAnalysisJobForInputReadiness(
     jobId: string,
     input: { delayMs: number; reason: string },
@@ -437,15 +479,8 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<boolean>;
-  rescheduleUidMaintenanceJob(
-    jobId: string,
-    input: { runAfter: Date },
-  ): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
-  seedUidMaintenanceJobs(input: {
-    limit: number;
-    runAfter: Date;
-  }): Promise<{ insertedJobs: number; scannedUids: number }>;
+  skipAutomaticAnalysisJob(job: ClaimedAnalyzeJob): Promise<void>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
   updateRescanTaskAfterAnalysis(input: {
@@ -460,6 +495,13 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<void>;
   updateRescanTaskRunning(rescanTaskId: string): Promise<void>;
   updateCursor(cursor: InsightWorkerCursor & { uid?: number }): Promise<void>;
+  withSessionizationClaim<T>(
+    input: ClaimedSessionizationUidJob,
+    operation: (repository: InsightWorkerRepositoryPort) => Promise<T>,
+  ): Promise<T>;
+  upsertWorkerPipelineRuntimeState?(
+    input: InsightWorkerPipelineRuntimeReport,
+  ): Promise<void>;
 };
 
 export type NonOverlappingTicker = {
@@ -473,83 +515,161 @@ const PREVIOUS_SESSION_LOOKBACK_HOURS = 48;
 const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
+const TERMINAL_JOB_ARCHIVE_INTERVAL_MS = 60 * 60_000;
+const TERMINAL_JOB_ARCHIVE_RETRY_DELAY_MS = 5 * 60_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
-const UID_MAINTENANCE_INTERVAL_MS = 10_000;
 const UID_MAINTENANCE_JOBS_PER_TICK = 10;
+const SESSIONIZATION_CLAIM_HEARTBEAT_MS = 60_000;
+const ANALYSIS_RETRY_DELAY_MS = 60_000;
+const SINGLE_CHAT_TYPE = 1;
+const APPLICATION_MESSAGE_BIND_TYPE = 2;
+const ASSET_TEXT_MAX_LENGTH = 512;
+const SKIPPABLE_SESSIONIZATION_ERROR_CODES = new Set([
+  "ER_DATA_TOO_LONG",
+  "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD",
+  "ER_WARN_DATA_OUT_OF_RANGE",
+]);
+const SKIPPABLE_SESSIONIZATION_ERROR_NUMBERS = new Set([1264, 1366, 1406]);
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
+  private readonly discoveryBatchSize: number;
+  private readonly discoveryMaxBatchesPerTick: number;
   private readonly model?: InsightSessionAnalyzer;
-  private uidSessionConfigCache?: Map<number, InsightWorkerSessionizationConfig>;
-  private uidFeatureConfigCache?: Map<number, InsightWorkerFeatureConfig>;
+  private nextTerminalJobArchiveAttemptAt = 0;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
     options: {
       batchSize?: number;
+      discoveryBatchSize?: number;
+      discoveryMaxBatchesPerTick?: number;
       logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
       now?: () => number;
-      startLookbackDays?: number;
+      observability?: InsightsWorkerObservability;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
+    this.discoveryBatchSize = options.discoveryBatchSize ?? 1_000;
+    this.discoveryMaxBatchesPerTick = options.discoveryMaxBatchesPerTick ?? 20;
     this.logger = options.logger;
     this.model = options.model;
     this.now = options.now ?? Date.now;
-    this.startLookbackDays = options.startLookbackDays ?? 3;
+    this.observability = options.observability;
   }
 
   private readonly logger?: WorkerLogger;
   private readonly now: () => number;
-  private readonly startLookbackDays: number;
+  private readonly observability?: InsightsWorkerObservability;
 
   async runOnce() {
-    this.uidSessionConfigCache = new Map();
-    this.uidFeatureConfigCache = new Map();
-
-    try {
-      await this.repository.seedUidMaintenanceJobs({
-        limit: this.batchSize,
-        runAfter: new Date(),
-      });
-      await this.repository.reclaimExpiredRunningJobs?.({
-        now: new Date(),
-      });
-      await this.runSyncMessagesJob();
-      await this.runCleanupDisabledInsightsJob();
-      await this.runUidMaintenanceJobs();
-
-      if (this.model) {
-        await this.runAnalyzeJobs(3);
-      }
-
-      await this.archiveTerminalJobs();
-    } finally {
-      this.uidSessionConfigCache = undefined;
-      this.uidFeatureConfigCache = undefined;
-    }
+    await this.runDiscoveryOnce();
+    await this.runSessionizationOnce();
+    await this.runAnalysisOnce();
   }
 
-  private resolveIncrementalStart(input: {
-    cursor: InsightWorkerCursor;
-    lastEnableTime?: number;
-  }): InsightWorkerCursor {
-    const lookbackMs = this.startLookbackDays * 24 * 60 * 60_000;
-    const currentLookbackStart = this.now() - lookbackMs;
-    const enableLookbackStart = input.lastEnableTime == null
-      ? currentLookbackStart
-      : input.lastEnableTime - lookbackMs;
-    const cursorMsgtime = Math.max(
-      input.cursor.cursorMsgtime,
-      enableLookbackStart,
-      currentLookbackStart,
-    );
-
-    return {
-      cursorAuditId: cursorMsgtime === input.cursor.cursorMsgtime ? input.cursor.cursorAuditId : 0,
-      cursorMsgtime,
+  async runDiscoveryOnce() {
+    const discoveredUidIds = new Set<number>();
+    const result: DiscoverMessageUidsResult = {
+      cursorAuditId: 0,
+      discoveredMessages: 0,
+      discoveredUids: 0,
+      skipped: false,
     };
+
+    for (
+      let batchIndex = 0;
+      batchIndex < this.discoveryMaxBatchesPerTick;
+      batchIndex += 1
+    ) {
+      const batch = await this.repository.discoverMessageUids({
+        batchSize: this.discoveryBatchSize,
+        now: new Date(this.now()),
+      });
+      result.discoveredMessages += batch.discoveredMessages;
+      for (const uid of batch.discoveredUidIds) {
+        discoveredUidIds.add(uid);
+      }
+      result.discoveredUids = discoveredUidIds.size;
+      result.skipped ||= batch.skipped;
+      if (!batch.skipped) {
+        result.cursorAuditId = batch.cursorAuditId;
+      }
+
+      if (batch.skipped || batch.discoveredMessages === 0) {
+        break;
+      }
+    }
+
+    this.observability?.increment(
+      "discovery",
+      "discoveredMessages",
+      result.discoveredMessages,
+    );
+    this.observability?.increment(
+      "discovery",
+      "discoveredUids",
+      result.discoveredUids,
+    );
+    this.observability?.set("discovery", "cursorAuditId", result.cursorAuditId);
+    if (result.skipped) {
+      this.observability?.increment("discovery", "lockSkipped");
+    } else if (result.discoveredMessages === 0) {
+      this.observability?.increment("discovery", "emptyBatches");
+    }
+    this.observability?.event({
+      eventCode: "insights_worker.discovery_batch",
+      level: "debug",
+      message: "会话洞察 Worker 完成消息发现批次",
+      payload: result,
+      pipeline: "discovery",
+    });
+
+    return result;
+  }
+
+  async runSessionizationOnce() {
+    const reclaimed = await this.repository.reclaimExpiredSessionizationUidJobs?.({
+      now: new Date(this.now()),
+    }) ?? 0;
+    if (reclaimed > 0) {
+      this.observability?.increment("sessionization", "leasesReclaimed", reclaimed);
+      this.observability?.event({
+        eventCode: "insights_worker.lease_reclaimed",
+        level: "warn",
+        message: "会话洞察 Worker 回收过期切片租约",
+        payload: { reclaimed },
+        pipeline: "sessionization",
+        throttleKey: "lease_reclaimed",
+      });
+    }
+    await this.repository.enqueueClosableSessionUids({
+      limit: this.batchSize,
+      now: this.now(),
+    });
+    await this.runUidMaintenanceJobs();
+  }
+
+  async runAnalysisOnce() {
+    const reclaimed = await this.repository.reclaimExpiredRunningJobs?.({
+      now: new Date(this.now()),
+    }) ?? 0;
+    if (reclaimed > 0) {
+      this.observability?.event({
+        eventCode: "insights_worker.lease_reclaimed",
+        level: "warn",
+        message: "会话洞察 Worker 回收过期分析租约",
+        payload: { reclaimed },
+        pipeline: "analysis",
+        throttleKey: "lease_reclaimed",
+      });
+    }
+    await this.runSyncMessagesJob();
+    if (this.model) {
+      await this.runAnalyzeJobs(3);
+    }
+    await this.archiveTerminalJobs();
   }
 
   private async archiveTerminalJobs() {
@@ -557,40 +677,100 @@ export class InsightsWorkerService {
       return;
     }
 
-    const before = new Date(Date.now() - TERMINAL_JOB_ARCHIVE_RETENTION_DAYS * 24 * 60 * 60_000);
+    const now = this.now();
+    if (now < this.nextTerminalJobArchiveAttemptAt) {
+      return;
+    }
+    const before = new Date(
+      now - TERMINAL_JOB_ARCHIVE_RETENTION_DAYS * 24 * 60 * 60_000,
+    );
 
     try {
       await this.repository.archiveTerminalJobs({
         before,
         limit: TERMINAL_JOB_ARCHIVE_LIMIT,
       });
+      this.nextTerminalJobArchiveAttemptAt =
+        this.now() + TERMINAL_JOB_ARCHIVE_INTERVAL_MS;
+      this.observability?.recover("archive", "analysis");
     } catch (error) {
-      this.logger?.error({ err: error }, "会话洞察 worker 归档终态任务失败");
+      this.nextTerminalJobArchiveAttemptAt =
+        this.now() + TERMINAL_JOB_ARCHIVE_RETRY_DELAY_MS;
+      this.observability?.increment("analysis", "archiveFailures");
+      if (this.observability) {
+        this.observability.event({
+          errorCode: getWorkerErrorCode(error),
+          eventCode: "insights_worker.archive_failed",
+          level: "warn",
+          message: "会话洞察 Worker 归档终态任务失败",
+          payload: safeErrorPayload(error),
+          pipeline: "analysis",
+          throttleKey: "archive",
+        });
+      } else {
+        this.logger?.error({ err: error }, "会话洞察 worker 归档终态任务失败");
+      }
     }
   }
 
-  private async scheduleLiveAnalysisForOpenSessions(activeUids: Set<number>) {
+  private async scheduleLiveAnalysisForOpenSessions(
+    activeUids: Set<number>,
+    sessionizationClaim?: ClaimedSessionizationUidJob,
+    insightEnabled?: boolean,
+  ) {
     const sessions = await this.repository.listOpenSessionsForLiveAnalysis({
       activeUids,
       limit: this.batchSize,
     });
     let scheduledJobs = 0;
+    const scheduledJobsByUid = new Map<number, number>();
 
     for (const session of sessions) {
-      if (await this.createLiveAnalyzeJobIfNeeded({
-        occurredAt: Date.now(),
-        sessionId: session.sessionId,
-        uid: session.uid,
-      })) {
+      const schedule = (repository: InsightWorkerRepositoryPort) =>
+        this.createLiveAnalyzeJobIfNeeded({
+          occurredAt: Date.now(),
+          sessionId: session.sessionId,
+          uid: session.uid,
+        }, repository, insightEnabled);
+      const scheduled = sessionizationClaim
+        ? await this.repository.withSessionizationClaim(
+            sessionizationClaim,
+            schedule,
+          )
+        : await schedule(this.repository);
+
+      if (scheduled) {
         scheduledJobs += 1;
+        scheduledJobsByUid.set(
+          session.uid,
+          (scheduledJobsByUid.get(session.uid) ?? 0) + 1,
+        );
       }
     }
 
     if (scheduledJobs > 0) {
-      this.logger?.info(
-        { checkedOpenSessions: sessions.length, scheduledJobs },
-        "会话洞察 worker 已创建未完结会话提前分析任务",
+      this.observability?.increment(
+        "sessionization",
+        "liveJobsScheduled",
+        scheduledJobs,
       );
+      if (this.observability) {
+        for (const [uid, uidScheduledJobs] of scheduledJobsByUid) {
+          this.observability.event({
+            eventCode: "insights_worker.live_analysis_scheduled",
+            level: "debug",
+            message: "会话洞察 Worker 已调度实时分析",
+            payload: { scheduledJobs: uidScheduledJobs },
+            pipeline: "sessionization",
+            uid,
+          });
+        }
+      } else {
+        this.logger?.info(
+          { checkedOpenSessions: sessions.length, scheduledJobs },
+          "会话洞察 worker 已创建未完结会话提前分析任务",
+        );
+      }
     }
   }
 
@@ -598,27 +778,40 @@ export class InsightsWorkerService {
     const claimedJobIds = new Set<string>();
 
     for (let i = 0; i < limit; i += 1) {
-      const job = await this.repository.claimNextUidMaintenanceJob();
+      const job = await this.repository.claimNextSessionizationUidJob({
+        excludeJobIds: Array.from(claimedJobIds),
+      });
 
-      if (!job || claimedJobIds.has(job.jobId)) {
+      if (!job) {
         break;
       }
 
       claimedJobIds.add(job.jobId);
+      this.observability?.increment("sessionization", "jobsClaimed");
       await this.runUidMaintenanceJob(job);
     }
   }
 
-  private async runUidMaintenanceJob(job: ClaimedUidMaintenanceJob) {
+  private async runUidMaintenanceJob(job: ClaimedSessionizationUidJob) {
+    const heartbeat = this.startSessionizationClaimHeartbeat(job);
+
     try {
-      const { insightEnabled, scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
+      const { scannedMessages, sessionizedMessages } = await this.maintainUid(
+        job,
+        heartbeat.assertActive,
+      );
 
-      if (!insightEnabled) {
-        await this.repository.deleteUidMaintenanceJob(job.jobId);
-        return;
-      }
-
-      if (scannedMessages > 0) {
+      this.observability?.increment(
+        "sessionization",
+        "scannedMessages",
+        scannedMessages,
+      );
+      this.observability?.increment(
+        "sessionization",
+        "sessionizedMessages",
+        sessionizedMessages,
+      );
+      if (scannedMessages > 0 && !this.observability) {
         this.logger?.info(
           {
             activeUids: 1,
@@ -630,38 +823,133 @@ export class InsightsWorkerService {
         );
       }
 
-      await this.repository.rescheduleUidMaintenanceJob(job.jobId, {
-        runAfter: new Date(Date.now() + UID_MAINTENANCE_INTERVAL_MS),
-      });
-    } catch (error) {
-      await this.repository.markUidMaintenanceJobFailed(job.jobId, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker UID 维护任务失败",
+      await heartbeat.renewNow();
+      await heartbeat.stop();
+      heartbeat.assertActive();
+      const result = await this.repository.completeSessionizationUidJob(job);
+      this.observability?.increment(
+        "sessionization",
+        result === "deleted" ? "jobsDeleted" : "jobsRequeued",
       );
+      this.observability?.event({
+        eventCode: "insights_worker.sessionization_uid_completed",
+        level: "debug",
+        message: "会话洞察 Worker 完成 UID 切片维护",
+        payload: {
+          jobId: job.jobId,
+          result,
+          scannedMessages,
+          sessionizedMessages,
+        },
+        pipeline: "sessionization",
+        uid: job.uid,
+      });
+      this.observability?.recover(`uid:${job.uid}`, "sessionization", job.uid);
+    } catch (error) {
+      await heartbeat.stop();
+      await this.repository.markSessionizationUidJobFailed(job, error);
+      this.observability?.increment("sessionization", "jobsFailed");
+      const errorCode = getWorkerErrorCode(error);
+      if (this.observability) {
+        this.observability.event({
+          errorCode,
+          eventCode: errorCode === "SESSIONIZATION_UID_CLAIM_LOST"
+            ? "insights_worker.claim_lost"
+            : "insights_worker.sessionization_uid_failed",
+          level: "warn",
+          message: "会话洞察 Worker UID 维护任务失败",
+          payload: {
+            jobId: job.jobId,
+            ...safeErrorPayload(error),
+          },
+          pipeline: "sessionization",
+          throttleKey: errorCode === "SESSIONIZATION_UID_CLAIM_LOST"
+            ? `claim_lost:${job.uid}`
+            : `uid:${job.uid}`,
+          uid: job.uid,
+        });
+        if (errorCode === "SESSIONIZATION_UID_CLAIM_LOST") {
+          this.observability.increment("sessionization", "claimLost");
+        }
+      } else {
+        this.logger?.error(
+          { err: error, jobId: job.jobId, uid: job.uid },
+          "会话洞察 worker UID 维护任务失败",
+        );
+      }
     }
   }
 
-  private async maintainUid(uid: number) {
-    const featureConfig = await this.repository.getFeatureConfig(uid);
-    this.uidFeatureConfigCache?.set(featureConfig.uid, featureConfig);
+  private startSessionizationClaimHeartbeat(job: ClaimedSessionizationUidJob) {
+    let failure: unknown;
+    let renewal: Promise<void> | undefined;
+    let stopped = false;
 
-    if (!featureConfig.insightEnabled) {
-      return {
-        insightEnabled: false,
-        scannedMessages: 0,
-        sessionizedMessages: 0,
-      };
-    }
+    const assertActive = () => {
+      if (failure) {
+        throw failure;
+      }
+    };
+    const renew = () => {
+      if (renewal) {
+        return renewal;
+      }
+
+      renewal = this.repository.renewSessionizationUidJobLease(job)
+        .then((renewed) => {
+          if (!renewed) {
+            throw new Error("SESSIONIZATION_UID_CLAIM_LOST");
+          }
+        })
+        .catch((error: unknown) => {
+          failure ??= error;
+        })
+        .finally(() => {
+          renewal = undefined;
+        });
+      return renewal;
+    };
+    const timer = setInterval(() => {
+      if (!stopped) {
+        void renew();
+      }
+    }, SESSIONIZATION_CLAIM_HEARTBEAT_MS);
+
+    return {
+      assertActive,
+      async renewNow() {
+        if (renewal) {
+          await renewal;
+        }
+        assertActive();
+        await renew();
+        assertActive();
+      },
+      async stop() {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        clearInterval(timer);
+        if (renewal) {
+          await renewal;
+        }
+      },
+    };
+  }
+
+  private async maintainUid(
+    job: ClaimedSessionizationUidJob,
+    assertClaimActive: () => void,
+  ) {
+    const { uid } = job;
+    const featureConfig = await this.repository.getFeatureConfig(uid);
+    const sessionizationConfig = await this.repository.getSessionizationConfig(uid);
 
     const cursor = await this.repository.getCursor(uid);
-    const start = this.resolveIncrementalStart({
-      cursor,
-      lastEnableTime: featureConfig.lastEnableTime,
-    });
     const messages = await this.repository.listIncrementalMessages({
-      cursorAuditId: start.cursorAuditId,
-      cursorMsgtime: start.cursorMsgtime,
+      cursorAuditId: cursor.cursorAuditId,
+      cursorMsgtime: cursor.cursorMsgtime,
       limit: this.batchSize,
       uid,
     });
@@ -678,31 +966,74 @@ export class InsightsWorkerService {
     let sessionizedMessages = 0;
 
     for (const message of messages) {
-      if (existingByMessageId.has(message.id)) {
-        continue;
-      }
+      assertClaimActive();
+      try {
+        const sessionizedMessage = await this.repository.withSessionizationClaim(
+          job,
+          async (repository) => {
+            const sessionized = existingByMessageId.has(message.id)
+              ? undefined
+              : await this.sessionizeMessage(message, {
+                  config: sessionizationConfig,
+                  insightEnabled: featureConfig.insightEnabled,
+                  repository,
+                });
+            await repository.updateCursor({
+              cursorAuditId: Number(message.id),
+              cursorMsgtime: message.msgtime,
+              uid,
+            });
+            return sessionized;
+          },
+        );
+        if (sessionizedMessage) {
+          sessionizedMessages += 1;
+        }
+      } catch (error) {
+        if (!isSkippableSessionizationMessageError(error)) {
+          throw error;
+        }
 
-      if (await this.sessionizeMessage(message)) {
-        sessionizedMessages += 1;
+        assertClaimActive();
+        await this.repository.withSessionizationClaim(
+          job,
+          (repository) => repository.updateCursor({
+            cursorAuditId: Number(message.id),
+            cursorMsgtime: message.msgtime,
+            uid,
+          }),
+        );
+        this.recordSkippedSessionizationMessage(message, error);
       }
+      assertClaimActive();
     }
 
     const lastMessage = messages.at(-1);
 
-    if (lastMessage) {
-      await this.repository.updateCursor({
-        cursorAuditId: Number(lastMessage.id),
-        cursorMsgtime: lastMessage.msgtime,
+    const activeUids = new Set([uid]);
+    if (featureConfig.insightEnabled) {
+      assertClaimActive();
+      await this.scheduleLiveAnalysisForOpenSessions(activeUids, job, true);
+    }
+    assertClaimActive();
+    const latestCursor = lastMessage
+      ? {
+          cursorAuditId: Number(lastMessage.id),
+          cursorMsgtime: lastMessage.msgtime,
+        }
+      : cursor;
+    const hasPendingMessages = messages.length >= this.batchSize
+      || await this.repository.hasPendingMessages({
+        ...latestCursor,
         uid,
       });
+
+    if (!hasPendingMessages) {
+      assertClaimActive();
+      await this.closeTimedOutOpenSessions(activeUids, job);
     }
 
-    const activeUids = new Set([uid]);
-    await this.scheduleLiveAnalysisForOpenSessions(activeUids);
-    await this.closeTimedOutOpenSessions(activeUids);
-
     return {
-      insightEnabled: true,
       scannedMessages: messages.length,
       sessionizedMessages,
     };
@@ -715,10 +1046,24 @@ export class InsightsWorkerService {
       return;
     }
 
-    this.logger?.info(
-      { cursorMsgtime: job.cursorMsgtime, jobId: job.jobId, uid: job.uid },
-      "会话洞察 worker 开始历史重刷",
-    );
+    if (this.observability) {
+      this.observability.event({
+        eventCode: "insights_worker.rescan_started",
+        level: "info",
+        message: "会话洞察 Worker 开始历史重刷",
+        payload: {
+          jobId: job.jobId,
+          rescanTaskId: job.rescanTaskId,
+        },
+        pipeline: "analysis",
+        uid: job.uid,
+      });
+    } else {
+      this.logger?.info(
+        { cursorMsgtime: job.cursorMsgtime, jobId: job.jobId, uid: job.uid },
+        "会话洞察 worker 开始历史重刷",
+      );
+    }
 
     try {
       if (job.rescanTaskId) {
@@ -730,6 +1075,7 @@ export class InsightsWorkerService {
       let scannedMessages = 0;
       let sessionizedMessages = 0;
       let scanCompleted = false;
+      const sessionizationConfig = await this.repository.getSessionizationConfig(job.uid);
       const sessionsToAnalyze = new Map<
         string,
         {
@@ -770,7 +1116,10 @@ export class InsightsWorkerService {
             continue;
           }
 
-          const sessionizedMessage = await this.sessionizeMessage(message, { skipLiveAnalysis: true });
+          const sessionizedMessage = await this.sessionizeMessage(message, {
+            config: sessionizationConfig,
+            skipLiveAnalysis: true,
+          });
 
           if (sessionizedMessage) {
             sessionizedMessages += 1;
@@ -841,129 +1190,157 @@ export class InsightsWorkerService {
       }
 
       await this.repository.markSyncMessagesJobSucceeded(job.jobId);
-      this.logger?.info(
-        {
-          jobId: job.jobId,
-          reanalyzeSessions: queuedFinalSessions,
-          scannedMessages,
-          sessionizedMessages,
-          uid: job.uid,
-        },
-        "会话洞察 worker 历史重刷完成",
-      );
-    } catch (error) {
-      await this.repository.markSyncMessagesJobFailed(job.jobId, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker 历史重刷失败",
-      );
-    }
-  }
-
-  private async runCleanupDisabledInsightsJob() {
-    const job = await this.repository.claimNextCleanupDisabledInsightsJob();
-
-    if (!job) {
-      return;
-    }
-
-    try {
-      let featureConfig = this.uidFeatureConfigCache?.get(job.uid);
-      if (!featureConfig) {
-        featureConfig = await this.repository.getFeatureConfig(job.uid);
-        this.uidFeatureConfigCache?.set(job.uid, featureConfig);
-      }
-
-      if (
-        featureConfig.insightEnabled
-        || featureConfig.lastEnableTime !== job.enableEpoch
-      ) {
-        await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
-        return;
-      }
-
-      let cleanupCompleted = false;
-
-      for (let batchIndex = 0; batchIndex < CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES; batchIndex += 1) {
-        const closedSessions = await this.repository.closeDisabledOpenSessions({
-          endedAt: Date.now(),
-          limit: this.batchSize,
+      this.observability?.increment("analysis", "syncSucceeded");
+      if (this.observability) {
+        this.observability.event({
+          eventCode: "insights_worker.rescan_completed",
+          level: "info",
+          message: "会话洞察 Worker 历史重刷完成",
+          payload: {
+            jobId: job.jobId,
+            reanalyzeSessions: queuedFinalSessions,
+            rescanTaskId: job.rescanTaskId,
+            scannedMessages,
+            sessionizedMessages,
+          },
+          pipeline: "analysis",
           uid: job.uid,
         });
-
-        if (closedSessions < this.batchSize) {
-          cleanupCompleted = true;
-          break;
-        }
+      } else {
+        this.logger?.info(
+          {
+            jobId: job.jobId,
+            reanalyzeSessions: queuedFinalSessions,
+            scannedMessages,
+            sessionizedMessages,
+            uid: job.uid,
+          },
+          "会话洞察 worker 历史重刷完成",
+        );
       }
-
-      if (!cleanupCompleted) {
-        throw new Error("cleanup_disabled_insights exceeded batch safety limit");
-      }
-
-      await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
     } catch (error) {
-      await this.repository.markCleanupDisabledInsightsJobFailed(job.jobId, error);
-      this.logger?.error(
-        { err: error, jobId: job.jobId, uid: job.uid },
-        "会话洞察 worker 清理已关闭洞察会话失败",
-      );
+      await this.repository.markSyncMessagesJobFailed(job.jobId, error);
+      this.observability?.increment("analysis", "syncFailed");
+      if (this.observability) {
+        this.observability.event({
+          errorCode: getWorkerErrorCode(error),
+          eventCode: "insights_worker.rescan_failed",
+          level: "error",
+          message: "会话洞察 Worker 历史重刷失败",
+          payload: {
+            jobId: job.jobId,
+            rescanTaskId: job.rescanTaskId,
+            ...safeErrorPayload(error),
+          },
+          pipeline: "analysis",
+          uid: job.uid,
+        });
+      } else {
+        this.logger?.error(
+          { err: error, jobId: job.jobId, uid: job.uid },
+          "会话洞察 worker 历史重刷失败",
+        );
+      }
     }
   }
 
-  private async closeTimedOutOpenSessions(activeUids: Set<number>) {
+  private async closeTimedOutOpenSessions(
+    activeUids: Set<number>,
+    sessionizationClaim?: ClaimedSessionizationUidJob,
+  ) {
     const sessions = await this.repository.listClosableOpenSessions({
       activeUids,
       limit: this.batchSize,
       now: Date.now(),
     });
 
+    const closedSessionIdsByUid = new Map<number, string[]>();
     for (const session of sessions) {
-      await this.repository.createAnalyzeJob({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "final",
-        runAfter: new Date(session.endedAt + session.analysisDelayMinutes * 60_000),
-        sessionId: session.sessionId,
-        uid: session.uid,
-      });
-      await this.repository.closeSession({
-        closeReason: session.closeReason,
-        endedAt: session.endedAt,
-        sessionId: session.sessionId,
-      });
+      const finalize = (repository: InsightWorkerRepositoryPort) =>
+        repository.finalizeOpenSession({
+          analysisDelayMinutes: session.analysisDelayMinutes,
+          closeReason: session.closeReason,
+          endedAt: session.endedAt,
+          sessionId: session.sessionId,
+          uid: session.uid,
+        });
+      const finalized = sessionizationClaim
+        ? await this.repository.withSessionizationClaim(
+            sessionizationClaim,
+            finalize,
+          )
+        : await finalize(this.repository);
+      if (finalized) {
+        const closedSessionIds = closedSessionIdsByUid.get(session.uid) ?? [];
+        closedSessionIds.push(session.sessionId);
+        closedSessionIdsByUid.set(session.uid, closedSessionIds);
+      }
     }
 
-    if (sessions.length > 0) {
-      this.logger?.info(
-        {
-          closedSessions: sessions.length,
-          sessionIds: sessions.map((session) => session.sessionId),
-        },
-        "会话洞察 worker 已关闭超时逻辑会话",
+    const closedSessions = Array.from(closedSessionIdsByUid.values())
+      .reduce((total, sessionIds) => total + sessionIds.length, 0);
+    if (closedSessions > 0) {
+      this.observability?.increment(
+        "sessionization",
+        "closedSessions",
+        closedSessions,
       );
+      if (this.observability) {
+        for (const [uid, sessionIds] of closedSessionIdsByUid) {
+          this.observability.event({
+            eventCode: "insights_worker.sessions_closed",
+            level: "debug",
+            message: "会话洞察 Worker 已关闭超时逻辑会话",
+            payload: {
+              closedSessions: sessionIds.length,
+              sessionIdSamples: sessionIds.slice(0, 10),
+            },
+            pipeline: "sessionization",
+            uid,
+          });
+        }
+      } else {
+        this.logger?.info(
+          {
+            closedSessions,
+            sessionIds: Array.from(closedSessionIdsByUid.values()).flat(),
+          },
+          "会话洞察 worker 已关闭超时逻辑会话",
+        );
+      }
     }
   }
 
   private async sessionizeMessage(
     message: InsightWorkerMessage,
-    options: { skipLiveAnalysis?: boolean } = {},
+    options: {
+      config?: InsightWorkerSessionizationConfig;
+      insightEnabled?: boolean;
+      repository?: InsightWorkerRepositoryPort;
+      skipLiveAnalysis?: boolean;
+    } = {},
   ): Promise<SessionizedMessageResult | undefined> {
-    const conversation = await this.repository.findPlatformConversation(message);
+    const repository = options.repository ?? this.repository;
 
-    if (!conversation) {
+    if (message.chatType !== SINGLE_CHAT_TYPE) {
+      return undefined;
+    }
+
+    const conversation = await repository.findPlatformConversation(message);
+
+    if (
+      !conversation
+      || conversation.customerBindType === APPLICATION_MESSAGE_BIND_TYPE
+    ) {
       return undefined;
     }
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
 
-    let config = this.uidSessionConfigCache?.get(conversation.uid);
-    if (!config) {
-      config = await this.repository.getSessionizationConfig(conversation.uid);
-      this.uidSessionConfigCache?.set(conversation.uid, config);
-    }
+    const config = options.config
+      ?? await repository.getSessionizationConfig(conversation.uid);
 
-    const openSession = await this.repository.findReusableSession({
+    const openSession = await repository.findReusableSession({
       conversationId: conversation.conversationId,
       uid: conversation.uid,
     });
@@ -973,6 +1350,7 @@ export class InsightsWorkerService {
       input,
       message,
       openSession,
+      repository,
     });
 
     if (!session) {
@@ -984,11 +1362,12 @@ export class InsightsWorkerService {
         config,
         conversation,
         occurredAt: input.occurredAt,
+        repository,
         sessionId: session.sessionId,
       });
     }
 
-    await this.repository.appendSessionMessage({
+    await repository.appendSessionMessage({
       asset: parseWorkerMessageAsset(message),
       conversationId: conversation.conversationId,
       includedForAi: input.includedForAi,
@@ -1007,7 +1386,7 @@ export class InsightsWorkerService {
         occurredAt: input.occurredAt,
         sessionId: session.sessionId,
         uid: conversation.uid,
-      });
+      }, repository, options.insightEnabled);
     }
 
     return {
@@ -1018,9 +1397,19 @@ export class InsightsWorkerService {
     };
   }
 
-  private async createLiveAnalyzeJobIfNeeded(input: LiveAnalyzeCandidate) {
+  private async createLiveAnalyzeJobIfNeeded(
+    input: LiveAnalyzeCandidate,
+    repository = this.repository,
+    insightEnabled?: boolean,
+  ) {
+    const enabled = insightEnabled
+      ?? (await repository.getFeatureConfig(input.uid)).insightEnabled;
+    if (!enabled) {
+      return false;
+    }
+
     if (
-      !await this.repository.shouldCreateLiveAnalyzeJob({
+      !await repository.shouldCreateLiveAnalyzeJob({
         occurredAt: input.occurredAt,
         sessionId: input.sessionId,
         uid: input.uid,
@@ -1029,7 +1418,7 @@ export class InsightsWorkerService {
       return false;
     }
 
-    await this.repository.createAnalyzeJob({
+    await repository.createAnalyzeJob({
       analysisScope: "all",
       jobType: "analyze_session",
       mode: "live",
@@ -1041,13 +1430,41 @@ export class InsightsWorkerService {
     return true;
   }
 
+  private recordSkippedSessionizationMessage(
+    message: InsightWorkerMessage,
+    error: unknown,
+  ) {
+    const payload = {
+      errorCode: getWorkerErrorCode(error),
+      messageId: message.id,
+      ...safeErrorPayload(error),
+    };
+    if (this.observability) {
+      this.observability.event({
+        errorCode: payload.errorCode,
+        eventCode: "insights_worker.sessionization_message_skipped",
+        level: "warn",
+        message: "会话洞察 Worker 跳过无法持久化的消息",
+        payload,
+        pipeline: "sessionization",
+        uid: message.uid,
+      });
+    } else {
+      this.logger?.warn?.(
+        { ...payload, uid: message.uid },
+        "会话洞察 worker 跳过无法持久化的消息",
+      );
+    }
+  }
+
   private async appendPreContextMessages(input: {
     config: InsightWorkerSessionizationConfig;
     conversation: InsightWorkerConversation;
     occurredAt: number;
+    repository: InsightWorkerRepositoryPort;
     sessionId: string;
   }) {
-    const rows = await this.repository.listUnassignedPreContextMessages({
+    const rows = await input.repository.listUnassignedPreContextMessages({
       conversationId: input.conversation.conversationId,
       limit: PRE_CONTEXT_MESSAGE_LIMIT,
       occurredBefore: input.occurredAt,
@@ -1065,7 +1482,7 @@ export class InsightsWorkerService {
         continue;
       }
 
-      await this.repository.appendSessionMessage({
+      await input.repository.appendSessionMessage({
         asset: parseWorkerMessageAsset(row),
         conversationId: input.conversation.conversationId,
         includedForAi: preContext.includedForAi,
@@ -1087,8 +1504,9 @@ export class InsightsWorkerService {
     input: ReturnType<typeof buildInsightMessageInput>;
     message: InsightWorkerMessage;
     openSession: InsightWorkerOpenSession | undefined;
+    repository: InsightWorkerRepositoryPort;
   }): Promise<{ created: boolean; sessionId: string } | undefined> {
-    const { config, conversation, openSession } = input;
+    const { config, conversation, openSession, repository } = input;
     const occurredAt = input.input.occurredAt;
     const canOpenSession = input.input.senderRole === "customer" && input.input.includedForAi;
 
@@ -1099,7 +1517,7 @@ export class InsightsWorkerService {
 
       return {
         created: true,
-        sessionId: await this.repository.createLogicalSession({
+        sessionId: await repository.createLogicalSession({
           config,
           conversationId: conversation.conversationId,
           startedAt: occurredAt,
@@ -1118,7 +1536,7 @@ export class InsightsWorkerService {
           return undefined;
         }
 
-        await this.repository.reopenSession({
+        await repository.reopenSession({
           sessionId: openSession.sessionId,
           uid: conversation.uid,
         });
@@ -1131,16 +1549,10 @@ export class InsightsWorkerService {
     }
 
     if (openSession.status !== "canceled") {
-      await this.repository.closeSession({
+      await repository.finalizeOpenSession({
+        analysisDelayMinutes: config.analysisDelayMinutes,
         closeReason,
         endedAt: occurredAt,
-        sessionId: openSession.sessionId,
-      });
-      await this.repository.createAnalyzeJob({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "final",
-        runAfter: new Date(occurredAt + config.analysisDelayMinutes * 60_000),
         sessionId: openSession.sessionId,
         uid: conversation.uid,
       });
@@ -1152,7 +1564,7 @@ export class InsightsWorkerService {
 
     return {
       created: true,
-      sessionId: await this.repository.createLogicalSession({
+      sessionId: await repository.createLogicalSession({
         config,
         conversationId: conversation.conversationId,
         startedAt: occurredAt,
@@ -1173,6 +1585,7 @@ export class InsightsWorkerService {
       const job = await this.repository.claimNextAnalyzeJob();
       if (!job) break;
       jobs.push(job);
+      this.observability?.increment("analysis", "jobsClaimed");
     }
 
     if (jobs.length === 0) return;
@@ -1205,17 +1618,57 @@ export class InsightsWorkerService {
     let runId: string | undefined;
     const startedAt = Date.now();
 
-    this.logger?.info(
-      {
-        jobId: job.jobId,
-        mode: job.mode,
-        sessionId: job.sessionId,
+    if (this.observability) {
+      this.observability.event({
+        eventCode: "insights_worker.analysis_started",
+        level: "debug",
+        message: "会话洞察 Worker 开始分析任务",
+        payload: {
+          analysisScope: job.analysisScope,
+          attempt: job.attemptCount,
+          jobId: job.jobId,
+          maxAttempts: job.maxAttempts,
+          mode: job.mode,
+          sessionId: job.sessionId,
+        },
+        pipeline: "analysis",
         uid: job.uid,
-      },
-      "会话洞察 worker 开始分析任务",
-    );
+      });
+    } else {
+      this.logger?.info(
+        {
+          jobId: job.jobId,
+          mode: job.mode,
+          sessionId: job.sessionId,
+          uid: job.uid,
+        },
+        "会话洞察 worker 开始分析任务",
+      );
+    }
 
     try {
+      if (job.mode !== "manual_reanalyze") {
+        const featureConfig = await this.repository.getFeatureConfig(job.uid);
+        if (!featureConfig.insightEnabled) {
+          await this.repository.skipAutomaticAnalysisJob(job);
+          this.observability?.increment("analysis", "skippedInsightDisabled");
+          this.observability?.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 已跳过自动分析",
+            payload: {
+              jobId: job.jobId,
+              mode: job.mode,
+              reason: "insight_disabled",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
+            uid: job.uid,
+          });
+          return;
+        }
+      }
+
       const sourceRows = await this.repository.listSessionMessagesForAnalysis(job.sessionId);
       const messages = sourceRows.map((row) =>
         buildInsightMessageInput(toAnalysisMessageSourceRow(row)),
@@ -1225,20 +1678,41 @@ export class InsightsWorkerService {
         message.contentStatus === "pending_transcription"
       ).length;
 
-      if (pendingTranscriptionCount > 0 && job.attemptCount <= INPUT_READINESS_MAX_POSTPONES) {
+      if (
+        pendingTranscriptionCount > 0
+        && !job.inputReadinessPostponed
+        && job.attemptCount <= INPUT_READINESS_MAX_POSTPONES
+      ) {
         await this.repository.postponeAnalysisJobForInputReadiness(job.jobId, {
           delayMs: INPUT_READINESS_RETRY_DELAY_MS,
           reason: "pending_transcription",
         });
-        this.logger?.info(
-          {
-            jobId: job.jobId,
-            pendingTranscriptionCount,
-            sessionId: job.sessionId,
+        this.observability?.increment("analysis", "postponedTranscription");
+        if (this.observability) {
+          this.observability.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 延后分析任务",
+            payload: {
+              jobId: job.jobId,
+              pendingTranscriptionCount,
+              reason: "pending_transcription",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
             uid: job.uid,
-          },
-          "会话洞察 worker 延后分析任务，等待语音转写",
-        );
+          });
+        } else {
+          this.logger?.info(
+            {
+              jobId: job.jobId,
+              pendingTranscriptionCount,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 延后分析任务，等待语音转写",
+          );
+        }
         return;
       }
 
@@ -1287,20 +1761,40 @@ export class InsightsWorkerService {
             sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
             validationWarnings: [],
           });
+          this.observability?.increment("analysis", "snapshotsPublished");
         }
 
         await this.finishAnalyzeJobSucceeded(job);
-        this.logger?.info(
-          {
-            jobId: job.jobId,
-            messageCount: modelMessages.length,
-            minAnalysisMessages: policy.minAnalysisMessages,
-            mode: job.mode,
-            sessionId: job.sessionId,
+        this.observability?.increment("analysis", "skippedInsufficientMessages");
+        if (this.observability) {
+          this.observability.event({
+            eventCode: "insights_worker.analysis_skipped",
+            level: "debug",
+            message: "会话洞察 Worker 跳过模型分析",
+            payload: {
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              minAnalysisMessages: policy.minAnalysisMessages,
+              mode: job.mode,
+              reason: "insufficient_messages",
+              sessionId: job.sessionId,
+            },
+            pipeline: "analysis",
             uid: job.uid,
-          },
-          "会话洞察 worker 跳过模型分析，消息不足",
-        );
+          });
+        } else {
+          this.logger?.info(
+            {
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              minAnalysisMessages: policy.minAnalysisMessages,
+              mode: job.mode,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 跳过模型分析，消息不足",
+          );
+        }
         return;
       }
       const context = await this.repository.getPromptContext(job.uid);
@@ -1339,16 +1833,34 @@ export class InsightsWorkerService {
             previousSessionContexts,
           });
         } catch (error) {
-          this.logger?.error(
-            {
-              err: error,
-              jobId: job.jobId,
-              messageCount: modelMessages.length,
-              sessionId: job.sessionId,
+          if (this.observability) {
+            this.observability.event({
+              errorCode: getWorkerErrorCode(error),
+              eventCode: "insights_worker.live_gate_degraded",
+              level: "warn",
+              message: "会话洞察 Worker 实时分析 gate 降级",
+              payload: {
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                sessionId: job.sessionId,
+                ...safeErrorPayload(error),
+              },
+              pipeline: "analysis",
+              throttleKey: "provider",
               uid: job.uid,
-            },
-            "会话洞察 worker 未完结会话 gate 执行失败，按策略跳过完整分析",
-          );
+            });
+          } else {
+            this.logger?.error(
+              {
+                err: error,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                sessionId: job.sessionId,
+                uid: job.uid,
+              },
+              "会话洞察 worker 未完结会话 gate 执行失败，按策略跳过完整分析",
+            );
+          }
           gateDecision = {
             changeType: "no_material_change",
             reason: `live gate failed: ${formatError(error)}`,
@@ -1363,17 +1875,35 @@ export class InsightsWorkerService {
             runId,
           });
           await this.finishAnalyzeJobSucceeded(job);
-          this.logger?.info(
-            {
-              changeType: gateDecision.changeType,
-              jobId: job.jobId,
-              messageCount: modelMessages.length,
-              reason: gateDecision.reason,
-              sessionId: job.sessionId,
+          this.observability?.increment("analysis", "liveGateSkipped");
+          if (this.observability) {
+            this.observability.event({
+              eventCode: "insights_worker.analysis_skipped",
+              level: "debug",
+              message: "会话洞察 Worker 跳过实时分析",
+              payload: {
+                changeType: gateDecision.changeType,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                reason: "live_gate_no_material_change",
+                sessionId: job.sessionId,
+              },
+              pipeline: "analysis",
               uid: job.uid,
-            },
-            "会话洞察 worker 跳过未完结会话提前分析，未发现实质变化",
-          );
+            });
+          } else {
+            this.logger?.info(
+              {
+                changeType: gateDecision.changeType,
+                jobId: job.jobId,
+                messageCount: modelMessages.length,
+                reason: gateDecision.reason,
+                sessionId: job.sessionId,
+                uid: job.uid,
+              },
+              "会话洞察 worker 跳过未完结会话提前分析，未发现实质变化",
+            );
+          }
           return;
         }
       }
@@ -1414,42 +1944,106 @@ export class InsightsWorkerService {
         validationWarnings,
       });
       await this.finishAnalyzeJobSucceeded(job);
-      this.logger?.info(
-        {
-          durationMs: Date.now() - startedAt,
-          jobId: job.jobId,
-          messageCount: messages.length,
-          mode: job.mode,
-          sessionId: job.sessionId,
-          snapshotId,
-          validationWarningCount: validationWarnings.length,
-        },
-        "会话洞察 worker 分析任务完成",
-      );
+      this.observability?.increment("analysis", "succeeded");
+      this.observability?.increment("analysis", "snapshotsPublished");
+      if (this.observability) {
+        this.observability.event({
+          eventCode: "insights_worker.analysis_completed",
+          level: "debug",
+          message: "会话洞察 Worker 分析任务完成",
+          payload: {
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            messageCount: messages.length,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            snapshotId,
+            validationWarningCount: validationWarnings.length,
+          },
+          pipeline: "analysis",
+          uid: job.uid,
+        });
+      } else {
+        this.logger?.info(
+          {
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            messageCount: messages.length,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            snapshotId,
+            validationWarningCount: validationWarnings.length,
+          },
+          "会话洞察 worker 分析任务完成",
+        );
+      }
     } catch (error) {
       if (runId) {
         await this.repository.markAnalysisRunFailed(runId, error);
       }
 
-      await this.repository.markAnalysisJobFailed(job.jobId, error);
-      if (job.rescanTaskId) {
+      const willRetry = job.mode === "final" && job.attemptCount < job.maxAttempts;
+      if (willRetry) {
+        await this.repository.retryAnalysisJob(job.jobId, error, {
+          delayMs: ANALYSIS_RETRY_DELAY_MS,
+        });
+      } else {
+        await this.repository.markAnalysisJobFailed(job.jobId, error);
+      }
+      if (job.rescanTaskId && !willRetry) {
         await this.repository.updateRescanTaskAfterAnalysis({
           failedSessions: 1,
           rescanTaskId: job.rescanTaskId,
           succeededSessions: 0,
         });
       }
-      this.logger?.error(
-        {
-          durationMs: Date.now() - startedAt,
-          err: error,
-          jobId: job.jobId,
-          mode: job.mode,
-          sessionId: job.sessionId,
+      const errorCode = getWorkerErrorCode(error);
+      const errorPayload = safeErrorPayload(error);
+      if (this.observability) {
+        this.observability.increment(
+          "analysis",
+          willRetry ? "retried" : "failed",
+        );
+        this.observability.event({
+          errorCode,
+          eventCode: willRetry
+            ? "insights_worker.analysis_retry_scheduled"
+            : "insights_worker.analysis_failed",
+          level: willRetry ? "warn" : "error",
+          message: willRetry
+            ? "会话洞察 Worker 分析失败，已安排重试"
+            : "会话洞察 Worker 分析任务终态失败",
+          payload: {
+            attempt: job.attemptCount,
+            durationMs: Date.now() - startedAt,
+            jobId: job.jobId,
+            maxAttempts: job.maxAttempts,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            willRetry,
+            ...errorPayload,
+          },
+          pipeline: "analysis",
+          throttleKey: willRetry
+            ? errorPayload.failedStep
+              ? "provider"
+              : "analysis_retry"
+            : "analysis_terminal",
           uid: job.uid,
-        },
-        "会话洞察 worker 分析任务失败",
-      );
+        });
+      } else {
+        this.logger?.error(
+          {
+            durationMs: Date.now() - startedAt,
+            err: error,
+            jobId: job.jobId,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            uid: job.uid,
+          },
+          "会话洞察 worker 分析任务失败",
+        );
+      }
     }
   }
 
@@ -1895,11 +2489,11 @@ export function parseWorkerMessageAsset(
       normalizedUrl ||
       "未知链接";
 
-    return {
+    return constrainWorkerMessageAsset({
       key: normalizedUrl || `link:${title}`,
       name: title,
       type: "link",
-    };
+    });
   }
 
   if (message.msgtype === "weapp") {
@@ -1919,11 +2513,11 @@ export function parseWorkerMessageAsset(
       "未知小程序";
     const key = [appId, normalizedPath].filter(Boolean).join(":");
 
-    return {
+    return constrainWorkerMessageAsset({
       key: key || `miniapp:${title}`,
       name: title,
       type: "miniapp",
-    };
+    });
   }
 
   if (message.msgtype === "file") {
@@ -1937,14 +2531,51 @@ export function parseWorkerMessageAsset(
       fileUrl ||
       fileName;
 
-    return {
+    return constrainWorkerMessageAsset({
       key: stableId,
       name: fileName,
       type: "file",
-    };
+    });
   }
 
   return undefined;
+}
+
+function constrainWorkerMessageAsset(
+  asset: NonNullable<AppendSessionMessageInput["asset"]>,
+) {
+  return {
+    ...asset,
+    key: truncateByCodePoint(asset.key, ASSET_TEXT_MAX_LENGTH),
+    name: truncateByCodePoint(asset.name, ASSET_TEXT_MAX_LENGTH),
+  };
+}
+
+function truncateByCodePoint(value: string, maxLength: number) {
+  return Array.from(value).slice(0, maxLength).join("");
+}
+
+function isSkippableSessionizationMessageError(error: unknown) {
+  let current = error;
+  const visited = new Set<unknown>();
+
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const candidate = current as {
+      cause?: unknown;
+      code?: unknown;
+      errno?: unknown;
+    };
+    if (
+      SKIPPABLE_SESSIONIZATION_ERROR_CODES.has(String(candidate.code ?? ""))
+      || SKIPPABLE_SESSIONIZATION_ERROR_NUMBERS.has(Number(candidate.errno))
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+
+  return false;
 }
 
 function normalizeAssetUrlWithoutQuery(value: string) {
@@ -1998,5 +2629,73 @@ export function startInsightsWorker(options: {
       await ticker.waitForIdle();
     },
     ticker,
+  };
+}
+
+export function startInsightsWorkerPipelines(options: {
+  analysis: () => Promise<void>;
+  discovery: () => Promise<void>;
+  intervalMs?: number;
+  logger: WorkerLogger;
+  observability?: InsightsWorkerObservability;
+  sessionization: () => Promise<void>;
+}) {
+  const intervalMs = options.intervalMs ?? 3_000;
+  const pipelines = [
+    ["discovery", options.discovery],
+    ["sessionization", options.sessionization],
+    ["analysis", options.analysis],
+  ] as const;
+  const runtimes = pipelines.map(([name, run]) => {
+    const trackedRun = async () => {
+      const startedAt = options.observability?.pipelineStarted(name);
+      try {
+        await run();
+        if (startedAt != null) {
+          options.observability?.pipelineSucceeded(name, startedAt);
+        }
+      } catch (error) {
+        if (startedAt != null) {
+          options.observability?.pipelineFailed(name, startedAt, error);
+        }
+        throw error;
+      }
+    };
+    const ticker = createNonOverlappingTicker(trackedRun);
+    const timer = setInterval(() => {
+      void ticker.tick()
+        .then((accepted) => {
+          if (!accepted) {
+            options.observability?.pipelineBusy(name);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!options.observability) {
+            options.logger.error(
+              { err: error, pipeline: name },
+              "会话洞察 worker pipeline tick 失败",
+            );
+          }
+        });
+    }, intervalMs);
+
+    return { name, ticker, timer };
+  });
+
+  if (!options.observability) {
+    options.logger.info({ intervalMs }, "会话洞察 worker 已启动独立处理管线");
+  }
+
+  return {
+    async stop() {
+      for (const runtime of runtimes) {
+        clearInterval(runtime.timer);
+      }
+      await Promise.all(runtimes.map((runtime) => runtime.ticker.waitForIdle()));
+      await options.observability?.stop();
+    },
+    tickers: Object.fromEntries(
+      runtimes.map((runtime) => [runtime.name, runtime.ticker]),
+    ) as Record<(typeof pipelines)[number][0], NonOverlappingTicker>,
   };
 }

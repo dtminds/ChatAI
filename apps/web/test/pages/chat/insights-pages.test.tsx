@@ -1,6 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -19,6 +21,7 @@ const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
   getInsightBusinessRelatedSessions: vi.fn(),
   getInsightBusinessTopics: vi.fn(),
+  getInsightCapabilities: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
@@ -32,6 +35,9 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightRescanTasks: vi.fn(),
   getInsightSettings: vi.fn(),
   getInsightSettingsSummary: vi.fn(),
+  getInsightsWorkerSummary: vi.fn(),
+  getInsightsWorkerUidDetail: vi.fn(),
+  getInsightsWorkerUids: vi.fn(),
   getInsightPolicyAndSessionization: vi.fn(),
   getInsightFeatureConfig: vi.fn(),
   listInsightIntentConfigs: vi.fn(),
@@ -481,9 +487,17 @@ function createMockInsightSessionMessages() {
 }
 
 function installInsightMocks() {
+  serviceMocks.getInsightCapabilities.mockResolvedValue({
+    canManageInsights: true,
+    canViewWorkerObservability: false,
+    insightAvailable: true,
+    mode: "insight",
+  });
   serviceMocks.getInsightOverview.mockResolvedValue({
     actionItemsOpen: 3,
     analysis: { failed: 1, partial: 2, ready: 18, stale: 1 },
+    comparisonAvailable: true,
+    mode: "insight",
     problemSessions: 11,
     readySessions: 18,
     resolution: {
@@ -556,62 +570,79 @@ function installInsightMocks() {
   serviceMocks.getInsightOverviewSessions.mockResolvedValue({
     items: [
       {
+        agentMessageCount: 4,
         agentAvatarUrl: "https://example.com/agent-1.png",
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
+        customerMessageCount: 6,
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         lastMessageAt: 1_780_244_950_000,
+        messageCount: 10,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
+        sessionState: "ended",
         startedAt: 1_780_243_200_000,
         summarySessionTitle: "物流异常待跟进",
       },
       {
+        agentMessageCount: 3,
         agentAvatarUrl: "https://example.com/agent-2.png",
         agentName: "客服二号",
         analysisStatus: "partial",
         conversationId: "302",
+        customerMessageCount: 4,
         customerAvatarUrl: "https://example.com/customer-2.png",
         customerName: "李四",
         lastMessageAt: 1_780_244_500_000,
+        messageCount: 7,
         problemSummary: "客户咨询退款到账时间",
         resolutionStatus: "resolved",
         sessionId: "502",
+        sessionState: "ended",
         startedAt: 1_780_244_000_000,
         summarySessionTitle: "退款到账咨询",
       },
       {
+        agentMessageCount: 1,
         agentAvatarUrl: "https://example.com/agent-3.png",
         agentName: "客服三号",
         analysisStatus: "ready",
         conversationId: "303",
+        customerMessageCount: 1,
         customerAvatarUrl: "https://example.com/customer-3.png",
         customerName: "赵六",
         lastMessageAt: 1_780_243_500_000,
+        messageCount: 2,
         problemSummary: "",
         resolutionStatus: "unknown",
         sessionId: "503",
+        sessionState: "ended",
         startedAt: 1_780_243_400_000,
         summarySessionTitle: "",
       },
       {
+        agentMessageCount: 2,
         agentAvatarUrl: "https://example.com/agent-4.png",
         agentName: "客服四号",
         analysisStatus: "analyzing",
         conversationId: "304",
+        customerMessageCount: 3,
         customerAvatarUrl: "https://example.com/customer-4.png",
         customerName: "孙七",
         lastMessageAt: 1_780_245_500_000,
+        messageCount: 5,
         problemSummary: "",
         resolutionStatus: "unknown",
         sessionId: "504",
+        sessionState: "open",
         startedAt: 1_780_245_000_000,
         summarySessionTitle: "",
       },
     ],
+    mode: "insight",
     page: 1,
     pageSize: 20,
     total: 4,
@@ -774,20 +805,25 @@ function installInsightMocks() {
   serviceMocks.getInsightBusinessRelatedSessions.mockResolvedValue({
     items: [
       {
+        agentMessageCount: 4,
         agentAvatarUrl: "https://example.com/agent-1.png",
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
+        customerMessageCount: 6,
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         lastMessageAt: 1_780_244_950_000,
+        messageCount: 10,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
+        sessionState: "ended",
         startedAt: 1_780_243_200_000,
         summarySessionTitle: "物流异常待跟进",
       },
     ],
+    mode: "insight",
     page: 1,
     pageSize: 20,
     total: 1,
@@ -1082,6 +1118,154 @@ function installInsightMocks() {
     ],
     total: 1,
   });
+  serviceMocks.getInsightsWorkerSummary.mockResolvedValue({
+    analysisJobs: {
+      expiredLease: 0,
+      failedLast24h: 1,
+      pending: 2,
+      retrying: 0,
+      running: 1,
+    },
+    discovery: {
+      auditIdGap: 12,
+      cursorAuditId: 9000,
+      hasBacklog: true,
+      sourceHeadAuditId: 9012,
+    },
+    observedAt: 1_780_300_000_000,
+    observedUids: {
+      blocked: 0,
+      error: 1,
+      idle: 1,
+      processing: 0,
+      queued: 1,
+      retrying: 0,
+      total: 3,
+    },
+    pipelines: [
+      {
+        activity: "idle",
+        health: "healthy",
+        lastSuccessAt: 1_780_299_990_000,
+        pipeline: "discovery",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+      },
+      {
+        activity: "possibly_stalled",
+        health: "degraded",
+        lastStartedAt: 1_780_299_040_000,
+        pipeline: "sessionization",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+        runningDurationMs: 960_000,
+      },
+      {
+        activity: "idle",
+        health: "degraded",
+        lastErrorCode: "LLM_TIMEOUT",
+        lastFailureAt: 1_780_299_980_000,
+        pipeline: "analysis",
+        reportedAt: 1_780_300_000_000,
+        reportedBy: "worker-a:1",
+      },
+    ],
+    sessionizationJobs: {
+      expiredLease: 0,
+      pending: 1,
+      retrying: 0,
+      running: 1,
+    },
+    sessions: {
+      open: 4,
+      overdue: 1,
+    },
+  });
+  serviceMocks.getInsightsWorkerUids.mockResolvedValue({
+    items: [
+      {
+        analysis: {
+          failedLast24h: 0,
+          pending: 1,
+          processing: 0,
+          queueAgeMs: 60_000,
+          retrying: 0,
+          state: "queued",
+        },
+        cursor: {
+          cursorAuditId: 8990,
+          cursorMsgtime: 1_780_299_900_000,
+          updateTime: 1_780_299_990_000,
+        },
+        overallState: "queued",
+        sessionization: {
+          attempt: 0,
+          jobId: "3001",
+          maxAttempts: 2,
+          queueAgeMs: 60_000,
+          runAfter: 1_780_299_940_000,
+          state: "queued",
+        },
+        sessions: {
+          open: 1,
+          overdue: 0,
+        },
+        uid: 2002,
+      },
+    ],
+    observedAt: 1_780_300_000_000,
+    page: 1,
+    pageSize: 50,
+    total: 1,
+    totalPages: 1,
+  });
+  serviceMocks.getInsightsWorkerUidDetail.mockResolvedValue({
+    analysis: {
+      failedLast24h: 0,
+      pending: 1,
+      processing: 0,
+      queueAgeMs: 60_000,
+      retrying: 0,
+      state: "queued",
+    },
+    cursor: {
+      cursorAuditId: 8990,
+      cursorMsgtime: 1_780_299_900_000,
+      updateTime: 1_780_299_990_000,
+    },
+    hasPendingMessages: true,
+    observedAt: 1_780_300_000_000,
+    overallState: "queued",
+    recentAnalysisRuns: [],
+    recentErrors: [],
+    recentRescans: [],
+    recentSessions: [
+      {
+        nextCloseAt: 1_780_300_060_000,
+        sessionId: "5001",
+        startedAt: 1_780_299_800_000,
+        status: "open",
+      },
+    ],
+    sessionization: {
+      attempt: 0,
+      jobId: "3001",
+      maxAttempts: 2,
+      queueAgeMs: 60_000,
+      runAfter: 1_780_299_940_000,
+      state: "queued",
+    },
+    sessions: {
+      earliestNextCloseAt: 1_780_300_060_000,
+      open: 1,
+      overdue: 0,
+    },
+    sourceHead: {
+      auditId: 9012,
+      msgtime: 1_780_299_999_000,
+    },
+    uid: 2002,
+  });
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
     status: 1,
     id: "15",
@@ -1184,6 +1368,7 @@ describe("conversation insights pages", () => {
       import("@/pages/chat/insights/insights-follow-ups-page"),
       import("@/pages/chat/insights/insights-business-page"),
       import("@/pages/chat/insights/insights-settings-page"),
+      import("@/pages/chat/insights/insights-worker-observability-page"),
     ]);
   });
 
@@ -1281,6 +1466,9 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
     expect(screen.getByText("摘要")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "查看会话洞察依赖说明" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("物流异常待跟进")).toBeInTheDocument();
     expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
     await userEvent.hover(
@@ -1289,6 +1477,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findAllByText("按本轮会话内容判断，不代表后续处理状态"),
     ).not.toHaveLength(0);
+    expect(
+      screen.queryByText("该功能依赖会话洞察，当前暂未开启"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getAllByText("消息未达准入门槛，或模型基于现有消息仍无法判断"),
     ).not.toHaveLength(0);
@@ -1434,7 +1625,9 @@ describe("conversation insights pages", () => {
       );
     });
 
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     await waitFor(() => {
@@ -1691,7 +1884,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     expect(await screen.findByText("正在加载会话")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
@@ -1711,7 +1906,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[3]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[3],
+    );
 
     const detailDialog = await screen.findByRole("dialog", {
       name: "洞察详情",
@@ -1769,7 +1966,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const conversationRegion = await screen.findByRole("region", {
       name: "本轮对话",
@@ -1785,6 +1984,63 @@ describe("conversation insights pages", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("counts only visible chat messages in the conversation header", async () => {
+    serviceMocks.getInsightSessionMessages.mockResolvedValueOnce({
+      messages: [
+        ...createMockInsightSessionMessages().messages,
+        {
+          content: { text: "你已撤回一条消息" },
+          contentType: "revoke",
+          conversationId: "301",
+          createdAt: 1_780_244_050_000,
+          customerId: "customer-301",
+          messageId: "external-msg-9001-revoke",
+          seatId: "seat-1",
+          senderName: "客服一号",
+          senderType: "agent",
+          seq: 90015,
+          status: "sent",
+        },
+        {
+          content: { text: "系统提示" },
+          contentType: "system",
+          conversationId: "301",
+          createdAt: 1_780_244_060_000,
+          customerId: "customer-301",
+          messageId: "external-msg-9001-system",
+          seatId: "seat-1",
+          senderName: "系统",
+          senderType: "system",
+          seq: 90016,
+          status: "sent",
+        },
+      ],
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
+
+    const conversationRegion = await screen.findByRole("region", {
+      name: "本轮对话",
+    });
+    expect(within(conversationRegion).getByText("2 条")).toBeInTheDocument();
+    expect(
+      within(conversationRegion).getAllByTestId("history-message-item"),
+    ).toHaveLength(2);
+    expect(
+      within(conversationRegion).queryByText("你已撤回一条消息"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(conversationRegion).queryByText("系统提示"),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides customer problem row when problem summary is empty", async () => {
     const detail = createMockInsightDetail();
     detail.problemResolution.problemSummary = "";
@@ -1795,7 +2051,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -1818,7 +2076,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -1844,7 +2104,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -2195,6 +2457,9 @@ describe("conversation insights pages", () => {
     });
     expect(qualityDistribution).toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "查看会话洞察依赖说明" }),
+    ).not.toBeInTheDocument();
+    expect(
       within(qualityMetrics).getByText("2026-05-28 至 2026-06-03"),
     ).toBeInTheDocument();
     expect(
@@ -2397,7 +2662,7 @@ describe("conversation insights pages", () => {
       name: "质检分布",
     });
     const distributionItems =
-      within(qualityDistribution).getAllByRole("listitem");
+      await within(qualityDistribution).findAllByRole("listitem");
 
     expect(distributionItems).toHaveLength(10);
     expect(
@@ -2845,7 +3110,8 @@ describe("conversation insights pages", () => {
       screen.queryByText("个性化调整洞察策略、标签、质检规则和实体词库"),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
-    expect(screen.getByText("会话切分规则")).toBeInTheDocument();
+    expect(screen.getByText("服务会话规则")).toBeInTheDocument();
+    expect(screen.getByText("AI 洞察规则")).toBeInTheDocument();
     expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
     expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
     expect(screen.queryByText("自定义")).not.toBeInTheDocument();
@@ -2862,7 +3128,6 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
     ).toHaveTextContent("标准（推荐）");
-    expect(screen.getByText("准入规则")).toBeInTheDocument();
     expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -4210,6 +4475,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "经营洞察" }),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalled();
+    });
     const relatedSessionsTable = screen.getByRole("table", {
       name: "相关会话",
     });
@@ -4251,6 +4519,379 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the basic overview with the normal AI structure", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "basic",
+    });
+    serviceMocks.getInsightOverview.mockResolvedValue({
+      ...(await serviceMocks.getInsightOverview()),
+      mode: "basic",
+    });
+    serviceMocks.getInsightOverviewSessions.mockResolvedValue({
+      items: [
+        {
+          agentMessageCount: 4,
+          agentName: "客服一号",
+          analysisStatus: "ready",
+          conversationId: "301",
+          customerMessageCount: 6,
+          customerName: "张三",
+          endedAt: 1_780_244_950_000,
+          lastMessageAt: 1_780_244_950_000,
+          messageCount: 10,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unresolved",
+          sessionId: "501",
+          sessionState: "ended",
+          startedAt: 1_780_243_200_000,
+          summarySessionTitle: "物流异常待跟进",
+        },
+      ],
+      mode: "basic",
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("AI 诊断").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: "查看会话洞察依赖说明" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("button", { name: "查看 AI 诊断说明" }),
+    ).toBeInTheDocument();
+    expect(serviceMocks.getInsightFilterOptions).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("物流异常待跟进")).toBeInTheDocument();
+    expect(screen.getByText("未启用")).toBeInTheDocument();
+    expect(screen.queryByText("待分析")).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightOverviewSessions).toHaveBeenCalledWith({
+      analysisStatus: undefined,
+      entityId: undefined,
+      from: expect.any(String),
+      intentId: undefined,
+      keyword: undefined,
+      page: 1,
+      pageSize: 20,
+      problemScope: undefined,
+      resolutionStatus: undefined,
+      tagId: undefined,
+      to: expect.any(String),
+    });
+
+    await userEvent.hover(
+      screen.getByRole("button", { name: "查看 AI 诊断说明" }),
+    );
+    expect(
+      await screen.findByText("该功能依赖会话洞察，当前暂未开启"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("按本轮会话内容判断，不代表后续处理状态"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "详情" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightDetail).toHaveBeenCalledWith("501");
+      expect(serviceMocks.getInsightSessionMessages).toHaveBeenCalledWith("501");
+    });
+  });
+
+  it("renders AI pages in basic mode and keeps their normal data requests", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "查看会话洞察依赖说明" }),
+    ).toHaveLength(2);
+    expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.getInsightQualityAgentStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders AI route variants in basic mode without changing page structure", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "basic",
+    });
+
+    for (const path of [
+      "/chat/insights/quality/",
+      "/CHAT/INSIGHTS/QUALITY",
+    ]) {
+      renderRoute(path);
+
+      expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+      expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalled();
+      expect(serviceMocks.getInsightQualityAgentStats).toHaveBeenCalled();
+
+      cleanup();
+      installInsightMocks();
+      serviceMocks.getInsightCapabilities.mockResolvedValue({
+        canManageInsights: true,
+        canViewWorkerObservability: false,
+        insightAvailable: true,
+        mode: "basic",
+      });
+    }
+  });
+
+  it("keeps worker observability navigation available in basic-mode AI pages", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "运行观测" }),
+    ).toHaveAttribute("href", "/chat/insights/worker-observability");
+    expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets an observer use worker observability in basic mode and inspect another UID", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "运行观测" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "运行观测" }),
+    ).toHaveAttribute("href", "/chat/insights/worker-observability");
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledWith(
+        {
+          page: 1,
+          pageSize: 50,
+          state: undefined,
+          uid: undefined,
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(screen.getByText("可能长时间运行（聚合判断）")).toBeInTheDocument();
+    expect(screen.getByText(/已运行 16 分钟/)).toBeInTheDocument();
+    expect(screen.getByText("最近上报 worker-a:1")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "2002" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "UID 2002" }),
+    ).toBeInTheDocument();
+    expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledWith(
+      2002,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      within(screen.getByRole("dialog", { name: "UID 2002" })).getByText("3001"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "UID 2002" })).getByRole(
+        "button",
+        { name: "刷新 UID 详情" },
+      ),
+    );
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("does not request cross-tenant worker data for a non-observer direct route", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+      insightAvailable: true,
+      mode: "insight",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    expect(
+      await screen.findByRole("heading", { name: "无权查看运行观测" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightsWorkerSummary).not.toHaveBeenCalled();
+    expect(serviceMocks.getInsightsWorkerUids).not.toHaveBeenCalled();
+    expect(serviceMocks.getInsightsWorkerUidDetail).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last worker snapshot visible when a refresh fails", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(1);
+    });
+    serviceMocks.getInsightsWorkerSummary.mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+    serviceMocks.getInsightsWorkerUids.mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "刷新运行观测" }));
+
+    expect(
+      await screen.findByText("刷新失败，当前展示上次结果"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2002" })).toBeInTheDocument();
+  });
+
+  it("interprets pasted worker pipeline summary logs in a dialog", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+
+    renderRoute("/chat/insights/worker-observability");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "解读 Worker 日志" }));
+    const dialog = await screen.findByRole("dialog", { name: "Worker 日志解读" });
+    expect(dialog).toBeInTheDocument();
+
+    const textarea = screen.getByRole("textbox", { name: "Worker 日志原文" });
+    fireEvent.change(textarea, {
+      target: {
+        value: JSON.stringify({
+          eventCode: "insights_worker.pipeline_summary",
+          jobsClaimed: 0,
+          pipeline: "analysis",
+          ticksFailed: 0,
+          ticksRun: 20,
+          ticksSucceeded: 20,
+          windowSeconds: 60,
+        }),
+      },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "分析" }));
+
+    expect(await screen.findByText("管线运行汇总")).toBeInTheDocument();
+    expect(screen.getByText(/健康空闲/)).toBeInTheDocument();
+    expect(screen.getByText("成功完成的 tick 次数")).toBeInTheDocument();
+  });
+
+  it("polls only while visible and does not overlap worker refreshes", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+
+    try {
+      renderRoute("/chat/insights/worker-observability");
+
+      await waitFor(() => {
+        expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(1);
+      });
+      expect(
+        setIntervalSpy.mock.calls.some(([, delay]) => delay === 30_000),
+      ).toBe(true);
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: "2002" }),
+      );
+      await screen.findByRole("dialog", { name: "UID 2002" });
+      expect(
+        setIntervalSpy.mock.calls.some(([, delay]) => delay === 15_000),
+      ).toBe(true);
+
+      const summarySnapshot = await serviceMocks.getInsightsWorkerSummary.mock
+        .results[0]?.value;
+      const uidSnapshot = await serviceMocks.getInsightsWorkerUids.mock
+        .results[0]?.value;
+      let resolveSummary!: (value: unknown) => void;
+      let resolveUids!: (value: unknown) => void;
+      serviceMocks.getInsightsWorkerSummary.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveSummary = resolve;
+        }),
+      );
+      serviceMocks.getInsightsWorkerUids.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveUids = resolve;
+        }),
+      );
+
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        document.dispatchEvent(new Event("visibilitychange"));
+        await Promise.resolve();
+      });
+
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(2);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(2);
+
+      visibility.mockReturnValue("hidden");
+      await act(async () => {
+        resolveSummary(summarySnapshot);
+        resolveUids(uidSnapshot);
+        await Promise.resolve();
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(2);
+      expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(2);
+
+      visibility.mockReturnValue("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await waitFor(() => {
+        expect(serviceMocks.getInsightsWorkerSummary).toHaveBeenCalledTimes(3);
+        expect(serviceMocks.getInsightsWorkerUids).toHaveBeenCalledTimes(3);
+      });
+    } finally {
+      setIntervalSpy.mockRestore();
+      visibility.mockRestore();
+    }
+  });
+
   it("shows a loading row when switching quality result views", async () => {
     serviceMocks.getInsightQualityResults.mockImplementationOnce(
       () => new Promise(() => undefined),
@@ -4271,6 +4912,7 @@ describe("conversation insights pages", () => {
   it("shows a centered empty state for overview sessions", async () => {
     serviceMocks.getInsightOverviewSessions.mockResolvedValue({
       items: [],
+      mode: "insight",
       page: 1,
       pageSize: 20,
       total: 0,

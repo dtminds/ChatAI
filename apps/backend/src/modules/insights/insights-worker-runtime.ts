@@ -3,9 +3,8 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   InsightsWorkerService,
-  startInsightsWorker,
+  startInsightsWorkerPipelines,
   type InsightSessionAnalyzer,
-  type InsightWorkerCursor,
 } from "./insights-worker.js";
 import { MysqlInsightWorkerRepository } from "./insights-worker.repository.js";
 import {
@@ -13,21 +12,31 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "./llm-provider.js";
+import { parseInsightsWorkerTraceUids } from "./insights-worker-observer-access.js";
+import {
+  InsightsWorkerObservability,
+  type InsightsWorkerLogger,
+} from "./insights-worker-observability.js";
+import os from "node:os";
 
 export type InsightsWorkerRuntimeConfig = {
   batchSize: number;
+  discoveryBatchSize: number;
+  discoveryMaxBatchesPerTick: number;
   enabled: boolean;
   intervalMs: number;
   modelEnabled: boolean;
-  startLookbackDays: number;
+  traceUids: ReadonlySet<number>;
 };
 
 type WorkerRuntimeEnv = {
   INSIGHTS_WORKER_BATCH_SIZE?: string;
+  INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE?: string;
+  INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK?: string;
   INSIGHTS_WORKER_ENABLED?: string;
   INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
-  INSIGHTS_WORKER_START_LOOKBACK_DAYS?: string;
+  INSIGHTS_WORKER_TRACE_UID_ALLOWLIST?: string;
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
   VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
@@ -36,10 +45,7 @@ type WorkerRuntimeEnv = {
   VOLCENGINE_ARK_MODEL?: string;
 };
 
-type WorkerLogger = {
-  error(payload: Record<string, unknown>, message: string): void;
-  info(payload: Record<string, unknown>, message: string): void;
-};
+type WorkerLogger = InsightsWorkerLogger;
 
 export function parseInsightsWorkerRuntimeConfig(
   env: WorkerRuntimeEnv = process.env,
@@ -50,6 +56,16 @@ export function parseInsightsWorkerRuntimeConfig(
       "INSIGHTS_WORKER_BATCH_SIZE",
       200,
     ),
+    discoveryBatchSize: parsePositiveInteger(
+      env.INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE,
+      "INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE",
+      1_000,
+    ),
+    discoveryMaxBatchesPerTick: parsePositiveInteger(
+      env.INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK,
+      "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK",
+      20,
+    ),
     enabled: parseBoolean(env.INSIGHTS_WORKER_ENABLED),
     intervalMs: parseMinimumInteger(
       env.INSIGHTS_WORKER_INTERVAL_MS,
@@ -58,23 +74,9 @@ export function parseInsightsWorkerRuntimeConfig(
       1_000,
     ),
     modelEnabled: parseBoolean(env.INSIGHTS_WORKER_MODEL_ENABLED),
-    startLookbackDays: parsePositiveInteger(
-      env.INSIGHTS_WORKER_START_LOOKBACK_DAYS,
-      "INSIGHTS_WORKER_START_LOOKBACK_DAYS",
-      3,
+    traceUids: parseInsightsWorkerTraceUids(
+      env.INSIGHTS_WORKER_TRACE_UID_ALLOWLIST,
     ),
-  };
-}
-
-export function getInitialInsightWorkerCursor(input: {
-  now?: Date;
-  startLookbackDays: number;
-}): InsightWorkerCursor {
-  const now = input.now ?? new Date();
-
-  return {
-    cursorAuditId: 0,
-    cursorMsgtime: now.getTime() - input.startLookbackDays * 24 * 60 * 60_000,
   };
 }
 
@@ -86,31 +88,47 @@ export function createInsightsWorkerRuntime(input: {
   const config = parseInsightsWorkerRuntimeConfig(input.env);
 
   if (!config.enabled) {
-    input.logger.info({}, "会话洞察 worker 未启用");
+    input.logger.info({
+      component: "insights-worker",
+      eventCode: "insights_worker.disabled",
+    }, "会话洞察 worker 未启用");
     return undefined;
   }
 
-  const repository = new MysqlInsightWorkerRepository(input.db, {
-    startLookbackDays: config.startLookbackDays,
+  const repository = new MysqlInsightWorkerRepository(input.db);
+  const observability = new InsightsWorkerObservability({
+    logger: input.logger,
+    reportedBy: `${os.hostname()}:${process.pid}`,
+    repository,
+    traceUids: config.traceUids,
   });
-  const model = config.modelEnabled ? createInsightAnalyzer(input.env, input.logger) : undefined;
+  const model = config.modelEnabled
+    ? createInsightAnalyzer(input.env, input.logger, observability)
+    : undefined;
   const service = new InsightsWorkerService(repository, {
     batchSize: config.batchSize,
+    discoveryBatchSize: config.discoveryBatchSize,
+    discoveryMaxBatchesPerTick: config.discoveryMaxBatchesPerTick,
     logger: input.logger,
     model,
-    startLookbackDays: config.startLookbackDays,
+    observability,
   });
+  observability.start();
 
-  return startInsightsWorker({
+  return startInsightsWorkerPipelines({
+    analysis: () => service.runAnalysisOnce(),
+    discovery: () => service.runDiscoveryOnce().then(() => undefined),
     intervalMs: config.intervalMs,
     logger: input.logger,
-    runOnce: () => service.runOnce(),
+    observability,
+    sessionization: () => service.runSessionizationOnce(),
   });
 }
 
 function createInsightAnalyzer(
   env: WorkerRuntimeEnv | undefined,
   logger: WorkerLogger,
+  observability: InsightsWorkerObservability,
 ): InsightSessionAnalyzer {
   const providerConfig = createVolcengineArkProviderConfig(env);
 
@@ -119,7 +137,7 @@ function createInsightAnalyzer(
     "会话洞察模型 provider 已配置",
   );
 
-  return new OpenAiCompatibleInsightAnalyzer(providerConfig);
+  return new OpenAiCompatibleInsightAnalyzer(providerConfig, observability);
 }
 
 function parseBoolean(value: string | undefined) {

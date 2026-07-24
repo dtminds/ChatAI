@@ -50,6 +50,8 @@ import {
 } from "./insights-utils";
 import { insightQualityRuleColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
+import { InsightFeatureRequiredHint } from "./insight-badges";
 
 type QualityView = "agent-report" | "quality-results";
 type QualityResultFilter = "all" | "failed" | "passed";
@@ -68,6 +70,7 @@ const qualityResultFilterItems: Array<{
 ];
 
 export function InsightsQualityPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [overview, setOverview] = useState<InsightsQualityOverviewResponse["overview"]>();
   const [agentStats, setAgentStats] = useState<InsightsQualityAgentStatsResponse["agentStats"]>([]);
   const [qualityResults, setQualityResults] = useState<InsightsQualityResultsResponse["qualityResults"]>([]);
@@ -180,9 +183,13 @@ export function InsightsQualityPage() {
   }, [activeView, dateRange.from, dateRange.to, resultFilter, resultPage]);
 
   const ruleDistribution = overview?.ruleDistribution ?? [];
+  const insightEnabled = capabilities.mode === "insight";
 
   return (
-    <InsightsLayout title="服务质检">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="服务质检"
+    >
       <div className="space-y-5">
         <div
           className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
@@ -207,6 +214,7 @@ export function InsightsQualityPage() {
           <section aria-label="质检指标" className="flex min-w-0 flex-col rounded-[8px] border bg-background p-5">
             <PanelTitle
               title="质检指标"
+              titleAccessory={insightEnabled ? undefined : <InsightFeatureRequiredHint />}
               trailing={<DateRangeSummary from={dateRange.from} to={dateRange.to} />}
             />
             <div
@@ -225,12 +233,14 @@ export function InsightsQualityPage() {
               <QualityRuleDistribution
                 distribution={ruleDistribution}
                 from={dateRange.from}
+                insightEnabled={insightEnabled}
                 to={dateRange.to}
               />
             ) : (
               <>
                 <PanelTitle
                   title="质检分布"
+                  titleAccessory={insightEnabled ? undefined : <InsightFeatureRequiredHint />}
                   trailing={<DateRangeSummary from={dateRange.from} to={dateRange.to} />}
                 />
                 <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
@@ -677,10 +687,12 @@ function formatPercent(value: number) {
 function QualityRuleDistribution({
   distribution,
   from,
+  insightEnabled,
   to,
 }: {
   distribution: InsightsQualityOverviewResponse["overview"]["ruleDistribution"];
   from: string;
+  insightEnabled: boolean;
   to: string;
 }) {
   const data = buildRuleDistributionData(distribution);
@@ -691,6 +703,7 @@ function QualityRuleDistribution({
     <div className="flex min-h-0 flex-col gap-3">
       <PanelTitle
         title="质检分布"
+        titleAccessory={insightEnabled ? undefined : <InsightFeatureRequiredHint />}
         trailing={<DateRangeSummary from={from} to={to} />}
       />
       <div className="grid min-w-0 items-center gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
@@ -778,14 +791,19 @@ function QualityRuleDistribution({
 
 function PanelTitle({
   title,
+  titleAccessory,
   trailing,
 }: {
   title: string;
+  titleAccessory?: React.ReactNode;
   trailing?: React.ReactNode;
 }) {
   return (
     <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      <div className="inline-flex min-w-0 items-center gap-1.5">
+        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+        {titleAccessory}
+      </div>
       {trailing}
     </div>
   );

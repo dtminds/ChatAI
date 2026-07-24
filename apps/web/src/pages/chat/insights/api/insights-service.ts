@@ -1,6 +1,7 @@
 import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
+  InsightCapabilitiesResponse,
   InsightOverviewQuery as ContractInsightOverviewQuery,
   InsightOverviewSessionsQuery as ContractInsightOverviewSessionsQuery,
   InsightOverviewSessionsResponse,
@@ -37,6 +38,10 @@ import type {
   InsightsQualityResultsResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
+  InsightsWorkerSummaryResponse,
+  InsightsWorkerUidDetailResponse,
+  InsightsWorkerUidListResponse,
+  InsightsWorkerUidState,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 
@@ -97,6 +102,15 @@ type InsightRequestOptions = {
   signal?: AbortSignal;
 };
 
+export type InsightsWorkerUidListQuery = {
+  analysisState?: InsightsWorkerUidState;
+  page?: number;
+  pageSize?: number;
+  sessionizationState?: InsightsWorkerUidState;
+  state?: InsightsWorkerUidState;
+  uid?: number;
+};
+
 export async function getInsightOverview(query: InsightOverviewQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsOverviewResponse>>(
     "/server/insights/overview",
@@ -104,6 +118,49 @@ export async function getInsightOverview(query: InsightOverviewQuery = {}) {
       params: compactQuery(query),
     },
   );
+
+  return response.data;
+}
+
+export async function getInsightCapabilities() {
+  const response = await http.get<ApiSuccessEnvelope<InsightCapabilitiesResponse>>(
+    "/server/insights/capabilities",
+  );
+
+  return response.data;
+}
+
+export async function getInsightsWorkerSummary(
+  options: InsightRequestOptions = {},
+) {
+  const response = await http.get<
+    ApiSuccessEnvelope<InsightsWorkerSummaryResponse>
+  >("/server/insights/worker-observability/summary", options);
+
+  return response.data;
+}
+
+export async function getInsightsWorkerUids(
+  query: InsightsWorkerUidListQuery = {},
+  options: InsightRequestOptions = {},
+) {
+  const response = await http.get<
+    ApiSuccessEnvelope<InsightsWorkerUidListResponse>
+  >("/server/insights/worker-observability/uids", {
+    ...options,
+    params: compactQuery(query),
+  });
+
+  return response.data;
+}
+
+export async function getInsightsWorkerUidDetail(
+  uid: number,
+  options: InsightRequestOptions = {},
+) {
+  const response = await http.get<
+    ApiSuccessEnvelope<InsightsWorkerUidDetailResponse>
+  >(`/server/insights/worker-observability/uids/${uid}`, options);
 
   return response.data;
 }

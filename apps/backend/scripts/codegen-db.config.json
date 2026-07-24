@@ -27,6 +27,7 @@
     "xy_wap_embed_quick_reply",
     "xy_wap_embed_quick_reply_category",
     "xy_wap_embed_insight_sync_cursor",
+    "xy_wap_embed_insight_worker_runtime_state",
     "xy_wap_embed_insight_feature_config",
     "xy_wap_embed_sessionization_config",
     "xy_wap_embed_logical_session",

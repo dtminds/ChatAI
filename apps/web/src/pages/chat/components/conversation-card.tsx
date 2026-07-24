@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   Male02Icon,
   MoreHorizontalIcon,
@@ -32,7 +32,21 @@ import {
   hasConversationHandoff,
 } from "@/pages/chat/lib/conversation-handoff-preview";
 
-export function ConversationCard({
+type ConversationCardProps = {
+  composerDraft?: ConversationComposerDraft;
+  conversation: Conversation;
+  isActionDisabled?: boolean;
+  isActive: boolean;
+  isAIHostingEnabled?: boolean;
+  onDelete?: (conversationId: string) => void;
+  onMarkRead?: (conversationId: string) => void;
+  onMarkUnread?: (conversationId: string) => void;
+  onPin?: (conversationId: string) => void;
+  onUnpin?: (conversationId: string) => void;
+  onSelect: (conversationId: string) => void;
+};
+
+export const ConversationCard = memo(function ConversationCard({
   composerDraft,
   conversation,
   isActionDisabled = false,
@@ -44,19 +58,7 @@ export function ConversationCard({
   onPin,
   onUnpin,
   onSelect,
-}: {
-  composerDraft?: ConversationComposerDraft;
-  conversation: Conversation;
-  isActionDisabled?: boolean;
-  isActive: boolean;
-  isAIHostingEnabled?: boolean;
-  onDelete?: () => void;
-  onMarkRead?: () => void;
-  onMarkUnread?: () => void;
-  onPin?: () => void;
-  onUnpin?: () => void;
-  onSelect: () => void;
-}) {
+}: ConversationCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const draftPreviewParts =
     composerDraft && hasConversationComposerDraftContent(composerDraft)
@@ -71,12 +73,26 @@ export function ConversationCard({
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
       icon: conversation.isPinned ? PinOffIcon : PinIcon,
-      onSelect: conversation.isPinned ? onUnpin : onPin,
+      onSelect: conversation.isPinned
+        ? () => onUnpin?.(conversation.id)
+        : () => onPin?.(conversation.id),
     },
     conversation.unread > 0
-      ? { label: "标记已读", icon: ChatDone01Icon, onSelect: onMarkRead }
-      : { label: "标记未读", icon: BubbleChatNotificationIcon, onSelect: onMarkUnread },
-    { label: "不显示", icon: ViewOffSlashIcon, onSelect: onDelete },
+      ? {
+          label: "标记已读",
+          icon: ChatDone01Icon,
+          onSelect: () => onMarkRead?.(conversation.id),
+        }
+      : {
+          label: "标记未读",
+          icon: BubbleChatNotificationIcon,
+          onSelect: () => onMarkUnread?.(conversation.id),
+        },
+    {
+      label: "不显示",
+      icon: ViewOffSlashIcon,
+      onSelect: () => onDelete?.(conversation.id),
+    },
   ];
 
   return (
@@ -90,8 +106,9 @@ export function ConversationCard({
       data-testid={`conversation-card-${conversation.id}`}
     >
       <Button
+        aria-current={isActive ? "true" : undefined}
         className="grid h-auto w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2.5 whitespace-normal rounded-none p-0 text-left text-sm outline-none hover:bg-transparent hover:text-inherit focus-visible:ring-2 focus-visible:ring-ring/20"
-        onClick={onSelect}
+        onClick={() => onSelect(conversation.id)}
         type="button"
         variant="ghost"
       >
@@ -247,4 +264,4 @@ export function ConversationCard({
       </DropdownMenu>
     </div>
   );
-}
+});

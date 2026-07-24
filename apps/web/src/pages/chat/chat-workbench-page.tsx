@@ -439,11 +439,7 @@ function ChatWorkbenchContent({
   );
   const subUser = useAuthStore((state) => state.subUser);
 
-  const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>(
-    [],
-  );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
     description?: string;
     title: string;
@@ -514,12 +510,19 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
-  const draftRef = useRef(draft);
-  const composerSegmentsRef = useRef(composerSegments);
+  const draftRef = useRef("");
+  const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
-  draftRef.current = draft;
-  composerSegmentsRef.current = composerSegments;
   quotedMessageRef.current = quotedMessage;
+  const handleDraftChange = useCallback((nextDraft: string) => {
+    draftRef.current = nextDraft;
+  }, []);
+  const handleComposerSegmentsChange = useCallback(
+    (nextSegments: ComposerSegment[]) => {
+      composerSegmentsRef.current = nextSegments;
+    },
+    [],
+  );
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -579,15 +582,29 @@ function ChatWorkbenchContent({
     conversationViewRetainedState.isSeatAIHostingEnabled === isActiveSeatAIHostingEnabled
       ? conversationViewRetainedState.ids
       : undefined;
-  const activeModeConversations = visibleSearchableConversations.filter(
-    (conversation) => conversation.mode === activeMode,
+  const activeModeConversations = useMemo(
+    () =>
+      visibleSearchableConversations.filter(
+        (conversation) => conversation.mode === activeMode,
+      ),
+    [activeMode, visibleSearchableConversations],
   );
-  const activeViewConversations = filterConversationsByView(
-    visibleSearchableConversations,
-    activeMode,
-    resolvedConversationView,
-    isActiveSeatAIHostingEnabled,
-    activeViewRetainedConversationIds,
+  const activeViewConversations = useMemo(
+    () =>
+      filterConversationsByView(
+        visibleSearchableConversations,
+        activeMode,
+        resolvedConversationView,
+        isActiveSeatAIHostingEnabled,
+        activeViewRetainedConversationIds,
+      ),
+    [
+      activeMode,
+      activeViewRetainedConversationIds,
+      isActiveSeatAIHostingEnabled,
+      resolvedConversationView,
+      visibleSearchableConversations,
+    ],
   );
   const firstActiveViewConversationId = activeViewConversations[0]?.id;
   const hasActiveConversationInView = activeViewConversations.some(
@@ -1240,8 +1257,8 @@ function ChatWorkbenchContent({
 
   const resetComposerUI = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    setDraft("");
-    setComposerSegments([]);
+    draftRef.current = "";
+    composerSegmentsRef.current = [];
     if (!options?.keepQuote) {
       setQuotedMessage(null);
     }
@@ -1255,8 +1272,8 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setDraft(savedDraft.draft);
-    setComposerSegments(savedDraft.segments);
+    draftRef.current = savedDraft.draft;
+    composerSegmentsRef.current = savedDraft.segments;
     setQuotedMessage(savedDraft.quotedMessage);
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
       segments: savedDraft.segments,
@@ -1411,8 +1428,8 @@ function ChatWorkbenchContent({
     isSendingDraftRef.current = false;
     shouldRestoreComposerFocusRef.current = false;
     composerDraftHydratedConversationIdRef.current = undefined;
-    setDraft("");
-    setComposerSegments([]);
+    draftRef.current = "";
+    composerSegmentsRef.current = [];
     setFileUploadQueue([]);
     setFileUploadTransitionError(undefined);
     setIsEmojiPickerOpen(false);
@@ -1459,7 +1476,7 @@ function ChatWorkbenchContent({
     dismissSmartReply,
     isMountedRef,
     isSendingDraftRef,
-    onDraftChange: setDraft,
+    onDraftChange: handleDraftChange,
     onSendFailure: handleSmartReplySendFailure,
     onSendingChange: setIsSendingDraft,
     onSent: scrollMessageViewportToBottom,
@@ -1766,14 +1783,6 @@ function ChatWorkbenchContent({
     return transcribeVoiceMessage(message.conversationId, message.uiMessageKey);
   };
 
-  const handleDraftChange = (nextDraft: string) => {
-    setDraft(nextDraft);
-  };
-
-  const handleComposerSegmentsChange = (nextSegments: ComposerSegment[]) => {
-    setComposerSegments(nextSegments);
-  };
-
   const handleSelectQuickReply = (quickReply: WorkbenchQuickReplyDto) => {
     if (!canSendMessage) {
       toast.warning("当前无法发送消息");
@@ -1796,8 +1805,8 @@ function ChatWorkbenchContent({
     const nextDraft =
       segments.find((segment) => segment.type === "text")?.text ?? "";
 
-    setDraft(nextDraft);
-    setComposerSegments(segments);
+    draftRef.current = nextDraft;
+    composerSegmentsRef.current = segments;
     setQuotedMessage(null);
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
       segments,
@@ -1853,37 +1862,46 @@ function ChatWorkbenchContent({
     />
   );
 
-  const handleSelectConversation = async (conversationId: string) => {
-    if (conversationId === activeConversationId) {
+  const handleSelectConversation = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      if (
+        conversationId === useWorkbenchStore.getState().activeConversationId
+      ) {
+        if (isMobileWorkbenchLayout) {
+          setMobilePane("chat");
+        }
+        return true;
+      }
+
+      if (hasActiveFileUploads()) {
+        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        return false;
+      }
+
+      await setActiveConversation(conversationId);
       if (isMobileWorkbenchLayout) {
         setMobilePane("chat");
       }
-      return;
-    }
+      return true;
+    },
+    [isMobileWorkbenchLayout, setActiveConversation],
+  );
 
-    if (hasActiveFileUploads()) {
-      setFileUploadTransitionError("文件上传中，暂不能切换会话");
-      return;
-    }
+  const handleSelectMode = useCallback(
+    async (mode: ChatMode) => {
+      if (mode === activeMode) {
+        return;
+      }
 
-    await setActiveConversation(conversationId);
-    if (isMobileWorkbenchLayout) {
-      setMobilePane("chat");
-    }
-  };
+      if (hasActiveFileUploads()) {
+        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        return;
+      }
 
-  const handleSelectMode = async (mode: ChatMode) => {
-    if (mode === activeMode) {
-      return;
-    }
-
-    if (hasActiveFileUploads()) {
-      setFileUploadTransitionError("文件上传中，暂不能切换会话");
-      return;
-    }
-
-    await setActiveMode(mode);
-  };
+      await setActiveMode(mode);
+    },
+    [activeMode, setActiveMode],
+  );
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
     const quoteSeq = Number(quoteMsgId);
@@ -2088,6 +2106,16 @@ function ChatWorkbenchContent({
     />
   );
 
+  const conversationListUnreadCountByMode = useMemo(
+    () => ({
+      group: activeAccount?.groupUnreadCount,
+      single: activeAccount?.singleUnreadCount,
+    }),
+    [activeAccount?.groupUnreadCount, activeAccount?.singleUnreadCount],
+  );
+  const isConversationListEmptyLoading =
+    isConversationLoading && activeViewConversations.length === 0;
+
   const conversationListNode = (
     <ConversationListPanel
       activeConversation={activeConversation}
@@ -2099,7 +2127,7 @@ function ChatWorkbenchContent({
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
       seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
-      isConversationLoading={isConversationLoading}
+      isEmptyStateLoading={isConversationListEmptyLoading}
       onDeleteConversation={deleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
@@ -2112,10 +2140,7 @@ function ChatWorkbenchContent({
       retainedConversationIds={activeViewRetainedConversationIds}
       searchableConversations={visibleSearchableConversations}
       hasMoreUnreadByMode={hasMoreUnreadByScope[activeAccountId]}
-      unreadCountByMode={{
-        group: activeAccount?.groupUnreadCount,
-        single: activeAccount?.singleUnreadCount,
-      }}
+      unreadCountByMode={conversationListUnreadCountByMode}
     />
   );
 
@@ -2138,7 +2163,6 @@ function ChatWorkbenchContent({
       sidebarIframeTos={sidebarIframeTos}
       sidebarIframeSendStatus={sidebarIframeSendStatus}
       customerPanelWidth={customerPanelWidth}
-      draft={draft}
       fullAutoDisplayStatus={fullAutoDisplayStatus}
       groupMembers={activeGroupMembers}
       fullAutoActionPending={fullAutoActionPending}

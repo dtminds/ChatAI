@@ -1,0 +1,25 @@
+/* 技能描述资源 chip：对齐 Agent 条件逻辑蓝色区块样式 */
+
+.ai-skill-resource-chip::before {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  background-color: currentColor;
+  content: "";
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}
+
+.ai-skill-resource-chip[data-skill-resource-kind="variable"]::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M9 4C7.58579 4 6.87868 4 6.43934 4.43934C6 4.87868 6 5.58579 6 7V17C6 18.4142 6 19.1213 6.43934 19.5607C6.87868 20 7.58579 20 9 20' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M15 4C16.4142 4 17.1213 4 17.5607 4.43934C18 4.87868 18 5.58579 18 7V17C18 18.4142 18 19.1213 17.5607 19.5607C17.1213 20 16.4142 20 15 20' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.ai-skill-resource-chip[data-skill-resource-kind="tool"]::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M20.5 16.9286V10C20.5 6.22876 20.5 4.34315 19.3284 3.17157C18.1569 2 16.2712 2 12.5 2H11.5C7.72876 2 5.84315 2 4.67157 3.17157C3.5 4.34315 3.5 6.22876 3.5 10V19.5' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3Cpath d='M20.5 17H6C4.61929 17 3.5 18.1193 3.5 19.5C3.5 20.8807 4.61929 22 6 22H20.5' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3Cpath d='M20.5 22C19.1193 22 18 20.8807 18 19.5C18 18.1193 19.1193 17 20.5 17' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+.ai-skill-resource-chip[data-skill-resource-kind="knowledge_base"]::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M20.5 16.9286V10C20.5 6.22876 20.5 4.34315 19.3284 3.17157C18.1569 2 16.2712 2 12.5 2H11.5C7.72876 2 5.84315 2 4.67157 3.17157C3.5 4.34315 3.5 6.22876 3.5 10V19.5' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3Cpath d='M20.5 17H6C4.61929 17 3.5 18.1193 3.5 19.5C3.5 20.8807 4.61929 22 6 22H20.5' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3Cpath d='M20.5 22C19.1193 22 18 20.8807 18 19.5C18 18.1193 19.1193 17 20.5 17' stroke='black' stroke-linecap='round' stroke-width='1.5'/%3E%3Cpath d='M12.3077 12L10.847 7.47891C10.7552 7.19466 10.4734 7 10.1538 7C9.83425 7 9.55249 7.19466 9.46066 7.47891L8 12M15 7V12M8.53846 10.5H11.7692' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}

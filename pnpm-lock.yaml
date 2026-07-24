@@ -45,7 +45,7 @@ importers:
         version: 0.29.4
       mysql2:
         specifier: ^3.15.3
-        version: 3.22.5(@types/node@24.13.3)
+        version: 3.23.1(@types/node@24.13.3)
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -55,7 +55,7 @@ importers:
         version: 17.4.2
       kysely-codegen:
         specifier: ^0.20.0
-        version: 0.20.0(kysely@0.29.4)(mysql2@3.22.5(@types/node@24.13.3))(typescript@5.9.3)
+        version: 0.20.0(kysely@0.29.4)(mysql2@3.23.1(@types/node@24.13.3))(typescript@5.9.3)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -2830,8 +2830,8 @@ packages:
     resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
     engines: {node: '>= 6'}
 
-  iconv-lite@0.7.2:
-    resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
+  iconv-lite@0.7.3:
+    resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
 
   import-fresh@3.3.1:
@@ -3311,8 +3311,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  mysql2@3.22.5:
-    resolution: {integrity: sha512-95uZ2TrPWAZdwpB3vvvDbmEMcNG8yIeNCyu6GUcr/QnWEE/wXm7+mhOCsdQfWQDTV7qYT/PDUZ4U4UPP4AsXqQ==}
+  mysql2@3.23.1:
+    resolution: {integrity: sha512-tTuRnC7qCet2IOfSNMYZ5SwXuBnfvBPAcIA28P0gtruXyZlU1LMxA6uha32kYypoFgyYklMqhLWwt4laYwXR/Q==}
     engines: {node: '>= 8.0'}
     peerDependencies:
       '@types/node': '>= 8'
@@ -3757,8 +3757,8 @@ packages:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
 
-  sql-escaper@1.3.3:
-    resolution: {integrity: sha512-BsTCV265VpTp8tm1wyIm1xqQCS+Q9NHx2Sr+WcnUrgLrQ6yiDIvHYJV5gHxsj1lMBy2zm5twLaZao8Jd+S8JJw==}
+  sql-escaper@1.5.1:
+    resolution: {integrity: sha512-4toX5E1fQbBrpfXidaHnF0669nkAdETeIPTs2SUjxxD7RRIs9ICG4gtpmfc68JCEKehsdwLFqBu9VlQqZ1P1gg==}
     engines: {bun: '>=1.0.0', deno: '>=2.0.0', node: '>=12.0.0'}
 
   sshpk@1.18.0:
@@ -6550,7 +6550,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  iconv-lite@0.7.2:
+  iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
 
@@ -6677,7 +6677,7 @@ snapshots:
       json-schema: 0.4.0
       verror: 1.10.0
 
-  kysely-codegen@0.20.0(kysely@0.29.4)(mysql2@3.22.5(@types/node@24.13.3))(typescript@5.9.3):
+  kysely-codegen@0.20.0(kysely@0.29.4)(mysql2@3.23.1(@types/node@24.13.3))(typescript@5.9.3):
     dependencies:
       chalk: 4.1.2
       cosmiconfig: 9.0.1(typescript@5.9.3)
@@ -6690,7 +6690,7 @@ snapshots:
       pluralize: 8.0.0
       zod: 4.4.3
     optionalDependencies:
-      mysql2: 3.22.5(@types/node@24.13.3)
+      mysql2: 3.23.1(@types/node@24.13.3)
     transitivePeerDependencies:
       - typescript
 
@@ -7175,17 +7175,17 @@ snapshots:
 
   ms@2.1.3: {}
 
-  mysql2@3.22.5(@types/node@24.13.3):
+  mysql2@3.23.1(@types/node@24.13.3):
     dependencies:
       '@types/node': 24.13.3
       aws-ssl-profiles: 1.1.2
       denque: 2.1.0
       generate-function: 2.3.1
-      iconv-lite: 0.7.2
+      iconv-lite: 0.7.3
       long: 5.3.2
       lru.min: 1.1.4
       named-placeholders: 1.1.6
-      sql-escaper: 1.3.3
+      sql-escaper: 1.5.1
 
   named-placeholders@1.1.6:
     dependencies:
@@ -7674,7 +7674,7 @@ snapshots:
 
   split2@4.2.0: {}
 
-  sql-escaper@1.3.3: {}
+  sql-escaper@1.5.1: {}
 
   sshpk@1.18.0:
     dependencies:

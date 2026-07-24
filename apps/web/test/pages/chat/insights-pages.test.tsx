@@ -1625,7 +1625,9 @@ describe("conversation insights pages", () => {
       );
     });
 
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     await waitFor(() => {
@@ -1882,7 +1884,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     expect(await screen.findByText("正在加载会话")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
@@ -1902,7 +1906,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[3]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[3],
+    );
 
     const detailDialog = await screen.findByRole("dialog", {
       name: "洞察详情",
@@ -1960,7 +1966,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const conversationRegion = await screen.findByRole("region", {
       name: "本轮对话",
@@ -2014,7 +2022,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const conversationRegion = await screen.findByRole("region", {
       name: "本轮对话",
@@ -2041,7 +2051,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -2064,7 +2076,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -2090,7 +2104,9 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
 
     const insightRegion = await screen.findByRole("region", {
       name: "洞察结论",
@@ -4820,7 +4836,9 @@ describe("conversation insights pages", () => {
         setIntervalSpy.mock.calls.some(([, delay]) => delay === 30_000),
       ).toBe(true);
 
-      await userEvent.click(screen.getByRole("button", { name: "2002" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "2002" }),
+      );
       await screen.findByRole("dialog", { name: "UID 2002" });
       expect(
         setIntervalSpy.mock.calls.some(([, delay]) => delay === 15_000),

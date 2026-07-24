@@ -86,6 +86,7 @@ type MessageRow = {
 
 type ConversationRow = {
   conversation_id: number | string;
+  customer_bind_type?: number | string | null;
   uid: number | string;
 };
 
@@ -549,24 +550,47 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async findPlatformConversation(message: InsightWorkerMessage) {
-    const base = this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id as conversation_id", "uid as uid"])
-      .where("uid", "=", message.uid)
-      .where("platform", "=", message.platform)
-      .where("chat_type", "=", message.chatType)
-      .where("third_userid", "=", message.thirdUserId)
-      .where("biz_status", "=", 1);
+    if (message.chatType !== 1) {
+      return undefined;
+    }
 
-    const row = await (
-      message.chatType === 2
-        ? base.where("third_group_id", "=", message.thirdGroupId)
-        : base.where("third_external_userid", "=", message.thirdExternalId)
-    ).executeTakeFirst() as ConversationRow | undefined;
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .leftJoin("xy_wap_embed_customer_bind_relation as bind", (join) =>
+        join
+          .onRef("bind.uid", "=", "conversation.uid")
+          .onRef("bind.platform", "=", "conversation.platform")
+          .onRef("bind.third_userid", "=", "conversation.third_userid")
+          .onRef(
+            "bind.third_external_userid",
+            "=",
+            "conversation.third_external_userid",
+          ),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.uid as uid",
+        "bind.bind_type as customer_bind_type",
+      ])
+      .where("conversation.uid", "=", message.uid)
+      .where("conversation.platform", "=", message.platform)
+      .where("conversation.chat_type", "=", 1)
+      .where("conversation.third_userid", "=", message.thirdUserId)
+      .where("conversation.biz_status", "=", 1)
+      .where(
+        "conversation.third_external_userid",
+        "=",
+        message.thirdExternalId,
+      )
+      .executeTakeFirst() as ConversationRow | undefined;
 
     return row
       ? {
           conversationId: String(row.conversation_id),
+          customerBindType:
+            row.customer_bind_type == null
+              ? undefined
+              : parseNumber(row.customer_bind_type),
           uid: parseNumber(row.uid),
         }
       : undefined;

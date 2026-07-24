@@ -65,6 +65,7 @@ export type InsightAnalysisMessageRow = Omit<
 
 export type InsightWorkerConversation = {
   conversationId: string;
+  customerBindType?: number;
   uid: number;
 };
 
@@ -504,6 +505,8 @@ const PRE_CONTEXT_MESSAGE_LIMIT = 10;
 const UID_MAINTENANCE_JOBS_PER_TICK = 10;
 const SESSIONIZATION_CLAIM_HEARTBEAT_MS = 60_000;
 const ANALYSIS_RETRY_DELAY_MS = 60_000;
+const SINGLE_CHAT_TYPE = 1;
+const APPLICATION_MESSAGE_BIND_TYPE = 2;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -1198,9 +1201,16 @@ export class InsightsWorkerService {
       skipLiveAnalysis?: boolean;
     } = {},
   ): Promise<SessionizedMessageResult | undefined> {
+    if (message.chatType !== SINGLE_CHAT_TYPE) {
+      return undefined;
+    }
+
     const conversation = await this.repository.findPlatformConversation(message);
 
-    if (!conversation) {
+    if (
+      !conversation
+      || conversation.customerBindType === APPLICATION_MESSAGE_BIND_TYPE
+    ) {
       return undefined;
     }
 

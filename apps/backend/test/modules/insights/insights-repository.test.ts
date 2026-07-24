@@ -4481,6 +4481,100 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.limitCalls).toContain(1);
   });
 
+  it("resolves the customer bind type for single-chat sessionization", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [{
+            conversation_id: 301,
+            customer_bind_type: 2,
+            uid: 9001,
+          }],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findPlatformConversation({
+      chatType: 1,
+      content: null,
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_000_000,
+      msgtype: "text",
+      platform: 5,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+      uid: 9001,
+    })).resolves.toEqual({
+      conversationId: "301",
+      customerBindType: 2,
+      uid: 9001,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_conversation as conversation");
+    expect(builders[0]?.joins).toContain(
+      "xy_wap_embed_customer_bind_relation as bind",
+    );
+    expect(builders[0]?.joinConditions).toEqual(
+      expect.arrayContaining([
+        {
+          left: "bind.uid",
+          right: "conversation.uid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.platform",
+          right: "conversation.platform",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.third_userid",
+          right: "conversation.third_userid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.third_external_userid",
+          right: "conversation.third_external_userid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+      ]),
+    );
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "conversation.third_external_userid",
+      "=",
+      "external-1",
+    ]);
+  });
+
+  it("skips non-single-chat conversation lookups without querying the database", async () => {
+    const db = {
+      selectFrom: vi.fn(),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findPlatformConversation({
+      chatType: 2,
+      content: null,
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_000_000,
+      msgtype: "text",
+      platform: 5,
+      thirdExternalId: "",
+      thirdGroupId: "group-1",
+      thirdUserId: "user-1",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+
+    expect(db.selectFrom).not.toHaveBeenCalled();
+  });
+
   it("checks pending live analysis jobs with exact indexed columns", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -6501,6 +6595,13 @@ function createSelectBuilder(rows: unknown[], table = "") {
             alias?: string;
             table?: string;
           }),
+      leftOrCallback?:
+        | unknown
+        | ((join: {
+            on: (...args: unknown[]) => unknown;
+            onRef: (...args: unknown[]) => unknown;
+          }) => unknown),
+      right?: unknown,
     ) => {
       if (typeof joinTable === "function") {
         const joined = joinTable({
@@ -6511,6 +6612,29 @@ function createSelectBuilder(rows: unknown[], table = "") {
       }
 
       builder.joins.push(joinTable);
+      if (typeof leftOrCallback === "function") {
+        const join = {
+          on: (...args: unknown[]) => {
+            builder.whereCalls.push(args);
+            return join;
+          },
+          onRef: (left: string, _operator: unknown, right: string) => {
+            builder.joinConditions.push({
+              left,
+              right,
+              table: joinTable,
+            });
+            return join;
+          },
+        };
+        leftOrCallback(join);
+      } else if (typeof leftOrCallback === "string" && typeof right === "string") {
+        builder.joinConditions.push({
+          left: leftOrCallback,
+          right,
+          table: joinTable,
+        });
+      }
       return builder;
     },
     limit: (value: number) => {

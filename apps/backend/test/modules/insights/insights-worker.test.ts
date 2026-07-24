@@ -1097,6 +1097,63 @@ describe("InsightsWorkerService", () => {
     });
   });
 
+  it("skips application-message conversations but still advances the uid cursor", async () => {
+    const repository = createRepository({
+      findPlatformConversation: vi.fn(async () => ({
+        conversationId: "301",
+        customerBindType: 2,
+        uid: 9001,
+      })),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.findReusableSession).not.toHaveBeenCalled();
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9002,
+      cursorMsgtime: 1_780_244_060_000,
+      uid: 9001,
+    });
+  });
+
+  it("skips group messages but still advances the uid cursor", async () => {
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () => [
+        {
+          chatType: 2,
+          content: JSON.stringify({ content: "群聊客户消息" }),
+          fromType: 2,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "",
+          thirdGroupId: "group-1",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.findPlatformConversation).not.toHaveBeenCalled();
+    expect(repository.findReusableSession).not.toHaveBeenCalled();
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9002,
+      cursorMsgtime: 1_780_244_060_000,
+      uid: 9001,
+    });
+  });
+
   it("does not re-slice an already assigned source message during incremental sync", async () => {
     const repository = createRepository({
       listSessionsBySourceMessages: vi.fn(async () => [
@@ -1323,6 +1380,100 @@ describe("InsightsWorkerService", () => {
     });
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
     expect(repository.shouldCreateLiveAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
+      "rescan-job-1",
+    );
+  });
+
+  it("skips application-message conversations during historical rescan", async () => {
+    const message = {
+      chatType: 1,
+      content: JSON.stringify({ content: "应用通知" }),
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_010_000,
+      msgtype: "text",
+      platform: 5,
+      uid: 9001,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+    };
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      findPlatformConversation: vi.fn(async () => ({
+        conversationId: "301",
+        customerBindType: 2,
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) =>
+        cursorMsgtime === 1_780_000_000_000 ? [message] : []
+      ),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.findReusableSession).not.toHaveBeenCalled();
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
+      "rescan-job-1",
+    );
+  });
+
+  it("skips group messages during historical rescan", async () => {
+    const message = {
+      chatType: 2,
+      content: JSON.stringify({ content: "群聊客户消息" }),
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_010_000,
+      msgtype: "text",
+      platform: 5,
+      uid: 9001,
+      thirdExternalId: "",
+      thirdGroupId: "group-1",
+      thirdUserId: "user-1",
+    };
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) =>
+        cursorMsgtime === 1_780_000_000_000 ? [message] : []
+      ),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.findPlatformConversation).not.toHaveBeenCalled();
+    expect(repository.findReusableSession).not.toHaveBeenCalled();
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
       queuedSessions: 0,

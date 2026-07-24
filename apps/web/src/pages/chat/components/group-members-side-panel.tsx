@@ -93,7 +93,7 @@ export function GroupMembersSidePanel({
           <div className="flex h-6 shrink-0 items-center gap-1">
             <Button
               aria-label={isSearchOpen ? "关闭搜索" : "搜索群成员"}
-              className="size-6 shrink-0 rounded-[6px] text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
               onClick={() => {
                 if (isSearchOpen) {
                   setSearchKeyword("");
@@ -116,7 +116,7 @@ export function GroupMembersSidePanel({
             </Button>
             <Button
               aria-label="刷新群成员"
-              className="size-6 shrink-0 rounded-[6px] text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
               disabled={isLoading}
               onClick={onRefresh}
               size="icon"

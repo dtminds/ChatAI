@@ -70,7 +70,7 @@ type ConversationListPanelProps = {
   /** 席位群聊 AI 托管能力；用于群聊列表头像 AI 托管角标 */
   seatGroupAIHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
-  isConversationLoading?: boolean;
+  isEmptyStateLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
@@ -98,7 +98,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   isSeatAIHostingEnabled = false,
   seatGroupAIHostingEnabled = false,
   isConversationActionDisabled = false,
-  isConversationLoading = false,
+  isEmptyStateLoading = false,
   onMarkConversationRead,
   onMarkConversationUnread,
   onDeleteConversation,
@@ -145,6 +145,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   const [highlightedConversationId, setHighlightedConversationId] = useState(
     activeConversationId,
   );
+  const committedConversationIdRef = useRef(activeConversationId);
   const selectRequestIdRef = useRef(0);
   const viewsByMode = useMemo(
     () => conversationViews ?? {
@@ -202,6 +203,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   }, [activeMode]);
 
   useEffect(() => {
+    committedConversationIdRef.current = activeConversationId;
     setHighlightedConversationId(activeConversationId);
   }, [activeConversationId]);
 
@@ -227,13 +229,13 @@ export const ConversationListPanel = memo(function ConversationListPanel({
             }
 
             if (accepted === false) {
-              setHighlightedConversationId(activeConversationId);
+              setHighlightedConversationId(committedConversationIdRef.current);
             }
           },
         );
       }, 0);
     },
-    [activeConversationId, onSelectConversation],
+    [onSelectConversation],
   );
 
   const handleDeleteConversation = useCallback(
@@ -428,7 +430,9 @@ export const ConversationListPanel = memo(function ConversationListPanel({
                     }
                   >
                     <div className="bg-surface px-2 py-1.5">
-                      {modeConversations.length === 0 && isConversationLoading ? (
+                      {mode === activeMode &&
+                      modeConversations.length === 0 &&
+                      isEmptyStateLoading ? (
                         <div className="flex min-h-40 items-center justify-center gap-2 px-2 py-6 text-[13px] text-muted-foreground">
                           <DotMatrixLoader
                             ariaLabel="正在加载会话"
@@ -439,7 +443,8 @@ export const ConversationListPanel = memo(function ConversationListPanel({
                           <span>正在加载会话</span>
                         </div>
                       ) : null}
-                      {modeConversations.length === 0 && !isConversationLoading ? (
+                      {modeConversations.length === 0 &&
+                      (mode !== activeMode || !isEmptyStateLoading) ? (
                         <Empty
                           aria-label="暂无数据"
                           className="min-h-40 gap-0 px-2 py-6 text-[13px] text-muted-foreground/40"

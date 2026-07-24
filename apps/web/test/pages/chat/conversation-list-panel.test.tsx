@@ -158,7 +158,7 @@ describe("ConversationListPanel", () => {
       <ConversationListPanel
         activeMode="single"
         conversations={[]}
-        isConversationLoading
+        isEmptyStateLoading
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         searchableConversations={conversations}

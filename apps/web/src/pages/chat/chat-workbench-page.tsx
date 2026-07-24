@@ -582,15 +582,29 @@ function ChatWorkbenchContent({
     conversationViewRetainedState.isSeatAIHostingEnabled === isActiveSeatAIHostingEnabled
       ? conversationViewRetainedState.ids
       : undefined;
-  const activeModeConversations = visibleSearchableConversations.filter(
-    (conversation) => conversation.mode === activeMode,
+  const activeModeConversations = useMemo(
+    () =>
+      visibleSearchableConversations.filter(
+        (conversation) => conversation.mode === activeMode,
+      ),
+    [activeMode, visibleSearchableConversations],
   );
-  const activeViewConversations = filterConversationsByView(
-    visibleSearchableConversations,
-    activeMode,
-    resolvedConversationView,
-    isActiveSeatAIHostingEnabled,
-    activeViewRetainedConversationIds,
+  const activeViewConversations = useMemo(
+    () =>
+      filterConversationsByView(
+        visibleSearchableConversations,
+        activeMode,
+        resolvedConversationView,
+        isActiveSeatAIHostingEnabled,
+        activeViewRetainedConversationIds,
+      ),
+    [
+      activeMode,
+      activeViewRetainedConversationIds,
+      isActiveSeatAIHostingEnabled,
+      resolvedConversationView,
+      visibleSearchableConversations,
+    ],
   );
   const firstActiveViewConversationId = activeViewConversations[0]?.id;
   const hasActiveConversationInView = activeViewConversations.some(
@@ -1850,7 +1864,9 @@ function ChatWorkbenchContent({
 
   const handleSelectConversation = useCallback(
     async (conversationId: string): Promise<boolean> => {
-      if (conversationId === activeConversationId) {
+      if (
+        conversationId === useWorkbenchStore.getState().activeConversationId
+      ) {
         if (isMobileWorkbenchLayout) {
           setMobilePane("chat");
         }
@@ -1868,7 +1884,7 @@ function ChatWorkbenchContent({
       }
       return true;
     },
-    [activeConversationId, isMobileWorkbenchLayout, setActiveConversation],
+    [isMobileWorkbenchLayout, setActiveConversation],
   );
 
   const handleSelectMode = useCallback(
@@ -2097,6 +2113,8 @@ function ChatWorkbenchContent({
     }),
     [activeAccount?.groupUnreadCount, activeAccount?.singleUnreadCount],
   );
+  const isConversationListEmptyLoading =
+    isConversationLoading && activeViewConversations.length === 0;
 
   const conversationListNode = (
     <ConversationListPanel
@@ -2109,7 +2127,7 @@ function ChatWorkbenchContent({
       isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
       seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
-      isConversationLoading={isConversationLoading}
+      isEmptyStateLoading={isConversationListEmptyLoading}
       onDeleteConversation={deleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}

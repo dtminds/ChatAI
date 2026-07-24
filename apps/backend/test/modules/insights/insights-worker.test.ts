@@ -71,13 +71,14 @@ function createRepository(
   overrides: Partial<InsightWorkerRepositoryPort> = {},
 ): InsightWorkerRepositoryPort {
   let createdSessionId: string | undefined;
+  let repository: InsightWorkerRepositoryPort;
   const defaultSessionizationJob = {
     claimToken: "claim-9001",
     jobId: "sessionize-9001",
     uid: 9001,
   };
 
-  return {
+  repository = {
     appendSessionMessage: vi.fn(async () => undefined),
     archiveTerminalJobs: vi.fn(async () => ({
       archivedJobs: 0,
@@ -201,8 +202,13 @@ function createRepository(
     updateRescanTaskAfterScan: vi.fn(async () => undefined),
     updateRescanTaskRunning: vi.fn(async () => undefined),
     updateCursor: vi.fn(async () => undefined),
+    withSessionizationClaim: vi.fn(async (_input, operation) =>
+      operation(repository),
+    ),
     ...overrides,
   };
+
+  return repository;
 }
 
 describe("InsightsWorkerService", () => {
@@ -444,6 +450,26 @@ describe("InsightsWorkerService", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("stops sessionization writes when the database claim fence rejects the worker", async () => {
+    const repository = createRepository({
+      withSessionizationClaim: vi.fn(async () => {
+        throw new Error("SESSIONIZATION_UID_CLAIM_LOST");
+      }),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runSessionizationOnce();
+
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.updateCursor).not.toHaveBeenCalled();
+    expect(repository.completeSessionizationUidJob).not.toHaveBeenCalled();
+    expect(repository.markSessionizationUidJobFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ claimToken: "claim-9001" }),
+      expect.objectContaining({ message: "SESSIONIZATION_UID_CLAIM_LOST" }),
+    );
   });
 
   it("sessionizes incremental messages and creates a live analysis job", async () => {

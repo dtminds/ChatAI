@@ -521,7 +521,7 @@ export class InsightsService {
     const mode = featureConfig.insightEnabled ? "insight" : "basic";
     const sessions = await this.repository.listCurrentSessions(scope, {
       ...normalizedFilters,
-      searchMode: "insight",
+      searchMode: mode,
     });
 
     return {

@@ -1059,6 +1059,32 @@ describe("InsightsService", () => {
     });
   });
 
+  it("uses basic keyword search when insights are disabled", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await service.getOverviewSessions(scope, {
+      keyword: "张三",
+    });
+
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        keyword: "张三",
+        searchMode: "basic",
+      }),
+    );
+  });
+
   it("defaults overview session reads to a recent bounded date range", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));

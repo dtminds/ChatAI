@@ -4356,6 +4356,78 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "claim-704"]);
   });
 
+  it("rejects stale sessionization claims before running business writes", async () => {
+    const claimQueries: SelectBuilderStub[] = [];
+    const operation = vi.fn(async () => undefined);
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        claimQueries.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.withSessionizationClaim({
+      claimToken: "stale-worker",
+      jobId: "704",
+      uid: 9001,
+    }, operation)).rejects.toThrow("SESSIONIZATION_UID_CLAIM_LOST");
+
+    expect(operation).not.toHaveBeenCalled();
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "locked_by",
+      "=",
+      "stale-worker",
+    ]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "lease_until",
+      ">",
+      expect.any(Date),
+    ]);
+    expect(claimQueries[0]?.forUpdateCalls).toBe(1);
+  });
+
+  it("keeps uid cursor updates monotonic by message time and audit id", async () => {
+    const duplicateUpdates: Record<string, unknown>[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ numInsertedOrUpdatedRows: 1n }), {
+          onDuplicateKeyUpdate: (values) => duplicateUpdates.push(values),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.updateCursor({
+      cursorAuditId: 9002,
+      cursorMsgtime: 1_780_244_060_000,
+      uid: 9001,
+    });
+
+    expect(readRawSql(duplicateUpdates[0]?.cursor_msgtime)).toContain(
+      "greatest",
+    );
+    const auditSql = readRawSql(duplicateUpdates[0]?.cursor_audit_id);
+    expect(auditSql).toContain("values(cursor_msgtime) > cursor_msgtime");
+    expect(auditSql).toContain("values(cursor_msgtime) = cursor_msgtime");
+    expect(auditSql).toContain("greatest");
+  });
+
   it("returns failed sessionization uid jobs to pending with a retry delay", async () => {
     const setCalls: Record<string, unknown>[] = [];
     const updateBuilders: UpdateBuilderStub[] = [];

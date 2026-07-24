@@ -485,6 +485,10 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<void>;
   updateRescanTaskRunning(rescanTaskId: string): Promise<void>;
   updateCursor(cursor: InsightWorkerCursor & { uid?: number }): Promise<void>;
+  withSessionizationClaim<T>(
+    input: ClaimedSessionizationUidJob,
+    operation: (repository: InsightWorkerRepositoryPort) => Promise<T>,
+  ): Promise<T>;
   upsertWorkerPipelineRuntimeState?(
     input: InsightWorkerPipelineRuntimeReport,
   ): Promise<void>;
@@ -645,7 +649,10 @@ export class InsightsWorkerService {
     }
   }
 
-  private async scheduleLiveAnalysisForOpenSessions(activeUids: Set<number>) {
+  private async scheduleLiveAnalysisForOpenSessions(
+    activeUids: Set<number>,
+    sessionizationClaim?: ClaimedSessionizationUidJob,
+  ) {
     const sessions = await this.repository.listOpenSessionsForLiveAnalysis({
       activeUids,
       limit: this.batchSize,
@@ -654,11 +661,20 @@ export class InsightsWorkerService {
     const scheduledJobsByUid = new Map<number, number>();
 
     for (const session of sessions) {
-      if (await this.createLiveAnalyzeJobIfNeeded({
-        occurredAt: Date.now(),
-        sessionId: session.sessionId,
-        uid: session.uid,
-      })) {
+      const schedule = (repository: InsightWorkerRepositoryPort) =>
+        this.createLiveAnalyzeJobIfNeeded({
+          occurredAt: Date.now(),
+          sessionId: session.sessionId,
+          uid: session.uid,
+        }, repository);
+      const scheduled = sessionizationClaim
+        ? await this.repository.withSessionizationClaim(
+            sessionizationClaim,
+            schedule,
+          )
+        : await schedule(this.repository);
+
+      if (scheduled) {
         scheduledJobs += 1;
         scheduledJobsByUid.set(
           session.uid,
@@ -716,7 +732,7 @@ export class InsightsWorkerService {
 
     try {
       const { scannedMessages, sessionizedMessages } = await this.maintainUid(
-        job.uid,
+        job,
         heartbeat.assertActive,
       );
 
@@ -857,7 +873,11 @@ export class InsightsWorkerService {
     };
   }
 
-  private async maintainUid(uid: number, assertClaimActive: () => void) {
+  private async maintainUid(
+    job: ClaimedSessionizationUidJob,
+    assertClaimActive: () => void,
+  ) {
+    const { uid } = job;
     const featureConfig = await this.repository.getFeatureConfig(uid);
     const sessionizationConfig = await this.repository.getSessionizationConfig(uid);
 
@@ -886,7 +906,13 @@ export class InsightsWorkerService {
         continue;
       }
 
-      if (await this.sessionizeMessage(message, { config: sessionizationConfig })) {
+      if (await this.repository.withSessionizationClaim(
+        job,
+        (repository) => this.sessionizeMessage(message, {
+          config: sessionizationConfig,
+          repository,
+        }),
+      )) {
         sessionizedMessages += 1;
       }
       assertClaimActive();
@@ -896,17 +922,20 @@ export class InsightsWorkerService {
 
     if (lastMessage) {
       assertClaimActive();
-      await this.repository.updateCursor({
-        cursorAuditId: Number(lastMessage.id),
-        cursorMsgtime: lastMessage.msgtime,
-        uid,
-      });
+      await this.repository.withSessionizationClaim(
+        job,
+        (repository) => repository.updateCursor({
+          cursorAuditId: Number(lastMessage.id),
+          cursorMsgtime: lastMessage.msgtime,
+          uid,
+        }),
+      );
     }
 
     const activeUids = new Set([uid]);
     if (featureConfig.insightEnabled) {
       assertClaimActive();
-      await this.scheduleLiveAnalysisForOpenSessions(activeUids);
+      await this.scheduleLiveAnalysisForOpenSessions(activeUids, job);
     }
     assertClaimActive();
     const latestCursor = lastMessage
@@ -923,7 +952,7 @@ export class InsightsWorkerService {
 
     if (!hasPendingMessages) {
       assertClaimActive();
-      await this.closeTimedOutOpenSessions(activeUids);
+      await this.closeTimedOutOpenSessions(activeUids, job);
     }
 
     return {
@@ -1137,7 +1166,10 @@ export class InsightsWorkerService {
     }
   }
 
-  private async closeTimedOutOpenSessions(activeUids: Set<number>) {
+  private async closeTimedOutOpenSessions(
+    activeUids: Set<number>,
+    sessionizationClaim?: ClaimedSessionizationUidJob,
+  ) {
     const sessions = await this.repository.listClosableOpenSessions({
       activeUids,
       limit: this.batchSize,
@@ -1146,13 +1178,20 @@ export class InsightsWorkerService {
 
     const closedSessionIdsByUid = new Map<number, string[]>();
     for (const session of sessions) {
-      const finalized = await this.repository.finalizeOpenSession({
-        analysisDelayMinutes: session.analysisDelayMinutes,
-        closeReason: session.closeReason,
-        endedAt: session.endedAt,
-        sessionId: session.sessionId,
-        uid: session.uid,
-      });
+      const finalize = (repository: InsightWorkerRepositoryPort) =>
+        repository.finalizeOpenSession({
+          analysisDelayMinutes: session.analysisDelayMinutes,
+          closeReason: session.closeReason,
+          endedAt: session.endedAt,
+          sessionId: session.sessionId,
+          uid: session.uid,
+        });
+      const finalized = sessionizationClaim
+        ? await this.repository.withSessionizationClaim(
+            sessionizationClaim,
+            finalize,
+          )
+        : await finalize(this.repository);
       if (finalized) {
         const closedSessionIds = closedSessionIdsByUid.get(session.uid) ?? [];
         closedSessionIds.push(session.sessionId);
@@ -1198,14 +1237,17 @@ export class InsightsWorkerService {
     message: InsightWorkerMessage,
     options: {
       config?: InsightWorkerSessionizationConfig;
+      repository?: InsightWorkerRepositoryPort;
       skipLiveAnalysis?: boolean;
     } = {},
   ): Promise<SessionizedMessageResult | undefined> {
+    const repository = options.repository ?? this.repository;
+
     if (message.chatType !== SINGLE_CHAT_TYPE) {
       return undefined;
     }
 
-    const conversation = await this.repository.findPlatformConversation(message);
+    const conversation = await repository.findPlatformConversation(message);
 
     if (
       !conversation
@@ -1217,9 +1259,9 @@ export class InsightsWorkerService {
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
 
     const config = options.config
-      ?? await this.repository.getSessionizationConfig(conversation.uid);
+      ?? await repository.getSessionizationConfig(conversation.uid);
 
-    const openSession = await this.repository.findReusableSession({
+    const openSession = await repository.findReusableSession({
       conversationId: conversation.conversationId,
       uid: conversation.uid,
     });
@@ -1229,6 +1271,7 @@ export class InsightsWorkerService {
       input,
       message,
       openSession,
+      repository,
     });
 
     if (!session) {
@@ -1240,11 +1283,12 @@ export class InsightsWorkerService {
         config,
         conversation,
         occurredAt: input.occurredAt,
+        repository,
         sessionId: session.sessionId,
       });
     }
 
-    await this.repository.appendSessionMessage({
+    await repository.appendSessionMessage({
       asset: parseWorkerMessageAsset(message),
       conversationId: conversation.conversationId,
       includedForAi: input.includedForAi,
@@ -1263,7 +1307,7 @@ export class InsightsWorkerService {
         occurredAt: input.occurredAt,
         sessionId: session.sessionId,
         uid: conversation.uid,
-      });
+      }, repository);
     }
 
     return {
@@ -1274,14 +1318,17 @@ export class InsightsWorkerService {
     };
   }
 
-  private async createLiveAnalyzeJobIfNeeded(input: LiveAnalyzeCandidate) {
-    const featureConfig = await this.repository.getFeatureConfig(input.uid);
+  private async createLiveAnalyzeJobIfNeeded(
+    input: LiveAnalyzeCandidate,
+    repository = this.repository,
+  ) {
+    const featureConfig = await repository.getFeatureConfig(input.uid);
     if (!featureConfig.insightEnabled) {
       return false;
     }
 
     if (
-      !await this.repository.shouldCreateLiveAnalyzeJob({
+      !await repository.shouldCreateLiveAnalyzeJob({
         occurredAt: input.occurredAt,
         sessionId: input.sessionId,
         uid: input.uid,
@@ -1290,7 +1337,7 @@ export class InsightsWorkerService {
       return false;
     }
 
-    await this.repository.createAnalyzeJob({
+    await repository.createAnalyzeJob({
       analysisScope: "all",
       jobType: "analyze_session",
       mode: "live",
@@ -1306,9 +1353,10 @@ export class InsightsWorkerService {
     config: InsightWorkerSessionizationConfig;
     conversation: InsightWorkerConversation;
     occurredAt: number;
+    repository: InsightWorkerRepositoryPort;
     sessionId: string;
   }) {
-    const rows = await this.repository.listUnassignedPreContextMessages({
+    const rows = await input.repository.listUnassignedPreContextMessages({
       conversationId: input.conversation.conversationId,
       limit: PRE_CONTEXT_MESSAGE_LIMIT,
       occurredBefore: input.occurredAt,
@@ -1326,7 +1374,7 @@ export class InsightsWorkerService {
         continue;
       }
 
-      await this.repository.appendSessionMessage({
+      await input.repository.appendSessionMessage({
         asset: parseWorkerMessageAsset(row),
         conversationId: input.conversation.conversationId,
         includedForAi: preContext.includedForAi,
@@ -1348,8 +1396,9 @@ export class InsightsWorkerService {
     input: ReturnType<typeof buildInsightMessageInput>;
     message: InsightWorkerMessage;
     openSession: InsightWorkerOpenSession | undefined;
+    repository: InsightWorkerRepositoryPort;
   }): Promise<{ created: boolean; sessionId: string } | undefined> {
-    const { config, conversation, openSession } = input;
+    const { config, conversation, openSession, repository } = input;
     const occurredAt = input.input.occurredAt;
     const canOpenSession = input.input.senderRole === "customer" && input.input.includedForAi;
 
@@ -1360,7 +1409,7 @@ export class InsightsWorkerService {
 
       return {
         created: true,
-        sessionId: await this.repository.createLogicalSession({
+        sessionId: await repository.createLogicalSession({
           config,
           conversationId: conversation.conversationId,
           startedAt: occurredAt,
@@ -1379,7 +1428,7 @@ export class InsightsWorkerService {
           return undefined;
         }
 
-        await this.repository.reopenSession({
+        await repository.reopenSession({
           sessionId: openSession.sessionId,
           uid: conversation.uid,
         });
@@ -1392,7 +1441,7 @@ export class InsightsWorkerService {
     }
 
     if (openSession.status !== "canceled") {
-      await this.repository.finalizeOpenSession({
+      await repository.finalizeOpenSession({
         analysisDelayMinutes: config.analysisDelayMinutes,
         closeReason,
         endedAt: occurredAt,
@@ -1407,7 +1456,7 @@ export class InsightsWorkerService {
 
     return {
       created: true,
-      sessionId: await this.repository.createLogicalSession({
+      sessionId: await repository.createLogicalSession({
         config,
         conversationId: conversation.conversationId,
         startedAt: occurredAt,

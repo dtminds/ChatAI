@@ -2803,6 +2803,7 @@ export class WorkbenchRepository {
             expressionBuilder("contact.name", "like", pattern),
             expressionBuilder("contact.real_name", "like", pattern),
             expressionBuilder("bind.remark", "like", pattern),
+            expressionBuilder("bind.third_external_userid", "like", pattern),
           ]),
         );
     }

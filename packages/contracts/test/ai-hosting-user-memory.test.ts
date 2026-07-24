@@ -55,6 +55,7 @@ describe("agent user memory contracts", () => {
   it("exports stable automatic-maintenance error codes", () => {
     expect(Value.Check(AgentUserMemoryErrorCodeSchema, "AGENT_USER_MEMORY_ITEM_SUPERSEDED")).toBe(true);
     expect(Value.Check(AgentUserMemoryErrorCodeSchema, "AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES")).toBe(true);
+    expect(Value.Check(AgentUserMemoryErrorCodeSchema, "AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED")).toBe(true);
     expect(Value.Check(AgentUserMemoryErrorCodeSchema, "AGENT_USER_MEMORY_PENDING_CURSOR_INVALID")).toBe(false);
   });
 });

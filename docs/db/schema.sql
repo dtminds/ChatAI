@@ -632,6 +632,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
   KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
+  KEY idx_agent_user_memory_run_terminal (status, finished_at, id),
   KEY idx_agent_user_memory_run_uid (uid, id)
 ) COMMENT='Agent用户记忆每日维护运行';
 

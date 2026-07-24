@@ -2,6 +2,7 @@ import {
   AgentUserMemoryManualCreateRequestSchema,
   AgentUserMemoryManualDeleteRequestSchema,
   AgentUserMemoryManualUpdateRequestSchema,
+  AgentUserMemoryRunItemStatusSchema,
   AgentUserMemorySettingsRequestSchema,
   apiSuccess,
   type AgentUserMemoryManualCreateRequest,
@@ -22,7 +23,7 @@ const CustomerParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ mi
 const CustomerItemParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ minLength: 1, maxLength: 128 }), itemId: NumericStringSchema });
 const PlatformQuerySchema = Type.Object({ platform: NumericStringSchema });
 const RunsQuerySchema = Type.Object({ cursor: Type.Optional(Type.String()), pageSize: Type.Optional(NumericStringSchema) });
-const RunDetailQuerySchema = Type.Object({ itemCursor: Type.Optional(Type.String()), itemPageSize: Type.Optional(NumericStringSchema), status: Type.Optional(Type.String()) });
+const RunDetailQuerySchema = Type.Object({ itemCursor: Type.Optional(Type.String()), itemPageSize: Type.Optional(NumericStringSchema), status: Type.Optional(AgentUserMemoryRunItemStatusSchema) });
 const CustomersQuerySchema = Type.Object({ cursor: Type.Optional(Type.String()), pageSize: Type.Optional(NumericStringSchema), query: Type.Optional(Type.String()) });
 
 type RunParams = Static<typeof RunParamsSchema>;

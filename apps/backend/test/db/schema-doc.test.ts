@@ -38,6 +38,7 @@ describe("database schema document", () => {
     expect(run).toContain("UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date)");
     expect(run).toContain("candidate_session_limit INT UNSIGNED NOT NULL");
     expect(run).toContain("KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id)");
+    expect(run).toContain("KEY idx_agent_user_memory_run_terminal (status, finished_at, id)");
     expect(item).toContain("UNIQUE KEY uk_agent_user_memory_run_customer");
     expect(logicalSession).toContain("KEY idx_logical_session_uid_ended_message (uid, ended_at, message_count, id)");
 

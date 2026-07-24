@@ -12,6 +12,19 @@ This document is the handoff source of truth. Do not assume access to prior chat
 
 **Tech Stack:** Node.js 24、TypeScript、Fastify 5、Kysely/MySQL、TypeBox、React 19、React Router v7、Vite 7、Vitest、Testing Library、Volcengine Ark。
 
+## 实施状态（2026-07-24）
+
+- [x] Spec、Contracts、四表 Schema、领域规则、管理 API、同步 Worker、Agent 菜单/Web 页面已分批落地。
+- [x] 默认额度 resolver 为 100，候选上限按 `max(200, customer_limit * 2)` 缩放；5 条门槛、每会话最后 50 条、零候选和空可读输入均已实现。
+- [x] claim fencing、config → run 统一锁顺序、人工版本屏障、自动日期防回退、最大尝试终止、失败项原 run 重试和 90 天有界清理已实现。
+- [x] 运行/客户/run-item cursor 分页、只读权限、人工 CRUD、证据查看、版本冲突刷新、loading/empty/error 恢复已实现。
+- [x] Contracts/Backend/Web 全量测试与 build、MySQL 8.4 临时库端到端验证、`git diff --check` 已执行；最终结果以本文末尾验证记录和 PR CI 为准。
+- [ ] 共享 Ark 客户端（Task 4）按 Review 决策拆为独立 PR；本 PR 的用户记忆 Provider 不改动 Insights 行为。
+- [ ] 火山 Batch（Task 15）等待官方契约确认；本期 runtime 明确拒绝 `volcengine_batch`。
+- [ ] 生产量级副本 `EXPLAIN ANALYZE`、DDL 执行、Java 读取联调和灰度观察属于发布门禁，不能由本地开发环境标记完成。
+
+下面的详细复选框保留为验收清单；标记未勾选不等于本期同步链路未实现，其中包含上述独立后续阶段和生产发布门禁。
+
 实施前必须重新执行：
 
 ```bash
@@ -103,7 +116,7 @@ AGENT_USER_MEMORY_EXECUTION_MODE=sync
 1. `docs: add agent user memory design`
 2. `feat(contracts): add agent user memory contracts`
 3. `feat(backend): add user memory schema and domain rules`
-4. `refactor(backend): share openai compatible json client`
+4. `refactor(backend): share openai compatible json client`（独立后续 PR，不与本功能绑定）
 5. `feat(backend): add user memory management api`
 6. `feat(backend): add daily user memory worker`
 7. `feat(web): add agent user memory management`
@@ -257,7 +270,7 @@ corepack pnpm --filter @chatai/backend build
 
 Steps:
 
-- [ ] 定义窄 Repository port；Service 不拼 SQL，不建设通用 ORM 抽象。
+- [ ] 持久化 SQL 限定在独立 `ai-hosting/user-memory` 模块内；本期为减少空壳转发层，Service/Worker 直接使用 Kysely，不建设通用 ORM 或仅代理 Kysely 的 Repository。
 - [ ] 不存在配置行时按关闭返回。
 - [ ] 开启事务：创建/锁定配置，递增 generation，写 enabled_at，计算下一次本地 02:00，保留历史记忆。
 - [ ] 开启后不立即创建运行。
@@ -420,7 +433,7 @@ Steps:
 
 Steps:
 
-- [ ] 合并事务依次锁定 run、config、run item 和 customer row。
+- [ ] 合并事务依次锁定 config、run、run item 和 customer row，所有涉及 config/run 的写路径保持同一锁顺序。
 - [ ] 只有 running + claim/lease 有效、generation/activeRun 一致、item submitted 时可合并。
 - [ ] 比较 base_memory_version 和 base_manual_updated_at；冲突丢弃旧结果并把原 item 退回 prepared。
 - [ ] 验证 `last_auto_quota_date IS NULL OR <= run.quota_date`；更晚日期直接 skipped/superseded。
@@ -450,7 +463,7 @@ Steps:
 - [ ] 逐项批量比较客户 `last_auto_quota_date`：更晚者改 skipped/superseded，其余 failed 重置 prepared。
 - [ ] 保留 quota_date、customer_limit、candidate_session_limit、客户集合和 session_ids_json，不重新执行候选 SQL。
 - [ ] 至少一个 item 重置时，把原 run 改 pending、清终态时间/claim、设置 active_run_id。
-- [ ] 没有可重试项返回 `RUN_NOT_RETRYABLE`。
+- [ ] 失败项全部被更晚日期覆盖时改为 skipped 并重聚合原 run；既没有可重置项也没有新 superseded 项时返回 `RUN_NOT_RETRYABLE`。
 - [ ] 人工 retry 不突破原 selected_customer_count，不增加自然日额度。
 - [ ] 测试旧日失败客户已被新日成功处理、同日重复 retry、活动运行冲突和关闭后拒绝。
 
@@ -471,8 +484,9 @@ Steps:
 - [ ] Worker 分别启动 Insights runtime 和 User Memory runtime，独立启停和优雅关闭。
 - [ ] 解析四个环境变量；默认 disabled/sync。
 - [ ] HTTP overview 与 Worker 使用同一 mode/schedule 解析函数。
-- [ ] 增加结构化事件：schedule、claim、selection、submission、waiting、merge、retry、terminal、cleanup。
-- [ ] 指标包括 quotaDate、候选会话上限/实际数、候选客户、选中客户、实际消息、50 条截断、成功/失败/superseded 和 usage。
+- [ ] 关键异常、claim、selection 和终态失败使用结构化日志；运行、运行项及 usage 观测以 MySQL run/item 表和管理页为主，不额外引入指标基础设施。
+- [ ] run 释放时按最早非终态 item 的 `next_attempt_at` 设置 `run_after`，不得在退避窗口内热循环 claim/release。
+- [ ] 运行表记录 quotaDate、候选上限/实际数、候选客户、选中客户、成功/失败/superseded 和 usage；运行项记录实际消息与尝试次数。
 - [ ] 日志不带正文、Prompt、原始模型输出或可识别客户 ID。
 - [ ] 运行/运行项保留 90 天；事务锁定终态 run ID，先删 item 再删 run。
 - [ ] 清理成功后才进入长周期；失败短退避或下 tick 重试。
@@ -568,10 +582,10 @@ Steps:
 
 ### 16.1 自动验证
 
-- [ ] Contracts tests/build。
-- [ ] Backend focused tests/build。
-- [ ] Web focused tests/build。
-- [ ] Full regression：
+- [x] Contracts tests/build。
+- [x] Backend focused tests/build。
+- [x] Web focused tests/build。
+- [x] Full regression：
 
 ```bash
 corepack pnpm --filter @chatai/contracts test
@@ -601,16 +615,16 @@ SHOW INDEX FROM xy_wap_embed_logical_session
 
 ### 16.3 行为和并发验收
 
-- [ ] 4 条消息会话跳过，5 条命中。
+- [x] 4 条消息会话跳过，5 条命中。
 - [ ] 默认额度 100 时候选排序稳定；第 201 条不参与，即使去重后不足 100。
-- [ ] 额度 200/500 时分别最多查询 400/1000 条，仍先会话排序再客户去重。
-- [ ] 同客户多个候选会话合并为一个 item。
-- [ ] 每个 session 只取最后 50 条，多个 session 分别截断。
-- [ ] 入选项没有可读消息时 skipped，模型调用数保持不变。
-- [ ] 零候选日 succeeded、计数全零并清 active_run_id。
-- [ ] 群聊跳过；logical_session.status 各取值结果一致。
+- [x] 额度 200/500 时分别最多查询 400/1000 条，仍先会话排序再客户去重。
+- [x] 同客户多个候选会话合并为一个 item。
+- [x] 每个 session 只取最后 50 条，多个 session 分别截断。
+- [x] 入选项没有可读消息时 skipped，模型调用数保持不变。
+- [x] 零候选日 succeeded、计数全零并清 active_run_id。
+- [x] 群聊跳过；logical_session.status 各取值结果一致。
 - [ ] 同一 uid+quotaDate 多实例调度只生成一条 run。
-- [ ] A 失租、B 回收并合并后，A 所有写入被拒绝。
+- [x] A 失租、B 回收并合并后，A 所有写入被拒绝。
 - [ ] waiting 重新领取换 token，旧 token 不能合并。
 - [ ] 模型调用期间人工编辑，旧结果不覆盖并按人工时间屏障重准备。
 - [ ] 较早 quotaDate 失败项在更晚日期成功后 retry，被 superseded 而非回退。

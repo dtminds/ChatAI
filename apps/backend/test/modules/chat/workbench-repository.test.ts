@@ -3625,6 +3625,7 @@ describe("WorkbenchRepository", () => {
         { column: "contact.name", operator: "like", value: "%张三%" },
         { column: "contact.real_name", operator: "like", value: "%张三%" },
         { column: "bind.remark", operator: "like", value: "%张三%" },
+        { column: "bind.third_external_userid", operator: "like", value: "%张三%" },
       ],
     });
   });

@@ -4,6 +4,7 @@ import {
 } from "react";
 import {
   AiIdeaIcon,
+  ArrowRight01Icon,
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
@@ -33,8 +34,19 @@ const railItems = [
   { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
-  { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights", badge: "Beta" },
-  { label: "智能体", icon: AiChat02Icon, to: "/chat/ai-hosting" },
+  {
+    label: "洞察",
+    icon: AiIdeaIcon,
+    to: "/chat/insights",
+    badge: "Beta",
+    moduleEntry: true,
+  },
+  {
+    label: "智能体",
+    icon: AiChat02Icon,
+    to: "/chat/ai-hosting",
+    moduleEntry: true,
+  },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 
@@ -277,6 +289,16 @@ export function AccountRail({
                 >
                   {item.badge}
                 </Badge>
+              ) : null}
+              {item.moduleEntry ? (
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  className={cn("shrink-0 opacity-30", !item.badge && "ml-auto")}
+                  color="currentColor"
+                  icon={ArrowRight01Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
               ) : null}
             </>
           );

@@ -1,10 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
-import { ReloadIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  ReloadIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { GroupMember } from "@/pages/chat/chat-types";
@@ -29,11 +35,23 @@ export function GroupMembersSidePanel({
   isLoading: boolean;
   onRefresh: () => void;
 }) {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const normalizedSearchKeyword = searchKeyword.trim().toLocaleLowerCase();
+  const filteredGroupMembers = useMemo(
+    () =>
+      normalizedSearchKeyword
+        ? groupMembers.filter((member) =>
+            member.displayName.toLocaleLowerCase().includes(normalizedSearchKeyword),
+          )
+        : groupMembers,
+    [groupMembers, normalizedSearchKeyword],
+  );
   const groups = useMemo(
     () =>
       [
         {
-          items: groupMembers
+          items: filteredGroupMembers
             .filter(
               (member) =>
                 member.type === GROUP_MEMBER_TYPE.OWNER ||
@@ -43,32 +61,72 @@ export function GroupMembersSidePanel({
           label: "管理员",
         },
         {
-          items: groupMembers
+          items: filteredGroupMembers
             .filter((member) => member.type === GROUP_MEMBER_TYPE.NORMAL)
             .sort(sortGroupMembers),
           label: "普通成员",
         },
       ].filter((group) => group.items.length > 0),
-    [groupMembers],
+    [filteredGroupMembers],
   );
 
   return (
     <ScrollArea className="h-full min-h-0">
       <div className="space-y-4 px-4 py-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="min-w-0 whitespace-nowrap text-xs font-semibold leading-4 text-muted-foreground">
-            群成员 · 共 {groupMembers.length} 人
-          </h2>
-          <button
-            aria-label="刷新群成员"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50"
-            disabled={isLoading}
-            onClick={onRefresh}
-            title="刷新群成员"
-            type="button"
-          >
-            <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
-          </button>
+        <div className="flex h-6 items-center justify-between gap-2">
+          <div className="flex h-6 min-w-0 flex-1 items-center">
+            {isSearchOpen ? (
+              <Input
+                aria-label="搜索群成员"
+                autoFocus
+                className="h-6 rounded-[6px] px-2 py-0 text-xs leading-4 shadow-none md:text-xs"
+                onChange={(event) => setSearchKeyword(event.target.value)}
+                placeholder="搜索群成员"
+                value={searchKeyword}
+              />
+            ) : (
+              <h2 className="min-w-0 whitespace-nowrap text-xs font-semibold leading-4 text-muted-foreground">
+                群成员 · 共 {groupMembers.length} 人
+              </h2>
+            )}
+          </div>
+          <div className="flex h-6 shrink-0 items-center gap-1">
+            <Button
+              aria-label={isSearchOpen ? "关闭搜索" : "搜索群成员"}
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+              onClick={() => {
+                if (isSearchOpen) {
+                  setSearchKeyword("");
+                  setIsSearchOpen(false);
+                  return;
+                }
+
+                setIsSearchOpen(true);
+              }}
+              size="icon"
+              title={isSearchOpen ? "关闭搜索" : "搜索群成员"}
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                icon={isSearchOpen ? Cancel01Icon : Search01Icon}
+                size={13}
+                strokeWidth={2}
+              />
+            </Button>
+            <Button
+              aria-label="刷新群成员"
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+              disabled={isLoading}
+              onClick={onRefresh}
+              size="icon"
+              title="刷新群成员"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -95,7 +153,7 @@ export function GroupMembersSidePanel({
           ))
         ) : (
           <div className="px-0 py-8 text-center text-sm text-muted-foreground">
-            暂无群成员
+            {normalizedSearchKeyword ? "暂无匹配成员" : "暂无群成员"}
           </div>
         )}
       </div>

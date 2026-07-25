@@ -4,11 +4,9 @@ const EpochMsSchema = Type.Integer({ minimum: 0 });
 const CursorSchema = Type.Optional(Type.String({ minLength: 1 }));
 
 export const AgentUserMemoryCategorySchema = Type.Union([
-  Type.Literal("profile"),
+  Type.Literal("customer_profile"),
   Type.Literal("preference"),
-  Type.Literal("communication"),
-  Type.Literal("product_context"),
-  Type.Literal("recent_context"),
+  Type.Literal("recent_intent"),
   Type.Literal("manual_note"),
 ]);
 export const AgentUserMemorySourceSchema = Type.Union([

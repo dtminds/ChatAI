@@ -7,6 +7,7 @@ import {
   ConnectIcon,
   ArrowLeft02Icon,
   AiBookIcon,
+  Brain02Icon,
   RoboticIcon,
   TokenCircleIcon,
   UserAiIcon,
@@ -42,7 +43,7 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/skills",
   },
   {
-    icon: AiGenerativeIcon,
+    icon: Brain02Icon,
     label: "用户记忆",
     to: "/chat/ai-hosting/user-memory",
   },

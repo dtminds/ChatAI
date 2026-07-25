@@ -24,9 +24,8 @@ import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getU
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
 const categories: Array<{ value: AgentUserMemoryCategory; label: string }> = [
-  { value: "profile", label: "客户背景" }, { value: "preference", label: "偏好" },
-  { value: "communication", label: "沟通方式" }, { value: "product_context", label: "商品背景" },
-  { value: "recent_context", label: "近期上下文" }, { value: "manual_note", label: "人工备注" },
+  { value: "customer_profile", label: "客户画像" }, { value: "preference", label: "偏好与约束" },
+  { value: "recent_intent", label: "近期意向" }, { value: "manual_note", label: "人工备注" },
 ];
 
 export function UserMemoryPage() {
@@ -215,9 +214,13 @@ function Overview({ overview, runs, canManage, saving, hasMore, onToggle, onRetr
 }
 function Metric({ label, value }: { label: string; value: string }) { return <Card className="rounded-xl"><CardContent className="pt-6"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></CardContent></Card>; }
 function MemoryEditor({ open, item, saving, onOpenChange, onSave }: { open: boolean; item?: AgentUserMemoryItem; saving: boolean; onOpenChange: (open: boolean) => void; onSave: (input: { category: AgentUserMemoryCategory; content: string; expiresAt: number | null }) => void }) {
-  const [category, setCategory] = useState<AgentUserMemoryCategory>("profile"); const [content, setContent] = useState(""); const [expiresAt, setExpiresAt] = useState("");
-  useEffect(() => { if (open) { setCategory(item?.category ?? "profile"); setContent(item?.content ?? ""); setExpiresAt(item?.expiresAt ? formatLocalDateTime(item.expiresAt) : ""); } }, [open, item]);
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent closeButtonDisabled={saving}><DialogHeader><DialogTitle>{item ? "编辑记忆" : "新增记忆"}</DialogTitle><DialogDescription>人工维护会覆盖旧自动结果的写入边界</DialogDescription></DialogHeader><div className="space-y-4"><Select value={category} onValueChange={(value) => setCategory(value as AgentUserMemoryCategory)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{categories.map((entry) => <SelectItem key={entry.value} value={entry.value}>{entry.label}</SelectItem>)}</SelectContent></Select><Textarea aria-label="记忆内容" maxLength={200} value={content} onChange={(event) => setContent(event.target.value)} placeholder="输入对未来服务有帮助的长期信息" />{category === "recent_context" ? <Input aria-label="过期时间" type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /> : null}</div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={saving || !content.trim() || (category === "recent_context" && !expiresAt)} onClick={() => onSave({ category, content: content.trim(), expiresAt: expiresAt ? new Date(expiresAt).getTime() : null })}>{saving ? <Spinner size={16} /> : null}保存</Button></DialogFooter></DialogContent></Dialog>;
+  const [category, setCategory] = useState<AgentUserMemoryCategory>("customer_profile"); const [content, setContent] = useState(""); const [expiresAt, setExpiresAt] = useState("");
+  useEffect(() => { if (open) { setCategory(item?.category ?? "customer_profile"); setContent(item?.content ?? ""); setExpiresAt(item?.expiresAt ? formatLocalDateTime(item.expiresAt) : ""); } }, [open, item]);
+  function changeCategory(value: AgentUserMemoryCategory) {
+    setCategory(value);
+    if (value !== "recent_intent") setExpiresAt("");
+  }
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent closeButtonDisabled={saving}><DialogHeader><DialogTitle>{item ? "编辑记忆" : "新增记忆"}</DialogTitle><DialogDescription>人工维护会覆盖旧自动结果的写入边界</DialogDescription></DialogHeader><div className="space-y-4"><Select value={category} onValueChange={(value) => changeCategory(value as AgentUserMemoryCategory)}><SelectTrigger aria-label="记忆分类" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{categories.map((entry) => <SelectItem key={entry.value} value={entry.value}>{entry.label}</SelectItem>)}</SelectContent></Select><Textarea aria-label="记忆内容" maxLength={200} value={content} onChange={(event) => setContent(event.target.value)} placeholder="输入对未来服务有帮助的长期信息" />{category === "recent_intent" ? <Input aria-label="过期时间" type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /> : null}</div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={saving || !content.trim() || (category === "recent_intent" && !expiresAt)} onClick={() => onSave({ category, content: content.trim(), expiresAt: category === "recent_intent" && expiresAt ? new Date(expiresAt).getTime() : null })}>{saving ? <Spinner size={16} /> : null}保存</Button></DialogFooter></DialogContent></Dialog>;
 }
 function formatLocalDateTime(timestamp: number) {
   const value = new Date(timestamp);

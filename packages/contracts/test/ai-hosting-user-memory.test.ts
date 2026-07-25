@@ -11,11 +11,13 @@ import {
 } from "../src/index.js";
 
 describe("agent user memory contracts", () => {
-  it("accepts exactly the six memory categories", () => {
+  it("accepts exactly three automatic memory categories plus manual notes", () => {
     for (const category of [
-      "profile", "preference", "communication", "product_context", "recent_context", "manual_note",
+      "customer_profile", "preference", "recent_intent", "manual_note",
     ]) expect(Value.Check(AgentUserMemoryCategorySchema, category)).toBe(true);
     expect(Value.Check(AgentUserMemoryCategorySchema, "health")).toBe(false);
+    for (const category of ["profile", "communication", "product_context", "recent_context"])
+      expect(Value.Check(AgentUserMemoryCategorySchema, category)).toBe(false);
   });
 
   it("keeps manual and AI item sources structurally distinct", () => {

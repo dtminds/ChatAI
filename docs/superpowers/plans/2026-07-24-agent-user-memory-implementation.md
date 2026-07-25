@@ -65,7 +65,8 @@ memory item limit = 20
 - 客户额度由窄 `UserMemoryCustomerLimitResolver` 返回并快照到 run，本期默认 100，未来可由订阅套餐返回 200/500；只允许产品明确支持的有界额度。
 - run 同时快照 `candidate_session_limit = max(200, customer_limit * 2)`；本期仍为 200，未来额度 200/500 时分别为 400/1000。
 - 候选基数 200、额度倍数 2、5 条和 50 条先作为模块策略常量，不增加环境变量和页面配置。
-- 选择顺序固定为 `message_count DESC, ended_at DESC, id DESC`。
+- 选择顺序固定为 `message_count DESC, started_at DESC, id DESC`。
+- 自然日归属固定按 `started_at`；不读取 `ended_at`，跨日会话归入开始日，调度后继续产生的消息不做完整消费承诺。
 - 必须先取 `candidate_session_limit` 个会话，再按 `platform + third_external_userid` 去重。
 - 去重不足额度不补扫。
 - 同一客户在候选池中的全部会话进入同一运行项。
@@ -185,12 +186,12 @@ Steps:
 - [ ] Run item 增加客户唯一键、非空 `session_ids_json`、base version、attempt/provider 字段。
 - [ ] 客户表只保存 JSON、version、人工时间和单调 `last_auto_quota_date`；不得加入 pending 或扫描水位。
 - [ ] 配置表只保存启停代次、enabled_at、next_run_at、active_run_id；不得加入发现游标。
-- [ ] 为逻辑会话增加 `idx_logical_session_uid_ended_message (uid, ended_at, message_count, id)`；用户记忆查询不得按 status 过滤。
-- [ ] 不增加未结束会话安全屏障索引。
+- [ ] 复用现有 `idx_logical_session_uid_started (uid, started_at)`；用户记忆查询不得按 status 或 ended_at 过滤。
+- [ ] 不增加用户记忆专用逻辑会话索引或未结束会话安全屏障索引。
 - [ ] 四张新表加入 codegen 和 `WRITABLE_TABLES`；逻辑会话、消息和平台表保持只读。
 - [ ] Change log 明确所有租户默认关闭、不做历史回刷、不做水位初始化。
-- [ ] Schema tests 保护四表、客户唯一键、run 日唯一键、claim 索引、会话索引，并断言旧 pending/cursor/cooldown 字段不存在。
-- [ ] 核实现网 `ended_at` 为 Unix 毫秒 `BIGINT UNSIGNED`；如不一致先迁移，查询不得运行时转换。
+- [ ] Schema tests 保护四表、客户唯一键、run 日唯一键和 claim 索引，确认复用的 started 索引存在，并断言旧 pending/cursor/cooldown 字段不存在。
+- [ ] 核实现网 `started_at`、`last_message_at` 为 Unix 毫秒 `BIGINT UNSIGNED`；如不一致先迁移，查询不得运行时转换。
 - [ ] 有迁移后数据库时运行 `corepack pnpm backend:db:codegen`；否则手工同步 schema.ts 并在 PR 说明。
 - [ ] 运行：
 
@@ -219,7 +220,7 @@ Steps:
 - [ ] 证据必须属于运行项来源会话、实际输入消息且角色为 customer。
 - [ ] 测试 AI add 与 manual 重复不新增、与 AI 重复转 confirm、update 与 manual 重复删除 AI、AI-AI 重复保留较小 ID。
 - [ ] 合并后超过 20 条整体失败，不部分写入或静默截断。
-- [ ] `recent_context` 必须有未来且不超过 180 天的 expiresAt。
+- [ ] `recent_intent` 必须有未来且不超过 180 天的 expiresAt。
 - [ ] 已存 JSON 非法返回 `AGENT_USER_MEMORY_DATA_INVALID`，不得以空文档覆盖。
 - [ ] 运行：
 
@@ -355,12 +356,12 @@ selectCandidateSessions(run):
   dayRange = quotaDate in configured timezone
   sessions = query logical_session join conversation
     where uid = run.uid
-      and ended_at in [dayStart, dayEnd)
-      and ended_at > config.enabled_at
+      and started_at in [dayStart, dayEnd)
+      and started_at > config.enabled_at
       and message_count >= 5
       and conversation.chat_type = 1
       and external customer ownership matches
-    order by message_count desc, ended_at desc, id desc
+    order by message_count desc, started_at desc, id desc
     limit run.candidateSessionLimit
 
   groups = stable group sessions by (platform, thirdExternalUserId)
@@ -370,13 +371,13 @@ selectCandidateSessions(run):
     assert run + claim + lease + generation + activeRunId
     insert one prepared item per selected customer
       session_ids_json = every candidate session in that group
-                       ordered by ended_at asc, id asc
+                       ordered by started_at asc, id asc
     update run candidate/selected counts and phase
 ```
 
 Steps:
 
-- [ ] SQL 不得包含 logical_session.status、insight flag、snapshot 或 final analysis 条件。
+- [ ] SQL 不得包含 logical_session.status、ended_at、insight flag、snapshot 或 final analysis 条件。
 - [ ] Join conversation 验证 `uid`、单聊、platform、third_external_userid 一致。
 - [ ] 必须先按 `run.candidate_session_limit` LIMIT 再内存去重；测试不得写成按客户聚合 Top N。
 - [ ] 去重不足额度时不追加查询。
@@ -386,7 +387,7 @@ Steps:
 - [ ] Candidate query 失败不提前写选择完成计数；短退避重试。
 - [ ] 运行项创建后不因源表后来新增迟到会话而扩展 snapshot。
 - [ ] Candidate query 返回零行时，在同一围栏事务中把 run 标记为 succeeded、所有计数置零并清 config.active_run_id；不得停留在 running。
-- [ ] 测试 4 条消息跳过、5 条命中、群聊跳过、status 任意值一致。
+- [ ] 测试 4 条消息跳过、5 条命中、群聊跳过、status 任意值一致，并断言 SQL 不读取 ended_at。
 - [ ] 测试默认额度 100 时第 201 个会话不参与，去重不足 100 也不补扫。
 - [ ] 测试额度 200/500 时候选上限分别为 400/1000，selected 始终不超过 customer_limit。
 - [ ] 测试零候选日直接成功终态并释放 active_run_id。
@@ -409,7 +410,7 @@ Steps:
 - [ ] 对运行项每个 session 按 `(source_message_time DESC, source_message_id DESC)` 取 `included_for_ai = 1` 的最后 50 条，再反转为正序。
 - [ ] 只读取 `session_ids_json` 指定会话，不按客户或租户无界扫消息。
 - [ ] 复验会话仍属于 run/customer、单聊、目标自然日且 message_count >= 5。
-- [ ] 排除 `ended_at <= manual_updated_at` 的会话；全部被排除时 item skipped。
+- [ ] 排除 `last_message_at <= manual_updated_at` 的会话；全部被排除时 item skipped。
 - [ ] 过滤后没有任何 `included_for_ai = 1` 的可读对话消息时，item 以 `AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES` 跳过，不构造空 Prompt、不调用模型。
 - [ ] 如果 `last_auto_quota_date > run.quota_date`，item skipped/superseded。
 - [ ] Prompt 包含当前 manual/ai、固定分类、禁止内容、会话消息和输出 Schema。
@@ -602,9 +603,10 @@ git diff --check
 - [ ] 预检查：
 
 ```sql
-SHOW COLUMNS FROM xy_wap_embed_logical_session LIKE 'ended_at';
+SHOW COLUMNS FROM xy_wap_embed_logical_session LIKE 'started_at';
+SHOW COLUMNS FROM xy_wap_embed_logical_session LIKE 'last_message_at';
 SHOW INDEX FROM xy_wap_embed_logical_session
-  WHERE Key_name = 'idx_logical_session_uid_ended_message';
+  WHERE Key_name = 'idx_logical_session_uid_started';
 ```
 
 - [ ] 对目标自然日有界候选 SQL 按默认和最大受支持套餐上限执行生产量级 `EXPLAIN ANALYZE`。

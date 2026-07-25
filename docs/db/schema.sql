@@ -91,7 +91,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   KEY idx_logical_session_uid_open_live (uid, status, last_message_at, id),
   KEY idx_logical_session_uid_started (uid, started_at),
   KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id),
-  KEY idx_logical_session_uid_ended_message (uid, ended_at, message_count, id),
   KEY idx_logical_session_current_snapshot (current_snapshot_id, id)
 ) COMMENT='会话洞察逻辑会话表';
 
@@ -634,13 +633,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
   enabled_at BIGINT UNSIGNED NULL COMMENT '本代次启用时间，Unix毫秒',
   next_run_at DATETIME(3) NULL COMMENT '下一调度槽位',
   active_run_id BIGINT UNSIGNED NULL COMMENT '当前活动运行ID',
-  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-    ON UPDATE CURRENT_TIMESTAMP(3),
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_config_uid (uid),
   KEY idx_agent_user_memory_config_due (enabled, next_run_at, uid)
-) COMMENT='Agent用户记忆租户配置';
+) COMMENT='Agent用户记忆配置';
 
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory (
@@ -653,15 +652,15 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory (
   manual_updated_at BIGINT UNSIGNED NULL COMMENT '最近人工维护时间，Unix毫秒',
   last_auto_quota_date DATE NULL COMMENT '最近成功自动维护的目标自然日',
   last_auto_updated_at BIGINT UNSIGNED NULL COMMENT '最近自动维护时间，Unix毫秒',
-  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-    ON UPDATE CURRENT_TIMESTAMP(3),
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_customer (
     uid, platform, third_external_userid
   ),
   KEY idx_agent_user_memory_uid_updated (uid, update_time, id)
-) COMMENT='Agent客户当前用户记忆';
+) COMMENT='Agent用户记忆';
 
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
@@ -675,30 +674,30 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
   phase VARCHAR(32) NOT NULL COMMENT 'selecting/inference/merging/completed',
   customer_limit INT UNSIGNED NOT NULL COMMENT '当日客户额度快照',
   candidate_session_limit INT UNSIGNED NOT NULL COMMENT '当日候选会话上限快照',
-  candidate_session_count INT UNSIGNED NOT NULL DEFAULT 0,
-  candidate_customer_count INT UNSIGNED NOT NULL DEFAULT 0,
-  selected_customer_count INT UNSIGNED NOT NULL DEFAULT 0,
-  success_count INT UNSIGNED NOT NULL DEFAULT 0,
-  failure_count INT UNSIGNED NOT NULL DEFAULT 0,
-  skipped_count INT UNSIGNED NOT NULL DEFAULT 0,
-  input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
-  output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  candidate_session_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际入选候选会话数',
+  candidate_customer_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '候选客户数',
+  selected_customer_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际选中客户数',
+  success_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功客户数',
+  failure_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败客户数',
+  skipped_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '跳过客户数',
+  input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输入Token数',
+  output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输出Token数',
   locked_by VARCHAR(128) NULL COMMENT 'Worker实例标识',
   claim_token VARCHAR(64) NULL COMMENT '每次领取生成的新围栏token',
-  lease_until DATETIME(3) NULL,
-  run_after DATETIME(3) NULL,
-  last_error_code VARCHAR(128) NULL,
-  started_at DATETIME(3) NULL,
-  finished_at DATETIME(3) NULL,
-  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  lease_until DATETIME(3) NULL COMMENT '租约到期时间',
+  run_after DATETIME(3) NULL COMMENT '下次可运行时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  started_at DATETIME(3) NULL COMMENT '实际开始时间',
+  finished_at DATETIME(3) NULL COMMENT '结束时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-    ON UPDATE CURRENT_TIMESTAMP(3),
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
   KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
   KEY idx_agent_user_memory_run_terminal (status, finished_at, id),
   KEY idx_agent_user_memory_run_uid (uid, id)
-) COMMENT='Agent用户记忆每日维护运行';
+) COMMENT='Agent用户记忆日运行记录';
 
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
@@ -711,23 +710,23 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
   session_count INT UNSIGNED NOT NULL COMMENT '来源会话数',
   message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际输入消息数',
   status VARCHAR(32) NOT NULL COMMENT 'prepared/submitted/终态',
-  attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
-  next_attempt_at DATETIME(3) NULL,
-  base_memory_version INT UNSIGNED NULL,
-  base_manual_updated_at BIGINT UNSIGNED NULL,
-  provider_item_key VARCHAR(128) NULL,
-  provider_batch_id VARCHAR(256) NULL,
-  input_tokens INT UNSIGNED NOT NULL DEFAULT 0,
-  output_tokens INT UNSIGNED NOT NULL DEFAULT 0,
-  last_error_code VARCHAR(128) NULL,
-  finished_at DATETIME(3) NULL,
-  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已提交推理次数',
+  next_attempt_at DATETIME(3) NULL COMMENT '下次可重试时间',
+  base_memory_version INT UNSIGNED NULL COMMENT '准备输入时的记忆版本',
+  base_manual_updated_at BIGINT UNSIGNED NULL COMMENT '准备输入时的人工维护时间，Unix毫秒',
+  provider_item_key VARCHAR(128) NULL COMMENT '推理服务项标识',
+  provider_batch_id VARCHAR(256) NULL COMMENT '推理服务批任务标识',
+  input_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输入Token数',
+  output_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输出Token数',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  finished_at DATETIME(3) NULL COMMENT '结束时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-    ON UPDATE CURRENT_TIMESTAMP(3),
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_agent_user_memory_run_customer (
     run_id, platform, third_external_userid
   ),
   KEY idx_agent_user_memory_item_run_status (run_id, status, next_attempt_at, id),
   KEY idx_agent_user_memory_item_provider (provider_batch_id, provider_item_key)
-) COMMENT='Agent用户记忆客户维护项';
+) COMMENT='Agent用户记忆运行客户明细';

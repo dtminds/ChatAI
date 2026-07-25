@@ -10,7 +10,7 @@ import { Value } from "@sinclair/typebox/value";
 export const USER_MEMORY_ITEM_LIMIT = 20;
 export const USER_MEMORY_CONTENT_LIMIT = 200;
 export const USER_MEMORY_MAX_OPERATIONS = 40;
-export const USER_MEMORY_RECENT_CONTEXT_MAX_MS = 180 * 24 * 60 * 60 * 1000;
+export const USER_MEMORY_RECENT_INTENT_MAX_MS = 180 * 24 * 60 * 60 * 1000;
 
 export type UserMemoryDomainErrorCode =
   | "AGENT_USER_MEMORY_CONTENT_DUPLICATE"
@@ -65,17 +65,30 @@ export function normalizeUserMemoryContent(content: string) {
   return content.trim().replace(/\s+/gu, " ").replace(/[。．，,；;：:.]+$/gu, "").trim();
 }
 
+function normalizeExpiresAt(category: AgentUserMemoryCategory, expiresAt: number | null | undefined) {
+  return category === "recent_intent" ? expiresAt ?? null : null;
+}
+
 function validateContent(category: AgentUserMemoryCategory, content: string, expiresAt: number | null | undefined, now: number, allowManualNote: boolean) {
   const normalized = normalizeUserMemoryContent(content);
   if (!normalized || normalized.length > USER_MEMORY_CONTENT_LIMIT || (!allowManualNote && category === "manual_note")) {
     throw new UserMemoryDomainError("AGENT_USER_MEMORY_CONTENT_INVALID", "Invalid user-memory content");
   }
-  if (category === "recent_context") {
-    if (expiresAt == null || expiresAt <= now || expiresAt > now + USER_MEMORY_RECENT_CONTEXT_MAX_MS) {
-      throw new UserMemoryDomainError("AGENT_USER_MEMORY_CONTENT_INVALID", "recent_context requires a future expiry within 180 days");
+  if (category === "recent_intent") {
+    if (expiresAt == null || expiresAt <= now || expiresAt > now + USER_MEMORY_RECENT_INTENT_MAX_MS) {
+      throw new UserMemoryDomainError("AGENT_USER_MEMORY_CONTENT_INVALID", "recent_intent requires a future expiry within 180 days");
     }
   }
   return normalized;
+}
+
+/** Keep the targeted item even when expired so manual edit/delete can still reach it. */
+function filterExpiredExcept(document: AgentUserMemoryDocument, now: number, keepItemId?: number): AgentUserMemoryDocument {
+  return {
+    ...document,
+    manual: document.manual.filter((item) => item.id === keepItemId || item.expiresAt == null || item.expiresAt > now),
+    ai: document.ai.filter((item) => item.id === keepItemId || item.expiresAt == null || item.expiresAt > now),
+  };
 }
 
 function activeItems(document: AgentUserMemoryDocument, now: number) {
@@ -107,7 +120,8 @@ export function createManualMemory(
   now: number,
 ) {
   const document = filterExpired(parseUserMemoryDocument(documentValue), now);
-  const content = validateContent(input.category, input.content, input.expiresAt, now, true);
+  const expiresAt = normalizeExpiresAt(input.category, input.expiresAt);
+  const content = validateContent(input.category, input.content, expiresAt, now, true);
   assertNoDuplicate(document, content, now);
   if (document.manual.length + document.ai.length >= USER_MEMORY_ITEM_LIMIT) {
     throw new UserMemoryDomainError("AGENT_USER_MEMORY_LIMIT_REACHED", "User-memory item limit reached");
@@ -118,7 +132,7 @@ export function createManualMemory(
     content,
     createdAt: now,
     updatedAt: now,
-    expiresAt: input.expiresAt ?? null,
+    expiresAt,
     updatedBySubUserId: actorSubUserId,
   };
   document.nextItemId += 1;
@@ -133,31 +147,38 @@ export function updateManualMemory(
   actorSubUserId: number,
   now: number,
 ) {
-  const document = filterExpired(parseUserMemoryDocument(documentValue), now);
-  const content = validateContent(input.category, input.content, input.expiresAt, now, true);
+  const original = parseUserMemoryDocument(documentValue);
+  const manualIndex = original.manual.findIndex((item) => item.id === itemId);
+  const aiIndex = manualIndex < 0 ? original.ai.findIndex((item) => item.id === itemId) : -1;
+  if (manualIndex < 0 && aiIndex < 0) {
+    throw new UserMemoryDomainError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "User-memory item not found");
+  }
+  const document = filterExpiredExcept(original, now, itemId);
+  const expiresAt = normalizeExpiresAt(input.category, input.expiresAt);
+  const content = validateContent(input.category, input.content, expiresAt, now, true);
   assertNoDuplicate(document, content, now, itemId);
-  const manualIndex = document.manual.findIndex((item) => item.id === itemId);
   if (manualIndex >= 0) {
-    const current = document.manual[manualIndex]!;
-    document.manual[manualIndex] = { ...current, category: input.category, content, expiresAt: input.expiresAt ?? null, updatedAt: now, updatedBySubUserId: actorSubUserId };
+    const currentIndex = document.manual.findIndex((item) => item.id === itemId);
+    const current = document.manual[currentIndex]!;
+    document.manual[currentIndex] = { ...current, category: input.category, content, expiresAt, updatedAt: now, updatedBySubUserId: actorSubUserId };
     return document;
   }
-  const aiIndex = document.ai.findIndex((item) => item.id === itemId);
-  if (aiIndex < 0) throw new UserMemoryDomainError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "User-memory item not found");
-  const current = document.ai[aiIndex]!;
-  document.ai.splice(aiIndex, 1);
-  document.manual.push({ id: current.id, category: input.category, content, createdAt: current.createdAt, updatedAt: now, expiresAt: input.expiresAt ?? null, updatedBySubUserId: actorSubUserId });
+  const currentIndex = document.ai.findIndex((item) => item.id === itemId);
+  const current = document.ai[currentIndex]!;
+  document.ai.splice(currentIndex, 1);
+  document.manual.push({ id: current.id, category: input.category, content, createdAt: current.createdAt, updatedAt: now, expiresAt, updatedBySubUserId: actorSubUserId });
   return document;
 }
 
 export function deleteManualMemory(documentValue: unknown, itemId: number, now: number) {
-  const document = filterExpired(parseUserMemoryDocument(documentValue), now);
-  const before = document.manual.length + document.ai.length;
-  document.manual = document.manual.filter((item) => item.id !== itemId);
-  document.ai = document.ai.filter((item) => item.id !== itemId);
-  if (document.manual.length + document.ai.length === before) {
+  const original = parseUserMemoryDocument(documentValue);
+  const exists = original.manual.some((item) => item.id === itemId) || original.ai.some((item) => item.id === itemId);
+  if (!exists) {
     throw new UserMemoryDomainError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "User-memory item not found");
   }
+  const document = filterExpiredExcept(original, now, itemId);
+  document.manual = document.manual.filter((item) => item.id !== itemId);
+  document.ai = document.ai.filter((item) => item.id !== itemId);
   return document;
 }
 
@@ -196,7 +217,7 @@ export function applyAiMemoryOperations(
       }
     }
     if (operation.type === "add" || operation.type === "update") {
-      validateContent(operation.category, operation.content, operation.expiresAt, context.now, false);
+      validateContent(operation.category, operation.content, normalizeExpiresAt(operation.category, operation.expiresAt), context.now, false);
     }
   }
 
@@ -213,6 +234,7 @@ export function applyAiMemoryOperations(
       continue;
     }
     const content = normalizeUserMemoryContent(operation.content);
+    const expiresAt = normalizeExpiresAt(operation.category, operation.expiresAt);
     if (operation.type === "update") {
       const duplicateManual = document.manual.some((item) => normalizeUserMemoryContent(item.content) === content);
       if (duplicateManual) {
@@ -221,7 +243,7 @@ export function applyAiMemoryOperations(
       }
       const index = document.ai.findIndex((item) => item.id === operation.id);
       const current = document.ai[index]!;
-      document.ai[index] = { ...current, category: operation.category, content, expiresAt: operation.expiresAt, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds], updatedAt: context.now };
+      document.ai[index] = { ...current, category: operation.category, content, expiresAt, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds], updatedAt: context.now };
       continue;
     }
     if (document.manual.some((item) => normalizeUserMemoryContent(item.content) === content)) continue;
@@ -231,7 +253,7 @@ export function applyAiMemoryOperations(
       document.ai[duplicateIndex] = { ...current, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds], updatedAt: context.now };
       continue;
     }
-    document.ai.push({ id: document.nextItemId++, category: operation.category, content, createdAt: context.now, updatedAt: context.now, expiresAt: operation.expiresAt, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds] });
+    document.ai.push({ id: document.nextItemId++, category: operation.category, content, createdAt: context.now, updatedAt: context.now, expiresAt, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds] });
   }
 
   const byContent = new Map<string, AgentUserMemoryAiItem>();

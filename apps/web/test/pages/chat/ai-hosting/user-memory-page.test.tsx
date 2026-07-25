@@ -98,6 +98,32 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.getUserMemoryCustomer).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("版本 2")).toBeInTheDocument();
   });
+
+  it("clears a recent intent expiry when switching to another memory category", async () => {
+    const user = userEvent.setup();
+    const customer = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 0, version: 1 };
+    const detail = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", items: [], version: 1 };
+    service.listUserMemoryCustomers.mockResolvedValue({ items: [customer] });
+    service.getUserMemoryCustomer.mockResolvedValue(detail);
+    service.createUserMemoryItem.mockResolvedValue(detail);
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "记忆管理" }));
+    await user.click(await screen.findByRole("button", { name: /张三/ }));
+    await user.click(await screen.findByRole("button", { name: "新增记忆" }));
+    await user.click(screen.getByRole("combobox", { name: "记忆分类" }));
+    await user.click(await screen.findByRole("option", { name: "近期意向" }));
+    fireEvent.change(await screen.findByLabelText("过期时间"), { target: { value: "2026-07-31T12:00" } });
+    await user.click(screen.getByRole("combobox", { name: "记忆分类" }));
+    await user.click(await screen.findByRole("option", { name: "客户画像" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "记忆内容" }), { target: { value: "家有儿童" } });
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(service.createUserMemoryItem).toHaveBeenCalledWith(5, "customer-1", {
+      category: "customer_profile", content: "家有儿童", expectedVersion: 1, expiresAt: null,
+    }));
+  });
+
   it("offers a retry instead of leaving customer detail in a permanent loading state", async () => {
     const user = userEvent.setup();
     service.listUserMemoryCustomers.mockResolvedValue({ items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 0, version: 1 }] });

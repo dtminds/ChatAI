@@ -96,4 +96,79 @@ describe("user memory service policies", () => {
   it("returns the stable data-invalid error instead of treating corrupt stored JSON as an empty document", () => {
     expect(() => parseStoredUserMemoryDocument("not-json")).toThrow(expect.objectContaining({ code: "AGENT_USER_MEMORY_DATA_INVALID", statusCode: 500 }));
   });
+
+  it("creates then updates and deletes a manual memory through JSON persistence", async () => {
+    const customer = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三" };
+    let row: {
+      id: number;
+      memories_json: string;
+      version: number;
+      manual_updated_at: number | null;
+      last_auto_quota_date: Date | null;
+      last_auto_updated_at: number | null;
+    } | undefined;
+    const selectBuilder = {
+      executeTakeFirst: async () => row,
+      forUpdate: () => selectBuilder,
+      selectAll: () => selectBuilder,
+      where: () => selectBuilder,
+    };
+    const trx = {
+      selectFrom: () => selectBuilder,
+      insertInto: () => ({
+        values: (values: { memories_json: string; version: number; manual_updated_at: number }) => ({
+          execute: async () => {
+            row = {
+              id: 1,
+              memories_json: values.memories_json,
+              version: values.version,
+              manual_updated_at: values.manual_updated_at,
+              last_auto_quota_date: null,
+              last_auto_updated_at: null,
+            };
+            return { insertId: 1n, numInsertedOrUpdatedRows: 1n };
+          },
+        }),
+      }),
+      updateTable: () => ({
+        set: (values: { memories_json: string; version: number; manual_updated_at: number }) => ({
+          where: () => ({
+            where: () => ({
+              executeTakeFirstOrThrow: async () => {
+                if (!row) throw new Error("missing row");
+                row = { ...row, memories_json: values.memories_json, version: values.version, manual_updated_at: values.manual_updated_at };
+                return { numUpdatedRows: 1n };
+              },
+            }),
+          }),
+        }),
+      }),
+    };
+    const db = {
+      selectFrom: () => selectBuilder,
+      transaction: () => ({ execute: (callback: (transaction: typeof trx) => unknown) => callback(trx) }),
+    };
+    const service = new UserMemoryService(db as never);
+
+    const created = await service.createManual(272, customer, 101, {
+      category: "customer_profile",
+      content: "家有儿童",
+      expectedVersion: 0,
+      expiresAt: Date.now() - 1,
+    });
+    expect(created.items).toEqual([expect.objectContaining({ id: 1, content: "家有儿童", expiresAt: null, source: "manual" })]);
+    expect(created.version).toBe(1);
+
+    const updated = await service.updateManual(272, customer, 1, 101, {
+      category: "preference",
+      content: "偏好无糖",
+      expectedVersion: 1,
+    });
+    expect(updated.items).toEqual([expect.objectContaining({ id: 1, category: "preference", content: "偏好无糖" })]);
+    expect(updated.version).toBe(2);
+
+    const deleted = await service.deleteManual(272, customer, 1, 101, { expectedVersion: 2 });
+    expect(deleted.items).toEqual([]);
+    expect(deleted.version).toBe(3);
+  });
 });

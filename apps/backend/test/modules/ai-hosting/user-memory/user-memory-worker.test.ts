@@ -16,9 +16,9 @@ function createCompileOnlyDb() {
 describe("user memory candidate selection", () => {
   it("keeps first customer rank and all candidate-pool sessions in chronological order", () => {
     const groups = groupCandidateSessions([
-      { id: 3, ended_at: 30, message_count: 10, platform: 5, third_external_userid: "a" },
-      { id: 2, ended_at: 20, message_count: 9, platform: 5, third_external_userid: "b" },
-      { id: 1, ended_at: 10, message_count: 8, platform: 5, third_external_userid: "a" },
+      { id: 3, started_at: 30, message_count: 10, platform: 5, third_external_userid: "a" },
+      { id: 2, started_at: 20, message_count: 9, platform: 5, third_external_userid: "b" },
+      { id: 1, started_at: 10, message_count: 8, platform: 5, third_external_userid: "a" },
     ]);
     expect(groups.map((group) => group.thirdExternalUserId)).toEqual(["a", "b"]);
     expect(groups[0]?.sessions.map((session) => session.id)).toEqual([1, 3]);
@@ -35,9 +35,10 @@ describe("user memory candidate selection", () => {
 
     expect(compiled.sql).toContain("`conversation`.`chat_type` = ?");
     expect(compiled.sql).toContain("`session`.`message_count` >= ?");
-    expect(compiled.sql).toContain("order by `session`.`message_count` desc, `session`.`ended_at` desc, `session`.`id` desc");
+    expect(compiled.sql).toContain("order by `session`.`message_count` desc, `session`.`started_at` desc, `session`.`id` desc");
     expect(compiled.sql).toContain("limit ?");
     expect(compiled.sql).not.toContain("`session`.`status`");
+    expect(compiled.sql).not.toContain("`session`.`ended_at`");
     expect(compiled.parameters).toEqual(expect.arrayContaining([272, 100, 200, 120, 5, 1, 1000]));
   });
 

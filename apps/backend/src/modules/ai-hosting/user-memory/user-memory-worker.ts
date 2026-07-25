@@ -13,7 +13,7 @@ const TERMINAL_ITEM_STATUSES = ["succeeded", "failed", "skipped", "canceled"];
 
 type RunRow = Selectable<Database["xy_wap_embed_agent_user_memory_run"]>;
 type ItemRow = Selectable<Database["xy_wap_embed_agent_user_memory_run_item"]>;
-type CandidateSession = { id: number; ended_at: number; message_count: number; platform: number; third_external_userid: string };
+type CandidateSession = { id: number; started_at: number; message_count: number; platform: number; third_external_userid: string };
 export type UserMemoryCustomerGroup = { platform: number; thirdExternalUserId: string; sessions: CandidateSession[] };
 
 type Claim = { run: RunRow; token: string };
@@ -196,12 +196,12 @@ export class UserMemoryWorker {
     const range = shanghaiDayRange(claim.run.quota_date);
     const sessions = await this.input.db.selectFrom("xy_wap_embed_logical_session as session")
       .innerJoin("xy_wap_embed_conversation as conversation", (join) => join.onRef("conversation.id", "=", "session.conversation_id").onRef("conversation.uid", "=", "session.uid"))
-      .select(["session.id", "session.ended_at"])
+      .select(["session.id", "session.started_at", "session.last_message_at"])
       .where("session.uid", "=", item.uid).where("session.id", "in", sessionIds).where("session.third_external_userid", "=", item.third_external_userid)
-      .where("session.ended_at", ">=", range.start).where("session.ended_at", "<", range.end).where("session.message_count", ">=", 5)
+      .where("session.started_at", ">=", range.start).where("session.started_at", "<", range.end).where("session.message_count", ">=", 5)
       .where("conversation.chat_type", "=", 1).where("conversation.platform", "=", item.platform)
-      .orderBy("session.ended_at", "asc").orderBy("session.id", "asc").execute();
-    const eligible = sessions.filter((session) => session.ended_at != null && (memory?.manual_updated_at == null || session.ended_at > memory.manual_updated_at));
+      .orderBy("session.started_at", "asc").orderBy("session.id", "asc").execute();
+    const eligible = sessions.filter((session) => memory?.manual_updated_at == null || (session.last_message_at != null && session.last_message_at > memory.manual_updated_at));
     const eligibleSessionIds = eligible.map((session) => session.id);
     const messages: UserMemoryInputMessage[] = [];
     if (eligibleSessionIds.length > 0) {
@@ -295,12 +295,12 @@ export class UserMemoryWorker {
 export function buildCandidateSessionQuery(db: Kysely<Database>, input: { uid: number; start: number; end: number; enabledAt: number; limit: number }) {
   return db.selectFrom("xy_wap_embed_logical_session as session")
     .innerJoin("xy_wap_embed_conversation as conversation", (join) => join.onRef("conversation.id", "=", "session.conversation_id").onRef("conversation.uid", "=", "session.uid"))
-    .select(["session.id", "session.ended_at", "session.message_count", "conversation.platform", "session.third_external_userid"])
-    .where("session.uid", "=", input.uid).where("session.ended_at", ">=", input.start).where("session.ended_at", "<", input.end)
-    .where("session.ended_at", ">", input.enabledAt).where("session.message_count", ">=", 5)
+    .select(["session.id", "session.started_at", "session.message_count", "conversation.platform", "session.third_external_userid"])
+    .where("session.uid", "=", input.uid).where("session.started_at", ">=", input.start).where("session.started_at", "<", input.end)
+    .where("session.started_at", ">", input.enabledAt).where("session.message_count", ">=", 5)
     .where("session.third_external_userid", "!=", "").where("conversation.chat_type", "=", 1).where("conversation.platform", ">", 0)
     .whereRef("conversation.third_external_userid", "=", "session.third_external_userid")
-    .orderBy("session.message_count", "desc").orderBy("session.ended_at", "desc").orderBy("session.id", "desc")
+    .orderBy("session.message_count", "desc").orderBy("session.started_at", "desc").orderBy("session.id", "desc")
     .limit(input.limit);
 }
 
@@ -320,7 +320,7 @@ export function groupCandidateSessions(sessions: CandidateSession[]): UserMemory
     const group = groups.get(key) ?? { platform: session.platform, thirdExternalUserId: session.third_external_userid, sessions: [] };
     group.sessions.push(session); groups.set(key, group);
   }
-  for (const group of groups.values()) group.sessions.sort((a, b) => a.ended_at - b.ended_at || a.id - b.id);
+  for (const group of groups.values()) group.sessions.sort((a, b) => a.started_at - b.started_at || a.id - b.id);
   return [...groups.values()];
 }
 

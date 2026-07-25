@@ -17,7 +17,7 @@
 5. 不使用向量数据库、文件存储、知识图谱或跨平台自然人合并。
 6. 逻辑会话只是每日抽样来源；逻辑会话关闭事务不创建用户记忆任务，逻辑会话 `status` 不参与资格判断。
 7. 每日 `02:00` 按 `Asia/Shanghai` 处理前一完整自然日。
-8. 每个租户先从目标自然日选择消息数最多的有界候选单聊逻辑会话，候选会话上限为 `max(200, customer_limit * 2)`，排序固定为 `message_count DESC, ended_at DESC, id DESC`；本期默认额度 100，因此本期仍是 Top 200。
+8. 每个租户先从目标自然日选择消息数最多的有界候选单聊逻辑会话，候选会话上限为 `max(200, customer_limit * 2)`，排序固定为 `message_count DESC, started_at DESC, id DESC`；本期默认额度 100，因此本期仍是 Top 200。
 9. `message_count < 5` 的逻辑会话不参与候选。
 10. 按候选排名首次出现顺序对客户键去重，最多选择当日套餐额度允许的客户；本期默认 100，去重后不足额度就按实际数量执行，不继续扩大本次候选会话范围。
 11. 同一入选客户在候选池中出现的全部会话合并为一个维护项、一次模型请求；每个逻辑会话最多读取最后 50 条可供 AI 使用的对话消息。
@@ -146,12 +146,13 @@ uid + platform + third_external_userid
 - 调度时区默认且首期固定为 `Asia/Shanghai`。
 - 每日 `02:00` 的计划运行处理前一完整自然日 `[00:00:00.000, 次日 00:00:00.000)`。
 - `quota_date` 是该目标自然日，不是运行实际开始日期。
-- 目标区间在 Node 中换算为 Unix epoch 毫秒后，与 `logical_session.ended_at` 比较。
-- `ended_at`、`enabled_at`、`manual_updated_at`、`last_auto_updated_at` 使用 Unix epoch 毫秒和 `BIGINT UNSIGNED`。
+- 目标区间在 Node 中换算为 Unix epoch 毫秒后，与 `logical_session.started_at` 比较。
+- 逻辑会话按开始日期归属自然日；跨日会话仍归入开始日，不因结束时间或后续状态重新归属。
+- `started_at`、`last_message_at`、`enabled_at`、`manual_updated_at`、`last_auto_updated_at` 使用 Unix epoch 毫秒和 `BIGINT UNSIGNED`。
 - 调度、租约和审计时间使用 `DATETIME(3)`；API 返回时统一映射为 epoch 毫秒。
 - 不得混用 Unix 秒、毫秒和无时区 `DATETIME`。
 
-仓库 Schema 已将 `logical_session.ended_at` 定义为 `BIGINT UNSIGNED`。上线前仍需核实现网字段类型；如果不一致，必须先迁移，禁止在热查询中对 `ended_at` 做 `CAST` 或 `UNIX_TIMESTAMP`。
+仓库 Schema 已将 `logical_session.started_at` 定义为 `BIGINT UNSIGNED`。上线前仍需核实现网字段类型；如果不一致，必须先迁移，禁止在热查询中对 `started_at` 做 `CAST` 或 `UNIX_TIMESTAMP`。
 
 ### 4.3 合格逻辑会话
 
@@ -159,10 +160,9 @@ uid + platform + third_external_userid
 
 ```text
 session.uid = :uid
-AND session.ended_at >= :dayStartMs
-AND session.ended_at < :dayEndMs
-AND session.ended_at > config.enabled_at
-AND session.ended_at IS NOT NULL
+AND session.started_at >= :dayStartMs
+AND session.started_at < :dayEndMs
+AND session.started_at > config.enabled_at
 AND session.message_count >= 5
 AND session.third_external_userid <> ''
 AND conversation.id = session.conversation_id
@@ -180,7 +180,7 @@ AND conversation.third_external_userid = session.third_external_userid
 - Final 洞察成功。
 - 会话摘要、意图、标签或质检结果存在。
 
-`open`、`canceled`、`closed_pending_analysis`、`analyzed` 等状态都不影响资格；只要 `ended_at` 合法就按相同规则参与当日候选。
+`open`、`canceled`、`closed_pending_analysis`、`analyzed` 等状态都不影响资格。候选查询不读取 `ended_at`；凌晨仍未关闭的会话也可参与，调度后继续产生的消息不保证在后续日期补偿消费。
 
 ### 4.4 有界候选会话和客户去重
 
@@ -197,7 +197,7 @@ candidateSessionLimit = max(200, customerLimit * 2)
 ```sql
 SELECT
   session.id,
-  session.ended_at,
+  session.started_at,
   session.message_count,
   conversation.platform,
   session.third_external_userid
@@ -206,9 +206,9 @@ JOIN xy_wap_embed_conversation AS conversation
   ON conversation.id = session.conversation_id
  AND conversation.uid = session.uid
 WHERE session.uid = :uid
-  AND session.ended_at >= :dayStartMs
-  AND session.ended_at < :dayEndMs
-  AND session.ended_at > :enabledAtMs
+  AND session.started_at >= :dayStartMs
+  AND session.started_at < :dayEndMs
+  AND session.started_at > :enabledAtMs
   AND session.message_count >= 5
   AND session.third_external_userid <> ''
   AND conversation.chat_type = 1
@@ -216,7 +216,7 @@ WHERE session.uid = :uid
   AND conversation.third_external_userid = session.third_external_userid
 ORDER BY
   session.message_count DESC,
-  session.ended_at DESC,
+  session.started_at DESC,
   session.id DESC
 LIMIT :candidateSessionLimit;
 ```
@@ -258,7 +258,7 @@ selectedCustomers = groups ordered by customerRank
 
 准备模型输入时：
 
-- 排除 `ended_at <= manual_updated_at` 的来源会话，避免人工维护后重放旧事实。
+- 排除 `last_message_at <= manual_updated_at` 的来源会话，避免人工维护后重放完全发生在人工修改之前的旧事实。
 - 如果客户 `last_auto_quota_date > run.quota_date`，运行项直接标记 `skipped`，错误原因 `AGENT_USER_MEMORY_ITEM_SUPERSEDED`。
 
 合并结果时必须再次验证：
@@ -382,11 +382,9 @@ AND run.lease_until > NOW(3)
 
 | category | 含义 | 示例 |
 | --- | --- | --- |
-| `profile` | 客户主动表达且与服务相关的稳定背景 | 家中有学龄儿童、购买用于送长辈 |
-| `preference` | 商品、服务或消费偏好 | 偏好无糖、喜欢浅色、预算在 500 元以内 |
-| `communication` | 沟通方式和联系约束 | 不方便接电话、优先微信文字沟通 |
-| `product_context` | 已购、在用或明确关注的商品服务背景 | 正在使用 A 型号、关注换新方案 |
-| `recent_context` | 近期仍可能影响服务的上下文 | 正在准备婚礼伴手礼、近期比较 A/B 产品 |
+| `customer_profile` | 客户或收礼人的稳定背景、生活和使用场景，以及已购、在用或长期使用的品类/型号 | 家中有学龄儿童、常为母亲选购、长期在用 A 型号 |
+| `preference` | 想要或不要的选品、价格、风格、规格、避雷、沟通约束，以及已结案后可长期复用的商品反馈 | 偏好无糖、喜欢浅色、预算在 500 元以内、不方便接电话、以后避开偏硬面料 |
+| `recent_intent` | 有明确时效的近期需求、场景或进行中的购买计划 | 下月参加婚礼需要礼服、近期比较 A/B 产品 |
 | `manual_note` | 仅允许人工维护的补充说明 | 重点客户服务要求 |
 
 `manual_note` 不允许由 AI 新增。
@@ -405,6 +403,7 @@ AI 记忆应同时满足：
 
 - 单次会话摘要或客服处理过程。
 - 待办、承诺回访、退款处理等行动项。
+- 未结投诉或仍在处理中的诉求；仅在结案后，客户明确的长期避雷或稳定偏好才可归入 `preference`。
 - 订单、物流、库存、余额、积分等动态业务状态。
 - 单次情绪、质检结论或风险判断。
 - 人格、价值或经济能力推断。
@@ -418,8 +417,9 @@ AI 记忆应同时满足：
 
 - `content` trim 后非空，最长 200 个字符。
 - 每个 AI 操作引用一个来源会话和其中 1 至 3 个客户证据消息。
-- `recent_context` 必须有晚于当前时间且不超过 180 天的 `expiresAt`。
-- 其它分类可以没有过期时间。
+- `recent_intent` 必须有晚于当前时间且不超过 180 天的 `expiresAt`。
+- `recent_intent` 的过期时间优先设置为 7 至 30 天；仅客户明确表达较长期计划时才可延长，仍不得超过 180 天。
+- 其它分类的 `expiresAt` 固定为 `null`。
 - 当前有效人工和 AI 记忆总数最多 20。
 
 ## 7. 数据模型
@@ -492,7 +492,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory (
   "manual": [
     {
       "id": 1,
-      "category": "communication",
+      "category": "preference",
       "content": "不要电话联系，优先微信文字沟通",
       "createdAt": 1784880000000,
       "updatedAt": 1784880000000,
@@ -619,18 +619,15 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
 
 ### 7.6 逻辑会话索引
 
-新增：
+用户记忆不新增逻辑会话索引。候选查询复用现有索引：
 
 ```sql
-ALTER TABLE xy_wap_embed_logical_session
-  ADD KEY idx_logical_session_uid_ended_message (
-    uid, ended_at, message_count, id
-  );
+KEY idx_logical_session_uid_started (uid, started_at)
 ```
 
-该索引用于限制单 UID、单自然日扫描范围；有界候选查询可能仍需在该日有限结果上执行 filesort。上线前必须按最大受支持套餐的候选上限在生产量级副本执行 `EXPLAIN ANALYZE`，确认没有跨 UID 或跨日期全表扫描。
+该索引用于限制单 UID、单自然日扫描范围；`message_count >= 5` 和 Top-N 排序在当日有限结果上过滤和 filesort。上线前必须按最大受支持套餐的候选上限在生产量级副本执行 `EXPLAIN ANALYZE`，确认没有跨 UID 或跨日期全表扫描。
 
-不增加含 `status` 的用户记忆索引，也不增加未结束会话屏障索引。
+不增加含 `status`、`ended_at` 或热更新 `message_count` 的用户记忆索引，也不增加未结束会话屏障索引。
 
 ### 7.7 运行历史保留
 
@@ -649,7 +646,7 @@ ALTER TABLE xy_wap_embed_logical_session
 
 1. 当前有效人工记忆，明确标记为只读。
 2. 当前有效 AI 记忆及稳定条目 ID。
-3. 本运行项固定的逻辑会话，按 `(ended_at, id)` 正序。
+3. 本运行项固定的逻辑会话，按 `(started_at, id)` 正序。
 4. 每个会话最后最多 50 条消息，按时间正序。
 5. 消息的 `sourceMessageId`、`sessionId`、发送角色和解析后内容。
 6. 当前时间、固定分类、禁止内容和最多 20 条约束。
@@ -686,7 +683,7 @@ ALTER TABLE xy_wap_embed_logical_session
     },
     {
       "type": "add",
-      "category": "recent_context",
+      "category": "recent_intent",
       "content": "正在准备婚礼伴手礼",
       "expiresAt": 1790000000000,
       "sourceSessionId": 512,
@@ -928,7 +925,7 @@ Java Agent 运行时：
 3. 一条运行最多发起 `customer_limit` 个客户级同步模型请求；本期默认最多 100，当前预留套餐上限 500。
 4. 每个会话最多读取最后 50 条 AI 消息。
 5. 同一客户当日多个候选会话合并为一次请求。
-6. 候选查询使用 `(uid, ended_at, message_count, id)` 限定 UID 和日期；上线前执行生产量级 `EXPLAIN ANALYZE`。
+6. 候选查询复用 `(uid, started_at)` 限定 UID 和日期；上线前执行生产量级 `EXPLAIN ANALYZE`。
 7. 消息读取使用现有 `(session_id, source_message_time, source_message_id)` 索引。
 8. 客户列表先分页再批量读记忆，禁止 N+1。
 9. 单客户最多 20 条，整体解析和替换 JSON，不增加 JSON 索引或明细表。
@@ -977,7 +974,7 @@ Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独�
 ## 17. 上线与回滚
 
 1. 新增配置、当前记忆、运行和运行项四张表。
-2. 增加 `idx_logical_session_uid_ended_message` 并验证执行计划。
+2. 复用 `idx_logical_session_uid_started` 并验证执行计划，不新增逻辑会话索引。
 3. 四张新表加入 Kysely Schema、codegen 表清单和 Node 可写白名单。
 4. 逻辑会话、会话消息和平台联系人表保持只读。
 5. 所有租户默认关闭，不初始化客户水位，不回刷历史。
@@ -1000,9 +997,9 @@ Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独�
 ### 18.2 每日选择
 
 1. 每日 02:00 处理前一完整 `Asia/Shanghai` 自然日。
-2. 查询只取单聊、`ended_at` 合法、`message_count >= 5` 的会话。
+2. 查询只取开始于目标自然日的单聊且 `message_count >= 5` 的会话，不读取 `ended_at`。
 3. `logical_session.status` 任意变化都不影响资格。
-4. 排序为 `message_count DESC, ended_at DESC, id DESC`，最多取 `max(200, customer_limit * 2)` 条；默认额度 100 时最多 200 条。
+4. 排序为 `message_count DESC, started_at DESC, id DESC`，最多取 `max(200, customer_limit * 2)` 条；默认额度 100 时最多 200 条。
 5. 必须先取有界候选会话后客户去重。
 6. 去重不足额度时不补扫候选上限之后的会话。
 7. 同一入选客户的候选池内全部会话合并为一个运行项。
@@ -1027,7 +1024,7 @@ Worker 可以由现有 `apps/backend/src/worker.ts` 启动，但必须使用独�
 1. AI 不能修改或删除人工记忆。
 2. 人工编辑 AI 记忆后转为人工并移除来源字段。
 3. 人工修改发生在模型调用期间时，旧结果不能覆盖。
-4. 重新准备时排除 `ended_at <= manual_updated_at` 的会话。
+4. 重新准备时排除 `last_message_at <= manual_updated_at` 的会话。
 5. 未来新会话再次明确表达同一事实时，AI 可以重新新增。
 
 ### 18.5 合并和数量

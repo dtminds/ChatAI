@@ -98,7 +98,8 @@ describe("database schema document", () => {
     expect(run).toContain("KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id)");
     expect(run).toContain("KEY idx_agent_user_memory_run_terminal (status, finished_at, id)");
     expect(item).toContain("UNIQUE KEY uk_agent_user_memory_run_customer");
-    expect(logicalSession).toContain("KEY idx_logical_session_uid_ended_message (uid, ended_at, message_count, id)");
+    expect(logicalSession).toContain("KEY idx_logical_session_uid_started (uid, started_at)");
+    expect(logicalSession).not.toContain("idx_logical_session_uid_ended_message");
 
     for (const table of [config, memory, run, item]) {
       expect(table).not.toMatch(/pending_after|pending_through|discovery_cursor|cooldown_until|selection_order_at/);

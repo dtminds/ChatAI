@@ -504,6 +504,7 @@ function ChatWorkbenchContent({
   const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
   const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
+  const unreadRefreshScopeRef = useRef("");
   const manuallyMarkedUnreadCountByConversationIdRef = useRef(
     new Map<string, number>(),
   );
@@ -928,12 +929,22 @@ function ChatWorkbenchContent({
   useEffect(() => {
     if (
       !activeAccountId ||
-      resolvedConversationView !== "unread" ||
-      isConversationLoading
+      resolvedConversationView !== "unread"
+    ) {
+      unreadRefreshScopeRef.current = "";
+      return;
+    }
+
+    const unreadRefreshScope = `${activeAccountId}:${activeMode}`;
+
+    if (
+      isConversationLoading ||
+      unreadRefreshScopeRef.current === unreadRefreshScope
     ) {
       return;
     }
 
+    unreadRefreshScopeRef.current = unreadRefreshScope;
     void loadUnreadConversations(activeMode);
   }, [
     activeAccountId,

@@ -46,7 +46,7 @@ describe("user memory routes", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/server/ai-hosting/user-memory/customers/external-target?platform=5",
+      url: "/api/server/ai-hosting/user-memory/customers/external-target",
       headers: { authorization: `Bearer ${token}` },
     });
 
@@ -56,5 +56,100 @@ describe("user memory routes", () => {
       thirdExternalUserId: "external-target",
     });
     expect(getCustomers).not.toHaveBeenCalled();
+  });
+
+  it("allows an operator to maintain memory for an accessible customer", async () => {
+    app = await buildMockedApp();
+    const executeInsert = vi.fn().mockResolvedValue({});
+    const query = {
+      executeTakeFirst: vi.fn().mockResolvedValue(undefined),
+      forUpdate: vi.fn(),
+      selectAll: vi.fn(),
+      where: vi.fn(),
+    };
+    query.forUpdate.mockReturnValue(query);
+    query.selectAll.mockReturnValue(query);
+    query.where.mockReturnValue(query);
+    const insert = {
+      execute: executeInsert,
+      values: vi.fn(),
+    };
+    insert.values.mockReturnValue(insert);
+    const trx = {
+      insertInto: vi.fn().mockReturnValue(insert),
+      selectFrom: vi.fn().mockReturnValue(query),
+    };
+    const db = createKbReadDbMock() as ReturnType<typeof createKbReadDbMock> & {
+      transaction: () => {
+        execute: (callback: (transaction: typeof trx) => unknown) => unknown;
+      };
+    };
+    db.transaction = () => ({
+      execute: (callback) => callback(trx),
+    });
+    app.db = db as never;
+    const getAccessibleCustomer = vi.fn().mockResolvedValue({
+      avatar: "",
+      name: "目标客户",
+      platform: 5,
+      realName: "",
+      thirdExternalUserId: "external-target",
+    });
+    app.createWorkbenchService = () => ({ getAccessibleCustomer }) as never;
+    const token = app.jwt.sign({
+      roles: ["operator"],
+      sessionId: "1",
+      sessionVersion: 1,
+      subUserId: "101",
+      uid: 9001,
+    });
+
+    const response = await app.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+      payload: {
+        category: "preference",
+        content: "优先下午联系",
+        expectedVersion: 0,
+        expiresAt: null,
+      },
+      url: "/api/server/ai-hosting/user-memory/customers/external-target/items",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(getAccessibleCustomer).toHaveBeenCalledWith("101", {
+      scope: "mine",
+      thirdExternalUserId: "external-target",
+    });
+    expect(executeInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps viewer memory maintenance read-only", async () => {
+    app = await buildMockedApp();
+    app.db = createKbReadDbMock() as never;
+    const getAccessibleCustomer = vi.fn();
+    app.createWorkbenchService = () => ({ getAccessibleCustomer }) as never;
+    const token = app.jwt.sign({
+      roles: ["viewer"],
+      sessionId: "1",
+      sessionVersion: 1,
+      subUserId: "101",
+      uid: 9001,
+    });
+
+    const response = await app.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+      payload: {
+        category: "preference",
+        content: "优先下午联系",
+        expectedVersion: 0,
+        expiresAt: null,
+      },
+      url: "/api/server/ai-hosting/user-memory/customers/external-target/items",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(getAccessibleCustomer).not.toHaveBeenCalled();
   });
 });

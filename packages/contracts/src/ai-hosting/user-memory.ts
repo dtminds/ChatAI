@@ -7,7 +7,6 @@ export const AgentUserMemoryCategorySchema = Type.Union([
   Type.Literal("customer_profile"),
   Type.Literal("preference"),
   Type.Literal("recent_intent"),
-  Type.Literal("manual_note"),
 ]);
 export const AgentUserMemorySourceSchema = Type.Union([
   Type.Literal("manual"),
@@ -60,7 +59,7 @@ export const AgentUserMemoryErrorCodeSchema = Type.Union([
 
 const BaseMemoryItemSchema = Type.Object({
   category: AgentUserMemoryCategorySchema,
-  content: Type.String({ minLength: 1, maxLength: 200 }),
+  content: Type.String({ minLength: 1, maxLength: 100 }),
   createdAt: EpochMsSchema,
   expiresAt: Type.Union([EpochMsSchema, Type.Null()]),
   id: Type.Integer({ minimum: 1 }),
@@ -208,7 +207,7 @@ export const AgentUserMemoryEvidenceResponseSchema = Type.Object({
 
 const ManualWriteBaseSchema = Type.Object({
   category: AgentUserMemoryCategorySchema,
-  content: Type.String({ minLength: 1, maxLength: 200 }),
+  content: Type.String({ minLength: 1, maxLength: 100 }),
   expectedVersion: Type.Integer({ minimum: 0 }),
   expiresAt: Type.Optional(Type.Union([EpochMsSchema, Type.Null()])),
 }, { additionalProperties: false });

@@ -33,9 +33,14 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
+import { ChatUserMemoryPopover } from "@/pages/chat/components/chat-user-memory-popover";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
 import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
+
+const headerIconActionWidthWithGap = 44;
+const soundControlWidthWithGap = 120;
+const memoryPopoverRightNudge = 24;
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
@@ -46,6 +51,7 @@ type ChatHeaderProps = {
   isTicketsPanelOpen?: boolean;
   ticketReminderCount?: number;
   ticketReminderDisplayMode?: TicketReminderDisplayMode;
+  isUserMemoryOpen?: boolean;
   onBack?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
@@ -53,6 +59,7 @@ type ChatHeaderProps = {
   onToggleSidebar?: () => void;
   onToggleTickets?: () => void;
   onUnpinConversation?: () => void | Promise<void>;
+  onUserMemoryOpenChange?: (open: boolean) => void;
 };
 
 export function ChatHeader({
@@ -64,6 +71,7 @@ export function ChatHeader({
   isTicketsPanelOpen = false,
   ticketReminderCount,
   ticketReminderDisplayMode,
+  isUserMemoryOpen,
   onBack,
   onMarkConversationRead,
   onMarkConversationUnread,
@@ -71,6 +79,7 @@ export function ChatHeader({
   onToggleSidebar,
   onToggleTickets,
   onUnpinConversation,
+  onUserMemoryOpenChange,
 }: ChatHeaderProps) {
   const hasConversationActions = Boolean(
     activeConversation &&
@@ -78,6 +87,14 @@ export function ChatHeader({
         onMarkConversationUnread ||
         onPinConversation ||
         onUnpinConversation),
+  );
+  const memoryPopoverAlignOffset = -(
+    (hasConversationActions ? headerIconActionWidthWithGap : 0) +
+    (activeConversation && onToggleSidebar
+      ? headerIconActionWidthWithGap
+      : 0) +
+    (isMobileLayout ? 0 : soundControlWidthWithGap) +
+    memoryPopoverRightNudge
   );
 
   return (
@@ -141,6 +158,16 @@ export function ChatHeader({
                   mode={ticketReminderDisplayMode}
                 />
               }
+            />
+          ) : null}
+          {activeConversation?.mode === "single" &&
+          activeConversation.customerBindType !== 2 &&
+          activeConversation.thirdExternalUserId?.trim() ? (
+            <ChatUserMemoryPopover
+              alignOffset={memoryPopoverAlignOffset}
+              conversation={activeConversation}
+              onOpenChange={onUserMemoryOpenChange}
+              open={isUserMemoryOpen}
             />
           ) : null}
           {hasConversationActions && activeConversation ? (

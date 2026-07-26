@@ -13,6 +13,7 @@ describe("user memory prompt", () => {
     expect(serialized).toContain("长期在用 A 型号");
     expect(serialized).toContain("未结投诉或仍在处理中的诉求也不进记忆");
     expect(serialized).toContain("优先 7 至 30 天");
+    expect(serialized).toContain("不超过 100 个字符");
     expect(serialized).not.toContain("thirdExternalUserId");
     expect(serialized).not.toContain('"uid"');
   });

@@ -1,7 +1,10 @@
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { AgentUserMemoryDocument } from "@chatai/contracts";
-import type { UserMemoryAiOperation } from "./user-memory-domain.js";
+import {
+  USER_MEMORY_CONTENT_LIMIT,
+  type UserMemoryAiOperation,
+} from "./user-memory-domain.js";
 
 const CategorySchema = Type.Union([
   Type.Literal("customer_profile"), Type.Literal("preference"), Type.Literal("recent_intent"),
@@ -11,9 +14,9 @@ const EvidenceSchema = Type.Object({
   sourceSessionId: Type.Integer({ minimum: 1 }),
 }, { additionalProperties: false });
 const OutputSchema = Type.Object({ operations: Type.Array(Type.Union([
-  Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("add"), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: 200 }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
+  Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("add"), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: USER_MEMORY_CONTENT_LIMIT }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
   Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("confirm"), id: Type.Integer({ minimum: 1 }) }, { additionalProperties: false })], { additionalProperties: false }),
-  Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("update"), id: Type.Integer({ minimum: 1 }), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: 200 }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
+  Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("update"), id: Type.Integer({ minimum: 1 }), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: USER_MEMORY_CONTENT_LIMIT }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
   Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("remove"), id: Type.Integer({ minimum: 1 }) }, { additionalProperties: false })], { additionalProperties: false }),
 ]), { maxItems: 40 }) }, { additionalProperties: false });
 
@@ -37,8 +40,9 @@ export function buildUserMemoryPrompt(input: { document: AgentUserMemoryDocument
     { role: "system", content: [
       "你负责维护私域服务客户的长期记忆。只返回 JSON 对象 {operations: []}。",
       "仅提取客户本人直接表达、对未来电商服务或推荐有价值的事实。不要保存订单物流、待办承诺、单次情绪、诊断或敏感信息；未结投诉或仍在处理中的诉求也不进记忆。",
-      "只允许 add/confirm/update/remove；不得修改或删除 manual；manual_note 只能人工维护。",
+      "只允许 add/confirm/update/remove；manual 是人工维护来源，不是记忆分类，不得修改或删除 manual。",
       "当前有效 manual 与 ai 合计最多 20 条；空间不足时只能先合并、更新或删除 ai，不得超限新增。",
+      "每条记忆 content 必须压缩为不超过 100 个字符的明确短句。",
       "每个操作必须引用一个输入 sessionId 和 1-3 个该会话中 senderRole=customer 的 sourceMessageId。",
       "分类硬边界：customer_profile 记录客户或收礼人的稳定背景、使用场景，以及已购、在用或长期使用的品类/型号，例如长期在用 A 型号；preference 只记录想要或不要的选品、价格、风格、规格、避雷、沟通约束，以及已结案后可长期复用的商品反馈；recent_intent 只记录有明确时效的近期需求、场景或进行中的购买计划。",
       "recent_intent 必须设置未来且不超过 180 天的 expiresAt，优先 7 至 30 天，仅明确的长期计划才可延长；其它分类必须为 null。没有客户直接证据时不得为了覆盖分类而新增记忆。",

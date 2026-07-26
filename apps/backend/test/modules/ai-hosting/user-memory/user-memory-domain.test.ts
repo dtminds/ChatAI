@@ -25,12 +25,25 @@ describe("user memory domain", () => {
   });
 
   it("creates, edits and deletes manual memories with exact duplicate protection", () => {
-    const created = createManualMemory(emptyUserMemoryDocument(), { category: "manual_note", content: " 重点服务。 " }, 7, now);
-    expect(created.item).toMatchObject({ id: 1, content: "重点服务", updatedBySubUserId: 7 });
-    expect(() => createManualMemory(created.document, { category: "customer_profile", content: "重点服务" }, 7, now)).toThrowError(expect.objectContaining({ code: "AGENT_USER_MEMORY_CONTENT_DUPLICATE" }));
+    const created = createManualMemory(emptyUserMemoryDocument(), { category: "preference", content: " 只在下午联系。 " }, 7, now);
+    expect(created.item).toMatchObject({ id: 1, content: "只在下午联系", updatedBySubUserId: 7 });
+    expect(() => createManualMemory(created.document, { category: "preference", content: "只在下午联系" }, 7, now)).toThrowError(expect.objectContaining({ code: "AGENT_USER_MEMORY_CONTENT_DUPLICATE" }));
     const updated = updateManualMemory(created.document, 1, { category: "preference", content: "只发文字" }, 8, now + 1);
     expect(updated.manual[0]).toMatchObject({ id: 1, content: "只发文字", updatedBySubUserId: 8 });
     expect(deleteManualMemory(updated, 1, now + 2)).toMatchObject({ manual: [], ai: [] });
+  });
+
+  it("rejects memory content longer than 100 characters", () => {
+    expect(() =>
+      createManualMemory(
+        emptyUserMemoryDocument(),
+        { category: "customer_profile", content: "身".repeat(101) },
+        7,
+        now,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "AGENT_USER_MEMORY_CONTENT_INVALID" }),
+    );
   });
 
   it("turns an edited AI item into manual and removes evidence", () => {

@@ -11,10 +11,11 @@ import {
 } from "../src/index.js";
 
 describe("agent user memory contracts", () => {
-  it("accepts exactly three automatic memory categories plus manual notes", () => {
+  it("accepts exactly the three memory categories regardless of source", () => {
     for (const category of [
-      "customer_profile", "preference", "recent_intent", "manual_note",
+      "customer_profile", "preference", "recent_intent",
     ]) expect(Value.Check(AgentUserMemoryCategorySchema, category)).toBe(true);
+    expect(Value.Check(AgentUserMemoryCategorySchema, "manual_note")).toBe(false);
     expect(Value.Check(AgentUserMemoryCategorySchema, "health")).toBe(false);
     for (const category of ["profile", "communication", "product_context", "recent_context"])
       expect(Value.Check(AgentUserMemoryCategorySchema, category)).toBe(false);
@@ -35,13 +36,16 @@ describe("agent user memory contracts", () => {
 
   it("validates manual requests and epoch millisecond values", () => {
     expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
-      category: "manual_note", content: "重点服务", expectedVersion: 0, expiresAt: 1_800_000_000_000,
+      category: "customer_profile", content: "身高 168cm", expectedVersion: 0, expiresAt: 1_800_000_000_000,
     })).toBe(true);
     expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
-      category: "manual_note", content: "重点服务", expectedVersion: -1,
+      category: "customer_profile", content: "身高 168cm", expectedVersion: -1,
     })).toBe(false);
     expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
-      category: "manual_note", content: "重点服务", expectedVersion: 0, extra: true,
+      category: "customer_profile", content: "身高 168cm", expectedVersion: 0, extra: true,
+    })).toBe(false);
+    expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
+      category: "customer_profile", content: "身".repeat(101), expectedVersion: 0,
     })).toBe(false);
   });
 

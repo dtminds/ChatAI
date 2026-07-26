@@ -53,7 +53,7 @@ describe("user memory page", () => {
     const user = userEvent.setup();
     render(<UserMemoryPage />);
     await screen.findByRole("switch", { name: "自动维护" });
-    await user.click(screen.getByRole("tab", { name: "记忆管理" }));
+    await user.click(screen.getByRole("tab", { name: "记忆明细" }));
     const input = screen.getByRole("textbox", { name: "搜索客户" });
     fireEvent.change(input, { target: { value: "张三" } });
     expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(1);
@@ -81,7 +81,7 @@ describe("user memory page", () => {
 
   it("reloads the latest customer document after an optimistic version conflict", async () => {
     const user = userEvent.setup();
-    service.listUserMemoryCustomers.mockResolvedValue({ items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 0, version: 1 }] });
+    service.listUserMemoryCustomers.mockResolvedValue({ items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 1, updatedAt: 1, version: 1 }] });
     service.getUserMemoryCustomer
       .mockResolvedValueOnce({ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", items: [], version: 1 })
       .mockResolvedValueOnce({ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", items: [], version: 2 });
@@ -89,56 +89,71 @@ describe("user memory page", () => {
     render(<UserMemoryPage />);
 
     await screen.findByRole("switch", { name: "自动维护" });
-    await user.click(screen.getByRole("tab", { name: "记忆管理" }));
-    fireEvent.click(await screen.findByRole("button", { name: /张三/ }));
+    await user.click(screen.getByRole("tab", { name: "记忆明细" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看张三记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: "新增记忆" }));
     fireEvent.change(screen.getByRole("textbox", { name: "记忆内容" }), { target: { value: "重点服务" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(service.getUserMemoryCustomer).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("版本 2")).toBeInTheDocument();
+    expect(await screen.findByText(/版本 2/)).toBeInTheDocument();
   });
 
   it("clears a recent intent expiry when switching to another memory category", async () => {
     const user = userEvent.setup();
-    const customer = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 0, version: 1 };
+    const customer = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 1, updatedAt: 1, version: 1 };
     const detail = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", items: [], version: 1 };
     service.listUserMemoryCustomers.mockResolvedValue({ items: [customer] });
     service.getUserMemoryCustomer.mockResolvedValue(detail);
     service.createUserMemoryItem.mockResolvedValue(detail);
     render(<UserMemoryPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "记忆管理" }));
-    await user.click(await screen.findByRole("button", { name: /张三/ }));
+    await user.click(await screen.findByRole("tab", { name: "记忆明细" }));
+    await user.click(await screen.findByRole("button", { name: "查看张三记忆" }));
     await user.click(await screen.findByRole("button", { name: "新增记忆" }));
-    await user.click(screen.getByRole("combobox", { name: "记忆分类" }));
-    await user.click(await screen.findByRole("option", { name: "近期意向" }));
-    fireEvent.change(await screen.findByLabelText("过期时间"), { target: { value: "2026-07-31T12:00" } });
-    await user.click(screen.getByRole("combobox", { name: "记忆分类" }));
-    await user.click(await screen.findByRole("option", { name: "客户画像" }));
+    await user.click(screen.getByRole("radio", { name: "近期意向" }));
+    await user.click(screen.getByRole("button", { name: "7天" }));
+    await user.click(screen.getByRole("radio", { name: "客户画像" }));
     fireEvent.change(screen.getByRole("textbox", { name: "记忆内容" }), { target: { value: "家有儿童" } });
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    await waitFor(() => expect(service.createUserMemoryItem).toHaveBeenCalledWith(5, "customer-1", {
+    await waitFor(() => expect(service.createUserMemoryItem).toHaveBeenCalledWith("customer-1", {
       category: "customer_profile", content: "家有儿童", expectedVersion: 1, expiresAt: null,
     }));
   });
 
   it("offers a retry instead of leaving customer detail in a permanent loading state", async () => {
     const user = userEvent.setup();
-    service.listUserMemoryCustomers.mockResolvedValue({ items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 0, version: 1 }] });
+    service.listUserMemoryCustomers.mockResolvedValue({ items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 1, updatedAt: 1, version: 1 }] });
     service.getUserMemoryCustomer
       .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValueOnce({ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", items: [], version: 1 });
     render(<UserMemoryPage />);
 
     await screen.findByRole("switch", { name: "自动维护" });
-    await user.click(screen.getByRole("tab", { name: "记忆管理" }));
-    await user.click(await screen.findByRole("button", { name: /张三/ }));
+    await user.click(screen.getByRole("tab", { name: "记忆明细" }));
+    await user.click(await screen.findByRole("button", { name: "查看张三记忆" }));
     await user.click(await screen.findByRole("button", { name: "重试" }));
 
     await waitFor(() => expect(service.getUserMemoryCustomer).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("版本 1")).toBeInTheDocument();
+  });
+
+  it("orders customer memories by update time and opens the selected detail", async () => {
+    const user = userEvent.setup();
+    const newer = { platform: 5, thirdExternalUserId: "newer", customerName: "新客户", memoryCount: 2, updatedAt: 200, version: 2 };
+    const older = { platform: 5, thirdExternalUserId: "older", customerName: "旧客户", memoryCount: 1, updatedAt: 100, version: 1 };
+    service.listUserMemoryCustomers.mockResolvedValue({ items: [older, newer] });
+    service.getUserMemoryCustomer.mockResolvedValue({ platform: 5, thirdExternalUserId: "newer", customerName: "新客户", items: [], version: 2 });
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "记忆明细" }));
+    const rows = await screen.findAllByRole("row");
+    expect(within(rows[1]!).getByText("新客户")).toBeInTheDocument();
+    expect(within(rows[2]!).getByText("旧客户")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看新客户记忆" }));
+    expect(await screen.findByRole("dialog", { name: "新客户" })).toBeInTheDocument();
   });
 
 });

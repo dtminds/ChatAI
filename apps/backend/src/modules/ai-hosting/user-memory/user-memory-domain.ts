@@ -8,7 +8,7 @@ import {
 import { Value } from "@sinclair/typebox/value";
 
 export const USER_MEMORY_ITEM_LIMIT = 20;
-export const USER_MEMORY_CONTENT_LIMIT = 200;
+export const USER_MEMORY_CONTENT_LIMIT = 100;
 export const USER_MEMORY_MAX_OPERATIONS = 40;
 export const USER_MEMORY_RECENT_INTENT_MAX_MS = 180 * 24 * 60 * 60 * 1000;
 
@@ -69,9 +69,9 @@ function normalizeExpiresAt(category: AgentUserMemoryCategory, expiresAt: number
   return category === "recent_intent" ? expiresAt ?? null : null;
 }
 
-function validateContent(category: AgentUserMemoryCategory, content: string, expiresAt: number | null | undefined, now: number, allowManualNote: boolean) {
+function validateContent(category: AgentUserMemoryCategory, content: string, expiresAt: number | null | undefined, now: number) {
   const normalized = normalizeUserMemoryContent(content);
-  if (!normalized || normalized.length > USER_MEMORY_CONTENT_LIMIT || (!allowManualNote && category === "manual_note")) {
+  if (!normalized || normalized.length > USER_MEMORY_CONTENT_LIMIT) {
     throw new UserMemoryDomainError("AGENT_USER_MEMORY_CONTENT_INVALID", "Invalid user-memory content");
   }
   if (category === "recent_intent") {
@@ -121,7 +121,7 @@ export function createManualMemory(
 ) {
   const document = filterExpired(parseUserMemoryDocument(documentValue), now);
   const expiresAt = normalizeExpiresAt(input.category, input.expiresAt);
-  const content = validateContent(input.category, input.content, expiresAt, now, true);
+  const content = validateContent(input.category, input.content, expiresAt, now);
   assertNoDuplicate(document, content, now);
   if (document.manual.length + document.ai.length >= USER_MEMORY_ITEM_LIMIT) {
     throw new UserMemoryDomainError("AGENT_USER_MEMORY_LIMIT_REACHED", "User-memory item limit reached");
@@ -155,7 +155,7 @@ export function updateManualMemory(
   }
   const document = filterExpiredExcept(original, now, itemId);
   const expiresAt = normalizeExpiresAt(input.category, input.expiresAt);
-  const content = validateContent(input.category, input.content, expiresAt, now, true);
+  const content = validateContent(input.category, input.content, expiresAt, now);
   assertNoDuplicate(document, content, now, itemId);
   if (manualIndex >= 0) {
     const currentIndex = document.manual.findIndex((item) => item.id === itemId);
@@ -217,7 +217,7 @@ export function applyAiMemoryOperations(
       }
     }
     if (operation.type === "add" || operation.type === "update") {
-      validateContent(operation.category, operation.content, normalizeExpiresAt(operation.category, operation.expiresAt), context.now, false);
+      validateContent(operation.category, operation.content, normalizeExpiresAt(operation.category, operation.expiresAt), context.now);
     }
   }
 

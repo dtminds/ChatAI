@@ -177,9 +177,28 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
+    const hasQaWork = input.context
+      ? input.context.qaRuleConfigs.length > 0
+      : true;
+    const hasClassificationWork = input.context
+      ? input.context.entityDictionary.length > 0 ||
+        input.context.intentConfigs.length > 0 ||
+        input.context.labelConfigs.length > 0
+      : true;
+
+    if (
+      (input.job?.analysisScope === "qaFindings" && !hasQaWork) ||
+      (input.job?.analysisScope === "classification" && !hasClassificationWork)
+    ) {
+      return emptyAnalysisOutput();
+    }
+
     const includeActionItems = shouldGenerateActionItems(input.job);
     const output = this.config.analysisMode !== "single"
-      ? await this.doAnalyzeSessionInSteps(input)
+      ? await this.doAnalyzeSessionInSteps(input, {
+          hasClassificationWork,
+          hasQaWork,
+        })
       : await this.completeAnalysisStep({
           maxTokens: this.config.maxTokens,
           messages: buildInsightPromptMessages({
@@ -199,6 +218,10 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 
   private async doAnalyzeSessionInSteps(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+    work: {
+      hasClassificationWork: boolean;
+      hasQaWork: boolean;
+    },
   ): Promise<InsightAnalyzerOutput> {
     if (input.job.analysisScope === "qaFindings") {
       const priorConclusions = buildPriorConclusions(input.previousOutput);
@@ -249,7 +272,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       problemResolution: summary.problemResolution,
       summary: summary.summary,
     };
-    const runQa = input.job?.mode !== "live";
+    const runQa = input.job?.mode !== "live" && work.hasQaWork;
     const [qa, classification] = await Promise.all([
       runQa
         ? this.completeOptionalStep("qaFindings", {
@@ -264,17 +287,19 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           uid: input.job?.uid ?? 0,
         })
         : Promise.resolve(emptyAnalysisOutput()),
-      this.completeOptionalStep("classification", {
-        maxTokens: this.config.liteMaxTokens,
-        messages: buildInsightClassificationPromptMessages({
-          context: input.context,
-          messages: input.messages,
-          previousSessionContexts: input.previousSessionContexts,
-          priorConclusions,
-        }),
-        model: this.config.liteModel,
-        uid: input.job?.uid ?? 0,
-      }),
+      work.hasClassificationWork
+        ? this.completeOptionalStep("classification", {
+            maxTokens: this.config.liteMaxTokens,
+            messages: buildInsightClassificationPromptMessages({
+              context: input.context,
+              messages: input.messages,
+              previousSessionContexts: input.previousSessionContexts,
+              priorConclusions,
+            }),
+            model: this.config.liteModel,
+            uid: input.job?.uid ?? 0,
+          })
+        : Promise.resolve(emptyAnalysisOutput()),
     ]);
 
     return {

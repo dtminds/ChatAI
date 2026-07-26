@@ -1970,6 +1970,7 @@ export interface XyWapEmbedAgentUserMemoryConfig {
   create_time: Generated<Date>;
   enabled: Generated<number>;
   enabled_at: number | null;
+  extraction_instruction: Generated<string>;
   generation: Generated<number>;
   id: Generated<number>;
   next_run_at: Date | null;

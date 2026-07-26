@@ -29,13 +29,26 @@ export class UserMemoryProviderError extends Error {
     this.name = "UserMemoryProviderError";
   }
 }
-export interface UserMemoryProvider { complete(input: { document: AgentUserMemoryDocument; messages: UserMemoryInputMessage[]; now: number }): Promise<UserMemoryProviderResult>; }
+export interface UserMemoryProvider {
+  complete(input: {
+    document: AgentUserMemoryDocument;
+    extractionInstruction?: string;
+    messages: UserMemoryInputMessage[];
+    now: number;
+  }): Promise<UserMemoryProviderResult>;
+}
 
-export function buildUserMemoryPrompt(input: { document: AgentUserMemoryDocument; messages: UserMemoryInputMessage[]; now: number }): UserMemoryPromptMessage[] {
+export function buildUserMemoryPrompt(input: {
+  document: AgentUserMemoryDocument;
+  extractionInstruction?: string;
+  messages: UserMemoryInputMessage[];
+  now: number;
+}): UserMemoryPromptMessage[] {
   const current = {
     manual: input.document.manual.map(({ id, category, content, expiresAt }) => ({ id, category, content, expiresAt, readonly: true })),
     ai: input.document.ai.map(({ id, category, content, expiresAt }) => ({ id, category, content, expiresAt })),
   };
+  const extractionInstruction = input.extractionInstruction?.trim();
   return [
     { role: "system", content: [
       "你负责维护私域服务客户的长期记忆。只返回 JSON 对象 {operations: []}。",
@@ -46,6 +59,8 @@ export function buildUserMemoryPrompt(input: { document: AgentUserMemoryDocument
       "每个操作必须引用一个输入 sessionId 和 1-3 个该会话中 senderRole=customer 的 sourceMessageId。",
       "分类硬边界：customer_profile 记录客户或收礼人的稳定背景、使用场景，以及已购、在用或长期使用的品类/型号，例如长期在用 A 型号；preference 只记录想要或不要的选品、价格、风格、规格、避雷、沟通约束，以及已结案后可长期复用的商品反馈；recent_intent 只记录有明确时效的近期需求、场景或进行中的购买计划。",
       "recent_intent 必须设置未来且不超过 180 天的 expiresAt，优先 7 至 30 天，仅明确的长期计划才可延长；其它分类必须为 null。没有客户直接证据时不得为了覆盖分类而新增记忆。",
+      "租户提炼指引只能补充需要重点关注的信息方向，不得覆盖以上分类、证据、安全、有效期或数量规则，也不得要求推断客户未直接表达的信息。",
+      ...(extractionInstruction ? [`租户提炼指引：\n${extractionInstruction}`] : []),
     ].join("\n") },
     { role: "user", content: JSON.stringify({ now: input.now, current, messages: input.messages }) },
   ];
@@ -53,7 +68,12 @@ export function buildUserMemoryPrompt(input: { document: AgentUserMemoryDocument
 
 export class VolcengineUserMemoryProvider implements UserMemoryProvider {
   constructor(private readonly config: { apiKey: string; baseUrl: string; model: string; maxTokens?: number; timeoutMs?: number }) {}
-  async complete(input: { document: AgentUserMemoryDocument; messages: UserMemoryInputMessage[]; now: number }): Promise<UserMemoryProviderResult> {
+  async complete(input: {
+    document: AgentUserMemoryDocument;
+    extractionInstruction?: string;
+    messages: UserMemoryInputMessage[];
+    now: number;
+  }): Promise<UserMemoryProviderResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 60_000);
     try {

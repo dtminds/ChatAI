@@ -16,7 +16,7 @@ type ItemRow = Selectable<Database["xy_wap_embed_agent_user_memory_run_item"]>;
 type CandidateSession = { id: number; started_at: number; message_count: number; platform: number; third_external_userid: string };
 export type UserMemoryCustomerGroup = { platform: number; thirdExternalUserId: string; sessions: CandidateSession[] };
 
-type Claim = { run: RunRow; token: string };
+type Claim = { extractionInstruction: string; run: RunRow; token: string };
 
 export class UserMemoryWorker {
   private nextCleanupAt = 0;
@@ -108,7 +108,11 @@ export class UserMemoryWorker {
       const token = randomUUID();
       const leaseUntil = new Date(Date.now() + LEASE_MS);
       await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status: "running", locked_by: this.input.workerId, claim_token: token, lease_until: leaseUntil, started_at: run.started_at ?? now }).where("id", "=", run.id).execute();
-      return { run: { ...run, status: "running", locked_by: this.input.workerId, claim_token: token, lease_until: leaseUntil, started_at: run.started_at ?? now }, token };
+      return {
+        extractionInstruction: config.extraction_instruction ?? "",
+        run: { ...run, status: "running", locked_by: this.input.workerId, claim_token: token, lease_until: leaseUntil, started_at: run.started_at ?? now },
+        token,
+      };
     });
   }
 
@@ -173,7 +177,12 @@ export class UserMemoryWorker {
         await this.aggregateOrRelease(claim);
         return;
       }
-      const result = await this.input.provider.complete({ document: prepared.document, messages: prepared.messages, now: Date.now() });
+      const result = await this.input.provider.complete({
+        document: prepared.document,
+        extractionInstruction: prepared.extractionInstruction,
+        messages: prepared.messages,
+        now: Date.now(),
+      });
       providerUsage = result;
       await this.mergeResult(claim, item, prepared, result);
     } catch (error) {
@@ -220,7 +229,14 @@ export class UserMemoryWorker {
       }
     }
     if (messages.length === 0) { await this.skipItem(claim, item, "AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES"); return undefined; }
-    return { document, messages, sessionIds: eligible.map((s) => s.id), version: memory?.version ?? 0, manualUpdatedAt: memory?.manual_updated_at ?? null };
+    return {
+      document,
+      extractionInstruction: claim.extractionInstruction,
+      messages,
+      sessionIds: eligible.map((s) => s.id),
+      version: memory?.version ?? 0,
+      manualUpdatedAt: memory?.manual_updated_at ?? null,
+    };
   }
 
   private async mergeResult(claim: Claim, item: ItemRow, prepared: Awaited<ReturnType<UserMemoryWorker["prepareInput"]>> & {}, result: Awaited<ReturnType<UserMemoryProvider["complete"]>>) {

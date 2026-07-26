@@ -106,7 +106,7 @@ describe("user memory service policies", () => {
       transaction: () => ({ execute: (callback: (transaction: typeof trx) => unknown) => callback(trx) }),
     };
 
-    const overview = await new UserMemoryService(db as never).updateSettings(272, false);
+    const overview = await new UserMemoryService(db as never).updateSettings(272, { enabled: false });
 
     expect(overview.enabled).toBe(false);
     expect(runUpdates).toContainEqual(expect.objectContaining({
@@ -115,6 +115,61 @@ describe("user memory service policies", () => {
       status: "canceled",
       success_count: 1,
     }));
+  });
+
+  it("updates the extraction instruction without changing the enable generation", async () => {
+    const configUpdates: Array<Record<string, unknown>> = [];
+    let config = {
+      active_run_id: null,
+      enabled: 1,
+      enabled_at: 1,
+      extraction_instruction: "旧指引",
+      generation: 4,
+      id: 3,
+      next_run_at: new Date(),
+      uid: 272,
+    };
+    const selectQuery = (table: string) => {
+      const builder = {
+        executeTakeFirst: async () => table === "xy_wap_embed_agent_user_memory_config" ? config : undefined,
+        executeTakeFirstOrThrow: async () => config,
+        forUpdate: () => builder,
+        orderBy: () => builder,
+        selectAll: () => builder,
+        where: () => builder,
+      };
+      return builder;
+    };
+    const updateQuery = () => {
+      const builder = {
+        executeTakeFirstOrThrow: async () => ({ numUpdatedRows: 1n }),
+        set: (next: Record<string, unknown>) => {
+          configUpdates.push(next);
+          config = { ...config, ...next };
+          return builder;
+        },
+        where: () => builder,
+      };
+      return builder;
+    };
+    const trx = { selectFrom: selectQuery, updateTable: updateQuery };
+    const db = {
+      selectFrom: selectQuery,
+      transaction: () => ({ execute: (callback: (transaction: typeof trx) => unknown) => callback(trx) }),
+    };
+
+    const overview = await new UserMemoryService(db as never).updateSettings(272, {
+      extractionInstruction: "  重点关注客户主动表达的尺码和面料偏好  ",
+    });
+
+    expect(configUpdates).toEqual([{
+      extraction_instruction: "重点关注客户主动表达的尺码和面料偏好",
+    }]);
+    expect(config.generation).toBe(4);
+    expect(overview).toMatchObject({
+      enabled: true,
+      extractionInstruction: "重点关注客户主动表达的尺码和面料偏好",
+    });
   });
 
   it("renders readable evidence text before falling back to compact JSON", () => {

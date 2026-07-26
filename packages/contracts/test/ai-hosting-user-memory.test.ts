@@ -9,6 +9,7 @@ import {
   AgentUserMemoryManualCreateRequestSchema,
   AgentUserMemoryRunItemStatusSchema,
   AgentUserMemoryRunStatusSchema,
+  AgentUserMemorySettingsRequestSchema,
 } from "../src/index.js";
 
 describe("agent user memory contracts", () => {
@@ -47,6 +48,19 @@ describe("agent user memory contracts", () => {
     })).toBe(false);
     expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
       category: "customer_profile", content: "身".repeat(101), expectedVersion: 0,
+    })).toBe(false);
+  });
+
+  it("accepts partial settings updates with a bounded extraction instruction", () => {
+    expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
+      enabled: true,
+    })).toBe(true);
+    expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
+      extractionInstruction: "重点关注客户主动表达的尺码与面料偏好",
+    })).toBe(true);
+    expect(Value.Check(AgentUserMemorySettingsRequestSchema, {})).toBe(false);
+    expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
+      extractionInstruction: "提".repeat(2001),
     })).toBe(false);
   });
 

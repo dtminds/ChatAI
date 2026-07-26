@@ -40,7 +40,7 @@ export async function registerUserMemoryRoutes(app: FastifyInstance) {
     preHandler: app.authenticate, schema: { body: AgentUserMemorySettingsRequestSchema },
   }, async (request) => {
     assertManage(request);
-    return apiSuccess(await createService(app, request).updateSettings(request.user.uid, request.body.enabled));
+    return apiSuccess(await createService(app, request).updateSettings(request.user.uid, request.body));
   });
 
   app.get<{ Querystring: RunsQuery }>("/api/server/ai-hosting/user-memory/runs", {

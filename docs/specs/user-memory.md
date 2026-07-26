@@ -28,6 +28,7 @@
 16. AI 只返回 `add`、`confirm`、`update`、`remove` 增量操作；服务端执行确定性校验和合并，不建设通用规则引擎。
 17. 人工记忆优先。AI 不能修改或删除人工记忆，人工修改发生后，旧模型结果不得覆盖或重新提炼人工时间屏障之前的会话。
 18. 同步推理是首期必须完成的执行模式；火山批量推理在官方 Batch 契约确认后接入，但不得改变抽样、额度和合并语义。
+19. owner/admin 可配置租户级记忆提炼指引，也可从行业模板填充后修改；只保存最终文本，不保存模板 ID。指引只补充行业关注方向，不得覆盖固定分类、证据、安全边界、有效期和 20 条上限。
 
 ## 2. 产品目标与非目标
 
@@ -433,6 +434,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '自动维护开关',
+  extraction_instruction VARCHAR(2000) NOT NULL DEFAULT '' COMMENT '记忆提炼关注方向，空字符串表示使用通用规则',
   generation INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '启停代次，用于拒绝旧运行结果',
   enabled_at BIGINT UNSIGNED NULL COMMENT '本代次启用时间，Unix毫秒',
   next_run_at DATETIME(3) NULL COMMENT '下一调度槽位',
@@ -449,6 +451,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
 约束：
 
 - 所有租户默认关闭。
+- `extraction_instruction` 最长 2000 字符，可以留空；只用于补充模型重点关注方向。
 - `enabled = 1` 时 `enabled_at` 和 `next_run_at` 非空。
 - 开启和关闭都递增 `generation`。
 - Java 只读取 `enabled`；不写配置表。
@@ -835,9 +838,12 @@ PUT /api/server/ai-hosting/user-memory/settings
 
 ```json
 {
-  "enabled": true
+  "enabled": true,
+  "extractionInstruction": "重点关注客户主动表达的尺码、体型、面料和穿着场景"
 }
 ```
+
+`enabled` 与 `extractionInstruction` 至少传一项。修改提炼指引不创建立即运行，只影响保存后的自动提炼请求。行业模板是前端快捷填充能力，后端只保存用户最终编辑后的文本。
 
 额度、候选会话上限、最少消息数和每会话消息上限均为只读策略，不属于 settings 请求。
 
@@ -912,7 +918,7 @@ Java Agent 运行时：
 ## 13. 权限与安全
 
 1. 页面和接口沿用 Agent 模块权限。
-2. owner/admin 可以启停、重试失败项和人工增删改。
+2. owner/admin 可以启停、配置提炼指引、重试失败项和人工增删改。
 3. operator/viewer 只可查看其客户访问范围内的记忆和证据。
 4. 所有接口从 JWT 取 UID，不信任客户端 UID。
 5. 日志、运行表和运行项表不得保存消息正文、Prompt、完整模型输出或完整记忆。

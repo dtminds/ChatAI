@@ -16,7 +16,7 @@ vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
   AiHostingPageHeader: ({ title, titleActions }: { title: React.ReactNode; titleActions?: React.ReactNode }) => <div><h1>{title}</h1>{titleActions}</div>,
 }));
 
-const overview = { enabled: false, executionMode: "sync" as const, customerLimit: 100, schedule: "02:00", timezone: "Asia/Shanghai" };
+const overview = { enabled: false, executionMode: "sync" as const, extractionInstruction: "", customerLimit: 100, schedule: "02:00", timezone: "Asia/Shanghai" };
 const run = {
   candidateCustomerCount: 1, candidateSessionCount: 1, candidateSessionLimit: 200, customerLimit: 100,
   executionMode: "sync" as const, failureCount: 0, id: 9, inputTokens: 0, outputTokens: 0,
@@ -47,6 +47,69 @@ describe("user memory page", () => {
     useAuthStore.getState().setSession({ accountType: "sub", displayName: "访客", permissions: ["chat.access"], role: "viewer", subUserId: "102", uid: 1 });
     render(<UserMemoryPage />);
     expect(await screen.findByRole("switch", { name: "用户记忆" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "规则配置" })).toBeDisabled();
+  });
+
+  it("fills an industry template, allows editing, and saves only the final instruction", async () => {
+    const user = userEvent.setup();
+    service.updateUserMemorySettings.mockResolvedValue({
+      ...overview,
+      extractionInstruction: "重点关注客户主动表达的身高、体重和常穿尺码，并留意运动场景",
+    });
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "规则配置" }));
+    await user.click(screen.getByRole("switch", { name: "使用自定义指令" }));
+    await user.click(screen.getByRole("button", { name: "查看行业模板" }));
+    await user.click(screen.getByRole("menuitem", { name: "服装鞋包" }));
+    const input = screen.getByRole("textbox", { name: "提炼指引" });
+    expect((input as HTMLTextAreaElement).value).toContain("常穿尺码");
+    await user.clear(input);
+    await user.type(input, "重点关注客户主动表达的身高、体重和常穿尺码，并留意运动场景");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({
+      extractionInstruction: "重点关注客户主动表达的身高、体重和常穿尺码，并留意运动场景",
+    }));
+  });
+
+  it("clears and disables an existing custom instruction when it is turned off", async () => {
+    const user = userEvent.setup();
+    service.getUserMemoryOverview.mockResolvedValue({
+      ...overview,
+      extractionInstruction: "重点关注客户主动表达的尺码和面料偏好",
+    });
+    service.updateUserMemorySettings.mockResolvedValue(overview);
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "规则配置" }));
+    const customSwitch = screen.getByRole("switch", { name: "使用自定义指令" });
+    const input = screen.getByRole("textbox", { name: "提炼指引" });
+    expect(customSwitch).toBeChecked();
+    expect(input).toBeEnabled();
+
+    await user.click(customSwitch);
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({
+      extractionInstruction: "",
+    }));
+  });
+
+  it("allows saving an empty instruction while custom instructions are off", async () => {
+    const user = userEvent.setup();
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "规则配置" }));
+    expect(screen.getByRole("switch", { name: "使用自定义指令" })).not.toBeChecked();
+    expect(screen.getByRole("textbox", { name: "提炼指引" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({
+      extractionInstruction: "",
+    }));
   });
 
   it("can refresh the same customer search without issuing requests on every keystroke", async () => {

@@ -5,7 +5,12 @@ import { buildUserMemoryPrompt, UserMemoryProviderError, VolcengineUserMemoryPro
 describe("user memory prompt", () => {
   afterEach(() => vi.restoreAllMocks());
   it("contains only bounded memory context and message evidence, not customer identifiers", () => {
-    const prompt = buildUserMemoryPrompt({ document: emptyUserMemoryDocument(), now: 1, messages: [{ sourceMessageId: 2, sessionId: 3, senderRole: "customer", occurredAt: 4, text: "偏好无糖" }] });
+    const prompt = buildUserMemoryPrompt({
+      document: emptyUserMemoryDocument(),
+      extractionInstruction: "重点关注客户主动表达的尺码和面料偏好",
+      now: 1,
+      messages: [{ sourceMessageId: 2, sessionId: 3, senderRole: "customer", occurredAt: 4, text: "偏好无糖" }],
+    });
     const serialized = JSON.stringify(prompt);
     expect(serialized).toContain("偏好无糖");
     expect(serialized).toContain("customer_profile");
@@ -14,6 +19,8 @@ describe("user memory prompt", () => {
     expect(serialized).toContain("未结投诉或仍在处理中的诉求也不进记忆");
     expect(serialized).toContain("优先 7 至 30 天");
     expect(serialized).toContain("不超过 100 个字符");
+    expect(serialized).toContain("重点关注客户主动表达的尺码和面料偏好");
+    expect(serialized).toContain("不得覆盖以上分类、证据、安全、有效期或数量规则");
     expect(serialized).not.toContain("thirdExternalUserId");
     expect(serialized).not.toContain('"uid"');
   });

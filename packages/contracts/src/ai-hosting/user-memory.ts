@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 
 const EpochMsSchema = Type.Integer({ minimum: 0 });
 const CursorSchema = Type.Optional(Type.String({ minLength: 1 }));
+export const AGENT_USER_MEMORY_EXTRACTION_INSTRUCTION_MAX_LENGTH = 2000;
 
 export const AgentUserMemoryCategorySchema = Type.Union([
   Type.Literal("customer_profile"),
@@ -100,8 +101,11 @@ export const AgentUserMemoryDocumentSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const AgentUserMemorySettingsRequestSchema = Type.Object({
-  enabled: Type.Boolean(),
-}, { additionalProperties: false });
+  enabled: Type.Optional(Type.Boolean()),
+  extractionInstruction: Type.Optional(Type.String({
+    maxLength: AGENT_USER_MEMORY_EXTRACTION_INSTRUCTION_MAX_LENGTH,
+  })),
+}, { additionalProperties: false, minProperties: 1 });
 
 export const AgentUserMemoryRunSchema = Type.Object({
   candidateCustomerCount: Type.Integer({ minimum: 0 }),
@@ -130,6 +134,9 @@ export const AgentUserMemoryOverviewResponseSchema = Type.Object({
   customerLimit: Type.Integer({ minimum: 1 }),
   enabled: Type.Boolean(),
   executionMode: AgentUserMemoryExecutionModeSchema,
+  extractionInstruction: Type.String({
+    maxLength: AGENT_USER_MEMORY_EXTRACTION_INSTRUCTION_MAX_LENGTH,
+  }),
   nextRunAt: Type.Optional(EpochMsSchema),
   recentRun: Type.Optional(AgentUserMemoryRunSchema),
   schedule: Type.String(),

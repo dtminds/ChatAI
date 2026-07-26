@@ -8,6 +8,7 @@ import type {
   AgentUserMemoryRun,
   AgentUserMemoryRunDetailResponse,
   AgentUserMemoryRunListResponse,
+  AgentUserMemorySettingsRequest,
 } from "@chatai/contracts";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import type { Database, JsonValue } from "../../../db/schema.js";
@@ -55,6 +56,7 @@ export class UserMemoryService {
       schedule: USER_MEMORY_SCHEDULE,
       timezone: USER_MEMORY_TIMEZONE,
       executionMode: "sync",
+      extractionInstruction: config?.extraction_instruction ?? "",
       customerLimit,
       ...(config?.next_run_at ? { nextRunAt: config.next_run_at.getTime() } : {}),
       ...(activeRun ? { activeRun: mapRun(activeRun) } : {}),
@@ -62,7 +64,7 @@ export class UserMemoryService {
     };
   }
 
-  async updateSettings(uid: number, enabled: boolean): Promise<AgentUserMemoryOverviewResponse> {
+  async updateSettings(uid: number, settings: AgentUserMemorySettingsRequest): Promise<AgentUserMemoryOverviewResponse> {
     await this.db.transaction().execute(async (trx) => {
       let config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirst();
       if (!config) {
@@ -70,9 +72,17 @@ export class UserMemoryService {
           .onDuplicateKeyUpdate({ generation: sql<number>`generation` }).execute();
         config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirstOrThrow();
       }
-      if ((config.enabled === 1) === enabled) return;
+      const currentEnabled = config.enabled === 1;
+      const enabled = settings.enabled ?? currentEnabled;
+      const currentInstruction = config.extraction_instruction ?? "";
+      const extractionInstruction = settings.extractionInstruction === undefined
+        ? currentInstruction
+        : settings.extractionInstruction.trim();
+      const enabledChanged = currentEnabled !== enabled;
+      const instructionChanged = currentInstruction !== extractionInstruction;
+      if (!enabledChanged && !instructionChanged) return;
       const now = Date.now();
-      if (!enabled && config.active_run_id) {
+      if (enabledChanged && !enabled && config.active_run_id) {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "canceled", finished_at: new Date() }).where("run_id", "=", config.active_run_id).where("status", "in", ["prepared", "submitted"]).execute();
         const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", config.active_run_id).execute();
         const counts = countUserMemoryRunItems(items);
@@ -82,11 +92,14 @@ export class UserMemoryService {
         }).where("id", "=", config.active_run_id).where("uid", "=", uid).execute();
       }
       await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({
-        enabled: enabled ? 1 : 0,
-        generation: config.generation + 1,
-        enabled_at: enabled ? now : null,
-        next_run_at: enabled ? nextShanghaiRunAt(now) : null,
-        active_run_id: null,
+        ...(instructionChanged ? { extraction_instruction: extractionInstruction } : {}),
+        ...(enabledChanged ? {
+          enabled: enabled ? 1 : 0,
+          generation: config.generation + 1,
+          enabled_at: enabled ? now : null,
+          next_run_at: enabled ? nextShanghaiRunAt(now) : null,
+          active_run_id: null,
+        } : {}),
       }).where("id", "=", config.id).executeTakeFirstOrThrow();
     });
     return this.getOverview(uid);

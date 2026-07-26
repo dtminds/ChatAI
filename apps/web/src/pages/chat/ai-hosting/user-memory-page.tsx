@@ -1,5 +1,5 @@
 import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse, AgentUserMemoryRunItemStatus } from "@chatai/contracts";
-import { AlertCircleIcon, GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, Settings03Icon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
@@ -27,6 +27,7 @@ import { canMaintainUserMemory, canManageAiHostingAgents } from "./agent-permiss
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
 import { USER_MEMORY_CATEGORIES, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
+import { UserMemoryInstructionDialog } from "./user-memory-instruction-dialog";
 
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
@@ -57,6 +58,7 @@ export function UserMemoryPage() {
   const [editor, setEditor] = useState<{ item?: AgentUserMemoryItem }>();
   const [deleting, setDeleting] = useState<AgentUserMemoryItem>();
   const [evidence, setEvidence] = useState<Evidence>();
+  const [instructionOpen, setInstructionOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError(false);
@@ -113,6 +115,18 @@ export function UserMemoryPage() {
     try { setOverview(await updateUserMemorySettings({ enabled })); toast.success(enabled ? "已开启" : "已关闭"); }
     catch { toast.error("操作失败"); }
     finally { setSaving(false); }
+  }
+  async function saveExtractionInstruction(extractionInstruction: string) {
+    setSaving(true);
+    try {
+      setOverview(await updateUserMemorySettings({ extractionInstruction }));
+      setInstructionOpen(false);
+      toast.success("已保存");
+    } catch {
+      toast.error("保存失败");
+    } finally {
+      setSaving(false);
+    }
   }
   async function retry(runId: number) {
     setSaving(true);
@@ -197,7 +211,19 @@ export function UserMemoryPage() {
     <div className="space-y-6">
       <AiHostingPageHeader
         title="用户记忆"
-        titleActions={overview ? <div className="flex h-8 items-center gap-2 rounded-full bg-muted/50 px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div> : undefined}
+        titleActions={overview ? <div className="flex items-center gap-2">
+          <div className="flex h-8 items-center gap-2 rounded-full bg-muted px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} className="data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive" disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div>
+          <Button
+            className="h-8 rounded-full bg-muted px-3 text-sm"
+            disabled={!canManage || saving}
+            onClick={() => setInstructionOpen(true)}
+            size="sm"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Settings03Icon} size={15} />
+            规则配置
+          </Button>
+        </div> : undefined}
         description="AI 自动提炼客户的稳定属性、偏好与近期意向，让每次服务更懂客户"
       />
       <Tabs defaultValue="overview">
@@ -238,6 +264,13 @@ export function UserMemoryPage() {
       open={Boolean(selected)}
     />
     <UserMemoryEditorDialog open={Boolean(editor)} item={editor?.item} saving={saving} onOpenChange={(open) => { if (!open && !saving) setEditor(undefined); }} onSave={saveMemory} />
+    <UserMemoryInstructionDialog
+      onOpenChange={setInstructionOpen}
+      onSave={(value) => void saveExtractionInstruction(value)}
+      open={instructionOpen}
+      saving={saving}
+      value={overview?.extractionInstruction ?? ""}
+    />
     <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !saving) setDeleting(undefined); }}><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>删除记忆</AlertDialogTitle><AlertDialogDescription>删除后将立即从客户当前记忆中移除</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={(event) => { event.preventDefault(); void removeMemory(); }}>删除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <Dialog open={Boolean(evidence)} onOpenChange={(open) => { if (!open) setEvidence(undefined); }}><DialogContent><DialogHeader><DialogTitle>来源证据</DialogTitle><DialogDescription>AI 提炼时引用的客户消息</DialogDescription></DialogHeader><div className="space-y-2">{evidence?.messages.map((message) => <div className="rounded-lg bg-surface-muted p-3 text-sm" key={message.messageId}>{message.content}</div>)}</div></DialogContent></Dialog>
     <Dialog open={Boolean(runDetail)} onOpenChange={(open) => { if (!open) setRunDetail(undefined); }}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>运行详情</DialogTitle><DialogDescription>{runDetail?.run.quotaDate} · {runDetail ? statusLabel(runDetail.run.status) : ""}</DialogDescription></DialogHeader><Select value={runItemStatus} onValueChange={(value) => void filterRunItems(value as "all" | AgentUserMemoryRunItemStatus)}><SelectTrigger aria-label="运行项状态" className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="succeeded">成功</SelectItem><SelectItem value="failed">失败</SelectItem><SelectItem value="skipped">已跳过</SelectItem><SelectItem value="prepared">待处理</SelectItem><SelectItem value="submitted">已提交</SelectItem><SelectItem value="canceled">已取消</SelectItem></SelectContent></Select><div className="max-h-[60vh] overflow-auto"><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>状态</TableHead><TableHead>会话</TableHead><TableHead>消息</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{runDetail?.items.map((item) => <TableRow key={item.id}><TableCell>{item.thirdExternalUserId}</TableCell><TableCell>{statusLabel(item.status)}</TableCell><TableCell>{item.sessionCount}</TableCell><TableCell>{item.messageCount}</TableCell><TableCell>{item.lastErrorCode ?? "-"}</TableCell></TableRow>)}</TableBody></Table>{runDetail?.nextItemCursor ? <div className="mt-4 text-center"><Button variant="outline" disabled={paging} onClick={() => void loadMoreRunItems()}>{paging ? <Spinner size={16} /> : null}加载更多</Button></div> : null}</div></DialogContent></Dialog>

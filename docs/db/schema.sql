@@ -629,6 +629,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '自动维护开关',
+  extraction_instruction VARCHAR(2000) NOT NULL DEFAULT '' COMMENT '记忆提炼关注方向，空字符串表示使用通用规则',
   generation INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '启停代次，用于拒绝旧运行结果',
   enabled_at BIGINT UNSIGNED NULL COMMENT '本代次启用时间，Unix毫秒',
   next_run_at DATETIME(3) NULL COMMENT '下一调度槽位',

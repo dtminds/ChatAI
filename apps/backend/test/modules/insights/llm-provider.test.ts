@@ -918,6 +918,17 @@ describe("LLM provider config", () => {
 
       expect(requestBodies).toHaveLength(1);
       expect(requestBodies[0]?.model).toBe("ep-main");
+      if (mode === "manual_reanalyze") {
+        const summaryMessages = requestBodies[0]?.messages as Array<{
+          content: string;
+          role: string;
+        }>;
+        const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+        expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+        expect(summaryPayload.outputContract).not.toHaveProperty(
+          "faqCandidates",
+        );
+      }
       expect(result).toMatchObject({
         entities: [],
         intents: [],

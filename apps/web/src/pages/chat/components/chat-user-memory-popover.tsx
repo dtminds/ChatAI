@@ -6,7 +6,9 @@ import type {
 } from "@chatai/contracts";
 import {
   AlertCircleIcon,
+  ArtificialIntelligence08Icon,
   Brain02Icon,
+  CustomerService02Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -85,6 +87,11 @@ type EvidenceState = {
   response?: AgentUserMemoryEvidenceResponse;
 };
 
+type CustomerRequestScope = {
+  customerKey: string;
+  requestId: number;
+};
+
 export function ChatUserMemoryPopover({
   alignOffset = 0,
   conversation,
@@ -99,6 +106,7 @@ export function ChatUserMemoryPopover({
   const role = useAuthStore((state) => state.subUser?.role);
   const canMaintain = canMaintainUserMemory(role);
   const externalId = conversation.thirdExternalUserId?.trim() ?? "";
+  const customerKey = `${conversation.id}:${externalId}`;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const [detail, setDetail] =
@@ -108,7 +116,10 @@ export function ChatUserMemoryPopover({
   const [editor, setEditor] = useState<EditorState>();
   const [deleting, setDeleting] = useState<AgentUserMemoryItem>();
   const [evidence, setEvidence] = useState<EvidenceState>();
-  const requestScopeRef = useRef("");
+  const latestCustomerKeyRef = useRef(customerKey);
+  const requestScopeRef = useRef<CustomerRequestScope | undefined>(undefined);
+  const requestSequenceRef = useRef(0);
+  latestCustomerKeyRef.current = customerKey;
   const sortedItems = detail
     ? [...detail.items].sort((left, right) => right.id - left.id)
     : [];
@@ -120,10 +131,26 @@ export function ChatUserMemoryPopover({
     onOpenChange?.(nextOpen);
   }
 
-  async function loadCustomer() {
-    if (!externalId) return;
-    const requestScope = `${conversation.id}:${externalId}`;
+  function isRequestScopeActive(
+    scope?: CustomerRequestScope,
+  ): scope is CustomerRequestScope {
+    return Boolean(
+      scope &&
+        requestScopeRef.current === scope &&
+        latestCustomerKeyRef.current === scope.customerKey,
+    );
+  }
+
+  async function loadCustomer(): Promise<"loaded" | "failed" | "stale"> {
+    if (!externalId || latestCustomerKeyRef.current !== customerKey) {
+      return "stale";
+    }
+    const requestScope = {
+      customerKey,
+      requestId: ++requestSequenceRef.current,
+    };
     requestScopeRef.current = requestScope;
+    setSaving(false);
     setDetail(undefined);
     setLoadError(false);
     setEditor(undefined);
@@ -131,13 +158,13 @@ export function ChatUserMemoryPopover({
     setEvidence(undefined);
     try {
       const next = await getUserMemoryCustomer(externalId);
-      if (requestScopeRef.current === requestScope) {
-        setDetail(next);
-      }
+      if (!isRequestScopeActive(requestScope)) return "stale";
+      setDetail(next);
+      return "loaded";
     } catch {
-      if (requestScopeRef.current === requestScope) {
-        setLoadError(true);
-      }
+      if (!isRequestScopeActive(requestScope)) return "stale";
+      setLoadError(true);
+      return "failed";
     }
   }
 
@@ -145,24 +172,33 @@ export function ChatUserMemoryPopover({
     if (!open) return;
     void loadCustomer();
     return () => {
-      requestScopeRef.current = "";
+      if (requestScopeRef.current?.customerKey === customerKey) {
+        requestScopeRef.current = undefined;
+      }
     };
   }, [conversation.id, externalId, open]);
 
-  async function handleVersionConflict(error: unknown, fallback: string) {
+  async function handleVersionConflict(
+    error: unknown,
+    fallback: string,
+    requestScope: CustomerRequestScope,
+  ) {
+    if (!isRequestScopeActive(requestScope)) return;
     if (
       error instanceof RequestNormalizedError &&
       error.code === "AGENT_USER_MEMORY_VERSION_CONFLICT"
     ) {
-      try {
-        await loadCustomer();
+      const result = await loadCustomer();
+      if (result === "loaded") {
         toast.error("记忆已更新，请基于最新版本重试");
-      } catch {
+      } else if (result === "failed") {
         toast.error("记忆已更新，但最新数据加载失败");
       }
       return;
     }
-    toast.error(error instanceof Error ? error.message : fallback);
+    if (isRequestScopeActive(requestScope)) {
+      toast.error(error instanceof Error ? error.message : fallback);
+    }
   }
 
   async function saveMemory(input: {
@@ -170,7 +206,8 @@ export function ChatUserMemoryPopover({
     content: string;
     expiresAt: number | null;
   }) {
-    if (!detail || !editor) return;
+    const requestScope = requestScopeRef.current;
+    if (!detail || !editor || !isRequestScopeActive(requestScope)) return;
     setSaving(true);
     try {
       const next = editor.item
@@ -182,23 +219,28 @@ export function ChatUserMemoryPopover({
             ...input,
             expectedVersion: detail.version,
           });
+      if (!isRequestScopeActive(requestScope)) return;
       setDetail(next);
       setEditor(undefined);
       toast.success("已保存");
     } catch (error) {
-      await handleVersionConflict(error, "保存失败");
+      await handleVersionConflict(error, "保存失败", requestScope);
     } finally {
-      setSaving(false);
+      if (isRequestScopeActive(requestScope)) {
+        setSaving(false);
+      }
     }
   }
 
   async function removeMemory() {
-    if (!detail || !deleting) return;
+    const requestScope = requestScopeRef.current;
+    if (!detail || !deleting || !isRequestScopeActive(requestScope)) return;
     setSaving(true);
     try {
       const next = await deleteUserMemoryItem(externalId, deleting.id, {
         expectedVersion: detail.version,
       });
+      if (!isRequestScopeActive(requestScope)) return;
       setDetail(next);
       setDeleting(undefined);
       if (evidence?.itemId === deleting.id) {
@@ -206,9 +248,11 @@ export function ChatUserMemoryPopover({
       }
       toast.success("已删除");
     } catch (error) {
-      await handleVersionConflict(error, "删除失败");
+      await handleVersionConflict(error, "删除失败", requestScope);
     } finally {
-      setSaving(false);
+      if (isRequestScopeActive(requestScope)) {
+        setSaving(false);
+      }
     }
   }
 
@@ -217,11 +261,15 @@ export function ChatUserMemoryPopover({
       setEvidence(undefined);
       return;
     }
+    const requestScope = requestScopeRef.current;
+    if (!isRequestScopeActive(requestScope)) return;
     setEvidence({ itemId: item.id, loading: true });
     try {
       const response = await getUserMemoryEvidence(externalId, item.id);
+      if (!isRequestScopeActive(requestScope)) return;
       setEvidence({ itemId: item.id, loading: false, response });
     } catch {
+      if (!isRequestScopeActive(requestScope)) return;
       setEvidence(undefined);
       toast.error("证据加载失败");
     }
@@ -459,21 +507,38 @@ function MemoryItem({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="shrink-0 text-muted-foreground"
-              icon={category.icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-            <span className="truncate text-sm font-medium">
-              {category.label}
-            </span>
             <Badge
-              className="h-5 shrink-0 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground"
+              className="h-5 shrink-0 gap-1 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground"
               variant="secondary"
             >
-              {item.source === "manual" ? "人工" : "AI 提炼"}
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={category.icon}
+                size={12}
+                strokeWidth={1.8}
+              />
+              {category.label}
+            </Badge>
+            <Badge
+              className={cn(
+                "h-5 shrink-0 gap-1 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none",
+                item.source === "ai"
+                  ? "text-success"
+                  : "text-muted-foreground",
+              )}
+              variant="secondary"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={
+                  item.source === "manual"
+                    ? CustomerService02Icon
+                    : ArtificialIntelligence08Icon
+                }
+                size={12}
+                strokeWidth={1.8}
+              />
+              {item.source === "manual" ? "手动创建" : "AI 提炼"}
             </Badge>
           </div>
           {canMaintain || item.source === "ai" ? (
@@ -550,7 +615,7 @@ function MemoryItem({
           ) : null}
         </div>
         {item.expiresAt ? (
-          <Alert className="mt-3 px-3 py-2 text-xs" variant="warning">
+          <Alert className="mt-3 px-[8px] py-[4px] text-xs" variant="warning">
             <HugeiconsIcon
               aria-hidden="true"
               icon={AlertCircleIcon}
@@ -562,7 +627,7 @@ function MemoryItem({
             </AlertDescription>
           </Alert>
         ) : null}
-        <p className="mt-3 break-words text-sm leading-6">{item.content}</p>
+        <p className="mt-3 break-words text-sm font-medium leading-6">{item.content}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>更新于 {formatTimestamp(item.updatedAt)}</span>
         </div>

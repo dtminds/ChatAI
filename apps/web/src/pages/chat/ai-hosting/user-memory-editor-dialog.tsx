@@ -6,8 +6,8 @@ import {
   ArrowDown01Icon,
   Calendar03Icon,
   InformationCircleIcon,
+  NewReleasesIcon,
   PreferenceHorizontalIcon,
-  UserCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { addDays, endOfDay, startOfDay } from "date-fns";
@@ -41,8 +41,8 @@ import { cn } from "@/lib/utils";
 export const USER_MEMORY_CATEGORIES = [
   {
     description: "身份背景、身体特征与稳定生活信息",
-    icon: UserCircleIcon,
-    label: "客户画像",
+    icon: NewReleasesIcon,
+    label: "稳定属性",
     placeholder: "例如：身高 168cm，日常穿 M 码",
     value: "customer_profile",
   },
@@ -62,7 +62,7 @@ export const USER_MEMORY_CATEGORIES = [
   },
 ] satisfies Array<{
   description: string;
-  icon: typeof UserCircleIcon;
+  icon: typeof NewReleasesIcon;
   label: string;
   placeholder: string;
   value: AgentUserMemoryCategory;

@@ -118,7 +118,7 @@ describe("user memory page", () => {
     await user.click(await screen.findByRole("button", { name: "新增记忆" }));
     await user.click(screen.getByRole("radio", { name: "近期意向" }));
     await user.click(screen.getByRole("button", { name: "7天" }));
-    await user.click(screen.getByRole("radio", { name: "客户画像" }));
+    await user.click(screen.getByRole("radio", { name: "稳定属性" }));
     fireEvent.change(screen.getByRole("textbox", { name: "记忆内容" }), { target: { value: "家有儿童" } });
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -177,7 +177,7 @@ describe("user memory page", () => {
     expect(await screen.findByText("上周计划购买礼服")).toBeInTheDocument();
     expect(screen.getByText(/^记忆 1 \/ 20，最近更新于 /)).toBeInTheDocument();
     expect(screen.getByText("近期意向")).toBeInTheDocument();
-    expect(screen.getByText("人工")).toBeInTheDocument();
+    expect(screen.getByText("手动创建")).toBeInTheDocument();
     expect(screen.getByText(/^短期记忆：已于 .* 到期$/)).toBeInTheDocument();
     expect(screen.getByText(/^更新于 /)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "记忆操作" }));

@@ -1,5 +1,5 @@
 import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse, AgentUserMemoryRunItemStatus } from "@chatai/contracts";
-import { AlertCircleIcon, ChartAreaIcon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
@@ -198,7 +198,7 @@ export function UserMemoryPage() {
       <AiHostingPageHeader
         title="用户记忆"
         titleActions={overview ? <div className="flex h-8 items-center gap-2 rounded-full bg-muted/50 px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div> : undefined}
-        description="AI 自动提炼客户画像、偏好与近期意向，让每次服务更懂客户"
+        description="AI 自动提炼客户的稳定属性、偏好与近期意向，让每次服务更懂客户"
       />
       <Tabs defaultValue="overview">
         <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger></TabsList>
@@ -625,10 +625,18 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
     <div className="rounded-[10px] bg-surface-muted p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <HugeiconsIcon aria-hidden="true" className="shrink-0 text-muted-foreground" icon={category.icon} size={16} strokeWidth={1.8} />
-          <span className="truncate text-sm font-medium">{category.label}</span>
-          <Badge className="h-5 shrink-0 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground" variant="secondary">
-            {item.source === "manual" ? "人工" : "AI 提炼"}
+          <Badge className="h-5 shrink-0 gap-1 rounded-[6px] bg-background px-1.5 py-0 text-[11px] leading-none text-muted-foreground" variant="secondary">
+            <HugeiconsIcon aria-hidden="true" icon={category.icon} size={12} strokeWidth={1.8} />
+            {category.label}
+          </Badge>
+          <Badge className={`h-5 shrink-0 gap-1 rounded-[6px] bg-background px-1.5 py-0 text-[11px] leading-none ${item.source === "ai" ? "text-success" : "text-muted-foreground"}`} variant="secondary">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={item.source === "manual" ? UserEdit01Icon : GoogleGeminiIcon}
+              size={12}
+              strokeWidth={1.8}
+            />
+            {item.source === "manual" ? "手动创建" : "AI 提炼"}
           </Badge>
         </div>
         {canManage || item.source === "ai" ? (
@@ -663,12 +671,12 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
         ) : null}
       </div>
       {item.expiresAt ? (
-        <Alert className="mt-3 px-3 py-2 text-xs" variant="warning">
+        <Alert className="mt-3 px-[8px] py-[4px] text-xs" variant="warning">
           <HugeiconsIcon aria-hidden="true" icon={AlertCircleIcon} size={15} strokeWidth={1.8} />
           <AlertDescription className="text-xs leading-5">{formatExpiryStatus(item.expiresAt)}</AlertDescription>
         </Alert>
       ) : null}
-      <p className="mt-3 break-words text-sm leading-6">{item.content}</p>
+      <p className="mt-3 break-words text-sm font-medium leading-6">{item.content}</p>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>更新于 {formatUpdatedAt(item.updatedAt)}</span>
       </div>

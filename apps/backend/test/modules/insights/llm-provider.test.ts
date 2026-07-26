@@ -4,6 +4,7 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
+import type { InsightPromptContext } from "../../../src/modules/insights/insight-prompt-builder";
 import { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
 
 function createObservabilityHarness() {
@@ -28,6 +29,87 @@ function createObservabilityHarness() {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+async function runMultiStepAnalysis(input: {
+  analysisScope?: "all" | "classification" | "qaFindings";
+  context: InsightPromptContext;
+  mode?: "final" | "live" | "manual_reanalyze";
+}) {
+  const requestBodies: Array<Record<string, unknown>> = [];
+  const fetchMock = vi.fn(
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
+      requestBodies.push(requestBody);
+      const serializedMessages = JSON.stringify(requestBody.messages);
+      const content = serializedMessages.includes("qaFindings")
+        ? { qaFindings: [] }
+        : serializedMessages.includes("tags, entities, intents")
+          ? { entities: [], intents: [], tags: [] }
+          : {
+              problemResolution: {
+                confidence: 0.8,
+                evidence: [],
+                evidenceMessageIds: ["9001"],
+                problemDetected: true,
+                problemSummary: "客户反馈物流异常",
+                resolutionStatus: "unknown",
+              },
+              sentiment: [],
+              summary: {
+                sessionTitle: "查物流",
+                text: "客服处理中",
+              },
+            };
+
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(content) } }],
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 },
+      );
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const analyzer = new OpenAiCompatibleInsightAnalyzer({
+    apiKey: "secret",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    liteMaxTokens: 1024,
+    liteModel: "ep-lite",
+    maxTokens: 4096,
+    model: "ep-main",
+    providerCode: "volcengine_ark",
+    protocol: "openai-compatible",
+    responseFormat: "json_object",
+  });
+  const result = await analyzer.analyzeSession({
+    context: input.context,
+    job: {
+      analysisScope: input.analysisScope ?? "all",
+      attemptCount: 1,
+      jobId: "job-1",
+      maxAttempts: 3,
+      mode: input.mode ?? "final",
+      sessionId: "501",
+      uid: 9001,
+    },
+    messages: [
+      {
+        aiText: "快递一直没更新",
+        contentStatus: "ready",
+        messageType: "text",
+        occurredAt: 1,
+        senderRole: "customer",
+        sourceMessageId: "9001",
+      },
+    ],
+    previousSessionContexts: [],
+  });
+
+  return { fetchMock, requestBodies, result };
+}
 
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
@@ -792,101 +874,117 @@ describe("LLM provider config", () => {
     ]);
   });
 
-  it("does not ask for follow-up outputs during manual all reanalysis", async () => {
-    const requestBodies: Array<Record<string, unknown>> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<
-          string,
-          unknown
-        >;
-        requestBodies.push(requestBody);
-        const content =
-          requestBodies.length === 1
-            ? {
-                problemResolution: {
-                  confidence: 0.8,
-                  evidence: [],
-                  evidenceMessageIds: ["9001"],
-                  problemDetected: true,
-                  problemSummary: "客户反馈物流异常",
-                  resolutionStatus: "unknown",
-                },
-                sentiment: [],
-                summary: {
-                  sessionTitle: "查物流",
-                  text: "客服处理中",
-                },
-              }
-            : requestBodies.length === 2
-              ? { qaFindings: [] }
-              : { entities: [], intents: [], tags: [] };
-
-        return new Response(
-          JSON.stringify({
-            choices: [{ message: { content: JSON.stringify(content) } }],
-          }),
-          { headers: { "Content-Type": "application/json" }, status: 200 },
-        );
-      }),
-    );
-    const analyzer = new OpenAiCompatibleInsightAnalyzer({
-      apiKey: "secret",
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      liteMaxTokens: 1024,
-      liteModel: "ep-lite",
-      maxTokens: 4096,
-      model: "ep-main",
-      providerCode: "volcengine_ark",
-      protocol: "openai-compatible",
-      responseFormat: "json_object",
-    });
-
-    await analyzer.analyzeSession({
+  it("skips classification in live analysis when all classification configs are empty", async () => {
+    const { requestBodies, result } = await runMultiStepAnalysis({
       context: {
         entityDictionary: [],
         intentConfigs: [],
         labelConfigs: [],
-        qaRuleConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high",
+          },
+        ],
       },
-      job: {
-        analysisScope: "all",
-        attemptCount: 1,
-        jobId: "job-1",
-        maxAttempts: 3,
-        mode: "manual_reanalyze",
-        sessionId: "501",
-        uid: 9001,
-      },
-      messages: [
-        {
-          aiText: "快递一直没更新",
-          contentStatus: "ready",
-          messageType: "text",
-          occurredAt: 1,
-          senderRole: "customer",
-          sourceMessageId: "9001",
-        },
-      ],
-      previousSessionContexts: [],
+      mode: "live",
     });
 
-    expect(requestBodies).toHaveLength(3);
-    const summaryMessages = requestBodies[0]?.messages as Array<{
-      content: string;
-      role: string;
-    }>;
-    const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
-    expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
-    expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
-      "actionItems",
-    );
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
-      "faqCandidates",
-    );
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]?.model).toBe("ep-main");
+    expect(result).toMatchObject({
+      entities: [],
+      intents: [],
+      qaFindings: [],
+      tags: [],
+    });
   });
+
+  it.each(["final", "manual_reanalyze"] as const)(
+    "skips QA and classification during %s analysis when their configs are empty",
+    async (mode) => {
+      const { requestBodies, result } = await runMultiStepAnalysis({
+        context: {
+          entityDictionary: [],
+          intentConfigs: [],
+          labelConfigs: [],
+          qaRuleConfigs: [],
+        },
+        mode,
+      });
+
+      expect(requestBodies).toHaveLength(1);
+      expect(requestBodies[0]?.model).toBe("ep-main");
+      if (mode === "manual_reanalyze") {
+        const summaryMessages = requestBodies[0]?.messages as Array<{
+          content: string;
+          role: string;
+        }>;
+        const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+        expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+        expect(summaryPayload.outputContract).not.toHaveProperty(
+          "faqCandidates",
+        );
+      }
+      expect(result).toMatchObject({
+        entities: [],
+        intents: [],
+        qaFindings: [],
+        tags: [],
+      });
+    },
+  );
+
+  it.each([
+    {
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high" as const,
+          },
+        ],
+      },
+      expectedModels: ["ep-main", "ep-main"],
+      name: "QA",
+    },
+    {
+      context: {
+        entityDictionary: [],
+        intentConfigs: [
+          {
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: [],
+            weight: 1,
+          },
+        ],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      expectedModels: ["ep-main", "ep-lite"],
+      name: "classification",
+    },
+  ])(
+    "runs only summary and $name when the other optional dimension is empty",
+    async ({ context, expectedModels }) => {
+      const { requestBodies } = await runMultiStepAnalysis({
+        context,
+      });
+
+      expect(requestBodies.map((body) => body.model)).toEqual(expectedModels);
+    },
+  );
 
   it("does not ask for follow-up outputs during scoped final analysis", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
@@ -1032,9 +1130,22 @@ describe("LLM provider config", () => {
 
     const result = await analyzer.analyzeSession({
       context: {
-        entityDictionary: [],
+        entityDictionary: [
+          {
+            aliases: ["mask"],
+            entityCode: "mask",
+            entityName: "补水面膜",
+          },
+        ],
         intentConfigs: [],
-        labelConfigs: [],
+        labelConfigs: [
+          {
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: [],
+          },
+        ],
         qaRuleConfigs: [],
       },
       job: {
@@ -1073,6 +1184,30 @@ describe("LLM provider config", () => {
     expect(result.summary.sessionTitle).toBe("");
     expect(result.summary.text).toBe("");
   });
+
+  it.each(["qaFindings", "classification"] as const)(
+    "does not call the model for empty %s scoped reanalysis",
+    async (analysisScope) => {
+      const { fetchMock, result } = await runMultiStepAnalysis({
+        analysisScope,
+        context: {
+          entityDictionary: [],
+          intentConfigs: [],
+          labelConfigs: [],
+          qaRuleConfigs: [],
+        },
+        mode: "manual_reanalyze",
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        entities: [],
+        intents: [],
+        qaFindings: [],
+        tags: [],
+      });
+    },
+  );
 
   it("retries retryable optional classification failures before degrading the dimension", async () => {
     vi.useFakeTimers();

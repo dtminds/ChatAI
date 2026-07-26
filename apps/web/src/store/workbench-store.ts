@@ -635,41 +635,6 @@ function markAllConversationModesLoaded(
   );
 }
 
-function applyAccountUnreadSummary(
-  accounts: Account[],
-  accountId: string,
-  unreadSummary: { group: number; single: number; total: number } | undefined,
-) {
-  if (!unreadSummary) {
-    return accounts;
-  }
-
-  let changed = false;
-  const nextAccounts = accounts.map((account) => {
-    if (account.id !== accountId) {
-      return account;
-    }
-
-    if (
-      account.unreadCount === unreadSummary.total &&
-      account.singleUnreadCount === unreadSummary.single &&
-      account.groupUnreadCount === unreadSummary.group
-    ) {
-      return account;
-    }
-
-    changed = true;
-    return {
-      ...account,
-      groupUnreadCount: unreadSummary.group,
-      singleUnreadCount: unreadSummary.single,
-      unreadCount: unreadSummary.total,
-    };
-  });
-
-  return changed ? nextAccounts : accounts;
-}
-
 function isConversationModeCacheFresh(
   state: WorkbenchState,
   accountId: string,
@@ -768,14 +733,27 @@ function mergePolledConversation(
   );
 }
 
-function mergeConversationLists(
+function supplementConversationList(
   currentList: Conversation[],
   conversations: Conversation[],
 ) {
-  return conversations.reduce(
-    (nextList, conversation) => mergeConversationList(nextList, conversation),
-    currentList,
+  const conversationIds = new Set(
+    currentList.map((conversation) => conversation.id),
   );
+  const nextList = [...currentList];
+
+  for (const conversation of conversations) {
+    if (conversationIds.has(conversation.id)) {
+      continue;
+    }
+
+    conversationIds.add(conversation.id);
+    nextList.push(conversation);
+  }
+
+  return nextList.length === currentList.length
+    ? currentList
+    : sortConversations(nextList);
 }
 
 function findNextConversationIdAfterRemove(
@@ -7069,18 +7047,13 @@ export function createWorkbenchStore() {
         set((currentState) => {
           const nextConversationListsByScope = {
             ...currentState.conversationListsByScope,
-            [accountId]: mergeConversationLists(
+            [accountId]: supplementConversationList(
               currentState.conversationListsByScope[accountId] ?? [],
               result.conversations,
             ),
           };
 
           return {
-            accounts: applyAccountUnreadSummary(
-              currentState.accounts,
-              accountId,
-              result.unreadSummary,
-            ),
             conversationListsByScope: nextConversationListsByScope,
             hasMoreUnreadByScope: {
               ...currentState.hasMoreUnreadByScope,

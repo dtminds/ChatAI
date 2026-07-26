@@ -1,5 +1,11 @@
+import { Kysely, MysqlDialect } from "kysely";
 import { describe, expect, it } from "vitest";
-import { countUserMemoryRunItems, nextShanghaiRunAt, parseStoredUserMemoryDocument, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, summarizeEvidenceContent, UserMemoryService } from "../../../../src/modules/ai-hosting/user-memory/user-memory-service.js";
+import type { Database } from "../../../../src/db/schema.js";
+import { buildUserMemoryCustomerListQuery, countUserMemoryRunItems, nextShanghaiRunAt, parseStoredUserMemoryDocument, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, summarizeEvidenceContent, UserMemoryService } from "../../../../src/modules/ai-hosting/user-memory/user-memory-service.js";
+
+function createCompileOnlyDb() {
+  return new Kysely<Database>({ dialect: new MysqlDialect({ pool: {} as never }) });
+}
 
 describe("user memory service policies", () => {
   it("scales the candidate session limit with the customer quota", () => {
@@ -19,6 +25,29 @@ describe("user memory service policies", () => {
     expect(resolveTerminalRunStatus({ success: 0, failure: 0, skipped: 2 })).toBe("succeeded");
     expect(resolveTerminalRunStatus({ success: 1, failure: 1, skipped: 0 })).toBe("partial");
     expect(resolveTerminalRunStatus({ success: 0, failure: 2, skipped: 0 })).toBe("failed");
+  });
+
+  it("scopes customer-memory pagination to the current tenant and operator seats", () => {
+    const db = createCompileOnlyDb();
+    const adminQuery = buildUserMemoryCustomerListQuery(db, {
+      keyword: "%_",
+      platform: 5,
+      uid: 272,
+    }).select("memory.id").compile();
+    const operatorQuery = buildUserMemoryCustomerListQuery(db, {
+      platform: 5,
+      subUserId: 101,
+      uid: 272,
+    }).select("memory.id").compile();
+
+    expect(adminQuery.sql).toContain("`memory`.`uid` = ?");
+    expect(adminQuery.sql).toContain("`memory`.`platform` = ?");
+    expect(adminQuery.sql.toLowerCase()).toContain("json_length(memory.memories_json");
+    expect(adminQuery.sql).not.toContain("relation.sub_id");
+    expect(adminQuery.parameters).toContain(5);
+    expect(adminQuery.parameters).toContain("%\\%\\_%");
+    expect(operatorQuery.sql).toContain("relation.sub_id = ?");
+    expect(operatorQuery.parameters).toContain(101);
   });
 
   it("recomputes terminal counters from current item states", () => {
@@ -97,6 +126,53 @@ describe("user memory service policies", () => {
     expect(() => parseStoredUserMemoryDocument("not-json")).toThrow(expect.objectContaining({ code: "AGENT_USER_MEMORY_DATA_INVALID", statusCode: 500 }));
   });
 
+  it("keeps expired memories in customer management details", async () => {
+    const expiresAt = Date.now() - 1;
+    const row = {
+      id: 1,
+      last_auto_quota_date: null,
+      last_auto_updated_at: null,
+      manual_updated_at: null,
+      memories_json: JSON.stringify({
+        schemaVersion: 1,
+        nextItemId: 2,
+        manual: [{
+          id: 1,
+          category: "recent_intent",
+          content: "上周计划购买礼服",
+          createdAt: expiresAt - 1,
+          updatedAt: expiresAt - 1,
+          expiresAt,
+          updatedBySubUserId: 101,
+        }],
+        ai: [],
+      }),
+      version: 1,
+    };
+    const selectBuilder = {
+      executeTakeFirst: async () => row,
+      selectAll: () => selectBuilder,
+      where: () => selectBuilder,
+    };
+    const service = new UserMemoryService({
+      selectFrom: () => selectBuilder,
+    } as never);
+
+    const detail = await service.getCustomer(272, {
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      customerName: "张三",
+    });
+
+    expect(detail.items).toEqual([
+      expect.objectContaining({
+        id: 1,
+        content: "上周计划购买礼服",
+        expiresAt,
+      }),
+    ]);
+  });
+
   it("creates then updates and deletes a manual memory through JSON persistence", async () => {
     const customer = { platform: 5, thirdExternalUserId: "customer-1", customerName: "张三" };
     let row: {
@@ -159,16 +235,25 @@ describe("user memory service policies", () => {
     expect(created.items).toEqual([expect.objectContaining({ id: 1, content: "家有儿童", expiresAt: null, source: "manual" })]);
     expect(created.version).toBe(1);
 
-    const updated = await service.updateManual(272, customer, 1, 101, {
+    const second = await service.createManual(272, customer, 101, {
       category: "preference",
       content: "偏好无糖",
       expectedVersion: 1,
+      expiresAt: null,
     });
-    expect(updated.items).toEqual([expect.objectContaining({ id: 1, category: "preference", content: "偏好无糖" })]);
-    expect(updated.version).toBe(2);
+    expect(second.items.map((item) => item.id)).toEqual([2, 1]);
 
-    const deleted = await service.deleteManual(272, customer, 1, 101, { expectedVersion: 2 });
-    expect(deleted.items).toEqual([]);
-    expect(deleted.version).toBe(3);
+    const updated = await service.updateManual(272, customer, 1, 101, {
+      category: "preference",
+      content: "仅发送文字消息",
+      expectedVersion: 2,
+    });
+    expect(updated.items.map((item) => item.id)).toEqual([2, 1]);
+    expect(updated.items).toContainEqual(expect.objectContaining({ id: 1, category: "preference", content: "仅发送文字消息" }));
+    expect(updated.version).toBe(3);
+
+    const deleted = await service.deleteManual(272, customer, 1, 101, { expectedVersion: 3 });
+    expect(deleted.items).toEqual([expect.objectContaining({ id: 2, content: "偏好无糖" })]);
+    expect(deleted.version).toBe(4);
   });
 });

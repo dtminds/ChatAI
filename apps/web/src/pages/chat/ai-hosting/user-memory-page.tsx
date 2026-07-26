@@ -1,15 +1,17 @@
 import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse, AgentUserMemoryRunItemStatus } from "@chatai/contracts";
-import { Delete02Icon, Edit02Icon, PlusSignIcon, RefreshIcon, Search01Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon, ChartAreaIcon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
 import { toast } from "sonner";
 import { RequestNormalizedError } from "@/lib/request";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,15 +19,18 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { resolveTablePagination, TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store/auth-store";
+import { insightChartColors, insightResolutionColors } from "../insights/insights-chart-palette";
 import { canMaintainUserMemory, canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
-import { getUserMemoryCategoryLabel, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
+import { USER_MEMORY_CATEGORIES, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
 
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
+const USER_MEMORY_CUSTOMER_PAGE_SIZE = 20;
 export function UserMemoryPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const canManage = canManageAiHostingAgents(role);
@@ -36,7 +41,8 @@ export function UserMemoryPage() {
   const [runDetail, setRunDetail] = useState<AgentUserMemoryRunDetailResponse>();
   const [runItemStatus, setRunItemStatus] = useState<"all" | AgentUserMemoryRunItemStatus>("all");
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerNextCursor, setCustomerNextCursor] = useState<string>();
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customerTotal, setCustomerTotal] = useState(0);
   const [appliedQuery, setAppliedQuery] = useState("");
   const [searchRevision, setSearchRevision] = useState(0);
   const [selected, setSelected] = useState<Customer>();
@@ -56,9 +62,9 @@ export function UserMemoryPage() {
     setError(false);
     try {
       const [nextOverview, nextRuns, nextCustomers] = await Promise.all([
-        getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 }), listUserMemoryCustomers({ pageSize: 20, query: appliedQuery || undefined }),
+        getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 }), listUserMemoryCustomers({ page: 1, pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE, query: appliedQuery || undefined }),
       ]);
-      setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor); setCustomers(nextCustomers.items); setCustomerNextCursor(nextCustomers.nextCursor);
+      setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor); setCustomers(nextCustomers.items); setCustomerPage(nextCustomers.page); setCustomerTotal(nextCustomers.total);
     } catch { setError(true); }
     finally { setLoading(false); }
   }, [appliedQuery, searchRevision]);
@@ -97,7 +103,7 @@ export function UserMemoryPage() {
   async function handleVersionConflict(error: unknown, fallback: string) {
     if (error instanceof RequestNormalizedError && error.code === "AGENT_USER_MEMORY_VERSION_CONFLICT") {
       try { await reloadSelectedCustomer(); } catch { setDetailError(true); toast.error("记忆已更新，但最新数据加载失败"); return; }
-      toast.error("记忆已更新，请基于最新版本重试");
+      toast.error("记忆内容已发生变化，请确认后重试");
       return;
     }
     toast.error(error instanceof Error ? error.message : fallback);
@@ -148,10 +154,19 @@ export function UserMemoryPage() {
     catch { toast.error("加载失败"); }
     finally { setPaging(false); }
   }
-  async function loadMoreCustomers() {
-    if (!customerNextCursor || paging) return;
+  async function changeCustomerPage(nextPage: number) {
+    if (paging || nextPage === customerPage) return;
     setPaging(true);
-    try { const page = await listUserMemoryCustomers({ cursor: customerNextCursor, pageSize: 20, query: appliedQuery || undefined }); setCustomers((current) => [...current, ...page.items]); setCustomerNextCursor(page.nextCursor); }
+    try {
+      const result = await listUserMemoryCustomers({
+        page: nextPage,
+        pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE,
+        query: appliedQuery || undefined,
+      });
+      setCustomers(result.items);
+      setCustomerPage(result.page);
+      setCustomerTotal(result.total);
+    }
     catch { toast.error("加载失败"); }
     finally { setPaging(false); }
   }
@@ -180,26 +195,31 @@ export function UserMemoryPage() {
 
   return <AiHostingLayout title="用户记忆">
     <div className="space-y-6">
-      <AiHostingPageHeader title="用户记忆" description="由 AI 按日提炼客户长期背景，人工维护拥有最终优先级" />
+      <AiHostingPageHeader
+        title="用户记忆"
+        titleActions={overview ? <div className="flex h-8 items-center gap-2 rounded-full bg-muted/50 px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div> : undefined}
+        description="AI 自动提炼客户画像、偏好与近期意向，让每次服务更懂客户"
+      />
       <Tabs defaultValue="overview">
         <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger></TabsList>
         <TabsContent className="pt-5" value="overview">
-          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview overview={overview} runs={runs} canManage={canManage} saving={saving} hasMore={Boolean(runNextCursor)} onToggle={toggleEnabled} onRetryRun={retry} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
+          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview runs={runs} canManage={canManage} saving={saving} hasMore={Boolean(runNextCursor)} onRetryRun={retry} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
         </TabsContent>
         <TabsContent className="pt-5" value="customers">
           <MemoryCustomerList
             appliedQuery={appliedQuery}
             customers={customers}
             error={error}
-            hasMore={Boolean(customerNextCursor)}
             loading={loading}
+            page={customerPage}
             paging={paging}
             query={query}
-            onLoadMore={() => void loadMoreCustomers()}
             onOpenCustomer={(customer) => void chooseCustomer(customer)}
+            onPageChange={(page) => void changeCustomerPage(page)}
             onQueryChange={setQuery}
             onRetry={load}
             onSearch={searchCustomers}
+            total={customerTotal}
           />
         </TabsContent>
       </Tabs>
@@ -224,39 +244,448 @@ export function UserMemoryPage() {
   </AiHostingLayout>;
 }
 
-function Overview({ overview, runs, canManage, saving, hasMore, onToggle, onRetryRun, onLoadMore, onShowDetail }: { overview: AgentUserMemoryOverviewResponse; runs: AgentUserMemoryRun[]; canManage: boolean; saving: boolean; hasMore: boolean; onToggle: (enabled: boolean) => void; onRetryRun: (id: number) => void; onLoadMore: () => void; onShowDetail: (id: number) => void }) {
-  return <div className="space-y-5">
-    <section className="flex items-center justify-between gap-5 rounded-xl border bg-card p-5"><div><div className="font-medium">自动维护</div><p className="mt-1 text-sm text-muted-foreground">每天 {overview.schedule}（{overview.timezone}）处理前一自然日，客户额度 {overview.customerLimit}</p></div><Switch aria-label="自动维护" checked={overview.enabled} disabled={!canManage || saving} onCheckedChange={onToggle} /></section>
-    <section className="grid overflow-hidden rounded-xl border bg-card md:grid-cols-3"><Metric label="当前状态" value={overview.activeRun ? statusLabel(overview.activeRun.status) : overview.enabled ? "等待调度" : "已关闭"} /><Metric label="最近选中客户" value={String(overview.recentRun?.selectedCustomerCount ?? 0)} /><Metric label="最近模型 Token" value={String((overview.recentRun?.inputTokens ?? 0) + (overview.recentRun?.outputTokens ?? 0))} /></section>
-    <section className="rounded-xl border bg-card"><div className="flex items-start justify-between gap-4 p-5"><div><h3 className="text-base font-semibold">维护趋势</h3><p className="mt-1 text-sm text-muted-foreground">按目标自然日统计客户维护结果</p></div><div className="flex flex-wrap justify-end gap-3 text-xs text-muted-foreground"><TrendLegend color="bg-primary" label="成功" /><TrendLegend color="bg-destructive" label="失败" /><TrendLegend color="bg-muted-foreground" label="跳过" /></div></div><div className="px-5 pb-5"><RunTrendChart runs={runs} /></div></section>
-    <section className="rounded-xl border bg-card"><div className="p-5 pb-3"><h3 className="text-base font-semibold">每日任务</h3></div><div className="px-5 pb-5"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>目标日期</TableHead><TableHead>状态</TableHead><TableHead>候选会话</TableHead><TableHead>选中客户</TableHead><TableHead>结果</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader><TableBody>{runs.length === 0 ? <TableRow><TableCell colSpan={6}><Empty /></TableCell></TableRow> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.quotaDate}</TableCell><TableCell><Badge variant="outline">{statusLabel(run.status)}</Badge></TableCell><TableCell>{run.candidateSessionCount} / {run.candidateSessionLimit}</TableCell><TableCell>{run.selectedCustomerCount} / {run.customerLimit}</TableCell><TableCell>{run.successCount} 成功 · {run.failureCount} 失败 · {run.skippedCount} 跳过</TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => onShowDetail(run.id)}>详情</Button>{canManage && (run.status === "partial" || run.status === "failed") ? <Button size="sm" variant="outline" disabled={saving} onClick={() => onRetryRun(run.id)}><HugeiconsIcon icon={RefreshIcon} size={15} />重试失败项</Button> : null}</div></TableCell></TableRow>)}</TableBody></Table></div>{hasMore ? <div className="mt-4 text-center"><Button variant="outline" disabled={saving} onClick={onLoadMore}>加载更多</Button></div> : null}</div></section>
-  </div>;
+function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, onShowDetail }: { runs: AgentUserMemoryRun[]; canManage: boolean; saving: boolean; hasMore: boolean; onRetryRun: (id: number) => void; onLoadMore: () => void; onShowDetail: (id: number) => void }) {
+  return (
+    <div className="space-y-5">
+      <section className="flex min-h-[240px] flex-col gap-3 rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
+              <HugeiconsIcon icon={ChartAreaIcon} size={17} />
+            </span>
+            <h2 className="text-base font-medium">记忆维护趋势</h2>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3 text-xs text-muted-foreground">
+            {memoryTrendSeries.map((series) => (
+              <TrendLegend color={series.color} key={series.key} label={series.label} />
+            ))}
+          </div>
+        </div>
+        <RunTrendChart runs={runs} />
+      </section>
+
+      <section className="rounded-xl border bg-card">
+        <div className="grid gap-3 p-4 sm:px-6 sm:py-4">
+          <h2 className="text-base font-medium">运行记录</h2>
+        </div>
+        <div className="overflow-x-auto px-4 pb-4 sm:px-6">
+          <Table aria-label="记忆维护运行记录">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-11 min-w-[140px]">日期</TableHead>
+                <TableHead className="h-11 min-w-[120px]">状态</TableHead>
+                <TableHead className="h-11 min-w-[100px]">客户数</TableHead>
+                <TableHead className="h-11 min-w-[260px]">结果</TableHead>
+                <TableHead className="h-11 min-w-[180px] text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {runs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <Empty />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                runs.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell className="py-4 font-medium">{run.quotaDate}</TableCell>
+                    <TableCell className="py-4">
+                      <Badge variant="outline">{statusLabel(run.status)}</Badge>
+                    </TableCell>
+                    <TableCell className="py-4">{run.selectedCustomerCount}</TableCell>
+                    <TableCell className="py-4">
+                      {run.successCount} 成功 · {run.failureCount} 失败 · {run.skippedCount} 跳过
+                    </TableCell>
+                    <TableCell className="py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          className="h-8 rounded-[8px]"
+                          onClick={() => onShowDetail(run.id)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          详情
+                        </Button>
+                        {canManage && (run.status === "partial" || run.status === "failed") ? (
+                          <Button
+                            className="h-8 rounded-[8px]"
+                            disabled={saving}
+                            onClick={() => onRetryRun(run.id)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <HugeiconsIcon icon={RefreshIcon} size={15} />
+                            重试失败项
+                          </Button>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          {hasMore ? (
+            <div className="mt-4 text-center">
+              <Button disabled={saving} onClick={onLoadMore} variant="outline">
+                加载更多
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function RunTrendChart({ runs }: { runs: AgentUserMemoryRun[] }) {
   const points = [...runs].sort((left, right) => left.quotaDate.localeCompare(right.quotaDate)).map((run) => ({ date: run.quotaDate, failure: run.failureCount, skipped: run.skippedCount, success: run.successCount }));
-  if (points.length === 0) return <Empty text="暂无趋势数据" />;
-  return <div className="h-64 min-w-0"><ResponsiveContainer height="100%" width="100%"><AreaChart data={points} margin={{ bottom: 0, left: -18, right: 14, top: 8 }}><CartesianGrid stroke="var(--border)" strokeOpacity={0.45} vertical={false} /><XAxis axisLine={false} dataKey="date" dy={10} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickFormatter={formatTrendDate} tickLine={false} /><YAxis allowDecimals={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickLine={false} width={42} /><Tooltip labelFormatter={(label) => String(label)} /><Area dataKey="success" fill="var(--primary)" fillOpacity={0.12} name="成功" stroke="var(--primary)" strokeWidth={2.2} type="monotone" /><Area dataKey="failure" fill="var(--destructive)" fillOpacity={0.08} name="失败" stroke="var(--destructive)" strokeWidth={2} type="monotone" /><Area dataKey="skipped" fill="var(--muted-foreground)" fillOpacity={0.06} name="跳过" stroke="var(--muted-foreground)" strokeWidth={1.8} type="monotone" /></AreaChart></ResponsiveContainer></div>;
+
+  return (
+    <div className="flex flex-1 items-stretch">
+      <div className="min-h-[180px] min-w-0 flex-1">
+        {points.length > 0 ? (
+          <ResponsiveContainer height="100%" width="100%">
+            <AreaChart data={points} margin={{ bottom: 0, left: -16, right: 14, top: 10 }}>
+              <defs>
+                {memoryTrendSeries.map((series) => (
+                  <linearGradient
+                    id={`userMemoryTrend-${series.key}`}
+                    key={series.key}
+                    x1="0"
+                    x2="0"
+                    y1="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor={series.color} stopOpacity={0.22} />
+                    <stop offset="100%" stopColor={series.color} stopOpacity={0} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.45}
+                vertical={false}
+              />
+              <XAxis
+                axisLine={false}
+                dataKey="date"
+                dy={10}
+                tick={{ fill: insightChartColors.axis, fontSize: 12 }}
+                tickFormatter={formatTrendDate}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                axisLine={false}
+                tick={{ fill: insightChartColors.axis, fontSize: 12 }}
+                tickLine={false}
+                width={46}
+              />
+              <Tooltip content={<MemoryTrendTooltip />} />
+              {memoryTrendSeries.map((series) => (
+                <Area
+                  animationDuration={450}
+                  dataKey={series.key}
+                  fill={`url(#userMemoryTrend-${series.key})`}
+                  key={series.key}
+                  name={series.label}
+                  stroke={series.color}
+                  strokeWidth={2.2}
+                  type="monotone"
+                />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-[10px] bg-muted/35 text-sm text-muted-foreground">
+            暂无数据
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function TrendLegend({ color, label }: { color: string; label: string }) { return <span className="inline-flex items-center gap-1.5"><span className={`size-2 rounded-full ${color}`} />{label}</span>; }
+const memoryTrendSeries = [
+  { color: insightResolutionColors.resolved, key: "success", label: "成功" },
+  { color: insightResolutionColors.unresolved, key: "failure", label: "失败" },
+  { color: insightResolutionColors.unknown, key: "skipped", label: "跳过" },
+] as const;
 
-function MemoryCustomerList({ appliedQuery, customers, error, hasMore, loading, paging, query, onLoadMore, onOpenCustomer, onQueryChange, onRetry, onSearch }: { appliedQuery: string; customers: Customer[]; error: boolean; hasMore: boolean; loading: boolean; paging: boolean; query: string; onLoadMore: () => void; onOpenCustomer: (customer: Customer) => void; onQueryChange: (value: string) => void; onRetry: () => void; onSearch: () => void }) {
+function MemoryTrendTooltip({
+  active,
+  label,
+  payload,
+}: TooltipProps<number, string>) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-lg">
+      <div className="font-medium text-foreground">{String(label).replaceAll("-", "/")}</div>
+      <div className="mt-2 grid gap-1.5">
+        {memoryTrendSeries.map((series) => {
+          const value = payload.find((item) => item.dataKey === series.key)?.value ?? 0;
+          return (
+            <div className="flex items-center gap-2" key={series.key}>
+              <span className="size-2 rounded-full" style={{ backgroundColor: series.color }} />
+              <span className="text-muted-foreground">{series.label}</span>
+              <span className="font-semibold tabular-nums">{Number(value)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TrendLegend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  );
+}
+
+function MemoryCustomerList({ appliedQuery, customers, error, loading, page, paging, query, total, onOpenCustomer, onPageChange, onQueryChange, onRetry, onSearch }: { appliedQuery: string; customers: Customer[]; error: boolean; loading: boolean; page: number; paging: boolean; query: string; total: number; onOpenCustomer: (customer: Customer) => void; onPageChange: (page: number) => void; onQueryChange: (value: string) => void; onRetry: () => void; onSearch: () => void }) {
+  const { activePage, totalPages } = resolveTablePagination({
+    page,
+    pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE,
+    total,
+  });
   const visibleCustomers = [...customers]
-    .filter((customer) => Boolean(appliedQuery) || customer.memoryCount > 0)
-    .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0) || right.version - left.version);
-  return <section className="rounded-xl border bg-card"><div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-base font-semibold">客户记忆</h3><p className="mt-1 text-sm text-muted-foreground">按最近更新时间查看客户当前记忆</p></div><div className="flex w-full gap-2 sm:max-w-md"><Input aria-label="搜索客户" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="搜索客户" onKeyDown={(event) => { if (event.key === "Enter") onSearch(); }} /><Button variant="outline" onClick={onSearch}><HugeiconsIcon icon={Search01Icon} size={16} />搜索</Button></div></div><div className="px-5 pb-5">{loading ? <Loading /> : error ? <LoadError onRetry={onRetry} /> : visibleCustomers.length === 0 ? <Empty text={appliedQuery ? "暂无匹配客户" : "暂无客户记忆"} /> : <><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>记忆概览</TableHead><TableHead>最近更新</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader><TableBody>{visibleCustomers.map((customer) => <TableRow key={`${customer.platform}:${customer.thirdExternalUserId}`}><TableCell><button className="flex min-w-0 items-center gap-3 text-left" onClick={() => onOpenCustomer(customer)}><CustomerAvatar customer={customer} /><span className="min-w-0"><span className="block max-w-56 truncate font-medium">{customer.customerName}</span><span className="block max-w-56 truncate text-xs text-muted-foreground">{customer.thirdExternalUserId}</span></span></button></TableCell><TableCell><div className="flex items-center gap-2"><Badge variant="outline">{customer.memoryCount} 条</Badge><span className="text-xs text-muted-foreground">版本 {customer.version}</span></div></TableCell><TableCell><span className="text-sm">{formatUpdatedAt(customer.updatedAt)}</span>{customer.lastAutoUpdatedAt ? <span className="mt-1 block text-xs text-muted-foreground">自动维护 {formatUpdatedAt(customer.lastAutoUpdatedAt)}</span> : null}</TableCell><TableCell className="text-right"><Button aria-label={`查看${customer.customerName}记忆`} size="icon" variant="ghost" onClick={() => onOpenCustomer(customer)}><HugeiconsIcon icon={ViewIcon} size={16} /></Button></TableCell></TableRow>)}</TableBody></Table></div>{hasMore ? <div className="mt-4 text-center"><Button variant="outline" disabled={paging} onClick={onLoadMore}>{paging ? <Spinner size={16} /> : null}加载更多</Button></div> : null}</>}</div></section>;
+    .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="relative w-[280px] max-w-full flex-1 sm:flex-none">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              color="currentColor"
+              icon={Search01Icon}
+              size={17}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索客户"
+              className="h-10 rounded-[8px] pl-9"
+              onChange={(event) => onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onSearch();
+              }}
+              placeholder="搜索客户"
+              value={query}
+            />
+          </div>
+          <Button className="h-10 rounded-[8px]" onClick={onSearch} variant="outline">
+            搜索
+          </Button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <Table aria-label="客户记忆" className="min-w-[760px] table-fixed">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="h-11 w-[35%] px-4">客户</TableHead>
+              <TableHead className="h-11 w-[18%] px-4">记忆概览</TableHead>
+              <TableHead className="h-11 w-[32%] px-4">最近更新</TableHead>
+              <TableHead className="h-11 w-[15%] px-4 text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading || paging ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <Loading />
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <LoadError onRetry={onRetry} />
+                </TableCell>
+              </TableRow>
+            ) : visibleCustomers.length > 0 ? (
+              visibleCustomers.map((customer) => (
+                <TableRow key={`${customer.platform}:${customer.thirdExternalUserId}`}>
+                  <TableCell className="px-4 py-4">
+                    <button
+                      className="flex min-w-0 items-center gap-3 text-left"
+                      onClick={() => onOpenCustomer(customer)}
+                    >
+                      <CustomerAvatar customer={customer} />
+                      <span className="block min-w-0 max-w-56 truncate font-medium">
+                        {customer.customerName}
+                      </span>
+                    </button>
+                  </TableCell>
+                  <TableCell className="px-4 py-4">
+                    <Badge variant="outline">{customer.memoryCount} 条</Badge>
+                  </TableCell>
+                  <TableCell className="px-4 py-4">
+                    <span className="text-sm">{formatUpdatedAt(customer.updatedAt)}</span>
+                    {customer.lastAutoUpdatedAt ? (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        自动维护 {formatUpdatedAt(customer.lastAutoUpdatedAt)}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="px-4 py-4 text-right">
+                    <Button
+                      aria-label={`查看${customer.customerName}记忆`}
+                      className="size-8 p-0 text-muted-foreground"
+                      onClick={() => onOpenCustomer(customer)}
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon icon={ViewIcon} size={18} strokeWidth={1.8} />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  className="py-10 text-center text-sm text-muted-foreground"
+                  colSpan={4}
+                >
+                  {appliedQuery ? "暂无匹配客户" : "暂无客户记忆"}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        {!loading && !error && totalPages > 1 ? (
+          <TablePagination
+            itemLabel="位客户"
+            onPageChange={onPageChange}
+            page={activePage}
+            total={total}
+            totalPages={totalPages}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 function CustomerDetailSheet({ canManage, customer, detail, error, open, onAdd, onDelete, onEdit, onOpenChange, onRetry, onShowEvidence }: { canManage: boolean; customer?: Customer; detail?: AgentUserMemoryCustomerDetailResponse; error: boolean; open: boolean; onAdd: () => void; onDelete: (item: AgentUserMemoryItem) => void; onEdit: (item: AgentUserMemoryItem) => void; onOpenChange: (open: boolean) => void; onRetry: () => void; onShowEvidence: (item: AgentUserMemoryItem) => void }) {
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full overflow-hidden p-0 sm:max-w-[680px]"><SheetHeader className="border-b pr-14"><div className="flex items-center gap-3"><CustomerAvatar customer={customer} /><div className="min-w-0"><SheetTitle className="truncate">{customer?.customerName ?? "客户记忆"}</SheetTitle><SheetDescription>{detail ? `${detail.items.length} 条记忆 · 版本 ${detail.version}` : "客户记忆明细"}</SheetDescription></div></div></SheetHeader><div className="flex items-center justify-between border-b px-6 py-3"><span className="text-sm text-muted-foreground">最近更新 {formatUpdatedAt(customer?.updatedAt)}</span>{canManage && detail ? <Button size="sm" onClick={onAdd}><HugeiconsIcon icon={PlusSignIcon} size={16} />新增记忆</Button> : null}</div><ScrollArea className="min-h-0 flex-1"><div className="p-6">{error ? <LoadError onRetry={onRetry} /> : !detail ? <Loading /> : detail.items.length === 0 ? <Empty /> : <div className="space-y-3">{detail.items.map((item) => <div className="rounded-lg border border-border p-4" key={item.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge>{getUserMemoryCategoryLabel(item.category)}</Badge><Badge variant="outline">{item.source === "manual" ? "人工" : "AI 提炼"}</Badge>{item.expiresAt ? <span className="text-xs text-muted-foreground">有效至 {formatUpdatedAt(item.expiresAt)}</span> : null}</div><p className="text-sm leading-6">{item.content}</p><p className="mt-2 text-xs text-muted-foreground">更新于 {formatUpdatedAt(item.updatedAt)}</p></div><div className="flex shrink-0 gap-1">{item.source === "ai" ? <Button aria-label="查看证据" size="icon" variant="ghost" onClick={() => onShowEvidence(item)}><HugeiconsIcon icon={ViewIcon} size={16} /></Button> : null}{canManage ? <><Button aria-label="编辑记忆" size="icon" variant="ghost" onClick={() => onEdit(item)}><HugeiconsIcon icon={Edit02Icon} size={16} /></Button><Button aria-label="删除记忆" size="icon" variant="ghost" onClick={() => onDelete(item)}><HugeiconsIcon icon={Delete02Icon} size={16} /></Button></> : null}</div></div></div>)}</div>}</div></ScrollArea></SheetContent></Sheet>;
+  const memoryCount = detail?.items.length ?? customer?.memoryCount ?? 0;
+  return (
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent className="w-full overflow-hidden p-0 [&>button:last-child]:top-5 sm:max-w-[680px]">
+        <SheetHeader className={canManage && detail ? "border-b pr-24 sm:pr-44" : "border-b pr-14"}>
+          <div className="flex items-center gap-3">
+            <CustomerAvatar customer={customer} />
+            <div className="min-w-0">
+              <SheetTitle className="truncate">{customer?.customerName ?? "客户记忆"}</SheetTitle>
+              <SheetDescription>
+                记忆 {memoryCount} / 20，最近更新于 {formatUpdatedAt(customer?.updatedAt)}
+              </SheetDescription>
+            </div>
+          </div>
+          {canManage && detail ? (
+            <Button aria-label="新增记忆" className="absolute right-14 top-5 size-8 p-0 sm:w-auto sm:px-3" onClick={onAdd} size="sm" variant="ghost">
+              <HugeiconsIcon icon={PlusSignIcon} size={16} />
+              <span className="hidden sm:inline">新增记忆</span>
+            </Button>
+          ) : null}
+        </SheetHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-6">
+            {error ? <LoadError onRetry={onRetry} /> : !detail ? <Loading /> : detail.items.length === 0 ? <Empty /> : (
+              <div className="space-y-2">
+                {detail.items.map((item) => (
+                  <CustomerDetailMemoryItem
+                    canManage={canManage}
+                    item={item}
+                    key={item.id}
+                    onDelete={() => onDelete(item)}
+                    onEdit={() => onEdit(item)}
+                    onShowEvidence={() => onShowEvidence(item)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvidence }: { canManage: boolean; item: AgentUserMemoryItem; onDelete: () => void; onEdit: () => void; onShowEvidence: () => void }) {
+  const category = USER_MEMORY_CATEGORIES.find((option) => option.value === item.category) ?? USER_MEMORY_CATEGORIES[0];
+  return (
+    <div className="rounded-[10px] bg-surface-muted p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <HugeiconsIcon aria-hidden="true" className="shrink-0 text-muted-foreground" icon={category.icon} size={16} strokeWidth={1.8} />
+          <span className="truncate text-sm font-medium">{category.label}</span>
+          <Badge className="h-5 shrink-0 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground" variant="secondary">
+            {item.source === "manual" ? "人工" : "AI 提炼"}
+          </Badge>
+        </div>
+        {canManage || item.source === "ai" ? (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label="记忆操作" className="size-7 rounded-[8px] p-0" size="icon" type="button" variant="ghost">
+                <HugeiconsIcon aria-hidden="true" icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {item.source === "ai" ? (
+                <DropdownMenuItem onSelect={onShowEvidence}>
+                  <HugeiconsIcon icon={ViewIcon} />
+                  查看证据
+                </DropdownMenuItem>
+              ) : null}
+              {item.source === "ai" && canManage ? <DropdownMenuSeparator /> : null}
+              {canManage ? (
+                <>
+                  <DropdownMenuItem onSelect={onEdit}>
+                    <HugeiconsIcon icon={Edit02Icon} />
+                    编辑
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}>
+                    <HugeiconsIcon icon={Delete02Icon} />
+                    删除
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
+      {item.expiresAt ? (
+        <Alert className="mt-3 px-3 py-2 text-xs" variant="warning">
+          <HugeiconsIcon aria-hidden="true" icon={AlertCircleIcon} size={15} strokeWidth={1.8} />
+          <AlertDescription className="text-xs leading-5">{formatExpiryStatus(item.expiresAt)}</AlertDescription>
+        </Alert>
+      ) : null}
+      <p className="mt-3 break-words text-sm leading-6">{item.content}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>更新于 {formatUpdatedAt(item.updatedAt)}</span>
+      </div>
+    </div>
+  );
 }
 
 function CustomerAvatar({ customer }: { customer?: Customer }) { return <Avatar className="size-10"><AvatarImage alt="" src={customer?.avatarUrl} /><AvatarFallback>{customer?.customerName?.trim().slice(0, 1) || undefined}</AvatarFallback></Avatar>; }
-function Metric({ label, value }: { label: string; value: string }) { return <div className="border-b p-5 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>; }
 function formatUpdatedAt(timestamp?: number) {
   if (!timestamp) return "暂无记录";
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(timestamp);
+}
+function formatDate(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(timestamp);
+}
+function formatExpiryStatus(expiresAt: number) {
+  return `短期记忆：${expiresAt > Date.now() ? "将于" : "已于"} ${formatDate(expiresAt)} 到期`;
 }
 function formatTrendDate(value: string) {
   const parts = value.split("-");

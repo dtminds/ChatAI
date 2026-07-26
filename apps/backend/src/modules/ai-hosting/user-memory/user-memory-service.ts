@@ -17,7 +17,6 @@ import {
   createManualMemory,
   deleteManualMemory,
   emptyUserMemoryDocument,
-  filterActiveUserMemoryDocument,
   parseUserMemoryDocument,
   updateManualMemory,
   UserMemoryDomainError,
@@ -190,27 +189,65 @@ export class UserMemoryService {
     return { messages };
   }
 
-  async listCustomers(uid: number, subUserId: string, roles: string[], options: { cursor?: string; pageSize?: number; query?: string }): Promise<AgentUserMemoryCustomerListResponse> {
-    if (!this.workbenchService) throw new Error("Workbench service is required");
-    const page = await this.workbenchService.getCustomers(subUserId, {
-      cursor: options.cursor, keyword: options.query, limit: options.pageSize,
-      scope: roles.includes("owner") || roles.includes("admin") ? "all" : "mine",
+  async listCustomers(uid: number, platform: number, subUserId: string, roles: string[], options: { page?: number; pageSize?: number; query?: string }): Promise<AgentUserMemoryCustomerListResponse> {
+    const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
+    const requestedPage = Math.max(1, options.page ?? 1);
+    const canViewAll = roles.includes("owner") || roles.includes("admin");
+    const subUserNumericId = Number(subUserId);
+    if (!canViewAll && (!Number.isSafeInteger(subUserNumericId) || subUserNumericId <= 0)) {
+      return { items: [], page: 1, pageSize, total: 0 };
+    }
+
+    const keyword = options.query?.trim();
+    const query = buildUserMemoryCustomerListQuery(this.db, {
+      keyword,
+      platform,
+      subUserId: canViewAll ? undefined : subUserNumericId,
+      uid,
     });
-    const memories = await this.listMemoryRows(uid, page.items.map((item) => ({ platform: item.platform, thirdExternalUserId: item.thirdExternalUserId })));
+
+    const countRow = await query
+      .select((eb) => eb.fn.countAll<number | string | bigint>().as("total"))
+      .executeTakeFirst();
+    const total = Number(countRow?.total ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const rows = await query
+      .select([
+        "memory.id",
+        "memory.platform",
+        "memory.third_external_userid",
+        "memory.memories_json",
+        "memory.version",
+        "memory.last_auto_updated_at",
+        "memory.update_time",
+        "contact.avatar",
+        "contact.name",
+        "contact.real_name",
+      ])
+      .orderBy("memory.update_time", "desc")
+      .orderBy("memory.id", "desc")
+      .limit(pageSize)
+      .offset((page - 1) * pageSize)
+      .execute();
+
     return {
-      items: page.items.map((item) => {
-        const memory = memories.get(customerKey(item.platform, item.thirdExternalUserId));
-        const document = memory ? readStoredUserMemoryDocument(memory.memories_json) : emptyUserMemoryDocument();
+      items: rows.map((row) => {
+        const document = readStoredUserMemoryDocument(row.memories_json);
         return {
-          platform: item.platform, thirdExternalUserId: item.thirdExternalUserId,
-          customerName: item.name || item.realName || item.thirdExternalUserId,
-          ...(item.avatar ? { avatarUrl: item.avatar } : {}), memoryCount: document.manual.length + document.ai.length,
-          version: memory?.version ?? 0,
-          ...(memory?.last_auto_updated_at ? { lastAutoUpdatedAt: memory.last_auto_updated_at } : {}),
-          ...(memory?.update_time ? { updatedAt: memory.update_time.getTime() } : {}),
+          platform: row.platform,
+          thirdExternalUserId: row.third_external_userid,
+          customerName: row.name || row.real_name || row.third_external_userid,
+          ...(row.avatar ? { avatarUrl: row.avatar } : {}),
+          memoryCount: document.manual.length + document.ai.length,
+          version: row.version,
+          ...(row.last_auto_updated_at ? { lastAutoUpdatedAt: row.last_auto_updated_at } : {}),
+          updatedAt: row.update_time.getTime(),
         };
       }),
-      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      page,
+      pageSize,
+      total,
     };
   }
 
@@ -270,15 +307,58 @@ export class UserMemoryService {
     if (lock) query = query.forUpdate();
     return query.executeTakeFirst();
   }
-  private async listMemoryRows(uid: number, customers: CustomerKey[]) {
-    const result = new Map<string, Awaited<ReturnType<UserMemoryService["getMemoryRow"]>> extends infer T ? NonNullable<T> : never>();
-    const platforms = [...new Set(customers.map((item) => item.platform))];
-    if (customers.length === 0 || platforms.length === 0) return result;
-    const externalIds = [...new Set(customers.map((item) => item.thirdExternalUserId))];
-    const rows = await this.db.selectFrom("xy_wap_embed_agent_user_memory").selectAll().where("uid", "=", uid).where("platform", "in", platforms).where("third_external_userid", "in", externalIds).execute();
-    for (const row of rows) result.set(customerKey(row.platform, row.third_external_userid), row);
-    return result;
+}
+
+export function buildUserMemoryCustomerListQuery(
+  db: Kysely<Database>,
+  input: { keyword?: string; platform: number; subUserId?: number; uid: number },
+) {
+  let query = db
+    .selectFrom("xy_wap_embed_agent_user_memory as memory")
+    .innerJoin("xy_wap_embed_contact as contact", (join) =>
+      join
+        .onRef("contact.uid", "=", "memory.uid")
+        .onRef("contact.platform", "=", "memory.platform")
+        .onRef("contact.third_external_userid", "=", "memory.third_external_userid"),
+    )
+    .where("memory.uid", "=", input.uid)
+    .where("memory.platform", "=", input.platform)
+    .where(sql<boolean>`(
+      COALESCE(JSON_LENGTH(memory.memories_json, '$.manual'), 0) +
+      COALESCE(JSON_LENGTH(memory.memories_json, '$.ai'), 0)
+    ) > 0`);
+
+  if (input.subUserId != null) {
+    query = query.where(sql<boolean>`EXISTS (
+      SELECT 1
+      FROM xy_wap_embed_customer_bind_relation AS bind
+      INNER JOIN xy_wap_embed_user_seat AS seat
+        ON seat.uid = bind.uid
+        AND seat.platform = bind.platform
+        AND seat.third_userid = bind.third_userid
+      INNER JOIN xy_wap_embed_user_seat_sub_relation AS relation
+        ON relation.user_seat_id = seat.id
+        AND relation.uid = seat.uid
+        AND relation.platform = seat.platform
+      WHERE bind.uid = memory.uid
+        AND bind.platform = memory.platform
+        AND bind.third_external_userid = memory.third_external_userid
+        AND relation.sub_id = ${input.subUserId}
+    )`);
   }
+
+  if (input.keyword) {
+    const pattern = `%${escapeLikeKeyword(input.keyword)}%`;
+    query = query.where((eb) =>
+      eb.or([
+        eb("contact.name", "like", pattern),
+        eb("contact.real_name", "like", pattern),
+        eb("contact.third_external_userid", "like", pattern),
+      ]),
+    );
+  }
+
+  return query;
 }
 
 export function createUserMemoryService(db: Kysely<Database>, workbenchService?: WorkbenchService, customerLimitResolver?: UserMemoryCustomerLimitResolver) { return new UserMemoryService(db, workbenchService, customerLimitResolver); }
@@ -319,12 +399,15 @@ export function parseStoredUserMemoryDocument(value: JsonValue | string) {
   }
 }
 function readStoredUserMemoryDocument(value: JsonValue | string) {
-  return filterActiveUserMemoryDocument(parseStoredUserMemoryDocument(value), Date.now());
+  return parseStoredUserMemoryDocument(value);
 }
 function isDuplicateKeyError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const value = error as { code?: unknown; errno?: unknown };
   return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
+}
+function escapeLikeKeyword(keyword: string) {
+  return keyword.replace(/[\\%_]/g, "\\$&");
 }
 export function summarizeEvidenceContent(content: Record<string, unknown>) {
   for (const key of ["text", "content", "title", "transVoiceText", "description", "fileName"]) {
@@ -351,7 +434,7 @@ function mapCustomerDetail(customer: CustomerSummary, version: number, document:
     items: [
       ...document.manual.map((item) => ({ ...item, source: "manual" as const })),
       ...document.ai.map((item) => ({ ...item, source: "ai" as const })),
-    ].sort((a, b) => b.updatedAt - a.updatedAt),
+    ].sort((a, b) => b.id - a.id),
     ...(row?.manual_updated_at ? { manualUpdatedAt: row.manual_updated_at } : {}),
     ...(row?.last_auto_updated_at ? { lastAutoUpdatedAt: row.last_auto_updated_at } : {}),
     ...(row?.last_auto_quota_date ? { lastAutoQuotaDate: dateOnly(row.last_auto_quota_date) } : {}),

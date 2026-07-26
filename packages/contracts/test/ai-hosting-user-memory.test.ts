@@ -2,6 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   AgentUserMemoryCategorySchema,
+  AgentUserMemoryCustomerListResponseSchema,
   AgentUserMemoryDocumentSchema,
   AgentUserMemoryErrorCodeSchema,
   AgentUserMemoryItemSchema,
@@ -46,6 +47,20 @@ describe("agent user memory contracts", () => {
     })).toBe(false);
     expect(Value.Check(AgentUserMemoryManualCreateRequestSchema, {
       category: "customer_profile", content: "身".repeat(101), expectedVersion: 0,
+    })).toBe(false);
+  });
+
+  it("uses page-based customer-list pagination", () => {
+    const response = {
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+    };
+    expect(Value.Check(AgentUserMemoryCustomerListResponseSchema, response)).toBe(true);
+    expect(Value.Check(AgentUserMemoryCustomerListResponseSchema, {
+      items: [],
+      nextCursor: "next",
     })).toBe(false);
   });
 

@@ -30,7 +30,7 @@ export async function getUserMemoryRun(runId: number, params: { itemCursor?: str
 export async function retryUserMemoryRun(runId: number) {
   return (await http.post<ApiSuccessEnvelope<AgentUserMemoryRetryFailedResponse>>(`/server/ai-hosting/user-memory/runs/${runId}/retry-failed`)).data;
 }
-export async function listUserMemoryCustomers(params: { cursor?: string; pageSize?: number; query?: string } = {}) {
+export async function listUserMemoryCustomers(params: { page?: number; pageSize?: number; query?: string } = {}) {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryCustomerListResponse>>(`/server/ai-hosting/user-memory/customers${queryString(params)}`)).data;
 }
 export async function getUserMemoryCustomer(externalId: string) {

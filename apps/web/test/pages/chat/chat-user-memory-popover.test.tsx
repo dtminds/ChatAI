@@ -86,6 +86,77 @@ describe("chat user-memory popover", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("用户记忆");
   });
 
+  it("orders memories by descending id and shows details and actions on hover", async () => {
+    const user = userEvent.setup();
+    service.getUserMemoryCustomer.mockResolvedValue({
+      customerName: "测试客户",
+      items: [
+        {
+          category: "recent_intent",
+          content: "已过期的近期购买计划",
+          createdAt: 1,
+          expiresAt: Date.now() - 7 * 86_400_000,
+          id: 2,
+          source: "manual",
+          updatedAt: 1,
+          updatedBySubUserId: 101,
+        },
+        {
+          category: "recent_intent",
+          content: "最新的近期购买计划完整内容",
+          createdAt: 2,
+          expiresAt: Date.now() + 7 * 86_400_000,
+          id: 9,
+          source: "manual",
+          updatedAt: 2,
+          updatedBySubUserId: 101,
+        },
+      ],
+      platform: 5,
+      thirdExternalUserId: "external-1",
+      version: 1,
+    });
+    render(<ChatUserMemoryPopover conversation={conversation} />);
+
+    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    const rows = await screen.findAllByTestId("user-memory-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("最新的近期购买计划完整内容");
+    expect(rows[1]).toHaveTextContent("已过期的近期购买计划");
+
+    await user.hover(rows[0]!);
+    const detailCard = await screen.findByTestId("user-memory-detail-card-9");
+    expect(within(detailCard).getByText("近期意向")).toBeInTheDocument();
+    expect(within(detailCard).getByText("人工")).toBeInTheDocument();
+    expect(
+      within(detailCard).getByText("最新的近期购买计划完整内容"),
+    ).toBeInTheDocument();
+    expect(within(detailCard).getByText(/^更新于 /)).toBeInTheDocument();
+    expect(within(detailCard).getByRole("alert")).toHaveTextContent(
+      /^短期记忆：将于 /,
+    );
+
+    await user.hover(
+      within(detailCard).getByRole("button", { name: "记忆操作" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "编辑" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
+    await user.unhover(screen.getByRole("menu"));
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
+
+    await user.hover(rows[1]!);
+    const expiredDetailCard = await screen.findByTestId(
+      "user-memory-detail-card-2",
+    );
+    expect(within(expiredDetailCard).getByRole("alert")).toHaveTextContent(
+      /^短期记忆：已于 /,
+    );
+  });
+
   it("allows an operator to add memory for the active customer", async () => {
     const user = userEvent.setup();
     service.createUserMemoryItem.mockResolvedValue({

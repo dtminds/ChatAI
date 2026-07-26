@@ -5,15 +5,18 @@ import type {
   AgentUserMemoryItem,
 } from "@chatai/contracts";
 import {
+  AlertCircleIcon,
   Brain02Icon,
   Delete02Icon,
   Edit02Icon,
+  MoreHorizontalIcon,
   PlusSignIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +29,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import {
   Popover,
   PopoverContent,
@@ -94,6 +109,9 @@ export function ChatUserMemoryPopover({
   const [deleting, setDeleting] = useState<AgentUserMemoryItem>();
   const [evidence, setEvidence] = useState<EvidenceState>();
   const requestScopeRef = useRef("");
+  const sortedItems = detail
+    ? [...detail.items].sort((left, right) => right.id - left.id)
+    : [];
 
   function setOpen(nextOpen: boolean) {
     if (controlledOpen === undefined) {
@@ -249,35 +267,31 @@ export function ChatUserMemoryPopover({
           sideOffset={8}
           style={{ width: CHAT_USER_MEMORY_POPOVER_WIDTH }}
         >
-          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold">
-                {conversation.customerName}
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                用户记忆
-                {detail ? ` · ${detail.items.length} / 20` : ""}
-              </p>
-            </div>
+          <div className="flex items-center justify-between gap-3 px-4 py-2">
+            <h3 className="flex min-w-0 items-center text-sm font-semibold">
+              <span className="truncate">{conversation.customerName}</span>
+              <span className="shrink-0"> 的记忆</span>
+            </h3>
             {canMaintain && detail ? (
               <Button
+                aria-label="新增"
+                className="w-8 px-0"
                 disabled={detail.items.length >= 20 || saving}
                 onClick={() => setEditor({})}
                 size="sm"
                 type="button"
-                variant="outline"
+                variant="ghost"
               >
                 <HugeiconsIcon
                   aria-hidden="true"
                   icon={PlusSignIcon}
                   size={15}
                 />
-                新增
               </Button>
             ) : null}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">
             {loadError ? (
               <div className="flex min-h-40 flex-col items-center justify-center gap-3">
                 <p className="text-sm text-muted-foreground">加载失败</p>
@@ -294,59 +308,31 @@ export function ChatUserMemoryPopover({
                 <span className="text-sm text-muted-foreground">正在加载</span>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div>
                 {detail.items.length === 0 && !editor ? (
                   <div className="py-12 text-center">
                     <p className="text-sm text-muted-foreground">暂无记忆</p>
-                    {canMaintain ? (
-                      <Button
-                        className="mt-3"
-                        onClick={() => setEditor({})}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        <HugeiconsIcon
-                          aria-hidden="true"
-                          icon={PlusSignIcon}
-                          size={15}
-                        />
-                        新增记忆
-                      </Button>
-                    ) : null}
                   </div>
                 ) : (
-                  USER_MEMORY_CATEGORIES.map((category) => {
-                    const items = detail.items.filter(
-                      (item) => item.category === category.value,
-                    );
-                    if (items.length === 0) return null;
-                    return (
-                      <section key={category.value}>
-                        <h4 className="mb-2 text-xs font-medium text-muted-foreground">
-                          {category.label}
-                        </h4>
-                        <div className="divide-y rounded-[8px] border">
-                          {items.map((item) => (
-                            <MemoryItem
-                              canMaintain={canMaintain}
-                              evidence={
-                                evidence?.itemId === item.id
-                                  ? evidence
-                                  : undefined
-                              }
-                              item={item}
-                              key={item.id}
-                              onDelete={() => setDeleting(item)}
-                              onEdit={() => setEditor({ item })}
-                              onToggleEvidence={() => void toggleEvidence(item)}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    );
-                  })
+                  <div className="space-y-2">
+                    {sortedItems.map((item) => (
+                      <MemoryItem
+                        canMaintain={canMaintain}
+                        evidence={
+                          evidence?.itemId === item.id ? evidence : undefined
+                        }
+                        item={item}
+                        key={item.id}
+                        onDelete={() => setDeleting(item)}
+                        onEdit={() => setEditor({ item })}
+                        onToggleEvidence={() => void toggleEvidence(item)}
+                      />
+                    ))}
+                  </div>
                 )}
+                <p className="mt-3 text-right text-xs text-muted-foreground">
+                  {detail.items.length} / 20
+                </p>
               </div>
             )}
           </div>
@@ -409,78 +395,198 @@ function MemoryItem({
   onEdit: () => void;
   onToggleEvidence: () => void;
 }) {
+  const category =
+    USER_MEMORY_CATEGORIES.find((option) => option.value === item.category) ??
+    USER_MEMORY_CATEGORIES[0];
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuCloseTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      if (menuCloseTimerRef.current !== undefined) {
+        window.clearTimeout(menuCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function keepMenuOpen() {
+    if (menuCloseTimerRef.current !== undefined) {
+      window.clearTimeout(menuCloseTimerRef.current);
+      menuCloseTimerRef.current = undefined;
+    }
+  }
+
+  function scheduleMenuClose() {
+    keepMenuOpen();
+    menuCloseTimerRef.current = window.setTimeout(() => {
+      setMenuOpen(false);
+      menuCloseTimerRef.current = undefined;
+    }, 150);
+  }
+
   return (
-    <div className="p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">
+    <HoverCard
+      closeDelay={150}
+      onOpenChange={setHoverOpen}
+      open={hoverOpen || menuOpen}
+      openDelay={180}
+    >
+      <HoverCardTrigger asChild>
+        <div
+          className="flex min-w-0 items-center gap-2.5 rounded-[10px] bg-surface-muted px-3 py-2.5 outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
+          data-testid="user-memory-row"
+          tabIndex={0}
+        >
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-muted-foreground">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={category.icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+          </span>
+          <p className="min-w-0 flex-1 truncate text-[13px]">{item.content}</p>
+        </div>
+      </HoverCardTrigger>
+      <HoverCardContent
+        align="start"
+        className="w-[320px] rounded-[10px] p-4"
+        data-testid={`user-memory-detail-card-${item.id}`}
+        side="left"
+        sideOffset={8}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0 text-muted-foreground"
+              icon={category.icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <span className="truncate text-sm font-medium">
+              {category.label}
+            </span>
+            <Badge
+              className="h-5 shrink-0 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground"
+              variant="secondary"
+            >
               {item.source === "manual" ? "人工" : "AI 提炼"}
             </Badge>
-            {item.expiresAt ? (
-              <span className="text-xs text-muted-foreground">
-                有效至 {formatTimestamp(item.expiresAt)}
-              </span>
-            ) : null}
           </div>
-          <p className="text-sm leading-6">{item.content}</p>
-        </div>
-        <div className="flex shrink-0">
-          {item.source === "ai" ? (
-            <Button
-              aria-label="查看证据"
-              onClick={onToggleEvidence}
-              size="icon"
-              type="button"
-              variant="ghost"
+          {canMaintain || item.source === "ai" ? (
+            <DropdownMenu
+              modal={false}
+              onOpenChange={setMenuOpen}
+              open={menuOpen}
             >
-              <HugeiconsIcon icon={ViewIcon} size={15} />
-            </Button>
-          ) : null}
-          {canMaintain ? (
-            <>
-              <Button
-                aria-label="编辑记忆"
-                onClick={onEdit}
-                size="icon"
-                type="button"
-                variant="ghost"
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="记忆操作"
+                  className="size-7 rounded-[8px] p-0"
+                  onPointerEnter={() => {
+                    keepMenuOpen();
+                    setMenuOpen(true);
+                  }}
+                  onPointerLeave={scheduleMenuClose}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={MoreHorizontalIcon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onPointerEnter={keepMenuOpen}
+                onPointerLeave={scheduleMenuClose}
               >
-                <HugeiconsIcon icon={Edit02Icon} size={15} />
-              </Button>
-              <Button
-                aria-label="删除记忆"
-                onClick={onDelete}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Delete02Icon} size={15} />
-              </Button>
-            </>
+                {item.source === "ai" ? (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false);
+                      onToggleEvidence();
+                    }}
+                  >
+                    <HugeiconsIcon icon={ViewIcon} />
+                    查看证据
+                  </DropdownMenuItem>
+                ) : null}
+                {item.source === "ai" && canMaintain ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                {canMaintain ? (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setMenuOpen(false);
+                        onEdit();
+                      }}
+                    >
+                      <HugeiconsIcon icon={Edit02Icon} />
+                      编辑
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => {
+                        setMenuOpen(false);
+                        onDelete();
+                      }}
+                    >
+                      <HugeiconsIcon icon={Delete02Icon} />
+                      删除
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
-      </div>
-      {evidence ? (
-        <div className="mt-3 space-y-2 border-t pt-3">
-          {evidence.loading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner size={14} />
-              正在加载
-            </div>
-          ) : (
-            evidence.response?.messages.map((message) => (
-              <div
-                className="rounded-[8px] bg-surface-muted px-3 py-2 text-xs leading-5"
-                key={message.messageId}
-              >
-                {message.content}
+        {item.expiresAt ? (
+          <Alert className="mt-3 px-3 py-2 text-xs" variant="warning">
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={AlertCircleIcon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <AlertDescription className="text-xs leading-5">
+              {formatExpiryStatus(item.expiresAt)}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        <p className="mt-3 break-words text-sm leading-6">{item.content}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span>更新于 {formatTimestamp(item.updatedAt)}</span>
+        </div>
+        {evidence ? (
+          <div className="mt-3 space-y-2 border-t pt-3">
+            {evidence.loading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Spinner size={14} />
+                正在加载
               </div>
-            ))
-          )}
-        </div>
-      ) : null}
-    </div>
+            ) : (
+              evidence.response?.messages.map((message) => (
+                <div
+                  className="rounded-[8px] bg-surface-muted px-3 py-2 text-xs leading-5"
+                  key={message.messageId}
+                >
+                  {message.content}
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -489,4 +595,14 @@ function formatTimestamp(timestamp: number) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(timestamp);
+}
+
+function formatDate(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+  }).format(timestamp);
+}
+
+function formatExpiryStatus(expiresAt: number) {
+  return `短期记忆：${expiresAt > Date.now() ? "将于" : "已于"} ${formatDate(expiresAt)} 到期`;
 }

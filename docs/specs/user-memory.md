@@ -116,9 +116,10 @@ Agent 管理
 
 ### 3.3 记忆管理
 
-- 复用现有客户访问范围和 cursor 搜索能力。
-- 先分页客户，再批量读取当前页客户记忆，禁止逐客户 N+1 查询。
+- 复用现有客户访问范围，按记忆更新时间分页和搜索已有记忆的客户。
+- 客户、记忆和访问范围必须在同一分页查询中完成，禁止逐客户 N+1 查询。
 - 展示当前有效记忆数量，例如 `6 / 20`。
+- 客户记忆明细统一按记忆项 `id DESC` 展示。
 - 区分“人工”和“AI 提炼”。
 - 支持人工新增、编辑和删除。
 - 人工编辑 AI 记忆后，该条转为人工记忆。
@@ -420,6 +421,8 @@ AI 记忆应同时满足：
 - `recent_intent` 的过期时间优先设置为 7 至 30 天；仅客户明确表达较长期计划时才可延长，仍不得超过 180 天。
 - 其它分类的 `expiresAt` 固定为 `null`。
 - 当前有效人工和 AI 记忆总数最多 20。
+- 已存的过期记忆仍计入客户列表的记忆数量，并在管理页与聊天侧记忆明细中保留展示，明确标记为已过期；读取展示时不按 `expiresAt` 过滤。
+- 过期记忆不属于当前有效记忆，Agent 运行时注入和自动提炼的模型输入仍必须过滤。
 
 ## 7. 数据模型
 
@@ -857,7 +860,7 @@ POST /api/server/ai-hosting/user-memory/runs
 ### 11.3 客户记忆管理
 
 ```http
-GET    /api/server/ai-hosting/user-memory/customers?query=&cursor=&pageSize=20
+GET    /api/server/ai-hosting/user-memory/customers?query=&page=1&pageSize=20
 GET    /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId?platform=5
 GET    /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:itemId/evidence?platform=5
 POST   /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items?platform=5
@@ -865,7 +868,7 @@ PATCH  /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:
 DELETE /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:itemId?platform=5
 ```
 
-客户列表复用 Workbench cursor 分页和可见范围，用户记忆只批量补充当前页记忆。
+客户列表返回 `items / page / pageSize / total`，按记忆更新时间倒序排列，并显式限制当前 Workbench 平台；查询内复用 Workbench 相同的 owner/admin 全部可见、operator/viewer 仅所属席位客户可见规则。
 
 证据接口先验证客户访问范围，再验证 AI 条目、来源会话客户归属，最后复用 `WorkbenchService.getMessagesBySeqs()` 读取证据；不得复用只校验 UID 的洞察消息上下文接口。
 
@@ -926,7 +929,7 @@ Java Agent 运行时：
 5. 同一客户当日多个候选会话合并为一次请求。
 6. 候选查询复用 `(uid, started_at)` 限定 UID 和日期；上线前执行生产量级 `EXPLAIN ANALYZE`。
 7. 消息读取使用现有 `(session_id, source_message_time, source_message_id)` 索引。
-8. 客户列表先分页再批量读记忆，禁止 N+1。
+8. 客户列表基于 `(uid, update_time, id)` 索引分页，客户资料和访问范围使用集合查询，禁止 N+1。
 9. 单客户最多 20 条，整体解析和替换 JSON，不增加 JSON 索引或明细表。
 10. 运行历史有界保留 90 天。
 11. Batch 失败不得自动同步降级，避免成本突增。

@@ -17,7 +17,7 @@ This document is the handoff source of truth. Do not assume access to prior chat
 - [x] Spec、Contracts、四表 Schema、领域规则、管理 API、同步 Worker、Agent 菜单/Web 页面已分批落地。
 - [x] 默认额度 resolver 为 100，候选上限按 `max(200, customer_limit * 2)` 缩放；5 条门槛、每会话最后 50 条、零候选和空可读输入均已实现。
 - [x] claim fencing、config → run 统一锁顺序、人工版本屏障、自动日期防回退、最大尝试终止、失败项原 run 重试和 90 天有界清理已实现。
-- [x] 运行/客户/run-item cursor 分页、只读权限、人工 CRUD、证据查看、版本冲突刷新、loading/empty/error 恢复已实现。
+- [x] 运行/run-item cursor 分页、客户标准分页、只读权限、人工 CRUD、证据查看、版本冲突刷新、loading/empty/error 恢复已实现。
 - [x] Contracts/Backend/Web 全量测试与 build、MySQL 8.4 临时库端到端验证、`git diff --check` 已执行；最终结果以本文末尾验证记录和 PR CI 为准。
 - [ ] 共享 Ark 客户端（Task 4）按 Review 决策拆为独立 PR；本 PR 的用户记忆 Provider 不改动 Insights 行为。
 - [ ] 火山 Batch（Task 15）等待官方契约确认；本期 runtime 明确拒绝 `volcengine_batch`。
@@ -153,7 +153,7 @@ Steps:
 - [ ] Overview 返回 schedule/timezone、当前套餐额度、活动运行和最近运行，不返回 pending 积压字段。
 - [ ] Run DTO 返回 `quotaDate`、`customerLimit`、`candidateSessionLimit`、候选会话/客户、选中客户和结果计数。
 - [ ] 固定 `candidateSessionCount <= candidateSessionLimit`、`selectedCustomerCount <= customerLimit` 的 service/runtime invariant。
-- [ ] 客户列表和 run 列表使用 cursor，不增加 `OFFSET` page 契约。
+- [ ] run 列表使用 cursor；客户记忆列表使用 `page / pageSize / total` 标准分页。
 - [ ] 人工写请求校验 `expectedVersion >= 0`、合法分类、内容 `1..200` 和可选过期时间。
 - [ ] AI 来源字段只有有会话权限时返回。
 - [ ] 错误码包含 `ITEM_SUPERSEDED`、`ITEM_NO_READABLE_MESSAGES`，不包含 pending/未结束会话游标错误。
@@ -281,7 +281,7 @@ Steps:
 - [ ] 人工 CRUD 在客户行短事务中使用 expectedVersion，整体替换 JSON，更新 version/manual_updated_at，不修改 last_auto_quota_date。
 - [ ] 客户行不存在时人工新增创建 version 1；编辑/删除返回 item not found。
 - [ ] 读取时过滤过期项；条件清理冲突时重新读，不覆盖并发结果。
-- [ ] 客户页先由 Workbench 分页，再批量读当前页记忆。
+- [ ] 客户页按记忆更新时间分页，并在同一查询内关联客户资料和访问范围。
 - [ ] 实现 overview、run cursor list 和分页 run item detail；所有 SQL 强制 uid。
 - [ ] Overview 不查询 pending 数量，不提供立即维护能力。
 - [ ] 测试启停、版本冲突、人工时间更新、批量读取和非法 JSON。
@@ -302,7 +302,7 @@ Steps:
 
 Steps:
 
-- [ ] 复用 Workbench 现有客户 cursor 分页和 seat/sub-user 范围，不复制客户可见 SQL。
+- [ ] 客户列表使用与 Workbench 一致的 owner/admin 和 seat/sub-user 可见范围。
 - [ ] owner/admin 使用租户平台范围；operator/viewer 使用现有可访问席位范围。
 - [ ] 客户详情、人工写入和证据读取先验证客户访问；写操作再验证 owner/admin。
 - [ ] 证据先验证 AI item 和来源会话客户归属，再调用 `WorkbenchService.getMessagesBySeqs()`。
@@ -505,7 +505,7 @@ Steps:
 
 Steps:
 
-- [ ] API tests 覆盖 overview/settings、run list/detail、retry-failed、customer cursor list/detail、人工 CRUD 和 evidence。
+- [ ] API tests 覆盖 overview/settings、run list/detail、retry-failed、customer page list/detail、人工 CRUD 和 evidence。
 - [ ] 不实现 createRun 方法；测试明确不存在对应请求。
 - [ ] 所有请求通过 `apps/web/src/lib/request.ts` 的 `http`，路径使用 `/server/ai-hosting/user-memory/*`。
 - [ ] query trim 后发送；cursor/pageSize/platform/status 使用 URLSearchParams。
@@ -540,7 +540,7 @@ Steps:
 - [ ] owner/admin 可以启停、重试失败项和人工 CRUD；operator/viewer 只读。
 - [ ] 活动运行期间低频轮询，终态或离开页面后停止。
 - [ ] Run detail 分页加载 items，支持状态过滤。
-- [ ] 记忆管理复用 cursor 客户分页，展示 n/20、manual/AI、version 和证据入口。
+- [ ] 记忆管理使用标准客户分页，展示 n/20、manual/AI 和证据入口。
 - [ ] 人工编辑使用 Dialog，删除使用 AlertDialog；请求期间禁用重复提交和关闭路径。
 - [ ] 版本冲突重新加载详情并提示基于最新版本重试，不自动重放旧编辑。
 - [ ] 功能关闭时保留人工管理，明确自动维护已停止。

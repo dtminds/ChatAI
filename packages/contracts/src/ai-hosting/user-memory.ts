@@ -179,7 +179,9 @@ export const AgentUserMemoryCustomerListItemSchema = Type.Object({
 
 export const AgentUserMemoryCustomerListResponseSchema = Type.Object({
   items: Type.Array(AgentUserMemoryCustomerListItemSchema),
-  nextCursor: CursorSchema,
+  page: Type.Integer({ minimum: 1 }),
+  pageSize: Type.Integer({ minimum: 1, maximum: 100 }),
+  total: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
 export const AgentUserMemoryCustomerDetailResponseSchema = Type.Object({

@@ -1,4 +1,5 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
@@ -69,13 +70,15 @@ type ConversationListPanelProps = {
   /** 席位群聊 AI 托管能力；用于群聊列表头像 AI 托管角标 */
   seatGroupAIHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
-  isConversationLoading?: boolean;
+  isEmptyStateLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
   onRefreshUnreadConversations?: (mode: ChatMode) => void | Promise<void>;
-  onSelectConversation: (conversationId: string) => void | Promise<void>;
+  onSelectConversation: (
+    conversationId: string,
+  ) => boolean | void | Promise<boolean | void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
   onSelectView?: (view: ConversationView) => void | Promise<void>;
   onUnpinConversation?: (conversationId: string) => void | Promise<void>;
@@ -85,7 +88,7 @@ type ConversationListPanelProps = {
   unreadCountByMode?: Partial<Record<ChatMode, number>>;
 };
 
-export function ConversationListPanel({
+export const ConversationListPanel = memo(function ConversationListPanel({
   activeConversation,
   activeMode,
   activeView = DEFAULT_CONVERSATION_VIEW,
@@ -95,7 +98,7 @@ export function ConversationListPanel({
   isSeatAIHostingEnabled = false,
   seatGroupAIHostingEnabled = false,
   isConversationActionDisabled = false,
-  isConversationLoading = false,
+  isEmptyStateLoading = false,
   onMarkConversationRead,
   onMarkConversationUnread,
   onDeleteConversation,
@@ -138,6 +141,12 @@ export function ConversationListPanel({
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ChatMode>>(
     () => new Set([activeMode]),
   );
+  const activeConversationId = activeConversation?.id;
+  const [highlightedConversationId, setHighlightedConversationId] = useState(
+    activeConversationId,
+  );
+  const committedConversationIdRef = useRef(activeConversationId);
+  const selectRequestIdRef = useRef(0);
   const viewsByMode = useMemo(
     () => conversationViews ?? {
       group: activeView,
@@ -192,6 +201,77 @@ export function ConversationListPanel({
       return new Set([...currentModes, activeMode]);
     });
   }, [activeMode]);
+
+  useEffect(() => {
+    committedConversationIdRef.current = activeConversationId;
+    setHighlightedConversationId(activeConversationId);
+  }, [activeConversationId]);
+
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      const requestId = ++selectRequestIdRef.current;
+
+      flushSync(() => {
+        setHighlightedConversationId(conversationId);
+      });
+
+      // Defer store selection to the next task so the optimistic highlight can paint
+      // before the workbench's broad Zustand subscription re-renders the shell.
+      window.setTimeout(() => {
+        if (selectRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        void Promise.resolve(onSelectConversation(conversationId)).then(
+          (accepted) => {
+            if (selectRequestIdRef.current !== requestId) {
+              return;
+            }
+
+            if (accepted === false) {
+              setHighlightedConversationId(committedConversationIdRef.current);
+            }
+          },
+        );
+      }, 0);
+    },
+    [onSelectConversation],
+  );
+
+  const handleDeleteConversation = useCallback(
+    (conversationId: string) => {
+      void onDeleteConversation?.(conversationId);
+    },
+    [onDeleteConversation],
+  );
+
+  const handleMarkConversationRead = useCallback(
+    (conversationId: string) => {
+      void onMarkConversationRead?.(conversationId);
+    },
+    [onMarkConversationRead],
+  );
+
+  const handleMarkConversationUnread = useCallback(
+    (conversationId: string) => {
+      void onMarkConversationUnread?.(conversationId);
+    },
+    [onMarkConversationUnread],
+  );
+
+  const handlePinConversation = useCallback(
+    (conversationId: string) => {
+      void onPinConversation?.(conversationId);
+    },
+    [onPinConversation],
+  );
+
+  const handleUnpinConversation = useCallback(
+    (conversationId: string) => {
+      void onUnpinConversation?.(conversationId);
+    },
+    [onUnpinConversation],
+  );
 
   const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
@@ -308,9 +388,7 @@ export function ConversationListPanel({
         <Tabs
           className="flex h-full min-h-0 flex-col"
           onValueChange={(value) => {
-            startTransition(() => {
-              void onSelectMode(value as ChatMode);
-            });
+            void onSelectMode(value as ChatMode);
           }}
           value={activeMode}
         >
@@ -352,7 +430,9 @@ export function ConversationListPanel({
                     }
                   >
                     <div className="bg-surface px-2 py-1.5">
-                      {modeConversations.length === 0 && isConversationLoading ? (
+                      {mode === activeMode &&
+                      modeConversations.length === 0 &&
+                      isEmptyStateLoading ? (
                         <div className="flex min-h-40 items-center justify-center gap-2 px-2 py-6 text-[13px] text-muted-foreground">
                           <DotMatrixLoader
                             ariaLabel="正在加载会话"
@@ -363,7 +443,8 @@ export function ConversationListPanel({
                           <span>正在加载会话</span>
                         </div>
                       ) : null}
-                      {modeConversations.length === 0 && !isConversationLoading ? (
+                      {modeConversations.length === 0 &&
+                      (mode !== activeMode || !isEmptyStateLoading) ? (
                         <Empty
                           aria-label="暂无数据"
                           className="min-h-40 gap-0 px-2 py-6 text-[13px] text-muted-foreground/40"
@@ -385,39 +466,25 @@ export function ConversationListPanel({
                       {modeConversations.map((conversation) => (
                         <ConversationCard
                           composerDraft={
-                            conversation.id === activeConversation?.id
+                            conversation.id === highlightedConversationId
                               ? undefined
                               : composerDraftsByConversationId[conversation.id]
                           }
                           conversation={conversation}
                           isActionDisabled={isConversationActionDisabled}
-                          isActive={conversation.id === activeConversation?.id}
+                          isActive={conversation.id === highlightedConversationId}
                           isAIHostingEnabled={isConversationAIHostingEnabled(
                             conversation,
                             isSeatAIHostingEnabled,
                             seatGroupAIHostingEnabled,
                           )}
                           key={conversation.id}
-                          onDelete={() => {
-                            void onDeleteConversation?.(conversation.id);
-                          }}
-                          onMarkRead={() => {
-                            void onMarkConversationRead?.(conversation.id);
-                          }}
-                          onMarkUnread={() => {
-                            void onMarkConversationUnread?.(conversation.id);
-                          }}
-                          onPin={() => {
-                            void onPinConversation?.(conversation.id);
-                          }}
-                          onSelect={() => {
-                            startTransition(() => {
-                              void onSelectConversation(conversation.id);
-                            });
-                          }}
-                          onUnpin={() => {
-                            void onUnpinConversation?.(conversation.id);
-                          }}
+                          onDelete={handleDeleteConversation}
+                          onMarkRead={handleMarkConversationRead}
+                          onMarkUnread={handleMarkConversationUnread}
+                          onPin={handlePinConversation}
+                          onSelect={handleSelectConversation}
+                          onUnpin={handleUnpinConversation}
                         />
                       ))}
                       {viewsByMode[mode] === "unread" && hasMoreUnreadByMode?.[mode] ? (
@@ -445,7 +512,7 @@ export function ConversationListPanel({
     </section>
     </>
   );
-}
+});
 
 const conversationModeTabClassName =
   "relative rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";

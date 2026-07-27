@@ -159,7 +159,10 @@ describe("backend app", () => {
 
   it("disables request logging for playable voice checks", async () => {
     expect(shouldDisableRequestLogging({ url: "/api/server/media/playable-voice?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/worker-observability" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/worker-observability/summary?refresh=1" })).toBe(true);
     expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/overview" })).toBe(false);
   });
 
   it("serves and verifies ALTCHA challenges once", async () => {

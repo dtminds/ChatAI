@@ -56,6 +56,7 @@ import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { insightChartColors, insightDimensionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 type BusinessTopic = InsightBusinessTopicsResponse["topics"][number];
 type BusinessSession = InsightOverviewSessionsResponse["items"][number];
@@ -124,6 +125,7 @@ const assetDateRangePresets: Array<{ label: string; range: () => InsightDateRang
 ];
 
 export function InsightsBusinessPage() {
+  const { capabilities } = useInsightsCapabilities();
   const [activeDimension, setActiveDimension] = useState<BusinessDimension>("intent");
   const [assetFrom, setAssetFrom] = useState(() => getRecentDateRange(7).from);
   const [assetTo, setAssetTo] = useState(() => getRecentDateRange(7).to);
@@ -231,7 +233,10 @@ export function InsightsBusinessPage() {
   }, [activeTopic, activeFrom, relatedSessionsPageNumber, activeTo]);
 
   return (
-    <InsightsLayout title="业务洞察">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="业务洞察"
+    >
       <div className="space-y-5">
         <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <InsightsPageHeader
@@ -261,7 +266,6 @@ export function InsightsBusinessPage() {
             )}
           </div>
         </section>
-
         {businessError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             数据加载失败

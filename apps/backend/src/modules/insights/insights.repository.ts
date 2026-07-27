@@ -77,6 +77,7 @@ type JsonColumnValue =
   | undefined;
 
 type CurrentSessionQueryRow = {
+  agent_message_count: number | string;
   action_id?: number | string | null;
   action_status?: string | null;
   action_type?: string | null;
@@ -84,12 +85,17 @@ type CurrentSessionQueryRow = {
   action_title?: string | null;
   conversation_id: number | string;
   current_snapshot_id: number | string | null;
+  customer_message_count: number | string;
   ended_at: number | string | null;
   evidence_message_id?: number | string | null;
   evidence_role?: string | null;
+  final_analysis_failed: number | string;
   generated_at: number | string | Date | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
+  logical_session_status: string;
+  live_analysis_enabled: number | string;
+  message_count: number | string;
   phase: string | null;
   problem_detected: number | string | null;
   problem_confidence?: number | string | null;
@@ -618,7 +624,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     payload: InsightFeatureConfigUpdateRequest,
   ): Promise<InsightFeatureConfig> {
     const current = await this.getFeatureConfig(scope);
-    const shouldQueueCleanup = current.insightEnabled && !payload.insightEnabled;
     const lastEnableTime = payload.insightEnabled && !current.insightEnabled
       ? Date.now()
       : current.lastEnableTime ?? null;
@@ -646,27 +651,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         update_time: new Date(),
       })
       .execute();
-
-    if (shouldQueueCleanup) {
-      const cleanupEnableEpoch = current.lastEnableTime ?? 0;
-
-      await this.db
-        .insertInto("xy_wap_embed_insight_job")
-        .values({
-          analysis_scope: "all",
-          idempotency_key: `cleanup_disabled_insights:${scope.uid}:${cleanupEnableEpoch}`,
-          job_type: "cleanup_disabled_insights",
-          priority: 30,
-          rescan_task_id: null,
-          run_after: new Date(),
-          status: "pending",
-          target_id: String(cleanupEnableEpoch),
-          target_type: "uid",
-          uid: scope.uid,
-        })
-        .ignore()
-        .executeTakeFirst();
-    }
 
     return this.getFeatureConfig(scope);
   }
@@ -1923,6 +1907,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let query = buildCurrentSessionBaseQuery(this.db)
       .select([
         "session.current_snapshot_id as current_snapshot_id",
+        "session.agent_message_count as agent_message_count",
+        "session.customer_message_count as customer_message_count",
         "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
@@ -1932,9 +1918,29 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.ended_at as ended_at",
         "session.id as session_id",
         "session.last_message_at as last_message_at",
+        "session.message_count as message_count",
+        "session.status as logical_session_status",
         "session.started_at as started_at",
         "session.third_external_userid as third_external_userid",
         "session.third_userid as third_userid",
+        sql<number>`coalesce(analysis_policy.live_analysis_enabled, 1)`.as("live_analysis_enabled"),
+        sql<number>`case when exists (
+          select 1
+          from xy_wap_embed_analysis_run as final_run
+          where final_run.session_id = session.id
+            and final_run.mode = 'final'
+            and final_run.status = 'failed'
+            and final_run.id = (
+              select max(latest_final_run.id)
+              from xy_wap_embed_analysis_run as latest_final_run
+              where latest_final_run.session_id = session.id
+                and latest_final_run.mode = 'final'
+            )
+            and (
+              snapshot.create_time is null
+              or final_run.create_time > snapshot.create_time
+            )
+        ) then 1 else 0 end`.as("final_analysis_failed"),
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.source_message_high_watermark as source_message_high_watermark",
@@ -1948,6 +1954,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let groupedQuery = query
       .groupBy([
         "session.current_snapshot_id",
+        "session.agent_message_count",
+        "session.customer_message_count",
         "problem.confidence",
         "problem.problem_detected",
         "problem.problem_summary",
@@ -1957,9 +1965,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.ended_at",
         "session.id",
         "session.last_message_at",
+        "session.message_count",
+        "session.status",
         "session.started_at",
         "session.third_external_userid",
         "session.third_userid",
+        "analysis_policy.live_analysis_enabled",
         "snapshot.phase",
         "snapshot.create_time",
         "snapshot.status",
@@ -2007,10 +2018,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
           sql<number>`coalesce(sum(session.customer_message_count), 0)`.as("customer_messages"),
           sql<number>`coalesce(sum(session.agent_message_count), 0)`.as("agent_messages"),
           sql<number>`count(distinct session.conversation_id)`.as("consulting_customers"),
-          sql<number>`count(distinct case when snapshot.status = 'ready' then session.id end)`.as("ready"),
-          sql<number>`count(distinct case when snapshot.status = 'partial' then session.id end)`.as("partial"),
-          sql<number>`count(distinct case when snapshot.status = 'failed' then session.id end)`.as("failed"),
-          sql<number>`count(distinct case when snapshot.status = 'stale' then session.id end)`.as("stale"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'ready' then session.id end)`.as("ready"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'partial' then session.id end)`.as("partial"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'failed' then session.id end)`.as("failed"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'stale' then session.id end)`.as("stale"),
           sql<number>`count(distinct case when problem.resolution_status = 'resolved' then session.id end)`.as("resolved_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partially_resolved_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved_resolution_sessions"),
@@ -2099,6 +2110,24 @@ export class InsightsRepository implements InsightsRepositoryPort {
       })),
       unresolvedSessions: parseNumber(totals?.unresolved_sessions ?? 0),
     };
+  }
+
+  async getSessionizationCoverageStart(
+    scope: InsightsUidScope,
+  ): Promise<number | undefined> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_sync_cursor")
+      .select(["create_time", "uid"])
+      .where("source", "=", "xy_wap_embed_msg_audit_info")
+      .where("uid", "in", [0, scope.uid])
+      .execute() as Array<{ create_time: Date | string; uid: number | string }>;
+    const timestamps = rows
+      .map((row) => row.create_time instanceof Date
+        ? row.create_time.getTime()
+        : Date.parse(row.create_time))
+      .filter(Number.isFinite);
+
+    return timestamps.length > 0 ? Math.max(...timestamps) : undefined;
   }
 
   async getBusinessTopicAnalytics(
@@ -3913,17 +3942,19 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         agentSeatId: normalizeOptionalString(
           readOptionalDetailField<number | string>(row, "agent_seat_id"),
         ),
-        analysisStatus: row.current_snapshot_id == null || row.status == null
-          ? "analyzing"
-          : normalizeAnalysisStatus(row.status),
+        agentMessageCount: parseNumber(row.agent_message_count),
+        analysisStatus: deriveAnalysisStatus(row),
         conversationId: String(row.conversation_id),
         currentSnapshotId: normalizeOptionalId(row.current_snapshot_id),
         customerAvatarUrl: null,
+        customerMessageCount: parseNumber(row.customer_message_count),
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         generatedAt: parseNullableNumber(row.generated_at) ?? undefined,
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
+        logicalSessionStatus: normalizeLogicalSessionStatus(row.logical_session_status),
+        messageCount: parseNumber(row.message_count),
         phase: row.phase == null ? undefined : row.phase === "final" ? "final" : "live",
         problemDetected: parseNullableNumber(row.problem_detected) === 1,
         problemEvidenceMessageIds: [],
@@ -3955,6 +3986,43 @@ function readOptionalDetailField<T extends string | number>(
   }
 
   return (row as unknown as Record<typeof field, T | null>)[field] ?? null;
+}
+
+function deriveAnalysisStatus(row: CurrentSessionQueryRow): InsightAnalysisStatus | undefined {
+  if (row.logical_session_status === "closed_pending_analysis") {
+    return "analyzing";
+  }
+
+  if (parseNumber(row.final_analysis_failed) === 1) {
+    return "failed";
+  }
+
+  if (row.current_snapshot_id == null || row.status == null) {
+    if (row.logical_session_status === "open") {
+      return row.live_analysis_enabled == null || parseNumber(row.live_analysis_enabled) === 1
+        ? "analyzing"
+        : undefined;
+    }
+
+    return "skipped";
+  }
+
+  return normalizeAnalysisStatus(row.status);
+}
+
+function normalizeLogicalSessionStatus(
+  value: string,
+): InsightCurrentSessionRow["logicalSessionStatus"] {
+  if (
+    value === "analyzed"
+    || value === "canceled"
+    || value === "closed_pending_analysis"
+    || value === "open"
+  ) {
+    return value;
+  }
+
+  return "analyzed";
 }
 
 function normalizeOptionalString(value: number | string | null) {
@@ -4782,6 +4850,11 @@ function buildAnalyzedCurrentSessionBaseQuery(db: Kysely<Database>) {
 function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
   return db
     .selectFrom("xy_wap_embed_logical_session as session")
+    .leftJoin("xy_wap_embed_insight_analysis_policy as analysis_policy", (join) =>
+      join
+        .onRef("analysis_policy.uid", "=", "session.uid")
+        .on("analysis_policy.enabled", "=", 1),
+    )
     .leftJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
       join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
     );
@@ -4879,7 +4952,7 @@ function applyQualityResultSessionStatusFilter<Query>(
 }
 
 function needsCurrentSessionHydrationJoins(filters: InsightsOverviewFilters) {
-  const keyword = Boolean(filters.keyword?.trim());
+  const keyword = Boolean(filters.keyword?.trim()) && filters.searchMode !== "basic";
   return (
     keyword
     || Boolean(filters.resolutionStatus)
@@ -4926,11 +4999,48 @@ function applyCurrentSessionFilters<Query>(
   }
 
   if (filters.analysisStatus) {
-    // "analyzing" only matches logical-session based queries that left-join snapshot.
-    // Analyzed-only queries intentionally cannot return sessions without a current snapshot.
-    next = filters.analysisStatus === "analyzing"
-      ? next.where(sql<boolean>`(session.current_snapshot_id is null or snapshot.id is null)`) as typeof next
-      : next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+    if (filters.analysisStatus === "analyzing") {
+      next = next.where(sql<boolean>`
+        session.status = 'closed_pending_analysis'
+        or (
+          session.status = 'open'
+          and session.current_snapshot_id is null
+          and coalesce(analysis_policy.live_analysis_enabled, 1) = 1
+        )
+      `) as typeof next;
+    } else if (filters.analysisStatus === "skipped") {
+      next = next.where(sql<boolean>`
+        session.status in ('analyzed', 'canceled')
+        and session.current_snapshot_id is null
+      `) as typeof next;
+    } else if (filters.analysisStatus === "failed") {
+      next = next.where(sql<boolean>`
+        (snapshot.phase = 'final' and snapshot.status = 'failed')
+        or (
+          session.status in ('analyzed', 'canceled')
+          and exists (
+            select 1
+            from xy_wap_embed_analysis_run as final_run
+            where final_run.session_id = session.id
+              and final_run.mode = 'final'
+              and final_run.status = 'failed'
+              and final_run.id = (
+                select max(latest_final_run.id)
+                from xy_wap_embed_analysis_run as latest_final_run
+                where latest_final_run.session_id = session.id
+                  and latest_final_run.mode = 'final'
+              )
+              and (
+                snapshot.create_time is null
+                or final_run.create_time > snapshot.create_time
+              )
+          )
+        )
+      `) as typeof next;
+    } else {
+      next = next.where("snapshot.phase", "=", "final") as typeof next;
+      next = next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+    }
   }
 
   if (filters.resolutionStatus) {
@@ -4950,13 +5060,39 @@ function applyCurrentSessionFilters<Query>(
 
   if (keyword) {
     const pattern = `%${escapeLikePattern(keyword)}%`;
-    next = next.where(sql<boolean>`
-      (
+    if (filters.searchMode === "basic") {
+      next = next.where(sql<boolean>`
+        cast(session.id as char) like ${pattern} escape '\\'
+        or cast(session.conversation_id as char) like ${pattern} escape '\\'
+        or session.third_external_userid like ${pattern} escape '\\'
+        or session.third_userid like ${pattern} escape '\\'
+        or exists (
+          select 1
+          from xy_wap_embed_contact as contact
+          where contact.uid = session.uid
+            and contact.third_external_userid = session.third_external_userid
+            and contact.biz_status = 1
+            and (
+              contact.name like ${pattern} escape '\\'
+              or contact.real_name like ${pattern} escape '\\'
+            )
+        )
+        or exists (
+          select 1
+          from xy_wap_embed_user_seat as seat
+          where seat.uid = session.uid
+            and seat.third_userid = session.third_userid
+            and seat.biz_status = 1
+            and seat.third_user_name like ${pattern} escape '\\'
+        )
+      `) as typeof next;
+    } else {
+      next = next.where(sql<boolean>`
         problem.problem_summary like ${pattern} escape '\\'
         or summary.session_title like ${pattern} escape '\\'
         or summary.summary_text like ${pattern} escape '\\'
-      )
-    `) as typeof next;
+      `) as typeof next;
+    }
   }
 
   if (filters.tagId) {

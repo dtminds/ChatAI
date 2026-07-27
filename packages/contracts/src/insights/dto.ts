@@ -7,6 +7,12 @@ export const InsightAnalysisStatusSchema = Type.Union([
   Type.Literal("failed"),
   Type.Literal("stale"),
   Type.Literal("partial"),
+  Type.Literal("skipped"),
+]);
+
+export const InsightModeSchema = Type.Union([
+  Type.Literal("basic"),
+  Type.Literal("insight"),
 ]);
 
 export const InsightActionStatusSchema = Type.Union([
@@ -83,23 +89,29 @@ export const InsightOverviewTrendPointSchema = Type.Object({
 });
 
 export const InsightOverviewSessionItemSchema = Type.Object({
+  agentMessageCount: Type.Number(),
   agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.Optional(Type.String()),
-  analysisStatus: InsightAnalysisStatusSchema,
+  analysisPhase: Type.Optional(Type.Union([Type.Literal("live"), Type.Literal("final")])),
+  analysisStatus: Type.Optional(InsightAnalysisStatusSchema),
   conversationId: Type.String(),
+  customerMessageCount: Type.Number(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   endedAt: Type.Optional(Type.Number()),
   lastMessageAt: Type.Optional(Type.Number()),
+  messageCount: Type.Number(),
   problemSummary: Type.Optional(Type.String()),
-  resolutionStatus: InsightResolutionStatusSchema,
+  resolutionStatus: Type.Optional(InsightResolutionStatusSchema),
   sessionId: Type.String(),
+  sessionState: Type.Union([Type.Literal("open"), Type.Literal("ended")]),
   startedAt: Type.Number(),
-  summarySessionTitle: Type.String(),
+  summarySessionTitle: Type.Optional(Type.String()),
 });
 
 export const InsightOverviewSessionsPageSchema = Type.Object({
   items: Type.Array(InsightOverviewSessionItemSchema),
+  mode: InsightModeSchema,
   page: Type.Number(),
   pageSize: Type.Number(),
   total: Type.Number(),
@@ -109,28 +121,219 @@ export const InsightOverviewSessionsPageSchema = Type.Object({
 export const InsightOverviewSessionsResponseSchema = InsightOverviewSessionsPageSchema;
 
 export const InsightsOverviewResponseSchema = Type.Object({
-  actionItemsOpen: Type.Number(),
-  analysis: Type.Object({
+  actionItemsOpen: Type.Optional(Type.Number()),
+  analysis: Type.Optional(Type.Object({
     failed: Type.Number(),
     partial: Type.Number(),
     ready: Type.Number(),
     stale: Type.Number(),
-  }),
+  })),
   comparison: InsightOverviewComparisonSchema,
-  problemSessions: Type.Number(),
-  readySessions: Type.Number(),
-  resolution: Type.Object({
+  comparisonAvailable: Type.Boolean(),
+  mode: InsightModeSchema,
+  problemSessions: Type.Optional(Type.Number()),
+  readySessions: Type.Optional(Type.Number()),
+  resolution: Type.Optional(Type.Object({
     noCustomerProblem: Type.Number(),
     partiallyResolved: Type.Number(),
     resolved: Type.Number(),
     unknown: Type.Number(),
     unresolved: Type.Number(),
-  }),
-  totalSessions: Type.Number(),
+  })),
+  totalSessions: Type.Optional(Type.Number()),
   totals: InsightOverviewTotalsSchema,
   trend: Type.Array(InsightOverviewTrendPointSchema),
-  unresolvedSessions: Type.Number(),
+  unresolvedSessions: Type.Optional(Type.Number()),
 });
+
+export const InsightCapabilitiesResponseSchema = Type.Object({
+  canManageInsights: Type.Boolean(),
+  canViewWorkerObservability: Type.Boolean(),
+  insightAvailable: Type.Boolean(),
+  mode: InsightModeSchema,
+}, { additionalProperties: false });
+
+export const InsightsWorkerPipelineSchema = Type.Union([
+  Type.Literal("discovery"),
+  Type.Literal("sessionization"),
+  Type.Literal("analysis"),
+]);
+
+export const InsightsWorkerHealthSchema = Type.Union([
+  Type.Literal("healthy"),
+  Type.Literal("degraded"),
+  Type.Literal("offline"),
+  Type.Literal("unknown"),
+]);
+
+export const InsightsWorkerActivitySchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("running"),
+  Type.Literal("possibly_stalled"),
+  Type.Literal("unknown"),
+]);
+
+export const InsightsWorkerUidStateSchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("queued"),
+  Type.Literal("processing"),
+  Type.Literal("retrying"),
+  Type.Literal("blocked"),
+  Type.Literal("error"),
+]);
+
+export const InsightsWorkerPipelineRuntimeSchema = Type.Object({
+  activity: InsightsWorkerActivitySchema,
+  health: InsightsWorkerHealthSchema,
+  lastDurationMs: Type.Optional(Type.Number()),
+  lastErrorCode: Type.Optional(Type.String()),
+  lastFailureAt: Type.Optional(Type.Number()),
+  lastStartedAt: Type.Optional(Type.Number()),
+  lastSuccessAt: Type.Optional(Type.Number()),
+  pipeline: InsightsWorkerPipelineSchema,
+  reportedAt: Type.Optional(Type.Number()),
+  reportedBy: Type.Optional(Type.String()),
+  runningDurationMs: Type.Optional(Type.Number()),
+}, { additionalProperties: false });
+
+export const InsightsWorkerCursorSchema = Type.Object({
+  cursorAuditId: Type.Number(),
+  cursorMsgtime: Type.Number(),
+  updateTime: Type.Number(),
+}, { additionalProperties: false });
+
+export const InsightsWorkerSessionizationStateSchema = Type.Object({
+  attempt: Type.Optional(Type.Number()),
+  errorCode: Type.Optional(Type.String()),
+  jobId: Type.Optional(Type.String()),
+  leaseUntil: Type.Optional(Type.Number()),
+  maxAttempts: Type.Optional(Type.Number()),
+  queueAgeMs: Type.Number(),
+  runAfter: Type.Optional(Type.Number()),
+  state: InsightsWorkerUidStateSchema,
+}, { additionalProperties: false });
+
+export const InsightsWorkerAnalysisStateSchema = Type.Object({
+  failedLast24h: Type.Number(),
+  pending: Type.Number(),
+  processing: Type.Number(),
+  queueAgeMs: Type.Number(),
+  retrying: Type.Number(),
+  state: InsightsWorkerUidStateSchema,
+}, { additionalProperties: false });
+
+export const InsightsWorkerSessionStateSchema = Type.Object({
+  earliestNextCloseAt: Type.Optional(Type.Number()),
+  open: Type.Number(),
+  overdue: Type.Number(),
+}, { additionalProperties: false });
+
+export const InsightsWorkerObservedUidCountsSchema = Type.Object({
+  blocked: Type.Number(),
+  error: Type.Number(),
+  idle: Type.Number(),
+  processing: Type.Number(),
+  queued: Type.Number(),
+  retrying: Type.Number(),
+  total: Type.Number(),
+}, { additionalProperties: false });
+
+export const InsightsWorkerSummaryResponseSchema = Type.Object({
+  analysisJobs: Type.Object({
+    expiredLease: Type.Number(),
+    failedLast24h: Type.Number(),
+    pending: Type.Number(),
+    retrying: Type.Number(),
+    running: Type.Number(),
+  }, { additionalProperties: false }),
+  discovery: Type.Object({
+    auditIdGap: Type.Optional(Type.Number()),
+    cursorAuditId: Type.Optional(Type.Number()),
+    hasBacklog: Type.Boolean(),
+    sourceHeadAuditId: Type.Optional(Type.Number()),
+  }, { additionalProperties: false }),
+  observedAt: Type.Number(),
+  observedUids: InsightsWorkerObservedUidCountsSchema,
+  pipelines: Type.Array(InsightsWorkerPipelineRuntimeSchema),
+  sessionizationJobs: Type.Object({
+    expiredLease: Type.Number(),
+    pending: Type.Number(),
+    retrying: Type.Number(),
+    running: Type.Number(),
+  }, { additionalProperties: false }),
+  sessions: Type.Object({
+    open: Type.Number(),
+    overdue: Type.Number(),
+  }, { additionalProperties: false }),
+}, { additionalProperties: false });
+
+export const InsightsWorkerUidItemSchema = Type.Object({
+  analysis: InsightsWorkerAnalysisStateSchema,
+  cursor: Type.Optional(InsightsWorkerCursorSchema),
+  overallState: InsightsWorkerUidStateSchema,
+  recentError: Type.Optional(Type.Object({
+    errorCode: Type.String(),
+    occurredAt: Type.Number(),
+  }, { additionalProperties: false })),
+  sessionization: InsightsWorkerSessionizationStateSchema,
+  sessions: InsightsWorkerSessionStateSchema,
+  uid: Type.Number(),
+}, { additionalProperties: false });
+
+export const InsightsWorkerUidListResponseSchema = Type.Object({
+  items: Type.Array(InsightsWorkerUidItemSchema),
+  observedAt: Type.Number(),
+  page: Type.Number(),
+  pageSize: Type.Number(),
+  total: Type.Number(),
+  totalPages: Type.Number(),
+}, { additionalProperties: false });
+
+export const InsightsWorkerUidDetailResponseSchema = Type.Object({
+  analysis: InsightsWorkerAnalysisStateSchema,
+  cursor: Type.Optional(InsightsWorkerCursorSchema),
+  hasPendingMessages: Type.Optional(Type.Boolean()),
+  observedAt: Type.Number(),
+  overallState: InsightsWorkerUidStateSchema,
+  recentAnalysisRuns: Type.Array(Type.Object({
+    analysisScope: Type.String(),
+    errorCode: Type.Optional(Type.String()),
+    finishedAt: Type.Optional(Type.Number()),
+    mode: Type.String(),
+    runId: Type.String(),
+    sessionId: Type.String(),
+    startedAt: Type.Number(),
+    status: Type.String(),
+  }, { additionalProperties: false })),
+  recentErrors: Type.Array(Type.Object({
+    errorCode: Type.String(),
+    jobId: Type.String(),
+    jobType: Type.String(),
+    occurredAt: Type.Number(),
+    status: Type.String(),
+  }, { additionalProperties: false })),
+  recentRescans: Type.Array(Type.Object({
+    analysisScope: InsightRescanAnalysisScopeSchema,
+    status: InsightRescanTaskStatusSchema,
+    taskId: Type.String(),
+    updateTime: Type.Number(),
+  }, { additionalProperties: false })),
+  recentSessions: Type.Array(Type.Object({
+    closeReason: Type.Optional(Type.String()),
+    endedAt: Type.Optional(Type.Number()),
+    nextCloseAt: Type.Optional(Type.Number()),
+    sessionId: Type.String(),
+    startedAt: Type.Number(),
+    status: Type.String(),
+  }, { additionalProperties: false })),
+  sessionization: InsightsWorkerSessionizationStateSchema,
+  sessions: InsightsWorkerSessionStateSchema,
+  sourceHead: Type.Optional(Type.Object({
+    auditId: Type.Number(),
+    msgtime: Type.Number(),
+  }, { additionalProperties: false })),
+  uid: Type.Number(),
+}, { additionalProperties: false });
 
 export const InsightFilterOptionSchema = Type.Object({
   id: Type.String(),
@@ -395,7 +598,7 @@ export const InsightCreateActionItemResponseSchema = Type.Object({
 
 export const InsightDetailResponseSchema = Type.Object({
   actionItems: Type.Array(InsightDetailActionItemSchema),
-  analysisStatus: InsightAnalysisStatusSchema,
+  analysisStatus: Type.Optional(InsightAnalysisStatusSchema),
   currentSnapshotId: Type.Optional(Type.String()),
   entities: Type.Array(InsightDetailEntitySchema),
   evidenceItems: Type.Array(InsightEvidenceItemSchema),
@@ -653,6 +856,23 @@ export const InsightConfigDeletedResponseSchema = Type.Object({
 
 export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
+export type InsightMode = Static<typeof InsightModeSchema>;
+export type InsightCapabilitiesResponse = Static<typeof InsightCapabilitiesResponseSchema>;
+export type InsightsWorkerActivity = Static<typeof InsightsWorkerActivitySchema>;
+export type InsightsWorkerAnalysisState = Static<typeof InsightsWorkerAnalysisStateSchema>;
+export type InsightsWorkerHealth = Static<typeof InsightsWorkerHealthSchema>;
+export type InsightsWorkerPipeline = Static<typeof InsightsWorkerPipelineSchema>;
+export type InsightsWorkerPipelineRuntime = Static<typeof InsightsWorkerPipelineRuntimeSchema>;
+export type InsightsWorkerSessionizationState = Static<
+  typeof InsightsWorkerSessionizationStateSchema
+>;
+export type InsightsWorkerSummaryResponse = Static<typeof InsightsWorkerSummaryResponseSchema>;
+export type InsightsWorkerUidDetailResponse = Static<
+  typeof InsightsWorkerUidDetailResponseSchema
+>;
+export type InsightsWorkerUidItem = Static<typeof InsightsWorkerUidItemSchema>;
+export type InsightsWorkerUidListResponse = Static<typeof InsightsWorkerUidListResponseSchema>;
+export type InsightsWorkerUidState = Static<typeof InsightsWorkerUidStateSchema>;
 export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScopeSchema>;
 export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
 export type InsightCreateActionItemRequest = Static<typeof InsightCreateActionItemRequestSchema>;

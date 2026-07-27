@@ -5982,7 +5982,7 @@ describe("useWorkbenchStore", () => {
     vi.useRealTimers();
   });
 
-  it("loads unread conversations from server and applies the returned seat unread summary", async () => {
+  it("supplements missing unread conversations without overwriting local state", async () => {
     const baseService = createMockWorkbenchService();
     const getConversations = vi.fn(async (accountId, options) => {
       const result = await baseService.getConversations(accountId, options);
@@ -5992,6 +5992,21 @@ describe("useWorkbenchStore", () => {
           ...result,
           hasMore: true,
           items: [
+            {
+              conversationAIHostingSwitch: false,
+              conversationId: "conv-001",
+              handoffMsgId: 0,
+              customerAvatar: "",
+              customerId: "customer-stale-local",
+              customerName: "服务端旧会话",
+              lastMessage: "旧快照",
+              lastMessageTime: 1_778_600_000_000,
+              mode: "single" as const,
+              priority: "medium" as const,
+              replied: false,
+              seatId: "drc",
+              unreadCount: 9,
+            },
             {
               conversationAIHostingSwitch: false,
               conversationId: "server-unread-single",
@@ -6039,10 +6054,22 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    const stateBeforeSupplement = useWorkbenchStore.getState();
+    const activeAccountBeforeSupplement = stateBeforeSupplement.accounts.find(
+      (account) => account.id === "drc",
+    );
+    const localConversationBeforeSupplement =
+      stateBeforeSupplement.conversationListsByScope.drc?.find(
+        (conversation) => conversation.id === "conv-001",
+      );
+
     await useWorkbenchStore.getState().loadUnreadConversations("single");
 
     const state = useWorkbenchStore.getState();
     const activeAccount = state.accounts.find((account) => account.id === "drc");
+    const localConversation = state.conversationListsByScope.drc?.find(
+      (conversation) => conversation.id === "conv-001",
+    );
 
     expect(getConversations).toHaveBeenCalledWith(
       "drc",
@@ -6052,11 +6079,8 @@ describe("useWorkbenchStore", () => {
         unreadOnly: true,
       }),
     );
-    expect(activeAccount).toMatchObject({
-      groupUnreadCount: 4,
-      singleUnreadCount: 12,
-      unreadCount: 16,
-    });
+    expect(activeAccount).toBe(activeAccountBeforeSupplement);
+    expect(localConversation).toBe(localConversationBeforeSupplement);
     expect(state.conversationListsByScope.drc).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -44,7 +44,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -125,7 +124,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -185,7 +183,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -243,7 +240,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -314,7 +310,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -376,7 +371,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -437,7 +431,6 @@ describe("ChatPanel", () => {
         canSendMessage={false}
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -503,7 +496,6 @@ describe("ChatPanel", () => {
         conversationAIHostingEnabled
         composerPlaceholder="请输入消息……"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -581,7 +573,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -650,7 +641,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -741,7 +731,6 @@ describe("ChatPanel", () => {
         seatAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -813,7 +802,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -895,7 +883,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="请输入消息……"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -965,7 +952,6 @@ describe("ChatPanel", () => {
         canSendMessage={false}
         composerPlaceholder="当前账号未接管，暂时无法发送消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1033,7 +1019,6 @@ describe("ChatPanel", () => {
         seatAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1104,7 +1089,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1180,7 +1164,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1258,7 +1241,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1326,7 +1308,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1393,7 +1374,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         fullAutoActionPending
         groupMembers={[]}
@@ -1472,7 +1452,6 @@ describe("ChatPanel", () => {
         shouldShowConversationAIHostingControl
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
@@ -1536,7 +1515,6 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        draft=""
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}

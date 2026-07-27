@@ -669,10 +669,6 @@ export interface XyWapEmbedAnalysisRun {
    */
   analysis_scope: string;
   /**
-   * 成本估算
-   */
-  cost_estimate: string | null;
-  /**
    * 创建时间
    */
   create_time: Generated<Date>;
@@ -693,10 +689,6 @@ export interface XyWapEmbedAnalysisRun {
    */
   id: Generated<number>;
   /**
-   * 输入token数
-   */
-  input_token_count: number | null;
-  /**
    * 关联任务ID
    */
   job_id: number | null;
@@ -705,21 +697,9 @@ export interface XyWapEmbedAnalysisRun {
    */
   mode: string;
   /**
-   * 模型名称
-   */
-  model_name: string | null;
-  /**
-   * 输出token数
-   */
-  output_token_count: number | null;
-  /**
    * 提示词版本
    */
   prompt_version: string | null;
-  /**
-   * 模型服务商编码
-   */
-  provider_code: string | null;
   /**
    * 原始输出引用
    */
@@ -740,6 +720,10 @@ export interface XyWapEmbedAnalysisRun {
    * 运行状态，running：执行中，succeeded：成功，partial：部分成功，failed：失败
    */
   status: string;
+  /**
+   * 本次分析运行内模型调用Token用量累计
+   */
+  token_usage: Json | null;
   /**
    * 更新时间
    */
@@ -1461,7 +1445,7 @@ export interface XyWapEmbedInsightJob {
    */
   idempotency_key: string;
   /**
-   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   * 任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话
    */
   job_type: string;
   /**
@@ -1473,7 +1457,7 @@ export interface XyWapEmbedInsightJob {
    */
   locked_by: string | null;
   /**
-   * 最大尝试次数
+   * 最大执行次数，首次失败后重试1次
    */
   max_attempts: Generated<number>;
   /**
@@ -1544,7 +1528,7 @@ export interface XyWapEmbedInsightJobArchive {
    */
   idempotency_key: string;
   /**
-   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   * 任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话
    */
   job_type: string;
   /**
@@ -1556,7 +1540,7 @@ export interface XyWapEmbedInsightJobArchive {
    */
   locked_by: string | null;
   /**
-   * 最大尝试次数
+   * 最大执行次数，首次失败后重试1次
    */
   max_attempts: Generated<number>;
   /**
@@ -1783,6 +1767,49 @@ export interface XyWapEmbedInsightSyncCursor {
    * 租户ID，0表示全局水位
    */
   uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightWorkerRuntimeState {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 时间最新的一次已完成执行耗时，毫秒
+   */
+  last_duration_ms: number | null;
+  /**
+   * 最近一次稳定错误码
+   */
+  last_error_code: string | null;
+  /**
+   * 最近一次实际执行失败时间
+   */
+  last_failure_at: Date | null;
+  /**
+   * 最近一次开始实际执行tick的时间
+   */
+  last_started_at: Date | null;
+  /**
+   * 最近一次实际执行成功时间
+   */
+  last_success_at: Date | null;
+  /**
+   * Worker管线，discovery、sessionization、analysis
+   */
+  pipeline: string;
+  /**
+   * 最近一次状态上报时间
+   */
+  reported_at: Date;
+  /**
+   * 最近状态上报实例，hostname:pid
+   */
+  reported_by: string;
   /**
    * 更新时间
    */
@@ -3220,6 +3247,7 @@ export interface DB {
   xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;
   xy_wap_embed_insight_rescan_task: XyWapEmbedInsightRescanTask;
   xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
+  xy_wap_embed_insight_worker_runtime_state: XyWapEmbedInsightWorkerRuntimeState;
   xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
   xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;
   xy_wap_embed_material_collection: XyWapEmbedMaterialCollection;

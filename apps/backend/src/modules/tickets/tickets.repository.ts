@@ -1,17 +1,20 @@
-import type { TicketPriority, TicketUser } from "@chatai/contracts";
+import type { TicketActivity, TicketPriority, TicketUser } from "@chatai/contracts";
 import type {
   ExpressionBuilder,
   Kysely,
   Nullable,
   SelectQueryBuilder,
+  Transaction,
 } from "kysely";
 import { sql } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type {
   TicketConversationIdentity,
+  TicketActivityRecord,
   TicketCountRepositoryInput,
   TicketListRepositoryInput,
   TicketMessageCandidate,
+  TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
   TicketSessionOptionPage,
@@ -514,6 +517,203 @@ export class TicketsRepository {
     return page.items[0];
   }
 
+  async listTicketActivities(input: { ticketId: number; uid: number }): Promise<TicketActivityRecord[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_ticket_activity as activity")
+      .leftJoin("xy_wap_embed_sub_user as operator", (join) =>
+        join
+          .onRef("operator.id", "=", "activity.operator_sub_user_id")
+          .onRef("operator.uid", "=", "activity.uid"),
+      )
+      .select([
+        "activity.id as activity_id",
+        "activity.activity_type as activity_type",
+        "activity.content as content",
+        "activity.create_time as create_time",
+        "activity.detail_json as detail_json",
+        "activity.operator_sub_user_id as operator_sub_user_id",
+        "activity.operator_type as operator_type",
+        "activity.ticket_id as ticket_id",
+        "operator.name as operator_display_name",
+      ])
+      .where("activity.uid", "=", input.uid)
+      .where("activity.ticket_id", "=", input.ticketId)
+      .orderBy("activity.id", "asc")
+      .execute();
+
+    return rows.map((row) => ({
+      activityId: String(row.activity_id),
+      activityType: normalizeActivityType(row.activity_type),
+      content: row.content,
+      createdAt: toTimestamp(row.create_time),
+      detail: normalizeDetail(row.detail_json),
+      operatorDisplayName: row.operator_display_name,
+      operatorSubUserId: toNullableId(row.operator_sub_user_id),
+      operatorType: row.operator_type === "ai" || row.operator_type === "system"
+        ? row.operator_type
+        : "sub_user",
+      ticketId: String(row.ticket_id),
+    }));
+  }
+
+  async listTicketEvidenceMessageIds(input: {
+    snapshotId: number;
+    ticketId: number;
+    uid: number;
+  }) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_evidence as evidence")
+      .select("evidence.source_message_id")
+      .where("evidence.uid", "=", input.uid)
+      .where("evidence.snapshot_id", "=", input.snapshotId)
+      .where("evidence.dimension_type", "=", "action_item")
+      .where("evidence.dimension_record_id", "=", input.ticketId)
+      .orderBy("evidence.source_message_id", "asc")
+      .execute();
+
+    return rows.map((row) => String(row.source_message_id));
+  }
+
+  async updateTicket(input: {
+    activities: TicketMutationActivity[];
+    expectedStatuses?: string[];
+    operatorSubUserId: number;
+    ticketId: number;
+    uid: number;
+    values: {
+      assigneeSubUserId?: number | null;
+      canceledAt?: Date | null;
+      canceledBySubUserId?: number | null;
+      completedAt?: Date | null;
+      completedBySubUserId?: number | null;
+      description?: string | null;
+      dueAt?: Date | null;
+      priority?: TicketPriority;
+      status?: string;
+      title?: string;
+    };
+  }) {
+    return this.db.transaction().execute(async (transaction) => {
+      const values = {
+        ...(input.values.assigneeSubUserId !== undefined
+          ? { assignee_sub_user_id: input.values.assigneeSubUserId }
+          : {}),
+        ...(input.values.canceledAt !== undefined ? { canceled_at: input.values.canceledAt } : {}),
+        ...(input.values.canceledBySubUserId !== undefined
+          ? { canceled_by_sub_user_id: input.values.canceledBySubUserId }
+          : {}),
+        ...(input.values.completedAt !== undefined
+          ? { completed_at: input.values.completedAt }
+          : {}),
+        ...(input.values.completedBySubUserId !== undefined
+          ? { completed_by_sub_user_id: input.values.completedBySubUserId }
+          : {}),
+        ...(input.values.description !== undefined
+          ? { description: input.values.description }
+          : {}),
+        ...(input.values.dueAt !== undefined ? { due_at: input.values.dueAt } : {}),
+        ...(input.values.priority !== undefined ? { priority: input.values.priority } : {}),
+        ...(input.values.status !== undefined ? { status: input.values.status } : {}),
+        ...(input.values.title !== undefined ? { title: input.values.title } : {}),
+        updated_by_sub_user_id: input.operatorSubUserId,
+      };
+      let update = transaction
+        .updateTable("xy_wap_embed_session_action_item")
+        .set(values)
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.ticketId);
+
+      if (input.expectedStatuses?.length) {
+        update = update.where("status", "in", input.expectedStatuses);
+      }
+
+      const result = await update.executeTakeFirst();
+
+      if (Number(result.numUpdatedRows) !== 1) {
+        return false;
+      }
+
+      await insertActivities(transaction, {
+        activities: input.activities,
+        operatorSubUserId: input.operatorSubUserId,
+        ticketId: input.ticketId,
+        uid: input.uid,
+      });
+      return true;
+    });
+  }
+
+  async claimTicket(input: { assigneeSubUserId: number; ticketId: number; uid: number }) {
+    return this.db.transaction().execute(async (transaction) => {
+      const result = await transaction
+        .updateTable("xy_wap_embed_session_action_item")
+        .set({
+          assignee_sub_user_id: input.assigneeSubUserId,
+          status: "in_progress",
+          updated_by_sub_user_id: input.assigneeSubUserId,
+        })
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.ticketId)
+        .where("assignee_sub_user_id", "is", null)
+        .where("status", "=", "open")
+        .executeTakeFirst();
+
+      if (Number(result.numUpdatedRows) !== 1) {
+        return false;
+      }
+
+      await insertActivities(transaction, {
+        activities: [
+          { activityType: "assignee_changed", detail: { after: input.assigneeSubUserId, before: null } },
+          { activityType: "status_changed", detail: { after: "in_progress", before: "open" } },
+        ],
+        operatorSubUserId: input.assigneeSubUserId,
+        ticketId: input.ticketId,
+        uid: input.uid,
+      });
+      return true;
+    });
+  }
+
+  async addTicketComment(input: {
+    content: string;
+    operatorSubUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketActivityRecord> {
+    const activityId = await this.db.transaction().execute(async (transaction) => {
+      const insert = await transaction
+        .insertInto("xy_wap_embed_ticket_activity")
+        .values({
+          activity_type: "comment_added",
+          content: input.content,
+          detail_json: null,
+          operator_sub_user_id: input.operatorSubUserId,
+          operator_type: "sub_user",
+          ticket_id: input.ticketId,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+      await transaction
+        .updateTable("xy_wap_embed_session_action_item")
+        .set({
+          update_time: new Date(),
+          updated_by_sub_user_id: input.operatorSubUserId,
+        })
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.ticketId)
+        .executeTakeFirstOrThrow();
+      return Number(insert.insertId);
+    });
+    const activities = await this.listTicketActivities({ ticketId: input.ticketId, uid: input.uid });
+    const activity = activities.find((item) => item.activityId === String(activityId));
+
+    if (!activity) {
+      throw new Error("TICKET_ACTIVITY_NOT_FOUND_AFTER_INSERT");
+    }
+    return activity;
+  }
+
   private buildFilteredTicketQuery(input: TicketListRepositoryInput): TicketQuery {
     let query = this.db
       .selectFrom("xy_wap_embed_session_action_item as ticket")
@@ -746,4 +946,66 @@ function toNonNegativeNumber(value: number | string | bigint | undefined) {
   const number = Number(value ?? 0);
 
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+}
+
+async function insertActivities(
+  transaction: Transaction<Database>,
+  input: {
+    activities: TicketMutationActivity[];
+    operatorSubUserId: number;
+    ticketId: number;
+    uid: number;
+  },
+) {
+  if (input.activities.length === 0) {
+    return;
+  }
+
+  await transaction
+    .insertInto("xy_wap_embed_ticket_activity")
+    .values(input.activities.map((activity) => ({
+      activity_type: activity.activityType,
+      content: activity.content ?? null,
+      detail_json: activity.detail == null ? null : JSON.stringify(activity.detail),
+      operator_sub_user_id: input.operatorSubUserId,
+      operator_type: "sub_user",
+      ticket_id: input.ticketId,
+      uid: input.uid,
+    })))
+    .execute();
+}
+
+function normalizeActivityType(value: string): TicketActivity["activityType"] {
+  const types: TicketActivity["activityType"][] = [
+    "created",
+    "comment_added",
+    "status_changed",
+    "assignee_changed",
+    "priority_changed",
+    "due_at_changed",
+    "content_updated",
+  ];
+
+  return types.includes(value as TicketActivity["activityType"])
+    ? value as TicketActivity["activityType"]
+    : "content_updated";
+}
+
+function normalizeDetail(value: unknown): Record<string, unknown> | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }

@@ -3,6 +3,7 @@ import { getRolePermissions } from "../../../src/modules/auth/permissions";
 import {
   TicketsService,
   type TicketsActorScope,
+  type TicketsContextReaderPort,
   type TicketsRepositoryPort,
 } from "../../../src/modules/tickets/tickets.service";
 import type { TicketRecord } from "../../../src/modules/tickets/tickets.types";
@@ -332,6 +333,185 @@ describe("TicketsService", () => {
       sessions: { total: 1 },
     });
   });
+
+  it("enforces the write matrix for assignees creators account-only viewers and admins", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: "202",
+      createdBySubUserId: "101",
+    });
+    await service.updateTicket(createActor("operator"), "501", { priority: "high" });
+    expect(repository.updateTicket).toHaveBeenCalled();
+
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: "202",
+      createdBySubUserId: "202",
+      hasAccountAccess: true,
+    });
+    await expect(service.updateTicket(createActor("operator"), "501", { priority: "high" }))
+      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+
+    await expect(service.updateTicket(createActor("viewer"), "501", { priority: "high" }))
+      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: "202",
+      createdBySubUserId: "202",
+      hasAccountAccess: false,
+    });
+    await expect(service.updateTicket(createActor("admin"), "501", { priority: "high" }))
+      .resolves.toHaveProperty("ticket");
+  });
+
+  it("validates reassignment and uses a status fence for state changes", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+    repository.isValidAssignee.mockResolvedValueOnce(false);
+
+    await expect(service.updateTicket(createActor("operator"), "501", {
+      assigneeSubUserId: "999",
+    })).rejects.toMatchObject({ code: "INVALID_TICKET_ASSIGNEE" });
+
+    repository.getTicketRecordById.mockResolvedValueOnce(baseRecord);
+    await service.updateTicket(createActor("operator"), "501", {
+      expectedStatus: "open",
+      status: "done",
+    });
+    expect(repository.updateTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedStatuses: ["open"],
+      values: expect.objectContaining({
+        completedBySubUserId: 101,
+        status: "done",
+      }),
+    }));
+
+    repository.getTicketRecordById.mockResolvedValueOnce({ ...baseRecord, status: "done" });
+    await expect(service.updateTicket(createActor("operator"), "501", {
+      expectedStatus: "open",
+      status: "canceled",
+    })).rejects.toMatchObject({ code: "TICKET_STATE_CONFLICT" });
+  });
+
+  it("returns an in-progress ticket to open when its assignee is cleared atomically", async () => {
+    const repository = createRepository();
+    repository.getTicketRecordById.mockResolvedValueOnce({ ...baseRecord, status: "in_progress" });
+    const service = new TicketsService(repository);
+
+    await service.updateTicket(createActor("operator"), "501", { assigneeSubUserId: null });
+
+    expect(repository.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
+      expectedStatuses: ["in_progress"],
+      values: expect.objectContaining({ assigneeSubUserId: null, status: "open" }),
+    }));
+  });
+
+  it("claims only account-visible open unassigned tickets and reports claim races", async () => {
+    const repository = createRepository();
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: null,
+      createdBySubUserId: null,
+      sourceType: "ai",
+    });
+    const service = new TicketsService(repository);
+
+    await service.claimTicket(createActor("operator"), "501");
+    expect(repository.claimTicket).toHaveBeenCalledWith({
+      assigneeSubUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+    });
+
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: null,
+      createdBySubUserId: null,
+      sourceType: "ai",
+    });
+    repository.claimTicket.mockResolvedValueOnce(false);
+    await expect(service.claimTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_ALREADY_CLAIMED" });
+  });
+
+  it("trims comments and applies the same write permission", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    await service.addComment(createActor("operator"), "501", { content: "  已电话确认  " });
+    expect(repository.addTicketComment).toHaveBeenCalledWith(expect.objectContaining({
+      content: "已电话确认",
+    }));
+
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      assigneeSubUserId: "202",
+      createdBySubUserId: "202",
+    });
+    await expect(service.addComment(createActor("operator"), "501", { content: "备注" }))
+      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+  });
+
+  it("keeps ticket detail visible while withholding inaccessible chat context", async () => {
+    const repository = createRepository();
+    const contextReader = createContextReader();
+    repository.canAccessConversation.mockResolvedValueOnce(false);
+    const service = new TicketsService(repository, contextReader);
+
+    const detail = await service.getTicketDetail(createActor("operator"), "501");
+
+    expect(detail).toMatchObject({ context: { kind: "none" }, contextAccess: "forbidden" });
+    expect(contextReader.listSessionMessageRecords).not.toHaveBeenCalled();
+  });
+
+  it("reads session context and filters AI evidence to its configured message ids", async () => {
+    const repository = createRepository();
+    const message = { msgid: "m-1", seq: 9001 } as never;
+    const other = { msgid: "m-2", seq: 9002 } as never;
+    const contextReader = createContextReader();
+    contextReader.listSessionMessageRecords.mockResolvedValueOnce([message, other]);
+    repository.listTicketEvidenceMessageIds.mockResolvedValueOnce(["9002"]);
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      snapshotId: "701",
+    });
+    const service = new TicketsService(repository, contextReader);
+
+    const detail = await service.getTicketDetail(createActor("operator"), "501");
+
+    expect(detail.context).toMatchObject({ kind: "session", sessionId: "401" });
+    expect(detail.evidenceMessages).toEqual([other]);
+  });
+
+  it("reads ten messages on each side of an anchor without requiring a logical session", async () => {
+    const repository = createRepository();
+    const contextReader = createContextReader();
+    const anchor = { msgid: "9009", seq: 9009 } as never;
+    contextReader.listMessageContext.mockResolvedValueOnce({
+      messages: [anchor],
+      targetMessageId: "9009",
+    });
+    repository.getTicketRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      anchorMessageId: "9009",
+      sessionId: null,
+    });
+    const service = new TicketsService(repository, contextReader);
+
+    const detail = await service.getTicketDetail(createActor("operator"), "501");
+
+    expect(contextReader.listMessageContext).toHaveBeenCalledWith(
+      { uid: 9001 },
+      "301",
+      "9009",
+      { after: 10, before: 10 },
+    );
+    expect(detail.context).toMatchObject({ anchorMessageId: "9009", kind: "message" });
+  });
 });
 
 function createActor(role: TicketsActorScope["role"]): TicketsActorScope {
@@ -345,7 +525,19 @@ function createActor(role: TicketsActorScope["role"]): TicketsActorScope {
 
 function createRepository(page?: { items: TicketRecord[] }) {
   return {
+    addTicketComment: vi.fn(async () => ({
+      activityId: "601",
+      activityType: "comment_added" as const,
+      content: "已电话确认",
+      createdAt: 1_785_168_000_000,
+      detail: null,
+      operatorDisplayName: "客服甲",
+      operatorSubUserId: "101",
+      operatorType: "sub_user" as const,
+      ticketId: "501",
+    })),
     canAccessConversation: vi.fn(async () => true),
+    claimTicket: vi.fn(async () => true),
     countTickets: vi.fn(async () => 0),
     createManualTicket: vi.fn(async () => 501),
     getConversationIdentity: vi.fn(async () => undefined),
@@ -363,6 +555,8 @@ function createRepository(page?: { items: TicketRecord[] }) {
       total: 0,
       totalPages: 0,
     })),
+    listTicketActivities: vi.fn(async () => []),
+    listTicketEvidenceMessageIds: vi.fn(async () => []),
     listTickets: vi.fn(async () => ({
       items: page?.items ?? [baseRecord],
       page: 1,
@@ -370,6 +564,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
       total: page?.items.length ?? 1,
       totalPages: 1,
     })),
+    updateTicket: vi.fn(async () => true),
   } satisfies TicketsRepositoryPort & {
     canAccessConversation: ReturnType<typeof vi.fn>;
     countTickets: ReturnType<typeof vi.fn>;
@@ -384,6 +579,16 @@ function createRepository(page?: { items: TicketRecord[] }) {
     listRecentMessageCandidates: ReturnType<typeof vi.fn>;
     listSessionOptions: ReturnType<typeof vi.fn>;
     listTickets: ReturnType<typeof vi.fn>;
+  };
+}
+
+function createContextReader() {
+  return {
+    listMessageContext: vi.fn(async () => ({ messages: [], targetMessageId: "" })),
+    listSessionMessageRecords: vi.fn(async () => []),
+  } satisfies TicketsContextReaderPort & {
+    listMessageContext: ReturnType<typeof vi.fn>;
+    listSessionMessageRecords: ReturnType<typeof vi.fn>;
   };
 }
 

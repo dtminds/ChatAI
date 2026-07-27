@@ -1,4 +1,5 @@
 import type {
+  TicketActivity,
   TicketContextOptionsResponse,
   TicketListQuery,
   TicketPriority,
@@ -78,3 +79,14 @@ export type TicketConversationIdentity = {
 export type TicketSessionOptionPage = TicketContextOptionsResponse["sessions"];
 
 export type TicketMessageCandidate = InsightMessageSourceRow;
+
+export type TicketActivityRecord = Omit<TicketActivity, "operator"> & {
+  operatorDisplayName: string | null;
+  operatorSubUserId: string | null;
+};
+
+export type TicketMutationActivity = {
+  activityType: TicketActivity["activityType"];
+  content?: string | null;
+  detail?: Record<string, unknown> | null;
+};

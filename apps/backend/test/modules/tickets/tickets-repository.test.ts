@@ -203,6 +203,65 @@ describe("TicketsRepository", () => {
     ]));
     expect(queries.map(normalizeSql).join("\n")).not.toContain("xy_wap_embed_insight_job");
   });
+
+  it("fences status updates and writes their activities in the same transaction", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.updateTicket({
+      activities: [{
+        activityType: "status_changed",
+        detail: { after: "done", before: "open" },
+      }],
+      expectedStatuses: ["open"],
+      operatorSubUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+      values: {
+        completedAt: new Date("2026-07-27T08:00:00Z"),
+        completedBySubUserId: 101,
+        status: "done",
+      },
+    })).resolves.toBe(true);
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("update xy_wap_embed_session_action_item");
+    expect(sql).toContain("status in (?)");
+    expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
+  });
+
+  it("claims with the fixed open and unassigned conditions", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.claimTicket({
+      assigneeSubUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("assignee_sub_user_id is null");
+    expect(sql).toContain("status = ?");
+    expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
+  });
+
+  it("reads activities in id order and evidence only from action_item records", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.listTicketActivities({ ticketId: 501, uid: 9001 });
+    await repository.listTicketEvidenceMessageIds({
+      snapshotId: 701,
+      ticketId: 501,
+      uid: 9001,
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("activity.id asc");
+    expect(sql).toContain("evidence.dimension_type = ?");
+    expect(sql).toContain("evidence.dimension_record_id = ?");
+  });
 });
 
 function createRecordingDatabase() {
@@ -220,6 +279,10 @@ function createRecordingDatabase() {
 
       if (query.sql.includes("count(")) {
         return { rows: [{ total: 0 }] as R[] };
+      }
+
+      if (query.sql.startsWith("update")) {
+        return { numAffectedRows: 1n, rows: [] };
       }
 
       return { rows: [] };

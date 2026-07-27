@@ -4,14 +4,22 @@ import type {
   ConversationTicketsQuery,
   ConversationTicketsResponse,
   Ticket,
+  TicketActivity,
+  TicketClaimResponse,
+  TicketCommentRequest,
+  TicketCommentResponse,
   TicketContextOptionsQuery,
   TicketContextOptionsResponse,
   TicketCountsResponse,
   TicketCreateRequest,
   TicketCreateResponse,
+  TicketDetailResponse,
   TicketListQuery,
   TicketListResponse,
   TicketStatus,
+  TicketUpdateRequest,
+  TicketUpdateResponse,
+  WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import { parseMySqlId } from "../../shared/id-utils.js";
@@ -19,7 +27,9 @@ import { buildInsightMessageInput } from "../insights/insight-message-input-buil
 import type {
   TicketConversationIdentity,
   TicketCountRepositoryInput,
+  TicketActivityRecord,
   TicketListRepositoryInput,
+  TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
   TicketSessionOptionPage,
@@ -34,12 +44,23 @@ export type TicketsActorScope = {
 };
 
 export interface TicketsRepositoryPort {
+  addTicketComment(input: {
+    content: string;
+    operatorSubUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketActivityRecord>;
   canAccessConversation(input: {
     conversationId: number;
     subUserId: number;
     uid: number;
   }): Promise<boolean>;
   countTickets(input: TicketCountRepositoryInput): Promise<number>;
+  claimTicket(input: {
+    assigneeSubUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<boolean>;
   createManualTicket(input: {
     anchorMessageId: number | null;
     assigneeSubUserId: number | null;
@@ -62,6 +83,15 @@ export interface TicketsRepositoryPort {
     ticketId: number;
     uid: number;
   }): Promise<TicketRecord | undefined>;
+  listTicketActivities(input: {
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketActivityRecord[]>;
+  listTicketEvidenceMessageIds(input: {
+    snapshotId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<string[]>;
   isSessionInConversation(input: {
     conversationId: number;
     sessionId: number;
@@ -99,10 +129,45 @@ export interface TicketsRepositoryPort {
     uid: number;
   }): Promise<TicketSessionOptionPage>;
   listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage>;
+  updateTicket(input: {
+    activities: TicketMutationActivity[];
+    expectedStatuses?: string[];
+    operatorSubUserId: number;
+    ticketId: number;
+    uid: number;
+    values: {
+      assigneeSubUserId?: number | null;
+      canceledAt?: Date | null;
+      canceledBySubUserId?: number | null;
+      completedAt?: Date | null;
+      completedBySubUserId?: number | null;
+      description?: string | null;
+      dueAt?: Date | null;
+      priority?: TicketCreateRequest["priority"];
+      status?: string;
+      title?: string;
+    };
+  }): Promise<boolean>;
+}
+
+export interface TicketsContextReaderPort {
+  listMessageContext(
+    scope: { uid: number },
+    conversationId: string,
+    messageId: string,
+    options: { after: number; before: number },
+  ): Promise<{ messages: WorkbenchMessageDto[]; targetMessageId: string }>;
+  listSessionMessageRecords(
+    scope: { uid: number },
+    sessionId: string,
+  ): Promise<WorkbenchMessageDto[] | undefined>;
 }
 
 export class TicketsService {
-  constructor(private readonly repository: TicketsRepositoryPort) {}
+  constructor(
+    private readonly repository: TicketsRepositoryPort,
+    private readonly contextReader?: TicketsContextReaderPort,
+  ) {}
 
   async getContextOptions(
     actor: TicketsActorScope,
@@ -309,6 +374,329 @@ export class TicketsService {
       ...mapTicketPage(page, actor),
       activeCount,
       scope,
+    };
+  }
+
+  async getTicketDetail(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+  ): Promise<TicketDetailResponse> {
+    const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
+    const [activities, assigneeOptions, canAccessContext] = await Promise.all([
+      this.repository.listTicketActivities({ ticketId, uid: actor.uid }),
+      this.repository.listAssigneeOptions({
+        conversationId: parseMySqlId(record.conversationId)!,
+        uid: actor.uid,
+      }),
+      this.repository.canAccessConversation({
+        conversationId: parseMySqlId(record.conversationId)!,
+        subUserId,
+        uid: actor.uid,
+      }),
+    ]);
+
+    if (!canAccessContext) {
+      return {
+        activities: activities.map(mapTicketActivity),
+        assigneeOptions,
+        context: { kind: "none" },
+        contextAccess: "forbidden",
+        evidenceMessages: [],
+        ticket: mapTicket(record, actor),
+      };
+    }
+
+    const context = await this.loadTicketContext(actor.uid, record);
+    const evidenceMessageIds = record.snapshotId == null
+      ? []
+      : await this.repository.listTicketEvidenceMessageIds({
+          snapshotId: parseMySqlId(record.snapshotId)!,
+          ticketId,
+          uid: actor.uid,
+        });
+    const evidenceSet = new Set(evidenceMessageIds);
+    const contextMessages = context.kind === "none" ? [] : context.messages;
+
+    return {
+      activities: activities.map(mapTicketActivity),
+      assigneeOptions,
+      context,
+      contextAccess: "allowed",
+      evidenceMessages: contextMessages.filter((message) =>
+        evidenceSet.has(message.msgid) || evidenceSet.has(String(message.seq))
+      ),
+      ticket: mapTicket(record, actor),
+    };
+  }
+
+  async updateTicket(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+    payload: TicketUpdateRequest,
+  ): Promise<TicketUpdateResponse> {
+    const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
+
+    if (!canModifyTicket(actor, record)) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权修改该工单");
+    }
+
+    const mutation = await this.buildTicketMutation(actor, record, payload, subUserId);
+
+    if (Object.keys(mutation.values).length > 0) {
+      const updated = await this.repository.updateTicket({
+        activities: mutation.activities,
+        expectedStatuses: mutation.expectedStatuses,
+        operatorSubUserId: subUserId,
+        ticketId,
+        uid: actor.uid,
+        values: mutation.values,
+      });
+
+      if (!updated) {
+        throw new BadRequestError("TICKET_STATE_CONFLICT", "工单状态已变化，请刷新后重试");
+      }
+    }
+
+    return { ticket: await this.getMappedTicket(actor, ticketId) };
+  }
+
+  async claimTicket(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+  ): Promise<TicketClaimResponse> {
+    const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
+
+    if (actor.role === "viewer" || !record.hasAccountAccess) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权领取该工单");
+    }
+    if (normalizeTicketStatus(record.status) !== "open" || record.assigneeSubUserId != null) {
+      throw new BadRequestError("TICKET_ALREADY_CLAIMED", "工单已被领取或不在待领取状态");
+    }
+    if (!(await this.repository.isValidAssignee({
+      assigneeSubUserId: subUserId,
+      conversationId: parseMySqlId(record.conversationId)!,
+      uid: actor.uid,
+    }))) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "当前账号不再具备所属账号访问权");
+    }
+
+    const claimed = await this.repository.claimTicket({
+      assigneeSubUserId: subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    if (!claimed) {
+      throw new BadRequestError("TICKET_ALREADY_CLAIMED", "工单已被其他人领取");
+    }
+
+    return { ticket: await this.getMappedTicket(actor, ticketId) };
+  }
+
+  async addComment(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+    payload: TicketCommentRequest,
+  ): Promise<TicketCommentResponse> {
+    const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
+
+    if (!canModifyTicket(actor, record)) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权为该工单添加备注");
+    }
+
+    const content = payload.content.trim();
+
+    if (!content || content.length > 2000) {
+      throw new BadRequestError("INVALID_TICKET_COMMENT", "处理备注长度应为 1-2000 个字符");
+    }
+
+    const activity = await this.repository.addTicketComment({
+      content,
+      operatorSubUserId: subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    return { activity: mapTicketActivity(activity) };
+  }
+
+  private async getVisibleTicket(actor: TicketsActorScope, ticketIdValue: string) {
+    const ticketId = parseMySqlId(ticketIdValue);
+
+    if (ticketId == null) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在");
+    }
+
+    const subUserId = getActorSubUserId(actor);
+    const record = await this.repository.getTicketRecordById({
+      globalAccess: hasGlobalTicketAccess(actor),
+      subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    if (!record) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在或无权查看");
+    }
+
+    return { record, subUserId, ticketId };
+  }
+
+  private async getMappedTicket(actor: TicketsActorScope, ticketId: number) {
+    const subUserId = getActorSubUserId(actor);
+    const record = await this.repository.getTicketRecordById({
+      globalAccess: hasGlobalTicketAccess(actor),
+      subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    if (!record) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在或无权查看");
+    }
+
+    return mapTicket(record, actor);
+  }
+
+  private async loadTicketContext(uid: number, record: TicketRecord): Promise<TicketDetailResponse["context"]> {
+    if (!this.contextReader) {
+      return { kind: "none" };
+    }
+    if (record.sessionId != null) {
+      const messages = await this.contextReader.listSessionMessageRecords({ uid }, record.sessionId);
+      return messages
+        ? { kind: "session", messages, sessionId: record.sessionId }
+        : { kind: "none" };
+    }
+    if (record.anchorMessageId != null) {
+      const context = await this.contextReader.listMessageContext(
+        { uid },
+        record.conversationId,
+        record.anchorMessageId,
+        { after: 10, before: 10 },
+      );
+      return context.messages.some((message) =>
+        message.msgid === context.targetMessageId || String(message.seq) === context.targetMessageId
+      )
+        ? { anchorMessageId: record.anchorMessageId, kind: "message", messages: context.messages }
+        : { kind: "none" };
+    }
+    return { kind: "none" };
+  }
+
+  private async buildTicketMutation(
+    actor: TicketsActorScope,
+    record: TicketRecord,
+    payload: TicketUpdateRequest,
+    subUserId: number,
+  ) {
+    const values: Parameters<TicketsRepositoryPort["updateTicket"]>[0]["values"] = {};
+    const activities: TicketMutationActivity[] = [];
+    const currentStatus = normalizeTicketStatus(record.status);
+    const requestedStatus = "status" in payload ? payload.status : undefined;
+    const expectedStatus = "expectedStatus" in payload ? payload.expectedStatus : undefined;
+    let targetStatus = requestedStatus ?? currentStatus;
+    let targetAssignee = record.assigneeSubUserId == null
+      ? null
+      : parseMySqlId(record.assigneeSubUserId);
+
+    if (payload.assigneeSubUserId !== undefined) {
+      targetAssignee = payload.assigneeSubUserId == null
+        ? null
+        : parseMySqlId(payload.assigneeSubUserId);
+      if (payload.assigneeSubUserId != null && targetAssignee == null) {
+        throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人参数无效");
+      }
+      if (targetAssignee != null && !(await this.repository.isValidAssignee({
+        assigneeSubUserId: targetAssignee,
+        conversationId: parseMySqlId(record.conversationId)!,
+        uid: actor.uid,
+      }))) {
+        throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人不具备所属账号访问权");
+      }
+      if (String(targetAssignee ?? "") !== (record.assigneeSubUserId ?? "")) {
+        values.assigneeSubUserId = targetAssignee;
+        activities.push(changeActivity("assignee_changed", record.assigneeSubUserId, targetAssignee));
+      }
+    }
+
+    if (currentStatus === "in_progress" && targetAssignee == null) {
+      targetStatus = "open";
+    }
+    if (targetStatus === "in_progress" && targetAssignee == null) {
+      throw new BadRequestError(
+        "INVALID_TICKET_STATUS_TRANSITION",
+        "未分配负责人的工单不能进入处理中",
+      );
+    }
+
+    const statusWasRequested = requestedStatus !== undefined;
+    if (statusWasRequested && expectedStatus !== currentStatus) {
+      throw new BadRequestError("TICKET_STATE_CONFLICT", "工单状态已变化，请刷新后重试");
+    }
+    if (targetStatus !== currentStatus) {
+      assertTicketStatusTransition(currentStatus, targetStatus);
+      values.status = targetStatus;
+      activities.push(changeActivity("status_changed", currentStatus, targetStatus));
+      const now = new Date();
+      if (targetStatus === "done") {
+        values.completedAt = now;
+        values.completedBySubUserId = subUserId;
+      } else if (currentStatus === "done") {
+        values.completedAt = null;
+        values.completedBySubUserId = null;
+      }
+      if (targetStatus === "canceled") {
+        values.canceledAt = now;
+        values.canceledBySubUserId = subUserId;
+      } else if (currentStatus === "canceled") {
+        values.canceledAt = null;
+        values.canceledBySubUserId = null;
+      }
+    }
+
+    if (payload.title !== undefined) {
+      const title = payload.title.trim();
+      if (!title) {
+        throw new BadRequestError("INVALID_TICKET_TITLE", "工单标题不能为空");
+      }
+      if (title !== record.title) {
+        values.title = title;
+        activities.push(changeActivity("content_updated", record.title, title, "title"));
+      }
+    }
+    if (payload.description !== undefined) {
+      const description = normalizeOptionalText(payload.description);
+      if (description !== record.description) {
+        values.description = description;
+        activities.push(changeActivity("content_updated", record.description, description, "description"));
+      }
+    }
+    if (payload.priority !== undefined && payload.priority !== record.priority) {
+      values.priority = payload.priority;
+      activities.push(changeActivity("priority_changed", record.priority, payload.priority));
+    }
+    if (payload.dueAt !== undefined) {
+      const dueAt = payload.dueAt == null ? null : new Date(payload.dueAt);
+      if (dueAt && !Number.isFinite(dueAt.getTime())) {
+        throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
+      }
+      const dueAtMs = dueAt?.getTime() ?? null;
+      if (dueAtMs !== record.dueAt) {
+        values.dueAt = dueAt;
+        activities.push(changeActivity("due_at_changed", record.dueAt, dueAtMs));
+      }
+    }
+
+    const statusNeedsFence = statusWasRequested || targetStatus !== currentStatus;
+    return {
+      activities,
+      expectedStatuses: statusNeedsFence
+        ? currentStatus === "canceled"
+          ? ["canceled", "dismissed", "expired"]
+          : [currentStatus]
+        : undefined,
+      values,
     };
   }
 
@@ -580,4 +968,50 @@ function normalizeOptionalText(value: string | null | undefined) {
   const normalized = value?.trim();
 
   return normalized ? normalized : null;
+}
+
+function assertTicketStatusTransition(current: TicketStatus, target: TicketStatus) {
+  const allowed: Record<TicketStatus, readonly TicketStatus[]> = {
+    canceled: ["open"],
+    done: ["open"],
+    in_progress: ["open", "done", "canceled"],
+    open: ["in_progress", "done", "canceled"],
+  };
+
+  if (!allowed[current].includes(target)) {
+    throw new BadRequestError(
+      "INVALID_TICKET_STATUS_TRANSITION",
+      "当前工单状态不允许执行该操作",
+    );
+  }
+}
+
+function changeActivity(
+  activityType: TicketMutationActivity["activityType"],
+  before: unknown,
+  after: unknown,
+  field?: string,
+): TicketMutationActivity {
+  return {
+    activityType,
+    detail: field == null ? { after, before } : { after, before, field },
+  };
+}
+
+function mapTicketActivity(record: TicketActivityRecord): TicketActivity {
+  return {
+    activityId: record.activityId,
+    activityType: record.activityType,
+    content: record.content,
+    createdAt: record.createdAt,
+    detail: record.detail,
+    operator: record.operatorSubUserId == null
+      ? null
+      : {
+          displayName: record.operatorDisplayName ?? "",
+          subUserId: record.operatorSubUserId,
+        },
+    operatorType: record.operatorType,
+    ticketId: record.ticketId,
+  };
 }

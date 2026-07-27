@@ -443,7 +443,7 @@ cd apps/backend
 - Modify: `apps/backend/test/modules/tickets/tickets-repository.test.ts`
 - Modify: `apps/backend/test/modules/tickets/tickets-service.test.ts`
 
-- [ ] **Step 1：先写权限矩阵和状态失败测试**
+- [x] **Step 1：先写权限矩阵和状态失败测试**
 
 至少覆盖 Spec §9.2 的每一行：
 
@@ -456,7 +456,7 @@ cd apps/backend
 - 洞察来源 AI 工单没有人工创建人。
 - PATCH 将负责人改为无所属账号访问权、已失效或 `viewer` 子账号时返回 `INVALID_TICKET_ASSIGNEE`。
 
-- [ ] **Step 2：实现 PATCH 和状态条件更新**
+- [x] **Step 2：实现 PATCH 和状态条件更新**
 
 - 普通字段后写覆盖。
 - 带 `status` 必须有 `expectedStatus`。
@@ -470,7 +470,7 @@ cd apps/backend
 - 设置非空负责人前必须按当前所属账号访问关系重新校验候选人有效且不是 `viewer`；不满足时返回 `INVALID_TICKET_ASSIGNEE`，不得只信任创建弹窗或详情接口此前返回的候选列表。
 - 每次实际变化只写一组结构化活动，不为未变化字段制造记录。
 
-- [ ] **Step 3：实现原子领取**
+- [x] **Step 3：实现原子领取**
 
 领取条件固定为：
 
@@ -483,7 +483,7 @@ AND status = open
 
 成功时同一事务写负责人、`in_progress` 和活动；条件不匹配区分不存在/无权限/已领取，已领取返回 `TICKET_ALREADY_CLAIMED`。
 
-- [ ] **Step 4：实现评论和活动时间线**
+- [x] **Step 4：实现评论和活动时间线**
 
 - 评论去除首尾空白后 1-2000 字。
 - 评论权限与修改工单权限相同。
@@ -491,14 +491,14 @@ AND status = open
 - `detail_json` 只保存必要 before/after；不得记录聊天消息、Prompt 或完整 Ticket 快照。
 - AI 创建活动使用 `operator_type = ai`，历史迁移不伪造活动。
 
-- [ ] **Step 5：实现上下文读取**
+- [x] **Step 5：实现上下文读取**
 
 - `session_id`：复用现有逻辑会话消息读取和聊天权限校验。
 - `anchor_message_id`：校验锚点属于同一聊天，复用现有聊天消息查询路径读取前后各 10 条并标记锚点；具体索引以 Task 12 的真实 `EXPLAIN` 为准。
 - 无上下文：返回明确 kind，不当作错误。
 - 工单可见但聊天不可见：详情返回工单数据和 `contextAccess = forbidden`，不返回消息内容。
 
-- [ ] **Step 6：运行聚焦测试并提交**
+- [x] **Step 6：运行聚焦测试并提交**
 
 ```bash
 cd apps/backend

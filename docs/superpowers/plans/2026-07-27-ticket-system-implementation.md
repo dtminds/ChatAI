@@ -378,7 +378,7 @@ cd apps/backend
 - Modify: `apps/backend/test/modules/tickets/tickets-service.test.ts`
 - Reuse: `apps/backend/src/modules/insights/insight-message-input-builder.ts`
 
-- [ ] **Step 1：先写创建准入和上下文失败测试**
+- [x] **Step 1：先写创建准入和上下文失败测试**
 
 覆盖：
 
@@ -394,7 +394,7 @@ cd apps/backend
 - 人工创建固定写入兼容字段 `action_type = follow_up`。
 - 创建过程没有任何 Insight Job、cursor 或 Sessionization 写入。
 
-- [ ] **Step 2：实现历史接待会话选项**
+- [x] **Step 2：实现历史接待会话选项**
 
 - 按 `conversation_id` 和 `uid` 查询。
 - 按结束时间/ID 倒序。
@@ -402,7 +402,7 @@ cd apps/backend
 - 返回时间范围和可用摘要，不因摘要为空排除会话。
 - 同一响应返回当前聊天的合法负责人候选；排除无账号访问权、已失效和 `viewer` 子账号。
 
-- [ ] **Step 3：实现“当前会话”解析**
+- [x] **Step 3：实现“当前会话”解析**
 
 1. 先读取当前有效单聊的 `uid/platform/third_userid/third_external_userid`。
 2. 复用工作台或 Insights 现有的单聊消息查询路径，按聊天窗口对应的账号、客户和平台事实反向分页读取最近消息；不在 Tickets 中另写一套未经验证的消息扫描逻辑。
@@ -412,7 +412,7 @@ cd apps/backend
 
 这里复用纯消息构建逻辑不代表 Tickets 依赖会话洞察开关，也不得调用 Worker。若后续需要移动该纯函数，只做无行为变化的机械提取并保留原测试。
 
-- [ ] **Step 4：实现创建事务和首条活动**
+- [x] **Step 4：实现创建事务和首条活动**
 
 同一事务中写入：
 
@@ -421,14 +421,14 @@ cd apps/backend
 
 人工活动记录 `operator_type = sub_user` 和当前 `subUserId`。事务任一写入失败时整个创建失败，不留无活动工单。
 
-- [ ] **Step 5：运行聚焦测试**
+- [x] **Step 5：运行聚焦测试**
 
 ```bash
 cd apps/backend
 ./node_modules/.bin/vitest run --config vitest.config.ts test/modules/tickets/tickets-repository.test.ts test/modules/tickets/tickets-service.test.ts test/modules/insights/insight-message-input-builder.test.ts
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`feat(tickets): create tickets from chat context`
 

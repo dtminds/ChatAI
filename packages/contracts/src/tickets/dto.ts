@@ -282,6 +282,7 @@ export type TicketStatus = Static<typeof TicketStatusSchema>;
 export type TicketPriority = Static<typeof TicketPrioritySchema>;
 export type TicketSourceType = Static<typeof TicketSourceTypeSchema>;
 export type TicketView = Static<typeof TicketViewSchema>;
+export type TicketUser = Static<typeof TicketUserSchema>;
 export type Ticket = Static<typeof TicketSchema>;
 export type TicketListQuery = Static<typeof TicketListQuerySchema>;
 export type TicketListResponse = Static<typeof TicketListResponseSchema>;

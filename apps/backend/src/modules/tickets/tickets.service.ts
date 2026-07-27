@@ -4,19 +4,26 @@ import type {
   ConversationTicketsQuery,
   ConversationTicketsResponse,
   Ticket,
+  TicketContextOptionsQuery,
+  TicketContextOptionsResponse,
   TicketCountsResponse,
+  TicketCreateRequest,
+  TicketCreateResponse,
   TicketListQuery,
   TicketListResponse,
   TicketStatus,
 } from "@chatai/contracts";
-import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import { parseMySqlId } from "../../shared/id-utils.js";
+import { buildInsightMessageInput } from "../insights/insight-message-input-builder.js";
 import type {
   TicketConversationIdentity,
   TicketCountRepositoryInput,
   TicketListRepositoryInput,
   TicketRecord,
   TicketRecordPage,
+  TicketSessionOptionPage,
+  TicketMessageCandidate,
 } from "./tickets.types.js";
 
 export type TicketsActorScope = {
@@ -27,21 +34,181 @@ export type TicketsActorScope = {
 };
 
 export interface TicketsRepositoryPort {
+  canAccessConversation(input: {
+    conversationId: number;
+    subUserId: number;
+    uid: number;
+  }): Promise<boolean>;
   countTickets(input: TicketCountRepositoryInput): Promise<number>;
+  createManualTicket(input: {
+    anchorMessageId: number | null;
+    assigneeSubUserId: number | null;
+    conversationId: number;
+    createdBySubUserId: number;
+    description: string | null;
+    dueAt: Date | null;
+    priority: TicketCreateRequest["priority"];
+    sessionId: number | null;
+    title: string;
+    uid: number;
+  }): Promise<number>;
   getConversationIdentity(
     uid: number,
     conversationId: number,
   ): Promise<TicketConversationIdentity | undefined>;
+  getTicketRecordById(input: {
+    globalAccess: boolean;
+    subUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketRecord | undefined>;
+  isSessionInConversation(input: {
+    conversationId: number;
+    sessionId: number;
+    uid: number;
+  }): Promise<boolean>;
+  isValidAssignee(input: {
+    assigneeSubUserId: number;
+    conversationId: number;
+    uid: number;
+  }): Promise<boolean>;
+  listAssigneeOptions(input: {
+    conversationId: number;
+    uid: number;
+  }): Promise<TicketContextOptionsResponse["assignees"]>;
   listCustomerConversationIds(input: {
     platform: number;
     thirdExternalUserId: string;
     uid: number;
   }): Promise<number[]>;
+  listOpenSessionAssignments(input: {
+    conversationId: number;
+    sourceMessageIds: number[];
+    uid: number;
+  }): Promise<Array<{ sessionId: string; sourceMessageId: string }>>;
+  listRecentMessageCandidates(input: {
+    beforeMessageId?: number;
+    conversation: TicketConversationIdentity;
+    limit: number;
+    uid: number;
+  }): Promise<TicketMessageCandidate[]>;
+  listSessionOptions(input: {
+    conversationId: number;
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<TicketSessionOptionPage>;
   listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage>;
 }
 
 export class TicketsService {
   constructor(private readonly repository: TicketsRepositoryPort) {}
+
+  async getContextOptions(
+    actor: TicketsActorScope,
+    query: TicketContextOptionsQuery,
+  ): Promise<TicketContextOptionsResponse> {
+    const { conversationId, subUserId } = await this.getCreationConversation(
+      actor,
+      query.conversationId,
+    );
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [sessions, assignees] = await Promise.all([
+      this.repository.listSessionOptions({
+        conversationId,
+        page,
+        pageSize,
+        uid: actor.uid,
+      }),
+      this.repository.listAssigneeOptions({
+        conversationId,
+        uid: actor.uid,
+      }),
+    ]);
+    return {
+      assignees,
+      defaultAssigneeSubUserId: assignees.some(
+        (assignee) => assignee.subUserId === String(subUserId),
+      )
+        ? String(subUserId)
+        : null,
+      sessions,
+    };
+  }
+
+  async createTicket(
+    actor: TicketsActorScope,
+    payload: TicketCreateRequest,
+  ): Promise<TicketCreateResponse> {
+    const { conversationId, identity, subUserId } = await this.getCreationConversation(
+      actor,
+      payload.conversationId,
+    );
+    const title = payload.title.trim();
+
+    if (!title) {
+      throw new BadRequestError("INVALID_TICKET_TITLE", "工单标题不能为空");
+    }
+
+    const context = await this.resolveCreateContext(
+      actor.uid,
+      conversationId,
+      identity,
+      payload.context,
+    );
+    const assigneeSubUserId = payload.assigneeSubUserId === undefined
+      ? subUserId
+      : payload.assigneeSubUserId === null
+        ? null
+        : parseMySqlId(payload.assigneeSubUserId);
+
+    if (payload.assigneeSubUserId != null && assigneeSubUserId == null) {
+      throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人参数无效");
+    }
+
+    if (
+      assigneeSubUserId != null
+      && !(await this.repository.isValidAssignee({
+        assigneeSubUserId,
+        conversationId,
+        uid: actor.uid,
+      }))
+    ) {
+      throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人不具备所属账号访问权");
+    }
+
+    const dueAt = payload.dueAt == null ? null : new Date(payload.dueAt);
+
+    if (dueAt && !Number.isFinite(dueAt.getTime())) {
+      throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
+    }
+
+    const ticketId = await this.repository.createManualTicket({
+      anchorMessageId: context.anchorMessageId,
+      assigneeSubUserId,
+      conversationId,
+      createdBySubUserId: subUserId,
+      description: normalizeOptionalText(payload.description),
+      dueAt,
+      priority: payload.priority,
+      sessionId: context.sessionId,
+      title,
+      uid: actor.uid,
+    });
+    const record = await this.repository.getTicketRecordById({
+      globalAccess: hasGlobalTicketAccess(actor),
+      subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    if (!record) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单创建后无法读取");
+    }
+
+    return { ticket: mapTicket(record, actor) };
+  }
 
   async listTickets(
     actor: TicketsActorScope,
@@ -160,6 +327,133 @@ export class TicketsService {
     });
 
     return conversationIds.length > 0 ? conversationIds : [identity.conversationId];
+  }
+
+  private async getCreationConversation(
+    actor: TicketsActorScope,
+    conversationIdValue: string,
+  ) {
+    if (actor.role === "viewer") {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "当前账号无工单创建权限");
+    }
+
+    const subUserId = getActorSubUserId(actor);
+    const conversationId = parseMySqlId(conversationIdValue);
+
+    if (conversationId == null) {
+      throw new BadRequestError("INVALID_TICKET_CONTEXT", "聊天窗口参数无效");
+    }
+
+    const identity = await this.repository.getConversationIdentity(actor.uid, conversationId);
+
+    if (!identity || identity.chatType !== 1) {
+      throw new BadRequestError("TICKET_SINGLE_CHAT_ONLY", "工单仅支持单聊客户");
+    }
+
+    if (!(await this.repository.canAccessConversation({
+      conversationId,
+      subUserId,
+      uid: actor.uid,
+    }))) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权访问当前聊天");
+    }
+
+    return { conversationId, identity, subUserId };
+  }
+
+  private async resolveCreateContext(
+    uid: number,
+    conversationId: number,
+    identity: TicketConversationIdentity,
+    context: TicketCreateRequest["context"],
+  ) {
+    if (context.type === "none") {
+      return { anchorMessageId: null, sessionId: null };
+    }
+
+    if (context.type === "session") {
+      const sessionId = parseMySqlId(context.sessionId);
+
+      if (
+        sessionId == null
+        || !(await this.repository.isSessionInConversation({ conversationId, sessionId, uid }))
+      ) {
+        throw new BadRequestError("INVALID_TICKET_CONTEXT", "所选接待会话不属于当前聊天");
+      }
+
+      return { anchorMessageId: null, sessionId };
+    }
+
+    const messages = await this.listRecentMeaningfulMessages(uid, identity, 5);
+    const latestMessage = messages[0];
+
+    if (!latestMessage) {
+      return { anchorMessageId: null, sessionId: null };
+    }
+
+    const sourceMessageIds = messages
+      .map((message) => parseMySqlId(message.sourceMessageId))
+      .filter((messageId): messageId is number => messageId != null);
+    const assignments = await this.repository.listOpenSessionAssignments({
+      conversationId,
+      sourceMessageIds,
+      uid,
+    });
+    const latestAssignment = assignments.find(
+      (assignment) => assignment.sourceMessageId === latestMessage.sourceMessageId,
+    );
+
+    const assignedSessionId = latestAssignment
+      ? parseMySqlId(latestAssignment.sessionId)
+      : null;
+
+    return assignedSessionId != null
+      ? { anchorMessageId: null, sessionId: assignedSessionId }
+      : {
+          anchorMessageId: parseMySqlId(latestMessage.sourceMessageId),
+          sessionId: null,
+        };
+  }
+
+  private async listRecentMeaningfulMessages(
+    uid: number,
+    identity: TicketConversationIdentity,
+    limit: number,
+  ) {
+    const meaningful = [] as ReturnType<typeof buildInsightMessageInput>[];
+    const batchSize = 50;
+    let beforeMessageId: number | undefined;
+
+    while (meaningful.length < limit) {
+      const rows = await this.repository.listRecentMessageCandidates({
+        beforeMessageId,
+        conversation: identity,
+        limit: batchSize,
+        uid,
+      });
+
+      for (const row of rows) {
+        const message = buildInsightMessageInput(row);
+
+        if (message.meaningfulForBoundary) {
+          meaningful.push(message);
+        }
+
+        if (meaningful.length >= limit) {
+          break;
+        }
+      }
+
+      const nextBeforeMessageId = parseMySqlId(String(rows.at(-1)?.id ?? ""));
+
+      if (rows.length < batchSize || nextBeforeMessageId == null) {
+        break;
+      }
+
+      beforeMessageId = nextBeforeMessageId;
+    }
+
+    return meaningful.slice(0, limit);
   }
 }
 
@@ -280,4 +574,10 @@ function getActorSubUserId(actor: TicketsActorScope) {
   }
 
   return subUserId;
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : null;
 }

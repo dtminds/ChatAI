@@ -111,6 +111,98 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("conversation.third_external_userid = ?");
     expect(sql).toContain("conversation.chat_type = ?");
   });
+
+  it("loads context sessions without requiring a summary and orders them newest first", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.listSessionOptions({
+      conversationId: 301,
+      page: 1,
+      pageSize: 20,
+      uid: 9001,
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("left join xy_wap_embed_session_summary as summary");
+    expect(sql).toContain("session.conversation_id = ?");
+    expect(sql).toContain("coalesce(session.ended_at, session.last_message_at, session.started_at) desc");
+    expect(sql).not.toContain("summary.snapshot_id is not null");
+  });
+
+  it("limits assignee candidates to active account members and excludes viewers", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.listAssigneeOptions({ conversationId: 301, uid: 9001 });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("relation.sub_id");
+    expect(sql).toContain("sub_user.status = ?");
+    expect(sql).toContain("sub_user.role != ?");
+    expect(sql).toContain("sub_user.type = ?");
+  });
+
+  it("reads raw recent messages and resolves open ownership through the existing source key", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.listRecentMessageCandidates({
+      conversation: {
+        chatType: 1,
+        conversationId: 301,
+        platform: 5,
+        thirdExternalUserId: "customer-1",
+        thirdUserId: "account-1",
+      },
+      limit: 50,
+      uid: 9001,
+    });
+    await repository.listOpenSessionAssignments({
+      conversationId: 301,
+      sourceMessageIds: [9001, 9002],
+      uid: 9001,
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("from xy_wap_embed_msg_audit_info as message");
+    expect(sql).not.toContain("message.msgtype in");
+    expect(sql).toContain("session_message.source_message_id in");
+    expect(sql).toContain("session.status = ?");
+  });
+
+  it("creates the manual ticket and first activity in one transaction", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.createManualTicket({
+      anchorMessageId: null,
+      assigneeSubUserId: 101,
+      conversationId: 301,
+      createdBySubUserId: 101,
+      description: "确认退款进度",
+      dueAt: null,
+      priority: "medium",
+      sessionId: 401,
+      title: "跟进退款",
+      uid: 9001,
+    })).resolves.toBe(501);
+
+    const inserts = queries.filter((query) => normalizeSql(query).startsWith("insert into"));
+    expect(inserts).toHaveLength(2);
+    expect(normalizeSql(inserts[0]!)).toContain("insert into xy_wap_embed_session_action_item");
+    expect(inserts[0]?.parameters).toEqual(expect.arrayContaining([
+      "follow_up",
+      "manual",
+      "open",
+    ]));
+    expect(normalizeSql(inserts[1]!)).toContain("insert into xy_wap_embed_ticket_activity");
+    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
+      "created",
+      "sub_user",
+    ]));
+    expect(queries.map(normalizeSql).join("\n")).not.toContain("xy_wap_embed_insight_job");
+  });
 });
 
 function createRecordingDatabase() {
@@ -118,6 +210,13 @@ function createRecordingDatabase() {
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
       queries.push(query);
+
+      if (query.sql.includes("insert into `xy_wap_embed_session_action_item`")) {
+        return { insertId: 501n, rows: [] };
+      }
+      if (query.sql.includes("insert into `xy_wap_embed_ticket_activity`")) {
+        return { insertId: 601n, rows: [] };
+      }
 
       if (query.sql.includes("count(")) {
         return { rows: [{ total: 0 }] as R[] };

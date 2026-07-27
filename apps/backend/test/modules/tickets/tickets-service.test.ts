@@ -149,6 +149,7 @@ describe("TicketsService", () => {
       conversationId: 301,
       platform: 5,
       thirdExternalUserId: "customer-1",
+      thirdUserId: "account-1",
     });
     repository.listCustomerConversationIds.mockResolvedValueOnce([301, 302]);
     const service = new TicketsService(repository);
@@ -166,6 +167,7 @@ describe("TicketsService", () => {
       conversationId: 301,
       platform: 5,
       thirdExternalUserId: "",
+      thirdUserId: "account-1",
     });
     await service.listConversationTickets(createActor("operator"), "301", {
       scope: "customer",
@@ -173,6 +175,162 @@ describe("TicketsService", () => {
     expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationIds: [301],
     }));
+  });
+
+  it("rejects group chats viewers and actors without chat access", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    repository.getConversationIdentity.mockResolvedValueOnce({
+      chatType: 2,
+      conversationId: 301,
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      thirdUserId: "account-1",
+    });
+    await expect(service.createTicket(createActor("operator"), createPayload()))
+      .rejects.toMatchObject({ code: "TICKET_SINGLE_CHAT_ONLY" });
+
+    await expect(service.createTicket(createActor("viewer"), createPayload()))
+      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+
+    configureCreationConversation(repository);
+    repository.canAccessConversation.mockResolvedValueOnce(false);
+    await expect(service.createTicket(createActor("operator"), createPayload()))
+      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+  });
+
+  it("links current context only when the latest meaningful message is in an open session", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository);
+    repository.listRecentMessageCandidates.mockResolvedValueOnce([
+      messageRow(9003, "最新消息"),
+      messageRow(9002, "较早消息"),
+    ]);
+    repository.listOpenSessionAssignments.mockResolvedValueOnce([
+      { sessionId: "401", sourceMessageId: "9003" },
+      { sessionId: "400", sourceMessageId: "9002" },
+    ]);
+    const service = new TicketsService(repository);
+
+    await service.createTicket(createActor("operator"), createPayload());
+
+    expect(repository.createManualTicket).toHaveBeenCalledWith(expect.objectContaining({
+      anchorMessageId: null,
+      sessionId: 401,
+    }));
+  });
+
+  it("anchors the latest message when only an older message has session ownership", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository);
+    repository.listRecentMessageCandidates.mockResolvedValueOnce([
+      messageRow(9003, "最新消息"),
+      messageRow(9002, "较早消息"),
+    ]);
+    repository.listOpenSessionAssignments.mockResolvedValueOnce([
+      { sessionId: "400", sourceMessageId: "9002" },
+    ]);
+    const service = new TicketsService(repository);
+
+    await service.createTicket(createActor("operator"), createPayload());
+
+    expect(repository.createManualTicket).toHaveBeenCalledWith(expect.objectContaining({
+      anchorMessageId: 9003,
+      sessionId: null,
+    }));
+  });
+
+  it("allows current context with no meaningful messages and supports none or selected session", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository);
+    repository.listRecentMessageCandidates.mockResolvedValueOnce([
+      { ...messageRow(9003, ""), content: "{}", msgtype: "image" },
+    ]);
+    const service = new TicketsService(repository);
+
+    await service.createTicket(createActor("operator"), createPayload());
+    expect(repository.createManualTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      anchorMessageId: null,
+      sessionId: null,
+    }));
+
+    configureCreationConversation(repository);
+    await service.createTicket(createActor("operator"), createPayload({
+      context: { type: "none" },
+    }));
+    expect(repository.createManualTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      anchorMessageId: null,
+      sessionId: null,
+    }));
+
+    configureCreationConversation(repository);
+    repository.isSessionInConversation.mockResolvedValueOnce(true);
+    await service.createTicket(createActor("operator"), createPayload({
+      context: { sessionId: "777", type: "session" },
+    }));
+    expect(repository.createManualTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      anchorMessageId: null,
+      sessionId: 777,
+    }));
+  });
+
+  it("defaults assignment to creator but accepts explicit unassigned and rejects invalid assignees", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    configureCreationConversation(repository);
+    await service.createTicket(createActor("operator"), createPayload({ context: { type: "none" } }));
+    expect(repository.createManualTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      assigneeSubUserId: 101,
+      createdBySubUserId: 101,
+    }));
+
+    configureCreationConversation(repository);
+    await service.createTicket(createActor("operator"), createPayload({
+      assigneeSubUserId: null,
+      context: { type: "none" },
+    }));
+    expect(repository.createManualTicket).toHaveBeenLastCalledWith(expect.objectContaining({
+      assigneeSubUserId: null,
+    }));
+
+    configureCreationConversation(repository);
+    repository.isValidAssignee.mockResolvedValueOnce(false);
+    await expect(service.createTicket(createActor("operator"), createPayload({
+      assigneeSubUserId: "999",
+      context: { type: "none" },
+    }))).rejects.toMatchObject({ code: "INVALID_TICKET_ASSIGNEE" });
+  });
+
+  it("returns paged sessions and valid assignees for the create dialog", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository);
+    repository.listAssigneeOptions.mockResolvedValueOnce([
+      { displayName: "客服甲", subUserId: "101" },
+    ]);
+    repository.listSessionOptions.mockResolvedValueOnce({
+      items: [{
+        endedAt: null,
+        sessionId: "401",
+        startedAt: 1_785_168_000_000,
+        status: "open",
+        summary: null,
+        title: null,
+      }],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    });
+    const service = new TicketsService(repository);
+
+    await expect(service.getContextOptions(createActor("operator"), {
+      conversationId: "301",
+    })).resolves.toMatchObject({
+      defaultAssigneeSubUserId: "101",
+      sessions: { total: 1 },
+    });
   });
 });
 
@@ -187,9 +345,24 @@ function createActor(role: TicketsActorScope["role"]): TicketsActorScope {
 
 function createRepository(page?: { items: TicketRecord[] }) {
   return {
+    canAccessConversation: vi.fn(async () => true),
     countTickets: vi.fn(async () => 0),
+    createManualTicket: vi.fn(async () => 501),
     getConversationIdentity: vi.fn(async () => undefined),
+    getTicketRecordById: vi.fn(async () => baseRecord),
+    isSessionInConversation: vi.fn(async () => false),
+    isValidAssignee: vi.fn(async () => true),
+    listAssigneeOptions: vi.fn(async () => []),
     listCustomerConversationIds: vi.fn(async () => []),
+    listOpenSessionAssignments: vi.fn(async () => []),
+    listRecentMessageCandidates: vi.fn(async () => []),
+    listSessionOptions: vi.fn(async () => ({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+    })),
     listTickets: vi.fn(async () => ({
       items: page?.items ?? [baseRecord],
       page: 1,
@@ -198,9 +371,52 @@ function createRepository(page?: { items: TicketRecord[] }) {
       totalPages: 1,
     })),
   } satisfies TicketsRepositoryPort & {
+    canAccessConversation: ReturnType<typeof vi.fn>;
     countTickets: ReturnType<typeof vi.fn>;
+    createManualTicket: ReturnType<typeof vi.fn>;
     getConversationIdentity: ReturnType<typeof vi.fn>;
+    getTicketRecordById: ReturnType<typeof vi.fn>;
+    isSessionInConversation: ReturnType<typeof vi.fn>;
+    isValidAssignee: ReturnType<typeof vi.fn>;
+    listAssigneeOptions: ReturnType<typeof vi.fn>;
     listCustomerConversationIds: ReturnType<typeof vi.fn>;
+    listOpenSessionAssignments: ReturnType<typeof vi.fn>;
+    listRecentMessageCandidates: ReturnType<typeof vi.fn>;
+    listSessionOptions: ReturnType<typeof vi.fn>;
     listTickets: ReturnType<typeof vi.fn>;
+  };
+}
+
+function configureCreationConversation(repository: ReturnType<typeof createRepository>) {
+  repository.getConversationIdentity.mockResolvedValueOnce({
+    chatType: 1,
+    conversationId: 301,
+    platform: 5,
+    thirdExternalUserId: "customer-1",
+    thirdUserId: "account-1",
+  });
+}
+
+function createPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    context: { type: "current" as const },
+    conversationId: "301",
+    priority: "medium" as const,
+    title: "跟进退款",
+    ...overrides,
+  } as never;
+}
+
+function messageRow(id: number, content: string) {
+  return {
+    chat_type: 1,
+    content: JSON.stringify({ content }),
+    conversation_id: 301,
+    from_type: 2,
+    id,
+    msgtime: 1_785_168_000_000 + id,
+    msgtype: "text",
+    third_from_id: "customer-1",
+    third_user_id: "account-1",
   };
 }

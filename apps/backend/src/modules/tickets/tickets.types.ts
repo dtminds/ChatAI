@@ -1,9 +1,11 @@
 import type {
+  TicketContextOptionsResponse,
   TicketListQuery,
   TicketPriority,
   TicketSourceType,
   TicketView,
 } from "@chatai/contracts";
+import type { InsightMessageSourceRow } from "../insights/insights.types.js";
 
 export type TicketRepositoryView = TicketView | "visible";
 
@@ -53,6 +55,7 @@ export type TicketListRepositoryInput = Omit<TicketListQuery, "assigneeSubUserId
   page: number;
   pageSize: number;
   subUserId: number;
+  ticketIds?: number[];
   uid: number;
   view: TicketRepositoryView;
 };
@@ -69,4 +72,9 @@ export type TicketConversationIdentity = {
   conversationId: number;
   platform: number;
   thirdExternalUserId: string;
+  thirdUserId: string;
 };
+
+export type TicketSessionOptionPage = TicketContextOptionsResponse["sessions"];
+
+export type TicketMessageCandidate = InsightMessageSourceRow;

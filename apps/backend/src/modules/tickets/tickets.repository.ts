@@ -1,3 +1,4 @@
+import type { TicketPriority, TicketUser } from "@chatai/contracts";
 import type {
   ExpressionBuilder,
   Kysely,
@@ -10,8 +11,10 @@ import type {
   TicketConversationIdentity,
   TicketCountRepositoryInput,
   TicketListRepositoryInput,
+  TicketMessageCandidate,
   TicketRecord,
   TicketRecordPage,
+  TicketSessionOptionPage,
 } from "./tickets.types.js";
 
 type TicketQueryDatabase = Database & {
@@ -168,6 +171,7 @@ export class TicketsRepository {
         "conversation.id as conversation_id",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
+        "conversation.third_userid as third_userid",
         "conversation.chat_type as chat_type",
       ])
       .where("conversation.uid", "=", uid)
@@ -184,6 +188,7 @@ export class TicketsRepository {
       conversationId: Number(row.conversation_id),
       platform: Number(row.platform),
       thirdExternalUserId: row.third_external_userid ?? "",
+      thirdUserId: row.third_userid,
     } satisfies TicketConversationIdentity;
   }
 
@@ -203,6 +208,310 @@ export class TicketsRepository {
       .execute();
 
     return rows.map((row) => Number(row.id)).filter(Number.isSafeInteger);
+  }
+
+  async canAccessConversation(input: {
+    conversationId: number;
+    subUserId: number;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform")
+          .onRef("seat.third_userid", "=", "conversation.third_userid"),
+      )
+      .innerJoin("xy_wap_embed_user_seat_sub_relation as relation", (join) =>
+        join
+          .onRef("relation.user_seat_id", "=", "seat.id")
+          .onRef("relation.uid", "=", "seat.uid")
+          .onRef("relation.platform", "=", "seat.platform"),
+      )
+      .select(sql<number>`1`.as("allowed"))
+      .where("conversation.id", "=", input.conversationId)
+      .where("conversation.uid", "=", input.uid)
+      .where("conversation.biz_status", "=", 1)
+      .where("seat.biz_status", "=", 1)
+      .where("relation.sub_id", "=", input.subUserId)
+      .limit(1)
+      .executeTakeFirst();
+
+    return row != null;
+  }
+
+  async listAssigneeOptions(input: {
+    conversationId: number;
+    uid: number;
+  }): Promise<TicketUser[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform")
+          .onRef("seat.third_userid", "=", "conversation.third_userid"),
+      )
+      .innerJoin("xy_wap_embed_user_seat_sub_relation as relation", (join) =>
+        join
+          .onRef("relation.user_seat_id", "=", "seat.id")
+          .onRef("relation.uid", "=", "seat.uid")
+          .onRef("relation.platform", "=", "seat.platform"),
+      )
+      .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
+        join
+          .onRef("sub_user.id", "=", "relation.sub_id")
+          .onRef("sub_user.uid", "=", "relation.uid"),
+      )
+      .select([
+        "sub_user.id as sub_user_id",
+        "sub_user.name as display_name",
+      ])
+      .distinct()
+      .where("conversation.id", "=", input.conversationId)
+      .where("conversation.uid", "=", input.uid)
+      .where("conversation.biz_status", "=", 1)
+      .where("seat.biz_status", "=", 1)
+      .where("sub_user.status", "=", 1)
+      .where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("sub_user.type", "=", 1),
+          expressionBuilder("sub_user.role", "!=", "viewer"),
+        ]),
+      )
+      .orderBy("sub_user.id", "asc")
+      .execute();
+
+    return rows.map((row) => ({
+      displayName: row.display_name,
+      subUserId: String(row.sub_user_id),
+    }));
+  }
+
+  async isValidAssignee(input: {
+    assigneeSubUserId: number;
+    conversationId: number;
+    uid: number;
+  }) {
+    const options = await this.listAssigneeOptions(input);
+
+    return options.some((option) => option.subUserId === String(input.assigneeSubUserId));
+  }
+
+  async listSessionOptions(input: {
+    conversationId: number;
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<TicketSessionOptionPage> {
+    const baseQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session as session")
+      .where("session.uid", "=", input.uid)
+      .where("session.conversation_id", "=", input.conversationId);
+    const countRow = await baseQuery
+      .select((expressionBuilder) => expressionBuilder.fn.count<number>("session.id").as("total"))
+      .executeTakeFirst();
+    const total = toNonNegativeNumber(countRow?.total);
+    const rows = await baseQuery
+      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+        join.onRef("summary.snapshot_id", "=", "session.current_snapshot_id"),
+      )
+      .select([
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "session.ended_at as ended_at",
+        "session.status as status",
+        "summary.session_title as session_title",
+        "summary.summary_text as summary_text",
+      ])
+      .orderBy(
+        sql<number>`COALESCE(session.ended_at, session.last_message_at, session.started_at)`,
+        "desc",
+      )
+      .orderBy("session.id", "desc")
+      .limit(input.pageSize)
+      .offset((input.page - 1) * input.pageSize)
+      .execute();
+
+    return {
+      items: rows.map((row) => ({
+        endedAt: row.ended_at == null ? null : Number(row.ended_at),
+        sessionId: String(row.session_id),
+        startedAt: Number(row.started_at),
+        status: row.status === "open" ? "open" : "ended",
+        summary: row.summary_text || null,
+        title: row.session_title || null,
+      })),
+      page: input.page,
+      pageSize: input.pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / input.pageSize),
+    };
+  }
+
+  async listRecentMessageCandidates(input: {
+    beforeMessageId?: number;
+    conversation: TicketConversationIdentity;
+    limit: number;
+    uid: number;
+  }): Promise<TicketMessageCandidate[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.chat_type as chat_type",
+        "message.content as content",
+        "message.from_type as from_type",
+        "message.id as id",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.third_from_id as third_from_id",
+        "message.third_user_id as third_user_id",
+      ])
+      .select(sql<number>`${input.conversation.conversationId}`.as("conversation_id"))
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.conversation.platform)
+      .where("message.chat_type", "=", 1)
+      .where("message.third_user_id", "=", input.conversation.thirdUserId)
+      .where("message.third_external_id", "=", input.conversation.thirdExternalUserId);
+
+    if (input.beforeMessageId != null) {
+      query = query.where("message.id", "<", input.beforeMessageId);
+    }
+
+    return query
+      .orderBy("message.id", "desc")
+      .limit(input.limit)
+      .execute() as Promise<TicketMessageCandidate[]>;
+  }
+
+  async listOpenSessionAssignments(input: {
+    conversationId: number;
+    sourceMessageIds: number[];
+    uid: number;
+  }) {
+    if (input.sourceMessageIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join
+          .onRef("session.id", "=", "session_message.session_id")
+          .onRef("session.uid", "=", "session_message.uid"),
+      )
+      .select([
+        "session_message.source_message_id as source_message_id",
+        "session_message.session_id as session_id",
+      ])
+      .where("session_message.uid", "=", input.uid)
+      .where("session_message.conversation_id", "=", input.conversationId)
+      .where("session_message.source_message_id", "in", input.sourceMessageIds)
+      .where("session.status", "=", "open")
+      .execute();
+
+    return rows.map((row) => ({
+      sessionId: String(row.session_id),
+      sourceMessageId: String(row.source_message_id),
+    }));
+  }
+
+  async isSessionInConversation(input: {
+    conversationId: number;
+    sessionId: number;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_logical_session as session")
+      .select("session.id")
+      .where("session.uid", "=", input.uid)
+      .where("session.conversation_id", "=", input.conversationId)
+      .where("session.id", "=", input.sessionId)
+      .limit(1)
+      .executeTakeFirst();
+
+    return row != null;
+  }
+
+  async createManualTicket(input: {
+    anchorMessageId: number | null;
+    assigneeSubUserId: number | null;
+    conversationId: number;
+    createdBySubUserId: number;
+    description: string | null;
+    dueAt: Date | null;
+    priority: TicketPriority;
+    sessionId: number | null;
+    title: string;
+    uid: number;
+  }) {
+    return this.db.transaction().execute(async (transaction) => {
+      const insertResult = await transaction
+        .insertInto("xy_wap_embed_session_action_item")
+        .values({
+          action_type: "follow_up",
+          anchor_message_id: input.anchorMessageId,
+          assignee_sub_user_id: input.assigneeSubUserId,
+          canceled_at: null,
+          canceled_by_sub_user_id: null,
+          completed_at: null,
+          completed_by_sub_user_id: null,
+          conversation_id: input.conversationId,
+          created_by_sub_user_id: input.createdBySubUserId,
+          description: input.description,
+          due_at: input.dueAt,
+          due_hint: null,
+          priority: input.priority,
+          session_id: input.sessionId,
+          snapshot_id: null,
+          source_type: "manual",
+          status: "open",
+          title: input.title,
+          uid: input.uid,
+          updated_by_sub_user_id: input.createdBySubUserId,
+        })
+        .executeTakeFirstOrThrow();
+      const ticketId = Number(insertResult.insertId);
+
+      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+        throw new Error("TICKET_INSERT_ID_MISSING");
+      }
+
+      await transaction
+        .insertInto("xy_wap_embed_ticket_activity")
+        .values({
+          activity_type: "created",
+          content: null,
+          detail_json: null,
+          operator_sub_user_id: input.createdBySubUserId,
+          operator_type: "sub_user",
+          ticket_id: ticketId,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+
+      return ticketId;
+    });
+  }
+
+  async getTicketRecordById(input: {
+    globalAccess: boolean;
+    subUserId: number;
+    ticketId: number;
+    uid: number;
+  }) {
+    const page = await this.listTickets({
+      globalAccess: input.globalAccess,
+      page: 1,
+      pageSize: 1,
+      subUserId: input.subUserId,
+      ticketIds: [input.ticketId],
+      uid: input.uid,
+      view: "visible",
+    });
+
+    return page.items[0];
   }
 
   private buildFilteredTicketQuery(input: TicketListRepositoryInput): TicketQuery {
@@ -243,6 +552,11 @@ export class TicketsRepository {
       query = input.conversationIds.length === 0
         ? query.where(sql<boolean>`FALSE`)
         : query.where("ticket.conversation_id", "in", input.conversationIds);
+    }
+    if (input.ticketIds) {
+      query = input.ticketIds.length === 0
+        ? query.where(sql<boolean>`FALSE`)
+        : query.where("ticket.id", "in", input.ticketIds);
     }
     if (input.assigneeSubUserId) {
       query = query.where("ticket.assignee_sub_user_id", "=", input.assigneeSubUserId);

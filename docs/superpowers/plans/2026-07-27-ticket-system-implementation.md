@@ -162,7 +162,7 @@ docs/db/change-log.md                                         修改
 - Modify: `apps/backend/src/db/schema.ts`
 - Modify: `apps/backend/test/db/schema-doc.test.ts`
 
-- [ ] **Step 1：先写数据库文档测试**
+- [x] **Step 1：先写数据库文档测试**
 
 覆盖以下最终结构：
 
@@ -173,7 +173,7 @@ docs/db/change-log.md                                         修改
 - `xy_wap_embed_ticket_activity` 进入 Node 可写白名单。
 - 最近消息反查逻辑会话归属复用现有 `xy_wap_embed_logical_session_message.uk_session_message_source_uid (uid, source_message_id)`；本任务不为该查询新增索引。
 
-- [ ] **Step 2：更新最终 schema snapshot**
+- [x] **Step 2：更新最终 schema snapshot**
 
 工单主表最终字段和索引至少满足 Spec 第 15.1 节。活动表字段：
 
@@ -191,7 +191,7 @@ create_time
 
 不要给 `detail_json` 内字段建立 JSON 索引。工单默认排序中的 `CASE WHEN` 不通过堆叠组合索引解决。
 
-- [ ] **Step 3：在 change-log 编写可复制的 expand/contract SQL**
+- [x] **Step 3：在 change-log 编写可复制的 expand/contract SQL**
 
 迁移分三段：
 
@@ -210,9 +210,9 @@ canceled_by_sub_user_id = NULL（历史无法可靠还原）
 
 change-log 必须同时提供迁移前状态分布查询、迁移后非法组合查询和回滚边界说明。活动表不伪造历史操作流水。
 
-- [ ] **Step 4：更新可写白名单并生成 Kysely 类型**
+- [x] **Step 4：更新可写白名单并生成 Kysely 类型**
 
-生产 change-log 使用 expand/contract；开发代码生成环境应先应用最终结构（或在隔离开发库完成 contract 段），使提交的 `schema.ts` 与最终 `docs/db/schema.sql` 一致，不把仅用于滚动发布的临时双列状态固化进最终类型。
+生产 change-log 使用 expand/contract。Task 1 的运行时 `schema.ts` 先对应 expand 结构，同时包含 `dismissed_at` 和 `canceled_at`，确保旧 Insights 消费方在 Task 11 前仍可构建；`docs/db/schema.sql` 从本任务起描述 contract 后的最终结构。Task 11 切换全部旧消费方后，再生成并提交移除 `dismissed_at` 的最终 Kysely 类型。
 
 执行：
 
@@ -220,9 +220,9 @@ change-log 必须同时提供迁移前状态分布查询、迁移后非法组合
 corepack pnpm --filter @chatai/backend db:codegen
 ```
 
-确认生成类型中的 `session_id` 为可空，新活动表和取消字段完整。不要手改生成类型来掩盖 schema/codegen 不一致。
+确认生成类型中的 `session_id` 为可空，新活动表和取消字段完整，且 expand 阶段暂时保留 `dismissed_at`。如果当前代码生成数据库没有应用 expand SQL，不得用旧库生成结果覆盖目标类型；应在隔离开发库应用 expand SQL 后生成。
 
-- [ ] **Step 5：验证数据库文档测试和 Backend build**
+- [x] **Step 5：验证数据库文档测试和 Backend build**
 
 ```bash
 cd apps/backend
@@ -230,7 +230,7 @@ cd apps/backend
 corepack pnpm --filter @chatai/backend build
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`feat(tickets): add ticket persistence schema`
 
@@ -795,6 +795,7 @@ corepack pnpm --filter @chatai/web build
 
 - Modify: `packages/contracts/src/insights/dto.ts`
 - Modify: `packages/contracts/test/insights-dto.test.ts`
+- Modify: `apps/backend/src/db/schema.ts`
 - Modify: `apps/backend/src/modules/insights/insights.repository.ts`
 - Modify: `apps/backend/src/modules/insights/insights.routes.ts`
 - Modify: `apps/backend/src/modules/insights/insights.service.ts`
@@ -844,6 +845,8 @@ PATCH /api/server/insights/action-items/:actionItemId/status
 同时删除 Web API adapter、lazy import、Insights 导航和页面。`/chat/insights/follow-ups` 不添加 `Navigate`，让通配 NotFound 正常处理。
 
 在同一提交中删除只服务旧待处理页的 Follow-ups DTO 和旧 Insights 人工创建请求/响应 DTO，并同步删除所有前后端消费方，避免任何中间提交出现悬空导入。
+
+所有旧取消字段消费方删除后，使用已执行 contract SQL 的隔离开发库重新生成 `apps/backend/src/db/schema.ts`，确认最终类型不再包含 `dismissed_at`。
 
 - [ ] **Step 4：修正原入口和文案**
 

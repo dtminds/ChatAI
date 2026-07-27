@@ -4,6 +4,141 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-27
 
+- Expanded `xy_wap_embed_session_action_item` into the ticket-system main table while preserving the physical table name for compatibility.
+- Added optional reception-session/message context, description, assignee, explicit due time, and cancellation audit fields.
+- Added `xy_wap_embed_ticket_activity` for ticket lifecycle events and comments.
+- Replaced the legacy `dismissed/expired` terminal states with `canceled`; `expired` is now derived from `due_at` and active status.
+- The migration is expand/contract so old instances can finish before `dismissed_at` and legacy status values are removed.
+
+Preflight checks. Stop if unknown status/action values or invalid AI context rows are returned:
+
+```sql
+SELECT status, COUNT(*) AS row_count
+FROM xy_wap_embed_session_action_item
+GROUP BY status;
+
+SELECT action_type, COUNT(*) AS row_count
+FROM xy_wap_embed_session_action_item
+GROUP BY action_type;
+
+SELECT id, uid, source_type, session_id, snapshot_id
+FROM xy_wap_embed_session_action_item
+WHERE source_type = 'ai'
+  AND (session_id IS NULL OR snapshot_id IS NULL)
+LIMIT 100;
+```
+
+Expand migration. This phase is backward compatible with the old application:
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  MODIFY COLUMN session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
+  ADD COLUMN anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID' AFTER session_id,
+  ADD COLUMN assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID' AFTER created_by_sub_user_id,
+  ADD COLUMN canceled_at DATETIME NULL COMMENT '取消时间' AFTER completed_at,
+  ADD COLUMN canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID' AFTER canceled_at,
+  ADD COLUMN description TEXT NULL COMMENT '工单描述' AFTER title,
+  ADD COLUMN due_at DATETIME NULL COMMENT '明确截止时间' AFTER due_hint,
+  ADD KEY idx_ticket_uid_assignee_status_updated (uid, assignee_sub_user_id, status, update_time, id),
+  ADD KEY idx_ticket_uid_conversation_status_updated (uid, conversation_id, status, update_time, id),
+  ADD KEY idx_ticket_uid_status_due_priority_updated (uid, status, due_at, priority, update_time, id),
+  ADD KEY idx_ticket_uid_creator_updated (uid, created_by_sub_user_id, update_time, id),
+  ADD KEY idx_ticket_uid_source_status_updated (uid, source_type, status, update_time, id);
+
+UPDATE xy_wap_embed_session_action_item
+SET canceled_at = COALESCE(canceled_at, dismissed_at, update_time)
+WHERE status IN ('dismissed', 'expired');
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_ticket_activity (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
+  ticket_id BIGINT UNSIGNED NOT NULL COMMENT '工单ID',
+  activity_type VARCHAR(32) NOT NULL COMMENT '活动类型',
+  operator_type VARCHAR(32) NOT NULL COMMENT '操作者类型，sub_user：子账号，ai：AI，system：系统',
+  operator_sub_user_id BIGINT UNSIGNED NULL COMMENT '操作者子账号ID',
+  content TEXT NULL COMMENT '处理备注内容',
+  detail_json JSON NULL COMMENT '结构化变更详情',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ticket_activity_uid_ticket_id (uid, ticket_id, id)
+) COMMENT='工单活动记录表';
+```
+
+Deploy the application version that reads legacy `dismissed/expired` rows as `canceled`, writes only `open/in_progress/done/canceled`, and writes `canceled_at`. Wait until every old application and Worker instance has exited before contract.
+
+Contract preflight. Stop if either query returns rows:
+
+```sql
+SELECT id, uid, status
+FROM xy_wap_embed_session_action_item
+WHERE status NOT IN ('open', 'in_progress', 'done', 'dismissed', 'expired', 'canceled')
+LIMIT 100;
+
+SELECT id, uid
+FROM xy_wap_embed_session_action_item
+WHERE session_id IS NOT NULL
+  AND anchor_message_id IS NOT NULL
+LIMIT 100;
+```
+
+Contract migration:
+
+```sql
+UPDATE xy_wap_embed_session_action_item
+SET canceled_at = COALESCE(canceled_at, dismissed_at, update_time),
+    canceled_by_sub_user_id = NULL,
+    status = 'canceled'
+WHERE status IN ('dismissed', 'expired');
+
+ALTER TABLE xy_wap_embed_session_action_item
+  MODIFY COLUMN action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
+  MODIFY COLUMN title VARCHAR(255) NOT NULL COMMENT '工单标题',
+  MODIFY COLUMN status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消',
+  DROP COLUMN dismissed_at,
+  DROP KEY idx_action_uid_conversation_status,
+  DROP KEY idx_action_uid_status_id;
+
+ANALYZE TABLE xy_wap_embed_session_action_item, xy_wap_embed_ticket_activity;
+```
+
+Post-migration checks. Every count must be zero:
+
+```sql
+SELECT COUNT(*) AS invalid_status_rows
+FROM xy_wap_embed_session_action_item
+WHERE status NOT IN ('open', 'in_progress', 'done', 'canceled');
+
+SELECT COUNT(*) AS conflicting_context_rows
+FROM xy_wap_embed_session_action_item
+WHERE session_id IS NOT NULL
+  AND anchor_message_id IS NOT NULL;
+
+SELECT COUNT(*) AS unassigned_in_progress_rows
+FROM xy_wap_embed_session_action_item
+WHERE status = 'in_progress'
+  AND assignee_sub_user_id IS NULL;
+
+SELECT COUNT(*) AS invalid_ai_context_rows
+FROM xy_wap_embed_session_action_item
+WHERE source_type = 'ai'
+  AND (session_id IS NULL OR snapshot_id IS NULL);
+
+SELECT COUNT(*) AS invalid_manual_snapshot_rows
+FROM xy_wap_embed_session_action_item
+WHERE source_type = 'manual'
+  AND snapshot_id IS NOT NULL;
+
+SELECT COUNT(*) AS invalid_action_type_rows
+FROM xy_wap_embed_session_action_item
+WHERE action_type <> 'follow_up';
+```
+
+Rollback boundary:
+
+- Before deploying new writers, expand can be rolled back by dropping the five new indexes, new columns, and activity table after confirming they contain no data.
+- After new writers are deployed, do not drop expanded columns or the activity table. Roll back application binaries only to a version verified to tolerate the expanded schema.
+- Contract is destructive: legacy `expired` versus `dismissed` provenance and `dismissed_at` cannot be reconstructed after migration. Take a database backup before contract; restoration requires restoring that backup, not application-side compensation.
+
 - Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.
 - `token_usage` stores the accumulated Volcengine Ark `usage` shape for every model response observed during one analysis run, including retries and responses whose business payload later fails validation.
 - The removed columns were never read or written by the backend. Confirm they are empty before applying the destructive column drops to an existing database.

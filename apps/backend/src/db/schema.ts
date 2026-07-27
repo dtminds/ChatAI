@@ -2396,6 +2396,22 @@ export interface XyWapEmbedSessionActionItem {
    */
   action_type: string;
   /**
+   * 关联消息锚点ID
+   */
+  anchor_message_id: number | null;
+  /**
+   * 负责人子账号ID
+   */
+  assignee_sub_user_id: number | null;
+  /**
+   * 取消时间
+   */
+  canceled_at: Date | null;
+  /**
+   * 取消人子账号ID
+   */
+  canceled_by_sub_user_id: number | null;
+  /**
    * 完成时间
    */
   completed_at: Date | null;
@@ -2416,9 +2432,17 @@ export interface XyWapEmbedSessionActionItem {
    */
   created_by_sub_user_id: number | null;
   /**
-   * 忽略时间
+   * 工单描述
+   */
+  description: string | null;
+  /**
+   * 兼容滚动发布期间的旧忽略时间，contract 后移除
    */
   dismissed_at: Date | null;
+  /**
+   * 明确截止时间
+   */
+  due_at: Date | null;
   /**
    * 时效提示
    */
@@ -2432,9 +2456,9 @@ export interface XyWapEmbedSessionActionItem {
    */
   priority: string;
   /**
-   * 逻辑会话ID
+   * 关联接待会话ID
    */
-  session_id: number;
+  session_id: number | null;
   /**
    * AI来源洞察快照ID
    */
@@ -2444,11 +2468,11 @@ export interface XyWapEmbedSessionActionItem {
    */
   source_type: Generated<string>;
   /**
-   * 处理状态，open：待处理，done：已完成，dismissed：已忽略，expired：已过期
+   * 处理状态，滚动发布期间兼容旧值，最终为open/in_progress/done/canceled
    */
   status: string;
   /**
-   * 行动项标题
+   * 工单标题
    */
   title: string;
   /**
@@ -2902,6 +2926,45 @@ export interface XyWapEmbedSiderBarConfig {
   url: string;
 }
 
+export interface XyWapEmbedTicketActivity {
+  /**
+   * 活动类型
+   */
+  activity_type: string;
+  /**
+   * 处理备注内容
+   */
+  content: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 结构化变更详情
+   */
+  detail_json: Json | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 操作者子账号ID
+   */
+  operator_sub_user_id: number | null;
+  /**
+   * 操作者类型，sub_user：子账号，ai：AI，system：系统
+   */
+  operator_type: string;
+  /**
+   * 工单ID
+   */
+  ticket_id: number;
+  /**
+   * 租户UID
+   */
+  uid: number;
+}
+
 export interface XyWapEmbedSubUser {
   /**
    * 登录用户名
@@ -3271,6 +3334,7 @@ export interface DB {
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;
+  xy_wap_embed_ticket_activity: XyWapEmbedTicketActivity;
   xy_wap_embed_user_relation: XyWapEmbedUserRelation;
   xy_wap_embed_user_seat: XyWapEmbedUserSeat;
   xy_wap_embed_user_seat_agent: XyWapEmbedUserSeatAgent;

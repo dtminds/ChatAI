@@ -21,6 +21,7 @@ import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import * as agentLearningService from "@/pages/chat/ai-hosting/api/agent-learning-service";
 import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
 import * as customFieldService from "@/pages/chat/ai-hosting/api/custom-field-service";
+import * as workTagService from "@/pages/chat/ai-hosting/api/work-tag-service";
 import { useAuthStore } from "@/store/auth-store";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
@@ -93,6 +94,10 @@ const kbServiceMock = vi.hoisted(() => ({
 const customFieldServiceMock = vi.hoisted(() => ({
   listCustomFields: vi.fn(),
 }));
+const workTagServiceMock = vi.hoisted(() => ({
+  listWorkTagGroups: vi.fn(),
+  listWorkTags: vi.fn(),
+}));
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
@@ -100,6 +105,7 @@ vi.mock("read-excel-file/browser", () => ({
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/agent-learning-service", () => agentLearningServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => customFieldServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/work-tag-service", () => workTagServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/kb-service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/pages/chat/ai-hosting/api/kb-service")>();
 
@@ -594,6 +600,109 @@ describe("AI hosting pages", () => {
           type: 1,
         },
       ],
+    });
+    vi.mocked(workTagService.listWorkTagGroups).mockResolvedValue({
+      groups: [
+        {
+          attr: 1,
+          id: 11,
+          name: "意向标签组",
+          tagCount: 3,
+        },
+        {
+          attr: 2,
+          id: 21,
+          name: "会员等级组",
+          tagCount: 3,
+        },
+      ],
+      tagLimit: 5,
+    });
+    vi.mocked(workTagService.listWorkTags).mockImplementation(async (params) => {
+      const type = params?.type ?? 0;
+      const allTags =
+        type === 12
+          ? [
+              {
+                groupAttr: 1 as const,
+                groupId: 31,
+                groupName: "基础会员标签",
+                groupSort: 20,
+                id: 311,
+                name: "银卡会员",
+                type: 12 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 31,
+                groupName: "基础会员标签",
+                groupSort: 20,
+                id: 312,
+                name: "金卡会员",
+                type: 12 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 32,
+                groupName: "消费行为",
+                groupSort: 10,
+                id: 321,
+                name: "复购用户",
+                type: 12 as const,
+              },
+            ]
+          : [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 111,
+                name: "高意向",
+                type: 0 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 112,
+                name: "中意向",
+                type: 0 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 113,
+                name: "低意向",
+                type: 0 as const,
+              },
+            ];
+
+      const tags = allTags.filter((tag) => {
+        if (params?.groupId != null && tag.groupId !== params.groupId) {
+          return false;
+        }
+
+        const keyword = params?.keyword?.trim();
+        if (keyword && !tag.name.includes(keyword)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      return {
+        pagination: {
+          hasNext: false,
+          page: params?.page ?? 1,
+          pageSize: params?.pageSize ?? 100,
+          total: tags.length,
+        },
+        tags,
+      };
     });
     vi.mocked(kbService.createKb).mockImplementation(async (payload) => {
       const created = addMockKbListItem({
@@ -1790,17 +1899,51 @@ describe("AI hosting pages", () => {
     );
     // 右侧添加只进入可选池，不会直接写入技能描述
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent("性别");
+    await user.click(screen.getByRole("button", { name: "删除客户自定义属性 · 性别" }));
+    expect(screen.getByRole("heading", { name: "删除变量" })).toBeInTheDocument();
+    expect(screen.getByText("将删除技能描述中引用的变量，确认删除吗？")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "客户自定义属性 · 性别",
+    );
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
     await user.click(screen.getByRole("button", { name: "添加客户标签" }));
     expect(screen.getByText("标签类型")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "企微标签" })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "选择标签" }));
-    expect(screen.getByRole("tab", { name: "普通标签" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "普通标签" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "互斥标签" })).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "高意向" }));
+    expect(workTagService.listWorkTagGroups).toHaveBeenCalledWith({
+      attr: 1,
+      type: 0,
+    });
+    expect(await screen.findByRole("button", { name: "意向标签组" })).toBeInTheDocument();
+    const wecomTagCall = vi
+      .mocked(workTagService.listWorkTags)
+      .mock.calls.find(([params]) => params?.groupId === 11 && params?.type === 0);
+    expect(wecomTagCall?.[0]).toMatchObject({
+      groupId: 11,
+      type: 0,
+    });
+    expect(wecomTagCall?.[0]).not.toHaveProperty("attr");
+    await user.click(await screen.findByRole("checkbox", { name: "高意向" }));
     await user.click(screen.getByRole("button", { name: "确认插入" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent("客户标签");
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("button", { name: "添加客户标签" }));
+    await user.click(screen.getByRole("radio", { name: "小店标签" }));
+    await user.click(screen.getByRole("button", { name: "选择标签" }));
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 12,
+      }),
+    );
+    expect(await screen.findByRole("button", { name: "基础会员标签" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("checkbox", { name: "银卡会员" }));
+    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent("小店标签");
 
     await user.click(screen.getByRole("button", { name: "引用变量" }));
     expect(screen.getByRole("menuitem", { name: "引用变量" })).toBeInTheDocument();

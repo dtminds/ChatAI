@@ -21,7 +21,7 @@ backend 工作台路由默认依赖 MySQL 和 Java 写侧接口，缺少关键�
 
 群聊「AI 对话」入口依赖席位总开关「允许开启 AI回复」：总开关关闭时，工作台不再展示该入口（即使某个群之前单独开过）。
 
-智能体侧栏新增「AI技能」页面（`/chat/ai-hosting/skills`）：技能广场展示分类 mock 技能卡片与详情弹窗；「我的技能」支持搜索、启用/停用/删除 mock 列表，以及「添加技能」进入 `/chat/ai-hosting/skills/new` 设置页。设置页按技能需求文档对齐：技能名最长 50；右侧「插入资源」先添加变量 / 工具 / 知识库到可选池；技能描述旁「引用变量」级联菜单仅可选择右侧已添加项（未添加时显示「暂无数据」），选中后插入蓝色资源块（提交时再序列化为 `<resource ... />`）。变量类型含客户自定义属性（经 `GET /api/server/ai-hosting/custom-fields` 代理 Java `third-internal/custom-field/select-list`）/ 客户标签（企微含互斥、会员、自动化仅选分组，暂 mock）/ 系统变量；「插入工具」对齐小店与订单工具列表；「插入知识库」读取当前知识库列表。标签暂为 mock，待接口接入。
+智能体侧栏新增「AI技能」页面（`/chat/ai-hosting/skills`）：技能广场展示分类 mock 技能卡片与详情弹窗；「我的技能」支持搜索、启用/停用/删除 mock 列表，以及「添加技能」进入 `/chat/ai-hosting/skills/new` 设置页。设置页按技能需求文档对齐：技能名最长 50；右侧「插入资源」先添加变量 / 工具 / 知识库到可选池；技能描述旁「引用变量」级联菜单仅可选择右侧已添加项（未添加时显示「暂无数据」），选中后插入蓝色资源块（提交时再序列化为 `<resource ... />`）。变量类型含客户自定义属性（`GET /api/server/ai-hosting/custom-fields`）/ 企微客户标签（标签组 `GET /api/server/ai-hosting/work-tag-groups?attr=1&type=0`，组内标签 `GET /api/server/ai-hosting/work-tags?type=0`，代理 Java `work-tag-group/get-work-tag-group-list` 与 `work-tag/tag-component-list`；互斥标签切 `attr=2`，且仅标签组接口传 `attr`）/ 小店标签（`GET /api/server/ai-hosting/work-tags?type=12`，同一 `tag-component-list`）/ 自动化标签（暂 mock）/ 系统变量；「插入工具」对齐小店与订单工具列表；「插入知识库」读取当前知识库列表。
 
 ## 技术栈
 

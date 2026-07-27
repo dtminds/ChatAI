@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAgentLearningRoutes } from "./modules/ai-hosting/agent-learning.routes.js";
 import { registerCustomFieldRoutes } from "./modules/ai-hosting/custom-field.routes.js";
+import { registerWorkTagRoutes } from "./modules/ai-hosting/work-tag.routes.js";
 import { registerKbAttachmentRoutes } from "./modules/ai-hosting/kb-attachment.routes.js";
 import { registerKbChunkRoutes } from "./modules/ai-hosting/kb-chunk.routes.js";
 import { registerAiHostingRoutes as registerKbDocRoutes } from "./modules/ai-hosting/kb-doc.routes.js";
@@ -48,6 +49,7 @@ export async function buildApp() {
   await registerAiHostingRoutes(app);
   await registerAgentLearningRoutes(app);
   await registerCustomFieldRoutes(app);
+  await registerWorkTagRoutes(app);
   await registerKbDocRoutes(app);
   await registerKbChunkRoutes(app);
   await registerKbAttachmentRoutes(app);

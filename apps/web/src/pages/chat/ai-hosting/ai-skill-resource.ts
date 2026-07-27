@@ -119,6 +119,21 @@ export function appendResourceToSkillContent(
   return normalizeSkillContentSegments([...normalized, resource]);
 }
 
+export function removeResourceFromSkillContent(
+  segments: SkillContentSegment[],
+  resource: Pick<SkillContentResourceSegment, "id" | "placeholder">,
+): SkillContentSegment[] {
+  return normalizeSkillContentSegments(
+    segments.filter(
+      (segment) =>
+        !(
+          segment.type === "resource" &&
+          (segment.id === resource.id || segment.placeholder === resource.placeholder)
+        ),
+    ),
+  );
+}
+
 export function normalizeSkillContentSegments(
   segments: SkillContentSegment[],
 ): SkillContentSegment[] {

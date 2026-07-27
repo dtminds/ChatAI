@@ -1884,16 +1884,19 @@ describe("InsightsService", () => {
     await expect(service.getSessionMessages(scope, "501")).resolves.toMatchObject({
       messages: expect.any(Array),
     });
-    await expect(service.createRescanJob(scope, {
+    const rescanTo = new Date();
+    const rescanFrom = new Date(rescanTo.getTime() - 24 * 60 * 60 * 1000);
+    await expect(service.createRescanJob(scope, "owner", {
       analysisScope: "all",
-      from: "2026-06-01T00:00:00.000Z",
-      to: "2026-06-02T00:00:00.000Z",
-    })).resolves.toMatchObject({ status: "accepted" });
+      from: rescanFrom.toISOString(),
+      to: rescanTo.toISOString(),
+    })).rejects.toMatchObject({ code: "INSIGHT_DISABLED" });
     expect(repository.findDetail).toHaveBeenCalledWith(scope, "501");
     expect(repository.getFilterOptions).toHaveBeenCalledWith(scope);
     expect(repository.listMessageContext).toHaveBeenCalled();
     expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
     expect(repository.createActionItem).toHaveBeenCalled();
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
   });
 
   it("throws not found when session messages are requested outside uid scope", async () => {
@@ -2532,14 +2535,17 @@ describe("InsightsService", () => {
   it("creates a scoped historical rescan task on each manual trigger", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
 
     await expect(
       service.createRescanJob(
         scope,
+        "admin",
         {
           analysisScope: "qaFindings",
-          from: "2026-06-01T00:00:00.000Z",
-          to: "2026-06-02T00:00:00.000Z",
+          from: from.toISOString(),
+          to: to.toISOString(),
         },
         "客服主管",
       ),
@@ -2553,25 +2559,113 @@ describe("InsightsService", () => {
       {
         analysisScope: "qaFindings",
         createdBy: "客服主管",
-        from: new Date("2026-06-01T00:00:00.000Z"),
-        to: new Date("2026-06-02T00:00:00.000Z"),
+        from,
+        to,
       },
-      expect.stringMatching(
-        /^rescan:9001:qaFindings:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/,
+      expect.stringContaining(
+        `rescan:9001:qaFindings:${from.toISOString()}:${to.toISOString()}:`,
       ),
     );
   });
 
   it("rejects rescan tasks with an end time before the start time", async () => {
     const service = new InsightsService(createRepository());
+    const from = new Date();
+    const to = new Date(from.getTime() - 60_000);
 
     await expect(
-      service.createRescanJob(scope, {
+      service.createRescanJob(scope, "owner", {
         analysisScope: "all",
-        from: "2026-06-02T00:00:00.000Z",
-        to: "2026-06-01T00:00:00.000Z",
+        from: from.toISOString(),
+        to: to.toISOString(),
       }),
     ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+  });
+
+  it("allows rescan tasks starting exactly seven days ago", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-27T08:00:00.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await expect(
+        service.createRescanJob(scope, "owner", {
+          analysisScope: "all",
+          from: "2026-07-20T08:00:00.000Z",
+          to: "2026-07-27T07:59:00.000Z",
+        }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects rescan tasks starting earlier than seven days ago", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "owner", {
+        analysisScope: "all",
+        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 - 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects rescan tasks with a future boundary", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+    const now = Date.now();
+
+    await expect(
+      service.createRescanJob(scope, "owner", {
+        analysisScope: "all",
+        from: new Date(now - 60_000).toISOString(),
+        to: new Date(now + 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects rescan creation when insights are disabled", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "admin", {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INSIGHT_DISABLED" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("allows only admins to create or list rescan tasks", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "operator", {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(service.listRescanTasks(scope, "viewer")).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+    expect(repository.listRescanTasks).not.toHaveBeenCalled();
   });
 
   it("rejects creating a rescan task when another task is active", async () => {
@@ -2581,10 +2675,10 @@ describe("InsightsService", () => {
     const service = new InsightsService(repository);
 
     await expect(
-      service.createRescanJob(scope, {
+      service.createRescanJob(scope, "admin", {
         analysisScope: "qaFindings",
-        from: "2026-06-01T00:00:00.000Z",
-        to: "2026-06-02T00:00:00.000Z",
+        from: new Date(Date.now() - 2 * 60_000).toISOString(),
+        to: new Date(Date.now() - 60_000).toISOString(),
       }),
     ).rejects.toMatchObject({ code: "RESCAN_TASK_ACTIVE" });
     expect(repository.createRescanJob).not.toHaveBeenCalled();
@@ -2594,7 +2688,7 @@ describe("InsightsService", () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.listRescanTasks(scope)).resolves.toEqual({
+    await expect(service.listRescanTasks(scope, "owner")).resolves.toEqual({
       items: [
         expect.objectContaining({
           analysisScope: "classification",

@@ -1671,26 +1671,31 @@ export class InsightsWorkerService {
     }
 
     try {
-      if (job.mode !== "manual_reanalyze") {
-        const featureConfig = await this.repository.getFeatureConfig(job.uid);
-        if (!featureConfig.insightEnabled) {
-          await this.repository.skipAutomaticAnalysisJob(job);
-          this.observability?.increment("analysis", "skippedInsightDisabled");
-          this.observability?.event({
-            eventCode: "insights_worker.analysis_skipped",
-            level: "debug",
-            message: "会话洞察 Worker 已跳过自动分析",
-            payload: {
-              jobId: job.jobId,
-              mode: job.mode,
-              reason: "insight_disabled",
-              sessionId: job.sessionId,
-            },
-            pipeline: "analysis",
-            uid: job.uid,
+      const featureConfig = await this.repository.getFeatureConfig(job.uid);
+      if (!featureConfig.insightEnabled) {
+        await this.repository.skipAutomaticAnalysisJob(job);
+        if (job.rescanTaskId) {
+          await this.repository.updateRescanTaskAfterAnalysis({
+            failedSessions: 1,
+            rescanTaskId: job.rescanTaskId,
+            succeededSessions: 0,
           });
-          return;
         }
+        this.observability?.increment("analysis", "skippedInsightDisabled");
+        this.observability?.event({
+          eventCode: "insights_worker.analysis_skipped",
+          level: "debug",
+          message: "会话洞察 Worker 已跳过分析",
+          payload: {
+            jobId: job.jobId,
+            mode: job.mode,
+            reason: "insight_disabled",
+            sessionId: job.sessionId,
+          },
+          pipeline: "analysis",
+          uid: job.uid,
+        });
+        return;
       }
 
       const sourceRows = await this.repository.listSessionMessagesForAnalysis(job.sessionId);

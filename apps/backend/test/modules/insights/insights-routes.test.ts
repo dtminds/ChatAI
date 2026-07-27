@@ -125,25 +125,6 @@ describe("insights routes", () => {
       },
       url: "/api/server/insights/action-items",
     });
-    const rescan = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        analysisScope: "classification",
-        from: "2026-06-01T00:00:00.000Z",
-        to: "2026-06-02T00:00:00.000Z",
-      },
-      url: "/api/server/insights/jobs/rescan",
-    });
-    const rescanTasks = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/jobs/rescan",
-    });
-
     expect(overview.statusCode).toBe(200);
     expect(overview.json()).toMatchObject({
       data: {
@@ -359,8 +340,46 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(rescan.statusCode).toBe(200);
-    expect(rescan.json()).toMatchObject({
+    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
+    expect(db.insertedActionItem).toMatchObject({
+      conversation_id: 301,
+      created_by_sub_user_id: 1,
+      session_id: 501,
+      snapshot_id: null,
+      source_type: "manual",
+      title: "回访物流状态",
+      uid: 9001,
+    });
+    await app.close();
+  });
+
+  it("allows admins to create and list rescan tasks", async () => {
+    const admin = await createInsightsApp("admin", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+
+    const createResponse = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "classification",
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+    const listResponse = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/jobs/rescan",
+    });
+
+    await admin.app.close();
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toMatchObject({
       data: {
         jobId: "8802",
         status: "accepted",
@@ -368,8 +387,8 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(rescanTasks.statusCode).toBe(200);
-    expect(rescanTasks.json()).toMatchObject({
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
       data: {
         items: [
           expect.objectContaining({
@@ -383,33 +402,77 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
-    expect(db.insertedActionItem).toMatchObject({
-      conversation_id: 301,
-      created_by_sub_user_id: 1,
-      session_id: 501,
-      snapshot_id: null,
-      source_type: "manual",
-      title: "回访物流状态",
-      uid: 9001,
-    });
-    expect(db.insertedRescanTask).toMatchObject({
+    expect(admin.db.insertedRescanTask).toMatchObject({
       analysis_scope: "classification",
-      from_time: 1_780_272_000_000,
-      to_time: 1_780_358_400_000,
+      from_time: from.getTime(),
+      to_time: to.getTime(),
       uid: 9001,
     });
-    expect(db.insertedJob).toMatchObject({
+    expect(admin.db.insertedJob).toMatchObject({
       analysis_scope: "classification",
       job_type: "sync_messages",
       rescan_task_id: 9901,
       target_id: "9001",
       uid: 9001,
     });
-    expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:classification:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/);
-    expect(db.rescanTaskListQueries[0]).toMatchObject({ limit: 10, offset: 0 });
+    expect(admin.db.insertedJob?.idempotency_key).toContain(
+      `rescan:9001:classification:${from.toISOString()}:${to.toISOString()}:`,
+    );
+    expect(admin.db.rescanTaskListQueries[0]).toMatchObject({ limit: 10, offset: 0 });
+  });
 
-    await app.close();
+  it("allows only admins to create and list rescan tasks", async () => {
+    const operator = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
+    const from = new Date(Date.now() - 60_000).toISOString();
+
+    const createResponse = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "all",
+        from,
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+    const listResponse = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "GET",
+      url: "/api/server/insights/jobs/rescan",
+    });
+
+    await operator.app.close();
+
+    expect(createResponse.statusCode).toBe(403);
+    expect(listResponse.statusCode).toBe(403);
+    expect(operator.db.insertedRescanTask).toBeUndefined();
+    expect(operator.db.rescanTaskListQueries).toHaveLength(0);
+  });
+
+  it("rejects rescan creation when insights are disabled", async () => {
+    const admin = await createInsightsApp("admin", {
+      initialFeatureConfig: { insight_enabled: 0 },
+    });
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INSIGHT_DISABLED" },
+      success: false,
+    });
+    expect(admin.db.insertedRescanTask).toBeUndefined();
   });
 
   it("rejects malformed rescan task pagination before querying data", async () => {

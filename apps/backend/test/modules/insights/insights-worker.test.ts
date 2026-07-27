@@ -1589,6 +1589,49 @@ describe("InsightsWorkerService", () => {
     );
   });
 
+  it("skips queued manual reanalysis and advances the rescan failure count when insights are disabled", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "manual_reanalyze",
+        rescanTaskId: "9901",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+    });
+    const model = {
+      analyzeSession: vi.fn(),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.listSessionMessagesForAnalysis).not.toHaveBeenCalled();
+    expect(repository.skipAutomaticAnalysisJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "job-1", mode: "manual_reanalyze" }),
+    );
+    expect(repository.updateRescanTaskAfterAnalysis).toHaveBeenCalledWith({
+      failedSessions: 1,
+      rescanTaskId: "9901",
+      succeededSessions: 0,
+    });
+  });
+
   it("runs one due historical rescan job from the requested time", async () => {
     const firstBatchMessage = {
       chatType: 1,

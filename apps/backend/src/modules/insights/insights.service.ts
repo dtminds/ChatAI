@@ -456,6 +456,7 @@ const defaultMessageContextSize = 30;
 const defaultOverviewPageSize = 20;
 const maxOverviewPageSize = 100;
 const defaultOverviewRangeDays = 30;
+const maxRescanLookbackMs = 7 * 24 * 60 * 60 * 1000;
 const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimitRule> = {
   entityDictionary: { hardLimit: 20, softLimit: 15 },
   intentConfigs: { hardLimit: 15, softLimit: 12 },
@@ -1310,23 +1311,41 @@ export class InsightsService {
 
   async createRescanJob(
     scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
     payload: InsightsRescanRequest,
     createdBy?: string,
   ): Promise<InsightsRescanResponse> {
+    assertInsightSettingsAdmin(role);
+
     const from = new Date(payload.from);
 
     if (Number.isNaN(from.getTime())) {
       throw new BadRequestError("INVALID_RESCAN_FROM", "重刷开始时间无效");
     }
 
-    const to = payload.to ? new Date(payload.to) : new Date();
+    const now = Date.now();
+    const to = payload.to ? new Date(payload.to) : new Date(now);
 
     if (Number.isNaN(to.getTime())) {
       throw new BadRequestError("INVALID_RESCAN_TO", "重刷结束时间无效");
     }
 
+    if (from.getTime() < now - maxRescanLookbackMs) {
+      throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷开始时间仅支持最近 7 天");
+    }
+
+    if (from.getTime() > now || to.getTime() > now) {
+      throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷时间不能晚于当前时间");
+    }
+
     if (to.getTime() < from.getTime()) {
       throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷结束时间不能早于开始时间");
+    }
+
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+
+    if (!featureConfig.insightEnabled) {
+      throw new BadRequestError("INSIGHT_DISABLED", "请先开启会话洞察再创建重刷任务");
     }
 
     if (await this.repository.hasActiveRescanTask(scope)) {
@@ -1355,8 +1374,11 @@ export class InsightsService {
 
   async listRescanTasks(
     scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
     options?: { page?: number; pageSize?: number },
   ): Promise<InsightRescanTaskListResponse> {
+    assertInsightSettingsAdmin(role);
+
     const page = Math.max(1, options?.page ?? 1);
     const pageSize = Math.min(50, Math.max(1, options?.pageSize ?? 10));
     const offset = (page - 1) * pageSize;

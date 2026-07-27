@@ -3295,13 +3295,12 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("dialog", { name: "新建重刷任务" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("开始时间")).toHaveAttribute(
-      "min",
-      "2026-05-27T10:00",
+    const rescanFromInput = screen.getByLabelText("开始时间");
+    expect(new Date(rescanFromInput.getAttribute("min") ?? "").getTime()).toBe(
+      Date.now() - 7 * 24 * 60 * 60 * 1000,
     );
-    expect(screen.getByLabelText("开始时间")).toHaveAttribute(
-      "max",
-      "2026-06-03T10:00",
+    expect(new Date(rescanFromInput.getAttribute("max") ?? "").getTime()).toBe(
+      Date.now(),
     );
     expect(
       screen.getByText(

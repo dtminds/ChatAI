@@ -305,7 +305,7 @@ corepack pnpm --filter @chatai/contracts build
 - Create: `apps/backend/test/modules/tickets/tickets-repository.test.ts`
 - Create: `apps/backend/test/modules/tickets/tickets-service.test.ts`
 
-- [ ] **Step 1：先写可见范围和权限失败测试**
+- [x] **Step 1：先写可见范围和权限失败测试**
 
 逐项保护：
 
@@ -319,7 +319,7 @@ corepack pnpm --filter @chatai/contracts build
 - contract SQL 执行前，旧 `dismissed/expired` 行在 API 中统一映射为 `canceled`；新代码不得再写旧状态。
 - 所有分支先限制 `uid`，不得跨租户。
 
-- [ ] **Step 2：实现统一 actor scope 和权限判定**
+- [x] **Step 2：实现统一 actor scope 和权限判定**
 
 Service 接收：
 
@@ -334,7 +334,7 @@ Repository 负责数据事实；Service 负责“能否查看/修改/领取/分�
 
 “接待工单”的查询事实来自账号当前 `host_sub_id`；普通工单可见范围和“待领取”仍来自账号访问关系。两者不得共用一个含义模糊的账号 ID 集合。接管变化只改变后续查询结果，不更新工单行。
 
-- [ ] **Step 3：实现列表、筛选、搜索和排序查询**
+- [x] **Step 3：实现列表、筛选、搜索和排序查询**
 
 要求：
 
@@ -345,7 +345,7 @@ Repository 负责数据事实；Service 负责“能否查看/修改/领取/分�
 - 客户、所属账号、负责人展示信息按当前页 ID 批量 hydration，不做 N+1。
 - 真实 SQL 以最终 `EXPLAIN` 决定索引，不在 mock 测试中推断性能。
 
-- [ ] **Step 4：实现客户范围查询**
+- [x] **Step 4：实现客户范围查询**
 
 `scope=customer` 固定由服务端通过当前 `conversation_id` 解析：
 
@@ -355,14 +355,14 @@ uid + platform + third_external_userid
 
 只匹配 `chat_type = 1`，再与当前用户可见 `conversation_id` 求交集。客户键缺失时退化为当前聊天。前端传来的第三方客户 ID 一律不参与查询。
 
-- [ ] **Step 5：运行聚焦测试**
+- [x] **Step 5：运行聚焦测试**
 
 ```bash
 cd apps/backend
 ./node_modules/.bin/vitest run --config vitest.config.ts test/modules/tickets/tickets-repository.test.ts test/modules/tickets/tickets-service.test.ts
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`feat(tickets): add ticket queries and authorization`
 

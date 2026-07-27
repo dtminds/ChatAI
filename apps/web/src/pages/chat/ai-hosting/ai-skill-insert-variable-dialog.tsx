@@ -33,6 +33,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { listCustomFields } from "./api/custom-field-service";
+import { listWorkTagGroups, listWorkTags } from "./api/work-tag-service";
 import {
   buildVariablePlaceholder,
   skillVariableStorageId,
@@ -43,6 +44,11 @@ import {
 type VariableKind = "custom_field" | "customer_tags" | "system_variable";
 type TagKind = "work_tag" | "mall_tag" | "auto_tag";
 type WecomTagMode = "normal" | "exclusive";
+
+/** 企微客户标签对应 Java type=0 外部联系人 */
+const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
+/** 小店标签对应 Java type=12 星云客户标签 */
+const MALL_TAG_TYPE = 12 as const;
 
 export type InsertVariableInitialConfigure = {
   kind: VariableKind;
@@ -63,6 +69,13 @@ type TagGroup = {
 type CustomInfoFieldOption = {
   id: number;
   name: string;
+};
+
+type WorkTagGroupOption = {
+  attr: 1 | 2;
+  id: number;
+  name: string;
+  sort?: number;
 };
 
 const variableOptions: ReadonlyArray<{
@@ -99,65 +112,28 @@ const tagKindOptions: ReadonlyArray<{ label: string; value: TagKind }> = [
   { label: "自动化标签", value: "auto_tag" },
 ];
 
-const wecomNormalGroups: readonly TagGroup[] = [
-  {
-    id: 11,
-    name: "意向标签组",
-    tags: [
-      { id: 111, name: "高意向" },
-      { id: 112, name: "中意向" },
-      { id: 113, name: "低意向" },
-    ],
-  },
-  {
-    id: 12,
-    name: "客户阶段",
-    tags: [
-      { id: 121, name: "新客" },
-      { id: 122, name: "活跃客" },
-      { id: 123, name: "沉睡客" },
-    ],
-  },
-];
-
-const wecomExclusiveGroups: readonly TagGroup[] = [
-  {
-    id: 21,
-    name: "会员等级组",
-    tags: [
-      { id: 211, name: "VIP" },
-      { id: 212, name: "SVIP" },
-      { id: 213, name: "普通会员" },
-    ],
-  },
-];
-
-const memberTagGroups: readonly TagGroup[] = [
-  {
-    id: 31,
-    name: "基础会员标签",
-    tags: [
-      { id: 311, name: "银卡会员" },
-      { id: 312, name: "金卡会员" },
-      { id: 313, name: "黑卡会员" },
-    ],
-  },
-  {
-    id: 32,
-    name: "消费行为",
-    tags: [
-      { id: 321, name: "复购用户" },
-      { id: 322, name: "高消费" },
-    ],
-  },
-];
-
 /** 自动化标签先只支持系统标签分组（接口可扩展）；按文档仅选分组 select_id */
 const automationTagGroups: readonly TagGroup[] = [
   { id: 41, name: "价值标签", tags: [] },
   { id: 42, name: "企微基础标签", tags: [] },
   { id: 43, name: "消费标签", tags: [] },
 ];
+
+function usesComponentTagApi(kind: TagKind) {
+  return kind === "work_tag" || kind === "mall_tag";
+}
+
+function getComponentTagType(kind: TagKind) {
+  if (kind === "mall_tag") {
+    return MALL_TAG_TYPE;
+  }
+
+  if (kind === "work_tag") {
+    return WECOM_CUSTOMER_TAG_TYPE;
+  }
+
+  return null;
+}
 
 type InsertVariableDialogProps = {
   initialConfigure?: InsertVariableInitialConfigure | null;
@@ -183,7 +159,22 @@ export function InsertVariableDialog({
   const [systemVariableKey, setSystemVariableKey] = useState("");
   const [tagKind, setTagKind] = useState<TagKind>("work_tag");
   const [wecomMode, setWecomMode] = useState<WecomTagMode>("normal");
+  const [workTagGroups, setWorkTagGroups] = useState<WorkTagGroupOption[]>([]);
+  const [workTagGroupsLoading, setWorkTagGroupsLoading] = useState(false);
+  const [workTagGroupsError, setWorkTagGroupsError] = useState(false);
+  const [workTagLimit, setWorkTagLimit] = useState<number | null>(null);
+  const [workTags, setWorkTags] = useState<TagItem[]>([]);
+  /** 小店标签一次拉全量后本地按分组过滤（上游常无可用 groupId） */
+  const [mallAllTags, setMallAllTags] = useState<
+    Array<TagItem & { groupId: number }>
+  >([]);
+  const [workTagsLoading, setWorkTagsLoading] = useState(false);
+  const [workTagsError, setWorkTagsError] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  /** 跨分组保留已选标签名称（企微按组加载时当前页可能没有其他组的标签） */
+  const [selectedTagNameById, setSelectedTagNameById] = useState<
+    Record<number, string>
+  >({});
   const [selectedAutoGroupId, setSelectedAutoGroupId] = useState<number | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [groupQuery, setGroupQuery] = useState("");
@@ -246,17 +237,126 @@ export function InsertVariableDialog({
     };
   }, [open, step, variableKind]);
 
-  const tagGroups = useMemo(() => {
-    if (tagKind === "work_tag") {
-      return wecomMode === "normal" ? wecomNormalGroups : wecomExclusiveGroups;
+  const wecomAttr = wecomMode === "normal" ? 1 : 2;
+
+  useEffect(() => {
+    if (
+      !open ||
+      step !== "configure" ||
+      variableKind !== "customer_tags" ||
+      !usesComponentTagApi(tagKind)
+    ) {
+      return;
     }
 
-    if (tagKind === "mall_tag") {
-      return memberTagGroups;
+    let cancelled = false;
+
+    async function loadTagGroups() {
+      setWorkTagGroupsLoading(true);
+      setWorkTagGroupsError(false);
+
+      try {
+        if (tagKind === "mall_tag") {
+          // 小店标签：type=12 一次拉全量；上游常无 groupId，且不支持按合成 groupId 回查
+          const response = await listWorkTags({
+            page: 1,
+            pageSize: 100,
+            type: MALL_TAG_TYPE,
+          });
+          if (cancelled) {
+            return;
+          }
+
+          const groupMap = new Map<number, WorkTagGroupOption>();
+          const allTags: Array<TagItem & { groupId: number }> = [];
+          for (const tag of response.tags) {
+            allTags.push({
+              groupId: tag.groupId,
+              id: tag.id,
+              name: tag.name,
+            });
+
+            if (groupMap.has(tag.groupId)) {
+              continue;
+            }
+
+            groupMap.set(tag.groupId, {
+              attr: tag.groupAttr,
+              id: tag.groupId,
+              name: tag.groupName,
+              sort: tag.groupSort,
+            });
+          }
+
+          setMallAllTags(allTags);
+          setWorkTagGroups(
+            [...groupMap.values()].sort(
+              (left, right) =>
+                (right.sort ?? 0) - (left.sort ?? 0) || left.id - right.id,
+            ),
+          );
+          setWorkTagLimit(null);
+          setWorkTags([]);
+        } else {
+          setMallAllTags([]);
+          // 企微标签组：attr 随普通/互斥切换，type 固定 0
+          const response = await listWorkTagGroups({
+            attr: wecomAttr,
+            type: WECOM_CUSTOMER_TAG_TYPE,
+          });
+          if (cancelled) {
+            return;
+          }
+
+          setWorkTagGroups(
+            response.groups.map((group) => ({
+              attr: group.attr,
+              id: group.id,
+              name: group.name,
+            })),
+          );
+          setWorkTagLimit(
+            typeof response.tagLimit === "number" && response.tagLimit > 0
+              ? response.tagLimit
+              : null,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkTagGroups([]);
+          setWorkTagLimit(null);
+          setWorkTagGroupsError(true);
+          toast.error(
+            tagKind === "mall_tag"
+              ? "小店标签加载失败，请稍后重试"
+              : "企微标签组加载失败，请稍后重试",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkTagGroupsLoading(false);
+        }
+      }
+    }
+
+    void loadTagGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, tagKind, variableKind, wecomAttr]);
+
+  const tagGroups = useMemo((): readonly TagGroup[] => {
+    if (tagKind === "work_tag" || tagKind === "mall_tag") {
+      return workTagGroups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        tags: [],
+      }));
     }
 
     return automationTagGroups;
-  }, [tagKind, wecomMode]);
+  }, [tagKind, workTagGroups]);
 
   const filteredGroups = useMemo(() => {
     const query = groupQuery.trim().toLowerCase();
@@ -277,7 +377,85 @@ export function InsertVariableDialog({
     [filteredGroups, resolvedActiveGroupId],
   );
 
+  useEffect(() => {
+    const componentType = getComponentTagType(tagKind);
+
+    // 小店标签已在分组加载时拉全量，这里只处理企微等需按组回查的场景
+    if (
+      !open ||
+      step !== "configure" ||
+      variableKind !== "customer_tags" ||
+      tagKind === "mall_tag" ||
+      componentType == null ||
+      resolvedActiveGroupId == null
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadComponentTags() {
+      setWorkTagsLoading(true);
+      setWorkTagsError(false);
+
+      try {
+        const response = await listWorkTags({
+          groupId: resolvedActiveGroupId ?? undefined,
+          keyword: tagQuery.trim() || undefined,
+          page: 1,
+          pageSize: 100,
+          type: componentType!,
+        });
+        if (cancelled) {
+          return;
+        }
+
+        setWorkTags(
+          response.tags.map((tag) => ({
+            id: tag.id,
+            name: tag.name,
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setWorkTags([]);
+          setWorkTagsError(true);
+          toast.error("企微标签加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkTagsLoading(false);
+        }
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadComponentTags();
+    }, tagQuery.trim() ? 250 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, resolvedActiveGroupId, step, tagKind, tagQuery, variableKind]);
+
   const filteredTags = useMemo(() => {
+    if (tagKind === "mall_tag") {
+      const query = tagQuery.trim().toLowerCase();
+      return mallAllTags
+        .filter((tag) =>
+          resolvedActiveGroupId == null
+            ? true
+            : tag.groupId === resolvedActiveGroupId,
+        )
+        .filter((tag) => (query ? tag.name.toLowerCase().includes(query) : true))
+        .map((tag) => ({ id: tag.id, name: tag.name }));
+    }
+
+    if (usesComponentTagApi(tagKind)) {
+      return workTags;
+    }
+
     const tags = activeGroup?.tags ?? [];
     const query = tagQuery.trim().toLowerCase();
     if (!query) {
@@ -285,22 +463,49 @@ export function InsertVariableDialog({
     }
 
     return tags.filter((tag) => tag.name.toLowerCase().includes(query));
-  }, [activeGroup, tagQuery]);
+  }, [
+    activeGroup,
+    mallAllTags,
+    resolvedActiveGroupId,
+    tagKind,
+    tagQuery,
+    workTags,
+  ]);
 
   const selectedTagNames = useMemo(() => {
-    if (!activeGroup) {
-      return [];
-    }
+    const sourceTags =
+      tagKind === "mall_tag"
+        ? mallAllTags
+        : usesComponentTagApi(tagKind)
+          ? workTags
+          : (activeGroup?.tags ?? []);
 
     return selectedTagIds
-      .map((id) => activeGroup.tags.find((tag) => tag.id === id)?.name)
+      .map(
+        (id) =>
+          sourceTags.find((tag) => tag.id === id)?.name ?? selectedTagNameById[id],
+      )
       .filter((name): name is string => Boolean(name));
-  }, [activeGroup, selectedTagIds]);
+  }, [
+    activeGroup,
+    mallAllTags,
+    selectedTagIds,
+    selectedTagNameById,
+    tagKind,
+    workTags,
+  ]);
 
   const selectedAutoGroup = useMemo(
     () => automationTagGroups.find((group) => group.id === selectedAutoGroupId) ?? null,
     [selectedAutoGroupId],
   );
+
+  const workTagSelectionLimit =
+    workTagLimit != null && workTagLimit > 0
+      ? workTagLimit
+      : wecomMode === "exclusive"
+        ? 1
+        : Number.POSITIVE_INFINITY;
 
   const canConfirm =
     variableKind === "custom_field"
@@ -321,8 +526,10 @@ export function InsertVariableDialog({
     setTagKind("work_tag");
     setWecomMode("normal");
     setSelectedTagIds([]);
+    setSelectedTagNameById({});
     setSelectedAutoGroupId(null);
     setActiveGroupId(null);
+    setMallAllTags([]);
     setGroupQuery("");
     setTagQuery("");
     setTagPickerOpen(false);
@@ -335,14 +542,14 @@ export function InsertVariableDialog({
     setTagKind(nextTagKind);
     setWecomMode("normal");
     setSelectedTagIds([]);
+    setSelectedTagNameById({});
     setSelectedAutoGroupId(null);
-    const nextGroups =
-      nextTagKind === "work_tag"
-        ? wecomNormalGroups
-        : nextTagKind === "mall_tag"
-          ? memberTagGroups
-          : automationTagGroups;
-    setActiveGroupId(nextGroups[0]?.id ?? null);
+    setWorkTags([]);
+    setWorkTagGroups([]);
+    setMallAllTags([]);
+    setActiveGroupId(
+      nextTagKind === "auto_tag" ? (automationTagGroups[0]?.id ?? null) : null,
+    );
     setGroupQuery("");
     setTagQuery("");
     setTagPickerOpen(false);
@@ -446,12 +653,37 @@ export function InsertVariableDialog({
     );
   }
 
-  function toggleTag(tagId: number) {
-    setSelectedTagIds((current) =>
-      current.includes(tagId)
-        ? current.filter((id) => id !== tagId)
-        : [...current, tagId],
-    );
+  function toggleTag(tagId: number, tagName?: string) {
+    setSelectedTagIds((current) => {
+      if (current.includes(tagId)) {
+        setSelectedTagNameById((names) => {
+          const next = { ...names };
+          delete next[tagId];
+          return next;
+        });
+        return current.filter((id) => id !== tagId);
+      }
+
+      if (tagKind === "work_tag" && workTagSelectionLimit <= 1) {
+        setSelectedTagNameById(tagName ? { [tagId]: tagName } : {});
+        return [tagId];
+      }
+
+      if (
+        tagKind === "work_tag" &&
+        Number.isFinite(workTagSelectionLimit) &&
+        current.length >= workTagSelectionLimit
+      ) {
+        toast.error(`最多选择 ${workTagSelectionLimit} 个标签`);
+        return current;
+      }
+
+      if (tagName) {
+        setSelectedTagNameById((names) => ({ ...names, [tagId]: tagName }));
+      }
+
+      return [...current, tagId];
+    });
   }
 
   return (
@@ -609,17 +841,19 @@ export function InsertVariableDialog({
                         const nextKind = value as TagKind;
                         setTagKind(nextKind);
                         setSelectedTagIds([]);
+                        setSelectedTagNameById({});
                         setSelectedAutoGroupId(null);
                         setWecomMode("normal");
                         setGroupQuery("");
                         setTagQuery("");
-                        const nextGroups =
-                          nextKind === "work_tag"
-                            ? wecomNormalGroups
-                            : nextKind === "mall_tag"
-                              ? memberTagGroups
-                              : automationTagGroups;
-                        setActiveGroupId(nextGroups[0]?.id ?? null);
+                        setWorkTags([]);
+                        setWorkTagGroups([]);
+                        setMallAllTags([]);
+                        setActiveGroupId(
+                          nextKind === "auto_tag"
+                            ? (automationTagGroups[0]?.id ?? null)
+                            : null,
+                        );
                       }}
                       value={tagKind}
                     >
@@ -709,14 +943,10 @@ export function InsertVariableDialog({
                                 onValueChange={(value) => {
                                   const nextMode = value as WecomTagMode;
                                   setWecomMode(nextMode);
-                                  setSelectedTagIds([]);
                                   setGroupQuery("");
                                   setTagQuery("");
-                                  const nextGroups =
-                                    nextMode === "normal"
-                                      ? wecomNormalGroups
-                                      : wecomExclusiveGroups;
-                                  setActiveGroupId(nextGroups[0]?.id ?? null);
+                                  setWorkTags([]);
+                                  setActiveGroupId(null);
                                 }}
                                 value={wecomMode}
                               >
@@ -764,7 +994,22 @@ export function InsertVariableDialog({
                                 aria-label="标签组"
                                 className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3"
                               >
-                                {filteredGroups.length === 0 ? (
+                                {usesComponentTagApi(tagKind) && workTagGroupsLoading ? (
+                                  <li
+                                    className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
+                                    role="status"
+                                  >
+                                    <Spinner size={14} />
+                                    <span>正在加载</span>
+                                  </li>
+                                ) : usesComponentTagApi(tagKind) && workTagGroupsError ? (
+                                  <li
+                                    className="px-2 py-8 text-center text-sm text-destructive"
+                                    role="alert"
+                                  >
+                                    加载失败
+                                  </li>
+                                ) : filteredGroups.length === 0 ? (
                                   <li className="px-2 py-8 text-center text-sm text-muted-foreground">
                                     暂无数据
                                   </li>
@@ -780,8 +1025,8 @@ export function InsertVariableDialog({
                                         )}
                                         onClick={() => {
                                           setActiveGroupId(group.id);
-                                          setSelectedTagIds([]);
                                           setTagQuery("");
+                                          setWorkTags([]);
                                         }}
                                         type="button"
                                       >
@@ -816,7 +1061,26 @@ export function InsertVariableDialog({
                                 aria-label="标签列表"
                                 className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
                               >
-                                {filteredTags.length === 0 ? (
+                                {(tagKind === "mall_tag"
+                                  ? workTagGroupsLoading
+                                  : workTagsLoading) ? (
+                                  <li
+                                    className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
+                                    role="status"
+                                  >
+                                    <Spinner size={14} />
+                                    <span>正在加载</span>
+                                  </li>
+                                ) : (tagKind === "mall_tag"
+                                    ? workTagGroupsError
+                                    : workTagsError) ? (
+                                  <li
+                                    className="px-2 py-8 text-center text-sm text-destructive"
+                                    role="alert"
+                                  >
+                                    加载失败
+                                  </li>
+                                ) : filteredTags.length === 0 ? (
                                   <li className="px-2 py-8 text-center text-sm text-muted-foreground">
                                     暂无数据
                                   </li>
@@ -829,7 +1093,9 @@ export function InsertVariableDialog({
                                         <label className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm hover:bg-muted/60">
                                           <Checkbox
                                             checked={checked}
-                                            onCheckedChange={() => toggleTag(tag.id)}
+                                            onCheckedChange={() =>
+                                              toggleTag(tag.id, tag.name)
+                                            }
                                           />
                                           <span>{tag.name}</span>
                                         </label>

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Add01Icon,
+  AiBookIcon,
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
   ArrowUp01Icon,
+  BracketsIcon,
   Database01Icon,
+  Delete02Icon,
   File01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -13,6 +16,16 @@ import type { LexicalEditor } from "lexical";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,6 +49,7 @@ import { AiSkillReferenceMenu } from "./ai-skill-reference-menu";
 import {
   buildKnowledgeBasePlaceholder,
   buildToolPlaceholder,
+  removeResourceFromSkillContent,
   serializeSkillContentSegments,
   toSkillContentResourceSegment,
   type SkillContentSegment,
@@ -55,10 +69,20 @@ type ResourceCatalogItem = SkillResourceItem & {
 };
 
 const resourceSections = [
-  { id: "variables", title: "变量" },
-  { id: "tools", title: "工具" },
-  { id: "knowledge-bases", title: "知识库" },
-] as const satisfies ReadonlyArray<{ id: ResourceSectionId; title: string }>;
+  { icon: BracketsIcon, id: "variables", singular: "变量", title: "变量" },
+  { icon: Database01Icon, id: "tools", singular: "工具", title: "工具" },
+  {
+    icon: AiBookIcon,
+    id: "knowledge-bases",
+    singular: "知识库",
+    title: "知识库",
+  },
+] as const satisfies ReadonlyArray<{
+  icon: typeof BracketsIcon;
+  id: ResourceSectionId;
+  singular: string;
+  title: string;
+}>;
 
 const insertDialogMeta: Record<
   Exclude<ResourceSectionId, "variables">,
@@ -145,6 +169,11 @@ export function AiSkillSettingsPage() {
   const [activeInsertSection, setActiveInsertSection] =
     useState<ResourceSectionId | null>(null);
   const [variableDialogOpen, setVariableDialogOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{
+    item: SkillResourceItem;
+    sectionId: ResourceSectionId;
+    singular: string;
+  } | null>(null);
 
   const canSubmit = name.trim().length > 0;
 
@@ -199,6 +228,43 @@ export function AiSkillSettingsPage() {
     });
 
     toast.success("已添加");
+  }
+
+  function handleRemoveResource(sectionId: ResourceSectionId, itemId: string) {
+    const section = resourceSections.find((item) => item.id === sectionId);
+    const item = selectedResources[sectionId].find(
+      (resource) => resource.id === itemId,
+    );
+
+    if (!section || !item) {
+      return;
+    }
+
+    setRemoveTarget({
+      item,
+      sectionId,
+      singular: section.singular,
+    });
+  }
+
+  function handleConfirmRemoveResource() {
+    if (!removeTarget) {
+      return;
+    }
+
+    const { item, sectionId } = removeTarget;
+
+    setSelectedResources((current) => ({
+      ...current,
+      [sectionId]: current[sectionId].filter((resource) => resource.id !== item.id),
+    }));
+    setSkillContentSegments((current) =>
+      removeResourceFromSkillContent(current, {
+        id: item.id,
+        placeholder: item.placeholder,
+      }),
+    );
+    setRemoveTarget(null);
   }
 
   /** 仅插入技能描述；可选池来自右侧已添加资源 */
@@ -346,6 +412,7 @@ export function AiSkillSettingsPage() {
             <div className="space-y-5">
               {resourceSections.map((section) => (
                 <SkillResourceSection
+                  icon={section.icon}
                   items={selectedResources[section.id]}
                   key={section.id}
                   onAdd={() => {
@@ -354,6 +421,7 @@ export function AiSkillSettingsPage() {
                     }
                     setActiveInsertSection(section.id);
                   }}
+                  onRemove={(itemId) => handleRemoveResource(section.id, itemId)}
                   title={section.title}
                 />
               ))}
@@ -378,6 +446,34 @@ export function AiSkillSettingsPage() {
         }}
         open={variableDialogOpen || activeInsertSection === "variables"}
       />
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveTarget(null);
+          }
+        }}
+        open={removeTarget != null}
+      >
+        <AlertDialogContent className="max-w-[400px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除{removeTarget?.singular ?? "资源"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              将删除技能描述中引用的{removeTarget?.singular ?? "资源"}，确认删除吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="border border-destructive bg-background text-destructive hover:bg-destructive/5 hover:text-destructive"
+              onClick={handleConfirmRemoveResource}
+              variant="outline"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <InsertResourceDialog
         addedIds={
@@ -412,12 +508,16 @@ export function AiSkillSettingsPage() {
 }
 
 function SkillResourceSection({
+  icon,
   items,
   onAdd,
+  onRemove,
   title,
 }: {
+  icon: typeof BracketsIcon;
   items: readonly SkillResourceItem[];
   onAdd: () => void;
+  onRemove: (itemId: string) => void;
   title: string;
 }) {
   const [open, setOpen] = useState(true);
@@ -470,13 +570,36 @@ function SkillResourceSection({
             <p className="text-sm text-muted-foreground">暂未配置技能</p>
           </div>
         ) : (
-          <ul aria-label={`已添加${title}`} className="space-y-3 px-1 py-3">
+          <ul aria-label={`已添加${title}`} className="space-y-1 px-0.5 py-2">
             {items.map((item) => (
-              <li className="min-w-0 space-y-1" key={item.id}>
-                <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {item.description}
-                </p>
+              <li key={item.id}>
+                <div className="group flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors hover:bg-muted/70">
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    className="shrink-0 text-muted-foreground"
+                    icon={icon}
+                    size={15}
+                    strokeWidth={1.8}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                    {item.title}
+                  </span>
+                  <Button
+                    aria-label={`删除${item.title}`}
+                    className="size-6 shrink-0 rounded-[6px] p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                    onClick={() => onRemove(item.id)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Delete02Icon}
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>

@@ -455,12 +455,10 @@ describe("InsightsRepository", () => {
   });
 
   it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
-    const insertedTables: string[] = [];
     const selectedActionItemBuilders: SelectBuilderStub[] = [];
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) => {
-        insertedTables.push(table);
         return createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
           table,
         });
@@ -485,7 +483,10 @@ describe("InsightsRepository", () => {
         createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
       ),
     };
-    const repository = new MysqlInsightWorkerRepository(db as never);
+    const ticketWriter = {
+      createAiTicket: vi.fn(async () => 7801),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
     await repository.saveAnalysisResult({
       job: {
@@ -561,11 +562,14 @@ describe("InsightsRepository", () => {
       301,
     ]);
     expect(selectedActionItemBuilders[0]?.limitCalls).toEqual([10]);
-    expect(
-      insertedTables.filter(
-        (table) => table === "xy_wap_embed_session_action_item",
-      ),
-    ).toHaveLength(1);
+    expect(ticketWriter.createAiTicket).toHaveBeenCalledTimes(1);
+    expect(ticketWriter.createAiTicket).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 301,
+      sessionId: 501,
+      snapshotId: 7001,
+      title: "提醒客户补充地址",
+      uid: 9001,
+    }));
   });
 
   it("loads quality agent stats through grouped SQL", async () => {
@@ -6476,7 +6480,10 @@ describe("MysqlInsightWorkerRepository", () => {
         createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
       ),
     };
-    const repository = new MysqlInsightWorkerRepository(db as never);
+    const ticketWriter = {
+      createAiTicket: vi.fn(async () => 7901),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
     await repository.saveAnalysisResult({
       job: {
@@ -6558,7 +6565,6 @@ describe("MysqlInsightWorkerRepository", () => {
       (entry) => entry.table === "xy_wap_embed_insight_evidence",
     );
     for (const table of [
-      "xy_wap_embed_session_action_item",
       "xy_wap_embed_session_entity",
       "xy_wap_embed_session_faq_candidate",
       "xy_wap_embed_session_intent",
@@ -6567,17 +6573,13 @@ describe("MysqlInsightWorkerRepository", () => {
       const insert = insertValues.find((entry) => entry.table === table);
       expect(insert?.values).toEqual(expect.objectContaining({ uid: 9001 }));
     }
-    const actionInsert = insertValues.find(
-      (entry) => entry.table === "xy_wap_embed_session_action_item",
-    );
-    expect(actionInsert?.values).toEqual(
-      expect.objectContaining({
-        conversation_id: 301,
-        session_id: 501,
-        snapshot_id: 7001,
-        source_type: "ai",
-      }),
-    );
+    expect(ticketWriter.createAiTicket).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 301,
+      sessionId: 501,
+      snapshotId: 7001,
+      title: "跟进退款",
+      uid: 9001,
+    }));
     expect(evidenceInserts).toHaveLength(1);
     expect(evidenceInserts[0]?.values).toEqual(
       expect.arrayContaining([

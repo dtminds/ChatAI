@@ -32,6 +32,9 @@ import type {
 } from "./insights-worker.js";
 import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js";
 import { InsightsRepository } from "./insights.repository.js";
+import { TicketsRepository } from "../tickets/tickets.repository.js";
+
+type AiTicketWriter = Pick<TicketsRepository, "createAiTicket">;
 
 type InsertResult = {
   id?: bigint | number | string | null;
@@ -186,7 +189,10 @@ const SESSIONIZATION_JOB_LEASE_MS = 5 * 60_000;
 const RESCAN_SESSION_LOOKUP_BATCH_SIZE = 500;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly ticketWriter: AiTicketWriter = new TicketsRepository(db),
+  ) {}
 
   async withSessionizationClaim<T>(
     input: ClaimedSessionizationUidJob,
@@ -2571,25 +2577,24 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       uid: input.job.uid,
     });
 
-    for (const item of output.actionItems) {
+    const aiTicketItems = input.job.mode === "final" && input.job.analysisScope === "all"
+      ? output.actionItems
+      : [];
+
+    for (const item of aiTicketItems) {
       const normalizedTitle = normalizeActionTitle(item.title);
 
       if (!normalizedTitle || recentActionItemTitles.has(normalizedTitle)) {
         continue;
       }
 
-      const id = await this.insertAndGetId("xy_wap_embed_session_action_item", {
-        action_type: "follow_up",
-        conversation_id: conversationId,
-        created_by_sub_user_id: null,
-        due_hint: item.dueHint ?? null,
+      const id = await this.ticketWriter.createAiTicket({
+        conversationId,
+        dueHint: item.dueHint ?? null,
         priority: item.priority,
-        session_id: sessionId,
-        snapshot_id: snapshotId,
-        source_type: "ai",
-        status: "open",
+        sessionId,
+        snapshotId,
         title: item.title,
-        updated_by_sub_user_id: null,
         uid: input.job.uid,
       });
       recentActionItemTitles.add(normalizedTitle);

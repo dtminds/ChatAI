@@ -204,6 +204,55 @@ describe("TicketsRepository", () => {
     expect(queries.map(normalizeSql).join("\n")).not.toContain("xy_wap_embed_insight_job");
   });
 
+  it("creates an AI ticket and AI activity while resolving the current valid host", async () => {
+    const { db, queries } = createRecordingDatabase({ hostSubUserId: 102 });
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.createAiTicket({
+      conversationId: 301,
+      dueHint: "今天内",
+      priority: "high",
+      sessionId: 401,
+      snapshotId: 701,
+      title: "跟进退款",
+      uid: 9001,
+    })).resolves.toBe(501);
+
+    const inserts = queries.filter((query) => normalizeSql(query).startsWith("insert into"));
+    expect(inserts[0]?.parameters).toEqual(expect.arrayContaining([
+      102,
+      "follow_up",
+      "ai",
+      "open",
+    ]));
+    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
+      "created",
+      "ai",
+    ]));
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("sub_user.id = seat.host_sub_id");
+    expect(sql).toContain("sub_user.status = ?");
+  });
+
+  it("leaves an AI ticket unassigned when there is no valid current host", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).createAiTicket({
+      conversationId: 301,
+      dueHint: null,
+      priority: "medium",
+      sessionId: 401,
+      snapshotId: 701,
+      title: "确认物流",
+      uid: 9001,
+    });
+
+    const ticketInsert = queries.find((query) =>
+      normalizeSql(query).startsWith("insert into xy_wap_embed_session_action_item")
+    );
+    expect(ticketInsert?.parameters).toContain(null);
+  });
+
   it("fences status updates and writes their activities in the same transaction", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
@@ -264,7 +313,7 @@ describe("TicketsRepository", () => {
   });
 });
 
-function createRecordingDatabase() {
+function createRecordingDatabase(options: { hostSubUserId?: number } = {}) {
   const queries: CompiledQuery[] = [];
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
@@ -279,6 +328,14 @@ function createRecordingDatabase() {
 
       if (query.sql.includes("count(")) {
         return { rows: [{ total: 0 }] as R[] };
+      }
+
+      if (query.sql.includes("`seat`.`host_sub_id` as `assignee_sub_user_id`")) {
+        return {
+          rows: options.hostSubUserId == null
+            ? []
+            : [{ assignee_sub_user_id: options.hostSubUserId }] as R[],
+        };
       }
 
       if (query.sql.startsWith("update")) {

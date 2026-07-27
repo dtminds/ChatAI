@@ -498,6 +498,96 @@ export class TicketsRepository {
     });
   }
 
+  async createAiTicket(input: {
+    conversationId: number;
+    dueHint: string | null;
+    priority: TicketPriority;
+    sessionId: number;
+    snapshotId: number;
+    title: string;
+    uid: number;
+  }) {
+    return this.db.transaction().execute(async (transaction) => {
+      const assignee = await transaction
+        .selectFrom("xy_wap_embed_conversation as conversation")
+        .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+          join
+            .onRef("seat.uid", "=", "conversation.uid")
+            .onRef("seat.platform", "=", "conversation.platform")
+            .onRef("seat.third_userid", "=", "conversation.third_userid"),
+        )
+        .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
+          join
+            .onRef("sub_user.id", "=", "seat.host_sub_id")
+            .onRef("sub_user.uid", "=", "seat.uid"),
+        )
+        .select("seat.host_sub_id as assignee_sub_user_id")
+        .where("conversation.uid", "=", input.uid)
+        .where("conversation.id", "=", input.conversationId)
+        .where("conversation.biz_status", "=", 1)
+        .where("seat.biz_status", "=", 1)
+        .where("sub_user.status", "=", 1)
+        .where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("sub_user.type", "=", 1),
+            expressionBuilder("sub_user.role", "!=", "viewer"),
+          ]),
+        )
+        .executeTakeFirst();
+      const assigneeSubUserId = assignee?.assignee_sub_user_id == null
+        ? null
+        : Number(assignee.assignee_sub_user_id);
+      const insertResult = await transaction
+        .insertInto("xy_wap_embed_session_action_item")
+        .values({
+          action_type: "follow_up",
+          anchor_message_id: null,
+          assignee_sub_user_id: Number.isSafeInteger(assigneeSubUserId)
+            && (assigneeSubUserId ?? 0) > 0
+            ? assigneeSubUserId
+            : null,
+          canceled_at: null,
+          canceled_by_sub_user_id: null,
+          completed_at: null,
+          completed_by_sub_user_id: null,
+          conversation_id: input.conversationId,
+          created_by_sub_user_id: null,
+          description: null,
+          due_at: null,
+          due_hint: input.dueHint,
+          priority: input.priority,
+          session_id: input.sessionId,
+          snapshot_id: input.snapshotId,
+          source_type: "ai",
+          status: "open",
+          title: input.title,
+          uid: input.uid,
+          updated_by_sub_user_id: null,
+        })
+        .executeTakeFirstOrThrow();
+      const ticketId = Number(insertResult.insertId);
+
+      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+        throw new Error("TICKET_INSERT_ID_MISSING");
+      }
+
+      await transaction
+        .insertInto("xy_wap_embed_ticket_activity")
+        .values({
+          activity_type: "created",
+          content: null,
+          detail_json: null,
+          operator_sub_user_id: null,
+          operator_type: "ai",
+          ticket_id: ticketId,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+
+      return ticketId;
+    });
+  }
+
   async getTicketRecordById(input: {
     globalAccess: boolean;
     subUserId: number;

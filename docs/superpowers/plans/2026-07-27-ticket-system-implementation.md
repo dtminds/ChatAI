@@ -568,7 +568,7 @@ corepack pnpm --filter @chatai/backend build
 - Modify: `apps/backend/test/modules/insights/insights-repository.test.ts`
 - Reuse: `apps/backend/src/modules/tickets/tickets.repository.ts` 或已形成的薄 writer
 
-- [ ] **Step 1：先锁定 AI 创建边界测试**
+- [x] **Step 1：先锁定 AI 创建边界测试**
 
 覆盖：
 
@@ -583,7 +583,7 @@ corepack pnpm --filter @chatai/backend build
 - `open + in_progress` 超过 5 条时继续抑制生成。
 - AI 工单有 `created` 活动，`operator_type = ai`。
 
-- [ ] **Step 2：把 AI 行动项写入统一工单结构**
+- [x] **Step 2：把 AI 行动项写入统一工单结构**
 
 - `source_type = ai`。
 - `action_type = follow_up`。
@@ -593,13 +593,13 @@ corepack pnpm --filter @chatai/backend build
 - 证据 `dimension_type` 第一阶段固定沿用 `action_item`，本期不改名。
 - 创建工单和 `created` 活动使用共享写入边界，避免 API 与 Worker 各维护一套状态默认值。
 
-- [ ] **Step 3：保护失败和重试语义**
+- [x] **Step 3：保护失败和重试语义**
 
 - 工单写入失败应使本次分析结果保存按现有失败策略处理，不静默吞掉。
 - 重试不得因为已有同标题工单再插入重复行。
 - 不新增新的分析任务类型、重刷模式或 Sessionization 交互。
 
-- [ ] **Step 4：运行 Worker 聚焦测试**
+- [x] **Step 4：运行 Worker 聚焦测试**
 
 ```bash
 cd apps/backend
@@ -607,7 +607,7 @@ cd apps/backend
 corepack pnpm --filter @chatai/backend build
 ```
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 建议提交：`feat(tickets): persist final insight tickets`
 

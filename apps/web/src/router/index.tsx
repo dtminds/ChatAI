@@ -130,6 +130,11 @@ const TicketsPage = lazy(() =>
     default: TicketsPage,
   })),
 );
+const TicketDetailPage = lazy(() =>
+  import("@/pages/chat/tickets/ticket-detail-page").then(({ TicketDetailPage }) => ({
+    default: TicketDetailPage,
+  })),
+);
 
 function withRouteSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -248,6 +253,10 @@ export const routerConfig = [
       {
         path: "chat/tickets",
         element: withRouteSuspense(<TicketsPage />),
+      },
+      {
+        path: "chat/tickets/:ticketId",
+        element: withRouteSuspense(<TicketDetailPage />),
       },
       {
         path: "chat/ai-hosting",

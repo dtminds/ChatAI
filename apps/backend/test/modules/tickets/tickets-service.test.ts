@@ -512,6 +512,19 @@ describe("TicketsService", () => {
     );
     expect(detail.context).toMatchObject({ anchorMessageId: "9009", kind: "message" });
   });
+
+  it("keeps ticket detail available when context loading fails", async () => {
+    const repository = createRepository();
+    const contextReader = createContextReader();
+    contextReader.listSessionMessageRecords.mockRejectedValueOnce(new Error("message store unavailable"));
+    const service = new TicketsService(repository, contextReader);
+
+    await expect(service.getTicketDetail(createActor("operator"), "501")).resolves.toMatchObject({
+      context: { kind: "none" },
+      contextAccess: "error",
+      ticket: { ticketId: "501" },
+    });
+  });
 });
 
 function createActor(role: TicketsActorScope["role"]): TicketsActorScope {

@@ -406,7 +406,19 @@ export class TicketsService {
       };
     }
 
-    const context = await this.loadTicketContext(actor.uid, record);
+    let context: TicketDetailResponse["context"];
+    try {
+      context = await this.loadTicketContext(actor.uid, record);
+    } catch {
+      return {
+        activities: activities.map(mapTicketActivity),
+        assigneeOptions,
+        context: { kind: "none" },
+        contextAccess: "error",
+        evidenceMessages: [],
+        ticket: mapTicket(record, actor),
+      };
+    }
     const evidenceMessageIds = record.snapshotId == null
       ? []
       : await this.repository.listTicketEvidenceMessageIds({

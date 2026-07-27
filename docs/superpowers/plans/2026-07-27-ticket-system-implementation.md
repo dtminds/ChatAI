@@ -688,7 +688,7 @@ corepack pnpm --filter @chatai/web build
 - Modify: `apps/web/src/pages/chat/tickets/api/tickets-service.ts`
 - Modify: `apps/web/src/router/index.tsx`
 
-- [ ] **Step 1：先写详情行为测试**
+- [x] **Step 1：先写详情行为测试**
 
 覆盖：
 
@@ -701,20 +701,20 @@ corepack pnpm --filter @chatai/web build
 - 评论成功追加时间线；失败不乐观伪造。
 - `contextAccess = forbidden`、无上下文、接待会话、消息锚点四种展示互不混淆。
 
-- [ ] **Step 2：实现详情编辑**
+- [x] **Step 2：实现详情编辑**
 
 - 标题、描述、负责人、优先级、截止时间、状态。
 - 上下文字段永久只读。
 - 负责人列表只使用 API 返回的合法候选，不在前端自行推导账号关系。
 - 不提供删除按钮。
 
-- [ ] **Step 3：实现活动时间线和上下文**
+- [x] **Step 3：实现活动时间线和上下文**
 
 - 操作记录与处理备注共用一条时间线，但视觉上区分系统变化和人工备注。
 - 消息上下文复用现有消息渲染能力；不要复制一套消息解析器。
 - 上下文加载失败只影响上下文区域，不清空工单详情。
 
-- [ ] **Step 4：运行测试和 build**
+- [x] **Step 4：运行测试和 build**
 
 ```bash
 cd apps/web
@@ -722,7 +722,7 @@ cd apps/web
 corepack pnpm --filter @chatai/web build
 ```
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 建议提交：`feat(tickets): add ticket detail workflow`
 

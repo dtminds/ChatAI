@@ -61,6 +61,7 @@ export const TicketOperatorTypeSchema = Type.Union([
 export const TicketContextAccessSchema = Type.Union([
   Type.Literal("allowed"),
   Type.Literal("forbidden"),
+  Type.Literal("error"),
 ]);
 
 export const TicketUserSchema = Type.Object({

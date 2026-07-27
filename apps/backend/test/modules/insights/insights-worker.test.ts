@@ -145,6 +145,15 @@ function createRepository(
         : undefined,
     ),
     findSessionBySourceMessage: vi.fn(async () => undefined),
+    listActiveAnalysisSessionIds: vi.fn(async () => []),
+    listRescanSessionEligibility: vi.fn(async ({ sessionIds }) =>
+      sessionIds.map((sessionId) => ({
+        currentSnapshotPhase: "final" as const,
+        messageCount: 10,
+        sessionId,
+        status: "open" as const,
+      })),
+    ),
     listSessionsBySourceMessages: vi.fn(async () => []),
     findPlatformConversation: vi.fn(async () => ({
       conversationId: "301",
@@ -1632,6 +1641,143 @@ describe("InsightsWorkerService", () => {
     });
   });
 
+  it("finishes a scoped historical rescan without scanning messages when no configured work exists", async () => {
+    const repository = createRepository({
+      claimNextSessionizationUidJob: vi.fn(async () => undefined),
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "qaFindings",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => {
+        throw new Error("message scan should not run without configured QA rules");
+      }),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.getPromptContext).toHaveBeenCalledWith(9001);
+    expect(repository.listIncrementalMessages).not.toHaveBeenCalled();
+    expect(repository.listRescanSessionEligibility).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
+      "rescan-job-1",
+    );
+  });
+
+  it("queues only eligible historical sessions without active analysis work", async () => {
+    const messages = ["8001", "8002", "8003", "8004"].map((id, index) => ({
+      chatType: 1,
+      content: JSON.stringify({ content: `历史消息 ${index + 1}` }),
+      fromType: 2,
+      id,
+      msgtime: 1_780_000_010_000 + index * 1_000,
+      msgtype: "text",
+      platform: 5,
+      uid: 9001,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+    }));
+    const repository = createRepository({
+      claimNextSessionizationUidJob: vi.fn(async () => undefined),
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        lowConfidenceThreshold: 0.6,
+        minAnalysisMessages: 5,
+      })),
+      getPromptContext: vi.fn(async () => ({
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [
+          {
+            id: "11",
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: [],
+          },
+        ],
+        qaRuleConfigs: [],
+      })),
+      listActiveAnalysisSessionIds: vi.fn(async () => ["504"]),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) =>
+        cursorMsgtime === 1_780_000_000_000 ? messages : []
+      ),
+      listRescanSessionEligibility: vi.fn(async () => [
+        {
+          currentSnapshotPhase: "final",
+          messageCount: 8,
+          sessionId: "501",
+          status: "analyzed",
+        },
+        {
+          currentSnapshotPhase: "final",
+          messageCount: 2,
+          sessionId: "502",
+          status: "analyzed",
+        },
+        {
+          currentSnapshotPhase: "live",
+          messageCount: 8,
+          sessionId: "503",
+          status: "analyzed",
+        },
+        {
+          currentSnapshotPhase: "final",
+          messageCount: 8,
+          sessionId: "504",
+          status: "closed_pending_analysis",
+        },
+      ]),
+      listSessionsBySourceMessages: vi.fn(async () =>
+        messages.map((message, index) => ({
+          sessionId: String(501 + index),
+          sourceMessageId: message.id,
+          status: "analyzed" as const,
+          uid: 9001,
+        })),
+      ),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.listActiveAnalysisSessionIds).toHaveBeenCalledWith({
+      sessionIds: ["501", "504"],
+      uid: 9001,
+    });
+    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analysisScope: "classification",
+        jobType: "reanalyze_session",
+        rescanTaskId: "9901",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    );
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 1,
+      rescanTaskId: "9901",
+      totalSessions: 1,
+    });
+  });
+
   it("runs one due historical rescan job from the requested time", async () => {
     const firstBatchMessage = {
       chatType: 1,
@@ -1654,7 +1800,7 @@ describe("InsightsWorkerService", () => {
     };
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1719,7 +1865,7 @@ describe("InsightsWorkerService", () => {
     };
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1768,7 +1914,7 @@ describe("InsightsWorkerService", () => {
     };
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1813,7 +1959,7 @@ describe("InsightsWorkerService", () => {
     };
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1844,6 +1990,28 @@ describe("InsightsWorkerService", () => {
         uid: 9001,
       })),
       findSessionBySourceMessage: vi.fn(async () => undefined),
+      getPromptContext: vi.fn(async () => ({
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [
+          {
+            id: "11",
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: [],
+          },
+        ],
+        qaRuleConfigs: [],
+      })),
+      listRescanSessionEligibility: vi.fn(async () => [
+        {
+          currentSnapshotPhase: "final",
+          messageCount: 10,
+          sessionId: "501",
+          status: "analyzed",
+        },
+      ]),
       listSessionsBySourceMessages: vi.fn(async () => [
         {
           sessionId: "501",
@@ -1910,7 +2078,7 @@ describe("InsightsWorkerService", () => {
   it("passes historical rescan upper bound to incremental message scan", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1935,7 +2103,7 @@ describe("InsightsWorkerService", () => {
   it("skips open sessions found by historical rescan because live analysis has its own scheduler", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -1988,7 +2156,7 @@ describe("InsightsWorkerService", () => {
   it("skips messages appended to open sessions during historical rescan without triggering live analysis", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
+        analysisScope: "all",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
         rescanTaskId: "9901",
@@ -2498,6 +2666,8 @@ describe("InsightsWorkerService", () => {
             text: "",
           }),
         }),
+        resultKind: "insufficient_messages",
+        resultReason: "AI有效消息数 4 低于最小分析消息数 5",
         runId: "run-1",
         sourceMessageHighWatermark: "9004",
         validationWarnings: [],
@@ -2855,7 +3025,7 @@ describe("InsightsWorkerService", () => {
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });
 
-  it("skips manual reanalysis with a final insufficient-information snapshot when AI-ready messages are below policy threshold", async () => {
+  it("skips manual reanalysis without replacing the current snapshot when AI-ready messages are insufficient", async () => {
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
@@ -2897,18 +3067,11 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(model.analyzeSession).not.toHaveBeenCalled();
-    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
-      expect.objectContaining({
-        job: expect.objectContaining({
-          mode: "manual_reanalyze",
-        }),
-        output: expect.objectContaining({
-          summary: expect.objectContaining({
-            sessionTitle: "",
-          }),
-        }),
-      }),
-    );
+    expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+      reason: "AI有效消息数 1 低于最小分析消息数 5",
+      runId: "run-1",
+    });
     expect(repository.updateRescanTaskAfterAnalysis).toHaveBeenCalledWith({
       failedSessions: 0,
       rescanTaskId: "9901",
@@ -2916,78 +3079,7 @@ describe("InsightsWorkerService", () => {
     });
   });
 
-  it("preserves out-of-scope dimensions when scoped manual reanalysis has insufficient messages", async () => {
-    const previousOutput = {
-      actionItems: [
-        {
-          evidenceMessageIds: ["9002"],
-          priority: "high" as const,
-          title: "确认快递状态",
-        },
-      ],
-      entities: [
-        {
-          confidence: 0.8,
-          entityId: "41",
-          entityName: "白色羽绒服",
-          evidenceMessageIds: ["9001"],
-        },
-      ],
-      faqCandidates: [
-        {
-          answerHint: "先查物流轨迹",
-          evidenceMessageIds: ["9001"],
-          question: "物流停滞怎么办",
-          status: "candidate",
-        },
-      ],
-      intents: [
-        {
-          confidence: 0.7,
-          evidenceMessageIds: ["9001"],
-          intentCode: "logistics",
-          intentName: "物流咨询",
-        },
-      ],
-      problemResolution: {
-        confidence: 0.82,
-        evidence: [],
-        evidenceMessageIds: ["9001"],
-        problemDetected: true,
-        problemSummary: "客户反馈物流异常",
-        resolutionStatus: "unresolved" as const,
-      },
-      qaFindings: [
-        {
-          confidence: 0.8,
-          evidenceMessageIds: ["9002"],
-          passed: true,
-          reason: "客服有回应",
-          ruleCode: "reply_quality",
-          severity: "high" as const,
-        },
-      ],
-      sentiment: [
-        {
-          confidence: 0.75,
-          evidenceMessageIds: ["9001"],
-          polarity: "negative" as const,
-          reason: "客户表达不满",
-        },
-      ],
-      summary: {
-        sessionTitle: "查物流",
-        text: "客服承诺处理",
-      },
-      tags: [
-        {
-          confidence: 0.6,
-          evidenceMessageIds: ["9001"],
-          tagCode: "old",
-          tagName: "旧标签",
-        },
-      ],
-    };
+  it("does not read or overwrite the current snapshot when scoped manual reanalysis has insufficient messages", async () => {
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "classification",
@@ -3003,7 +3095,6 @@ describe("InsightsWorkerService", () => {
         minAnalysisMessages: 5,
         lowConfidenceThreshold: 0.6,
       })),
-      getCurrentAnalysisOutput: vi.fn(async () => previousOutput),
       listIncrementalMessages: vi.fn(async () => []),
       listSessionMessagesForAnalysis: vi.fn(async () => [
         {
@@ -3030,26 +3121,12 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(model.analyzeSession).not.toHaveBeenCalled();
-    expect(repository.getCurrentAnalysisOutput).toHaveBeenCalledWith({
-      sessionId: "501",
-      uid: 9001,
+    expect(repository.getCurrentAnalysisOutput).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+      reason: "AI有效消息数 1 低于最小分析消息数 5",
+      runId: "run-1",
     });
-    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
-      expect.objectContaining({
-        output: expect.objectContaining({
-          actionItems: [],
-          entities: [],
-          faqCandidates: [],
-          intents: [],
-          problemResolution: previousOutput.problemResolution,
-          qaFindings: previousOutput.qaFindings,
-          sentiment: previousOutput.sentiment,
-          summary: previousOutput.summary,
-          tags: [],
-        }),
-        resultKind: "insufficient_messages",
-      }),
-    );
   });
 
   it("runs LLM analysis when AI-ready messages exactly meet the policy threshold", async () => {

@@ -76,6 +76,13 @@ export type InsightWorkerExistingSession = {
   uid: number;
 };
 
+export type InsightRescanSessionEligibility = {
+  currentSnapshotPhase?: "final" | "live";
+  messageCount: number;
+  sessionId: string;
+  status: InsightWorkerExistingSession["status"];
+};
+
 type SessionizedMessageResult = {
   includedForAi: boolean;
   occurredAt: number;
@@ -330,6 +337,7 @@ export type SaveAnalysisResultInput = {
   job: ClaimedAnalyzeJob;
   output: InsightAnalysisOutput;
   resultKind?: "insufficient_messages" | "model_analysis";
+  resultReason?: string;
   runId: string;
   sourceMessageHighWatermark: string | null;
   tokenUsage?: InsightTokenUsage;
@@ -416,6 +424,14 @@ export type InsightWorkerRepositoryPort = {
     sourceMessageIds: string[];
     uid: number;
   }): Promise<InsightWorkerExistingSession[]>;
+  listActiveAnalysisSessionIds(input: {
+    sessionIds: string[];
+    uid: number;
+  }): Promise<string[]>;
+  listRescanSessionEligibility(input: {
+    sessionIds: string[];
+    uid: number;
+  }): Promise<InsightRescanSessionEligibility[]>;
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getFeatureConfig(uid: number): Promise<InsightWorkerFeatureConfig>;
   getCursor(uid?: number): Promise<InsightWorkerCursor>;
@@ -1090,20 +1106,57 @@ export class InsightsWorkerService {
         await this.repository.updateRescanTaskRunning(job.rescanTaskId);
       }
 
+      if (job.analysisScope !== "all") {
+        const promptContext = await this.repository.getPromptContext(job.uid);
+        if (!hasConfiguredRescanWork(job.analysisScope, promptContext)) {
+          if (job.rescanTaskId) {
+            await this.repository.updateRescanTaskAfterScan({
+              queuedSessions: 0,
+              rescanTaskId: job.rescanTaskId,
+              totalSessions: 0,
+            });
+          }
+          await this.repository.markSyncMessagesJobSucceeded(job.jobId);
+          this.observability?.increment("analysis", "syncSucceeded");
+          if (this.observability) {
+            this.observability.event({
+              eventCode: "insights_worker.rescan_completed",
+              level: "info",
+              message: "会话洞察 Worker 历史重刷完成",
+              payload: {
+                analysisScope: job.analysisScope,
+                jobId: job.jobId,
+                reason: "no_configured_scope",
+                reanalyzeSessions: 0,
+                rescanTaskId: job.rescanTaskId,
+                scannedMessages: 0,
+                sessionizedMessages: 0,
+              },
+              pipeline: "analysis",
+              uid: job.uid,
+            });
+          } else {
+            this.logger?.info(
+              {
+                analysisScope: job.analysisScope,
+                jobId: job.jobId,
+                reason: "no_configured_scope",
+                uid: job.uid,
+              },
+              "会话洞察 worker 跳过无有效配置的历史重刷",
+            );
+          }
+          return;
+        }
+      }
+
       let cursorAuditId = 0;
       let cursorMsgtime = job.cursorMsgtime;
       let scannedMessages = 0;
       let sessionizedMessages = 0;
       let scanCompleted = false;
       const sessionizationConfig = await this.repository.getSessionizationConfig(job.uid);
-      const sessionsToAnalyze = new Map<
-        string,
-        {
-          lastMessageAt: number;
-          status: InsightWorkerExistingSession["status"];
-          uid: number;
-        }
-      >();
+      const sessionsToAnalyze = new Set<string>();
 
       for (let batchIndex = 0; batchIndex < SYNC_MESSAGES_MAX_BATCHES; batchIndex += 1) {
         const messages = await this.repository.listIncrementalMessages({
@@ -1128,11 +1181,7 @@ export class InsightsWorkerService {
           const existingSession = existingSessionsBySourceMessageId.get(message.id);
 
           if (existingSession) {
-            sessionsToAnalyze.set(existingSession.sessionId, {
-              lastMessageAt: message.msgtime,
-              status: existingSession.status,
-              uid: existingSession.uid,
-            });
+            sessionsToAnalyze.add(existingSession.sessionId);
             continue;
           }
 
@@ -1144,11 +1193,7 @@ export class InsightsWorkerService {
           if (sessionizedMessage) {
             sessionizedMessages += 1;
             if (sessionizedMessage.includedForAi) {
-              sessionsToAnalyze.set(sessionizedMessage.sessionId, {
-                lastMessageAt: sessionizedMessage.occurredAt,
-                status: "open",
-                uid: sessionizedMessage.uid,
-              });
+              sessionsToAnalyze.add(sessionizedMessage.sessionId);
             }
           }
         }
@@ -1183,9 +1228,57 @@ export class InsightsWorkerService {
       }
 
       let queuedFinalSessions = 0;
+      const skippedSessions = {
+        activeAnalysis: 0,
+        insufficientMessages: 0,
+        missingFinalSnapshot: 0,
+        unavailable: 0,
+      };
+      const candidateSessionIds = [...sessionsToAnalyze];
+      const eligibleSessionIds: string[] = [];
 
-      for (const [sessionId, session] of sessionsToAnalyze) {
-        if (session.status === "open") {
+      if (candidateSessionIds.length > 0) {
+        const eligibilityRows = await this.repository.listRescanSessionEligibility({
+          sessionIds: candidateSessionIds,
+          uid: job.uid,
+        });
+        const eligibilityBySessionId = new Map(
+          eligibilityRows.map((row) => [row.sessionId, row]),
+        );
+        const policy = await this.repository.getAnalysisPolicy(job.uid);
+
+        for (const sessionId of candidateSessionIds) {
+          const eligibility = eligibilityBySessionId.get(sessionId);
+
+          if (!eligibility || eligibility.status === "open") {
+            skippedSessions.unavailable += 1;
+            continue;
+          }
+
+          if (eligibility.messageCount < policy.minAnalysisMessages) {
+            skippedSessions.insufficientMessages += 1;
+            continue;
+          }
+
+          if (job.analysisScope !== "all" && eligibility.currentSnapshotPhase !== "final") {
+            skippedSessions.missingFinalSnapshot += 1;
+            continue;
+          }
+
+          eligibleSessionIds.push(sessionId);
+        }
+      }
+
+      const activeAnalysisSessionIds = new Set(
+        await this.repository.listActiveAnalysisSessionIds({
+          sessionIds: eligibleSessionIds,
+          uid: job.uid,
+        }),
+      );
+
+      for (const sessionId of eligibleSessionIds) {
+        if (activeAnalysisSessionIds.has(sessionId)) {
+          skippedSessions.activeAnalysis += 1;
           continue;
         }
 
@@ -1196,7 +1289,7 @@ export class InsightsWorkerService {
           rescanTaskId: job.rescanTaskId,
           runAfter: new Date(),
           sessionId,
-          uid: session.uid,
+          uid: job.uid,
         });
         queuedFinalSessions += 1;
       }
@@ -1222,6 +1315,7 @@ export class InsightsWorkerService {
             rescanTaskId: job.rescanTaskId,
             scannedMessages,
             sessionizedMessages,
+            skippedSessions,
           },
           pipeline: "analysis",
           uid: job.uid,
@@ -1233,6 +1327,7 @@ export class InsightsWorkerService {
             reanalyzeSessions: queuedFinalSessions,
             scannedMessages,
             sessionizedMessages,
+            skippedSessions,
             uid: job.uid,
           },
           "会话洞察 worker 历史重刷完成",
@@ -1763,7 +1858,7 @@ export class InsightsWorkerService {
       if (modelMessages.length < policy.minAnalysisMessages) {
         const reason = `AI有效消息数 ${modelMessages.length} 低于最小分析消息数 ${policy.minAnalysisMessages}`;
 
-        if (job.mode === "live") {
+        if (job.mode === "live" || job.mode === "manual_reanalyze") {
           await this.repository.markAnalysisRunSucceededWithoutSnapshot({
             reason,
             runId,
@@ -1787,6 +1882,7 @@ export class InsightsWorkerService {
             job,
             output: policyAdjustedOutput,
             resultKind: "insufficient_messages",
+            resultReason: reason,
             runId,
             sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
             ...(tokenUsage ? { tokenUsage } : {}),
@@ -2214,6 +2310,23 @@ function addTokenUsage(
     },
     total_tokens: (current?.total_tokens ?? 0) + next.total_tokens,
   };
+}
+
+function hasConfiguredRescanWork(
+  scope: InsightRescanAnalysisScope,
+  context: InsightPromptContext,
+) {
+  if (scope === "qaFindings") {
+    return context.qaRuleConfigs.length > 0;
+  }
+
+  if (scope === "classification") {
+    return context.entityDictionary.length > 0
+      || context.intentConfigs.length > 0
+      || context.labelConfigs.length > 0;
+  }
+
+  return true;
 }
 
 function mergeScopedAnalysisOutput(

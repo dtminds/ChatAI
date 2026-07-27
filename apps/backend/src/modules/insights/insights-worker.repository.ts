@@ -15,6 +15,7 @@ import type {
   CreateLogicalSessionInput,
   InsightAnalysisOutput,
   InsightLiveGateSkipRecord,
+  InsightRescanSessionEligibility,
   InsightWorkerAnalysisPolicy,
   InsightWorkerExistingSession,
   InsightWorkerFeatureConfig,
@@ -133,6 +134,13 @@ type ExistingSessionLookupRow = {
   uid: number | string;
 };
 
+type RescanSessionEligibilityRow = {
+  current_snapshot_phase: string | null;
+  message_count: number | string;
+  session_id: number | string;
+  status: string;
+};
+
 type PreviousSessionContextRow = {
   ended_at: number | string | null;
   problem_summary: string | null;
@@ -175,6 +183,7 @@ const globalCursorUid = 0;
 const sessionizationUidJobType = "sessionize_uid";
 const terminalJobStatuses = ["succeeded", "failed"] as const;
 const SESSIONIZATION_JOB_LEASE_MS = 5 * 60_000;
+const RESCAN_SESSION_LOOKUP_BATCH_SIZE = 500;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
   constructor(private readonly db: Kysely<Database>) {}
@@ -1083,6 +1092,72 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       status: normalizeLogicalSessionStatus(row.status),
       uid: parseNumber(row.uid),
     }));
+  }
+
+  async listActiveAnalysisSessionIds(input: {
+    sessionIds: string[];
+    uid: number;
+  }): Promise<string[]> {
+    const sessionIds = uniquePositiveIntegerIds(input.sessionIds);
+    const activeSessionIds = new Set<string>();
+
+    for (let offset = 0; offset < sessionIds.length; offset += RESCAN_SESSION_LOOKUP_BATCH_SIZE) {
+      const batch = sessionIds.slice(offset, offset + RESCAN_SESSION_LOOKUP_BATCH_SIZE);
+      const rows = await this.db
+        .selectFrom("xy_wap_embed_insight_job")
+        .select("target_id")
+        .where("uid", "=", input.uid)
+        .where("target_type", "=", "logical_session")
+        .where("job_type", "in", ["analyze_session", "reanalyze_session"])
+        .where("status", "in", ["pending", "running"])
+        .where("target_id", "in", batch.map(String))
+        .execute() as Array<{ target_id: string }>;
+
+      for (const row of rows) {
+        activeSessionIds.add(row.target_id);
+      }
+    }
+
+    return [...activeSessionIds];
+  }
+
+  async listRescanSessionEligibility(input: {
+    sessionIds: string[];
+    uid: number;
+  }): Promise<InsightRescanSessionEligibility[]> {
+    const sessionIds = uniquePositiveIntegerIds(input.sessionIds);
+    const results: InsightRescanSessionEligibility[] = [];
+
+    for (let offset = 0; offset < sessionIds.length; offset += RESCAN_SESSION_LOOKUP_BATCH_SIZE) {
+      const batch = sessionIds.slice(offset, offset + RESCAN_SESSION_LOOKUP_BATCH_SIZE);
+      const rows = await this.db
+        .selectFrom("xy_wap_embed_logical_session as session")
+        .leftJoin("xy_wap_embed_session_insight_snapshot as current_snapshot", (join) =>
+          join.onRef("current_snapshot.id", "=", "session.current_snapshot_id")
+        )
+        .select([
+          "session.id as session_id",
+          "session.message_count as message_count",
+          "session.status as status",
+          "current_snapshot.phase as current_snapshot_phase",
+        ])
+        .where("session.uid", "=", input.uid)
+        .where("session.id", "in", batch)
+        .execute() as RescanSessionEligibilityRow[];
+
+      results.push(...rows.map((row) => {
+        const currentSnapshotPhase = normalizeSnapshotPhase(row.current_snapshot_phase);
+
+        return {
+          ...(currentSnapshotPhase ? { currentSnapshotPhase } : {}),
+          messageCount: parseNumber(row.message_count),
+          sessionId: String(row.session_id),
+          status: normalizeLogicalSessionStatus(row.status),
+        };
+      }));
+    }
+
+    return results;
   }
 
   async finalizeOpenSession(input: FinalizeOpenSessionInput): Promise<boolean> {
@@ -2563,7 +2638,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     await this.db
       .updateTable("xy_wap_embed_analysis_run")
       .set({
-        error_message: validationWarnings.length > 0 ? validationWarnings.join("; ") : null,
+        ...(input.resultKind === "insufficient_messages"
+          ? {
+              error_code: "INSUFFICIENT_MESSAGES",
+              error_message: input.resultReason ?? "AI有效消息数低于最小分析消息数",
+            }
+          : {
+              error_message: validationWarnings.length > 0
+                ? validationWarnings.join("; ")
+                : null,
+            }),
         finished_at: new Date(),
         status: validationWarnings.length > 0 ? "partial" : "succeeded",
         ...(input.tokenUsage
@@ -3025,6 +3109,18 @@ function normalizePriority(value: string): "high" | "low" | "medium" {
 
 function normalizeActionTitle(value: string | null | undefined) {
   return (value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function normalizeSnapshotPhase(value: string | null | undefined): "final" | "live" | undefined {
+  return value === "final" || value === "live" ? value : undefined;
+}
+
+function uniquePositiveIntegerIds(values: string[]) {
+  return [...new Set(
+    values
+      .map((value) => parsePositiveInteger(value))
+      .filter((value): value is number => value != null),
+  )];
 }
 
 function parsePositiveInteger(value: string) {

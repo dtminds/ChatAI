@@ -168,15 +168,15 @@ const ticketMutableProperties = {
 };
 
 export const TicketUpdateRequestSchema = Type.Union([
-  Type.Object(ticketMutableProperties, {
-    additionalProperties: false,
-    minProperties: 1,
-  }),
   Type.Object({
     ...ticketMutableProperties,
     expectedStatus: TicketStatusSchema,
     status: TicketStatusSchema,
   }, { additionalProperties: false }),
+  Type.Object(ticketMutableProperties, {
+    additionalProperties: false,
+    minProperties: 1,
+  }),
 ]);
 
 export const TicketUpdateResponseSchema = Type.Object({

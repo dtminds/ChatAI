@@ -517,7 +517,7 @@ cd apps/backend
 - Create: `apps/backend/test/modules/tickets/tickets-routes.test.ts`
 - Modify: `apps/backend/src/app.ts`
 
-- [ ] **Step 1：先写路由失败测试**
+- [x] **Step 1：先写路由失败测试**
 
 覆盖所有接口的鉴权、schema、成功 envelope 和主要错误码：
 
@@ -533,18 +533,18 @@ POST  /api/server/tickets/:ticketId/claim
 POST  /api/server/tickets/:ticketId/comments
 ```
 
-- [ ] **Step 2：实现统一 scope 解析和路由**
+- [x] **Step 2：实现统一 scope 解析和路由**
 
 - 所有接口使用正常 `app.authenticate`。
 - 从 JWT 读取 `uid/subUserId/roles`，从现有账户权限模型获得 role/permissions。
 - Route 只负责 schema、scope 和 API envelope，不写 SQL、不复制权限矩阵。
 - Fastify 会优先匹配静态路由；保持路由列表清晰即可，不增加无意义的手写 path 分发。
 
-- [ ] **Step 3：注册模块并验证无鉴权绕过**
+- [x] **Step 3：注册模块并验证无鉴权绕过**
 
 在 `apps/backend/src/app.ts` 注册 Tickets 路由。不要加入 `shouldDisableRequestLogging`，工单 API 不是高频轮询噪声接口；如后续真实日志量过高再按观测调整。
 
-- [ ] **Step 4：运行路由测试和 Backend build**
+- [x] **Step 4：运行路由测试和 Backend build**
 
 ```bash
 cd apps/backend
@@ -552,7 +552,7 @@ cd apps/backend
 corepack pnpm --filter @chatai/backend build
 ```
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 建议提交：`feat(tickets): expose ticket APIs`
 

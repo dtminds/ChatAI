@@ -12,6 +12,7 @@ import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
+import { registerTicketsRoutes } from "./modules/tickets/tickets.routes.js";
 import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
 import { dbPlugin } from "./plugins/db.js";
@@ -55,6 +56,7 @@ export async function buildApp() {
   await registerInsightsRoutes(app, workerObserverSubjects);
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
+  await registerTicketsRoutes(app);
 
   return app;
 }

@@ -197,15 +197,33 @@ export class TicketsRepository {
 
   async listCustomerConversationIds(input: {
     platform: number;
+    subUserId: number;
     thirdExternalUserId: string;
     uid: number;
   }) {
     const rows = await this.db
-      .selectFrom("xy_wap_embed_conversation as conversation")
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as access_seat", (join) =>
+        join
+          .onRef("access_seat.id", "=", "relation.user_seat_id")
+          .onRef("access_seat.uid", "=", "relation.uid")
+          .onRef("access_seat.platform", "=", "relation.platform"),
+      )
+      .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
+        join
+          .onRef("conversation.third_userid", "=", "access_seat.third_userid")
+          .onRef("conversation.uid", "=", "access_seat.uid")
+          .onRef("conversation.platform", "=", "access_seat.platform"),
+      )
       .select("conversation.id")
+      .distinct()
+      .where("relation.uid", "=", input.uid)
+      .where("relation.sub_id", "=", input.subUserId)
+      .where("access_seat.biz_status", "=", 1)
       .where("conversation.uid", "=", input.uid)
       .where("conversation.platform", "=", input.platform)
       .where("conversation.third_external_userid", "=", input.thirdExternalUserId)
+      .where("conversation.third_group_id", "=", "")
       .where("conversation.chat_type", "=", 1)
       .where("conversation.biz_status", "=", 1)
       .execute();

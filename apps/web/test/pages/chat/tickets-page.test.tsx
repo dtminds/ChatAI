@@ -14,7 +14,7 @@ vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
 
 const ticket = {
   anchorMessageId: null, assignee: null, canClaim: true, canEdit: false, canceledAt: null,
-  completedAt: null, conversationId: "301", createdAt: 1, createdBy: null,
+  completedAt: null, conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" },
   customerAvatarUrl: null, customerName: "王女士", description: null, dueAt: null,
   dueHint: null, overdue: false, ownerAccountAvatarUrl: null, ownerAccountId: "201",
   ownerAccountName: "售后账号", priority: "high", sessionId: "401", snapshotId: null,
@@ -33,6 +33,7 @@ describe("TicketsPage", () => {
 
     expect(screen.getByRole("status")).toBeInTheDocument();
     await screen.findByRole("link", { name: /确认退款进度/ });
+    expect(screen.getByText("客服乙")).toBeInTheDocument();
     expect(api.getTickets).toHaveBeenCalledWith(expect.objectContaining({ view: "reception" }));
     expect(screen.queryByRole("button", { name: /新建|创建工单/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "全部工单" })).not.toBeInTheDocument();

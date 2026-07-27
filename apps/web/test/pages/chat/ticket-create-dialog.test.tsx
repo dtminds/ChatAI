@@ -160,4 +160,25 @@ describe("TicketCreateDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("创建失败");
     expect(title).toHaveValue("需要保留的内容");
   });
+
+  it("falls back to the backend default assignee when options fail to load", async () => {
+    const user = userEvent.setup();
+    api.getTicketContextOptions.mockRejectedValueOnce(new Error("选项加载失败"));
+
+    render(
+      <TicketCreateDialog
+        conversationId="301"
+        onCreated={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    );
+
+    await screen.findByRole("alert");
+    await user.type(screen.getByRole("textbox", { name: "标题" }), "继续跟进");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(api.createTicket).toHaveBeenCalledTimes(1));
+    expect(api.createTicket.mock.calls[0]?.[0]).not.toHaveProperty("assigneeSubUserId");
+  });
 });

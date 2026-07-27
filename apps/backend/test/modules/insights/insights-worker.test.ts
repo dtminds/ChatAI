@@ -3658,7 +3658,7 @@ describe("InsightsWorkerService", () => {
     const recentActionItems = Array.from({ length: 6 }, (_, index) => ({
       createdAt: 1_780_244_000_000 - index,
       priority: "medium" as const,
-      status: "open" as const,
+      status: "in_progress" as const,
       title: `待办 ${index + 1}`,
     }));
     const repository = createRepository({

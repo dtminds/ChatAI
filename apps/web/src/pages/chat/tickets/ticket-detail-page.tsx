@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { TicketDetailResponse, TicketStatus, TicketUpdateRequest } from "@chatai/contracts";
+import type { TicketActivity, TicketDetailResponse, TicketStatus, TicketUpdateRequest } from "@chatai/contracts";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,16 @@ export function TicketDetailPage() {
           <div className="space-y-6">
             <section className="space-y-4 border-b pb-6">
               <h2 className="text-base font-semibold">工单信息</h2>
+              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                <Metadata label="客户" value={ticket.customerName || "-"} />
+                <Metadata label="所属账号" value={ticket.ownerAccountName || "-"} />
+                <Metadata label="状态" value={statusText(ticket.status)} />
+                <Metadata label="来源" value={ticket.sourceType === "ai" ? "智能创建" : "人工创建"} />
+                <Metadata label="创建人" value={ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")} />
+                <Metadata label="创建时间" value={formatInsightTime(ticket.createdAt)} />
+                <Metadata label="更新时间" value={formatInsightTime(ticket.updatedAt)} />
+                <Metadata label="接待会话" value={ticket.sessionId ?? "-"} />
+              </dl>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="标题"><Input disabled={!ticket.canEdit} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} /></Field>
                 <Field label="负责人"><Select disabled={!ticket.canEdit} onValueChange={(value) => setForm((current) => ({ ...current, assigneeSubUserId: value }))} value={form.assigneeSubUserId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unassigned">未分配</SelectItem>{detail.assigneeOptions.map((option) => <SelectItem key={option.subUserId} value={option.subUserId}>{option.displayName}</SelectItem>)}</SelectContent></Select></Field>
@@ -93,7 +103,7 @@ export function TicketDetailPage() {
           <aside className="space-y-4 border-l pl-6 max-xl:border-l-0 max-xl:pl-0">
             <h2 className="text-base font-semibold">处理记录</h2>
             {ticket.canEdit ? <div className="flex gap-2"><Input aria-label="添加处理备注" onChange={(event) => setComment(event.target.value)} placeholder="添加处理备注" value={comment} /><Button disabled={!comment.trim() || isSaving} onClick={() => { setIsSaving(true); void addTicketComment(ticketId, { content: comment }).then(() => { setComment(""); return load(); }).catch((cause) => setError(cause instanceof Error ? cause.message : "备注添加失败")).finally(() => setIsSaving(false)); }}>添加</Button></div> : null}
-            <div className="space-y-4">{detail.activities.length ? detail.activities.map((activity) => <div className="border-l-2 pl-3" key={activity.activityId}><div className="text-sm">{activity.content ?? activityText(activity.activityType)}</div><div className="mt-1 text-xs text-muted-foreground">{activity.operator?.displayName || (activity.operatorType === 'ai' ? 'AI' : '系统')} · {formatInsightTime(activity.createdAt)}</div></div>) : <div className="text-sm text-muted-foreground">暂无记录</div>}</div>
+            <div className="space-y-4">{detail.activities.length ? detail.activities.map((activity) => <div className="border-l-2 pl-3" key={activity.activityId}><div className="text-sm">{activity.content ?? activityText(activity.activityType)}</div>{activityDetailText(activity) ? <div className="mt-1 text-xs text-muted-foreground">{activityDetailText(activity)}</div> : null}<div className="mt-1 text-xs text-muted-foreground">{activity.operator?.displayName || (activity.operatorType === 'ai' ? 'AI' : '系统')} · {formatInsightTime(activity.createdAt)}</div></div>) : <div className="text-sm text-muted-foreground">暂无记录</div>}</div>
           </aside>
         </div>
       </div>
@@ -112,6 +122,22 @@ function TicketContext({ detail, messages }: { detail: TicketDetailResponse; mes
   return <div className="max-h-[520px] overflow-y-auto rounded-[8px] bg-muted/50 p-4"><div className="mb-3 text-xs text-muted-foreground">{detail.context.kind === "session" ? `接待会话 ${detail.context.sessionId}` : `消息上下文 ${detail.context.anchorMessageId}`}</div><HistoryCompactMessageList messages={messages} textWeight="normal" /></div>;
 }
 function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">{label}</span>{children}</label>; }
+function Metadata({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>; }
 function toDateTimeLocal(value: number | null) { if (!value) return ""; const date = new Date(value - new Date(value).getTimezoneOffset() * 60_000); return date.toISOString().slice(0,16); }
 function isErrorCode(value: unknown, code: string) { return Boolean(value && typeof value === "object" && "code" in value && value.code === code); }
 function activityText(type: string) { return ({ created: "创建工单", status_changed: "更新状态", assignee_changed: "变更负责人", priority_changed: "变更优先级", due_at_changed: "变更截止时间", content_updated: "更新工单内容", comment_added: "添加备注" } as Record<string,string>)[type] ?? "更新工单"; }
+function statusText(status: unknown) { return ({ open: "待处理", in_progress: "处理中", done: "已完成", canceled: "已取消", dismissed: "已取消", expired: "已取消" } as Record<string,string>)[String(status)] ?? String(status ?? "-"); }
+function activityDetailText(activity: TicketActivity) {
+  const before = activity.detail?.before;
+  const after = activity.detail?.after;
+  if (before === undefined && after === undefined) return null;
+  if (activity.activityType === "status_changed") return `${statusText(before)} -> ${statusText(after)}`;
+  if (activity.activityType === "priority_changed") return `${priorityText(before)} -> ${priorityText(after)}`;
+  if (activity.activityType === "assignee_changed") return `${assigneeText(before)} -> ${assigneeText(after)}`;
+  if (activity.activityType === "due_at_changed") return `${timeText(before)} -> ${timeText(after)}`;
+  if (activity.activityType === "content_updated") return activity.detail?.field === "title" ? `${String(before ?? "")} -> ${String(after ?? "")}` : null;
+  return null;
+}
+function priorityText(value: unknown) { return ({ high: "高", medium: "中", low: "低" } as Record<string,string>)[String(value)] ?? String(value ?? "-"); }
+function assigneeText(value: unknown) { return value == null ? "未分配" : `子账号 ${String(value)}`; }
+function timeText(value: unknown) { const timestamp = Number(value); return Number.isFinite(timestamp) && timestamp > 0 ? formatInsightTime(timestamp) : "未设置"; }

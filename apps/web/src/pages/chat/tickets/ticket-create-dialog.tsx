@@ -50,7 +50,7 @@ export function TicketCreateDialog({
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TicketPriority>("medium");
   const [dueAt, setDueAt] = useState("");
-  const [assigneeSubUserId, setAssigneeSubUserId] = useState("unassigned");
+  const [assigneeSubUserId, setAssigneeSubUserId] = useState<string>();
   const [contextValue, setContextValue] = useState("current");
   const [assignees, setAssignees] = useState<TicketUser[]>([]);
   const [sessions, setSessions] = useState<
@@ -77,7 +77,7 @@ export function TicketCreateDialog({
     setDescription("");
     setPriority("medium");
     setDueAt("");
-    setAssigneeSubUserId("unassigned");
+    setAssigneeSubUserId(undefined);
     setContextValue("current");
     setAssignees([]);
     setSessions([]);
@@ -161,8 +161,9 @@ export function TicketCreateDialog({
     setError(undefined);
     try {
       const result = await createTicket({
-        assigneeSubUserId:
-          assigneeSubUserId === "unassigned" ? null : assigneeSubUserId,
+        ...(assigneeSubUserId === undefined
+          ? {}
+          : { assigneeSubUserId: assigneeSubUserId === "unassigned" ? null : assigneeSubUserId }),
         context: parseContext(contextValue),
         conversationId,
         description: description.trim() || null,
@@ -231,7 +232,7 @@ export function TicketCreateDialog({
                 value={assigneeSubUserId}
               >
                 <SelectTrigger aria-label="负责人">
-                  <SelectValue />
+                  <SelectValue placeholder="默认负责人" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">未分配</SelectItem>

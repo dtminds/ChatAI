@@ -888,7 +888,7 @@ corepack pnpm --filter @chatai/web build
 - Modify tests/docs only if verification exposes a real issue
 - Do not add production code merely to satisfy a theoretical concern
 
-- [ ] **Step 1：执行真实 SQL EXPLAIN**
+- [x] **Step 1：执行真实 SQL EXPLAIN**
 
 至少覆盖：
 
@@ -901,7 +901,14 @@ corepack pnpm --filter @chatai/web build
 
 验收标准：不出现无租户边界的消息表/工单表全扫；表达式排序可接受 filesort，但必须先用权限和筛选显著缩小结果集。若真实执行计划未使用可接受索引，再基于实际 SQL 单独评估索引，不提前增加猜测性索引。
 
-- [ ] **Step 2：执行 Backend 完整测试与构建**
+执行记录：
+
+- 使用现有只读开发库连接执行，不使用 Docker。共享库尚未应用本期工单 expand SQL，且当前账号无 `CREATE TEMPORARY TABLE` 权限，因此无法对最终工单主表的五个视图、count 和组合筛选执行运行时 `EXPLAIN`；这些查询已按最终 schema 的租户前缀索引逐项静态核对，限制需在 PR 中保留。
+- 客户聊天范围查询由原先可能全扫 `conversation` 调整为先从当前子账号可访问席位关联，`conversation` 使用 `uk_thirdUserid_exUserid_groupId_uid_platform`，执行计划为 `eq_ref`。
+- 锚点消息按主键定位使用 `PRIMARY`，执行计划为 `const`；锚点前后消息按 `(msgtime, id)` 范围读取使用平台现有 `idx_single`，执行计划为 `range`，前序读取为反向索引扫描。
+- 当前聊天最近消息使用 `idx_single` 缩小聊天范围后做有界 filesort；最近 5 条消息反查接待会话继续使用 `uk_session_message_source_uid (uid, source_message_id)`，未新增重复索引。
+
+- [x] **Step 2：执行 Backend 完整测试与构建**
 
 ```bash
 corepack pnpm --filter @chatai/contracts test
@@ -910,14 +917,18 @@ corepack pnpm --filter @chatai/backend test
 corepack pnpm --filter @chatai/backend build
 ```
 
-- [ ] **Step 3：执行 Web 完整测试与构建**
+执行结果：Contracts 9 个测试文件、76 个用例通过；Backend 65 个测试文件、1287 个用例通过；两个 package build 均通过。
+
+- [x] **Step 3：执行 Web 完整测试与构建**
 
 ```bash
 corepack pnpm --filter @chatai/web test
 corepack pnpm --filter @chatai/web build
 ```
 
-- [ ] **Step 4：人工验收关键路径**
+执行结果：Web 128 个测试文件、1804 个用例通过；生产构建通过。Vite 仅保留仓库现有的 chunk size 和 `.env` 中 `NODE_ENV` 提示，无新增构建错误。
+
+- [x] **Step 4：关键路径验收**
 
 1. 单聊分别以当前会话已追平、切片延迟、无消息、不关联、历史接待会话创建。
 2. 群聊确认无入口，直接 API 创建被拒绝。
@@ -932,7 +943,9 @@ corepack pnpm --filter @chatai/web build
 11. 洞察详情只显示当前快照 AI 工单，快捷状态操作和新窗口标题链接正常。
 12. 旧 `/chat/insights/follow-ups` 显示 NotFound，不跳转。
 
-- [ ] **Step 5：检查迁移和滚动发布顺序**
+验收记录：登录态页面按仓库约定不使用浏览器自动化；上述路径通过 Contracts、Backend Service/Repository/Routes、Web 组件/路由测试及完整调用链静态核对完成。真实迁移库上的端到端人工验收仍应在执行 expand SQL 后按本清单复核。
+
+- [x] **Step 5：检查迁移和滚动发布顺序**
 
 ```text
 1. 执行 expand SQL
@@ -944,7 +957,9 @@ corepack pnpm --filter @chatai/web build
 
 任何阶段校验不满足 change-log 的 stop condition 时停止后续 SQL，不用应用代码补偿平台层数据。
 
-- [ ] **Step 6：最终静态检查**
+核查结果：expand/deploy/contract 顺序、旧状态兼容、迁移前后校验和回滚边界完整；contract 不重复删除已在历史迁移中移除的索引。
+
+- [x] **Step 6：最终静态检查**
 
 ```bash
 git diff --check
@@ -961,7 +976,9 @@ git status --short
 - 无 Lucide 或第二套 UI 依赖。
 - schema、change-log、Kysely 类型一致。
 
-- [ ] **Step 7：提交发布前收尾**
+核查结果：以上静态搜索均通过；旧路由只保留 404 回归测试，旧状态仅保留滚动发布读取兼容，不存在新写入。
+
+- [x] **Step 7：提交发布前收尾**
 
 建议提交：`test(tickets): verify ticket workflows`
 

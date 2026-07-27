@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   completed_at DATETIME NULL COMMENT '完成时间',
   canceled_at DATETIME NULL COMMENT '取消时间',
   canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID',
-  action_type VARCHAR(64) NOT NULL COMMENT '行动项类型，当前固定follow_up：跟进',
+  action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
   title VARCHAR(255) NOT NULL COMMENT '工单标题',
   description TEXT NULL COMMENT '工单描述',
   priority VARCHAR(32) NOT NULL COMMENT '优先级，low：低，medium：中，high：高',

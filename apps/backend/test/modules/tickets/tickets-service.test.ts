@@ -158,6 +158,12 @@ describe("TicketsService", () => {
     await service.listConversationTickets(createActor("operator"), "301", {
       scope: "customer",
     });
+    expect(repository.listCustomerConversationIds).toHaveBeenCalledWith({
+      platform: 5,
+      subUserId: 101,
+      thirdExternalUserId: "customer-1",
+      uid: 9001,
+    });
     expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationIds: [301, 302],
       view: "visible",
@@ -407,6 +413,27 @@ describe("TicketsService", () => {
     expect(repository.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
       expectedStatuses: ["in_progress"],
       values: expect.objectContaining({ assigneeSubUserId: null, status: "open" }),
+    }));
+  });
+
+  it("keeps an explicit terminal transition when clearing an in-progress assignee", async () => {
+    const repository = createRepository();
+    repository.getTicketRecordById.mockResolvedValueOnce({ ...baseRecord, status: "in_progress" });
+    const service = new TicketsService(repository);
+
+    await service.updateTicket(createActor("operator"), "501", {
+      assigneeSubUserId: null,
+      expectedStatus: "in_progress",
+      status: "done",
+    });
+
+    expect(repository.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
+      expectedStatuses: ["in_progress"],
+      values: expect.objectContaining({
+        assigneeSubUserId: null,
+        completedBySubUserId: 101,
+        status: "done",
+      }),
     }));
   });
 

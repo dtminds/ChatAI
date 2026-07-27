@@ -101,14 +101,19 @@ describe("TicketsRepository", () => {
 
     await repository.listCustomerConversationIds({
       platform: 5,
+      subUserId: 101,
       thirdExternalUserId: "customer-1",
       uid: 9001,
     });
 
     const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("xy_wap_embed_user_seat_sub_relation as relation");
+    expect(sql).toContain("xy_wap_embed_user_seat as access_seat");
+    expect(sql).toContain("relation.sub_id = ?");
     expect(sql).toContain("conversation.uid = ?");
     expect(sql).toContain("conversation.platform = ?");
     expect(sql).toContain("conversation.third_external_userid = ?");
+    expect(sql).toContain("conversation.third_group_id = ?");
     expect(sql).toContain("conversation.chat_type = ?");
   });
 

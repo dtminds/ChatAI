@@ -13,6 +13,7 @@ import {
   type WorkbenchHistoryMessageScope,
   type WorkbenchMessageQueryBySeqsResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchMessageDto,
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
@@ -4390,6 +4391,168 @@ export class WorkbenchRepository {
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
       smartReplyScope,
+    };
+  }
+
+  async listMessageContext(input: {
+    after: number;
+    before: number;
+    conversationId: string;
+    messageId: string;
+    uid: number;
+  }): Promise<{ messages: WorkbenchMessageDto[]; targetMessageId: string }> {
+    const conversationId = parseMySqlId(input.conversationId);
+    const messageId = parseMySqlId(input.messageId);
+
+    if (conversationId == null || messageId == null) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.uid as uid",
+        "conversation.platform as platform",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "seat.id as seat_id",
+      ])
+      .select((expressionBuilder) =>
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      )
+      .where("conversation.id", "=", conversationId)
+      .where("conversation.uid", "=", input.uid)
+      .where("conversation.chat_type", "=", CHAT_TYPE_SINGLE)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const buildMessageQuery = () => this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+        "message.source as source",
+        "message.status as status",
+        "message.update_time as update_time",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
+        expressionBuilder.val(conversation.seat_id).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+        expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.chat_type", "=", CHAT_TYPE_SINGLE)
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_external_id", "=", conversation.conversation_external_id);
+    const anchor = await buildMessageQuery()
+      .where("message.id", "=", messageId)
+      .executeTakeFirst() as MessageRow | undefined;
+    const anchorTime = toTimestamp(anchor?.msgtime);
+
+    if (!anchor || anchorTime <= 0) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const beforeLimit = Math.max(0, Math.min(100, Math.floor(input.before)));
+    const afterLimit = Math.max(0, Math.min(100, Math.floor(input.after)));
+    const [beforeRows, afterRows] = await Promise.all([
+      beforeLimit === 0
+        ? Promise.resolve([] as MessageRow[])
+        : buildMessageQuery()
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder("message.msgtime", "<", anchorTime),
+                expressionBuilder.and([
+                  expressionBuilder("message.msgtime", "=", anchorTime),
+                  expressionBuilder("message.id", "<", messageId),
+                ]),
+              ]),
+            )
+            .orderBy("message.msgtime", "desc")
+            .orderBy("message.id", "desc")
+            .limit(beforeLimit)
+            .execute() as Promise<MessageRow[]>,
+      afterLimit === 0
+        ? Promise.resolve([] as MessageRow[])
+        : buildMessageQuery()
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder("message.msgtime", ">", anchorTime),
+                expressionBuilder.and([
+                  expressionBuilder("message.msgtime", "=", anchorTime),
+                  expressionBuilder("message.id", ">", messageId),
+                ]),
+              ]),
+            )
+            .orderBy("message.msgtime", "asc")
+            .orderBy("message.id", "asc")
+            .limit(afterLimit)
+            .execute() as Promise<MessageRow[]>,
+    ]);
+    const messageRows = [...beforeRows.reverse(), anchor, ...afterRows];
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
+    const hydrationSources = await this.getMessageHydrationSources(
+      allRowsToHydrate,
+      conversation.uid,
+      conversation.platform,
+      toNumber(conversation.group_seat_id),
+    );
+    const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedQuotedRows = hydrateMessageRows(quotedRows.fetchedRows, hydrationSources);
+    const currentRowsById = new Map(
+      hydratedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedRowsById = new Map(
+      hydratedQuotedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedRows,
+      currentRowsById,
+      fetchedRowsById,
+    );
+
+    return {
+      messages: hydratedRows.map((row) =>
+        mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
+      ),
+      targetMessageId: String(messageId),
     };
   }
 

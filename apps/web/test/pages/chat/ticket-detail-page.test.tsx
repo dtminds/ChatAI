@@ -21,7 +21,7 @@ const baseDetail = {
   evidenceMessages: [],
   ticket: {
     anchorMessageId: null, assignee: null, canClaim: true, canEdit: true, canceledAt: null, completedAt: null,
-    conversationId: "301", createdAt: 1, createdBy: null, customerAvatarUrl: null, customerName: "客户",
+    conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" }, customerAvatarUrl: null, customerName: "客户张三",
     description: null, dueAt: null, dueHint: null, overdue: false, ownerAccountAvatarUrl: null,
     ownerAccountId: "201", ownerAccountName: "账号", priority: "medium", sessionId: "401", snapshotId: null,
     sourceType: "ai", status: "open", ticketId: "501", title: "跟进退款", updatedAt: 2,
@@ -43,6 +43,8 @@ describe("TicketDetailPage", () => {
   it("loads direct routes and sends expectedStatus with status changes", async () => {
     const user = userEvent.setup(); renderPage();
     await screen.findByRole("heading", { name: "跟进退款" });
+    expect(screen.getByText("客服乙")).toBeInTheDocument();
+    expect(screen.getByText("客户张三")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "完成" }));
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledWith("501", { expectedStatus: "open", status: "done" }));
     expect(screen.getByTestId("messages")).toHaveTextContent("1");

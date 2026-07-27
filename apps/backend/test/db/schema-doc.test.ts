@@ -18,6 +18,7 @@ describe("database schema document", () => {
     expect(actionItemTable).toContain("due_at DATETIME NULL");
     expect(actionItemTable).toContain("canceled_at DATETIME NULL");
     expect(actionItemTable).toContain("canceled_by_sub_user_id BIGINT UNSIGNED NULL");
+    expect(actionItemTable).toContain("工单类型，当前固定follow_up：跟进");
     expect(actionItemTable).not.toContain("dismissed_at");
     expect(actionItemTable).toContain("open：待处理，in_progress：处理中，done：已完成，canceled：已取消");
   });

@@ -108,6 +108,7 @@ export interface TicketsRepositoryPort {
   }): Promise<TicketContextOptionsResponse["assignees"]>;
   listCustomerConversationIds(input: {
     platform: number;
+    subUserId: number;
     thirdExternalUserId: string;
     uid: number;
   }): Promise<number[]>;
@@ -343,10 +344,10 @@ export class TicketsService {
     }
 
     const scope = query.scope ?? "conversation";
-    const conversationIds = scope === "customer"
-      ? await this.resolveCustomerConversationIds(identity, actor.uid)
-      : [identity.conversationId];
     const subUserId = getActorSubUserId(actor);
+    const conversationIds = scope === "customer"
+      ? await this.resolveCustomerConversationIds(identity, actor.uid, subUserId)
+      : [identity.conversationId];
     const globalAccess = hasGlobalTicketAccess(actor);
     const repositoryInput: TicketListRepositoryInput = {
       conversationIds,
@@ -632,7 +633,11 @@ export class TicketsService {
       }
     }
 
-    if (currentStatus === "in_progress" && targetAssignee == null) {
+    if (
+      currentStatus === "in_progress"
+      && targetAssignee == null
+      && requestedStatus === undefined
+    ) {
       targetStatus = "open";
     }
     if (targetStatus === "in_progress" && targetAssignee == null) {
@@ -715,6 +720,7 @@ export class TicketsService {
   private async resolveCustomerConversationIds(
     identity: TicketConversationIdentity,
     uid: number,
+    subUserId: number,
   ) {
     if (!identity.thirdExternalUserId) {
       return [identity.conversationId];
@@ -722,6 +728,7 @@ export class TicketsService {
 
     const conversationIds = await this.repository.listCustomerConversationIds({
       platform: identity.platform,
+      subUserId,
       thirdExternalUserId: identity.thirdExternalUserId,
       uid,
     });

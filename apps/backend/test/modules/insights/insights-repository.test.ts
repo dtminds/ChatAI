@@ -228,8 +228,14 @@ describe("InsightsRepository", () => {
             {
               create_time: new Date("2026-06-01T10:00:00Z"),
               priority: "high",
-              status: "open",
+              status: "in_progress",
               title: "跟进物流异常",
+            },
+            {
+              create_time: new Date("2026-06-01T09:00:00Z"),
+              priority: "medium",
+              status: "expired",
+              title: "旧工单",
             },
           ],
           table,
@@ -249,8 +255,12 @@ describe("InsightsRepository", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         priority: "high",
-        status: "open",
+        status: "in_progress",
         title: "跟进物流异常",
+      }),
+      expect.objectContaining({
+        status: "canceled",
+        title: "旧工单",
       }),
     ]);
 

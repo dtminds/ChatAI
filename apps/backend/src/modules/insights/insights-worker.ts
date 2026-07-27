@@ -2235,7 +2235,9 @@ export class InsightsWorkerService {
       limit: 10,
       uid: input.job.uid,
     });
-    const openCount = recentActionItems.filter((item) => item.status === "open").length;
+    const openCount = recentActionItems.filter(
+      (item) => item.status === "open" || item.status === "in_progress",
+    ).length;
 
     return {
       existingActionItems: openCount > 5 ? [] : recentActionItems,

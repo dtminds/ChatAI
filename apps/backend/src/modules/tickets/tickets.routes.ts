@@ -18,6 +18,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getRolePermissions } from "../auth/permissions.js";
 import { InsightsRepository } from "../insights/insights.repository.js";
+import { WorkbenchRepository } from "../chat/workbench-repository.js";
 import { BadRequestError, UnauthorizedError } from "../../shared/errors.js";
 import { TicketsRepository } from "./tickets.repository.js";
 import { TicketsService, type TicketsActorScope } from "./tickets.service.js";
@@ -177,9 +178,22 @@ async function validateTicketUpdateStatusPair(request: FastifyRequest) {
 }
 
 function createTicketsService(app: FastifyInstance) {
+  const insightsRepository = new InsightsRepository(app.db);
+  const workbenchRepository = new WorkbenchRepository(app.db);
+
   return new TicketsService(
     new TicketsRepository(app.db),
-    new InsightsRepository(app.db),
+    {
+      listMessageContext: (scope, conversationId, messageId, options) =>
+        workbenchRepository.listMessageContext({
+          ...options,
+          conversationId,
+          messageId,
+          uid: scope.uid,
+        }),
+      listSessionMessageRecords: (scope, sessionId) =>
+        insightsRepository.listSessionMessageRecords(scope, sessionId),
+    },
   );
 }
 

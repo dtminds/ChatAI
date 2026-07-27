@@ -2392,7 +2392,7 @@ export interface XyWapEmbedQuickReplyCategory {
 
 export interface XyWapEmbedSessionActionItem {
   /**
-   * 行动项类型，当前固定follow_up：跟进
+   * 工单类型，当前固定follow_up：跟进
    */
   action_type: string;
   /**
@@ -2435,9 +2435,6 @@ export interface XyWapEmbedSessionActionItem {
    * 工单描述
    */
   description: string | null;
-  /**
-   * 兼容滚动发布期间的旧忽略时间，contract 后移除
-   */
   /**
    * 明确截止时间
    */

@@ -3102,10 +3102,12 @@ function normalizeResolutionStatus(
     : "unknown";
 }
 
-function normalizeActionStatus(value: string): "dismissed" | "done" | "expired" | "open" {
-  return value === "done" || value === "dismissed" || value === "expired" || value === "open"
-    ? value
-    : "open";
+function normalizeActionStatus(value: string): "canceled" | "done" | "in_progress" | "open" {
+  if (value === "dismissed" || value === "expired" || value === "canceled") {
+    return "canceled";
+  }
+
+  return value === "done" || value === "in_progress" || value === "open" ? value : "open";
 }
 
 function normalizePriority(value: string): "high" | "low" | "medium" {

@@ -59,7 +59,7 @@ export type InsightPreviousSessionContext = {
 export type InsightPromptExistingActionItem = {
   createdAt?: number;
   priority: "high" | "low" | "medium";
-  status: "dismissed" | "done" | "expired" | "open";
+  status: "canceled" | "done" | "in_progress" | "open";
   title: string;
 };
 

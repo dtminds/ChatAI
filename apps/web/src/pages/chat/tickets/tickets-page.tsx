@@ -68,18 +68,19 @@ export function TicketsPage() {
         <div className="overflow-x-auto">
           <Table aria-label="工单列表">
             <TableHeader><TableRow>
-              <TableHead>工单</TableHead><TableHead>客户 / 所属账号</TableHead><TableHead>状态</TableHead><TableHead>优先级</TableHead><TableHead>负责人</TableHead><TableHead>截止时间</TableHead><TableHead>更新时间</TableHead>
+              <TableHead>工单</TableHead><TableHead>客户 / 所属账号</TableHead><TableHead>状态</TableHead><TableHead>优先级</TableHead><TableHead>负责人</TableHead><TableHead>创建人 / 创建时间</TableHead><TableHead>截止时间</TableHead><TableHead>更新时间</TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {isLoading ? <TableRow><TableCell colSpan={7}><div className="flex h-32 items-center justify-center gap-2" role="status"><Spinner size={18} variant="classic" />正在加载</div></TableCell></TableRow>
-                : error ? <TableRow><TableCell colSpan={7}><div className="py-12 text-center text-sm text-destructive" role="alert">{error}</div></TableCell></TableRow>
-                : (result?.items.length ?? 0) === 0 ? <TableRow><TableCell className="py-12 text-center text-muted-foreground" colSpan={7}>暂无数据</TableCell></TableRow>
+              {isLoading ? <TableRow><TableCell colSpan={8}><div className="flex h-32 items-center justify-center gap-2" role="status"><Spinner size={18} variant="classic" />正在加载</div></TableCell></TableRow>
+                : error ? <TableRow><TableCell colSpan={8}><div className="py-12 text-center text-sm text-destructive" role="alert">{error}</div></TableCell></TableRow>
+                : (result?.items.length ?? 0) === 0 ? <TableRow><TableCell className="py-12 text-center text-muted-foreground" colSpan={8}>暂无数据</TableCell></TableRow>
                 : result!.items.map((ticket) => <TableRow key={ticket.ticketId}>
                   <TableCell><Link className="font-medium text-foreground hover:underline" to={`/chat/tickets/${ticket.ticketId}`}>#{ticket.ticketId} {ticket.title}</Link><div className="mt-1 text-xs text-muted-foreground">{ticket.sourceType === 'ai' ? '智能创建' : '人工创建'}</div></TableCell>
                   <TableCell><div>{ticket.customerName}</div><div className="text-xs text-muted-foreground">{ticket.ownerAccountName}</div></TableCell>
                   <TableCell><Badge variant="outline">{statusText(ticket.status)}</Badge>{ticket.overdue ? <Badge className="ml-1 bg-destructive/10 text-destructive">逾期</Badge> : null}</TableCell>
                   <TableCell>{priorityText(ticket.priority)}</TableCell>
                   <TableCell>{ticket.assignee?.displayName || "未分配"}</TableCell>
+                  <TableCell><div>{ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")}</div><div className="text-xs text-muted-foreground">{formatInsightTime(ticket.createdAt)}</div></TableCell>
                   <TableCell>{ticket.dueAt ? formatInsightTime(ticket.dueAt) : "-"}</TableCell>
                   <TableCell>{formatInsightTime(ticket.updatedAt)}</TableCell>
                 </TableRow>)}

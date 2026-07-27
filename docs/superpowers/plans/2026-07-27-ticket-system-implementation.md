@@ -244,7 +244,7 @@ corepack pnpm --filter @chatai/backend build
 - Create: `packages/contracts/test/tickets-dto.test.ts`
 - Modify: `packages/contracts/src/index.ts`
 
-- [ ] **Step 1：先写 Tickets DTO 失败测试**
+- [x] **Step 1：先写 Tickets DTO 失败测试**
 
 覆盖：
 
@@ -258,7 +258,7 @@ corepack pnpm --filter @chatai/backend build
 - 所有公开 ID 使用 `string`。
 - `additionalProperties: false`，避免上下文字段从 PATCH 旁路写入。
 
-- [ ] **Step 2：实现 Tickets 契约并从根入口导出**
+- [x] **Step 2：实现 Tickets 契约并从根入口导出**
 
 至少包括：
 
@@ -279,7 +279,7 @@ ConversationTicketsQuerySchema / ResponseSchema
 
 `TicketContextOptionsResponse` 同时返回分页的历史接待会话和当前聊天可选负责人；负责人项至少包含 `subUserId/displayName`，并明确默认负责人。创建弹窗和详情编辑均复用该服务端候选，不另建前端账号权限算法。
 
-- [ ] **Step 3：运行契约测试和构建**
+- [x] **Step 3：运行契约测试和构建**
 
 本任务只新增 Tickets 契约。旧 Follow-ups、Insights 人工创建和洞察详情投影契约及其消费方保持不变，统一在 Task 11 同一提交中收敛，确保 Task 2 至 Task 10 的中间提交可以独立构建。
 
@@ -289,7 +289,7 @@ cd packages/contracts
 corepack pnpm --filter @chatai/contracts build
 ```
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 建议提交：`feat(tickets): define shared ticket contracts`
 

@@ -13,3 +13,4 @@ export * from "./common/envelope.js";
 export * from "./insights/dto.js";
 export * from "./settings/dto.js";
 export * from "./settings/password.js";
+export * from "./tickets/dto.js";

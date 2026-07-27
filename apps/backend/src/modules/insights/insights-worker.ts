@@ -363,6 +363,7 @@ export type InsightSessionAnalyzer = {
   analyzeSession(input: {
     context: InsightPromptContext;
     existingActionItems?: RecentActionItemForPrompt[];
+    generateActionItems?: boolean;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
     onTokenUsage?: (usage: InsightTokenUsage) => void;
@@ -2039,11 +2040,13 @@ export class InsightsWorkerService {
       const actionItemPolicy = await this.resolveActionItemGenerationPolicy({
         job,
         modelMessages,
+        todoEnabled: featureConfig.todoEnabled,
       });
 
       const analyzerOutput = await this.model.analyzeSession({
         context,
         existingActionItems: actionItemPolicy.existingActionItems,
+        generateActionItems: !actionItemPolicy.suppressActionItems,
         job,
         messages: modelMessages,
         onTokenUsage,
@@ -2200,11 +2203,16 @@ export class InsightsWorkerService {
   private async resolveActionItemGenerationPolicy(input: {
     job: ClaimedAnalyzeJob;
     modelMessages: AiMessageInput[];
+    todoEnabled: boolean;
   }): Promise<{
     existingActionItems: RecentActionItemForPrompt[];
     suppressActionItems: boolean;
   }> {
-    if (input.job.mode !== "final" || input.job.analysisScope !== "all") {
+    if (
+      !input.todoEnabled ||
+      input.job.mode !== "final" ||
+      input.job.analysisScope !== "all"
+    ) {
       return {
         existingActionItems: [],
         suppressActionItems: true,

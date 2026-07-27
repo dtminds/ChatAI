@@ -2,6 +2,37 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-27
+
+- Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.
+- `token_usage` stores the accumulated Volcengine Ark `usage` shape for every model response observed during one analysis run, including retries and responses whose business payload later fails validation.
+- The removed columns were never read or written by the backend. Confirm they are empty before applying the destructive column drops to an existing database.
+
+Manual verification before migration:
+
+```sql
+SELECT
+  COUNT(input_token_count) AS input_usage_rows,
+  COUNT(output_token_count) AS output_usage_rows,
+  COUNT(cost_estimate) AS cost_rows,
+  COUNT(provider_code) AS provider_rows,
+  COUNT(model_name) AS model_rows
+FROM xy_wap_embed_analysis_run;
+```
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_analysis_run
+  DROP COLUMN input_token_count,
+  DROP COLUMN output_token_count,
+  DROP COLUMN cost_estimate,
+  DROP COLUMN provider_code,
+  DROP COLUMN model_name,
+  ADD COLUMN token_usage JSON NULL COMMENT '本次分析运行内模型调用Token用量累计'
+  AFTER status;
+```
+
 ## 2026-07-24
 
 - Added `xy_wap_embed_insight_job.idx_insight_job_archive_scan` so hourly terminal-job archival can select bounded batches by status and update time without scanning the hot queue.

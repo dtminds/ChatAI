@@ -5,6 +5,7 @@ import {
   parseWorkerMessageAsset,
   startInsightsWorker,
   startInsightsWorkerPipelines,
+  type InsightSessionAnalyzer,
   type InsightWorkerRepositoryPort,
 } from "../../../src/modules/insights/insights-worker";
 import type { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
@@ -2606,15 +2607,25 @@ describe("InsightsWorkerService", () => {
         },
       ]),
     });
-    const model = {
+    const gateTokenUsage = {
+      completion_tokens: 4,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 16,
+      prompt_tokens_details: { cached_tokens: 5 },
+      total_tokens: 20,
+    };
+    const model: InsightSessionAnalyzer = {
       analyzeSession: vi.fn(async () => {
         throw new Error("live analysis should be skipped by gate");
       }),
-      evaluateLiveAnalysisGate: vi.fn(async () => ({
-        changeType: "no_material_change",
-        reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
-        shouldAnalyze: false,
-      })),
+      evaluateLiveAnalysisGate: vi.fn(async (input) => {
+        input.onTokenUsage?.(gateTokenUsage);
+        return {
+          changeType: "no_material_change",
+          reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
+          shouldAnalyze: false,
+        };
+      }),
     };
     const service = new InsightsWorkerService(repository, { model });
 
@@ -2647,6 +2658,7 @@ describe("InsightsWorkerService", () => {
       code: "LIVE_GATE_SKIPPED",
       reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
       runId: "run-1",
+      tokenUsage: gateTokenUsage,
     });
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });
@@ -3079,8 +3091,98 @@ describe("InsightsWorkerService", () => {
     );
   });
 
-  it("retries a final analysis once after the first execution failure", async () => {
+  it("accumulates every model response usage into the analysis run", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model: InsightSessionAnalyzer = {
+      analyzeSession: vi.fn(async (input) => {
+        input.onTokenUsage?.({
+          completion_tokens: 20,
+          completion_tokens_details: { reasoning_tokens: 4 },
+          prompt_tokens: 100,
+          prompt_tokens_details: { cached_tokens: 30 },
+          total_tokens: 120,
+        });
+        input.onTokenUsage?.({
+          completion_tokens: 10,
+          completion_tokens_details: { reasoning_tokens: 1 },
+          prompt_tokens: 50,
+          prompt_tokens_details: { cached_tokens: 5 },
+          total_tokens: 60,
+        });
+
+        return {
+          actionItems: [],
+          entities: [],
+          faqCandidates: [],
+          intents: [],
+          problemResolution: {
+            confidence: 0.8,
+            evidence: [],
+            evidenceMessageIds: [],
+            problemDetected: false,
+            problemSummary: "",
+            resolutionStatus: "no_customer_problem",
+          },
+          qaFindings: [],
+          sentiment: [],
+          summary: {
+            sessionTitle: "物流咨询",
+            text: "客户咨询物流进度",
+          },
+          tags: [],
+        };
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runAnalysisOnce();
+
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenUsage: {
+          completion_tokens: 30,
+          completion_tokens_details: { reasoning_tokens: 5 },
+          prompt_tokens: 150,
+          prompt_tokens_details: { cached_tokens: 35 },
+          total_tokens: 180,
+        },
+      }),
+    );
+  });
+
+  it("persists observed usage and retries a final analysis after the first execution failure", async () => {
     const failure = new Error("model unavailable");
+    const tokenUsage = {
+      completion_tokens: 3,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 7,
+      prompt_tokens_details: { cached_tokens: 2 },
+      total_tokens: 10,
+    };
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn()
         .mockResolvedValueOnce({
@@ -3109,7 +3211,10 @@ describe("InsightsWorkerService", () => {
     });
     const service = new InsightsWorkerService(repository, {
       model: {
-        analyzeSession: vi.fn(async () => {
+        analyzeSession: vi.fn(async (
+          input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+        ) => {
+          input.onTokenUsage?.(tokenUsage);
           throw failure;
         }),
       },
@@ -3117,7 +3222,11 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.markAnalysisRunFailed).toHaveBeenCalledWith("run-1", failure);
+    expect(repository.markAnalysisRunFailed).toHaveBeenCalledWith(
+      "run-1",
+      failure,
+      tokenUsage,
+    );
     expect(repository.retryAnalysisJob).toHaveBeenCalledWith("job-1", failure, {
       delayMs: 60_000,
     });

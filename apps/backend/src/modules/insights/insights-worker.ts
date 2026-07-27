@@ -219,6 +219,18 @@ export type InsightAnalysisRunInput = {
   sourceMessageTo: string | null;
 };
 
+export type InsightTokenUsage = {
+  completion_tokens: number;
+  completion_tokens_details: {
+    reasoning_tokens: number;
+  };
+  prompt_tokens: number;
+  prompt_tokens_details: {
+    cached_tokens: number;
+  };
+  total_tokens: number;
+};
+
 export type InsightAnalysisOutput = {
   actionItems: Array<{
     dueHint?: string;
@@ -320,6 +332,7 @@ export type SaveAnalysisResultInput = {
   resultKind?: "insufficient_messages" | "model_analysis";
   runId: string;
   sourceMessageHighWatermark: string | null;
+  tokenUsage?: InsightTokenUsage;
   validationWarnings: string[];
 };
 
@@ -344,6 +357,7 @@ export type InsightSessionAnalyzer = {
     existingActionItems?: RecentActionItemForPrompt[];
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
     previousSessionContexts: InsightPreviousSessionContext[];
     previousOutput?: InsightAnalysisOutput;
   }): Promise<InsightAnalyzerOutput>;
@@ -351,6 +365,7 @@ export type InsightSessionAnalyzer = {
     context: InsightPromptContext;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
     previousGateSkip?: InsightLiveGateSkipRecord;
     previousSessionContexts: InsightPreviousSessionContext[];
     previousOutput?: InsightAnalysisOutput;
@@ -458,12 +473,17 @@ export type InsightWorkerRepositoryPort = {
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   retryAnalysisJob(jobId: string, error: unknown, input: { delayMs: number }): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
-  markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
+  markAnalysisRunFailed(
+    runId: string,
+    error: unknown,
+    tokenUsage?: InsightTokenUsage,
+  ): Promise<void>;
   // The run completed successfully, but model analysis was skipped before publishing a snapshot.
   markAnalysisRunSucceededWithoutSnapshot(input: {
     code?: "INSUFFICIENT_MESSAGES" | "LIVE_GATE_SKIPPED";
     reason: string;
     runId: string;
+    tokenUsage?: InsightTokenUsage;
   }): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
@@ -1616,6 +1636,10 @@ export class InsightsWorkerService {
     }
 
     let runId: string | undefined;
+    let tokenUsage: InsightTokenUsage | undefined;
+    const onTokenUsage = (usage: InsightTokenUsage) => {
+      tokenUsage = addTokenUsage(tokenUsage, usage);
+    };
     const startedAt = Date.now();
 
     if (this.observability) {
@@ -1738,6 +1762,7 @@ export class InsightsWorkerService {
           await this.repository.markAnalysisRunSucceededWithoutSnapshot({
             reason,
             runId,
+            ...(tokenUsage ? { tokenUsage } : {}),
           });
         } else {
           const previousOutput = job.analysisScope === "all"
@@ -1759,6 +1784,7 @@ export class InsightsWorkerService {
             resultKind: "insufficient_messages",
             runId,
             sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
+            ...(tokenUsage ? { tokenUsage } : {}),
             validationWarnings: [],
           });
           this.observability?.increment("analysis", "snapshotsPublished");
@@ -1828,6 +1854,7 @@ export class InsightsWorkerService {
             context,
             job,
             messages: modelMessages,
+            onTokenUsage,
             previousGateSkip,
             previousOutput: previousOutputForGate,
             previousSessionContexts,
@@ -1873,6 +1900,7 @@ export class InsightsWorkerService {
             code: "LIVE_GATE_SKIPPED",
             reason: gateDecision.reason,
             runId,
+            ...(tokenUsage ? { tokenUsage } : {}),
           });
           await this.finishAnalyzeJobSucceeded(job);
           this.observability?.increment("analysis", "liveGateSkipped");
@@ -1917,6 +1945,7 @@ export class InsightsWorkerService {
         existingActionItems: actionItemPolicy.existingActionItems,
         job,
         messages: modelMessages,
+        onTokenUsage,
         previousOutput,
         previousSessionContexts,
       });
@@ -1941,6 +1970,7 @@ export class InsightsWorkerService {
         resultKind: "model_analysis",
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
+        ...(tokenUsage ? { tokenUsage } : {}),
         validationWarnings,
       });
       await this.finishAnalyzeJobSucceeded(job);
@@ -1979,7 +2009,15 @@ export class InsightsWorkerService {
       }
     } catch (error) {
       if (runId) {
-        await this.repository.markAnalysisRunFailed(runId, error);
+        if (tokenUsage) {
+          await this.repository.markAnalysisRunFailed(
+            runId,
+            error,
+            tokenUsage,
+          );
+        } else {
+          await this.repository.markAnalysisRunFailed(runId, error);
+        }
       }
 
       const willRetry = job.mode === "final" && job.attemptCount < job.maxAttempts;
@@ -2148,6 +2186,28 @@ function splitAnalyzerOutput(output: InsightAnalyzerOutput) {
   return {
     analysisWarnings,
     output: cleanOutput,
+  };
+}
+
+function addTokenUsage(
+  current: InsightTokenUsage | undefined,
+  next: InsightTokenUsage,
+): InsightTokenUsage {
+  return {
+    completion_tokens:
+      (current?.completion_tokens ?? 0) + next.completion_tokens,
+    completion_tokens_details: {
+      reasoning_tokens:
+        (current?.completion_tokens_details.reasoning_tokens ?? 0)
+        + next.completion_tokens_details.reasoning_tokens,
+    },
+    prompt_tokens: (current?.prompt_tokens ?? 0) + next.prompt_tokens,
+    prompt_tokens_details: {
+      cached_tokens:
+        (current?.prompt_tokens_details.cached_tokens ?? 0)
+        + next.prompt_tokens_details.cached_tokens,
+    },
+    total_tokens: (current?.total_tokens ?? 0) + next.total_tokens,
   };
 }
 

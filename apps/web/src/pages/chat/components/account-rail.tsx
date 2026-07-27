@@ -1,5 +1,7 @@
 import {
   startTransition,
+  useEffect,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -11,6 +13,7 @@ import {
   DashboardCircleIcon,
   PanelLeftIcon,
   Notification01Icon,
+  Task01Icon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
@@ -29,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+import { getTicketCounts } from "@/pages/chat/tickets/api/tickets-service";
 
 const railItems = [
   { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
@@ -46,6 +50,13 @@ const railItems = [
     icon: AiChat02Icon,
     to: "/chat/ai-hosting",
     moduleEntry: true,
+  },
+  {
+    label: "工单",
+    icon: Task01Icon,
+    to: "/chat/tickets",
+    moduleEntry: true,
+    ticketCount: true,
   },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
@@ -101,8 +112,17 @@ export function AccountRail({
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const location = useLocation();
+  const [ticketCount, setTicketCount] = useState<number>();
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
+
+  useEffect(() => {
+    let active = true;
+    void getTicketCounts()
+      .then((counts) => { if (active) setTicketCount(counts.assignedToMeActive); })
+      .catch(() => { if (active) setTicketCount(undefined); });
+    return () => { active = false; };
+  }, []);
 
   if (isCollapsed) {
     return (
@@ -290,10 +310,18 @@ export function AccountRail({
                   {item.badge}
                 </Badge>
               ) : null}
+              {"ticketCount" in item && (ticketCount ?? 0) > 0 ? (
+                <Badge className="ml-auto h-5 min-w-5 justify-center px-1.5 py-0 text-[10px] leading-none">
+                  {ticketCount}
+                </Badge>
+              ) : null}
               {item.moduleEntry ? (
                 <HugeiconsIcon
                   aria-hidden="true"
-                  className={cn("shrink-0 opacity-30", !item.badge && "ml-auto")}
+                  className={cn(
+                    "shrink-0 opacity-30",
+                    !item.badge && !("ticketCount" in item && (ticketCount ?? 0) > 0) && "ml-auto",
+                  )}
                   color="currentColor"
                   icon={ArrowRight01Icon}
                   size={16}

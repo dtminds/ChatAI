@@ -626,7 +626,7 @@ corepack pnpm --filter @chatai/backend build
 - Modify: `apps/web/src/pages/chat/components/account-rail.tsx`
 - Modify: relevant AccountRail tests
 
-- [ ] **Step 1：先写 API 适配和页面行为测试**
+- [x] **Step 1：先写 API 适配和页面行为测试**
 
 保护：
 
@@ -638,7 +638,7 @@ corepack pnpm --filter @chatai/backend build
 - 导航角标只统计“分配给我”中的 `open + in_progress`。
 - API 通过 `apps/web/src/lib/request.ts`，不裸写 fetch。
 
-- [ ] **Step 2：实现独立 Tickets 布局**
+- [x] **Step 2：实现独立 Tickets 布局**
 
 沿用 Insights/AI Hosting 的工作型模块布局：左侧模块导航、返回工作台、账户菜单，主区为紧凑列表。不要做营销 Hero、装饰卡片堆叠或第二套组件体系。
 
@@ -652,7 +652,7 @@ corepack pnpm --filter @chatai/backend build
 全部工单（仅管理员/Owner）
 ```
 
-- [ ] **Step 3：实现列表与筛选**
+- [x] **Step 3：实现列表与筛选**
 
 - 状态、所属账号、负责人、来源、优先级、截止时间、创建时间。
 - 工单编号/标题/客户名称搜索。
@@ -660,11 +660,11 @@ corepack pnpm --filter @chatai/backend build
 - 列表操作只提供当前用户有权执行的命令。
 - 所有按钮使用现有 shadcn/ui，图标使用 Hugeicons。
 
-- [ ] **Step 4：接入一级导航和角标**
+- [x] **Step 4：接入一级导航和角标**
 
 在 `AccountRail` 增加“工单”模块入口 `/chat/tickets`。计数请求失败不能阻塞聊天工作台；失败时隐藏角标，不显示错误数字。
 
-- [ ] **Step 5：运行 Web 聚焦测试和 build**
+- [x] **Step 5：运行 Web 聚焦测试和 build**
 
 ```bash
 cd apps/web
@@ -672,7 +672,7 @@ cd apps/web
 corepack pnpm --filter @chatai/web build
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`feat(tickets): add ticket center`
 

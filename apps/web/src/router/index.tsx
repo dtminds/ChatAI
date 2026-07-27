@@ -125,6 +125,11 @@ const InsightsWorkerObservabilityPage = lazy(() =>
     }),
   ),
 );
+const TicketsPage = lazy(() =>
+  import("@/pages/chat/tickets/tickets-page").then(({ TicketsPage }) => ({
+    default: TicketsPage,
+  })),
+);
 
 function withRouteSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -239,6 +244,10 @@ export const routerConfig = [
             element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
           },
         ],
+      },
+      {
+        path: "chat/tickets",
+        element: withRouteSuspense(<TicketsPage />),
       },
       {
         path: "chat/ai-hosting",

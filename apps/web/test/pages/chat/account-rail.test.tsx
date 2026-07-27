@@ -14,6 +14,10 @@ import { appearanceThemes } from "@/lib/appearance-theme";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
+vi.mock("@/pages/chat/tickets/api/tickets-service", () => ({
+  getTicketCounts: vi.fn(async () => ({ assignedToMeActive: 3, unassignedOpen: 0 })),
+}));
+
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children, ...props }: ComponentProps<"span">) => (
     <span {...props}>{children}</span>
@@ -112,6 +116,21 @@ describe("AccountRail", () => {
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("shows the assigned ticket count on the ticket module entry", async () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const ticketLink = screen.getByRole("link", { name: /工单/ });
+    await waitFor(() => expect(ticketLink).toHaveTextContent("3"));
+    expect(ticketLink).toHaveAttribute("href", "/chat/tickets");
   });
 
   it("keeps nested menus open while previewing theme colors and appearance modes", async () => {

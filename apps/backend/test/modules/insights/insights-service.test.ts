@@ -2601,14 +2601,35 @@ describe("InsightsService", () => {
     }
   });
 
-  it("rejects rescan tasks starting earlier than seven days ago", async () => {
+  it("allows the seven-day UI boundary after a short submission delay", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-27T08:00:05.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await expect(
+        service.createRescanJob(scope, "owner", {
+          analysisScope: "all",
+          from: "2026-07-20T08:00:00.000Z",
+          to: "2026-07-27T08:00:00.000Z",
+        }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects rescan tasks beyond the seven-day submission buffer", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
     await expect(
       service.createRescanJob(scope, "owner", {
         analysisScope: "all",
-        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 - 60_000).toISOString(),
+        from: new Date(
+          Date.now() - 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000 - 60_000,
+        ).toISOString(),
       }),
     ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
     expect(repository.createRescanJob).not.toHaveBeenCalled();

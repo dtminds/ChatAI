@@ -457,6 +457,7 @@ const defaultOverviewPageSize = 20;
 const maxOverviewPageSize = 100;
 const defaultOverviewRangeDays = 30;
 const maxRescanLookbackMs = 7 * 24 * 60 * 60 * 1000;
+const rescanLookbackBufferMs = 60 * 60 * 1000;
 const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimitRule> = {
   entityDictionary: { hardLimit: 20, softLimit: 15 },
   intentConfigs: { hardLimit: 15, softLimit: 12 },
@@ -1330,7 +1331,7 @@ export class InsightsService {
       throw new BadRequestError("INVALID_RESCAN_TO", "重刷结束时间无效");
     }
 
-    if (from.getTime() < now - maxRescanLookbackMs) {
+    if (from.getTime() < now - maxRescanLookbackMs - rescanLookbackBufferMs) {
       throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷开始时间仅支持最近 7 天");
     }
 

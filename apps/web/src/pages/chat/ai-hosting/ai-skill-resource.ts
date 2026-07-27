@@ -22,7 +22,8 @@ export type SkillTagGroupVariable = {
 
 export type SkillAutoTagVariable = {
   name: string;
-  select_id: number;
+  /** CDP 分组标识 groupTag */
+  select_key: string;
   type: "auto_tag";
 };
 
@@ -213,8 +214,8 @@ export function escapeResourceAttribute(value: string) {
 export function buildVariablePlaceholder(variable: SkillVariableConfig) {
   const name = escapeResourceAttribute(variable.name);
 
-  if (variable.type === "system_variable") {
-    return `<resource type="variable" variableType="system_variable" variableKey="${escapeResourceAttribute(
+  if (variable.type === "system_variable" || variable.type === "auto_tag") {
+    return `<resource type="variable" variableType="${variable.type}" variableKey="${escapeResourceAttribute(
       variable.select_key,
     )}" name="${name}" />`;
   }
@@ -235,8 +236,8 @@ export function buildKnowledgeBasePlaceholder(kbId: number | string, name: strin
 }
 
 export function skillVariableStorageId(variable: SkillVariableConfig) {
-  if (variable.type === "system_variable") {
-    return `system_variable:${variable.select_key}`;
+  if (variable.type === "system_variable" || variable.type === "auto_tag") {
+    return `${variable.type}:${variable.select_key}`;
   }
 
   if (variable.type === "work_tag" || variable.type === "mall_tag") {

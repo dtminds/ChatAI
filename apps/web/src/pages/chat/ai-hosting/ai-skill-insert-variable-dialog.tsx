@@ -32,6 +32,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { listCdpTagGroups } from "./api/cdp-tag-service";
 import { listCustomFields } from "./api/custom-field-service";
 import { listWorkTagGroups, listWorkTags } from "./api/work-tag-service";
 import {
@@ -78,6 +79,11 @@ type WorkTagGroupOption = {
   sort?: number;
 };
 
+type AutoTagGroupOption = {
+  groupName: string;
+  groupTag: string;
+};
+
 const variableOptions: ReadonlyArray<{
   description: string;
   kind: VariableKind;
@@ -110,13 +116,6 @@ const tagKindOptions: ReadonlyArray<{ label: string; value: TagKind }> = [
   { label: "企微标签", value: "work_tag" },
   { label: "小店标签", value: "mall_tag" },
   { label: "自动化标签", value: "auto_tag" },
-];
-
-/** 自动化标签先只支持系统标签分组（接口可扩展）；按文档仅选分组 select_id */
-const automationTagGroups: readonly TagGroup[] = [
-  { id: 41, name: "价值标签", tags: [] },
-  { id: 42, name: "企微基础标签", tags: [] },
-  { id: 43, name: "消费标签", tags: [] },
 ];
 
 function usesComponentTagApi(kind: TagKind) {
@@ -175,7 +174,10 @@ export function InsertVariableDialog({
   const [selectedTagNameById, setSelectedTagNameById] = useState<
     Record<number, string>
   >({});
-  const [selectedAutoGroupId, setSelectedAutoGroupId] = useState<number | null>(null);
+  const [autoTagGroups, setAutoTagGroups] = useState<AutoTagGroupOption[]>([]);
+  const [autoTagGroupsLoading, setAutoTagGroupsLoading] = useState(false);
+  const [autoTagGroupsError, setAutoTagGroupsError] = useState(false);
+  const [selectedAutoGroupTag, setSelectedAutoGroupTag] = useState("");
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [groupQuery, setGroupQuery] = useState("");
   const [tagQuery, setTagQuery] = useState("");
@@ -236,6 +238,61 @@ export function InsertVariableDialog({
       cancelled = true;
     };
   }, [open, step, variableKind]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      step !== "configure" ||
+      variableKind !== "customer_tags" ||
+      tagKind !== "auto_tag"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAutoTagGroups() {
+      setAutoTagGroupsLoading(true);
+      setAutoTagGroupsError(false);
+
+      try {
+        const response = await listCdpTagGroups();
+        if (cancelled) {
+          return;
+        }
+
+        const groups = response.groups.map((group) => ({
+          groupName: group.groupName,
+          groupTag: group.groupTag,
+        }));
+        setAutoTagGroups(groups);
+        setSelectedAutoGroupTag((current) => {
+          if (current && groups.some((group) => group.groupTag === current)) {
+            return current;
+          }
+
+          return groups[0]?.groupTag ?? "";
+        });
+      } catch {
+        if (!cancelled) {
+          setAutoTagGroups([]);
+          setSelectedAutoGroupTag("");
+          setAutoTagGroupsError(true);
+          toast.error("自动化标签加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setAutoTagGroupsLoading(false);
+        }
+      }
+    }
+
+    void loadAutoTagGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, tagKind, variableKind]);
 
   const wecomAttr = wecomMode === "normal" ? 1 : 2;
 
@@ -355,7 +412,7 @@ export function InsertVariableDialog({
       }));
     }
 
-    return automationTagGroups;
+    return [];
   }, [tagKind, workTagGroups]);
 
   const filteredGroups = useMemo(() => {
@@ -496,8 +553,10 @@ export function InsertVariableDialog({
   ]);
 
   const selectedAutoGroup = useMemo(
-    () => automationTagGroups.find((group) => group.id === selectedAutoGroupId) ?? null,
-    [selectedAutoGroupId],
+    () =>
+      autoTagGroups.find((group) => group.groupTag === selectedAutoGroupTag) ??
+      null,
+    [autoTagGroups, selectedAutoGroupTag],
   );
 
   const workTagSelectionLimit =
@@ -514,7 +573,7 @@ export function InsertVariableDialog({
         ? systemVariableKey.length > 0
         : variableKind === "customer_tags"
           ? tagKind === "auto_tag"
-            ? selectedAutoGroupId !== null
+            ? selectedAutoGroupTag.length > 0
             : selectedTagIds.length > 0 && resolvedActiveGroupId !== null
           : false;
 
@@ -527,7 +586,8 @@ export function InsertVariableDialog({
     setWecomMode("normal");
     setSelectedTagIds([]);
     setSelectedTagNameById({});
-    setSelectedAutoGroupId(null);
+    setSelectedAutoGroupTag("");
+    setAutoTagGroups([]);
     setActiveGroupId(null);
     setMallAllTags([]);
     setGroupQuery("");
@@ -543,13 +603,12 @@ export function InsertVariableDialog({
     setWecomMode("normal");
     setSelectedTagIds([]);
     setSelectedTagNameById({});
-    setSelectedAutoGroupId(null);
+    setSelectedAutoGroupTag("");
+    setAutoTagGroups([]);
     setWorkTags([]);
     setWorkTagGroups([]);
     setMallAllTags([]);
-    setActiveGroupId(
-      nextTagKind === "auto_tag" ? (automationTagGroups[0]?.id ?? null) : null,
-    );
+    setActiveGroupId(null);
     setGroupQuery("");
     setTagQuery("");
     setTagPickerOpen(false);
@@ -620,12 +679,12 @@ export function InsertVariableDialog({
 
       emitVariable(
         {
-          name: selectedAutoGroup.name,
-          select_id: selectedAutoGroup.id,
+          name: selectedAutoGroup.groupName,
+          select_key: selectedAutoGroup.groupTag,
           type: "auto_tag",
         },
         "查询您指定的自动化标签分组，然后插入到指定位置",
-        `客户标签 · 自动化标签 · ${selectedAutoGroup.name}`,
+        `客户标签 · 自动化标签 · ${selectedAutoGroup.groupName}`,
       );
       return;
     }
@@ -842,18 +901,15 @@ export function InsertVariableDialog({
                         setTagKind(nextKind);
                         setSelectedTagIds([]);
                         setSelectedTagNameById({});
-                        setSelectedAutoGroupId(null);
+                        setSelectedAutoGroupTag("");
+                        setAutoTagGroups([]);
                         setWecomMode("normal");
                         setGroupQuery("");
                         setTagQuery("");
                         setWorkTags([]);
                         setWorkTagGroups([]);
                         setMallAllTags([]);
-                        setActiveGroupId(
-                          nextKind === "auto_tag"
-                            ? (automationTagGroups[0]?.id ?? null)
-                            : null,
-                        );
+                        setActiveGroupId(null);
                       }}
                       value={tagKind}
                     >
@@ -879,28 +935,51 @@ export function InsertVariableDialog({
                     </Label>
 
                     {tagKind === "auto_tag" ? (
-                      <Select
-                        onValueChange={(value) => setSelectedAutoGroupId(Number(value))}
-                        value={
-                          selectedAutoGroupId !== null
-                            ? String(selectedAutoGroupId)
-                            : undefined
-                        }
-                      >
-                        <SelectTrigger
-                          aria-label="选择自动化标签分组"
-                          className="h-10 w-full"
+                      autoTagGroupsLoading ? (
+                        <div
+                          className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                          role="status"
                         >
-                          <SelectValue placeholder="请选择" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {automationTagGroups.map((group) => (
-                            <SelectItem key={group.id} value={String(group.id)}>
-                              {group.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <Spinner size={14} />
+                          <span>正在加载</span>
+                        </div>
+                      ) : autoTagGroupsError ? (
+                        <div
+                          className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                          role="alert"
+                        >
+                          加载失败
+                        </div>
+                      ) : autoTagGroups.length === 0 ? (
+                        <div
+                          className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                          role="status"
+                        >
+                          暂无数据
+                        </div>
+                      ) : (
+                        <Select
+                          onValueChange={setSelectedAutoGroupTag}
+                          value={selectedAutoGroupTag || undefined}
+                        >
+                          <SelectTrigger
+                            aria-label="选择自动化标签分组"
+                            className="h-10 w-full"
+                          >
+                            <SelectValue placeholder="请选择" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {autoTagGroups.map((group) => (
+                              <SelectItem
+                                key={group.groupTag}
+                                value={group.groupTag}
+                              >
+                                {group.groupName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )
                     ) : (
                       <Popover modal={false} onOpenChange={setTagPickerOpen} open={tagPickerOpen}>
                         <PopoverTrigger asChild>

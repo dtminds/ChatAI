@@ -2,6 +2,7 @@ import fastifyCookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAgentLearningRoutes } from "./modules/ai-hosting/agent-learning.routes.js";
+import { registerCdpTagRoutes } from "./modules/ai-hosting/cdp-tag.routes.js";
 import { registerCustomFieldRoutes } from "./modules/ai-hosting/custom-field.routes.js";
 import { registerWorkTagRoutes } from "./modules/ai-hosting/work-tag.routes.js";
 import { registerKbAttachmentRoutes } from "./modules/ai-hosting/kb-attachment.routes.js";
@@ -51,6 +52,7 @@ export async function buildApp() {
   await registerAgentLearningRoutes(app);
   await registerCustomFieldRoutes(app);
   await registerWorkTagRoutes(app);
+  await registerCdpTagRoutes(app);
   await registerKbDocRoutes(app);
   await registerKbChunkRoutes(app);
   await registerKbAttachmentRoutes(app);

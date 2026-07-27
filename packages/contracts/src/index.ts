@@ -1,4 +1,5 @@
 export * from "./ai-hosting/agent-learning.js";
+export * from "./ai-hosting/cdp-tag.js";
 export * from "./ai-hosting/custom-field.js";
 export * from "./ai-hosting/work-tag.js";
 export * from "./ai-hosting/dto.js";

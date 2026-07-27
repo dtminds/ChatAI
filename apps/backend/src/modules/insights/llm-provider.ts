@@ -195,7 +195,8 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       return emptyAnalysisOutput();
     }
 
-    const includeActionItems = shouldGenerateActionItems(input.job);
+    const includeActionItems =
+      input.generateActionItems !== false && shouldGenerateActionItems(input.job);
     const output = this.config.analysisMode !== "single"
       ? await this.doAnalyzeSessionInSteps(input, {
           hasClassificationWork,
@@ -258,7 +259,8 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       });
     }
 
-    const includeActionItems = shouldGenerateActionItems(input.job);
+    const includeActionItems =
+      input.generateActionItems !== false && shouldGenerateActionItems(input.job);
     const summary = await this.completeAnalysisStep({
       maxTokens: this.config.maxTokens,
       messages: buildInsightSummaryPromptMessages({

@@ -3565,6 +3565,91 @@ describe("InsightsWorkerService", () => {
         existingActionItems: [
           expect.objectContaining({ title: "跟进物流异常" }),
         ],
+        generateActionItems: true,
+      }),
+    );
+  });
+
+  it("does not request or persist final action items when todo generation is disabled", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: false,
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [
+          {
+            evidenceMessageIds: ["9001"],
+            priority: "high" as const,
+            title: "跟进物流异常",
+          },
+        ],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown" as const,
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客服处理中",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.listRecentActionItemsForPrompt).not.toHaveBeenCalled();
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingActionItems: [],
+        generateActionItems: false,
+      }),
+    );
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          actionItems: [],
+        }),
       }),
     );
   });
@@ -3637,6 +3722,7 @@ describe("InsightsWorkerService", () => {
     expect(model.analyzeSession).toHaveBeenCalledWith(
       expect.objectContaining({
         existingActionItems: [],
+        generateActionItems: false,
       }),
     );
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(

@@ -742,7 +742,7 @@ corepack pnpm --filter @chatai/web build
 - Modify: `apps/web/src/pages/chat/chat-workbench-page.tsx`
 - Modify: related chat tests
 
-- [ ] **Step 1：先写创建入口和弹窗行为测试**
+- [x] **Step 1：先写创建入口和弹窗行为测试**
 
 - 单聊在“更多”按钮左侧显示“创建工单”图标按钮。
 - 群聊、无活动聊天、无写权限/`viewer` 不显示或不可用。
@@ -753,13 +753,13 @@ corepack pnpm --filter @chatai/web build
 - 提交期间防重复；成功关闭并刷新聊天侧工单；失败保留输入。
 - 不提供选择消息交互。
 
-- [ ] **Step 2：实现创建弹窗**
+- [x] **Step 2：实现创建弹窗**
 
 使用现有 `Dialog`、`Input`、`Textarea`、日期时间控件、Select/Popover 等基础组件。负责人默认当前创建人，候选完全来自服务端上下文接口。
 
 前端只提交 `context.type` 和可选 `sessionId`，不得计算或提交 `anchorMessageId`。
 
-- [ ] **Step 3：实现聊天右侧工单 Tab**
+- [x] **Step 3：实现聊天右侧工单 Tab**
 
 - 只在单聊展示。
 - 两个范围：“当前聊天”“该客户全部工单”。
@@ -768,14 +768,14 @@ corepack pnpm --filter @chatai/web build
 - 完整编辑和活动记录跳转工单详情。
 - 切换客户时使用 conversation scope key 保护异步响应，旧客户的列表、错误和提交结果不得覆盖新客户状态。
 
-- [ ] **Step 4：保持工作台布局稳定**
+- [x] **Step 4：保持工作台布局稳定**
 
 - 复用 `CustomerSidePanel` 现有 Tab 和折叠逻辑。
 - 工单动态内容不得改变聊天主区宽度或让工具栏跳动。
 - 图标使用 Hugeicons，不引入 Lucide。
 - loading/empty/error 三态明确。
 
-- [ ] **Step 5：运行聊天侧测试和 Web build**
+- [x] **Step 5：运行聊天侧测试和 Web build**
 
 ```bash
 cd apps/web

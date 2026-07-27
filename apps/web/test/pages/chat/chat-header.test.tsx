@@ -31,6 +31,34 @@ const conversation: Conversation = {
 };
 
 describe("ChatHeader", () => {
+  it("shows ticket creation before conversation actions for writable single chats", async () => {
+    const user = userEvent.setup();
+    const onCreateTicket = vi.fn();
+
+    const { rerender } = render(
+      <ChatHeader
+        activeConversation={conversation}
+        onCreateTicket={onCreateTicket}
+        onPinConversation={vi.fn()}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", { name: "创建工单" });
+    const moreButton = screen.getByRole("button", { name: "更多会话操作" });
+    expect(createButton.compareDocumentPosition(moreButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    await user.click(createButton);
+    expect(onCreateTicket).toHaveBeenCalledOnce();
+
+    rerender(
+      <ChatHeader
+        activeConversation={{ ...conversation, mode: "group" }}
+        onCreateTicket={onCreateTicket}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "创建工单" })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     document.documentElement.classList.remove("dark");
     window.localStorage.clear();

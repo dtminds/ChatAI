@@ -8,6 +8,7 @@ import {
   MoreHorizontalIcon,
   PinIcon,
   PinOffIcon,
+  Task01Icon,
   TeamWorkIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -41,6 +42,7 @@ type ChatHeaderProps = {
   isMobileLayout?: boolean;
   isSidebarOpen?: boolean;
   onBack?: () => void;
+  onCreateTicket?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
   onPinConversation?: () => void | Promise<void>;
@@ -55,6 +57,7 @@ export function ChatHeader({
   isMobileLayout = false,
   isSidebarOpen = false,
   onBack,
+  onCreateTicket,
   onMarkConversationRead,
   onMarkConversationUnread,
   onPinConversation,
@@ -118,6 +121,13 @@ export function ChatHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {activeConversation?.mode === "single" && onCreateTicket ? (
+            <HeaderIconButton
+              icon={Task01Icon}
+              label="创建工单"
+              onClick={onCreateTicket}
+            />
+          ) : null}
           {hasConversationActions && activeConversation ? (
             <ConversationHeaderActions
               conversation={activeConversation}

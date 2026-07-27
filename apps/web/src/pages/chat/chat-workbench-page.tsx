@@ -111,6 +111,8 @@ import {
 } from "@/pages/chat/lib/conversation-composer-draft";
 import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/quick-reply-category-dialog";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
+import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
+import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
@@ -457,6 +459,9 @@ function ChatWorkbenchContent({
       | null
     >(null);
   const [isQuickReplyPanelActive, setIsQuickReplyPanelActive] = useState(false);
+  const [ticketCreateConversationId, setTicketCreateConversationId] =
+    useState<string | null>(null);
+  const [ticketRefreshKey, setTicketRefreshKey] = useState(0);
   const quickReplyInitialValues = useMemo(
     () => getQuickReplyInitialValues(quickReplyFormState),
     [quickReplyFormState],
@@ -681,6 +686,14 @@ function ChatWorkbenchContent({
     activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
     );
+  useEffect(() => {
+    if (
+      ticketCreateConversationId &&
+      ticketCreateConversationId !== activeConversation?.id
+    ) {
+      setTicketCreateConversationId(null);
+    }
+  }, [activeConversation?.id, ticketCreateConversationId]);
   const isHistoryPanelOpen =
     historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
@@ -2166,6 +2179,11 @@ function ChatWorkbenchContent({
       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
       canToggleConversationAIHosting={canToggleConversationAIHosting}
       canCollectMaterialActions={canCollectMaterialActions}
+      canCreateTicket={Boolean(
+        activeConversation?.mode === "single" &&
+          subUser &&
+          subUser.role !== "viewer",
+      )}
       canSendMessage={canSendMessage}
       canMarkHandoffHandled={canMarkHandoffHandled}
       canUseMessageForward={canUseMessageForward}
@@ -2227,6 +2245,11 @@ function ChatWorkbenchContent({
       onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
       onComposerSegmentsChange={handleComposerSegmentsChange}
       onCancelFileUpload={handleCancelFileUpload}
+      onCreateTicket={() => {
+        if (activeConversation?.mode === "single") {
+          setTicketCreateConversationId(activeConversation.id);
+        }
+      }}
       onCancelAgentHosting={() => handleChangeFullAuto(false)}
       onChangeSeatAgentMode={handleChangeSeatAgentMode}
       onChangeFullAuto={handleChangeFullAuto}
@@ -2321,6 +2344,15 @@ function ChatWorkbenchContent({
       onUnpinConversation={unpinConversation}
       onQuickReplyActiveChange={setIsQuickReplyPanelActive}
       quickReplyPanel={quickReplyPanel}
+      ticketPanel={
+        activeConversation?.mode === "single" ? (
+          <ConversationTicketsPanel
+            conversationId={activeConversation.id}
+            key={activeConversation.id}
+            refreshKey={ticketRefreshKey}
+          />
+        ) : undefined
+      }
       onDismissScopeTransitionError={() => {
         setFileUploadTransitionError(undefined);
         dismissScopeTransitionError();
@@ -2502,6 +2534,20 @@ function ChatWorkbenchContent({
         recentConversations={visibleSearchableConversations}
         seatId={activeAccountId}
       />
+      {ticketCreateConversationId ? (
+        <TicketCreateDialog
+          conversationId={ticketCreateConversationId}
+          onCreated={() => {
+            setTicketRefreshKey((current) => current + 1);
+          }}
+          onOpenChange={(open) => {
+            if (!open) {
+              setTicketCreateConversationId(null);
+            }
+          }}
+          open={ticketCreateConversationId === activeConversation?.id}
+        />
+      ) : null}
       <MessageForwardSelectedMessagesDialog
         messages={messageForward.pendingMessages}
         onOpenChange={messageForward.setSelectedMessagesDialogOpen}

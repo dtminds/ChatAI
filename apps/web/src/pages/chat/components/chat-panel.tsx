@@ -62,6 +62,7 @@ type ChatPanelProps = {
   canConfigureSeatSemiAuto?: boolean;
   canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
+  canCreateTicket?: boolean;
   canSendMessage: boolean;
   canMarkHandoffHandled?: boolean;
   canUseMessageForward?: boolean;
@@ -122,6 +123,7 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
+  onCreateTicket?: () => void;
   onCancelAgentHosting?: () => void;
   onEnableAgentHosting?: () => void;
   onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
@@ -184,6 +186,7 @@ type ChatPanelProps = {
   onDismissScopeTransitionError: () => void;
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   quickReplyPanel?: ReactNode;
+  ticketPanel?: ReactNode;
   scopeTransitionError?: string;
   sidebarItems: SettingsSidebarItem[];
   fileUploadQueue: FileUploadQueueItem[];
@@ -201,6 +204,7 @@ export function ChatPanel({
   canConfigureSeatSemiAuto = false,
   canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
+  canCreateTicket = false,
   canSendMessage,
   canMarkHandoffHandled = false,
   canUseMessageForward = false,
@@ -242,6 +246,7 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
+  onCreateTicket,
   onCancelAgentHosting,
   onEnableAgentHosting,
   onChangeSeatAgentMode,
@@ -298,6 +303,7 @@ export function ChatPanel({
   onDismissScopeTransitionError,
   onQuickReplyActiveChange,
   quickReplyPanel,
+  ticketPanel,
   scopeTransitionError,
   sidebarItems,
   fileUploadQueue,
@@ -361,6 +367,7 @@ export function ChatPanel({
       onQuickReplyActiveChange={onQuickReplyActiveChange}
       panelWidth={isMobileLayout ? undefined : customerPanelWidth}
       quickReplyPanel={quickReplyPanel}
+      ticketPanel={ticketPanel}
       showResizeHandle={!isMobileLayout}
       sidebarIframeConversationId={activeConversation.id}
       sidebarIframeSeatId={activeConversation.accountId}
@@ -419,6 +426,7 @@ export function ChatPanel({
         isMobileLayout={isMobileLayout}
         isSidebarOpen={isSidebarOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
+        onCreateTicket={canCreateTicket ? onCreateTicket : undefined}
         onMarkConversationRead={
           activeConversation && onMarkConversationRead
             ? () => onMarkConversationRead(activeConversation.id)

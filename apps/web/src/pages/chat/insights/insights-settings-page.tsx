@@ -198,6 +198,7 @@ const insightPolicyOptionLimits = {
 } as const;
 
 const intentWeightOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const maxRescanLookbackMs = 7 * 24 * 60 * 60 * 1000;
 
 const rescanScopeOptions: Array<{
   description: string;
@@ -796,7 +797,7 @@ export function InsightsSettingsPage() {
           <TabsContent value="rescan">
             {rescanData ? (
               <RescanPanel
-                disabled={pendingKey === "rescan" || tabLoading}
+                disabled={pendingKey === "rescan" || tabLoading || summary?.insightEnabled !== true}
                 onCreateClick={() => setRescanDialogOpen(true)}
                 onPageChange={(page) => void handleRescanPageChange(page)}
                 page={rescanData.page}
@@ -831,8 +832,12 @@ export function InsightsSettingsPage() {
         state={deleteConfirmState}
       />
       <RescanCreateDialog
-        disabled={pendingKey === "rescan"}
+        disabled={pendingKey === "rescan" || summary?.insightEnabled !== true}
         from={rescanFrom}
+        max={toDateTimeLocalValue(Date.now())}
+        min={toDateTimeLocalValue(
+          Math.ceil((Date.now() - maxRescanLookbackMs) / 60_000) * 60_000,
+        )}
         onChange={setRescanFrom}
         onCreate={() => void createRescan()}
         onOpenChange={setRescanDialogOpen}
@@ -2223,6 +2228,8 @@ function RescanPanel({
 function RescanCreateDialog({
   disabled,
   from,
+  max,
+  min,
   onChange,
   onCreate,
   onOpenChange,
@@ -2232,6 +2239,8 @@ function RescanCreateDialog({
 }: {
   disabled?: boolean;
   from: string;
+  max: string;
+  min: string;
   onChange: (value: string) => void;
   onCreate: () => void;
   onOpenChange: (open: boolean) => void;
@@ -2279,6 +2288,8 @@ function RescanCreateDialog({
             <Input
               className="h-10"
               id="insight-rescan-from"
+              max={max}
+              min={min}
               onChange={(event) => onChange(event.target.value)}
               type="datetime-local"
               value={from}

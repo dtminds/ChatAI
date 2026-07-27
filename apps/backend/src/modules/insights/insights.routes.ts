@@ -1030,6 +1030,7 @@ export async function registerInsightsRoutes(
       return apiSuccess(
         await createInsightsService(app).createRescanJob(
           getUidScope(request),
+          getAccountRole(request),
           request.body,
           request.user?.subUserId,
         ),
@@ -1053,6 +1054,7 @@ export async function registerInsightsRoutes(
       return apiSuccess(
         await createInsightsService(app).listRescanTasks(
           getUidScope(request),
+          getAccountRole(request),
           { page, pageSize },
         ),
       );

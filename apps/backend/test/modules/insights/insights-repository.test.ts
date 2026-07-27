@@ -129,6 +129,96 @@ describe("InsightsRepository", () => {
     );
   });
 
+  it("loads active analysis session ids for a historical rescan in one indexed batch", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [{ target_id: "501" }, { target_id: "503" }],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listActiveAnalysisSessionIds({
+      sessionIds: ["501", "502", "503"],
+      uid: 9001,
+    })).resolves.toEqual(["501", "503"]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_insight_job");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "target_id",
+      "in",
+      ["501", "502", "503"],
+    ]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "status",
+      "in",
+      ["pending", "running"],
+    ]);
+  });
+
+  it("loads historical rescan eligibility from logical-session counters and current snapshot phase", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [
+            {
+              current_snapshot_phase: "final",
+              message_count: 8,
+              session_id: 501,
+              status: "analyzed",
+            },
+            {
+              current_snapshot_phase: "live",
+              message_count: 3,
+              session_id: 502,
+              status: "open",
+            },
+          ],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listRescanSessionEligibility({
+      sessionIds: ["501", "502"],
+      uid: 9001,
+    })).resolves.toEqual([
+      {
+        currentSnapshotPhase: "final",
+        messageCount: 8,
+        sessionId: "501",
+        status: "analyzed",
+      },
+      {
+        currentSnapshotPhase: "live",
+        messageCount: 3,
+        sessionId: "502",
+        status: "open",
+      },
+    ]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain(
+      "xy_wap_embed_session_insight_snapshot as current_snapshot",
+    );
+    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "session.id",
+      "in",
+      [501, 502],
+    ]);
+  });
+
   it("loads recent action items for prompt by conversation", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -5961,8 +6051,9 @@ describe("MysqlInsightWorkerRepository", () => {
     ).toBe(false);
   });
 
-  it("writes insufficient-message manual reanalysis snapshots as final", async () => {
+  it("marks insufficient-message final runs while publishing the skipped final snapshot", async () => {
     const snapshotValues: Record<string, unknown>[] = [];
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) =>
@@ -5984,7 +6075,14 @@ describe("MysqlInsightWorkerRepository", () => {
         ),
       ),
       updateTable: vi.fn((table: string) =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
       ),
     };
     const repository = new MysqlInsightWorkerRepository(db as never);
@@ -5995,7 +6093,7 @@ describe("MysqlInsightWorkerRepository", () => {
         attemptCount: 1,
         jobId: "job-1",
         maxAttempts: 3,
-        mode: "manual_reanalyze",
+        mode: "final",
         sessionId: "501",
         uid: 9001,
       },
@@ -6022,6 +6120,7 @@ describe("MysqlInsightWorkerRepository", () => {
         tags: [],
       },
       resultKind: "insufficient_messages",
+      resultReason: "AI有效消息数 1 低于最小分析消息数 5",
       runId: "6001",
       sourceMessageHighWatermark: "9001",
       validationWarnings: [],
@@ -6033,6 +6132,11 @@ describe("MysqlInsightWorkerRepository", () => {
         status: "building",
       }),
     );
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "INSUFFICIENT_MESSAGES",
+      error_message: "AI有效消息数 1 低于最小分析消息数 5",
+      status: "succeeded",
+    });
   });
 
   it("writes model-analysis manual reanalysis snapshots as final", async () => {

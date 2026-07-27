@@ -486,6 +486,38 @@ function createMockInsightSessionMessages() {
   };
 }
 
+function createMockInsightSettingsSummary(insightEnabled = false) {
+  return {
+    enabledIntentCount: mockInsightSettings.intentConfigs.filter(
+      (item) => item.status === 1,
+    ).length,
+    intentLimit: 15,
+    intentSoftLimit: 12,
+    enabledLabelCount: mockInsightSettings.labelConfigs.filter(
+      (item) => item.status === 1,
+    ).length,
+    labelLimit: 20,
+    labelSoftLimit: 15,
+    enabledQaCount: mockInsightSettings.qaRuleConfigs.filter(
+      (item) => item.status === 1,
+    ).length,
+    qaLimit: 10,
+    qaSoftLimit: 8,
+    enabledEntityCount: mockInsightSettings.entityDictionary.filter(
+      (item) => item.status === 1,
+    ).length,
+    entityLimit: 20,
+    entitySoftLimit: 15,
+    entityEnabled: mockInsightSettings.featureConfig.entityEnabled,
+    insightAvailable: mockInsightSettings.featureConfig.insightAvailable,
+    insightEnabled,
+    intentEnabled: mockInsightSettings.featureConfig.intentEnabled,
+    labelEnabled: mockInsightSettings.featureConfig.labelEnabled,
+    qaEnabled: mockInsightSettings.featureConfig.qaEnabled,
+    todoEnabled: mockInsightSettings.featureConfig.todoEnabled,
+  };
+}
+
 function installInsightMocks() {
   serviceMocks.getInsightCapabilities.mockResolvedValue({
     canManageInsights: true,
@@ -1032,35 +1064,9 @@ function installInsightMocks() {
       })),
   });
   serviceMocks.getInsightSettings.mockResolvedValue(mockInsightSettings);
-  serviceMocks.getInsightSettingsSummary.mockResolvedValue({
-    enabledIntentCount: mockInsightSettings.intentConfigs.filter(
-      (item) => item.status === 1,
-    ).length,
-    intentLimit: 15,
-    intentSoftLimit: 12,
-    enabledLabelCount: mockInsightSettings.labelConfigs.filter(
-      (item) => item.status === 1,
-    ).length,
-    labelLimit: 20,
-    labelSoftLimit: 15,
-    enabledQaCount: mockInsightSettings.qaRuleConfigs.filter(
-      (item) => item.status === 1,
-    ).length,
-    qaLimit: 10,
-    qaSoftLimit: 8,
-    enabledEntityCount: mockInsightSettings.entityDictionary.filter(
-      (item) => item.status === 1,
-    ).length,
-    entityLimit: 20,
-    entitySoftLimit: 15,
-    entityEnabled: mockInsightSettings.featureConfig.entityEnabled,
-    insightAvailable: mockInsightSettings.featureConfig.insightAvailable,
-    insightEnabled: mockInsightSettings.featureConfig.insightEnabled,
-    intentEnabled: mockInsightSettings.featureConfig.intentEnabled,
-    labelEnabled: mockInsightSettings.featureConfig.labelEnabled,
-    qaEnabled: mockInsightSettings.featureConfig.qaEnabled,
-    todoEnabled: mockInsightSettings.featureConfig.todoEnabled,
-  });
+  serviceMocks.getInsightSettingsSummary.mockResolvedValue(
+    createMockInsightSettingsSummary(mockInsightSettings.featureConfig.insightEnabled),
+  );
   serviceMocks.getInsightPolicyAndSessionization.mockResolvedValue({
     analysisPolicy: mockInsightSettings.analysisPolicy,
     sessionization: mockInsightSettings.sessionization,
@@ -3101,6 +3107,9 @@ describe("conversation insights pages", () => {
   });
 
   it("renders admin settings and P1 placeholders", async () => {
+    serviceMocks.getInsightSettingsSummary.mockResolvedValue(
+      createMockInsightSettingsSummary(true),
+    );
     renderRoute("/chat/insights/settings");
 
     expect(
@@ -3286,6 +3295,13 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("dialog", { name: "新建重刷任务" }),
     ).toBeInTheDocument();
+    const rescanFromInput = screen.getByLabelText("开始时间");
+    expect(new Date(rescanFromInput.getAttribute("min") ?? "").getTime()).toBe(
+      Date.now() - 7 * 24 * 60 * 60 * 1000,
+    );
+    expect(new Date(rescanFromInput.getAttribute("max") ?? "").getTime()).toBe(
+      Date.now(),
+    );
     expect(
       screen.getByText(
         "重新识别标签、实体和意图，适合调整标签配置、实体词库或意图配置后使用。",
@@ -3621,6 +3637,20 @@ describe("conversation insights pages", () => {
     expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
     expect(screen.getAllByText("退款咨询").length).toBeGreaterThan(0);
+  });
+
+  it("disables manual rescan creation while insights are disabled", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(
+      await screen.findByRole("heading", { name: "洞察配置" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "历史重刷" }));
+
+    expect(
+      await screen.findByRole("button", { name: "新建重刷任务" }),
+    ).toBeDisabled();
+    expect(serviceMocks.createInsightRescanJob).not.toHaveBeenCalled();
   });
 
   it("refreshes summary after toggling entity status", async () => {

@@ -4,6 +4,7 @@ import type {
   InsightAnalysisOutput,
   InsightLiveAnalysisGateDecision,
   InsightSessionAnalyzer,
+  InsightTokenUsage,
 } from "./insights-worker.js";
 import {
   buildInsightClassificationPromptMessages,
@@ -149,6 +150,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           maxTokens: this.config.liteMaxTokens,
           messages: buildInsightLiveGatePromptMessages(input),
           model: this.config.liteModel,
+          onTokenUsage: input.onTokenUsage,
           step: "live_gate",
           uid: input.job?.uid ?? 0,
         }),
@@ -209,6 +211,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             previousSessionContexts: input.previousSessionContexts,
           }),
           model: this.config.model,
+          onTokenUsage: input.onTokenUsage,
           step: "single",
           uid: input.job?.uid ?? 0,
         });
@@ -234,6 +237,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           priorConclusions,
         }),
         model: this.config.model,
+        onTokenUsage: input.onTokenUsage,
         uid: input.job?.uid ?? 0,
       });
     }
@@ -249,6 +253,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           priorConclusions,
         }),
         model: this.config.liteModel,
+        onTokenUsage: input.onTokenUsage,
         uid: input.job?.uid ?? 0,
       });
     }
@@ -264,6 +269,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
         previousSessionContexts: input.previousSessionContexts,
       }),
       model: this.config.model,
+      onTokenUsage: input.onTokenUsage,
       step: "summary",
       uid: input.job?.uid ?? 0,
     });
@@ -284,6 +290,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             priorConclusions,
           }),
           model: this.config.model,
+          onTokenUsage: input.onTokenUsage,
           uid: input.job?.uid ?? 0,
         })
         : Promise.resolve(emptyAnalysisOutput()),
@@ -297,6 +304,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
               priorConclusions,
             }),
             model: this.config.liteModel,
+            onTokenUsage: input.onTokenUsage,
             uid: input.job?.uid ?? 0,
           })
         : Promise.resolve(emptyAnalysisOutput()),
@@ -321,6 +329,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       maxTokens: number;
       messages: InsightPromptMessage[];
       model: string;
+      onTokenUsage?: (usage: InsightTokenUsage) => void;
       uid: number;
     },
   ): Promise<InsightAnalyzerOutput> {
@@ -366,6 +375,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -376,6 +386,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -396,6 +407,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -445,7 +457,12 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 
     const payload = await response.json() as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: unknown;
     };
+    const tokenUsage = normalizeTokenUsage(payload.usage);
+    if (tokenUsage) {
+      input.onTokenUsage?.(tokenUsage);
+    }
     const content = payload.choices?.[0]?.message?.content;
 
     if (!content) {
@@ -523,6 +540,44 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 }
 
 type LlmStep = "classification" | "live_gate" | "qa" | "single" | "summary";
+
+function normalizeTokenUsage(value: unknown): InsightTokenUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const promptTokens = readTokenCount(value.prompt_tokens);
+  const completionTokens = readTokenCount(value.completion_tokens);
+  const promptDetails = isRecord(value.prompt_tokens_details)
+    ? value.prompt_tokens_details
+    : {};
+  const completionDetails = isRecord(value.completion_tokens_details)
+    ? value.completion_tokens_details
+    : {};
+
+  return {
+    completion_tokens: completionTokens,
+    completion_tokens_details: {
+      reasoning_tokens: readTokenCount(completionDetails.reasoning_tokens),
+    },
+    prompt_tokens: promptTokens,
+    prompt_tokens_details: {
+      cached_tokens: readTokenCount(promptDetails.cached_tokens),
+    },
+    total_tokens: readTokenCount(
+      value.total_tokens,
+      promptTokens + completionTokens,
+    ),
+  };
+}
+
+function readTokenCount(value: unknown, fallback = 0) {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= 0
+    ? value
+    : fallback;
+}
 
 function annotateLlmStep(error: unknown, failedStep: LlmStep) {
   if (error instanceof Error) {

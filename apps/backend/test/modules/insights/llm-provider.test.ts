@@ -5,6 +5,7 @@ import {
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
 import type { InsightPromptContext } from "../../../src/modules/insights/insight-prompt-builder";
+import type { InsightTokenUsage } from "../../../src/modules/insights/insights-worker";
 import { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
 
 function createObservabilityHarness() {
@@ -34,6 +35,7 @@ async function runMultiStepAnalysis(input: {
   analysisScope?: "all" | "classification" | "qaFindings";
   context: InsightPromptContext;
   mode?: "final" | "live" | "manual_reanalyze";
+  onTokenUsage?: (usage: InsightTokenUsage) => void;
 }) {
   const requestBodies: Array<Record<string, unknown>> = [];
   const fetchMock = vi.fn(
@@ -67,6 +69,17 @@ async function runMultiStepAnalysis(input: {
       return new Response(
         JSON.stringify({
           choices: [{ message: { content: JSON.stringify(content) } }],
+          usage: {
+            completion_tokens: 9,
+            completion_tokens_details: {
+              reasoning_tokens: 2,
+            },
+            prompt_tokens: 19,
+            prompt_tokens_details: {
+              cached_tokens: 4,
+            },
+            total_tokens: 28,
+          },
         }),
         { headers: { "Content-Type": "application/json" }, status: 200 },
       );
@@ -105,6 +118,7 @@ async function runMultiStepAnalysis(input: {
         sourceMessageId: "9001",
       },
     ],
+    onTokenUsage: input.onTokenUsage,
     previousSessionContexts: [],
   });
 
@@ -150,6 +164,119 @@ describe("LLM provider config", () => {
       liteModel: "ep-main",
       maxTokens: 2048,
       model: "ep-main",
+    });
+  });
+
+  it("reports token usage for every model response in a multi-step analysis", async () => {
+    const onTokenUsage = vi.fn();
+
+    const { requestBodies } = await runMultiStepAnalysis({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [
+          {
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: [],
+            weight: 1,
+          },
+        ],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "reply_quality",
+            ruleName: "回复质量",
+            severity: "high",
+          },
+        ],
+      },
+      onTokenUsage,
+    });
+
+    expect(requestBodies).toHaveLength(3);
+    expect(onTokenUsage).toHaveBeenCalledTimes(3);
+    expect(onTokenUsage).toHaveBeenNthCalledWith(1, {
+      completion_tokens: 9,
+      completion_tokens_details: {
+        reasoning_tokens: 2,
+      },
+      prompt_tokens: 19,
+      prompt_tokens_details: {
+        cached_tokens: 4,
+      },
+      total_tokens: 28,
+    });
+  });
+
+  it("reports token usage before validating the model JSON payload", async () => {
+    const onTokenUsage = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "not-json" } }],
+            usage: {
+              completion_tokens: 3,
+              completion_tokens_details: { reasoning_tokens: 1 },
+              prompt_tokens: 7,
+              prompt_tokens_details: { cached_tokens: 2 },
+              total_tokens: 10,
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        ),
+      ),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 1024,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      retry: {
+        baseDelayMs: 1,
+        maxAttempts: 1,
+      },
+    });
+
+    await expect(analyzer.analyzeSession({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [],
+      onTokenUsage,
+      previousSessionContexts: [],
+    })).rejects.toThrow();
+
+    expect(onTokenUsage).toHaveBeenCalledWith({
+      completion_tokens: 3,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 7,
+      prompt_tokens_details: { cached_tokens: 2 },
+      total_tokens: 10,
     });
   });
 

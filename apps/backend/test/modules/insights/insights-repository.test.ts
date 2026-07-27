@@ -6037,6 +6037,7 @@ describe("MysqlInsightWorkerRepository", () => {
 
   it("writes model-analysis manual reanalysis snapshots as final", async () => {
     const snapshotValues: Record<string, unknown>[] = [];
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) =>
@@ -6058,7 +6059,14 @@ describe("MysqlInsightWorkerRepository", () => {
         ),
       ),
       updateTable: vi.fn((table: string) =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
       ),
     };
     const repository = new MysqlInsightWorkerRepository(db as never);
@@ -6098,6 +6106,13 @@ describe("MysqlInsightWorkerRepository", () => {
       resultKind: "model_analysis",
       runId: "6001",
       sourceMessageHighWatermark: "9001",
+      tokenUsage: {
+        completion_tokens: 9,
+        completion_tokens_details: { reasoning_tokens: 2 },
+        prompt_tokens: 19,
+        prompt_tokens_details: { cached_tokens: 4 },
+        total_tokens: 28,
+      },
       validationWarnings: [],
     });
 
@@ -6107,6 +6122,16 @@ describe("MysqlInsightWorkerRepository", () => {
         status: "building",
       }),
     );
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      status: "succeeded",
+      token_usage: JSON.stringify({
+        completion_tokens: 9,
+        completion_tokens_details: { reasoning_tokens: 2 },
+        prompt_tokens: 19,
+        prompt_tokens_details: { cached_tokens: 4 },
+        total_tokens: 28,
+      }),
+    });
   });
 
   it("marks live insufficient-message runs succeeded without publishing a snapshot", async () => {
@@ -6158,14 +6183,68 @@ describe("MysqlInsightWorkerRepository", () => {
       code: "LIVE_GATE_SKIPPED",
       reason: "新增内容没有实质变化",
       runId: "6002",
+      tokenUsage: {
+        completion_tokens: 4,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 16,
+        prompt_tokens_details: { cached_tokens: 5 },
+        total_tokens: 20,
+      },
     });
 
     expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
       error_code: "LIVE_GATE_SKIPPED",
       error_message: "新增内容没有实质变化",
       status: "succeeded",
+      token_usage: JSON.stringify({
+        completion_tokens: 4,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 16,
+        prompt_tokens_details: { cached_tokens: 5 },
+        total_tokens: 20,
+      }),
     });
     expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6002]);
+  });
+
+  it("persists observed token usage when an analysis run fails", async () => {
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+    const failure = new Error("model output is invalid");
+
+    await repository.markAnalysisRunFailed("6003", failure, {
+      completion_tokens: 3,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 7,
+      prompt_tokens_details: { cached_tokens: 2 },
+      total_tokens: 10,
+    });
+
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "ANALYSIS_FAILED",
+      error_message: "model output is invalid",
+      status: "failed",
+      token_usage: JSON.stringify({
+        completion_tokens: 3,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 7,
+        prompt_tokens_details: { cached_tokens: 2 },
+        total_tokens: 10,
+      }),
+    });
+    expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6003]);
   });
 
   it("does not expose an empty current output when the session has no current snapshot", async () => {

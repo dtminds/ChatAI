@@ -2566,6 +2566,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         error_message: validationWarnings.length > 0 ? validationWarnings.join("; ") : null,
         finished_at: new Date(),
         status: validationWarnings.length > 0 ? "partial" : "succeeded",
+        ...(input.tokenUsage
+          ? { token_usage: JSON.stringify(input.tokenUsage) }
+          : {}),
         update_time: new Date(),
       })
       .where("id", "=", parsePositiveInteger(input.runId) ?? -1)
@@ -2618,6 +2621,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     code?: "INSUFFICIENT_MESSAGES" | "LIVE_GATE_SKIPPED";
     reason: string;
     runId: string;
+    tokenUsage?: SaveAnalysisResultInput["tokenUsage"];
   }): Promise<void> {
     // Succeeded means the worker handled the run; error_code classifies why no snapshot was published.
     await this.db.updateTable("xy_wap_embed_analysis_run").set({
@@ -2625,6 +2629,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       error_message: input.reason,
       finished_at: new Date(),
       status: "succeeded",
+      ...(input.tokenUsage
+        ? { token_usage: JSON.stringify(input.tokenUsage) }
+        : {}),
       update_time: new Date(),
     }).where("id", "=", parsePositiveInteger(input.runId) ?? -1).executeTakeFirst();
   }
@@ -2769,12 +2776,17 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
   }
 
-  async markAnalysisRunFailed(runId: string, error: unknown): Promise<void> {
+  async markAnalysisRunFailed(
+    runId: string,
+    error: unknown,
+    tokenUsage?: SaveAnalysisResultInput["tokenUsage"],
+  ): Promise<void> {
     await this.db.updateTable("xy_wap_embed_analysis_run").set({
       error_code: "ANALYSIS_FAILED",
       error_message: formatError(error),
       finished_at: new Date(),
       status: "failed",
+      ...(tokenUsage ? { token_usage: JSON.stringify(tokenUsage) } : {}),
       update_time: new Date(),
     }).where("id", "=", parsePositiveInteger(runId) ?? -1).executeTakeFirst();
   }

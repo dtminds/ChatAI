@@ -669,10 +669,6 @@ export interface XyWapEmbedAnalysisRun {
    */
   analysis_scope: string;
   /**
-   * 成本估算
-   */
-  cost_estimate: string | null;
-  /**
    * 创建时间
    */
   create_time: Generated<Date>;
@@ -693,10 +689,6 @@ export interface XyWapEmbedAnalysisRun {
    */
   id: Generated<number>;
   /**
-   * 输入token数
-   */
-  input_token_count: number | null;
-  /**
    * 关联任务ID
    */
   job_id: number | null;
@@ -705,21 +697,9 @@ export interface XyWapEmbedAnalysisRun {
    */
   mode: string;
   /**
-   * 模型名称
-   */
-  model_name: string | null;
-  /**
-   * 输出token数
-   */
-  output_token_count: number | null;
-  /**
    * 提示词版本
    */
   prompt_version: string | null;
-  /**
-   * 模型服务商编码
-   */
-  provider_code: string | null;
   /**
    * 原始输出引用
    */
@@ -740,6 +720,10 @@ export interface XyWapEmbedAnalysisRun {
    * 运行状态，running：执行中，succeeded：成功，partial：部分成功，failed：失败
    */
   status: string;
+  /**
+   * 本次分析运行内模型调用Token用量累计
+   */
+  token_usage: Json | null;
   /**
    * 更新时间
    */

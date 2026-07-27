@@ -783,7 +783,7 @@ cd apps/web
 corepack pnpm --filter @chatai/web build
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`feat(tickets): create and view tickets in chat`
 
@@ -810,7 +810,7 @@ corepack pnpm --filter @chatai/web build
 - Modify: `apps/web/src/router/index.tsx`
 - Modify: Insights web tests
 
-- [ ] **Step 1：先写洞察详情范围测试**
+- [x] **Step 1：先写洞察详情范围测试**
 
 洞察详情只返回：
 
@@ -823,7 +823,7 @@ AND snapshot_id = 当前详情快照
 
 同时更新洞察详情投影契约：只保留该区域实际展示的字段，状态使用工单状态集合并提供标题跳转所需的工单 ID；不把完整 Ticket DTO 嵌入 Insights DTO。
 
-- [ ] **Step 2：切换洞察详情写操作**
+- [x] **Step 2：切换洞察详情写操作**
 
 - 完成/忽略/重新打开调用 Tickets API。
 - `open/in_progress` 提供完成和忽略；`done/canceled` 提供重新打开。
@@ -832,7 +832,7 @@ AND snapshot_id = 当前详情快照
 - 点击标题使用 `<a target="_blank" rel="noreferrer">` 打开 `/chat/tickets/:ticketId`。
 - 保留详情区域现有布局和快捷操作表现，不改造成完整工单详情。
 
-- [ ] **Step 3：删除旧 Insights 待处理页面、接口和契约**
+- [x] **Step 3：删除旧 Insights 待处理页面、接口和契约**
 
 删除：
 
@@ -848,14 +848,14 @@ PATCH /api/server/insights/action-items/:actionItemId/status
 
 所有旧取消字段消费方删除后，使用已执行 contract SQL 的隔离开发库重新生成 `apps/backend/src/db/schema.ts`，确认最终类型不再包含 `dismissed_at`。
 
-- [ ] **Step 4：修正原入口和文案**
+- [x] **Step 4：修正原入口和文案**
 
 - “待跟进事项”跳到 Tickets 的 AI + active 筛选。
 - 高风险会话跳到洞察明细风险筛选，不伪装为工单。
 - 洞察配置和摘要中的“智能创建待办”统一改为“智能创建工单”。
 - 不修改其它洞察配置、LLM 编排和重刷功能。
 
-- [ ] **Step 5：运行前后端回归测试**
+- [x] **Step 5：运行前后端回归测试**
 
 ```bash
 cd packages/contracts
@@ -875,7 +875,7 @@ cd apps/web
 corepack pnpm --filter @chatai/web build
 ```
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 建议提交：`refactor(insights): move action items to tickets`
 

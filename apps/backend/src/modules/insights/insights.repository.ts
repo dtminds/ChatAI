@@ -1,11 +1,8 @@
 import type {
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
-  InsightActionStatus,
   InsightAnalysisStatus,
   InsightConfigStatus,
-  InsightCreateActionItemRequest,
-  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -27,6 +24,8 @@ import type {
   InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
+  TicketPriority,
+  TicketStatus,
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -43,9 +42,6 @@ import {
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { BadRequestError } from "../../shared/errors.js";
 import type {
-  InsightActionItemPage,
-  InsightDetailActionItemRow,
-  InsightActionItemRow,
   InsightBusinessTopicAnalytics,
   InsightCurrentSessionPage,
   InsightCurrentSessionRow,
@@ -54,7 +50,6 @@ import type {
   InsightQualityAgentStatRow,
   InsightQualityAggregateRow,
   InsightQualityResultPage,
-  InsightsFollowUpFilters,
   InsightsBusinessRelatedSessionFilters,
   InsightsOverviewFilters,
   InsightsRepositoryPort,
@@ -111,27 +106,6 @@ type CurrentSessionQueryRow = {
   third_userid: string;
   unresolved_reason: string | null;
 };
-
-type ActionItemQueryRow = {
-  action_id: number | string;
-  action_status: string;
-  action_type: string;
-  conversation_id: number | string;
-  created_at?: Date | number | string;
-  evidence_message_id: number | string | null;
-  last_customer_message_at: number | string | null;
-  priority: string;
-  resolution_status: string | null;
-  session_id: number | string;
-  snapshot_id?: number | string | null;
-  third_external_userid: string | null;
-  title: string;
-};
-
-type FollowUpActionItemQueryRow = Omit<
-  ActionItemQueryRow,
-  "evidence_message_id" | "last_customer_message_at" | "resolution_status"
->;
 
 type QualityResultQueryRow = {
   current_snapshot_id: number | string;
@@ -409,7 +383,6 @@ type InsertResult = {
   insertId?: bigint | number | string | null;
 };
 
-const manualActionStatuses = new Set<InsightActionStatus>(["open", "done", "dismissed"]);
 const allCurrentSessionsLimit = 5_000;
 
 export class InsightsRepository implements InsightsRepositoryPort {
@@ -2034,8 +2007,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
               then session.id
             end)
           `.as("problem_sessions"),
-          // Overview avoids joining action_item on this high-traffic aggregate path;
-          // action-items are served by the dedicated follow-up endpoint.
+          // Ticket counts are served by the Tickets domain, so this aggregate
+          // keeps the legacy field neutral without joining the ticket table.
           sql<number>`0`.as("action_items_open"),
           sql<number>`
             count(distinct case
@@ -2582,85 +2555,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return sessionRows;
   }
 
-  async listActionItemsPage(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters = {},
-  ): Promise<InsightActionItemPage> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 20;
-    const total = await this.countActionItemRows(scope, filters);
-    const rows = await this.listActionItemRows(scope, filters, {
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    });
-    const actionItems = mapFollowUpActionItemRows(rows);
-    await this.hydrateActionItemCustomers(scope, actionItems);
-
-    return {
-      items: actionItems,
-      total,
-    };
-  }
-
-  private buildActionItemListBaseQuery(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-  ) {
-    let query = this.db
-      .selectFrom("xy_wap_embed_session_action_item as action")
-      .where("action.uid", "=", scope.uid);
-
-    if (filters.status === "processed") {
-      query = query.where("action.status", "in", ["done", "dismissed"]);
-    } else if (filters.status) {
-      query = query.where("action.status", "=", filters.status);
-    }
-
-    if (filters.priority) {
-      query = query.where("action.priority", "=", filters.priority);
-    }
-
-    return applyActionItemDateFilters(query, filters);
-  }
-
-  private async countActionItemRows(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-  ) {
-    const row = await this.buildActionItemListBaseQuery(scope, filters)
-      .select(sql<number>`count(*)`.as("total_count"))
-      .executeTakeFirst() as { total_count: number | string } | undefined;
-
-    return parseNumber(row?.total_count ?? 0);
-  }
-
-  private async listActionItemRows(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-    pagination: { limit: number; offset: number },
-  ) {
-    return (await this.buildActionItemListBaseQuery(scope, filters)
-      .leftJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "action.session_id"),
-      )
-      .select([
-        "action.id as action_id",
-        "action.action_type as action_type",
-        "action.create_time as created_at",
-        "action.priority as priority",
-        "action.status as action_status",
-        "action.title as title",
-        "action.conversation_id as conversation_id",
-        "action.session_id as session_id",
-        "action.snapshot_id as snapshot_id",
-        "session.third_external_userid as third_external_userid",
-      ])
-      .orderBy("action.id", "desc")
-      .limit(pagination.limit)
-      .offset(pagination.offset)
-      .execute() as FollowUpActionItemQueryRow[]);
-  }
-
   async findDetail(
     scope: InsightsUidScope,
     sessionId: string,
@@ -2737,13 +2631,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       this.listSessionActionItems(
         scope,
         snapshotId,
-        current.conversationId,
-        current.sessionId,
-        current.resolutionStatus,
-        current.thirdExternalUserId,
+        dimensionEvidence,
       ),
     ]);
-    await this.hydrateActionItemCustomers(scope, actionItems);
 
     const [
       sentiment,
@@ -2850,35 +2740,42 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async listSessionActionItems(
     scope: InsightsUidScope,
     snapshotId: string,
-    conversationId: string,
-    sessionId: string,
-    resolutionStatus: string | null,
-    thirdExternalUserId: string,
+    dimensionEvidence: DimensionEvidenceRow[],
   ) {
     const rows = (await this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
       .select([
+        "action.assignee_sub_user_id as assignee_sub_user_id",
         "action.id as action_id",
-        "action.action_type as action_type",
         "action.priority as priority",
         "action.status as action_status",
         "action.title as title",
-        "action.snapshot_id as snapshot_id",
       ])
       .where("action.uid", "=", scope.uid)
-      .where("action.session_id", "=", parsePositiveInteger(sessionId) ?? -1)
-      .execute() as Array<Pick<ActionItemQueryRow,
-        "action_id" | "action_status" | "action_type" | "priority" | "snapshot_id" | "title"
-      >>).map((row) => toActionItemBaseRow({
-        ...row,
-        conversation_id: conversationId,
-        resolution_status: resolutionStatus,
-        session_id: sessionId,
-        third_external_userid: thirdExternalUserId,
-      }));
-    const actionItems = mapActionItemRows(rows);
+      .where("action.snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .where("action.source_type", "=", "ai")
+      .execute() as Array<{
+        action_id: number | string;
+        action_status: string;
+        assignee_sub_user_id: number | string | null;
+        priority: string;
+        title: string;
+      }>);
 
-    return actionItems;
+    return rows.map((row) => ({
+      assigneeSubUserId: row.assignee_sub_user_id == null
+        ? undefined
+        : String(row.assignee_sub_user_id),
+      evidenceMessageIds: evidenceForDimension(
+        dimensionEvidence,
+        "action_item",
+        row.action_id,
+      ),
+      priority: normalizePriority(row.priority),
+      status: normalizeTicketStatus(row.action_status),
+      ticketId: String(row.action_id),
+      title: row.title,
+    }));
   }
 
   private async listSentiment(
@@ -3372,114 +3269,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
-  async updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: Extract<InsightActionStatus, "open" | "done" | "dismissed">,
-  ): Promise<boolean> {
-    if (!manualActionStatuses.has(status)) {
-      return false;
-    }
-
-    const id = parsePositiveInteger(actionItemId);
-
-    if (id == null) {
-      return false;
-    }
-
-    const now = new Date();
-    const result = await this.db
-      .updateTable("xy_wap_embed_session_action_item")
-      .set({
-        completed_at: status === "done" ? now : null,
-        dismissed_at: status === "dismissed" ? now : null,
-        status,
-        update_time: now,
-      })
-      .where("id", "=", id)
-      .where("uid", "=", scope.uid)
-      .where("status", "in", ["open", "done", "dismissed"])
-      .executeTakeFirst();
-
-    return getAffectedRows(result) !== 0;
-  }
-
-  async validateActionItemTarget(
-    scope: InsightsUidScope,
-    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
-  ): Promise<boolean> {
-    const conversationId = parsePositiveInteger(input.conversationId);
-
-    if (conversationId == null) {
-      return false;
-    }
-
-    const conversation = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id"])
-      .where("id", "=", conversationId)
-      .where("uid", "=", scope.uid)
-      .executeTakeFirst();
-
-    if (!conversation) {
-      return false;
-    }
-
-    const sessionId = parsePositiveInteger(input.sessionId);
-
-    if (sessionId == null) {
-      return false;
-    }
-
-    const session = await this.db
-      .selectFrom("xy_wap_embed_logical_session")
-      .select(["id"])
-      .where("id", "=", sessionId)
-      .where("uid", "=", scope.uid)
-      .where("conversation_id", "=", conversationId)
-      .executeTakeFirst();
-
-    return Boolean(session);
-  }
-
-  async createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
-  ): Promise<InsightCreateActionItemResponse> {
-    const conversationId = parsePositiveInteger(input.conversationId);
-    const sessionId = parsePositiveInteger(input.sessionId);
-
-    if (conversationId == null || sessionId == null) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_session_action_item")
-      .values({
-        action_type: "follow_up",
-        conversation_id: conversationId,
-        created_by_sub_user_id: input.createdBySubUserId == null
-          ? null
-          : parsePositiveInteger(input.createdBySubUserId) ?? null,
-        due_hint: input.dueHint ?? null,
-        priority: input.priority,
-        session_id: sessionId,
-        snapshot_id: null,
-        source_type: "manual",
-        status: "open",
-        title: input.title,
-        uid: scope.uid,
-        updated_by_sub_user_id: input.createdBySubUserId == null
-          ? null
-          : parsePositiveInteger(input.createdBySubUserId) ?? null,
-      })
-      .executeTakeFirstOrThrow() as InsertResult;
-
-    return {
-      actionItemId: String(parseInsertedMySqlId(inserted) ?? ""),
-    };
-  }
-
   async createRescanJob(
     scope: InsightsUidScope,
     input: {
@@ -3691,7 +3480,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
       const evidence = problemEvidenceBySnapshotId.get(snapshotId) ?? [];
 
-      // Avoid per-page action_item fan-out here; follow-up counts are loaded by the dedicated endpoint.
+      // Ticket counts are no longer hydrated into Insights session rows.
       row.actionOpenCount = 0;
       row.problemEvidenceMessageIds = sortNumericStrings(
         evidence.map((item) => String(item.evidence_message_id)),
@@ -3772,29 +3561,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       row.tags = snapshotId ? tagsBySnapshotId.get(snapshotId) ?? [] : [];
       row.entities = snapshotId ? entitiesBySnapshotId.get(snapshotId) ?? [] : [];
       row.intents = snapshotId ? intentsBySnapshotId.get(snapshotId) ?? [] : [];
-    }
-  }
-
-  private async hydrateActionItemCustomers(
-    scope: InsightsUidScope,
-    rows: Array<InsightActionItemRow | InsightDetailActionItemRow>,
-  ) {
-    if (rows.length === 0) {
-      return;
-    }
-
-    const contacts = await this.listContactProfiles(
-      scope.uid,
-      uniqueNonEmpty(rows.map((row) => row.thirdExternalUserId)),
-    );
-
-    for (const row of rows) {
-      const contact = row.thirdExternalUserId
-        ? contacts.get(row.thirdExternalUserId)
-        : undefined;
-
-      row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
-      row.customerName = contact?.name ?? row.customerName;
     }
   }
 
@@ -4081,21 +3847,6 @@ function groupByActionId<T extends { action_id: number | string }>(rows: T[]) {
   return byActionId;
 }
 
-function mapFollowUpActionItemRows(rows: FollowUpActionItemQueryRow[]): InsightActionItemRow[] {
-  return rows.map((row) => ({
-    actionItemId: String(row.action_id),
-    conversationId: String(row.conversation_id),
-    createdAt: parseNumber(row.created_at ?? 0),
-    customerAvatarUrl: undefined,
-    customerName: "未知客户",
-    priority: normalizePriority(row.priority),
-    sessionId: String(row.session_id),
-    status: normalizeActionStatus(row.action_status),
-    thirdExternalUserId: row.third_external_userid ?? undefined,
-    title: row.title,
-  }));
-}
-
 function mapQualityResultRows(
   rows: QualityResultQueryRow[],
   ruleRows: QualityRuleQueryRow[],
@@ -4148,51 +3899,6 @@ function mapQualityResultRows(
   });
 }
 
-function mapActionItemRows(rows: ActionItemQueryRow[]): InsightDetailActionItemRow[] {
-  const byAction = new Map<string, InsightDetailActionItemRow>();
-
-  for (const row of rows) {
-    const actionItemId = String(row.action_id);
-    const current =
-      byAction.get(actionItemId) ??
-      {
-        actionItemId,
-        conversationId: String(row.conversation_id),
-        customerAvatarUrl: undefined,
-        customerName: "未知客户",
-        evidenceMessageIds: [],
-        priority: normalizePriority(row.priority),
-        resolutionStatus: normalizeResolutionStatus(row.resolution_status),
-        sessionId: String(row.session_id),
-        status: normalizeActionStatus(row.action_status),
-        thirdExternalUserId: row.third_external_userid ?? undefined,
-        title: row.title,
-      };
-
-    if (row.evidence_message_id != null) {
-      current.evidenceMessageIds.push(String(row.evidence_message_id));
-    }
-
-    byAction.set(actionItemId, current);
-  }
-
-  for (const current of byAction.values()) {
-    current.evidenceMessageIds = Array.from(new Set(current.evidenceMessageIds));
-  }
-
-  return Array.from(byAction.values());
-}
-
-function toActionItemBaseRow(row: Omit<ActionItemQueryRow,
-  "evidence_message_id" | "last_customer_message_at"
->): ActionItemQueryRow {
-  return {
-    ...row,
-    evidence_message_id: null,
-    last_customer_message_at: null,
-  };
-}
-
 function normalizeAnalysisStatus(value: string): InsightAnalysisStatus {
   if (
     value === "ready" ||
@@ -4229,7 +3935,7 @@ function normalizeSeverity(value: string | null): "high" | "low" | "medium" | nu
   return null;
 }
 
-function normalizePriority(value: string) {
+function normalizePriority(value: string): TicketPriority {
   if (value === "low" || value === "medium" || value === "high") {
     return value;
   }
@@ -4251,17 +3957,11 @@ function normalizePolarity(value: string): InsightDetailResponse["sentiment"][nu
   return "unknown";
 }
 
-function normalizeActionStatus(value: string): InsightActionStatus {
-  if (
-    value === "open" ||
-    value === "done" ||
-    value === "dismissed" ||
-    value === "expired"
-  ) {
+function normalizeTicketStatus(value: string): TicketStatus {
+  if (value === "in_progress" || value === "done" || value === "canceled") {
     return value;
   }
-
-  return "open";
+  return value === "dismissed" || value === "expired" ? "canceled" : "open";
 }
 
 function normalizeRescanAnalysisScope(value: string): InsightRescanAnalysisScope {
@@ -4738,27 +4438,6 @@ function applyAssetMessageDateFilters<Query>(
 
   if (to != null) {
     next = next.where("session_message.source_message_time", "<=", to) as typeof next;
-  }
-
-  return next;
-}
-
-function applyActionItemDateFilters<Query>(
-  query: Query,
-  filters: InsightsFollowUpFilters,
-): Query {
-  let next = query as Query & {
-    where(column: string, operator: string, value: unknown): Query;
-  };
-  const from = parseDateBoundary(filters.from);
-  const to = parseDateBoundary(filters.to);
-
-  if (from != null) {
-    next = next.where("action.create_time", ">=", from) as typeof next;
-  }
-
-  if (to != null) {
-    next = next.where("action.create_time", "<=", to) as typeof next;
   }
 
   return next;

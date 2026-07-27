@@ -2438,7 +2438,6 @@ export interface XyWapEmbedSessionActionItem {
   /**
    * 兼容滚动发布期间的旧忽略时间，contract 后移除
    */
-  dismissed_at: Date | null;
   /**
    * 明确截止时间
    */

@@ -1,6 +1,5 @@
 import type {
   ApiSuccessEnvelope,
-  InsightActionStatus,
   InsightCapabilitiesResponse,
   InsightOverviewQuery as ContractInsightOverviewQuery,
   InsightOverviewSessionsQuery as ContractInsightOverviewSessionsQuery,
@@ -31,7 +30,6 @@ import type {
   InsightSessionizationSettingsUpdateRequest,
   InsightBusinessRelatedSessionsResponse,
   InsightBusinessTopicsResponse,
-  InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityAgentStatsResponse,
   InsightsQualityOverviewResponse,
@@ -44,15 +42,6 @@ import type {
   InsightsWorkerUidState,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
-
-export type InsightFollowUpQuery = {
-  from?: string;
-  page?: number;
-  pageSize?: number;
-  priority?: "low" | "medium" | "high";
-  status?: InsightActionStatus | "processed";
-  to?: string;
-};
 
 export type InsightQualityQuery = {
   from?: string;
@@ -259,21 +248,6 @@ export async function getInsightQualityResults(
   return response.data;
 }
 
-export async function getInsightFollowUps(
-  query: InsightFollowUpQuery = {},
-  options: InsightRequestOptions = {},
-) {
-  const response = await http.get<ApiSuccessEnvelope<InsightsFollowUpsResponse>>(
-    "/server/insights/follow-ups",
-    {
-      ...options,
-      params: compactQuery(query),
-    },
-  );
-
-  return response.data;
-}
-
 export async function getInsightDetail(sessionId: string) {
   const response = await http.get<ApiSuccessEnvelope<InsightDetailResponse>>(
     `/server/insights/sessions/${sessionId}`,
@@ -299,18 +273,6 @@ export async function getInsightMessageContext(
       params: compactQuery(query),
     },
   );
-
-  return response.data;
-}
-
-export async function updateInsightActionStatus(
-  actionItemId: string,
-  status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
-) {
-  const response = await http.patch<
-    ApiSuccessEnvelope<{ actionItemId: string; status: InsightActionStatus }>,
-    { status: InsightActionStatus }
-  >(`/server/insights/action-items/${actionItemId}/status`, { status });
 
   return response.data;
 }

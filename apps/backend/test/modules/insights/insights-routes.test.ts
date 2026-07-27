@@ -72,11 +72,6 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/business/related-sessions?dimension=intent&topicCode=31&page=1&pageSize=20",
     });
-    const followUps = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/follow-ups?from=2026-06-01T00:00:00.000%2B08:00&to=2026-06-30T23:59:59.999%2B08:00&priority=high&status=open&page=1&pageSize=1",
-    });
     const detail = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -86,44 +81,6 @@ describe("insights routes", () => {
       headers: { authorization },
       method: "GET",
       url: "/api/server/insights/sessions/501/messages",
-    });
-    const status = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "done" },
-      url: "/api/server/insights/action-items/801/status",
-    });
-    const processedFollowUps = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/follow-ups?status=processed&page=1&pageSize=10",
-    });
-    const reopenedStatus = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "open" },
-      url: "/api/server/insights/action-items/801/status",
-    });
-    const createdActionItem = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        conversationId: "301",
-        dueHint: "今天内",
-        priority: "high",
-        sessionId: "501",
-        title: "回访物流状态",
-      },
-      url: "/api/server/insights/action-items",
     });
     expect(overview.statusCode).toBe(200);
     expect(overview.json()).toMatchObject({
@@ -245,33 +202,16 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(followUps.statusCode).toBe(200);
-    expect(
-      db.selectBuilders.some((builder) =>
-        builder.wheres.some((call) => call[0] === "action.priority" && call[1] === "=" && call[2] === "high")
-          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === ">=")
-          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === "<=")
-          && !builder.wheres.some((call) => call[0] === "session.started_at"),
-      ),
-    ).toBe(true);
-    expect(followUps.json().data.items).toHaveLength(1);
-    expect(followUps.json().data.items[0]).toMatchObject({
-      actionItemId: "801",
-      createdAt: 1_780_244_000_000,
-      sessionId: "501",
-    });
-    expect(followUps.json().data.items[0]).not.toHaveProperty("evidenceMessageIds");
-    expect(followUps.json().data.items[0]).not.toHaveProperty("lastCustomerMessageAt");
-    expect(followUps.json().data).toMatchObject({
-      page: 1,
-      pageSize: 1,
-      total: 1,
-      totalPages: 1,
-    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data).not.toHaveProperty("evidenceMessages");
     expect(detail.json().data).not.toHaveProperty("evidenceMessageRecords");
     expect(detail.json().data).not.toHaveProperty("sessionMessageRecords");
+    expect(detail.json().data.actionItems).toEqual([{
+      canEdit: true,
+      status: "open",
+      ticketId: "801",
+      title: "确认快递状态",
+    }]);
     expect(sessionMessages.statusCode).toBe(200);
     expect(sessionMessages.json().data.messages).toHaveLength(1);
     expect(detail.json().data.tags).toEqual([
@@ -304,52 +244,6 @@ describe("insights routes", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toMatchObject({
-      data: {
-        actionItemId: "801",
-        status: "done",
-      },
-      success: true,
-    });
-    expect(processedFollowUps.statusCode).toBe(200);
-    expect(processedFollowUps.json()).toMatchObject({
-      data: {
-        items: [
-          {
-            actionItemId: "801",
-            status: "done",
-          },
-        ],
-        total: 1,
-      },
-      success: true,
-    });
-    expect(reopenedStatus.statusCode).toBe(200);
-    expect(reopenedStatus.json()).toMatchObject({
-      data: {
-        actionItemId: "801",
-        status: "open",
-      },
-      success: true,
-    });
-    expect(createdActionItem.statusCode).toBe(200);
-    expect(createdActionItem.json()).toMatchObject({
-      data: {
-        actionItemId: "8101",
-      },
-      success: true,
-    });
-    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
-    expect(db.insertedActionItem).toMatchObject({
-      conversation_id: 301,
-      created_by_sub_user_id: 1,
-      session_id: 501,
-      snapshot_id: null,
-      source_type: "manual",
-      title: "回访物流状态",
-      uid: 9001,
-    });
     await app.close();
   });
 
@@ -490,31 +384,34 @@ describe("insights routes", () => {
     expect(admin.db.rescanTaskListQueries).toHaveLength(0);
   });
 
-  it("returns action status update misses as a business error envelope", async () => {
+  it("does not retain the removed insights follow-up endpoints", async () => {
     const { app, authorization } = await createInsightsApp("operator", {
       initialFeatureConfig: { insight_enabled: 1 },
     });
 
-    const response = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "done" },
-      url: "/api/server/insights/action-items/404/status",
-    });
+    const responses = await Promise.all([
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/follow-ups",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "PATCH",
+        payload: { status: "done" },
+        url: "/api/server/insights/action-items/404/status",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "POST",
+        payload: {},
+        url: "/api/server/insights/action-items",
+      }),
+    ]);
 
     await app.close();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
-        message: "待处理事项不存在",
-      },
-      success: false,
-    });
+    expect(responses.map((response) => response.statusCode)).toEqual([404, 404, 404]);
   });
 
   it("keeps AI detail available in basic mode", async () => {
@@ -550,30 +447,6 @@ describe("insights routes", () => {
       data: { messages: expect.any(Array) },
       success: true,
     });
-  });
-
-  it("rejects manual action item titles longer than the database column", async () => {
-    const { app, authorization, db } = await createInsightsApp("operator");
-
-    const response = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        conversationId: "301",
-        priority: "high",
-        sessionId: "501",
-        title: "回".repeat(256),
-      },
-      url: "/api/server/insights/action-items",
-    });
-
-    await app.close();
-
-    expect(response.statusCode).toBe(400);
-    expect(db.insertedActionItem).toBeUndefined();
   });
 
   it("allows only admins to read settings", async () => {
@@ -1557,6 +1430,7 @@ function createInsightsDbMock(options: {
           {
             action_id: 801,
             action_status: state.actionStatus,
+            assignee_sub_user_id: 1,
             action_type: "logistics_check",
             conversation_id: 301,
             created_at: 1_780_244_000_000,

@@ -1,16 +1,16 @@
 import { useRef, useState } from "react";
 import type {
-  InsightActionStatus,
   InsightDetailResponse,
   InsightSessionMessagesResponse,
+  TicketStatus,
 } from "@chatai/contracts";
 import {
   getInsightDetail,
   getInsightSessionMessages,
-  updateInsightActionStatus,
 } from "./api/insights-service";
+import { updateTicket } from "@/pages/chat/tickets/api/tickets-service";
 
-type DetailActionStatus = Extract<InsightActionStatus, "done" | "dismissed" | "open">;
+type DetailActionStatus = Extract<TicketStatus, "canceled" | "done" | "open">;
 
 export function useInsightDetail() {
   const [detail, setDetail] = useState<InsightDetailResponse>();
@@ -93,8 +93,12 @@ export function useInsightDetail() {
     }
   }
 
-  async function updateActionStatus(actionItemId: string, status: DetailActionStatus) {
-    await updateInsightActionStatus(actionItemId, status);
+  async function updateActionStatus(
+    ticketId: string,
+    expectedStatus: TicketStatus,
+    status: DetailActionStatus,
+  ) {
+    await updateTicket(ticketId, { expectedStatus, status });
     setDetail((current) => {
       if (!current) {
         return current;
@@ -103,7 +107,7 @@ export function useInsightDetail() {
       return {
         ...current,
         actionItems: current.actionItems.map((item) =>
-          item.actionItemId === actionItemId ? { ...item, status } : item,
+          item.ticketId === ticketId ? { ...item, status } : item,
         ),
       };
     });

@@ -46,10 +46,11 @@ export type TicketsActorScope = {
 export interface TicketsRepositoryPort {
   addTicketComment(input: {
     content: string;
+    enforceWriteAccess: boolean;
     operatorSubUserId: number;
     ticketId: number;
     uid: number;
-  }): Promise<TicketActivityRecord>;
+  }): Promise<TicketActivityRecord | undefined>;
   canAccessConversation(input: {
     conversationId: number;
     subUserId: number;
@@ -108,7 +109,6 @@ export interface TicketsRepositoryPort {
   }): Promise<TicketContextOptionsResponse["assignees"]>;
   listCustomerConversationIds(input: {
     platform: number;
-    subUserId: number;
     thirdExternalUserId: string;
     uid: number;
   }): Promise<number[]>;
@@ -132,6 +132,7 @@ export interface TicketsRepositoryPort {
   listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage>;
   updateTicket(input: {
     activities: TicketMutationActivity[];
+    enforceWriteAccess: boolean;
     expectedStatuses?: string[];
     operatorSubUserId: number;
     ticketId: number;
@@ -458,6 +459,7 @@ export class TicketsService {
     if (Object.keys(mutation.values).length > 0) {
       const updated = await this.repository.updateTicket({
         activities: mutation.activities,
+        enforceWriteAccess: !hasGlobalTicketAccess(actor),
         expectedStatuses: mutation.expectedStatuses,
         operatorSubUserId: subUserId,
         ticketId,
@@ -525,10 +527,15 @@ export class TicketsService {
 
     const activity = await this.repository.addTicketComment({
       content,
+      enforceWriteAccess: !hasGlobalTicketAccess(actor),
       operatorSubUserId: subUserId,
       ticketId,
       uid: actor.uid,
     });
+
+    if (!activity) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "工单负责人已变化，当前无权添加备注");
+    }
 
     return { activity: mapTicketActivity(activity) };
   }
@@ -728,7 +735,6 @@ export class TicketsService {
 
     const conversationIds = await this.repository.listCustomerConversationIds({
       platform: identity.platform,
-      subUserId,
       thirdExternalUserId: identity.thirdExternalUserId,
       uid,
     });

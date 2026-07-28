@@ -160,7 +160,6 @@ describe("TicketsService", () => {
     });
     expect(repository.listCustomerConversationIds).toHaveBeenCalledWith({
       platform: 5,
-      subUserId: 101,
       thirdExternalUserId: "customer-1",
       uid: 9001,
     });
@@ -350,7 +349,9 @@ describe("TicketsService", () => {
       createdBySubUserId: "101",
     });
     await service.updateTicket(createActor("operator"), "501", { priority: "high" });
-    expect(repository.updateTicket).toHaveBeenCalled();
+    expect(repository.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
+      enforceWriteAccess: true,
+    }));
 
     repository.getTicketRecordById.mockResolvedValueOnce({
       ...baseRecord,
@@ -472,6 +473,7 @@ describe("TicketsService", () => {
     await service.addComment(createActor("operator"), "501", { content: "  已电话确认  " });
     expect(repository.addTicketComment).toHaveBeenCalledWith(expect.objectContaining({
       content: "已电话确认",
+      enforceWriteAccess: true,
     }));
 
     repository.getTicketRecordById.mockResolvedValueOnce({

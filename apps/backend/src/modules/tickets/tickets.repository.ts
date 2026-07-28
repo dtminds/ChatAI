@@ -197,29 +197,13 @@ export class TicketsRepository {
 
   async listCustomerConversationIds(input: {
     platform: number;
-    subUserId: number;
     thirdExternalUserId: string;
     uid: number;
   }) {
     const rows = await this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as access_seat", (join) =>
-        join
-          .onRef("access_seat.id", "=", "relation.user_seat_id")
-          .onRef("access_seat.uid", "=", "relation.uid")
-          .onRef("access_seat.platform", "=", "relation.platform"),
-      )
-      .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
-        join
-          .onRef("conversation.third_userid", "=", "access_seat.third_userid")
-          .onRef("conversation.uid", "=", "access_seat.uid")
-          .onRef("conversation.platform", "=", "access_seat.platform"),
-      )
+      .selectFrom("xy_wap_embed_conversation as conversation")
       .select("conversation.id")
       .distinct()
-      .where("relation.uid", "=", input.uid)
-      .where("relation.sub_id", "=", input.subUserId)
-      .where("access_seat.biz_status", "=", 1)
       .where("conversation.uid", "=", input.uid)
       .where("conversation.platform", "=", input.platform)
       .where("conversation.third_external_userid", "=", input.thirdExternalUserId)
@@ -684,6 +668,7 @@ export class TicketsRepository {
 
   async updateTicket(input: {
     activities: TicketMutationActivity[];
+    enforceWriteAccess: boolean;
     expectedStatuses?: string[];
     operatorSubUserId: number;
     ticketId: number;
@@ -733,6 +718,17 @@ export class TicketsRepository {
 
       if (input.expectedStatuses?.length) {
         update = update.where("status", "in", input.expectedStatuses);
+      }
+      if (input.enforceWriteAccess) {
+        update = update.where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("assignee_sub_user_id", "=", input.operatorSubUserId),
+            expressionBuilder.and([
+              expressionBuilder("source_type", "=", "manual"),
+              expressionBuilder("created_by_sub_user_id", "=", input.operatorSubUserId),
+            ]),
+          ]),
+        );
       }
 
       const result = await update.executeTakeFirst();
@@ -785,11 +781,38 @@ export class TicketsRepository {
 
   async addTicketComment(input: {
     content: string;
+    enforceWriteAccess: boolean;
     operatorSubUserId: number;
     ticketId: number;
     uid: number;
-  }): Promise<TicketActivityRecord> {
+  }): Promise<TicketActivityRecord | undefined> {
     const activityId = await this.db.transaction().execute(async (transaction) => {
+      let update = transaction
+        .updateTable("xy_wap_embed_session_action_item")
+        .set({
+          update_time: new Date(),
+          updated_by_sub_user_id: input.operatorSubUserId,
+        })
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.ticketId);
+
+      if (input.enforceWriteAccess) {
+        update = update.where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("assignee_sub_user_id", "=", input.operatorSubUserId),
+            expressionBuilder.and([
+              expressionBuilder("source_type", "=", "manual"),
+              expressionBuilder("created_by_sub_user_id", "=", input.operatorSubUserId),
+            ]),
+          ]),
+        );
+      }
+
+      const updateResult = await update.executeTakeFirst();
+      if (Number(updateResult.numUpdatedRows) !== 1) {
+        return undefined;
+      }
+
       const insert = await transaction
         .insertInto("xy_wap_embed_ticket_activity")
         .values({
@@ -802,17 +825,12 @@ export class TicketsRepository {
           uid: input.uid,
         })
         .executeTakeFirstOrThrow();
-      await transaction
-        .updateTable("xy_wap_embed_session_action_item")
-        .set({
-          update_time: new Date(),
-          updated_by_sub_user_id: input.operatorSubUserId,
-        })
-        .where("uid", "=", input.uid)
-        .where("id", "=", input.ticketId)
-        .executeTakeFirstOrThrow();
       return Number(insert.insertId);
     });
+
+    if (activityId == null) {
+      return undefined;
+    }
     const activities = await this.listTicketActivities({ ticketId: input.ticketId, uid: input.uid });
     const activity = activities.find((item) => item.activityId === String(activityId));
 
@@ -921,6 +939,7 @@ export class TicketsRepository {
             .whereRef("reception_seat.uid", "=", "conversation.uid")
             .whereRef("reception_seat.platform", "=", "conversation.platform")
             .whereRef("reception_seat.third_userid", "=", "conversation.third_userid")
+            .where("reception_seat.biz_status", "=", 1)
             .where("reception_seat.host_sub_id", "=", input.subUserId),
         ),
       );
@@ -969,6 +988,7 @@ export class TicketsRepository {
         .whereRef("access_seat.uid", "=", "conversation.uid")
         .whereRef("access_seat.platform", "=", "conversation.platform")
         .whereRef("access_seat.third_userid", "=", "conversation.third_userid")
+        .where("access_seat.biz_status", "=", 1)
         .where("relation.uid", "=", input.uid)
         .where("relation.sub_id", "=", input.subUserId),
     );

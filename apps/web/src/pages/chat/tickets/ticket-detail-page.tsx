@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TicketActivity, TicketDetailResponse, TicketStatus, TicketUpdateRequest } from "@chatai/contracts";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,23 @@ export function TicketDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [comment, setComment] = useState("");
   const [form, setForm] = useState({ assigneeSubUserId: "", description: "", dueAt: "", priority: "medium", title: "" });
+  const activeTicketIdRef = useRef(ticketId);
+  const loadGenerationRef = useRef(0);
+  activeTicketIdRef.current = ticketId;
 
   const load = useCallback(async () => {
+    const requestedTicketId = ticketId;
+    const generation = ++loadGenerationRef.current;
+
+    if (activeTicketIdRef.current !== requestedTicketId) return;
     setIsLoading(true);
     setError(undefined);
     try {
-      const next = await getTicketDetail(ticketId);
+      const next = await getTicketDetail(requestedTicketId);
+      if (
+        activeTicketIdRef.current !== requestedTicketId
+        || loadGenerationRef.current !== generation
+      ) return;
       setDetail(next);
       setForm({
         assigneeSubUserId: next.ticket.assignee?.subUserId ?? "unassigned",
@@ -35,9 +46,18 @@ export function TicketDetailPage() {
         title: next.ticket.title,
       });
     } catch (cause) {
+      if (
+        activeTicketIdRef.current !== requestedTicketId
+        || loadGenerationRef.current !== generation
+      ) return;
       setError(cause instanceof Error ? cause.message : "工单加载失败");
     } finally {
-      setIsLoading(false);
+      if (
+        activeTicketIdRef.current === requestedTicketId
+        && loadGenerationRef.current === generation
+      ) {
+        setIsLoading(false);
+      }
     }
   }, [ticketId]);
 

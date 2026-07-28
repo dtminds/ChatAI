@@ -54,7 +54,9 @@ describe("TicketsRepository", () => {
       uid: 9001,
       view: "reception",
     });
-    expect(reception.queries.map(normalizeSql).join("\n")).toContain("host_sub_id = ?");
+    const receptionSql = reception.queries.map(normalizeSql).join("\n");
+    expect(receptionSql).toContain("host_sub_id = ?");
+    expect(receptionSql).toContain("reception_seat.biz_status = ?");
 
     const unassigned = createRecordingDatabase();
     const unassignedRepository = new TicketsRepository(unassigned.db);
@@ -69,6 +71,7 @@ describe("TicketsRepository", () => {
     const sql = unassigned.queries.map(normalizeSql).join("\n");
     expect(sql).toContain("ticket.assignee_sub_user_id is null");
     expect(sql).toContain("relation.sub_id = ?");
+    expect(sql).toContain("access_seat.biz_status = ?");
     expect(sql).toContain("ticket.status = ?");
   });
 
@@ -101,15 +104,13 @@ describe("TicketsRepository", () => {
 
     await repository.listCustomerConversationIds({
       platform: 5,
-      subUserId: 101,
       thirdExternalUserId: "customer-1",
       uid: 9001,
     });
 
     const sql = queries.map(normalizeSql).join("\n");
-    expect(sql).toContain("xy_wap_embed_user_seat_sub_relation as relation");
-    expect(sql).toContain("xy_wap_embed_user_seat as access_seat");
-    expect(sql).toContain("relation.sub_id = ?");
+    expect(sql).not.toContain("xy_wap_embed_user_seat_sub_relation as relation");
+    expect(sql).not.toContain("relation.sub_id = ?");
     expect(sql).toContain("conversation.uid = ?");
     expect(sql).toContain("conversation.platform = ?");
     expect(sql).toContain("conversation.third_external_userid = ?");
@@ -267,6 +268,7 @@ describe("TicketsRepository", () => {
         activityType: "status_changed",
         detail: { after: "done", before: "open" },
       }],
+      enforceWriteAccess: true,
       expectedStatuses: ["open"],
       operatorSubUserId: 101,
       ticketId: 501,
@@ -281,6 +283,8 @@ describe("TicketsRepository", () => {
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("update xy_wap_embed_session_action_item");
     expect(sql).toContain("status in (?)");
+    expect(sql).toContain("assignee_sub_user_id = ?");
+    expect(sql).toContain("created_by_sub_user_id = ?");
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
@@ -297,6 +301,24 @@ describe("TicketsRepository", () => {
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("assignee_sub_user_id is null");
     expect(sql).toContain("status = ?");
+    expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
+  });
+
+  it("fences comments by the same current-writer predicate as ticket updates", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.addTicketComment({
+      content: "已电话确认",
+      enforceWriteAccess: true,
+      operatorSubUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+    })).rejects.toThrow("TICKET_ACTIVITY_NOT_FOUND_AFTER_INSERT");
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("assignee_sub_user_id = ?");
+    expect(sql).toContain("created_by_sub_user_id = ?");
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
   });
 

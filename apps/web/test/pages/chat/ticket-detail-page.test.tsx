@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 
@@ -71,5 +72,38 @@ describe("TicketDetailPage", () => {
     renderPage();
     await screen.findByRole("heading", { name: "跟进退款" });
     expect(screen.getByText("关联聊天加载失败")).toBeInTheDocument();
+  });
+
+  it("does not let an older ticket response replace the current route", async () => {
+    let resolveFirst!: (value: typeof baseDetail) => void;
+    api.getTicketDetail
+      .mockReset()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({
+        ...baseDetail,
+        ticket: { ...baseDetail.ticket, ticketId: "502", title: "确认发票" },
+      });
+
+    function NavigateToCurrentTicket() {
+      const navigate = useNavigate();
+      useEffect(() => { navigate("/chat/tickets/502"); }, [navigate]);
+      return null;
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/chat/tickets/501"]}>
+        <Routes>
+          <Route
+            element={<><NavigateToCurrentTicket /><TicketDetailPage /></>}
+            path="/chat/tickets/:ticketId"
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "确认发票" });
+    resolveFirst(baseDetail);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("heading", { name: "跟进退款" })).not.toBeInTheDocument();
   });
 });

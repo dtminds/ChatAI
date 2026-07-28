@@ -275,6 +275,86 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.limitCalls).toEqual([10]);
   });
 
+  it("checks only the latest non-deleted conversation ticket against the session start", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_session_action_item"
+          ? [{ create_time: new Date(1_780_244_001_000) }]
+          : [{ started_at: 1_780_244_000_000 }];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(true);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_session_action_item");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "conversation_id",
+      "=",
+      301,
+    ]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "!=", "deleted"]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["id", "desc"]);
+    expect(builders[0]?.limitCalls).toEqual([1]);
+    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session");
+    expect(builders[1]?.whereCalls).toContainEqual(["id", "=", 501]);
+    expect(builders[1]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+  });
+
+  it("does not suppress ticket generation when the latest ticket predates the session", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_session_action_item"
+            ? [{ create_time: new Date(1_780_243_999_000) }]
+            : [{ started_at: 1_780_244_000_000 }],
+          table,
+        ),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("does not read the session start when the conversation has no ticket", async () => {
+    const selectedTables: string[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        selectedTables.push(table);
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+
+    expect(selectedTables).toEqual(["xy_wap_embed_session_action_item"]);
+  });
+
   it("reads the global sync cursor through the non-null uid sentinel", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {

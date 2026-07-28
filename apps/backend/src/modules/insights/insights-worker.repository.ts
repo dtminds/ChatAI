@@ -2311,6 +2311,36 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }));
   }
 
+  async hasTicketCreatedAfterSessionStart(input: {
+    conversationId: string;
+    sessionId: string;
+    uid: number;
+  }) {
+    const latestTicket = await this.db
+      .selectFrom("xy_wap_embed_session_action_item")
+      .select("create_time")
+      .where("uid", "=", input.uid)
+      .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .where("status", "!=", "deleted")
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst() as { create_time: Date | string } | undefined;
+
+    if (!latestTicket) {
+      return false;
+    }
+
+    const session = await this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select("started_at")
+      .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("uid", "=", input.uid)
+      .executeTakeFirst() as { started_at: number | string } | undefined;
+
+    return session != null
+      && new Date(latestTicket.create_time).getTime() > parseNumber(session.started_at);
+  }
+
   async startAnalysisRun(input: {
     analysisScope: "all";
     jobId: string;

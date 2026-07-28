@@ -178,6 +178,7 @@ function createRepository(
       qaRuleConfigs: [],
     })),
     listPreviousSessionContexts: vi.fn(async () => []),
+    hasTicketCreatedAfterSessionStart: vi.fn(async () => false),
     getAnalysisPolicy: vi.fn(async () => ({
       minAnalysisMessages: 1,
       lowConfidenceThreshold: 0.6,
@@ -3638,6 +3639,87 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
+    expect(repository.listRecentActionItemsForPrompt).not.toHaveBeenCalled();
+    expect(repository.hasTicketCreatedAfterSessionStart).not.toHaveBeenCalled();
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingActionItems: [],
+        generateActionItems: false,
+      }),
+    );
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          actionItems: [],
+        }),
+      }),
+    );
+  });
+
+  it("does not request or persist final action items when the conversation has a ticket created after the session started", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      hasTicketCreatedAfterSessionStart: vi.fn(async () => true),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [
+          {
+            evidenceMessageIds: ["9001"],
+            priority: "high" as const,
+            title: "跟进物流异常",
+          },
+        ],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown" as const,
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客服处理中",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.hasTicketCreatedAfterSessionStart).toHaveBeenCalledWith({
+      conversationId: "301",
+      sessionId: "501",
+      uid: 9001,
+    });
     expect(repository.listRecentActionItemsForPrompt).not.toHaveBeenCalled();
     expect(model.analyzeSession).toHaveBeenCalledWith(
       expect.objectContaining({

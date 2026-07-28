@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
+import { formatUnreadCount } from "@/pages/chat/components/unread-count-badge";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 import { getTicketCounts } from "@/pages/chat/tickets/api/tickets-service";
 
@@ -308,8 +309,8 @@ export function AccountRail({
                 </Badge>
               ) : null}
               {"ticketCount" in item && (ticketCount ?? 0) > 0 ? (
-                <Badge className="ml-auto h-5 min-w-5 justify-center px-1.5 py-0 text-[10px] leading-none">
-                  {ticketCount}
+                <Badge className="ml-auto h-4 min-w-4 justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums">
+                  {formatUnreadCount(ticketCount ?? 0)}
                 </Badge>
               ) : null}
               {item.moduleEntry ? (

@@ -1445,6 +1445,7 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
     modelId,
     promptConfig: {
       availableKbIds: collectAvailableKnowledgeBaseIds(form.conditionalLogic),
+      availableSkillIds: collectAvailableSkillIds(form.conditionalLogic),
       conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
       handoffRules: form.transferToHumanConditions,
       replyStyle: {
@@ -1495,13 +1496,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditionalLogic"]) {
   return segments
-    .map((segment) =>
-      segment.type === "knowledgeBase"
-        ? `<resource type="knowledge_base" kbId="${escapeResourceAttribute(
-            segment.id,
-          )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`
-        : segment.value,
-    )
+    .map((segment) => {
+      if (segment.type === "knowledgeBase") {
+        return `<resource type="knowledge_base" kbId="${escapeResourceAttribute(
+          segment.id,
+        )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`;
+      }
+
+      if (segment.type === "skill") {
+        return `<resource type="skill" skillId="${escapeResourceAttribute(
+          segment.id,
+        )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`;
+      }
+
+      return segment.value;
+    })
     .join("");
 }
 
@@ -1511,7 +1520,7 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   }
 
   const segments: AgentSettingsForm["conditionalLogic"] = [];
-  const tokenPattern = /<resource\s+type="knowledge_base"\s+kbId="([^"]+)"\s+name="([^"]*)"\s*\/>/g;
+  const tokenPattern = /<resource\b[^>]*\/>/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -1520,14 +1529,31 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
       segments.push({ type: "text", value: value.slice(lastIndex, match.index) });
     }
 
-    const id = unescapeResourceAttribute(match[1] ?? "");
-    const name = unescapeResourceAttribute(match[2] ?? "");
+    const token = match[0] ?? "";
+    const type = readResourceAttribute(token, "type");
+    const name = unescapeResourceAttribute(readResourceAttribute(token, "name"));
 
-    segments.push({
-      id,
-      name: name || undefined,
-      type: "knowledgeBase",
-    });
+    if (type === "knowledge_base") {
+      const id = unescapeResourceAttribute(readResourceAttribute(token, "kbId"));
+      if (id) {
+        segments.push({
+          id,
+          name: name || undefined,
+          type: "knowledgeBase",
+        });
+      }
+    } else if (type === "skill") {
+      const id = unescapeResourceAttribute(readResourceAttribute(token, "skillId"));
+      if (id) {
+        segments.push({
+          id,
+          name: name || undefined,
+          type: "skill",
+        });
+      }
+    } else {
+      segments.push({ type: "text", value: token });
+    }
 
     lastIndex = match.index + match[0].length;
   }
@@ -1548,6 +1574,22 @@ function collectAvailableKnowledgeBaseIds(segments: AgentSettingsForm["condition
     .filter((id) => Number.isSafeInteger(id) && id > 0);
 
   return Array.from(new Set(ids));
+}
+
+function collectAvailableSkillIds(segments: AgentSettingsForm["conditionalLogic"]) {
+  const ids = segments
+    .filter((segment): segment is Extract<AgentSettingsForm["conditionalLogic"][number], { type: "skill" }> =>
+      segment.type === "skill",
+    )
+    .map((segment) => Number(segment.id))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+
+  return Array.from(new Set(ids));
+}
+
+function readResourceAttribute(token: string, attribute: string) {
+  const matched = token.match(new RegExp(`${attribute}="([^"]*)"`));
+  return matched?.[1] ?? "";
 }
 
 function escapeResourceAttribute(value: string) {

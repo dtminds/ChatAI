@@ -155,6 +155,7 @@ describe("AI hosting agent routes", () => {
 
     db.setAgentPromptConfig({
       availableKbIds: [1, 3, 1],
+      availableSkillIds: [],
       conditionLogic: "如果客户咨询成分，那么说明功效",
     });
 
@@ -308,6 +309,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如何客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -346,6 +348,7 @@ describe("AI hosting agent routes", () => {
     expect(db.updatedAgents[0]?.values).not.toHaveProperty("name");
     expect(JSON.parse(String(db.updatedAgents[0]?.values.prompt_config))).toEqual({
       available_kb_ids: [1, 3],
+      available_skill_ids: [],
       condition_logic: "如何客户咨询成分，那么说明功效",
       handoff_rules: "客户要求真人",
       reply_style: {
@@ -429,6 +432,7 @@ describe("AI hosting agent routes", () => {
         name: "售后小助理",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -464,6 +468,7 @@ describe("AI hosting agent routes", () => {
     });
     expect(JSON.parse(String(db.insertedAgent?.prompt_config))).toEqual({
       available_kb_ids: [],
+      available_skill_ids: [],
       condition_logic: "",
       handoff_rules: "退款投诉",
       reply_style: {
@@ -500,6 +505,7 @@ describe("AI hosting agent routes", () => {
         name: "超额小助理",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -553,6 +559,7 @@ describe("AI hosting agent routes", () => {
       const headers = { authorization };
       const promptConfig = {
         availableKbIds: [1, 3],
+        availableSkillIds: [],
         conditionLogic: "",
         replyStyle: {
           length: "简洁",
@@ -1224,6 +1231,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -1260,6 +1268,7 @@ describe("AI hosting agent routes", () => {
       modelId: 11,
       promptConfig: JSON.stringify({
         available_kb_ids: [1, 3],
+        available_skill_ids: [],
         condition_logic: "如果客户咨询成分，那么说明功效",
         handoff_rules: "客户要求真人",
         reply_style: {
@@ -1304,6 +1313,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1358,6 +1368,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1412,6 +1423,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1466,6 +1478,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1840,9 +1853,17 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
     },
-    setAgentPromptConfig: (prompt: { availableKbIds: number[]; conditionLogic: string }) => {
+    setAgentPromptConfig: (prompt: {
+      availableKbIds: number[];
+      availableSkillIds?: number[];
+      conditionLogic: string;
+    }) => {
       agentPrompt = prompt.conditionLogic;
-      agents[0].prompt_config = buildPromptConfig(prompt.conditionLogic, prompt.availableKbIds);
+      agents[0].prompt_config = buildPromptConfig(
+        prompt.conditionLogic,
+        prompt.availableKbIds,
+        prompt.availableSkillIds ?? [],
+      );
     },
     clearHistories: () => {
       histories.splice(0, histories.length);
@@ -2371,9 +2392,14 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   return state;
 }
 
-function buildPromptConfig(conditionLogic: string, availableKbIds = [1, 3]) {
+function buildPromptConfig(
+  conditionLogic: string,
+  availableKbIds = [1, 3],
+  availableSkillIds: number[] = [],
+) {
   return JSON.stringify({
     available_kb_ids: availableKbIds,
+    available_skill_ids: availableSkillIds,
     condition_logic: conditionLogic,
     reply_style: {
       length: "简洁",

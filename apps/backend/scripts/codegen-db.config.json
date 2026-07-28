@@ -4,6 +4,7 @@
     "xy_wap_embed_agent",
     "xy_wap_embed_agent_answer_record",
     "xy_wap_embed_agent_history",
+    "xy_wap_embed_agent_skill",
     "xy_wap_embed_ai_model",
     "xy_wap_embed_contact",
     "xy_wap_embed_conversation",

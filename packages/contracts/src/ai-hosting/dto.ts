@@ -17,6 +17,7 @@ export const AiHostingQuotaOverviewSchema = Type.Object({
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
   availableKbIds: Type.Array(Type.Number()),
+  availableSkillIds: Type.Array(Type.Number()),
   conditionLogic: Type.String(),
   handoffRules: Type.String({ maxLength: 2000 }),
   replyStyle: Type.Object({

@@ -34,10 +34,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { listCdpTagGroups } from "./api/cdp-tag-service";
 import { listCustomFields } from "./api/custom-field-service";
+import { listSystemVariables } from "./api/system-variable-service";
 import { listWorkTagGroups, listWorkTags } from "./api/work-tag-service";
 import {
-  buildVariablePlaceholder,
-  skillVariableStorageId,
+  buildSkillVariableResourceItem,
   type SkillResourceItem,
   type SkillVariableConfig,
 } from "./ai-skill-resource";
@@ -50,6 +50,19 @@ type WecomTagMode = "normal" | "exclusive";
 const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
 /** 小店标签对应 Java type=12 星云客户标签 */
 const MALL_TAG_TYPE = 12 as const;
+/** 企微 / 小店标签搜索防抖，与知识库等列表搜索对齐 */
+const TAG_SEARCH_DEBOUNCE_MS = 300;
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
 
 export type InsertVariableInitialConfigure = {
   kind: VariableKind;
@@ -106,11 +119,10 @@ const variableOptions: ReadonlyArray<{
   },
 ];
 
-const systemVariables = [
-  { key: "last_handoff_time", name: "上一次转人工时间" },
-  { key: "customer_nickname", name: "客户昵称" },
-  { key: "current_agent_name", name: "当前接待 Agent" },
-] as const;
+type SystemVariableOption = {
+  key: string;
+  name: string;
+};
 
 const tagKindOptions: ReadonlyArray<{ label: string; value: TagKind }> = [
   { label: "企微标签", value: "work_tag" },
@@ -156,6 +168,11 @@ export function InsertVariableDialog({
   const [customInfoFieldsLoading, setCustomInfoFieldsLoading] = useState(false);
   const [customInfoFieldsError, setCustomInfoFieldsError] = useState(false);
   const [systemVariableKey, setSystemVariableKey] = useState("");
+  const [systemVariables, setSystemVariables] = useState<SystemVariableOption[]>(
+    [],
+  );
+  const [systemVariablesLoading, setSystemVariablesLoading] = useState(false);
+  const [systemVariablesError, setSystemVariablesError] = useState(false);
   const [tagKind, setTagKind] = useState<TagKind>("work_tag");
   const [wecomMode, setWecomMode] = useState<WecomTagMode>("normal");
   const [workTagGroups, setWorkTagGroups] = useState<WorkTagGroupOption[]>([]);
@@ -181,6 +198,16 @@ export function InsertVariableDialog({
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [groupQuery, setGroupQuery] = useState("");
   const [tagQuery, setTagQuery] = useState("");
+  const debouncedGroupQuery = useDebouncedValue(
+    groupQuery.trim().toLowerCase(),
+    TAG_SEARCH_DEBOUNCE_MS,
+  );
+  const normalizedTagQuery = tagQuery.trim();
+  const debouncedTagQuery = useDebouncedValue(
+    normalizedTagQuery,
+    TAG_SEARCH_DEBOUNCE_MS,
+  );
+  const isTagQueryDebouncing = normalizedTagQuery !== debouncedTagQuery;
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
 
   useEffect(() => {
@@ -233,6 +260,56 @@ export function InsertVariableDialog({
     }
 
     void loadCustomFields();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, variableKind]);
+
+  useEffect(() => {
+    if (!open || step !== "configure" || variableKind !== "system_variable") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSystemVariables() {
+      setSystemVariablesLoading(true);
+      setSystemVariablesError(false);
+
+      try {
+        const response = await listSystemVariables();
+        if (cancelled) {
+          return;
+        }
+
+        const variables = response.variables.map((item) => ({
+          key: item.key,
+          name: item.name,
+        }));
+        setSystemVariables(variables);
+        setSystemVariableKey((current) => {
+          if (current && variables.some((item) => item.key === current)) {
+            return current;
+          }
+
+          return "";
+        });
+      } catch {
+        if (!cancelled) {
+          setSystemVariables([]);
+          setSystemVariableKey("");
+          setSystemVariablesError(true);
+          toast.error("系统变量加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setSystemVariablesLoading(false);
+        }
+      }
+    }
+
+    void loadSystemVariables();
 
     return () => {
       cancelled = true;
@@ -416,13 +493,14 @@ export function InsertVariableDialog({
   }, [tagKind, workTagGroups]);
 
   const filteredGroups = useMemo(() => {
-    const query = groupQuery.trim().toLowerCase();
-    if (!query) {
+    if (!debouncedGroupQuery) {
       return tagGroups;
     }
 
-    return tagGroups.filter((group) => group.name.toLowerCase().includes(query));
-  }, [groupQuery, tagGroups]);
+    return tagGroups.filter((group) =>
+      group.name.toLowerCase().includes(debouncedGroupQuery),
+    );
+  }, [debouncedGroupQuery, tagGroups]);
 
   const resolvedActiveGroupId =
     activeGroupId && filteredGroups.some((group) => group.id === activeGroupId)
@@ -449,6 +527,14 @@ export function InsertVariableDialog({
       return;
     }
 
+    // 输入中跳过请求；清空搜索（切组 / 清关键字）立即拉取
+    if (isTagQueryDebouncing && normalizedTagQuery !== "") {
+      return;
+    }
+
+    const keyword =
+      normalizedTagQuery === "" ? "" : debouncedTagQuery;
+
     let cancelled = false;
 
     async function loadComponentTags() {
@@ -458,7 +544,7 @@ export function InsertVariableDialog({
       try {
         const response = await listWorkTags({
           groupId: resolvedActiveGroupId ?? undefined,
-          keyword: tagQuery.trim() || undefined,
+          keyword: keyword || undefined,
           page: 1,
           pageSize: 100,
           type: componentType!,
@@ -486,19 +572,25 @@ export function InsertVariableDialog({
       }
     }
 
-    const timer = window.setTimeout(() => {
-      void loadComponentTags();
-    }, tagQuery.trim() ? 250 : 0);
+    void loadComponentTags();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [open, resolvedActiveGroupId, step, tagKind, tagQuery, variableKind]);
+  }, [
+    debouncedTagQuery,
+    isTagQueryDebouncing,
+    normalizedTagQuery,
+    open,
+    resolvedActiveGroupId,
+    step,
+    tagKind,
+    variableKind,
+  ]);
 
   const filteredTags = useMemo(() => {
     if (tagKind === "mall_tag") {
-      const query = tagQuery.trim().toLowerCase();
+      const query = debouncedTagQuery.toLowerCase();
       return mallAllTags
         .filter((tag) =>
           resolvedActiveGroupId == null
@@ -514,7 +606,7 @@ export function InsertVariableDialog({
     }
 
     const tags = activeGroup?.tags ?? [];
-    const query = tagQuery.trim().toLowerCase();
+    const query = debouncedTagQuery.toLowerCase();
     if (!query) {
       return tags;
     }
@@ -522,10 +614,10 @@ export function InsertVariableDialog({
     return tags.filter((tag) => tag.name.toLowerCase().includes(query));
   }, [
     activeGroup,
+    debouncedTagQuery,
     mallAllTags,
     resolvedActiveGroupId,
     tagKind,
-    tagQuery,
     workTags,
   ]);
 
@@ -582,6 +674,8 @@ export function InsertVariableDialog({
     setVariableKind(null);
     setCustomFieldId("");
     setSystemVariableKey("");
+    setSystemVariables([]);
+    setSystemVariablesError(false);
     setTagKind("work_tag");
     setWecomMode("normal");
     setSelectedTagIds([]);
@@ -599,6 +693,8 @@ export function InsertVariableDialog({
     setVariableKind(kind);
     setCustomFieldId("");
     setSystemVariableKey("");
+    setSystemVariables([]);
+    setSystemVariablesError(false);
     setTagKind(nextTagKind);
     setWecomMode("normal");
     setSelectedTagIds([]);
@@ -620,14 +716,8 @@ export function InsertVariableDialog({
     setStep("pick");
   }
 
-  function emitVariable(variable: SkillVariableConfig, description: string, title: string) {
-    onConfirm({
-      description,
-      id: skillVariableStorageId(variable),
-      placeholder: buildVariablePlaceholder(variable),
-      title,
-      variable,
-    });
+  function emitVariable(variable: SkillVariableConfig, displayName?: string) {
+    onConfirm(buildSkillVariableResourceItem(variable, displayName));
     onOpenChange(false);
   }
 
@@ -642,15 +732,11 @@ export function InsertVariableDialog({
         return;
       }
 
-      emitVariable(
-        {
-          name: field.name,
-          select_id: field.id,
-          type: "custom_field",
-        },
-        "查询聊天客户的自定义属性后，插入到指定位置",
-        `客户自定义属性 · ${field.name}`,
-      );
+      emitVariable({
+        name: field.name,
+        select_id: field.id,
+        type: "custom_field",
+      });
       return;
     }
 
@@ -660,15 +746,11 @@ export function InsertVariableDialog({
         return;
       }
 
-      emitVariable(
-        {
-          name: systemVariable.name,
-          select_key: systemVariable.key,
-          type: "system_variable",
-        },
-        "查询系统运行时变量，然后插入到指定位置",
-        `系统变量 · ${systemVariable.name}`,
-      );
+      emitVariable({
+        name: systemVariable.name,
+        select_key: systemVariable.key,
+        type: "system_variable",
+      });
       return;
     }
 
@@ -677,15 +759,11 @@ export function InsertVariableDialog({
         return;
       }
 
-      emitVariable(
-        {
-          name: selectedAutoGroup.groupName,
-          select_key: selectedAutoGroup.groupTag,
-          type: "auto_tag",
-        },
-        "查询您指定的自动化标签分组，然后插入到指定位置",
-        `客户标签 · 自动化标签 · ${selectedAutoGroup.groupName}`,
-      );
+      emitVariable({
+        name: selectedAutoGroup.groupName,
+        select_key: selectedAutoGroup.groupTag,
+        type: "auto_tag",
+      });
       return;
     }
 
@@ -695,7 +773,7 @@ export function InsertVariableDialog({
 
     const tagKindLabel =
       tagKindOptions.find((option) => option.value === tagKind)?.label ?? "客户标签";
-    const summary =
+    const tagSummary =
       selectedTagNames.length <= 2
         ? selectedTagNames.join("、")
         : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`;
@@ -707,8 +785,7 @@ export function InsertVariableDialog({
         select_sub_ids: [...selectedTagIds],
         type: tagKind,
       },
-      "查询您指定的客户标签，然后插入到指定位置",
-      `客户标签 · ${tagKindLabel} · ${summary}`,
+      `客户标签 · ${tagKindLabel} · ${activeGroup.name} · ${tagSummary}`,
     );
   }
 
@@ -863,24 +940,48 @@ export function InsertVariableDialog({
                   <Label htmlFor="skill-variable-system-key">
                     <span className="text-destructive">*</span> 变量
                   </Label>
-                  <Select
-                    onValueChange={setSystemVariableKey}
-                    value={systemVariableKey || undefined}
-                  >
-                    <SelectTrigger
-                      className="h-10 w-full"
-                      id="skill-variable-system-key"
+                  {systemVariablesLoading ? (
+                    <div
+                      className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                      role="status"
                     >
-                      <SelectValue placeholder="请选择" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {systemVariables.map((item) => (
-                        <SelectItem key={item.key} value={item.key}>
-                          {item.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <Spinner size={14} />
+                      <span>正在加载</span>
+                    </div>
+                  ) : systemVariablesError ? (
+                    <div
+                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                      role="alert"
+                    >
+                      加载失败
+                    </div>
+                  ) : systemVariables.length === 0 ? (
+                    <div
+                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                      role="status"
+                    >
+                      暂无数据
+                    </div>
+                  ) : (
+                    <Select
+                      onValueChange={setSystemVariableKey}
+                      value={systemVariableKey || undefined}
+                    >
+                      <SelectTrigger
+                        className="h-10 w-full"
+                        id="skill-variable-system-key"
+                      >
+                        <SelectValue placeholder="请选择" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {systemVariables.map((item) => (
+                          <SelectItem key={item.key} value={item.key}>
+                            {item.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <p className="text-sm leading-5 text-muted-foreground">
                     <span className="font-medium text-foreground">温馨提示：</span>
                     工具会读取指定的系统变量，然后告诉智能体该变量当前的值。
@@ -998,9 +1099,15 @@ export function InsertVariableDialog({
                             >
                               {selectedTagNames.length === 0
                                 ? "请选择"
-                                : selectedTagNames.length <= 3
-                                  ? selectedTagNames.join("、")
-                                  : `已选 ${selectedTagNames.length} 个标签`}
+                                : activeGroup
+                                  ? `${activeGroup.name} · ${
+                                      selectedTagNames.length <= 2
+                                        ? selectedTagNames.join("、")
+                                        : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`
+                                    }`
+                                  : selectedTagNames.length <= 3
+                                    ? selectedTagNames.join("、")
+                                    : `已选 ${selectedTagNames.length} 个标签`}
                             </span>
                             <HugeiconsIcon
                               aria-hidden="true"
@@ -1026,6 +1133,8 @@ export function InsertVariableDialog({
                                   setTagQuery("");
                                   setWorkTags([]);
                                   setActiveGroupId(null);
+                                  setSelectedTagIds([]);
+                                  setSelectedTagNameById({});
                                 }}
                                 value={wecomMode}
                               >
@@ -1103,6 +1212,12 @@ export function InsertVariableDialog({
                                             : "text-foreground hover:bg-muted/60",
                                         )}
                                         onClick={() => {
+                                          const currentGroupId =
+                                            activeGroupId ?? resolvedActiveGroupId;
+                                          if (group.id !== currentGroupId) {
+                                            setSelectedTagIds([]);
+                                            setSelectedTagNameById({});
+                                          }
                                           setActiveGroupId(group.id);
                                           setTagQuery("");
                                           setWorkTags([]);

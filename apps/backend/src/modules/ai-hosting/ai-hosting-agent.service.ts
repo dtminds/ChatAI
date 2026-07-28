@@ -803,6 +803,7 @@ function normalizeAgentName(value: string) {
 function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
   return JSON.stringify({
     available_kb_ids: promptConfig.availableKbIds,
+    available_skill_ids: promptConfig.availableSkillIds,
     condition_logic: promptConfig.conditionLogic,
     handoff_rules: promptConfig.handoffRules,
     reply_style: {
@@ -816,6 +817,7 @@ function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
 function parsePromptConfig(value: string | null | undefined): AiHostingAgentPromptConfig {
   const fallback: AiHostingAgentPromptConfig = {
     availableKbIds: [],
+    availableSkillIds: [],
     conditionLogic: "",
     handoffRules: "",
     replyStyle: {
@@ -839,6 +841,7 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
 
     return {
       availableKbIds: readNumberArray(parsed.available_kb_ids),
+      availableSkillIds: readNumberArray(parsed.available_skill_ids),
       conditionLogic: readString(parsed.condition_logic),
       handoffRules: readString(parsed.handoff_rules) || readString(parsed.trans_manual),
       replyStyle: {

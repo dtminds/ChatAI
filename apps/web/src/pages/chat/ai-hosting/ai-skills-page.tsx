@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Add01Icon,
   AiBookIcon,
@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,7 +52,14 @@ import {
 } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import {
+  deleteAgentSkill,
+  listAgentSkills,
+  updateAgentSkillStatus,
+} from "./api/agent-skill-service";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
+import type { AgentSkillListItem } from "@chatai/contracts";
 
 type SkillAccent = "amber" | "slate";
 
@@ -296,54 +304,21 @@ const detailTabs = [
   { label: "技能描述", value: "description" },
 ] as const;
 
-type MySkillStatus = "enabled" | "disabled";
-
-type MySkillItem = {
-  applicationScenario: string;
-  createdAt: string;
-  id: string;
-  name: string;
-  status: MySkillStatus;
-  updatedAt: string;
-};
+type MySkillItem = AgentSkillListItem;
 
 const MY_SKILLS_PAGE_SIZE = 10;
+const MY_SKILLS_SEARCH_DEBOUNCE_MS = 300;
 
-const initialMySkills: MySkillItem[] = [
-  {
-    applicationScenario:
-      "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况",
-    createdAt: "2026-06-18 23:22:22",
-    id: "my-skill-1",
-    name: "订单与物流场景查询",
-    status: "enabled",
-    updatedAt: "2026-06-20 23:22:22",
-  },
-  {
-    applicationScenario:
-      "处理用户的退货、换货、维修等售后申请，判断是否符合售后条件并引导处理流程",
-    createdAt: "2026-06-17 23:22:22",
-    id: "my-skill-2",
-    name: "退换货",
-    status: "disabled",
-    updatedAt: "2026-06-19 23:22:22",
-  },
-  ...Array.from({ length: 20 }, (_, index) => {
-    const number = index + 3;
-    const enabled = number % 2 === 1;
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-    return {
-      applicationScenario: enabled
-        ? "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况"
-        : "处理用户的退货、换货、维修等售后申请，判断是否符合售后条件并引导处理流程",
-      createdAt: `2026-06-${String(Math.max(1, 16 - (index % 10))).padStart(2, "0")} 23:22:22`,
-      id: `my-skill-${number}`,
-      name: enabled ? `订单与物流场景查询 ${number}` : `退换货 ${number}`,
-      status: (enabled ? "enabled" : "disabled") as MySkillStatus,
-      updatedAt: `2026-06-${String(Math.max(1, 20 - (index % 10))).padStart(2, "0")} 23:22:22`,
-    };
-  }),
-];
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
 
 export function AiSkillsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -408,79 +383,120 @@ export function AiSkillsPage() {
 
 function MySkillsPanel() {
   const navigate = useNavigate();
-  const [skills, setSkills] = useState(initialMySkills);
+  const [skills, setSkills] = useState<MySkillItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(
+    searchQuery.trim(),
+    MY_SKILLS_SEARCH_DEBOUNCE_MS,
+  );
   const [page, setPage] = useState(1);
+  const [reloadKey, setReloadKey] = useState(0);
   const [enableTargetId, setEnableTargetId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
 
-  const filteredSkills = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    let cancelled = false;
 
-    if (!keyword) {
-      return skills;
+    async function loadSkills() {
+      setLoading(true);
+      setLoadError(false);
+
+      try {
+        const response = await listAgentSkills({
+          page,
+          pageSize: MY_SKILLS_PAGE_SIZE,
+          query: debouncedSearchQuery || undefined,
+        });
+        if (cancelled) {
+          return;
+        }
+
+        setSkills(response.skills);
+        setTotal(response.pagination.total);
+      } catch {
+        if (!cancelled) {
+          setSkills([]);
+          setTotal(0);
+          setLoadError(true);
+          toast.error("技能列表加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    return skills.filter(
-      (skill) =>
-        skill.name.toLowerCase().includes(keyword) ||
-        skill.applicationScenario.toLowerCase().includes(keyword),
-    );
-  }, [searchQuery, skills]);
+    void loadSkills();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearchQuery, page, reloadKey]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page,
     pageSize: MY_SKILLS_PAGE_SIZE,
-    total: filteredSkills.length,
+    total,
   });
-  const pagedSkills = filteredSkills.slice(
-    (activePage - 1) * MY_SKILLS_PAGE_SIZE,
-    activePage * MY_SKILLS_PAGE_SIZE,
-  );
 
   function handleSearchChange(value: string) {
     setSearchQuery(value);
     setPage(1);
   }
 
-  function handleDisable(skillId: string) {
-    setSkills((current) =>
-      current.map((skill) =>
-        skill.id === skillId
-          ? {
-              ...skill,
-              status: "disabled",
-            }
-          : skill,
-      ),
-    );
-  }
-
-  function handleConfirmEnable() {
-    if (!enableTargetId) {
+  async function handleDisable(skillId: string) {
+    if (actionSubmitting) {
       return;
     }
 
-    setSkills((current) =>
-      current.map((skill) =>
-        skill.id === enableTargetId
-          ? {
-              ...skill,
-              status: "enabled",
-            }
-          : skill,
-      ),
-    );
-    setEnableTargetId(null);
+    setActionSubmitting(true);
+    try {
+      await updateAgentSkillStatus(skillId, "disabled");
+      setReloadKey((current) => current + 1);
+    } catch {
+      toast.error("停用失败，请稍后重试");
+    } finally {
+      setActionSubmitting(false);
+    }
   }
 
-  function handleConfirmDelete() {
-    if (!deleteTargetId) {
+  async function handleConfirmEnable() {
+    if (!enableTargetId || actionSubmitting) {
       return;
     }
 
-    setSkills((current) => current.filter((skill) => skill.id !== deleteTargetId));
-    setDeleteTargetId(null);
+    setActionSubmitting(true);
+    try {
+      await updateAgentSkillStatus(enableTargetId, "enabled");
+      setEnableTargetId(null);
+      setReloadKey((current) => current + 1);
+    } catch {
+      toast.error("启用失败，请稍后重试");
+    } finally {
+      setActionSubmitting(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTargetId || actionSubmitting) {
+      return;
+    }
+
+    setActionSubmitting(true);
+    try {
+      await deleteAgentSkill(deleteTargetId);
+      setDeleteTargetId(null);
+      setReloadKey((current) => current + 1);
+    } catch {
+      toast.error("删除失败，请稍后重试");
+    } finally {
+      setActionSubmitting(false);
+    }
   }
 
   return (
@@ -534,18 +550,29 @@ function MySkillsPanel() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pagedSkills.length > 0 ? (
-              pagedSkills.map((skill) => (
+            {loading ? (
+              <KbTableLoadingRow colSpan={6} />
+            ) : loadError ? (
+              <TableRow>
+                <TableCell
+                  className="py-10 text-center text-sm text-destructive"
+                  colSpan={6}
+                >
+                  <span role="alert">加载失败</span>
+                </TableCell>
+              </TableRow>
+            ) : skills.length > 0 ? (
+              skills.map((skill) => (
                 <TableRow key={skill.id}>
                   <TableCell className="px-4 py-4 font-medium text-foreground">
                     <TableCellContent>{skill.name}</TableCellContent>
                   </TableCell>
                   <TableCell
                     className="px-4 py-4 text-muted-foreground"
-                    title={skill.applicationScenario}
+                    title={skill.applyScene}
                   >
                     <p className="line-clamp-2 text-sm leading-6">
-                      {skill.applicationScenario}
+                      {skill.applyScene}
                     </p>
                   </TableCell>
                   <TableCell className="px-4 py-4">
@@ -570,6 +597,9 @@ function MySkillsPanel() {
                     <div className="inline-flex items-center justify-end gap-3">
                       <Button
                         className="h-auto p-0 text-primary"
+                        onClick={() =>
+                          navigate(`/chat/ai-hosting/skills/${skill.id}/edit`)
+                        }
                         type="button"
                         variant="link"
                       >
@@ -578,7 +608,8 @@ function MySkillsPanel() {
                       {skill.status === "enabled" ? (
                         <Button
                           className="h-auto p-0 text-primary"
-                          onClick={() => handleDisable(skill.id)}
+                          disabled={actionSubmitting}
+                          onClick={() => void handleDisable(skill.id)}
                           type="button"
                           variant="link"
                         >
@@ -587,6 +618,7 @@ function MySkillsPanel() {
                       ) : (
                         <Button
                           className="h-auto p-0 text-primary"
+                          disabled={actionSubmitting}
                           onClick={() => setEnableTargetId(skill.id)}
                           type="button"
                           variant="link"
@@ -596,6 +628,7 @@ function MySkillsPanel() {
                       )}
                       <Button
                         className="h-auto p-0 text-primary"
+                        disabled={actionSubmitting}
                         onClick={() => setDeleteTargetId(skill.id)}
                         type="button"
                         variant="link"
@@ -622,7 +655,7 @@ function MySkillsPanel() {
         <TablePagination
           onPageChange={setPage}
           page={activePage}
-          total={filteredSkills.length}
+          total={total}
           totalPages={totalPages}
         />
       </div>
@@ -645,9 +678,10 @@ function MySkillsPanel() {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
+              disabled={actionSubmitting}
               onClick={(event) => {
                 event.preventDefault();
-                handleConfirmEnable();
+                void handleConfirmEnable();
               }}
             >
               确定
@@ -675,9 +709,10 @@ function MySkillsPanel() {
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               className="border-destructive bg-background text-destructive hover:bg-destructive/5"
+              disabled={actionSubmitting}
               onClick={(event) => {
                 event.preventDefault();
-                handleConfirmDelete();
+                void handleConfirmDelete();
               }}
             >
               确定

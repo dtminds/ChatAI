@@ -578,3 +578,22 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   PRIMARY KEY (`id`),
   KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '租户id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `variables` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能变量（复杂json数组，不同变量类型有不同格式）',
+  `tools` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能工具,示例：["web","weather"]',
+  `kbs` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能知识库,示例：[1,2,3]',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未启用 1：已启用',
+  `is_del` tinyint NOT NULL DEFAULT '0' COMMENT '是否已删除 0：未删除 1：已删除',
+  `operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建操作人（子账号id）',
+  `last_operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '最近一次操作人（子账号id）',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';

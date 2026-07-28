@@ -13,7 +13,9 @@ import {
 import type { ConditionalLogicSegment } from "./agent-settings.constants";
 import {
   $createKnowledgeBaseChipNode,
+  $createSkillChipNode,
   $isKnowledgeBaseChipNode,
+  $isSkillChipNode,
 } from "./agent-conditional-logic-lexical-nodes";
 
 export function normalizeConditionalLogicSegments(
@@ -26,7 +28,7 @@ export function normalizeConditionalLogicSegments(
   const merged: ConditionalLogicSegment[] = [];
 
   for (const segment of segments) {
-    if (segment.type === "knowledgeBase") {
+    if (segment.type === "knowledgeBase" || segment.type === "skill") {
       merged.push(segment);
       continue;
     }
@@ -69,6 +71,7 @@ export function isConditionalLogicEmpty(segments: ConditionalLogicSegment[]) {
   return !normalizeConditionalLogicSegments(segments).some(
     (segment) =>
       segment.type === "knowledgeBase" ||
+      segment.type === "skill" ||
       (segment.type === "text" && segment.value.length > 0),
   );
 }
@@ -84,6 +87,14 @@ export function $insertKnowledgeBaseChip(knowledgeBase: {
   name?: string;
 }) {
   const chipNode = $createKnowledgeBaseChipNode(knowledgeBase);
+  const trailingSpaceNode = $createTextNode(" ");
+
+  $insertNodes([chipNode, trailingSpaceNode]);
+  trailingSpaceNode.select(1, 1);
+}
+
+export function $insertSkillChip(skill: { id: string; name?: string }) {
+  const chipNode = $createSkillChipNode(skill);
   const trailingSpaceNode = $createTextNode(" ");
 
   $insertNodes([chipNode, trailingSpaceNode]);
@@ -116,6 +127,16 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
       continue;
     }
 
+    if (segment.type === "skill") {
+      paragraph.append(
+        $createSkillChipNode({
+          id: segment.id,
+          name: segment.name,
+        }),
+      );
+      continue;
+    }
+
     if (segment.value.length > 0) {
       paragraph.append($createTextNode(segment.value));
     }
@@ -141,6 +162,15 @@ function collectConditionalLogicSegmentsFromNode(
       id: node.getKnowledgeBaseId(),
       name: node.getKnowledgeBaseName(),
       type: "knowledgeBase",
+    });
+    return;
+  }
+
+  if ($isSkillChipNode(node)) {
+    segments.push({
+      id: node.getSkillId(),
+      name: node.getSkillName(),
+      type: "skill",
     });
     return;
   }

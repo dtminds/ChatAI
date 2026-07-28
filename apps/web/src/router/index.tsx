@@ -296,6 +296,10 @@ export const routerConfig = [
         element: withRouteSuspense(<AiSkillSettingsPage />),
       },
       {
+        path: "chat/ai-hosting/skills/:skillId/edit",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
         path: "chat/ai-hosting/hosting-settings",
         element: withRouteSuspense(<AgentHostingSettingsPage />),
       },

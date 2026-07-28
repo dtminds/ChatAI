@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  getSkillResourceChipName,
   type SkillResourceItem,
 } from "./ai-skill-resource";
 
@@ -48,7 +47,7 @@ export function AiSkillReferenceMenu({
       <DropdownMenuContent align="end" className="min-w-40">
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>引用变量</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="min-w-36">
+          <DropdownMenuSubContent className="min-w-56">
             {variables.length === 0 ? (
               <ReferenceEmptyState />
             ) : (
@@ -59,7 +58,7 @@ export function AiSkillReferenceMenu({
                     onSelectResource(item);
                   }}
                 >
-                  {getSkillResourceChipName(item)}
+                  {item.title}
                 </DropdownMenuItem>
               ))
             )}

@@ -74,6 +74,65 @@ export interface XyWapEmbedAgent {
   update_time: Generated<Date | null>;
 }
 
+export interface XyWapEmbedAgentSkill {
+  /**
+   * 应用场景
+   */
+  apply_scene: string | null;
+  /**
+   * 技能内容描述
+   */
+  content: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 是否已删除 0：未删除 1：已删除
+   */
+  is_del: Generated<number>;
+  /**
+   * 技能知识库,示例：[1,2,3]
+   */
+  kbs: string | null;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 技能名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 状态 0：未启用 1：已启用
+   */
+  status: Generated<number>;
+  /**
+   * 技能工具,示例：["web","weather"]
+   */
+  tools: string | null;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+  /**
+   * 技能变量（复杂json数组，不同变量类型有不同格式）
+   */
+  variables: string | null;
+}
+
 export interface XyWapEmbedAgentKbLearningCandidate {
   /**
    * 客服/AI回答原文
@@ -3277,6 +3336,7 @@ export interface DB {
   xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
   xy_wap_embed_agent_kb_learning_candidate: XyWapEmbedAgentKbLearningCandidate;
+  xy_wap_embed_agent_skill: XyWapEmbedAgentSkill;
   xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;

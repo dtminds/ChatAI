@@ -13,7 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +41,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  createAgentSkill,
+  getAgentSkill,
+  updateAgentSkill,
+} from "./api/agent-skill-service";
 import { listKbs, toKbListViewItem } from "./api/kb-service";
 import { AiSkillDescriptionField } from "./ai-skill-description-field";
 import { INSERT_SKILL_CONTENT_RESOURCE_COMMAND } from "./ai-skill-description-lexical-commands";
@@ -48,7 +53,9 @@ import { InsertVariableDialog } from "./ai-skill-insert-variable-dialog";
 import { AiSkillReferenceMenu } from "./ai-skill-reference-menu";
 import {
   buildKnowledgeBasePlaceholder,
+  buildSkillVariableResourceItem,
   buildToolPlaceholder,
+  parseSkillContentSegments,
   removeResourceFromSkillContent,
   serializeSkillContentSegments,
   toSkillContentResourceSegment,
@@ -108,7 +115,7 @@ const staticInsertItems: Partial<
 > = {
   tools: [
     {
-      description: "查询小店订单物流状态与轨迹信息",
+      description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
       icon: Database01Icon,
       id: "search_mall_order_logistics",
       placeholder: buildToolPlaceholder("search_mall_order_logistics", "小店订单物流查询"),
@@ -116,7 +123,7 @@ const staticInsertItems: Partial<
       toolKey: "search_mall_order_logistics",
     },
     {
-      description: "代客户将积分转入指定账户",
+      description: "代客户将提供的订单号转换为积分",
       icon: Database01Icon,
       id: "transfer_mall_point",
       placeholder: buildToolPlaceholder("transfer_mall_point", "代客转积分"),
@@ -124,7 +131,7 @@ const staticInsertItems: Partial<
       toolKey: "transfer_mall_point",
     },
     {
-      description: "为小店订单添加或更新备注",
+      description: "为客户的小店订单添加或更新备注",
       icon: Database01Icon,
       id: "remark_mall_order",
       placeholder: buildToolPlaceholder("remark_mall_order", "小店订单备注"),
@@ -132,7 +139,7 @@ const staticInsertItems: Partial<
       toolKey: "remark_mall_order",
     },
     {
-      description: "根据订单号查询订单信息",
+      description: "根据客户提供的订单号查询订单信息",
       icon: Database01Icon,
       id: "search_order",
       placeholder: buildToolPlaceholder("search_order", "订单查询"),
@@ -140,7 +147,7 @@ const staticInsertItems: Partial<
       toolKey: "search_order",
     },
     {
-      description: "将订单与当前客户进行绑定",
+      description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
       icon: Database01Icon,
       id: "bind_order",
       placeholder: buildToolPlaceholder("bind_order", "绑定订单"),
@@ -152,7 +159,11 @@ const staticInsertItems: Partial<
 
 export function AiSkillSettingsPage() {
   const navigate = useNavigate();
+  const { skillId } = useParams<{ skillId?: string }>();
+  const isEditMode = Boolean(skillId);
   const descriptionEditorRef = useRef<LexicalEditor | null>(null);
+  const [pageLoading, setPageLoading] = useState(isEditMode);
+  const [pageError, setPageError] = useState(false);
   const [name, setName] = useState("");
   const [applicationScenario, setApplicationScenario] = useState("");
   const [skillContentSegments, setSkillContentSegments] = useState<
@@ -175,7 +186,94 @@ export function AiSkillSettingsPage() {
     singular: string;
   } | null>(null);
 
-  const canSubmit = name.trim().length > 0;
+  const canSubmit = name.trim().length > 0 && !pageLoading && !pageError;
+
+  useEffect(() => {
+    if (!skillId) {
+      setPageLoading(false);
+      setPageError(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSkillDetail() {
+      setPageLoading(true);
+      setPageError(false);
+
+      try {
+        const [detail, kbResponse] = await Promise.all([
+          getAgentSkill(skillId!),
+          listKbs({ page: 1, pageSize: KB_PICKER_PAGE_SIZE }),
+        ]);
+        if (cancelled) {
+          return;
+        }
+
+        const kbNameById = new Map(
+          kbResponse.kbs.map((item) => {
+            const view = toKbListViewItem(item);
+            return [view.id, view.name] as const;
+          }),
+        );
+        const toolCatalog = staticInsertItems.tools ?? [];
+
+        setName(detail.name);
+        setApplicationScenario(detail.applyScene);
+        setSkillContentSegments(parseSkillContentSegments(detail.content));
+        setSelectedResources({
+          variables: detail.variables.map((variable) =>
+            buildSkillVariableResourceItem(variable),
+          ),
+          tools: detail.tools.map((toolKey) => {
+            const catalogItem = toolCatalog.find((item) => item.toolKey === toolKey);
+            if (catalogItem) {
+              return {
+                description: catalogItem.description,
+                id: catalogItem.id,
+                placeholder: catalogItem.placeholder,
+                title: catalogItem.title,
+                toolKey: catalogItem.toolKey,
+              };
+            }
+
+            return {
+              description: "",
+              id: toolKey,
+              placeholder: buildToolPlaceholder(toolKey, toolKey),
+              title: toolKey,
+              toolKey,
+            };
+          }),
+          "knowledge-bases": detail.kbs.map((kbId) => {
+            const title = kbNameById.get(String(kbId)) ?? `知识库 ${kbId}`;
+            return {
+              description: "",
+              id: `kb:${kbId}`,
+              kbId,
+              placeholder: buildKnowledgeBasePlaceholder(kbId, title),
+              title,
+            };
+          }),
+        });
+      } catch {
+        if (!cancelled) {
+          setPageError(true);
+          toast.error("技能加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setPageLoading(false);
+        }
+      }
+    }
+
+    void loadSkillDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [skillId]);
 
   function goBackToMySkills() {
     navigate("/chat/ai-hosting/skills?tab=mine");
@@ -185,14 +283,13 @@ export function AiSkillSettingsPage() {
     goBackToMySkills();
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!canSubmit || submitting) {
       return;
     }
 
-    // 提交结构对齐 xy_wap_embed_agent_skill（接口就绪后直接复用）
     const payload = {
-      apply_scene: applicationScenario.trim(),
+      applyScene: applicationScenario.trim(),
       content: serializeSkillContentSegments(skillContentSegments),
       kbs: selectedResources["knowledge-bases"]
         .map((item) => item.kbId)
@@ -206,13 +303,20 @@ export function AiSkillSettingsPage() {
         .filter((variable): variable is NonNullable<typeof variable> => Boolean(variable)),
     };
 
-    // payload 对齐 xy_wap_embed_agent_skill，接口就绪后改为 createSkill(payload)
-    void payload;
-
     setSubmitting(true);
-    toast.success("技能已提交");
-    setSubmitting(false);
-    goBackToMySkills();
+    try {
+      if (skillId) {
+        await updateAgentSkill(skillId, payload);
+      } else {
+        await createAgentSkill(payload);
+      }
+      toast.success(skillId ? "技能已保存" : "技能已提交");
+      goBackToMySkills();
+    } catch {
+      toast.error(skillId ? "保存失败，请稍后重试" : "提交失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleAddResource(sectionId: ResourceSectionId, item: SkillResourceItem) {
@@ -305,7 +409,7 @@ export function AiSkillSettingsPage() {
               </Button>
               <Button
                 disabled={!canSubmit || submitting}
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
                 type="button"
               >
                 确认提交
@@ -314,6 +418,22 @@ export function AiSkillSettingsPage() {
           </div>
         </header>
 
+        {pageLoading ? (
+          <div
+            className="flex min-h-48 items-center justify-center gap-2 rounded-[14px] border border-border bg-card text-sm text-muted-foreground"
+            role="status"
+          >
+            <Spinner size={16} />
+            <span>正在加载</span>
+          </div>
+        ) : pageError ? (
+          <div
+            className="flex min-h-48 items-center justify-center rounded-[14px] border border-border bg-card text-sm text-destructive"
+            role="alert"
+          >
+            加载失败
+          </div>
+        ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="min-w-0 space-y-5">
             <section
@@ -428,6 +548,7 @@ export function AiSkillSettingsPage() {
             </div>
           </aside>
         </div>
+        )}
       </div>
 
       <InsertVariableDialog

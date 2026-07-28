@@ -7,15 +7,16 @@ import type {
   TicketUser,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -30,8 +31,7 @@ import {
   createTicket,
   getTicketContextOptions,
 } from "@/pages/chat/tickets/api/tickets-service";
-
-const pageSize = 20;
+import { TicketPriority as TicketPriorityDisplay, ticketPriorityText } from "@/pages/chat/tickets/ticket-display";
 
 type TicketCreateDialogProps = {
   conversationId: string;
@@ -49,17 +49,12 @@ export function TicketCreateDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TicketPriority>("medium");
-  const [dueAt, setDueAt] = useState("");
+  const [dueAt, setDueAt] = useState<Date>();
   const [assigneeSubUserId, setAssigneeSubUserId] = useState<string>();
   const [contextValue, setContextValue] = useState("current");
   const [assignees, setAssignees] = useState<TicketUser[]>([]);
-  const [sessions, setSessions] = useState<
-    TicketContextOptionsResponse["sessions"]["items"]
-  >([]);
-  const [sessionPage, setSessionPage] = useState(1);
-  const [sessionTotalPages, setSessionTotalPages] = useState(1);
+  const [sessions, setSessions] = useState<TicketContextOptionsResponse["sessions"]>([]);
   const [isOptionsLoading, setIsOptionsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const scopeRef = useRef("");
@@ -76,26 +71,22 @@ export function TicketCreateDialog({
     setTitle("");
     setDescription("");
     setPriority("medium");
-    setDueAt("");
+    setDueAt(undefined);
     setAssigneeSubUserId(undefined);
     setContextValue("current");
     setAssignees([]);
     setSessions([]);
-    setSessionPage(1);
-    setSessionTotalPages(1);
     setError(undefined);
     setIsOptionsLoading(true);
 
-    void getTicketContextOptions({ conversationId, page: 1, pageSize })
+    void getTicketContextOptions({ conversationId })
       .then((result) => {
         if (!active || scopeRef.current !== requestScope) {
           return;
         }
         setAssignees(result.assignees);
         setAssigneeSubUserId(result.defaultAssigneeSubUserId ?? "unassigned");
-        setSessions(result.sessions.items);
-        setSessionPage(result.sessions.page);
-        setSessionTotalPages(result.sessions.totalPages);
+        setSessions(result.sessions);
       })
       .catch((cause: unknown) => {
         if (active && scopeRef.current === requestScope) {
@@ -112,42 +103,6 @@ export function TicketCreateDialog({
       active = false;
     };
   }, [conversationId, open, scopeKey]);
-
-  const handleLoadMore = async () => {
-    if (isLoadingMore || sessionPage >= sessionTotalPages) {
-      return;
-    }
-    const requestScope = scopeRef.current;
-    const nextPage = sessionPage + 1;
-    setIsLoadingMore(true);
-    setError(undefined);
-    try {
-      const result = await getTicketContextOptions({
-        conversationId,
-        page: nextPage,
-        pageSize,
-      });
-      if (scopeRef.current !== requestScope) {
-        return;
-      }
-      setSessions((current) => [
-        ...current,
-        ...result.sessions.items.filter(
-          (item) => !current.some((existing) => existing.sessionId === item.sessionId),
-        ),
-      ]);
-      setSessionPage(result.sessions.page);
-      setSessionTotalPages(result.sessions.totalPages);
-    } catch (cause) {
-      if (scopeRef.current === requestScope) {
-        setError(errorMessage(cause, "接待会话加载失败"));
-      }
-    } finally {
-      if (scopeRef.current === requestScope) {
-        setIsLoadingMore(false);
-      }
-    }
-  };
 
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
@@ -167,7 +122,7 @@ export function TicketCreateDialog({
         context: parseContext(contextValue),
         conversationId,
         description: description.trim() || null,
-        dueAt: dueAt ? new Date(dueAt).getTime() : null,
+        dueAt: dueAt?.getTime() ?? null,
         priority,
         title: normalizedTitle,
       });
@@ -196,45 +151,38 @@ export function TicketCreateDialog({
       }}
       open={open}
     >
-      <DialogContent closeButtonDisabled={isSubmitting} className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent closeButtonDisabled={isSubmitting} className="gap-0 overflow-hidden p-0 sm:max-w-[640px]">
+        <DialogHeader className="px-6 pb-5 pt-6">
           <DialogTitle>创建工单</DialogTitle>
-          <DialogDescription className="sr-only">
-            填写工单信息并选择关联的接待会话
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
+        <div className="grid gap-5 px-6 pb-6">
           <Field label="标题" required>
-            <Input
-              aria-label="标题"
-              maxLength={255}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="请输入工单标题"
-              value={title}
-            />
+            <div className="relative">
+              <Input
+                aria-label="标题"
+                className="pr-16"
+                maxLength={120}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="请输入工单标题"
+                value={title}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                {title.length}/120
+              </span>
+            </div>
           </Field>
-          <Field label="描述">
-            <Textarea
-              aria-label="描述"
-              className="min-h-24 resize-y"
-              maxLength={5000}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="补充背景和处理要求"
-              value={description}
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
             <Field label="负责人">
               <Select
                 disabled={isOptionsLoading}
                 onValueChange={setAssigneeSubUserId}
                 value={assigneeSubUserId}
               >
-                <SelectTrigger aria-label="负责人">
+                <SelectTrigger aria-label="负责人" className="w-full">
                   <SelectValue placeholder="默认负责人" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-64">
                   <SelectItem value="unassigned">未分配</SelectItem>
                   {assignees.map((assignee) => (
                     <SelectItem key={assignee.subUserId} value={assignee.subUserId}>
@@ -243,29 +191,41 @@ export function TicketCreateDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {isOptionsLoading ? (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+                  <Spinner size={14} variant="classic" />
+                  正在加载
+                </span>
+              ) : null}
             </Field>
             <Field label="优先级" required>
-              <Select
-                onValueChange={(value) => setPriority(value as TicketPriority)}
+              <SegmentedControl
+                aria-label="优先级"
+                className="h-10 w-full gap-0 rounded-[10px] bg-background p-0"
+                onValueChange={(value) => {
+                  if (value) setPriority(value as TicketPriority);
+                }}
+                type="single"
                 value={priority}
               >
-                <SelectTrigger aria-label="优先级">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">低</SelectItem>
-                  <SelectItem value="medium">中</SelectItem>
-                  <SelectItem value="high">高</SelectItem>
-                </SelectContent>
-              </Select>
+                {(["low", "medium", "high"] as const).map((itemPriority) => (
+                  <SegmentedControlItem
+                    aria-label={ticketPriorityText(itemPriority)}
+                    className="h-full w-auto flex-1 rounded-none border-r border-border first:rounded-l-[9px] last:rounded-r-[9px] last:border-r-0 data-[state=on]:bg-info/10 data-[state=on]:shadow-none"
+                    key={itemPriority}
+                    value={itemPriority}
+                  >
+                    <TicketPriorityDisplay priority={itemPriority} size="default" />
+                  </SegmentedControlItem>
+                ))}
+              </SegmentedControl>
             </Field>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
             <Field label="截止时间">
-              <Input
-                aria-label="截止时间"
-                onChange={(event) => setDueAt(event.target.value)}
-                type="datetime-local"
+              <DateTimePicker
+                ariaLabel="截止时间"
+                onChange={setDueAt}
                 value={dueAt}
               />
             </Field>
@@ -275,10 +235,10 @@ export function TicketCreateDialog({
                 onValueChange={setContextValue}
                 value={contextValue}
               >
-                <SelectTrigger aria-label="关联接待会话">
+                <SelectTrigger aria-label="关联接待会话" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-64">
                   <SelectItem value="current">当前会话</SelectItem>
                   <SelectItem value="none">不关联</SelectItem>
                   {sessions.map((session) => (
@@ -290,24 +250,20 @@ export function TicketCreateDialog({
               </Select>
             </Field>
           </div>
-
-          {isOptionsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner size={16} variant="classic" />
-              正在加载
+          <Field label="描述">
+            <Textarea
+              aria-label="描述"
+              className="min-h-28 resize-y"
+              maxLength={2000}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="补充处理背景、跟进方式或特殊说明"
+              value={description}
+            />
+            <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
+              <span>描述将帮助协作者更快理解工单背景</span>
+              <span className="shrink-0">{description.length}/2000</span>
             </div>
-          ) : sessionPage < sessionTotalPages ? (
-            <Button
-              className="w-fit"
-              disabled={isLoadingMore}
-              onClick={() => void handleLoadMore()}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {isLoadingMore ? "正在加载" : "加载更多接待会话"}
-            </Button>
-          ) : null}
+          </Field>
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}
@@ -315,12 +271,12 @@ export function TicketCreateDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t px-6 py-4 sm:space-x-0">
           <Button
             disabled={isSubmitting}
             onClick={() => onOpenChange(false)}
             type="button"
-            variant="outline"
+            variant="secondary"
           >
             取消
           </Button>
@@ -368,7 +324,7 @@ function parseContext(value: string): TicketCreateRequest["context"] {
 }
 
 function sessionLabel(
-  session: TicketContextOptionsResponse["sessions"]["items"][number],
+  session: TicketContextOptionsResponse["sessions"][number],
 ) {
   const range = session.endedAt
     ? `${formatInsightTime(session.startedAt)} - ${formatInsightTime(session.endedAt)}`

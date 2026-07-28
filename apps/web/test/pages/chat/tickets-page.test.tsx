@@ -36,7 +36,19 @@ describe("TicketsPage", () => {
     expect(screen.getByText("客服乙")).toBeInTheDocument();
     expect(api.getTickets).toHaveBeenCalledWith(expect.objectContaining({ view: "reception" }));
     expect(screen.queryByRole("button", { name: /新建|创建工单/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "全部工单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "全部工单" })).not.toBeInTheDocument();
+  });
+
+  it("switches the list view through page tabs", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={["/chat/tickets"]}><TicketsPage /></MemoryRouter>);
+
+    await screen.findByRole("tab", { name: "我接待的" });
+    await user.click(screen.getByRole("tab", { name: "我接待的" }));
+
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ view: "reception" }),
+    ));
   });
 
   it("shows the global view to admins and resets paging when filters change", async () => {
@@ -45,10 +57,38 @@ describe("TicketsPage", () => {
     render(<MemoryRouter initialEntries={["/chat/tickets"]}><TicketsPage /></MemoryRouter>);
 
     await screen.findByRole("link", { name: /确认退款进度/ });
-    expect(screen.getByRole("link", { name: "全部工单" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部工单" })).toBeInTheDocument();
+    const callsBeforeSearch = api.getTickets.mock.calls.length;
     await user.type(screen.getByRole("textbox", { name: "搜索工单" }), "退款");
+    expect(api.getTickets).toHaveBeenCalledTimes(callsBeforeSearch);
     await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 1, search: "退款" }),
+    ));
+  });
+
+  it("resets the creation date together with the other ticket filters", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TicketsPage /></MemoryRouter>);
+
+    await screen.findByRole("link", { name: /确认退款进度/ });
+    await user.click(screen.getByRole("button", { name: "日期范围 创建时间" }));
+    await user.click(screen.getByRole("button", { name: "昨天" }));
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        createdFrom: expect.any(Number),
+        createdTo: expect.any(Number),
+      }),
+    ));
+
+    await user.click(screen.getByRole("button", { name: "更多筛选" }));
+    await user.click(screen.getByRole("menuitem", { name: "重置筛选" }));
+
+    expect(screen.getByRole("button", { name: "日期范围 创建时间" })).toBeInTheDocument();
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        createdFrom: undefined,
+        createdTo: undefined,
+      }),
     ));
   });
 

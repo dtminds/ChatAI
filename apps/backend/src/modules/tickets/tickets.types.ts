@@ -1,5 +1,6 @@
 import type {
   TicketActivity,
+  TicketActivityPage,
   TicketContextOptionsResponse,
   TicketListQuery,
   TicketPriority,
@@ -40,6 +41,17 @@ export type TicketRecord = {
   updatedAt: number;
 };
 
+export type TicketAccessRecord = Pick<TicketRecord,
+  | "anchorMessageId"
+  | "assigneeSubUserId"
+  | "conversationId"
+  | "createdBySubUserId"
+  | "hasAccountAccess"
+  | "sessionId"
+  | "sourceType"
+  | "ticketId"
+>;
+
 export type TicketRecordPage = {
   items: TicketRecord[];
   page: number;
@@ -76,13 +88,17 @@ export type TicketConversationIdentity = {
   thirdUserId: string;
 };
 
-export type TicketSessionOptionPage = TicketContextOptionsResponse["sessions"];
+export type TicketSessionOptions = TicketContextOptionsResponse["sessions"];
 
 export type TicketMessageCandidate = InsightMessageSourceRow;
 
 export type TicketActivityRecord = Omit<TicketActivity, "operator"> & {
   operatorDisplayName: string | null;
   operatorSubUserId: string | null;
+};
+
+export type TicketActivityRecordPage = Omit<TicketActivityPage, "items"> & {
+  items: TicketActivityRecord[];
 };
 
 export type TicketMutationActivity = {

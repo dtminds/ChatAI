@@ -2,11 +2,16 @@ import type {
   ApiSuccessEnvelope,
   ConversationTicketsQuery,
   ConversationTicketsResponse,
+  TicketActivityListQuery,
+  TicketActivityPage,
+  TicketAssigneeOptionsResponse,
   TicketClaimResponse,
   TicketCommentRequest,
   TicketCommentResponse,
   TicketContextOptionsQuery,
   TicketContextOptionsResponse,
+  TicketContextQuery,
+  TicketContextResponse,
   TicketCountsResponse,
   TicketCreateRequest,
   TicketCreateResponse,
@@ -52,6 +57,32 @@ export async function getConversationTickets(
 export async function getTicketDetail(ticketId: string) {
   const response = await http.get<ApiSuccessEnvelope<TicketDetailResponse>>(
     `/server/tickets/${encodeURIComponent(ticketId)}`,
+  );
+  return response.data;
+}
+
+export async function getTicketActivities(
+  ticketId: string,
+  query: TicketActivityListQuery = {},
+) {
+  const response = await http.get<ApiSuccessEnvelope<TicketActivityPage>>(
+    `/server/tickets/${encodeURIComponent(ticketId)}/activities`,
+    { params: compactQuery(query) },
+  );
+  return response.data;
+}
+
+export async function getTicketAssigneeOptions(ticketId: string) {
+  const response = await http.get<ApiSuccessEnvelope<TicketAssigneeOptionsResponse>>(
+    `/server/tickets/${encodeURIComponent(ticketId)}/assignee-options`,
+  );
+  return response.data;
+}
+
+export async function getTicketContext(ticketId: string, query: TicketContextQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<TicketContextResponse>>(
+    `/server/tickets/${encodeURIComponent(ticketId)}/context`,
+    { params: compactQuery(query) },
   );
   return response.data;
 }

@@ -145,12 +145,12 @@ export const TicketCreateRequestSchema = Type.Object({
   context: TicketCreateContextSchema,
   conversationId: TicketIdSchema,
   description: Type.Optional(Type.Union([
-    Type.String({ maxLength: 5000 }),
+    Type.String({ maxLength: 2000 }),
     Type.Null(),
   ])),
   dueAt: Type.Optional(NullableTimestampSchema),
   priority: TicketPrioritySchema,
-  title: Type.String({ maxLength: 255, minLength: 1 }),
+  title: Type.String({ maxLength: 120, minLength: 1 }),
 }, { additionalProperties: false });
 
 export const TicketCreateResponseSchema = Type.Object({
@@ -160,12 +160,12 @@ export const TicketCreateResponseSchema = Type.Object({
 const ticketMutableProperties = {
   assigneeSubUserId: Type.Optional(Type.Union([TicketIdSchema, Type.Null()])),
   description: Type.Optional(Type.Union([
-    Type.String({ maxLength: 5000 }),
+    Type.String({ maxLength: 2000 }),
     Type.Null(),
   ])),
   dueAt: Type.Optional(NullableTimestampSchema),
   priority: Type.Optional(TicketPrioritySchema),
-  title: Type.Optional(Type.String({ maxLength: 255, minLength: 1 })),
+  title: Type.Optional(Type.String({ maxLength: 120, minLength: 1 })),
 };
 
 export const TicketUpdateRequestSchema = Type.Union([
@@ -189,7 +189,7 @@ export const TicketClaimResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const TicketCommentRequestSchema = Type.Object({
-  content: Type.String({ maxLength: 2000, minLength: 1 }),
+  content: Type.String({ maxLength: 1000, minLength: 1 }),
 }, { additionalProperties: false });
 
 export const TicketActivitySchema = Type.Object({
@@ -206,6 +206,17 @@ export const TicketActivitySchema = Type.Object({
   ticketId: TicketIdSchema,
 }, { additionalProperties: false });
 
+export const TicketActivityListQuerySchema = Type.Object({
+  beforeActivityId: Type.Optional(TicketIdSchema),
+  pageSize: Type.Optional(Type.Integer({ maximum: 100, minimum: 1 })),
+}, { additionalProperties: false });
+
+export const TicketActivityPageSchema = Type.Object({
+  hasMore: Type.Boolean(),
+  items: Type.Array(TicketActivitySchema),
+  nextCursor: Type.Union([TicketIdSchema, Type.Null()]),
+}, { additionalProperties: false });
+
 export const TicketCommentResponseSchema = Type.Object({
   activity: TicketActivitySchema,
 }, { additionalProperties: false });
@@ -215,8 +226,10 @@ export const TicketContextSchema = Type.Union([
     kind: Type.Literal("none"),
   }, { additionalProperties: false }),
   Type.Object({
+    hasMore: Type.Boolean(),
     kind: Type.Literal("session"),
     messages: Type.Array(Type.Any()),
+    nextCursor: Type.Union([Type.String(), Type.Null()]),
     sessionId: TicketIdSchema,
   }, { additionalProperties: false }),
   Type.Object({
@@ -226,13 +239,22 @@ export const TicketContextSchema = Type.Union([
   }, { additionalProperties: false }),
 ]);
 
+export const TicketContextQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+  pageSize: Type.Optional(Type.Integer({ maximum: 100, minimum: 1 })),
+}, { additionalProperties: false });
+
 export const TicketDetailResponseSchema = Type.Object({
-  activities: Type.Array(TicketActivitySchema),
-  assigneeOptions: Type.Array(TicketUserSchema),
+  ticket: TicketSchema,
+}, { additionalProperties: false });
+
+export const TicketContextResponseSchema = Type.Object({
   context: TicketContextSchema,
   contextAccess: TicketContextAccessSchema,
-  evidenceMessages: Type.Array(Type.Any()),
-  ticket: TicketSchema,
+}, { additionalProperties: false });
+
+export const TicketAssigneeOptionsResponseSchema = Type.Object({
+  items: Type.Array(TicketUserSchema),
 }, { additionalProperties: false });
 
 export const TicketSessionOptionSchema = Type.Object({
@@ -246,20 +268,12 @@ export const TicketSessionOptionSchema = Type.Object({
 
 export const TicketContextOptionsQuerySchema = Type.Object({
   conversationId: TicketIdSchema,
-  page: Type.Optional(Type.Integer({ minimum: 1 })),
-  pageSize: Type.Optional(Type.Integer({ maximum: 50, minimum: 1 })),
 }, { additionalProperties: false });
 
 export const TicketContextOptionsResponseSchema = Type.Object({
   assignees: Type.Array(TicketUserSchema),
   defaultAssigneeSubUserId: Type.Union([TicketIdSchema, Type.Null()]),
-  sessions: Type.Object({
-    items: Type.Array(TicketSessionOptionSchema),
-    page: Type.Integer({ minimum: 1 }),
-    pageSize: Type.Integer({ minimum: 1 }),
-    total: Type.Integer({ minimum: 0 }),
-    totalPages: Type.Integer({ minimum: 0 }),
-  }, { additionalProperties: false }),
+  sessions: Type.Array(TicketSessionOptionSchema),
 }, { additionalProperties: false });
 
 export const ConversationTicketsQuerySchema = Type.Object({
@@ -296,7 +310,12 @@ export type TicketClaimResponse = Static<typeof TicketClaimResponseSchema>;
 export type TicketCommentRequest = Static<typeof TicketCommentRequestSchema>;
 export type TicketCommentResponse = Static<typeof TicketCommentResponseSchema>;
 export type TicketActivity = Static<typeof TicketActivitySchema>;
+export type TicketActivityListQuery = Static<typeof TicketActivityListQuerySchema>;
+export type TicketActivityPage = Static<typeof TicketActivityPageSchema>;
 export type TicketDetailResponse = Static<typeof TicketDetailResponseSchema>;
+export type TicketContextResponse = Static<typeof TicketContextResponseSchema>;
+export type TicketContextQuery = Static<typeof TicketContextQuerySchema>;
+export type TicketAssigneeOptionsResponse = Static<typeof TicketAssigneeOptionsResponseSchema>;
 export type TicketContextOptionsQuery = Static<typeof TicketContextOptionsQuerySchema>;
 export type TicketContextOptionsResponse = Static<typeof TicketContextOptionsResponseSchema>;
 export type ConversationTicketsQuery = Static<typeof ConversationTicketsQuerySchema>;

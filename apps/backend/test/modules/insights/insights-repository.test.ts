@@ -2658,6 +2658,78 @@ describe("InsightsRepository", () => {
       ),
     ).toBe(true);
   });
+
+  it("pages session messages backwards with a stable time and id cursor", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let sessionMessageQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        let rows: unknown[] = [];
+        if (table === "xy_wap_embed_logical_session_message as session_message") {
+          sessionMessageQueryCount += 1;
+          rows = sessionMessageQueryCount === 1
+            ? [{
+                chat_type: 1,
+                conversation_external_id: "customer-1",
+                conversation_group_id: "",
+                conversation_id: 301,
+                group_seat_id: null,
+                platform: 5,
+                seat_id: 201,
+                session_id: 501,
+                third_userid: "account-1",
+                uid: 9001,
+              }]
+            : [
+                createSessionMessageRow(9002, 1_785_168_002_000),
+                createSessionMessageRow(9001, 1_785_168_001_000),
+                createSessionMessageRow(9000, 1_785_168_000_000),
+              ];
+        }
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    const page = await repository.listSessionMessageRecordPage(
+      { uid: 9001 },
+      "501",
+      {
+        before: { messageId: 9003, messageTime: 1_785_168_003_000 },
+        limit: 2,
+      },
+    );
+
+    expect(page).toMatchObject({
+      hasMore: true,
+      nextCursor: { messageId: 9001, messageTime: 1_785_168_001_000 },
+    });
+    const pageQuery = builders.filter(
+      (builder) => builder.table === "xy_wap_embed_logical_session_message as session_message",
+    )[1];
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_time",
+      "<",
+      1_785_168_003_000,
+    ]);
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_time",
+      "=",
+      1_785_168_003_000,
+    ]);
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_id",
+      "<",
+      9003,
+    ]);
+    expect(pageQuery?.orderByCalls).toEqual([
+      ["session_message.source_message_time", "desc"],
+      ["session_message.source_message_id", "desc"],
+    ]);
+    expect(pageQuery?.limitCalls).toEqual([3]);
+  });
 });
 
 describe("MysqlInsightWorkerRepository", () => {
@@ -6461,6 +6533,31 @@ type SelectBuilderStub = ReturnType<typeof createSelectBuilder>;
 type DeleteBuilderStub = ReturnType<typeof createDeleteBuilder>;
 type InsertBuilderStub = ReturnType<typeof createInsertBuilder>;
 type UpdateBuilderStub = ReturnType<typeof createUpdateBuilder>;
+
+function createSessionMessageRow(id: number, messageTime: number) {
+  return {
+    chat_type: 1,
+    content: `message-${id}`,
+    conversation_external_id: "customer-1",
+    conversation_group_id: "",
+    conversation_group_seat_id: null,
+    conversation_id: 301,
+    from_type: 1,
+    id,
+    msgid: `msg-${id}`,
+    msgtime: messageTime,
+    msgtype: "text",
+    opt_no: null,
+    revoke_status: 0,
+    seat_id: 201,
+    session_message_time: messageTime,
+    status: 1,
+    third_external_id: "customer-1",
+    third_from_id: "customer-1",
+    third_group_id: null,
+    third_user_id: "account-1",
+  };
+}
 
 function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {

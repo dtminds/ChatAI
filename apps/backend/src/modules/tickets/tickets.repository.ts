@@ -2,36 +2,72 @@ import type { TicketActivity, TicketPriority, TicketUser } from "@chatai/contrac
 import type {
   ExpressionBuilder,
   Kysely,
-  Nullable,
   SelectQueryBuilder,
   Transaction,
 } from "kysely";
 import { sql } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type {
+  TicketAccessRecord,
   TicketConversationIdentity,
   TicketActivityRecord,
+  TicketActivityRecordPage,
   TicketCountRepositoryInput,
   TicketListRepositoryInput,
   TicketMessageCandidate,
   TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
-  TicketSessionOptionPage,
+  TicketSessionOptions,
 } from "./tickets.types.js";
 
 type TicketQueryDatabase = Database & {
-  assignee: Nullable<Database["xy_wap_embed_sub_user"]>;
-  contact: Nullable<Database["xy_wap_embed_contact"]>;
   conversation: Database["xy_wap_embed_conversation"];
-  creator: Nullable<Database["xy_wap_embed_sub_user"]>;
-  seat: Nullable<Database["xy_wap_embed_user_seat"]>;
   ticket: Database["xy_wap_embed_session_action_item"];
 };
 
-type TicketQueryTables = "assignee" | "contact" | "conversation" | "creator" | "seat" | "ticket";
+type TicketBaseQuery = SelectQueryBuilder<
+  TicketQueryDatabase,
+  "conversation" | "ticket",
+  {}
+>;
 
-type TicketQuery = SelectQueryBuilder<TicketQueryDatabase, TicketQueryTables, {}>;
+type TicketPageRow = Omit<TicketQueryRow,
+  | "assignee_display_name"
+  | "created_by_display_name"
+  | "customer_avatar_url"
+  | "customer_name"
+  | "owner_account_avatar_url"
+  | "owner_account_id"
+  | "owner_account_name"
+> & {
+  conversation_platform: number | string;
+  conversation_third_external_userid: string;
+  conversation_third_userid: string;
+};
+
+type TicketHydrationRow = Pick<TicketQueryRow,
+  | "assignee_display_name"
+  | "created_by_display_name"
+  | "customer_avatar_url"
+  | "customer_name"
+  | "owner_account_avatar_url"
+  | "owner_account_id"
+  | "owner_account_name"
+  | "ticket_id"
+>;
+
+type TicketActivityQueryRow = {
+  activity_id: number | string;
+  activity_type: string;
+  content: string | null;
+  create_time: Date | string;
+  detail_json: unknown;
+  operator_display_name: string | null;
+  operator_sub_user_id: number | string | null;
+  operator_type: string;
+  ticket_id: number | string;
+};
 
 type TicketQueryRow = {
   anchor_message_id: number | string | null;
@@ -74,7 +110,26 @@ export class TicketsRepository {
       .executeTakeFirst();
     const total = toNonNegativeNumber(countRow?.total);
 
-    const rows = await this.buildFilteredTicketQuery(input)
+    const items = await this.listTicketRecords(input, {
+      limit: input.pageSize,
+      offset: (input.page - 1) * input.pageSize,
+      ordered: true,
+    });
+
+    return {
+      items,
+      page: input.page,
+      pageSize: input.pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / input.pageSize),
+    };
+  }
+
+  private async listTicketRecords(
+    input: TicketListRepositoryInput,
+    options: { limit: number; offset: number; ordered: boolean },
+  ) {
+    let query = this.buildFilteredTicketQuery(input)
       .select([
         "ticket.id as ticket_id",
         "ticket.conversation_id as conversation_id",
@@ -94,13 +149,9 @@ export class TicketsRepository {
         "ticket.update_time as update_time",
         "ticket.completed_at as completed_at",
         "ticket.canceled_at as canceled_at",
-        "seat.id as owner_account_id",
-        "seat.third_user_name as owner_account_name",
-        "seat.third_avatar as owner_account_avatar_url",
-        "contact.name as customer_name",
-        "contact.avatar as customer_avatar_url",
-        "assignee.name as assignee_display_name",
-        "creator.name as created_by_display_name",
+        "conversation.platform as conversation_platform",
+        "conversation.third_external_userid as conversation_third_external_userid",
+        "conversation.third_userid as conversation_third_userid",
       ])
       .select((expressionBuilder) =>
         expressionBuilder
@@ -118,8 +169,9 @@ export class TicketsRepository {
             AND ticket.due_at < CURRENT_TIMESTAMP THEN 1
           ELSE 0
         END`.as("overdue"),
-      )
-      .orderBy(
+      );
+    if (options.ordered) {
+      query = query.orderBy(
         sql<number>`CASE
           WHEN ticket.status IN ('open', 'in_progress')
             AND ticket.due_at IS NOT NULL
@@ -133,18 +185,27 @@ export class TicketsRepository {
         "asc",
       )
       .orderBy("ticket.update_time", "desc")
-      .orderBy("ticket.id", "desc")
-      .limit(input.pageSize)
-      .offset((input.page - 1) * input.pageSize)
-      .execute() as TicketQueryRow[];
+      .orderBy("ticket.id", "desc");
+    }
+    const pageRows = await query
+      .limit(options.limit)
+      .offset(options.offset)
+      .execute() as TicketPageRow[];
+    const hydrationByTicketId = await this.hydrateTicketPage(input.uid, pageRows);
+    const rows = pageRows.map((row): TicketQueryRow => {
+      const {
+        conversation_platform: _conversationPlatform,
+        conversation_third_external_userid: _conversationThirdExternalUserId,
+        conversation_third_userid: _conversationThirdUserId,
+        ...ticket
+      } = row;
+      return {
+        ...ticket,
+        ...(hydrationByTicketId.get(String(row.ticket_id)) ?? emptyTicketHydration),
+      };
+    });
 
-    return {
-      items: rows.map(mapTicketRecord),
-      page: input.page,
-      pageSize: input.pageSize,
-      total,
-      totalPages: total === 0 ? 0 : Math.ceil(total / input.pageSize),
-    };
+    return rows.map(mapTicketRecord);
   }
 
   async countTickets(input: TicketCountRepositoryInput) {
@@ -306,19 +367,11 @@ export class TicketsRepository {
 
   async listSessionOptions(input: {
     conversationId: number;
-    page: number;
-    pageSize: number;
+    limit: number;
     uid: number;
-  }): Promise<TicketSessionOptionPage> {
-    const baseQuery = this.db
+  }): Promise<TicketSessionOptions> {
+    const rows = await this.db
       .selectFrom("xy_wap_embed_logical_session as session")
-      .where("session.uid", "=", input.uid)
-      .where("session.conversation_id", "=", input.conversationId);
-    const countRow = await baseQuery
-      .select((expressionBuilder) => expressionBuilder.fn.count<number>("session.id").as("total"))
-      .executeTakeFirst();
-    const total = toNonNegativeNumber(countRow?.total);
-    const rows = await baseQuery
       .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
         join.onRef("summary.snapshot_id", "=", "session.current_snapshot_id"),
       )
@@ -330,29 +383,24 @@ export class TicketsRepository {
         "summary.session_title as session_title",
         "summary.summary_text as summary_text",
       ])
+      .where("session.uid", "=", input.uid)
+      .where("session.conversation_id", "=", input.conversationId)
       .orderBy(
         sql<number>`COALESCE(session.ended_at, session.last_message_at, session.started_at)`,
         "desc",
       )
       .orderBy("session.id", "desc")
-      .limit(input.pageSize)
-      .offset((input.page - 1) * input.pageSize)
+      .limit(input.limit)
       .execute();
 
-    return {
-      items: rows.map((row) => ({
-        endedAt: row.ended_at == null ? null : Number(row.ended_at),
-        sessionId: String(row.session_id),
-        startedAt: Number(row.started_at),
-        status: row.status === "open" ? "open" : "ended",
-        summary: row.summary_text || null,
-        title: row.session_title || null,
-      })),
-      page: input.page,
-      pageSize: input.pageSize,
-      total,
-      totalPages: total === 0 ? 0 : Math.ceil(total / input.pageSize),
-    };
+    return rows.map((row) => ({
+      endedAt: row.ended_at == null ? null : Number(row.ended_at),
+      sessionId: String(row.session_id),
+      startedAt: Number(row.started_at),
+      status: row.status === "open" ? "open" : "ended",
+      summary: row.summary_text || null,
+      title: row.session_title || null,
+    }));
   }
 
   async listRecentMessageCandidates(input: {
@@ -596,7 +644,7 @@ export class TicketsRepository {
     ticketId: number;
     uid: number;
   }) {
-    const page = await this.listTickets({
+    const records = await this.listTicketRecords({
       globalAccess: input.globalAccess,
       page: 1,
       pageSize: 1,
@@ -604,66 +652,102 @@ export class TicketsRepository {
       ticketIds: [input.ticketId],
       uid: input.uid,
       view: "visible",
+    }, {
+      limit: 1,
+      offset: 0,
+      ordered: false,
     });
 
-    return page.items[0];
+    return records[0];
   }
 
-  async listTicketActivities(input: { ticketId: number; uid: number }): Promise<TicketActivityRecord[]> {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_ticket_activity as activity")
-      .leftJoin("xy_wap_embed_sub_user as operator", (join) =>
-        join
-          .onRef("operator.id", "=", "activity.operator_sub_user_id")
-          .onRef("operator.uid", "=", "activity.uid"),
-      )
-      .select([
-        "activity.id as activity_id",
-        "activity.activity_type as activity_type",
-        "activity.content as content",
-        "activity.create_time as create_time",
-        "activity.detail_json as detail_json",
-        "activity.operator_sub_user_id as operator_sub_user_id",
-        "activity.operator_type as operator_type",
-        "activity.ticket_id as ticket_id",
-        "operator.name as operator_display_name",
-      ])
-      .where("activity.uid", "=", input.uid)
-      .where("activity.ticket_id", "=", input.ticketId)
-      .orderBy("activity.id", "asc")
-      .execute();
-
-    return rows.map((row) => ({
-      activityId: String(row.activity_id),
-      activityType: normalizeActivityType(row.activity_type),
-      content: row.content,
-      createdAt: toTimestamp(row.create_time),
-      detail: normalizeDetail(row.detail_json),
-      operatorDisplayName: row.operator_display_name,
-      operatorSubUserId: toNullableId(row.operator_sub_user_id),
-      operatorType: row.operator_type === "ai" || row.operator_type === "system"
-        ? row.operator_type
-        : "sub_user",
-      ticketId: String(row.ticket_id),
-    }));
-  }
-
-  async listTicketEvidenceMessageIds(input: {
-    snapshotId: number;
+  async getTicketAccessRecordById(input: {
+    globalAccess: boolean;
+    subUserId: number;
     ticketId: number;
     uid: number;
-  }) {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_insight_evidence as evidence")
-      .select("evidence.source_message_id")
-      .where("evidence.uid", "=", input.uid)
-      .where("evidence.snapshot_id", "=", input.snapshotId)
-      .where("evidence.dimension_type", "=", "action_item")
-      .where("evidence.dimension_record_id", "=", input.ticketId)
-      .orderBy("evidence.source_message_id", "asc")
-      .execute();
+  }): Promise<TicketAccessRecord | undefined> {
+    const row = await this.buildFilteredTicketQuery({
+      globalAccess: input.globalAccess,
+      page: 1,
+      pageSize: 1,
+      subUserId: input.subUserId,
+      ticketIds: [input.ticketId],
+      uid: input.uid,
+      view: "visible",
+    })
+      .select([
+        "ticket.anchor_message_id as anchor_message_id",
+        "ticket.assignee_sub_user_id as assignee_sub_user_id",
+        "ticket.conversation_id as conversation_id",
+        "ticket.created_by_sub_user_id as created_by_sub_user_id",
+        "ticket.id as ticket_id",
+        "ticket.session_id as session_id",
+        "ticket.source_type as source_type",
+      ])
+      .select((expressionBuilder) =>
+        expressionBuilder
+          .case()
+          .when(this.buildAccountAccessExists(expressionBuilder, {
+            globalAccess: input.globalAccess,
+            page: 1,
+            pageSize: 1,
+            subUserId: input.subUserId,
+            uid: input.uid,
+            view: "visible",
+          }))
+          .then(1)
+          .else(0)
+          .end()
+          .as("has_account_access"),
+      )
+      .limit(1)
+      .executeTakeFirst();
 
-    return rows.map((row) => String(row.source_message_id));
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      anchorMessageId: toNullableId(row.anchor_message_id),
+      assigneeSubUserId: toNullableId(row.assignee_sub_user_id),
+      conversationId: String(row.conversation_id),
+      createdBySubUserId: toNullableId(row.created_by_sub_user_id),
+      hasAccountAccess: Number(row.has_account_access) === 1,
+      sessionId: toNullableId(row.session_id),
+      sourceType: row.source_type === "ai" ? "ai" : "manual",
+      ticketId: String(row.ticket_id),
+    };
+  }
+
+  async listTicketActivities(input: {
+    beforeActivityId?: number;
+    limit: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketActivityRecordPage> {
+    let query = this.buildTicketActivityQuery()
+      .where("activity.uid", "=", input.uid)
+      .where("activity.ticket_id", "=", input.ticketId);
+
+    if (input.beforeActivityId !== undefined) {
+      query = query.where("activity.id", "<", input.beforeActivityId);
+    }
+
+    const rows = await query
+      .orderBy("activity.id", "desc")
+      .limit(input.limit + 1)
+      .execute();
+    const hasMore = rows.length > input.limit;
+    const items = rows
+      .slice(0, input.limit)
+      .map((row) => mapTicketActivityRow(row));
+
+    return {
+      hasMore,
+      items,
+      nextCursor: hasMore ? items.at(-1)?.activityId ?? null : null,
+    };
   }
 
   async updateTicket(input: {
@@ -753,13 +837,11 @@ export class TicketsRepository {
         .updateTable("xy_wap_embed_session_action_item")
         .set({
           assignee_sub_user_id: input.assigneeSubUserId,
-          status: "in_progress",
           updated_by_sub_user_id: input.assigneeSubUserId,
         })
         .where("uid", "=", input.uid)
         .where("id", "=", input.ticketId)
         .where("assignee_sub_user_id", "is", null)
-        .where("status", "=", "open")
         .executeTakeFirst();
 
       if (Number(result.numUpdatedRows) !== 1) {
@@ -769,7 +851,6 @@ export class TicketsRepository {
       await insertActivities(transaction, {
         activities: [
           { activityType: "assignee_changed", detail: { after: input.assigneeSubUserId, before: null } },
-          { activityType: "status_changed", detail: { after: "in_progress", before: "open" } },
         ],
         operatorSubUserId: input.assigneeSubUserId,
         ticketId: input.ticketId,
@@ -831,8 +912,12 @@ export class TicketsRepository {
     if (activityId == null) {
       return undefined;
     }
-    const activities = await this.listTicketActivities({ ticketId: input.ticketId, uid: input.uid });
-    const activity = activities.find((item) => item.activityId === String(activityId));
+    const row = await this.buildTicketActivityQuery()
+      .where("activity.uid", "=", input.uid)
+      .where("activity.ticket_id", "=", input.ticketId)
+      .where("activity.id", "=", activityId)
+      .executeTakeFirst();
+    const activity = row ? mapTicketActivityRow(row) : undefined;
 
     if (!activity) {
       throw new Error("TICKET_ACTIVITY_NOT_FOUND_AFTER_INSERT");
@@ -840,35 +925,34 @@ export class TicketsRepository {
     return activity;
   }
 
-  private buildFilteredTicketQuery(input: TicketListRepositoryInput): TicketQuery {
+  private buildTicketActivityQuery() {
+    return this.db
+      .selectFrom("xy_wap_embed_ticket_activity as activity")
+      .leftJoin("xy_wap_embed_sub_user as operator", (join) =>
+        join
+          .onRef("operator.id", "=", "activity.operator_sub_user_id")
+          .onRef("operator.uid", "=", "activity.uid"),
+      )
+      .select([
+        "activity.id as activity_id",
+        "activity.activity_type as activity_type",
+        "activity.content as content",
+        "activity.create_time as create_time",
+        "activity.detail_json as detail_json",
+        "activity.operator_sub_user_id as operator_sub_user_id",
+        "activity.operator_type as operator_type",
+        "activity.ticket_id as ticket_id",
+        "operator.name as operator_display_name",
+      ]);
+  }
+
+  private buildFilteredTicketQuery(input: TicketListRepositoryInput): TicketBaseQuery {
     let query = this.db
       .selectFrom("xy_wap_embed_session_action_item as ticket")
       .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.id", "=", "ticket.conversation_id")
           .onRef("conversation.uid", "=", "ticket.uid"),
-      )
-      .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.uid", "=", "conversation.uid")
-          .onRef("seat.platform", "=", "conversation.platform")
-          .onRef("seat.third_userid", "=", "conversation.third_userid"),
-      )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.uid", "=", "conversation.uid")
-          .onRef("contact.platform", "=", "conversation.platform")
-          .onRef("contact.third_external_userid", "=", "conversation.third_external_userid"),
-      )
-      .leftJoin("xy_wap_embed_sub_user as assignee", (join) =>
-        join
-          .onRef("assignee.id", "=", "ticket.assignee_sub_user_id")
-          .onRef("assignee.uid", "=", "ticket.uid"),
-      )
-      .leftJoin("xy_wap_embed_sub_user as creator", (join) =>
-        join
-          .onRef("creator.id", "=", "ticket.created_by_sub_user_id")
-          .onRef("creator.uid", "=", "ticket.uid"),
       )
       .where("ticket.uid", "=", input.uid);
 
@@ -888,7 +972,18 @@ export class TicketsRepository {
       query = query.where("ticket.assignee_sub_user_id", "=", input.assigneeSubUserId);
     }
     if (input.ownerAccountId) {
-      query = query.where("seat.id", "=", input.ownerAccountId);
+      const ownerAccountId = input.ownerAccountId;
+      query = query.where((expressionBuilder) =>
+        expressionBuilder.exists(
+          expressionBuilder
+            .selectFrom("xy_wap_embed_user_seat as owner_filter_seat")
+            .select(sql<number>`1`.as("one"))
+            .whereRef("owner_filter_seat.uid", "=", "conversation.uid")
+            .whereRef("owner_filter_seat.platform", "=", "conversation.platform")
+            .whereRef("owner_filter_seat.third_userid", "=", "conversation.third_userid")
+            .where("owner_filter_seat.id", "=", ownerAccountId),
+        ),
+      );
     }
     if (input.priority) {
       query = query.where("ticket.priority", "=", input.priority);
@@ -917,8 +1012,6 @@ export class TicketsRepository {
         expressionBuilder.or([
           sql<boolean>`CAST(${expressionBuilder.ref("ticket.id")} AS CHAR) LIKE ${pattern}`,
           expressionBuilder("ticket.title", "like", pattern),
-          expressionBuilder("contact.name", "like", pattern),
-          expressionBuilder("contact.real_name", "like", pattern),
         ]),
       );
     }
@@ -926,7 +1019,7 @@ export class TicketsRepository {
     return query;
   }
 
-  private applyView(query: TicketQuery, input: TicketListRepositoryInput): TicketQuery {
+  private applyView(query: TicketBaseQuery, input: TicketListRepositoryInput): TicketBaseQuery {
     if (input.view === "assigned_to_me") {
       return query.where("ticket.assignee_sub_user_id", "=", input.subUserId);
     }
@@ -972,7 +1065,7 @@ export class TicketsRepository {
   }
 
   private buildAccountAccessExists(
-    expressionBuilder: ExpressionBuilder<TicketQueryDatabase, TicketQueryTables>,
+    expressionBuilder: ExpressionBuilder<TicketQueryDatabase, "conversation" | "ticket">,
     input: TicketListRepositoryInput,
   ) {
     return expressionBuilder.exists(
@@ -994,7 +1087,7 @@ export class TicketsRepository {
     );
   }
 
-  private applyDueScope(query: TicketQuery, dueScope: TicketListRepositoryInput["dueScope"]) {
+  private applyDueScope(query: TicketBaseQuery, dueScope: TicketListRepositoryInput["dueScope"]) {
     if (dueScope === "overdue") {
       return query
         .where("ticket.status", "in", ["open", "in_progress"])
@@ -1018,6 +1111,109 @@ export class TicketsRepository {
 
     return query;
   }
+
+  private async hydrateTicketPage(uid: number, rows: TicketPageRow[]) {
+    if (rows.length === 0) {
+      return new Map<string, Omit<TicketHydrationRow, "ticket_id">>();
+    }
+
+    const platforms = uniqueNumbers(rows.map((row) => Number(row.conversation_platform)));
+    const customerIds = uniqueStrings(rows.map((row) => row.conversation_third_external_userid));
+    const ownerIds = uniqueStrings(rows.map((row) => row.conversation_third_userid));
+    const subUserIds = uniqueNumbers(rows.flatMap((row) => [
+      row.assignee_sub_user_id == null ? undefined : Number(row.assignee_sub_user_id),
+      row.created_by_sub_user_id == null ? undefined : Number(row.created_by_sub_user_id),
+    ]));
+
+    const [contacts, seats, subUsers] = await Promise.all([
+      customerIds.length === 0
+        ? []
+        : this.db
+            .selectFrom("xy_wap_embed_contact")
+            .select(["platform", "third_external_userid", "name", "avatar"])
+            .where("uid", "=", uid)
+            .where("platform", "in", platforms)
+            .where("third_external_userid", "in", customerIds)
+            .where("biz_status", "=", 1)
+            .execute(),
+      ownerIds.length === 0
+        ? []
+        : this.db
+            .selectFrom("xy_wap_embed_user_seat")
+            .select(["id", "platform", "third_userid", "third_user_name", "third_avatar"])
+            .where("uid", "=", uid)
+            .where("platform", "in", platforms)
+            .where("third_userid", "in", ownerIds)
+            .execute(),
+      subUserIds.length === 0
+        ? []
+        : this.db
+            .selectFrom("xy_wap_embed_sub_user")
+            .select(["id", "name"])
+            .where("uid", "=", uid)
+            .where("id", "in", subUserIds)
+            .execute(),
+    ]);
+
+    const contactsByIdentity = new Map(contacts.map((contact) => [
+      ticketPartyKey(contact.platform, contact.third_external_userid),
+      contact,
+    ]));
+    const seatsByIdentity = new Map(seats.map((seat) => [
+      ticketPartyKey(seat.platform, seat.third_userid),
+      seat,
+    ]));
+    const subUsersById = new Map(subUsers.map((subUser) => [Number(subUser.id), subUser]));
+
+    return new Map(rows.map((row) => {
+      const contact = contactsByIdentity.get(ticketPartyKey(
+        row.conversation_platform,
+        row.conversation_third_external_userid,
+      ));
+      const seat = seatsByIdentity.get(ticketPartyKey(
+        row.conversation_platform,
+        row.conversation_third_userid,
+      ));
+      const assignee = row.assignee_sub_user_id == null
+        ? undefined
+        : subUsersById.get(Number(row.assignee_sub_user_id));
+      const creator = row.created_by_sub_user_id == null
+        ? undefined
+        : subUsersById.get(Number(row.created_by_sub_user_id));
+
+      return [String(row.ticket_id), {
+        assignee_display_name: assignee?.name ?? null,
+        created_by_display_name: creator?.name ?? null,
+        customer_avatar_url: contact?.avatar ?? null,
+        customer_name: contact?.name ?? null,
+        owner_account_avatar_url: seat?.third_avatar ?? null,
+        owner_account_id: seat?.id ?? null,
+        owner_account_name: seat?.third_user_name ?? null,
+      }];
+    }));
+  }
+}
+
+const emptyTicketHydration: Omit<TicketHydrationRow, "ticket_id"> = {
+  assignee_display_name: null,
+  created_by_display_name: null,
+  customer_avatar_url: null,
+  customer_name: null,
+  owner_account_avatar_url: null,
+  owner_account_id: null,
+  owner_account_name: null,
+};
+
+function ticketPartyKey(platform: number | string, thirdPartyId: string) {
+  return `${String(platform)}:${thirdPartyId}`;
+}
+
+function uniqueNumbers(values: Array<number | undefined>) {
+  return [...new Set(values.filter((value): value is number => value != null))];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function mapTicketRecord(row: TicketQueryRow): TicketRecord {
@@ -1067,7 +1263,12 @@ function toTimestamp(value: Date | string) {
 }
 
 function toNullableTimestamp(value: Date | string | null) {
-  return value == null ? null : toTimestamp(value);
+  if (value == null) {
+    return null;
+  }
+  const timestamp = toTimestamp(value);
+
+  return timestamp > 0 ? timestamp : null;
 }
 
 function toNonNegativeNumber(value: number | string | bigint | undefined) {
@@ -1117,6 +1318,22 @@ function normalizeActivityType(value: string): TicketActivity["activityType"] {
   return types.includes(value as TicketActivity["activityType"])
     ? value as TicketActivity["activityType"]
     : "content_updated";
+}
+
+function mapTicketActivityRow(row: TicketActivityQueryRow): TicketActivityRecord {
+  return {
+    activityId: String(row.activity_id),
+    activityType: normalizeActivityType(row.activity_type),
+    content: row.content,
+    createdAt: toTimestamp(row.create_time),
+    detail: normalizeDetail(row.detail_json),
+    operatorDisplayName: row.operator_display_name,
+    operatorSubUserId: toNullableId(row.operator_sub_user_id),
+    operatorType: row.operator_type === "ai" || row.operator_type === "system"
+      ? row.operator_type
+      : "sub_user",
+    ticketId: String(row.ticket_id),
+  };
 }
 
 function normalizeDetail(value: unknown): Record<string, unknown> | null {

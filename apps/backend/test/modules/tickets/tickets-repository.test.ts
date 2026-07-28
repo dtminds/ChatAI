@@ -75,7 +75,7 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("ticket.status = ?");
   });
 
-  it("applies customer search before pagination and uses the fixed priority ordering", async () => {
+  it("searches only ticket id and title before pagination and uses the fixed priority ordering", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -83,19 +83,85 @@ describe("TicketsRepository", () => {
       globalAccess: false,
       page: 2,
       pageSize: 20,
-      search: "王女士",
+      search: "退款",
       subUserId: 101,
       uid: 9001,
       view: "visible",
     });
 
     const listSql = queries.map(normalizeSql).find((sql) => sql.includes("limit ? offset ?")) ?? "";
-    expect(listSql).toContain("contact.name like ?");
+    expect(listSql).toContain("cast(ticket.id as char) like ?");
+    expect(listSql).toContain("ticket.title like ?");
+    expect(listSql).not.toContain("contact.name like ?");
+    expect(listSql).not.toContain("contact.real_name like ?");
+    expect(listSql).not.toContain("left join xy_wap_embed_contact");
+    expect(listSql).not.toContain("left join xy_wap_embed_sub_user as assignee");
     expect(listSql).toContain("case when");
     expect(listSql).toContain("ticket.due_at < current_timestamp");
     expect(listSql).toContain("ticket.update_time desc");
     expect(listSql).toContain("ticket.created_by_sub_user_id = ?");
     expect(listSql).toContain("relation.sub_id = ?");
+  });
+
+  it("hydrates display fields in page-scoped batch queries after ticket pagination", async () => {
+    const { db, queries } = createRecordingDatabase({
+      ticketPageRows: [{
+        anchor_message_id: null,
+        assignee_sub_user_id: 101,
+        canceled_at: null,
+        completed_at: null,
+        conversation_id: 301,
+        conversation_platform: 5,
+        conversation_third_external_userid: "customer-1",
+        conversation_third_userid: "account-1",
+        create_time: new Date("2026-07-28T00:00:00Z"),
+        created_by_sub_user_id: 102,
+        description: null,
+        due_at: null,
+        due_hint: null,
+        has_account_access: 1,
+        overdue: 0,
+        priority: "medium",
+        session_id: null,
+        snapshot_id: null,
+        source_type: "manual",
+        status: "open",
+        ticket_id: 501,
+        title: "跟进退款",
+        update_time: new Date("2026-07-28T00:00:00Z"),
+      }],
+    });
+
+    await new TicketsRepository(db).listTickets({
+      globalAccess: true,
+      page: 1,
+      pageSize: 20,
+      subUserId: 101,
+      uid: 9001,
+      view: "all",
+    });
+
+    const normalizedQueries = queries.map(normalizeSql);
+    const pageSql = normalizedQueries.find((sql) => sql.includes("limit ? offset ?")) ?? "";
+    expect(pageSql).not.toContain("join xy_wap_embed_contact");
+    expect(pageSql).not.toContain("join xy_wap_embed_user_seat as seat");
+    expect(pageSql).not.toContain("join xy_wap_embed_sub_user");
+    expect(normalizedQueries).toContainEqual(expect.stringContaining(
+      "select platform, third_external_userid, name, avatar from xy_wap_embed_contact",
+    ));
+    expect(normalizedQueries).toContainEqual(expect.stringContaining(
+      "select id, platform, third_userid, third_user_name, third_avatar from xy_wap_embed_user_seat",
+    ));
+    const seatHydrationSql = normalizedQueries.find((sql) =>
+      sql.startsWith("select id, platform, third_userid, third_user_name, third_avatar from xy_wap_embed_user_seat"),
+    ) ?? "";
+    expect(seatHydrationSql).not.toContain("biz_status");
+    expect(normalizedQueries).toContainEqual(expect.stringContaining(
+      "select id, name from xy_wap_embed_sub_user",
+    ));
+    expect(normalizedQueries.join("\n")).toContain("third_external_userid in (?)");
+    expect(normalizedQueries.join("\n")).toContain("third_userid in (?)");
+    expect(normalizedQueries.join("\n")).toContain("id in (?, ?)");
   });
 
   it("restricts customer conversation discovery to single chats and server-resolved identity", async () => {
@@ -124,15 +190,18 @@ describe("TicketsRepository", () => {
 
     await repository.listSessionOptions({
       conversationId: 301,
-      page: 1,
-      pageSize: 20,
+      limit: 5,
       uid: 9001,
     });
 
     const sql = queries.map(normalizeSql).join("\n");
+    expect(queries).toHaveLength(1);
+    expect(sql).not.toContain("count(");
     expect(sql).toContain("left join xy_wap_embed_session_summary as summary");
     expect(sql).toContain("session.conversation_id = ?");
     expect(sql).toContain("coalesce(session.ended_at, session.last_message_at, session.started_at) desc");
+    expect(sql).toContain("limit ?");
+    expect(queries[0]?.parameters).toContain(5);
     expect(sql).not.toContain("summary.snapshot_id is not null");
   });
 
@@ -288,7 +357,7 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
-  it("claims with the fixed open and unassigned conditions", async () => {
+  it("claims only by assigning an unassigned ticket without changing or filtering status", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -298,10 +367,13 @@ describe("TicketsRepository", () => {
       uid: 9001,
     })).resolves.toBe(true);
 
-    const sql = queries.map(normalizeSql).join("\n");
-    expect(sql).toContain("assignee_sub_user_id is null");
-    expect(sql).toContain("status = ?");
-    expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
+    const normalizedQueries = queries.map(normalizeSql);
+    const updateSql = normalizedQueries.find((sql) =>
+      sql.startsWith("update xy_wap_embed_session_action_item"),
+    );
+    expect(updateSql).toContain("assignee_sub_user_id is null");
+    expect(updateSql).not.toContain("status");
+    expect(normalizedQueries.join("\n")).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
   it("fences comments by the same current-writer predicate as ticket updates", async () => {
@@ -322,25 +394,60 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
-  it("reads activities in id order and evidence only from action_item records", async () => {
+  it("reads activities with a descending id cursor", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
-    await repository.listTicketActivities({ ticketId: 501, uid: 9001 });
-    await repository.listTicketEvidenceMessageIds({
-      snapshotId: 701,
+    await repository.listTicketActivities({
+      beforeActivityId: 600,
+      limit: 50,
+      ticketId: 501,
+      uid: 9001,
+    });
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("activity.id < ?");
+    expect(sql).toContain("activity.id desc");
+    expect(sql).toContain("limit ?");
+  });
+
+  it("loads one visible ticket without executing a list count", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.getTicketRecordById({
+      globalAccess: false,
+      subUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+    });
+
+    expect(queries.some((query) => normalizeSql(query).includes("count("))).toBe(false);
+  });
+
+  it("checks child-resource access without hydrating ticket display data", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await repository.getTicketAccessRecordById({
+      globalAccess: false,
+      subUserId: 101,
       ticketId: 501,
       uid: 9001,
     });
 
     const sql = queries.map(normalizeSql).join("\n");
-    expect(sql).toContain("activity.id asc");
-    expect(sql).toContain("evidence.dimension_type = ?");
-    expect(sql).toContain("evidence.dimension_record_id = ?");
+    expect(queries).toHaveLength(1);
+    expect(sql).not.toContain("count(");
+    expect(sql).not.toContain("xy_wap_embed_contact");
+    expect(sql).not.toContain("xy_wap_embed_sub_user");
+    expect(sql).not.toContain("left join xy_wap_embed_user_seat");
   });
 });
 
-function createRecordingDatabase(options: { hostSubUserId?: number } = {}) {
+function createRecordingDatabase(options: {
+  hostSubUserId?: number;
+  ticketPageRows?: Record<string, unknown>[];
+} = {}) {
   const queries: CompiledQuery[] = [];
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
@@ -355,6 +462,10 @@ function createRecordingDatabase(options: { hostSubUserId?: number } = {}) {
 
       if (query.sql.includes("count(")) {
         return { rows: [{ total: 0 }] as R[] };
+      }
+
+      if (query.sql.includes("limit ? offset ?") && options.ticketPageRows) {
+        return { rows: options.ticketPageRows as R[] };
       }
 
       if (query.sql.includes("`seat`.`host_sub_id` as `assignee_sub_user_id`")) {

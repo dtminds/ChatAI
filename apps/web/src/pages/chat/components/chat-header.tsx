@@ -8,7 +8,7 @@ import {
   MoreHorizontalIcon,
   PinIcon,
   PinOffIcon,
-  Task01Icon,
+  StickyNote02Icon,
   TeamWorkIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -123,7 +123,7 @@ export function ChatHeader({
         <div className="flex shrink-0 items-center gap-2">
           {activeConversation?.mode === "single" && onCreateTicket ? (
             <HeaderIconButton
-              icon={Task01Icon}
+              icon={StickyNote02Icon}
               label="创建工单"
               onClick={onCreateTicket}
             />

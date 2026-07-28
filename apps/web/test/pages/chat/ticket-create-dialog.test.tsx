@@ -16,22 +16,14 @@ const contextOptions = {
     { displayName: "客服乙", subUserId: "102" },
   ],
   defaultAssigneeSubUserId: "101",
-  sessions: {
-    items: [
-      {
-        endedAt: 200,
-        sessionId: "401",
-        startedAt: 100,
-        status: "ended",
-        summary: "退款沟通",
-        title: null,
-      },
-    ],
-    page: 1,
-    pageSize: 20,
-    total: 21,
-    totalPages: 2,
-  },
+  sessions: [{
+    endedAt: 200,
+    sessionId: "401",
+    startedAt: 100,
+    status: "ended",
+    summary: "退款沟通",
+    title: null,
+  }],
 } as const;
 
 beforeEach(() => {
@@ -66,6 +58,11 @@ describe("TicketCreateDialog", () => {
     expect(screen.getByRole("combobox", { name: "负责人" })).toHaveTextContent(
       "客服甲",
     );
+    expect(screen.getByRole("textbox", { name: "标题" })).toHaveAttribute("maxLength", "120");
+    expect(screen.getByRole("textbox", { name: "描述" })).toHaveAttribute("maxLength", "2000");
+    expect(screen.getByText("0/2000")).toBeInTheDocument();
+    expect(api.getTicketContextOptions).toHaveBeenCalledWith({ conversationId: "301" });
+    expect(screen.getByRole("radio", { name: "中" })).toHaveAttribute("data-state", "on");
 
     await user.type(screen.getByRole("textbox", { name: "标题" }), " 跟进退款 ");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -84,29 +81,8 @@ describe("TicketCreateDialog", () => {
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ ticketId: "501" }));
   });
 
-  it("loads historical sessions by page and allows creating without context", async () => {
+  it("offers only the returned recent sessions and allows creating without context", async () => {
     const user = userEvent.setup();
-    api.getTicketContextOptions
-      .mockResolvedValueOnce(contextOptions)
-      .mockResolvedValueOnce({
-        ...contextOptions,
-        sessions: {
-          items: [
-            {
-              endedAt: 400,
-              sessionId: "402",
-              startedAt: 300,
-              status: "ended",
-              summary: null,
-              title: "再次沟通",
-            },
-          ],
-          page: 2,
-          pageSize: 20,
-          total: 21,
-          totalPages: 2,
-        },
-      });
 
     render(
       <TicketCreateDialog
@@ -117,16 +93,10 @@ describe("TicketCreateDialog", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: "加载更多接待会话" }));
-    await waitFor(() =>
-      expect(api.getTicketContextOptions).toHaveBeenLastCalledWith({
-        conversationId: "301",
-        page: 2,
-        pageSize: 20,
-      }),
-    );
-
-    await user.click(screen.getByRole("combobox", { name: "关联接待会话" }));
+    await user.click(await screen.findByRole("combobox", { name: "关联接待会话" }));
+    expect(screen.queryByRole("button", { name: "加载更多接待会话" })).not.toBeInTheDocument();
+    expect(api.getTicketContextOptions).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("option")).toHaveLength(3);
     await user.click(screen.getByRole("option", { name: "不关联" }));
     await user.type(screen.getByRole("textbox", { name: "标题" }), "线下沟通跟进");
     await user.click(screen.getByRole("button", { name: "创建" }));

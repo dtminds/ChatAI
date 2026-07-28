@@ -12,8 +12,7 @@ import {
   LayoutAlignLeftIcon,
   DashboardCircleIcon,
   PanelLeftIcon,
-  Notification01Icon,
-  Task01Icon,
+  StickyNote02Icon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
@@ -53,12 +52,10 @@ const railItems = [
   },
   {
     label: "工单",
-    icon: Task01Icon,
+    icon: StickyNote02Icon,
     to: "/chat/tickets",
-    moduleEntry: true,
     ticketCount: true,
   },
-  { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 
 const visibleRailItems = import.meta.env.DEV

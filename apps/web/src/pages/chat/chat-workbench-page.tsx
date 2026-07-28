@@ -47,6 +47,8 @@ import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-f
 import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { CustomerPage } from "@/pages/chat/customer-page";
+import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
+import { TicketsPage } from "@/pages/chat/tickets/tickets-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -243,10 +245,17 @@ export function ChatWorkbenchRoutePage() {
   const activeView =
     location.pathname === "/chat/customers"
       ? "customers"
+      : location.pathname.startsWith("/chat/tickets")
+        ? "tickets"
       : "chat";
+  const activeTicketId =
+    activeView === "tickets" && location.pathname.startsWith("/chat/tickets/")
+      ? decodeURIComponent(location.pathname.slice("/chat/tickets/".length))
+      : undefined;
 
   return (
     <ChatWorkbenchContent
+      activeTicketId={activeTicketId}
       activeView={activeView}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
@@ -259,11 +268,13 @@ export function ChatWorkbenchRoutePage() {
 }
 
 function ChatWorkbenchContent({
+  activeTicketId,
   activeView = "chat",
   onNavigateChat,
   onNavigateCustomerPage,
 }: {
-  activeView?: "chat" | "customers";
+  activeTicketId?: string;
+  activeView?: "chat" | "customers" | "tickets";
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
 }) {
@@ -824,7 +835,7 @@ function ChatWorkbenchContent({
   const requestActiveConversationRead = useVisibleUnreadConversationRead({
     activeConversationId: activeConversation?.id,
     activeMessages,
-    activeView,
+    activeView: activeView === "tickets" ? "customers" : activeView,
     canUseConversationActions,
     firstUnreadMessageKey,
     isConversationLoading,
@@ -2097,7 +2108,13 @@ function ChatWorkbenchContent({
     <AccountRail
       accounts={accounts}
       activeAccountId={activeView === "chat" ? activeAccountId : undefined}
-      activeNavItem={activeView === "customers" ? "客户" : "聊天"}
+      activeNavItem={
+        activeView === "customers"
+          ? "客户"
+          : activeView === "tickets"
+            ? "工单"
+            : "聊天"
+      }
       canTakeOverAccount={canTakeOverAccount}
       currentEmployee={me}
       currentEmployeeId={me?.id}
@@ -2428,7 +2445,7 @@ function ChatWorkbenchContent({
     <div
       className={cn(
         "h-svh overflow-hidden bg-sidebar",
-        isMobileWorkbenchLayout ? "min-h-0" : "min-h-[720px]",
+        isMobileWorkbenchLayout || activeView === "tickets" ? "min-h-0" : "min-h-[720px]",
       )}
     >
       {isMobileWorkbenchLayout ? (
@@ -2446,6 +2463,13 @@ function ChatWorkbenchContent({
                 onStartChat={handleStartCustomerChat}
               />
             </main>
+          </div>
+        ) : activeView === "tickets" ? (
+          <div
+            className="h-full min-h-0 overflow-hidden bg-surface"
+            data-testid="chat-tickets-layout"
+          >
+            {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
           </div>
         ) : mobilePane === "chat" ? (
           <div
@@ -2486,7 +2510,10 @@ function ChatWorkbenchContent({
           {accountRailNode}
 
           <div
-            className="relative z-10 h-full min-h-0 overflow-x-auto rounded-[14px_0_0_14px] bg-surface pl-0 shadow"
+            className={cn(
+              "relative z-10 h-full min-h-0 rounded-[14px_0_0_14px] bg-surface pl-0 shadow",
+              activeView === "tickets" ? "overflow-hidden" : "overflow-x-auto overflow-y-hidden",
+            )}
             data-testid="chat-workbench-scroll-container"
           >
             <div
@@ -2496,7 +2523,9 @@ function ChatWorkbenchContent({
                   "select-none",
               )}
               data-testid="chat-workbench-content"
-              style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
+              style={activeView === "tickets"
+                ? undefined
+                : { minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
             >
               {activeView === "customers" ? (
                 <CustomerPage
@@ -2504,6 +2533,13 @@ function ChatWorkbenchContent({
                   currentEmployeeId={me?.id}
                   onStartChat={handleStartCustomerChat}
                 />
+              ) : activeView === "tickets" ? (
+                <div
+                  className="h-full min-h-0 overflow-hidden rounded-[inherit]"
+                  data-testid="chat-tickets-layout"
+                >
+                  {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
+                </div>
               ) : (
                 <div
                   className="grid h-full min-h-0 overflow-hidden rounded-[inherit]"

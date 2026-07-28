@@ -94,7 +94,7 @@ describe("ConversationTicketsPanel", () => {
     );
 
     const { rerender } = renderPanel();
-    await user.click(await screen.findByRole("button", { name: "领取" }));
+    await user.click(await screen.findByRole("button", { name: "分配给我" }));
     await waitFor(() => expect(api.claimTicket).toHaveBeenCalledWith("501"));
 
     api.getConversationTickets.mockResolvedValue(response("conversation"));
@@ -103,7 +103,7 @@ describe("ConversationTicketsPanel", () => {
         <ConversationTicketsPanel conversationId="301" refreshKey={1} />
       </MemoryRouter>,
     );
-    await user.click(await screen.findByRole("button", { name: "完成" }));
+    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
     await waitFor(() =>
       expect(api.updateTicket).toHaveBeenCalledWith("501", {
         expectedStatus: "open",

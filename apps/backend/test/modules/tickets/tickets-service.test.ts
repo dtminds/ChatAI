@@ -309,33 +309,32 @@ describe("TicketsService", () => {
     }))).rejects.toMatchObject({ code: "INVALID_TICKET_ASSIGNEE" });
   });
 
-  it("returns paged sessions and valid assignees for the create dialog", async () => {
+  it("returns only the five latest sessions and valid assignees for the create dialog", async () => {
     const repository = createRepository();
     configureCreationConversation(repository);
     repository.listAssigneeOptions.mockResolvedValueOnce([
       { displayName: "客服甲", subUserId: "101" },
     ]);
-    repository.listSessionOptions.mockResolvedValueOnce({
-      items: [{
+    repository.listSessionOptions.mockResolvedValueOnce([{
         endedAt: null,
         sessionId: "401",
         startedAt: 1_785_168_000_000,
         status: "open",
         summary: null,
         title: null,
-      }],
-      page: 1,
-      pageSize: 20,
-      total: 1,
-      totalPages: 1,
-    });
+    }]);
     const service = new TicketsService(repository);
 
     await expect(service.getContextOptions(createActor("operator"), {
       conversationId: "301",
     })).resolves.toMatchObject({
       defaultAssigneeSubUserId: "101",
-      sessions: { total: 1 },
+      sessions: [{ sessionId: "401" }],
+    });
+    expect(repository.listSessionOptions).toHaveBeenCalledWith({
+      conversationId: 301,
+      limit: 5,
+      uid: 9001,
     });
   });
 
@@ -373,6 +372,44 @@ describe("TicketsService", () => {
     });
     await expect(service.updateTicket(createActor("admin"), "501", { priority: "high" }))
       .resolves.toHaveProperty("ticket");
+  });
+
+  it("records one activity containing all fields changed by one edit", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+    const dueAt = 1_785_254_400_000;
+
+    await service.updateTicket(createActor("operator"), "501", {
+      description: "客户已补充退款账号",
+      dueAt,
+      priority: "high",
+    });
+
+    expect(repository.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
+      activities: [{
+        activityType: "content_updated",
+        detail: {
+          changes: [
+            { after: "high", before: "medium", field: "priority" },
+            { after: dueAt, before: null, field: "dueAt" },
+            { after: "客户已补充退款账号", before: null, field: "description" },
+          ],
+        },
+      }],
+    }));
+  });
+
+  it("does not record a due date change when both values mean unset", async () => {
+    const repository = createRepository();
+    repository.getTicketRecordById.mockResolvedValue({
+      ...baseRecord,
+      dueAt: 0,
+    });
+    const service = new TicketsService(repository);
+
+    await service.updateTicket(createActor("operator"), "501", { dueAt: null });
+
+    expect(repository.updateTicket).not.toHaveBeenCalled();
   });
 
   it("validates reassignment and uses a status fence for state changes", async () => {
@@ -438,13 +475,14 @@ describe("TicketsService", () => {
     }));
   });
 
-  it("claims only account-visible open unassigned tickets and reports claim races", async () => {
+  it("claims account-visible unassigned tickets without restricting their status and reports races", async () => {
     const repository = createRepository();
     repository.getTicketRecordById.mockResolvedValueOnce({
       ...baseRecord,
       assigneeSubUserId: null,
       createdBySubUserId: null,
       sourceType: "ai",
+      status: "done",
     });
     const service = new TicketsService(repository);
 
@@ -485,35 +523,119 @@ describe("TicketsService", () => {
       .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
   });
 
+  it("rejects comments longer than one thousand characters", async () => {
+    const service = new TicketsService(createRepository());
+
+    await expect(service.addComment(createActor("operator"), "501", {
+      content: "a".repeat(1001),
+    })).rejects.toMatchObject({
+      code: "INVALID_TICKET_COMMENT",
+      statusCode: 400,
+    });
+  });
+
   it("keeps ticket detail visible while withholding inaccessible chat context", async () => {
     const repository = createRepository();
     const contextReader = createContextReader();
-    repository.canAccessConversation.mockResolvedValueOnce(false);
+    repository.getTicketAccessRecordById.mockResolvedValueOnce({
+      ...baseRecord,
+      hasAccountAccess: false,
+    });
     const service = new TicketsService(repository, contextReader);
 
-    const detail = await service.getTicketDetail(createActor("operator"), "501");
+    const detail = await service.getTicketContext(createActor("operator"), "501");
 
     expect(detail).toMatchObject({ context: { kind: "none" }, contextAccess: "forbidden" });
-    expect(contextReader.listSessionMessageRecords).not.toHaveBeenCalled();
+    expect(contextReader.listSessionMessageRecordPage).not.toHaveBeenCalled();
   });
 
-  it("reads session context and filters AI evidence to its configured message ids", async () => {
+  it("loads session context without querying unused AI evidence", async () => {
     const repository = createRepository();
     const message = { msgid: "m-1", seq: 9001 } as never;
     const other = { msgid: "m-2", seq: 9002 } as never;
     const contextReader = createContextReader();
-    contextReader.listSessionMessageRecords.mockResolvedValueOnce([message, other]);
-    repository.listTicketEvidenceMessageIds.mockResolvedValueOnce(["9002"]);
-    repository.getTicketRecordById.mockResolvedValueOnce({
-      ...baseRecord,
-      snapshotId: "701",
+    contextReader.listSessionMessageRecordPage.mockResolvedValueOnce({
+      hasMore: false,
+      messages: [message, other],
+      nextCursor: null,
     });
     const service = new TicketsService(repository, contextReader);
 
-    const detail = await service.getTicketDetail(createActor("operator"), "501");
+    const detail = await service.getTicketContext(createActor("operator"), "501");
 
     expect(detail.context).toMatchObject({ kind: "session", sessionId: "401" });
-    expect(detail.evidenceMessages).toEqual([other]);
+    expect(detail.context).toMatchObject({ messages: [message, other] });
+  });
+
+  it("uses lightweight access records for independently loaded detail sections", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository, createContextReader());
+
+    await service.getTicketContext(createActor("operator"), "501");
+    await service.listTicketActivities(createActor("operator"), "501", {});
+    await service.getTicketAssigneeOptions(createActor("operator"), "501");
+
+    expect(repository.getTicketAccessRecordById).toHaveBeenCalledTimes(3);
+    expect(repository.getTicketRecordById).not.toHaveBeenCalled();
+    expect(repository.listTicketActivities).toHaveBeenCalledWith({
+      beforeActivityId: undefined,
+      limit: 20,
+      ticketId: 501,
+      uid: 9001,
+    });
+  });
+
+  it("uses an opaque cursor to load older session messages", async () => {
+    const repository = createRepository();
+    const contextReader = createContextReader();
+    contextReader.listSessionMessageRecordPage
+      .mockResolvedValueOnce({
+        hasMore: true,
+        messages: [{ seq: 9002 } as never],
+        nextCursor: { messageId: 9002, messageTime: 1_785_168_000_000 },
+      })
+      .mockResolvedValueOnce({
+        hasMore: false,
+        messages: [{ seq: 9001 } as never],
+        nextCursor: null,
+      });
+    const service = new TicketsService(repository, contextReader);
+
+    const firstPage = await service.getTicketContext(createActor("operator"), "501", {
+      pageSize: 1,
+    });
+    expect(firstPage.context).toMatchObject({
+      hasMore: true,
+      kind: "session",
+      messages: [{ seq: 9002 }],
+    });
+    const cursor = firstPage.context.kind === "session" ? firstPage.context.nextCursor : null;
+    expect(cursor).toEqual(expect.any(String));
+
+    await service.getTicketContext(createActor("operator"), "501", {
+      cursor: cursor!,
+      pageSize: 1,
+    });
+    expect(contextReader.listSessionMessageRecordPage).toHaveBeenNthCalledWith(
+      2,
+      { uid: 9001 },
+      "401",
+      {
+        before: { messageId: 9002, messageTime: 1_785_168_000_000 },
+        limit: 1,
+      },
+    );
+  });
+
+  it("rejects malformed session context cursors instead of hiding them as load failures", async () => {
+    const service = new TicketsService(createRepository(), createContextReader());
+
+    await expect(service.getTicketContext(createActor("operator"), "501", {
+      cursor: "not-a-valid-cursor",
+    })).rejects.toMatchObject({
+      code: "INVALID_TICKET_CONTEXT_CURSOR",
+      statusCode: 400,
+    });
   });
 
   it("reads ten messages on each side of an anchor without requiring a logical session", async () => {
@@ -524,14 +646,14 @@ describe("TicketsService", () => {
       messages: [anchor],
       targetMessageId: "9009",
     });
-    repository.getTicketRecordById.mockResolvedValueOnce({
+    repository.getTicketAccessRecordById.mockResolvedValueOnce({
       ...baseRecord,
       anchorMessageId: "9009",
       sessionId: null,
     });
     const service = new TicketsService(repository, contextReader);
 
-    const detail = await service.getTicketDetail(createActor("operator"), "501");
+    const detail = await service.getTicketContext(createActor("operator"), "501");
 
     expect(contextReader.listMessageContext).toHaveBeenCalledWith(
       { uid: 9001 },
@@ -545,13 +667,50 @@ describe("TicketsService", () => {
   it("keeps ticket detail available when context loading fails", async () => {
     const repository = createRepository();
     const contextReader = createContextReader();
-    contextReader.listSessionMessageRecords.mockRejectedValueOnce(new Error("message store unavailable"));
+    contextReader.listSessionMessageRecordPage.mockRejectedValueOnce(new Error("message store unavailable"));
     const service = new TicketsService(repository, contextReader);
 
-    await expect(service.getTicketDetail(createActor("operator"), "501")).resolves.toMatchObject({
+    await expect(service.getTicketContext(createActor("operator"), "501")).resolves.toMatchObject({
       context: { kind: "none" },
       contextAccess: "error",
-      ticket: { ticketId: "501" },
+    });
+  });
+
+  it("loads older activity pages with a descending id cursor", async () => {
+    const repository = createRepository();
+    repository.listTicketActivities.mockResolvedValueOnce({
+      hasMore: true,
+      items: [{
+        activityId: "600",
+        activityType: "comment_added",
+        content: "更早的评论",
+        createdAt: 1_785_168_000_000,
+        detail: null,
+        operatorDisplayName: "客服甲",
+        operatorSubUserId: "101",
+        operatorType: "sub_user",
+        ticketId: "501",
+      }],
+      nextCursor: "600",
+    });
+    const service = new TicketsService(repository);
+
+    await expect(service.listTicketActivities(createActor("operator"), "501", {
+      beforeActivityId: "601",
+      pageSize: 20,
+    })).resolves.toMatchObject({
+      hasMore: true,
+      items: [{
+        activityId: "600",
+        operator: { displayName: "客服甲", subUserId: "101" },
+      }],
+      nextCursor: "600",
+    });
+    expect(repository.listTicketActivities).toHaveBeenCalledWith({
+      beforeActivityId: 601,
+      limit: 20,
+      ticketId: 501,
+      uid: 9001,
     });
   });
 });
@@ -583,6 +742,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
     countTickets: vi.fn(async () => 0),
     createManualTicket: vi.fn(async () => 501),
     getConversationIdentity: vi.fn(async () => undefined),
+    getTicketAccessRecordById: vi.fn(async () => baseRecord),
     getTicketRecordById: vi.fn(async () => baseRecord),
     isSessionInConversation: vi.fn(async () => false),
     isValidAssignee: vi.fn(async () => true),
@@ -590,15 +750,12 @@ function createRepository(page?: { items: TicketRecord[] }) {
     listCustomerConversationIds: vi.fn(async () => []),
     listOpenSessionAssignments: vi.fn(async () => []),
     listRecentMessageCandidates: vi.fn(async () => []),
-    listSessionOptions: vi.fn(async () => ({
+    listSessionOptions: vi.fn(async () => []),
+    listTicketActivities: vi.fn(async () => ({
+      hasMore: false,
       items: [],
-      page: 1,
-      pageSize: 20,
-      total: 0,
-      totalPages: 0,
+      nextCursor: null,
     })),
-    listTicketActivities: vi.fn(async () => []),
-    listTicketEvidenceMessageIds: vi.fn(async () => []),
     listTickets: vi.fn(async () => ({
       items: page?.items ?? [baseRecord],
       page: 1,
@@ -612,6 +769,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
     countTickets: ReturnType<typeof vi.fn>;
     createManualTicket: ReturnType<typeof vi.fn>;
     getConversationIdentity: ReturnType<typeof vi.fn>;
+    getTicketAccessRecordById: ReturnType<typeof vi.fn>;
     getTicketRecordById: ReturnType<typeof vi.fn>;
     isSessionInConversation: ReturnType<typeof vi.fn>;
     isValidAssignee: ReturnType<typeof vi.fn>;
@@ -627,10 +785,14 @@ function createRepository(page?: { items: TicketRecord[] }) {
 function createContextReader() {
   return {
     listMessageContext: vi.fn(async () => ({ messages: [], targetMessageId: "" })),
-    listSessionMessageRecords: vi.fn(async () => []),
+    listSessionMessageRecordPage: vi.fn(async () => ({
+      hasMore: false,
+      messages: [],
+      nextCursor: null,
+    })),
   } satisfies TicketsContextReaderPort & {
     listMessageContext: ReturnType<typeof vi.fn>;
-    listSessionMessageRecords: ReturnType<typeof vi.fn>;
+    listSessionMessageRecordPage: ReturnType<typeof vi.fn>;
   };
 }
 

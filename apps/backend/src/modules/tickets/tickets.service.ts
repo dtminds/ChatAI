@@ -5,11 +5,16 @@ import type {
   ConversationTicketsResponse,
   Ticket,
   TicketActivity,
+  TicketActivityListQuery,
+  TicketActivityPage,
+  TicketAssigneeOptionsResponse,
   TicketClaimResponse,
   TicketCommentRequest,
   TicketCommentResponse,
   TicketContextOptionsQuery,
   TicketContextOptionsResponse,
+  TicketContextQuery,
+  TicketContextResponse,
   TicketCountsResponse,
   TicketCreateRequest,
   TicketCreateResponse,
@@ -26,13 +31,15 @@ import { parseMySqlId } from "../../shared/id-utils.js";
 import { buildInsightMessageInput } from "../insights/insight-message-input-builder.js";
 import type {
   TicketConversationIdentity,
+  TicketAccessRecord,
   TicketCountRepositoryInput,
   TicketActivityRecord,
+  TicketActivityRecordPage,
   TicketListRepositoryInput,
   TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
-  TicketSessionOptionPage,
+  TicketSessionOptions,
   TicketMessageCandidate,
 } from "./tickets.types.js";
 
@@ -84,15 +91,18 @@ export interface TicketsRepositoryPort {
     ticketId: number;
     uid: number;
   }): Promise<TicketRecord | undefined>;
+  getTicketAccessRecordById(input: {
+    globalAccess: boolean;
+    subUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketAccessRecord | undefined>;
   listTicketActivities(input: {
+    beforeActivityId?: number;
+    limit: number;
     ticketId: number;
     uid: number;
-  }): Promise<TicketActivityRecord[]>;
-  listTicketEvidenceMessageIds(input: {
-    snapshotId: number;
-    ticketId: number;
-    uid: number;
-  }): Promise<string[]>;
+  }): Promise<TicketActivityRecordPage>;
   isSessionInConversation(input: {
     conversationId: number;
     sessionId: number;
@@ -125,10 +135,9 @@ export interface TicketsRepositoryPort {
   }): Promise<TicketMessageCandidate[]>;
   listSessionOptions(input: {
     conversationId: number;
-    page: number;
-    pageSize: number;
+    limit: number;
     uid: number;
-  }): Promise<TicketSessionOptionPage>;
+  }): Promise<TicketSessionOptions>;
   listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage>;
   updateTicket(input: {
     activities: TicketMutationActivity[];
@@ -159,10 +168,18 @@ export interface TicketsContextReaderPort {
     messageId: string,
     options: { after: number; before: number },
   ): Promise<{ messages: WorkbenchMessageDto[]; targetMessageId: string }>;
-  listSessionMessageRecords(
+  listSessionMessageRecordPage(
     scope: { uid: number },
     sessionId: string,
-  ): Promise<WorkbenchMessageDto[] | undefined>;
+    options: {
+      before?: { messageId: number; messageTime: number };
+      limit: number;
+    },
+  ): Promise<{
+    hasMore: boolean;
+    messages: WorkbenchMessageDto[];
+    nextCursor: { messageId: number; messageTime: number } | null;
+  } | undefined>;
 }
 
 export class TicketsService {
@@ -179,13 +196,10 @@ export class TicketsService {
       actor,
       query.conversationId,
     );
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
     const [sessions, assignees] = await Promise.all([
       this.repository.listSessionOptions({
         conversationId,
-        page,
-        pageSize,
+        limit: 5,
         uid: actor.uid,
       }),
       this.repository.listAssigneeOptions({
@@ -383,64 +397,72 @@ export class TicketsService {
     actor: TicketsActorScope,
     ticketIdValue: string,
   ): Promise<TicketDetailResponse> {
-    const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
-    const [activities, assigneeOptions, canAccessContext] = await Promise.all([
-      this.repository.listTicketActivities({ ticketId, uid: actor.uid }),
-      this.repository.listAssigneeOptions({
-        conversationId: parseMySqlId(record.conversationId)!,
-        uid: actor.uid,
-      }),
-      this.repository.canAccessConversation({
-        conversationId: parseMySqlId(record.conversationId)!,
-        subUserId,
-        uid: actor.uid,
-      }),
-    ]);
+    const { record } = await this.getVisibleTicket(actor, ticketIdValue);
 
-    if (!canAccessContext) {
-      return {
-        activities: activities.map(mapTicketActivity),
-        assigneeOptions,
-        context: { kind: "none" },
-        contextAccess: "forbidden",
-        evidenceMessages: [],
-        ticket: mapTicket(record, actor),
-      };
+    return { ticket: mapTicket(record, actor) };
+  }
+
+  async getTicketContext(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+    query: TicketContextQuery = {},
+  ): Promise<TicketContextResponse> {
+    const { record } = await this.getVisibleTicketAccess(actor, ticketIdValue);
+
+    if (!record.hasAccountAccess) {
+      return { context: { kind: "none" }, contextAccess: "forbidden" };
     }
 
-    let context: TicketDetailResponse["context"];
+    let context: TicketContextResponse["context"];
     try {
-      context = await this.loadTicketContext(actor.uid, record);
-    } catch {
-      return {
-        activities: activities.map(mapTicketActivity),
-        assigneeOptions,
-        context: { kind: "none" },
-        contextAccess: "error",
-        evidenceMessages: [],
-        ticket: mapTicket(record, actor),
-      };
+      context = await this.loadTicketContext(actor.uid, record, query);
+    } catch (error) {
+      if (error instanceof BadRequestError) {
+        throw error;
+      }
+      return { context: { kind: "none" }, contextAccess: "error" };
     }
-    const evidenceMessageIds = record.snapshotId == null
-      ? []
-      : await this.repository.listTicketEvidenceMessageIds({
-          snapshotId: parseMySqlId(record.snapshotId)!,
-          ticketId,
-          uid: actor.uid,
-        });
-    const evidenceSet = new Set(evidenceMessageIds);
-    const contextMessages = context.kind === "none" ? [] : context.messages;
 
+    return { context, contextAccess: "allowed" };
+  }
+
+  async getTicketAssigneeOptions(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+  ): Promise<TicketAssigneeOptionsResponse> {
+    const { record } = await this.getVisibleTicketAccess(actor, ticketIdValue);
+    if (!canModifyTicket(actor, record)) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权修改该工单");
+    }
     return {
-      activities: activities.map(mapTicketActivity),
-      assigneeOptions,
-      context,
-      contextAccess: "allowed",
-      evidenceMessages: contextMessages.filter((message) =>
-        evidenceSet.has(message.msgid) || evidenceSet.has(String(message.seq))
-      ),
-      ticket: mapTicket(record, actor),
+      items: await this.repository.listAssigneeOptions({
+        conversationId: parseMySqlId(record.conversationId)!,
+        uid: actor.uid,
+      }),
     };
+  }
+
+  async listTicketActivities(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+    query: TicketActivityListQuery,
+  ): Promise<TicketActivityPage> {
+    const { ticketId } = await this.getVisibleTicketAccess(actor, ticketIdValue);
+    let beforeActivityId: number | undefined;
+    if (query.beforeActivityId !== undefined) {
+      const parsedCursor = parseMySqlId(query.beforeActivityId);
+      if (parsedCursor == null) {
+        throw new BadRequestError("INVALID_TICKET_ACTIVITY_CURSOR", "处理记录游标无效");
+      }
+      beforeActivityId = parsedCursor;
+    }
+
+    return mapTicketActivityPage(await this.repository.listTicketActivities({
+      beforeActivityId,
+      limit: query.pageSize ?? 20,
+      ticketId,
+      uid: actor.uid,
+    }));
   }
 
   async updateTicket(
@@ -484,8 +506,8 @@ export class TicketsService {
     if (actor.role === "viewer" || !record.hasAccountAccess) {
       throw new ForbiddenError("TICKET_FORBIDDEN", "无权领取该工单");
     }
-    if (normalizeTicketStatus(record.status) !== "open" || record.assigneeSubUserId != null) {
-      throw new BadRequestError("TICKET_ALREADY_CLAIMED", "工单已被领取或不在待领取状态");
+    if (record.assigneeSubUserId != null) {
+      throw new BadRequestError("TICKET_ALREADY_CLAIMED", "工单已被分配");
     }
     if (!(await this.repository.isValidAssignee({
       assigneeSubUserId: subUserId,
@@ -521,8 +543,8 @@ export class TicketsService {
 
     const content = payload.content.trim();
 
-    if (!content || content.length > 2000) {
-      throw new BadRequestError("INVALID_TICKET_COMMENT", "处理备注长度应为 1-2000 个字符");
+    if (!content || content.length > 1000) {
+      throw new BadRequestError("INVALID_TICKET_COMMENT", "评论长度应为 1-1000 个字符");
     }
 
     const activity = await this.repository.addTicketComment({
@@ -562,6 +584,28 @@ export class TicketsService {
     return { record, subUserId, ticketId };
   }
 
+  private async getVisibleTicketAccess(actor: TicketsActorScope, ticketIdValue: string) {
+    const ticketId = parseMySqlId(ticketIdValue);
+
+    if (ticketId == null) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在");
+    }
+
+    const subUserId = getActorSubUserId(actor);
+    const record = await this.repository.getTicketAccessRecordById({
+      globalAccess: hasGlobalTicketAccess(actor),
+      subUserId,
+      ticketId,
+      uid: actor.uid,
+    });
+
+    if (!record) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在或无权查看");
+    }
+
+    return { record, subUserId, ticketId };
+  }
+
   private async getMappedTicket(actor: TicketsActorScope, ticketId: number) {
     const subUserId = getActorSubUserId(actor);
     const record = await this.repository.getTicketRecordById({
@@ -578,14 +622,29 @@ export class TicketsService {
     return mapTicket(record, actor);
   }
 
-  private async loadTicketContext(uid: number, record: TicketRecord): Promise<TicketDetailResponse["context"]> {
+  private async loadTicketContext(
+    uid: number,
+    record: TicketAccessRecord,
+    query: TicketContextQuery,
+  ): Promise<TicketContextResponse["context"]> {
     if (!this.contextReader) {
       return { kind: "none" };
     }
     if (record.sessionId != null) {
-      const messages = await this.contextReader.listSessionMessageRecords({ uid }, record.sessionId);
-      return messages
-        ? { kind: "session", messages, sessionId: record.sessionId }
+      const before = query.cursor == null ? undefined : decodeTicketContextCursor(query.cursor);
+      const page = await this.contextReader.listSessionMessageRecordPage(
+        { uid },
+        record.sessionId,
+        { before, limit: query.pageSize ?? 50 },
+      );
+      return page
+        ? {
+            hasMore: page.hasMore,
+            kind: "session",
+            messages: page.messages,
+            nextCursor: page.nextCursor == null ? null : encodeTicketContextCursor(page.nextCursor),
+            sessionId: record.sessionId,
+          }
         : { kind: "none" };
     }
     if (record.anchorMessageId != null) {
@@ -612,6 +671,7 @@ export class TicketsService {
   ) {
     const values: Parameters<TicketsRepositoryPort["updateTicket"]>[0]["values"] = {};
     const activities: TicketMutationActivity[] = [];
+    const editChanges: TicketEditChange[] = [];
     const currentStatus = normalizeTicketStatus(record.status);
     const requestedStatus = "status" in payload ? payload.status : undefined;
     const expectedStatus = "expectedStatus" in payload ? payload.expectedStatus : undefined;
@@ -627,16 +687,26 @@ export class TicketsService {
       if (payload.assigneeSubUserId != null && targetAssignee == null) {
         throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人参数无效");
       }
-      if (targetAssignee != null && !(await this.repository.isValidAssignee({
-        assigneeSubUserId: targetAssignee,
-        conversationId: parseMySqlId(record.conversationId)!,
-        uid: actor.uid,
-      }))) {
+      const targetAssigneeOption = targetAssignee == null
+        ? undefined
+        : (await this.repository.listAssigneeOptions({
+            conversationId: parseMySqlId(record.conversationId)!,
+            uid: actor.uid,
+          })).find((option) => option.subUserId === String(targetAssignee));
+      if (targetAssignee != null && !targetAssigneeOption) {
         throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人不具备所属账号访问权");
       }
       if (String(targetAssignee ?? "") !== (record.assigneeSubUserId ?? "")) {
         values.assigneeSubUserId = targetAssignee;
-        activities.push(changeActivity("assignee_changed", record.assigneeSubUserId, targetAssignee));
+        editChanges.push(ticketEditChange(
+          "assignee",
+          record.assigneeSubUserId,
+          targetAssignee,
+          {
+            afterLabel: targetAssigneeOption?.displayName ?? "未分配",
+            beforeLabel: record.assigneeDisplayName ?? "未分配",
+          },
+        ));
       }
     }
 
@@ -661,7 +731,11 @@ export class TicketsService {
     if (targetStatus !== currentStatus) {
       assertTicketStatusTransition(currentStatus, targetStatus);
       values.status = targetStatus;
-      activities.push(changeActivity("status_changed", currentStatus, targetStatus));
+      if (statusWasRequested) {
+        activities.push(changeActivity("status_changed", currentStatus, targetStatus));
+      } else {
+        editChanges.push(ticketEditChange("status", currentStatus, targetStatus));
+      }
       const now = new Date();
       if (targetStatus === "done") {
         values.completedAt = now;
@@ -686,19 +760,12 @@ export class TicketsService {
       }
       if (title !== record.title) {
         values.title = title;
-        activities.push(changeActivity("content_updated", record.title, title, "title"));
-      }
-    }
-    if (payload.description !== undefined) {
-      const description = normalizeOptionalText(payload.description);
-      if (description !== record.description) {
-        values.description = description;
-        activities.push(changeActivity("content_updated", record.description, description, "description"));
+        editChanges.push(ticketEditChange("title", record.title, title));
       }
     }
     if (payload.priority !== undefined && payload.priority !== record.priority) {
       values.priority = payload.priority;
-      activities.push(changeActivity("priority_changed", record.priority, payload.priority));
+      editChanges.push(ticketEditChange("priority", record.priority, payload.priority));
     }
     if (payload.dueAt !== undefined) {
       const dueAt = payload.dueAt == null ? null : new Date(payload.dueAt);
@@ -706,10 +773,24 @@ export class TicketsService {
         throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
       }
       const dueAtMs = dueAt?.getTime() ?? null;
-      if (dueAtMs !== record.dueAt) {
+      const currentDueAtMs = normalizeNullableTimestamp(record.dueAt);
+      if (dueAtMs !== currentDueAtMs) {
         values.dueAt = dueAt;
-        activities.push(changeActivity("due_at_changed", record.dueAt, dueAtMs));
+        editChanges.push(ticketEditChange("dueAt", currentDueAtMs, dueAtMs));
       }
+    }
+    if (payload.description !== undefined) {
+      const description = normalizeOptionalText(payload.description);
+      if (description !== record.description) {
+        values.description = description;
+        editChanges.push(ticketEditChange("description", record.description, description));
+      }
+    }
+    if (editChanges.length > 0) {
+      activities.push({
+        activityType: "content_updated",
+        detail: { changes: editChanges },
+      });
     }
 
     const statusNeedsFence = statusWasRequested || targetStatus !== currentStatus;
@@ -870,11 +951,32 @@ export class TicketsService {
   }
 }
 
+function encodeTicketContextCursor(cursor: { messageId: number; messageTime: number }) {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+}
+
+function decodeTicketContextCursor(value: string) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+    const messageId = Number(parsed.messageId);
+    const messageTime = Number(parsed.messageTime);
+    if (Number.isSafeInteger(messageId) && messageId > 0 && Number.isFinite(messageTime) && messageTime > 0) {
+      return { messageId, messageTime };
+    }
+  } catch {
+    // handled below
+  }
+  throw new BadRequestError("INVALID_TICKET_CONTEXT_CURSOR", "关联上下文游标无效");
+}
+
 export function hasGlobalTicketAccess(actor: TicketsActorScope) {
   return actor.role === "owner" || actor.role === "admin";
 }
 
-export function canModifyTicket(actor: TicketsActorScope, record: TicketRecord) {
+export function canModifyTicket(
+  actor: TicketsActorScope,
+  record: Pick<TicketRecord, "assigneeSubUserId" | "createdBySubUserId" | "sourceType">,
+) {
   if (actor.role === "viewer") {
     return false;
   }
@@ -905,7 +1007,6 @@ export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticke
           subUserId: record.assigneeSubUserId,
         },
     canClaim: actor.role !== "viewer"
-      && status === "open"
       && record.assigneeSubUserId == null
       && record.hasAccountAccess,
     canEdit: canModifyTicket(actor, record),
@@ -1023,6 +1124,29 @@ function changeActivity(
   };
 }
 
+type TicketEditChange = {
+  after: unknown;
+  afterLabel?: string;
+  before: unknown;
+  beforeLabel?: string;
+  field: "assignee" | "description" | "dueAt" | "priority" | "status" | "title";
+};
+
+function ticketEditChange(
+  field: TicketEditChange["field"],
+  before: unknown,
+  after: unknown,
+  labels?: Pick<TicketEditChange, "afterLabel" | "beforeLabel">,
+): TicketEditChange {
+  return { after, before, field, ...labels };
+}
+
+function normalizeNullableTimestamp(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
 function mapTicketActivity(record: TicketActivityRecord): TicketActivity {
   return {
     activityId: record.activityId,
@@ -1038,5 +1162,13 @@ function mapTicketActivity(record: TicketActivityRecord): TicketActivity {
         },
     operatorType: record.operatorType,
     ticketId: record.ticketId,
+  };
+}
+
+function mapTicketActivityPage(page: TicketActivityRecordPage): TicketActivityPage {
+  return {
+    hasMore: page.hasMore,
+    items: page.items.map(mapTicketActivity),
+    nextCursor: page.nextCursor,
   };
 }

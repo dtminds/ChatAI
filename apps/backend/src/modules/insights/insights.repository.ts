@@ -2880,6 +2880,49 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return await this.mapMessageRows(target, rows);
   }
 
+  async listSessionMessageRecordPage(
+    scope: InsightsUidScope,
+    sessionId: string,
+    options: {
+      before?: { messageId: number; messageTime: number };
+      limit: number;
+    },
+  ) {
+    const targetSessionId = parsePositiveInteger(sessionId);
+    if (targetSessionId == null) return undefined;
+    const target = await this.findInsightConversationBySession(scope, targetSessionId);
+    if (!target) return undefined;
+
+    let query = this.buildSessionMessageRowsQuery(target)
+      .select("session_message.source_message_time as session_message_time");
+    if (options.before) {
+      const beforeTime = options.before.messageTime;
+      query = query.where((expressionBuilder) => expressionBuilder.or([
+        expressionBuilder("session_message.source_message_time", "<", beforeTime),
+        expressionBuilder.and([
+          expressionBuilder("session_message.source_message_time", "=", beforeTime),
+          expressionBuilder("session_message.source_message_id", "<", options.before!.messageId),
+        ]),
+      ]));
+    }
+    const rows = await query
+      .orderBy("session_message.source_message_time", "desc")
+      .orderBy("session_message.source_message_id", "desc")
+      .limit(options.limit + 1)
+      .execute() as Array<MessageRow & { session_message_time: number }>;
+    const hasMore = rows.length > options.limit;
+    const pageRows = rows.slice(0, options.limit);
+    const oldest = pageRows.at(-1);
+
+    return {
+      hasMore,
+      messages: await this.mapMessageRows(target, [...pageRows].reverse()),
+      nextCursor: hasMore && oldest
+        ? { messageId: Number(oldest.id), messageTime: oldest.session_message_time }
+        : null,
+    };
+  }
+
   async listMessageContext(
     scope: InsightsUidScope,
     conversationId: string,

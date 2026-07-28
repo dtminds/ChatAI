@@ -247,7 +247,7 @@ function TicketRow({
         <div className="flex flex-wrap gap-2">
           {ticket.canClaim ? (
             <Button disabled={pending} onClick={() => onAction("claim")} size="sm" variant="outline">
-              领取
+              分配给我
             </Button>
           ) : null}
           {ticket.canEdit && ticket.status === "open" && ticket.assignee ? (
@@ -258,10 +258,10 @@ function TicketRow({
           {ticket.canEdit && (ticket.status === "open" || ticket.status === "in_progress") ? (
             <>
               <Button disabled={pending} onClick={() => onAction("done")} size="sm">
-                完成
+                标记为已解决
               </Button>
               <Button disabled={pending} onClick={() => onAction("canceled")} size="sm" variant="ghost">
-                取消
+                关闭工单
               </Button>
             </>
           ) : null}

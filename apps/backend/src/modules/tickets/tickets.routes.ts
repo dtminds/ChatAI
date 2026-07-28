@@ -1,15 +1,19 @@
 import {
   apiSuccess,
   ConversationTicketsQuerySchema,
+  TicketActivityListQuerySchema,
   TicketCommentRequestSchema,
   TicketContextOptionsQuerySchema,
+  TicketContextQuerySchema,
   TicketCreateRequestSchema,
   TicketListQuerySchema,
   TicketUpdateRequestSchema,
   type AccountRole,
   type ConversationTicketsQuery,
+  type TicketActivityListQuery,
   type TicketCommentRequest,
   type TicketContextOptionsQuery,
+  type TicketContextQuery,
   type TicketCreateRequest,
   type TicketListQuery,
   type TicketUpdateRequest,
@@ -88,6 +92,56 @@ export async function registerTicketsRoutes(
       await createService().listConversationTickets(
         getTicketsActor(request),
         request.params.conversationId,
+        request.query,
+      ),
+    ),
+  );
+
+  app.get<{
+    Params: TicketParams;
+    Querystring: TicketActivityListQuery;
+  }>(
+    "/api/server/tickets/:ticketId/activities",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: TicketParamsSchema,
+        querystring: TicketActivityListQuerySchema,
+      },
+    },
+    async (request) => apiSuccess(
+      await createService().listTicketActivities(
+        getTicketsActor(request),
+        request.params.ticketId,
+        request.query,
+      ),
+    ),
+  );
+
+  app.get<{ Params: TicketParams }>(
+    "/api/server/tickets/:ticketId/assignee-options",
+    {
+      preHandler: app.authenticate,
+      schema: { params: TicketParamsSchema },
+    },
+    async (request) => apiSuccess(
+      await createService().getTicketAssigneeOptions(
+        getTicketsActor(request),
+        request.params.ticketId,
+      ),
+    ),
+  );
+
+  app.get<{ Params: TicketParams; Querystring: TicketContextQuery }>(
+    "/api/server/tickets/:ticketId/context",
+    {
+      preHandler: app.authenticate,
+      schema: { params: TicketParamsSchema, querystring: TicketContextQuerySchema },
+    },
+    async (request) => apiSuccess(
+      await createService().getTicketContext(
+        getTicketsActor(request),
+        request.params.ticketId,
         request.query,
       ),
     ),
@@ -191,8 +245,8 @@ function createTicketsService(app: FastifyInstance) {
           messageId,
           uid: scope.uid,
         }),
-      listSessionMessageRecords: (scope, sessionId) =>
-        insightsRepository.listSessionMessageRecords(scope, sessionId),
+      listSessionMessageRecordPage: (scope, sessionId, options) =>
+        insightsRepository.listSessionMessageRecordPage(scope, sessionId, options),
     },
   );
 }

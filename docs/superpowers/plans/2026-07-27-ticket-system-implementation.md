@@ -4,7 +4,7 @@
 
 > 实施人员按任务顺序逐项完成，并使用复选框维护进度。每个任务只提交本任务涉及的文件，不得顺手重构会话切片、聊天权限、洞察分析或无关 UI。
 
-**Goal:** 将会话洞察中的智能待办升级为独立工单系统，支持聊天窗口人工创建、自动 Final 洞察智能创建、负责人和状态流转、工单中心、聊天侧工单列表、上下文关联、操作记录和处理备注，同时保留洞察详情原有快捷处理体验。
+**Goal:** 将会话洞察中的智能待办升级为独立工单系统，支持聊天窗口人工创建、自动 Final 洞察智能创建、负责人和状态流转、工单中心、聊天侧工单列表、上下文关联、操作记录和评论，同时保留洞察详情原有快捷处理体验。
 
 **Architecture:** 第一期继续复用 `xy_wap_embed_session_action_item` 作为工单主表，新增 `xy_wap_embed_ticket_activity`，在代码和公开 API 中建立独立 `tickets` 领域。人工创建由 Tickets Service 解析可选上下文，不触发 Sessionization；AI 创建由正常自动 Final 分析写入同一工单领域。工单可见范围、写权限和聊天上下文权限分层判断。Web 增加独立 `/chat/tickets` 模块，并在单聊窗口接入快捷创建和工单 Tab。
 
@@ -252,7 +252,7 @@ corepack pnpm --filter @chatai/backend build
 - 视图：`assigned_to_me/reception/unassigned/created_by_me/all`。
 - 创建上下文 discriminated union：`current`、`session + sessionId`、`none`。
 - 创建请求拒绝客户端传 `anchorMessageId`。
-- 标题 1-255、描述最多 5000、备注 1-2000。
+- 标题 1-120、描述最多 2000、评论 1-1000；新建和编辑表单显示标题与描述的实时字数。
 - `PATCH` 出现 `status` 时必须同时出现 `expectedStatus`。
 - 列表、详情、活动、上下文选项、计数和聊天侧列表 DTO。
 - 所有公开 ID 使用 `string`。
@@ -277,7 +277,7 @@ ConversationTicketsQuerySchema / ResponseSchema
 
 日期对外使用项目现有毫秒时间戳或 ISO 字符串中的一种统一形式；优先与现有 Insights/Workbench DTO 保持一致，不能同一 DTO 混用两种表示。
 
-`TicketContextOptionsResponse` 同时返回分页的历史接待会话和当前聊天可选负责人；负责人项至少包含 `subUserId/displayName`，并明确默认负责人。创建弹窗和详情编辑均复用该服务端候选，不另建前端账号权限算法。
+`TicketContextOptionsResponse` 同时返回最近 5 个历史接待会话和当前聊天可选负责人；负责人项至少包含 `subUserId/displayName`，并明确默认负责人。历史接待会话不提供分页或更早会话选择。创建弹窗和详情编辑均复用该服务端候选，不另建前端账号权限算法。
 
 - [x] **Step 3：运行契约测试和构建**
 
@@ -398,7 +398,7 @@ cd apps/backend
 
 - 按 `conversation_id` 和 `uid` 查询。
 - 按结束时间/ID 倒序。
-- `pageSize` 默认 20、最大 50。
+- 固定 `LIMIT 5`，不执行总数查询，不接收分页参数。
 - 返回时间范围和可用摘要，不因摘要为空排除会话。
 - 同一响应返回当前聊天的合法负责人候选；排除无账号访问权、已失效和 `viewer` 子账号。
 
@@ -478,16 +478,17 @@ cd apps/backend
 uid = current uid
 AND id = ticket id
 AND assignee_sub_user_id IS NULL
-AND status = open
 ```
 
-成功时同一事务写负责人、`in_progress` 和活动；条件不匹配区分不存在/无权限/已领取，已领取返回 `TICKET_ALREADY_CLAIMED`。
+成功时同一事务只写负责人和负责人变更活动，不读取、不限制也不修改原状态；进入 `in_progress` 必须由独立的“开始处理”操作触发。条件不匹配区分不存在/无权限/已领取，已领取返回 `TICKET_ALREADY_CLAIMED`。
 
 - [x] **Step 4：实现评论和活动时间线**
 
 - 评论去除首尾空白后 1-2000 字。
 - 评论权限与修改工单权限相同。
-- 时间线按 `id ASC` 或 `create_time ASC, id ASC` 稳定排序。
+- 时间线按 `id DESC` 稳定排序，默认每页返回最新 20 条。
+- 加载更早记录使用 `beforeActivityId` 查询 `id < beforeActivityId`，页面追加到列表底部，不使用 `OFFSET`。
+- 评论接口返回新建 activity，页面直接置顶并按 activity ID 去重。
 - `detail_json` 只保存必要 before/after；不得记录聊天消息、Prompt 或完整 Ticket 快照。
 - AI 创建活动使用 `operator_type = ai`，历史迁移不伪造活动。
 
@@ -527,6 +528,7 @@ GET   /api/server/tickets/counts
 GET   /api/server/tickets/context-options
 GET   /api/server/tickets/by-conversation/:conversationId
 GET   /api/server/tickets/:ticketId
+GET   /api/server/tickets/:ticketId/activities
 POST  /api/server/tickets
 PATCH /api/server/tickets/:ticketId
 POST  /api/server/tickets/:ticketId/claim
@@ -698,7 +700,8 @@ corepack pnpm --filter @chatai/web build
 - 未分配可领取；领取冲突刷新最新数据。
 - 状态 PATCH 携带当前 `expectedStatus`；`TICKET_STATE_CONFLICT` 后刷新。
 - 清空处理中负责人后 UI 展示待处理。
-- 评论成功追加时间线；失败不乐观伪造。
+- 评论成功后使用接口返回的 activity 置顶；失败不伪造记录。
+- 首屏只展示最新一页，点击“加载更多”按 `beforeActivityId` 在底部追加更早记录。
 - `contextAccess = forbidden`、无上下文、接待会话、消息锚点四种展示互不混淆。
 
 - [x] **Step 2：实现详情编辑**
@@ -710,7 +713,7 @@ corepack pnpm --filter @chatai/web build
 
 - [x] **Step 3：实现活动时间线和上下文**
 
-- 操作记录与处理备注共用一条时间线，但视觉上区分系统变化和人工备注。
+- 操作记录与评论共用一条倒序时间线，统一采用“操作者 + 操作 + 时间 / 变更内容”两行结构。
 - 消息上下文复用现有消息渲染能力；不要复制一套消息解析器。
 - 上下文加载失败只影响上下文区域，不清空工单详情。
 
@@ -747,7 +750,7 @@ corepack pnpm --filter @chatai/web build
 - 单聊在“更多”按钮左侧显示“创建工单”图标按钮。
 - 群聊、无活动聊天、无写权限/`viewer` 不显示或不可用。
 - 默认上下文是“当前会话”。
-- 历史接待会话分页加载。
+- 历史接待会话只显示服务端返回的最近 5 个，不提供加载更多。
 - “不关联”合法。
 - 标题、描述、截止时间和负责人校验正确。
 - 提交期间防重复；成功关闭并刷新聊天侧工单；失败保留输入。

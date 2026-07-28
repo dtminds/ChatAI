@@ -4,10 +4,14 @@ import {
   ConversationTicketsQuerySchema,
   ConversationTicketsResponseSchema,
   TicketClaimResponseSchema,
+  TicketActivityListQuerySchema,
+  TicketActivityPageSchema,
+  TicketAssigneeOptionsResponseSchema,
   TicketCommentRequestSchema,
   TicketCommentResponseSchema,
   TicketContextOptionsQuerySchema,
   TicketContextOptionsResponseSchema,
+  TicketContextResponseSchema,
   TicketCreateRequestSchema,
   TicketCreateResponseSchema,
   TicketDetailResponseSchema,
@@ -125,13 +129,20 @@ describe("ticket DTOs", () => {
     };
 
     expect(Value.Check(TicketCreateRequestSchema, { ...request, title: "" })).toBe(false);
-    expect(Value.Check(TicketCreateRequestSchema, { ...request, title: "a".repeat(256) })).toBe(false);
+    expect(Value.Check(TicketCreateRequestSchema, { ...request, title: "a".repeat(120) })).toBe(true);
+    expect(Value.Check(TicketCreateRequestSchema, { ...request, title: "a".repeat(121) })).toBe(false);
+    expect(Value.Check(TicketUpdateRequestSchema, { title: "a".repeat(120) })).toBe(true);
+    expect(Value.Check(TicketUpdateRequestSchema, { title: "a".repeat(121) })).toBe(false);
     expect(Value.Check(TicketCreateRequestSchema, {
       ...request,
-      description: "a".repeat(5001),
+      description: "a".repeat(2000),
+    })).toBe(true);
+    expect(Value.Check(TicketCreateRequestSchema, {
+      ...request,
+      description: "a".repeat(2001),
     })).toBe(false);
     expect(Value.Check(TicketCommentRequestSchema, { content: "" })).toBe(false);
-    expect(Value.Check(TicketCommentRequestSchema, { content: "a".repeat(2001) })).toBe(false);
+    expect(Value.Check(TicketCommentRequestSchema, { content: "a".repeat(1001) })).toBe(false);
     expect(Value.Check(TicketCommentRequestSchema, { content: "需要继续核实" })).toBe(true);
   });
 
@@ -163,47 +174,52 @@ describe("ticket DTOs", () => {
       totalPages: 1,
     })).toBe(true);
     expect(Value.Check(TicketDetailResponseSchema, {
-      activities: [activity],
-      assigneeOptions: [ticket.assignee],
+      ticket,
+    })).toBe(true);
+    expect(Value.Check(TicketContextResponseSchema, {
       context: {
+        hasMore: false,
         kind: "session",
         messages: [],
+        nextCursor: null,
         sessionId: "4001",
       },
       contextAccess: "allowed",
-      evidenceMessages: [],
-      ticket,
     })).toBe(true);
-    expect(Value.Check(TicketDetailResponseSchema, {
-      activities: [activity],
-      assigneeOptions: [],
+    expect(Value.Check(TicketContextResponseSchema, {
       context: { kind: "none" },
       contextAccess: "forbidden",
-      evidenceMessages: [],
-      ticket,
+    })).toBe(true);
+    expect(Value.Check(TicketAssigneeOptionsResponseSchema, {
+      items: [ticket.assignee],
+    })).toBe(true);
+    expect(Value.Check(TicketActivityListQuerySchema, {
+      beforeActivityId: "600",
+      pageSize: 50,
+    })).toBe(true);
+    expect(Value.Check(TicketActivityPageSchema, {
+      hasMore: true,
+      items: [activity],
+      nextCursor: "600",
     })).toBe(true);
     expect(Value.Check(TicketContextOptionsQuerySchema, {
       conversationId: "3001",
-      page: 1,
-      pageSize: 20,
     })).toBe(true);
+    expect(Value.Check(TicketContextOptionsQuerySchema, {
+      conversationId: "3001",
+      page: 2,
+    })).toBe(false);
     expect(Value.Check(TicketContextOptionsResponseSchema, {
       assignees: [ticket.assignee],
       defaultAssigneeSubUserId: "2001",
-      sessions: {
-        items: [{
+      sessions: [{
           endedAt: null,
           sessionId: "4001",
           startedAt: 1785160000000,
           status: "open",
           summary: null,
           title: null,
-        }],
-        page: 1,
-        pageSize: 20,
-        total: 1,
-        totalPages: 1,
-      },
+      }],
     })).toBe(true);
     expect(Value.Check(ConversationTicketsQuerySchema, {
       page: 1,

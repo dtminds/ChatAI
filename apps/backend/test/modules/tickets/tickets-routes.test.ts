@@ -10,8 +10,11 @@ const service = vi.hoisted(() => ({
   createTicket: vi.fn(),
   getContextOptions: vi.fn(),
   getCounts: vi.fn(),
+  getTicketAssigneeOptions: vi.fn(),
+  getTicketContext: vi.fn(),
   getTicketDetail: vi.fn(),
   listConversationTickets: vi.fn(),
+  listTicketActivities: vi.fn(),
   listTickets: vi.fn(),
   updateTicket: vi.fn(),
 }));
@@ -55,6 +58,9 @@ describe("tickets routes", () => {
       { method: "GET", url: "/api/server/tickets/context-options?conversationId=301" },
       { method: "GET", url: "/api/server/tickets/by-conversation/301" },
       { method: "GET", url: "/api/server/tickets/501" },
+      { method: "GET", url: "/api/server/tickets/501/activities" },
+      { method: "GET", url: "/api/server/tickets/501/assignee-options" },
+      { method: "GET", url: "/api/server/tickets/501/context?cursor=cursor-1&pageSize=50" },
       {
         method: "POST",
         payload: {
@@ -98,7 +104,7 @@ describe("tickets routes", () => {
     service.getContextOptions.mockResolvedValue({
       assignees: [],
       defaultAssigneeSubUserId: "101",
-      sessions: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      sessions: [],
     });
     service.listConversationTickets.mockResolvedValue({
       activeCount: 1,
@@ -110,12 +116,14 @@ describe("tickets routes", () => {
       totalPages: 1,
     });
     service.getTicketDetail.mockResolvedValue({
-      activities: [],
-      assigneeOptions: [],
-      context: { kind: "none" },
-      contextAccess: "allowed",
-      evidenceMessages: [],
       ticket,
+    });
+    service.getTicketAssigneeOptions.mockResolvedValue({ items: [] });
+    service.getTicketContext.mockResolvedValue({ context: { kind: "none" }, contextAccess: "allowed" });
+    service.listTicketActivities.mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextCursor: null,
     });
     service.createTicket.mockResolvedValue({ ticket });
     service.updateTicket.mockResolvedValue({ ticket });
@@ -139,6 +147,9 @@ describe("tickets routes", () => {
       { method: "GET", url: "/api/server/tickets/context-options?conversationId=301" },
       { method: "GET", url: "/api/server/tickets/by-conversation/301?scope=conversation" },
       { method: "GET", url: "/api/server/tickets/501" },
+      { method: "GET", url: "/api/server/tickets/501/activities?beforeActivityId=601&pageSize=50" },
+      { method: "GET", url: "/api/server/tickets/501/assignee-options" },
+      { method: "GET", url: "/api/server/tickets/501/context?cursor=cursor-1&pageSize=50" },
       {
         method: "POST",
         payload: {
@@ -174,6 +185,16 @@ describe("tickets routes", () => {
     expect(service.listTickets).toHaveBeenCalledWith(
       expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
       expect.objectContaining({ page: 1, pageSize: 20, view: "reception" }),
+    );
+    expect(service.listTicketActivities).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
+      "501",
+      { beforeActivityId: "601", pageSize: 50 },
+    );
+    expect(service.getTicketContext).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
+      "501",
+      { cursor: "cursor-1", pageSize: 50 },
     );
     await app.close();
   });

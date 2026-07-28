@@ -118,16 +118,6 @@ const InsightsWorkerObservabilityPage = lazy(() =>
     }),
   ),
 );
-const TicketsPage = lazy(() =>
-  import("@/pages/chat/tickets/tickets-page").then(({ TicketsPage }) => ({
-    default: TicketsPage,
-  })),
-);
-const TicketDetailPage = lazy(() =>
-  import("@/pages/chat/tickets/ticket-detail-page").then(({ TicketDetailPage }) => ({
-    default: TicketDetailPage,
-  })),
-);
 
 function withRouteSuspense(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -241,11 +231,11 @@ export const routerConfig = [
       },
       {
         path: "chat/tickets",
-        element: withRouteSuspense(<TicketsPage />),
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/tickets/:ticketId",
-        element: withRouteSuspense(<TicketDetailPage />),
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/ai-hosting",

@@ -93,7 +93,7 @@ describe("TicketDetailPage", () => {
     await screen.findByRole("heading", { name: "跟进退款" });
     expect(screen.getByRole("link", { name: "返回工单列表" })).toHaveAttribute(
       "href",
-      "/chat/tickets?view=assigned_to_me",
+      "/chat/tickets?view=assigned_to_me_active",
     );
     expect(screen.getByText("客服乙")).toBeInTheDocument();
     expect(screen.getByText("客户张三")).toBeInTheDocument();

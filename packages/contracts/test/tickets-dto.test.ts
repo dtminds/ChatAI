@@ -82,7 +82,7 @@ describe("ticket DTOs", () => {
     for (const sourceType of ["manual", "ai"]) {
       expect(Value.Check(TicketSchema, { ...ticket, sourceType })).toBe(true);
     }
-    for (const view of ["assigned_to_me", "reception", "unassigned", "created_by_me", "all"]) {
+    for (const view of ["assigned_to_me_active", "assigned_to_me", "reception", "unassigned", "created_by_me", "all"]) {
       expect(Value.Check(TicketListQuerySchema, { view })).toBe(true);
     }
 

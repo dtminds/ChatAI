@@ -43,7 +43,7 @@ export function TicketDetailPage() {
   const requestedReturnView = searchParams.get("view");
   const returnView = ticketViews.has(requestedReturnView ?? "")
     ? requestedReturnView
-    : "assigned_to_me";
+    : "assigned_to_me_active";
   const [ticket, setTicket] = useState<Ticket>();
   const [activities, setActivities] = useState<TicketActivityPage>({ hasMore: false, items: [], nextCursor: null });
   const [context, setContext] = useState<TicketContextResponse>();
@@ -586,7 +586,7 @@ export function TicketDetailPage() {
   );
 }
 
-const ticketViews = new Set(["assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
+const ticketViews = new Set(["assigned_to_me_active", "assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
 
 function StatusActions({ canStart, disabled, onChange, status }: { canStart: boolean; disabled: boolean; onChange: (status: TicketStatus) => void; status: TicketStatus }) {
   if (status === "done" || status === "canceled") return <Button disabled={disabled} onClick={() => onChange("open")} size="sm" variant="secondary">重新打开</Button>;

@@ -43,12 +43,42 @@ describe("TicketsPage", () => {
     const user = userEvent.setup();
     render(<MemoryRouter initialEntries={["/chat/tickets"]}><TicketsPage /></MemoryRouter>);
 
-    await screen.findByRole("tab", { name: "我接待的" });
+    expect(await screen.findByRole("tab", { name: "我的待办" })).toHaveAttribute("data-state", "active");
+    expect(api.getTickets).toHaveBeenCalledWith(expect.objectContaining({
+      view: "assigned_to_me_active",
+    }));
     await user.click(screen.getByRole("tab", { name: "我接待的" }));
 
     await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
       expect.objectContaining({ view: "reception" }),
     ));
+  });
+
+  it("does not show a redundant status filter in my todos", async () => {
+    render(<MemoryRouter><TicketsPage /></MemoryRouter>);
+
+    await screen.findByRole("tab", { name: "我的待办" });
+    expect(screen.queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+  });
+
+  it("does not send a stale status filter when switching to my todos", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={["/chat/tickets?view=assigned_to_me"]}><TicketsPage /></MemoryRouter>);
+
+    await screen.findByRole("link", { name: /确认退款进度/ });
+    await user.click(screen.getByRole("combobox", { name: "状态" }));
+    await user.click(screen.getByRole("option", { name: "已完成" }));
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "done", view: "assigned_to_me" }),
+    ));
+
+    api.getTickets.mockClear();
+    await user.click(screen.getByRole("tab", { name: "我的待办" }));
+    await waitFor(() => expect(api.getTickets).toHaveBeenCalled());
+
+    expect(api.getTickets.mock.calls.every(([query]) => (
+      query.view !== "assigned_to_me_active" || query.status === undefined
+    ))).toBe(true);
   });
 
   it("shows the global view to admins and resets paging when filters change", async () => {

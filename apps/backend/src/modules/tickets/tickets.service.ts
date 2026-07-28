@@ -259,11 +259,7 @@ export class TicketsService {
       throw new BadRequestError("INVALID_TICKET_ASSIGNEE", "负责人不具备所属账号访问权");
     }
 
-    const dueAt = payload.dueAt == null ? null : new Date(payload.dueAt);
-
-    if (dueAt && !Number.isFinite(dueAt.getTime())) {
-      throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
-    }
+    const dueAt = normalizeDueAt(payload.dueAt);
 
     const ticketId = await this.repository.createManualTicket({
       anchorMessageId: context.anchorMessageId,
@@ -296,7 +292,7 @@ export class TicketsService {
     query: TicketListQuery,
   ): Promise<TicketListResponse> {
     const subUserId = getActorSubUserId(actor);
-    const view = query.view ?? "assigned_to_me";
+    const view = query.view ?? "assigned_to_me_active";
     const globalAccess = hasGlobalTicketAccess(actor);
 
     if (view === "all" && !globalAccess) {
@@ -322,10 +318,9 @@ export class TicketsService {
     const [assignedToMeActive, unassignedOpen] = await Promise.all([
       this.repository.countTickets({
         globalAccess,
-        statuses: ["open", "in_progress"],
         subUserId,
         uid: actor.uid,
-        view: "assigned_to_me",
+        view: "assigned_to_me_active",
       }),
       this.repository.countTickets({
         globalAccess,
@@ -768,10 +763,7 @@ export class TicketsService {
       editChanges.push(ticketEditChange("priority", record.priority, payload.priority));
     }
     if (payload.dueAt !== undefined) {
-      const dueAt = payload.dueAt == null ? null : new Date(payload.dueAt);
-      if (dueAt && !Number.isFinite(dueAt.getTime())) {
-        throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
-      }
+      const dueAt = normalizeDueAt(payload.dueAt);
       const dueAtMs = dueAt?.getTime() ?? null;
       const currentDueAtMs = normalizeNullableTimestamp(record.dueAt);
       if (dueAtMs !== currentDueAtMs) {
@@ -1145,6 +1137,19 @@ function normalizeNullableTimestamp(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : null;
+}
+
+function normalizeDueAt(value: number | null | undefined) {
+  if (value == null || value === 0) {
+    return null;
+  }
+
+  const dueAt = new Date(value);
+  if (!Number.isFinite(dueAt.getTime())) {
+    throw new BadRequestError("INVALID_TICKET_DUE_AT", "截止时间参数无效");
+  }
+
+  return dueAt;
 }
 
 function mapTicketActivity(record: TicketActivityRecord): TicketActivity {

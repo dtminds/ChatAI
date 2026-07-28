@@ -43,6 +43,23 @@ describe("TicketsRepository", () => {
     expect(all.queries.map(normalizeSql).join("\n")).toContain("ticket.uid = ?");
   });
 
+  it("limits my active tickets to assigned open and in-progress records", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).listTickets({
+      globalAccess: false,
+      page: 1,
+      pageSize: 20,
+      subUserId: 101,
+      uid: 9001,
+      view: "assigned_to_me_active",
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("ticket.assignee_sub_user_id = ?");
+    expect(sql).toContain("ticket.status in (?, ?)");
+  });
+
   it("uses host ownership for reception and access relations for unassigned", async () => {
     const reception = createRecordingDatabase();
     const receptionRepository = new TicketsRepository(reception.db);

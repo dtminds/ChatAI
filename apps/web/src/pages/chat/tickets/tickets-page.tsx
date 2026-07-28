@@ -36,12 +36,19 @@ import { getTicketCounts, getTickets } from "./api/tickets-service";
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge } from "./ticket-display";
 import { useAuthStore } from "@/store/auth-store";
 
-const views = new Set<TicketView>(["assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
+const views = new Set<TicketView>(["assigned_to_me_active", "assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
 const viewTabs: Array<{ label: string; value: TicketView }> = [
+  { label: "我的待办", value: "assigned_to_me_active" },
   { label: "分配给我", value: "assigned_to_me" },
   { label: "我接待的", value: "reception" },
   { label: "我创建的", value: "created_by_me" },
   { label: "待领取", value: "unassigned" },
+];
+const allStatusOptions: Array<[string, string]> = [
+  ["open", "待处理"],
+  ["in_progress", "处理中"],
+  ["done", "已完成"],
+  ["canceled", "已取消"],
 ];
 
 export function TicketsPage() {
@@ -54,7 +61,7 @@ export function TicketsPage() {
     && views.has(requestedView)
     && (requestedView !== "all" || canViewAll)
     ? requestedView
-    : "assigned_to_me";
+    : "assigned_to_me_active";
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useState<Omit<TicketListQuery, "page" | "pageSize" | "view">>({});
@@ -75,10 +82,20 @@ export function TicketsPage() {
     createdTo: dateRange ? Date.parse(toBoundaryDate(dateRange.to, "end")!) : undefined,
     page,
     pageSize,
+    status: view === "assigned_to_me_active" ? undefined : filters.status,
     view,
   }), [dateRange, filters, page, pageSize, view]);
 
-  useEffect(() => { setPage(1); }, [view]);
+  useEffect(() => {
+    setPage(1);
+    if (view === "assigned_to_me_active") {
+      setFilters((current) =>
+        current.status
+          ? { ...current, status: undefined }
+          : current,
+      );
+    }
+  }, [view]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const search = searchInput.trim() || undefined;
@@ -147,8 +164,20 @@ export function TicketsPage() {
             <HugeiconsIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" icon={Search01Icon} size={16} />
             <Input aria-label="搜索工单" className="pl-9" onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索编号或标题" value={searchInput} />
           </div>
-          <TicketFilter label="状态" onChange={(value) => updateFilter("status", value)} options={[["open", "待处理"], ["in_progress", "处理中"], ["done", "已完成"], ["canceled", "已取消"]]} />
-          <TicketFilter label="优先级" onChange={(value) => updateFilter("priority", value)} options={[["high", "高"], ["medium", "中"], ["low", "低"]]} />
+          {view !== "assigned_to_me_active" ? (
+            <TicketFilter
+              label="状态"
+              onChange={(value) => updateFilter("status", value)}
+              options={allStatusOptions}
+              value={filters.status}
+            />
+          ) : null}
+          <TicketFilter
+            label="优先级"
+            onChange={(value) => updateFilter("priority", value)}
+            options={[["high", "高"], ["medium", "中"], ["low", "低"]]}
+            value={filters.priority}
+          />
           <div className="min-w-0 sm:contents">
             <InsightDateRangeFilter
               allowEmpty
@@ -243,8 +272,8 @@ export function TicketsPage() {
   );
 }
 
-function TicketFilter({ label, onChange, options }: { label: string; onChange: (value?: string) => void; options: Array<[string, string]> }) {
-  return <Select onValueChange={(value) => onChange(value === "all" ? undefined : value)}><SelectTrigger aria-label={label} className="w-full sm:w-32"><SelectValue placeholder={label} /></SelectTrigger><SelectContent><SelectItem value="all">全部{label}</SelectItem>{options.map(([value,text]) => <SelectItem key={value} value={value}>{text}</SelectItem>)}</SelectContent></Select>;
+function TicketFilter({ label, onChange, options, value }: { label: string; onChange: (value?: string) => void; options: Array<[string, string]>; value?: string }) {
+  return <Select onValueChange={(nextValue) => onChange(nextValue === "all" ? undefined : nextValue)} value={value ?? "all"}><SelectTrigger aria-label={label} className="w-full sm:w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部{label}</SelectItem>{options.map(([optionValue,text]) => <SelectItem key={optionValue} value={optionValue}>{text}</SelectItem>)}</SelectContent></Select>;
 }
 
 function TicketAdvancedFilterDropdown({

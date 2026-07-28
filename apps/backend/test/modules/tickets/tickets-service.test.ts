@@ -45,6 +45,7 @@ describe("TicketsService", () => {
     const actor = createActor("operator");
 
     for (const view of [
+      "assigned_to_me_active",
       "assigned_to_me",
       "reception",
       "unassigned",
@@ -58,6 +59,11 @@ describe("TicketsService", () => {
         view,
       }));
     }
+
+    await service.listTickets(actor, {});
+    expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+      view: "assigned_to_me_active",
+    }));
   });
 
   it("allows all only for owner and admin", async () => {
@@ -88,8 +94,7 @@ describe("TicketsService", () => {
       unassignedOpen: 2,
     });
     expect(repository.countTickets).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      statuses: ["open", "in_progress"],
-      view: "assigned_to_me",
+      view: "assigned_to_me_active",
     }));
     expect(repository.countTickets).toHaveBeenNthCalledWith(2, expect.objectContaining({
       view: "unassigned",
@@ -309,6 +314,21 @@ describe("TicketsService", () => {
     }))).rejects.toMatchObject({ code: "INVALID_TICKET_ASSIGNEE" });
   });
 
+  it("writes a zero due timestamp as an unset due date when creating", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository);
+    const service = new TicketsService(repository);
+
+    await service.createTicket(createActor("operator"), createPayload({
+      context: { type: "none" },
+      dueAt: 0,
+    }));
+
+    expect(repository.createManualTicket).toHaveBeenCalledWith(expect.objectContaining({
+      dueAt: null,
+    }));
+  });
+
   it("returns only the five latest sessions and valid assignees for the create dialog", async () => {
     const repository = createRepository();
     configureCreationConversation(repository);
@@ -408,6 +428,15 @@ describe("TicketsService", () => {
     const service = new TicketsService(repository);
 
     await service.updateTicket(createActor("operator"), "501", { dueAt: null });
+
+    expect(repository.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it("does not write a zero due timestamp when the due date is unset", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    await service.updateTicket(createActor("operator"), "501", { dueAt: 0 });
 
     expect(repository.updateTicket).not.toHaveBeenCalled();
   });

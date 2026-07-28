@@ -249,7 +249,7 @@ corepack pnpm --filter @chatai/backend build
 覆盖：
 
 - 枚举：`open/in_progress/done/canceled`、`low/medium/high`、`manual/ai`。
-- 视图：`assigned_to_me/reception/unassigned/created_by_me/all`。
+- 视图：`assigned_to_me_active/assigned_to_me/reception/unassigned/created_by_me/all`。
 - 创建上下文 discriminated union：`current`、`session + sessionId`、`none`。
 - 创建请求拒绝客户端传 `anchorMessageId`。
 - 标题 1-120、描述最多 2000、评论 1-1000；新建和编辑表单显示标题与描述的实时字数。
@@ -309,7 +309,8 @@ corepack pnpm --filter @chatai/contracts build
 
 逐项保护：
 
-- `assigned_to_me`：负责人为 JWT 子账号。
+- `assigned_to_me_active`：负责人为 JWT 子账号，且状态为 `open/in_progress`；作为默认视图，对客名称为“我的待办”。
+- `assigned_to_me`：负责人为 JWT 子账号，不限制状态。
 - `reception`：账号当前 `host_sub_id` 为 JWT 子账号，不限制工单负责人。
 - `unassigned`：当前子账号有账号访问权的范围内 `assignee IS NULL AND status = open`。
 - `created_by_me`：当前子账号人工创建。
@@ -633,11 +634,11 @@ corepack pnpm --filter @chatai/backend build
 保护：
 
 - `/chat/tickets` 路由可直接进入。
-- 五个视图参数正确；普通客服不显示“全部工单”，管理员/Owner 显示。
+- 六个视图参数正确；普通客服不显示“全部工单”，管理员/Owner 显示。
 - loading 保留表头并显示标准 Spinner；empty 和 error 独立。
 - 筛选、搜索、分页会重置/保留正确状态。
 - 工单中心没有“新建工单”按钮。
-- 导航角标只统计“分配给我”中的 `open + in_progress`。
+- 导航角标只统计“我的待办”。
 - API 通过 `apps/web/src/lib/request.ts`，不裸写 fetch。
 
 - [x] **Step 2：实现独立 Tickets 布局**
@@ -647,10 +648,11 @@ corepack pnpm --filter @chatai/backend build
 左侧视图固定：
 
 ```text
+我的待办
 分配给我
-接待工单
-待领取（带数量）
+我接待的
 我创建的
+待领取（带数量）
 全部工单（仅管理员/Owner）
 ```
 

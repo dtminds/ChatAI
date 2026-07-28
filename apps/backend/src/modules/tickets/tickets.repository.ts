@@ -1020,6 +1020,11 @@ export class TicketsRepository {
   }
 
   private applyView(query: TicketBaseQuery, input: TicketListRepositoryInput): TicketBaseQuery {
+    if (input.view === "assigned_to_me_active") {
+      return query
+        .where("ticket.assignee_sub_user_id", "=", input.subUserId)
+        .where("ticket.status", "in", ["open", "in_progress"]);
+    }
     if (input.view === "assigned_to_me") {
       return query.where("ticket.assignee_sub_user_id", "=", input.subUserId);
     }

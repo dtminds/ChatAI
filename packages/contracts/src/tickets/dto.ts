@@ -23,6 +23,7 @@ export const TicketSourceTypeSchema = Type.Union([
 ]);
 
 export const TicketViewSchema = Type.Union([
+  Type.Literal("assigned_to_me_active"),
   Type.Literal("assigned_to_me"),
   Type.Literal("reception"),
   Type.Literal("unassigned"),

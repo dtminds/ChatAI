@@ -10,7 +10,8 @@ export type AgentReplyLength = "简洁" | "标准" | "充分";
 
 export type ConditionalLogicSegment =
   | { type: "text"; value: string }
-  | { type: "knowledgeBase"; id: string; name?: string };
+  | { type: "knowledgeBase"; id: string; name?: string }
+  | { type: "skill"; id: string; name?: string };
 
 export type AgentSettingsForm = {
   communicationStyle: string;
@@ -24,6 +25,11 @@ export type AgentSettingsForm = {
 };
 
 export type KnowledgeBaseOption = {
+  id: string;
+  name: string;
+};
+
+export type SkillOption = {
   id: string;
   name: string;
 };

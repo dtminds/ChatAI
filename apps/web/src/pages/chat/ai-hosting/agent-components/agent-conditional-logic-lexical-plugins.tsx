@@ -11,11 +11,13 @@ import {
 import type { ConditionalLogicSegment } from "./agent-settings.constants";
 import {
   INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
+  INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
   RESTORE_CONDITIONAL_LOGIC_SEGMENTS_COMMAND,
 } from "./agent-conditional-logic-lexical-commands";
 import {
   $exportConditionalLogicSegments,
   $insertKnowledgeBaseChip,
+  $insertSkillChip,
   $restoreConditionalLogicFromSegments,
   segmentsEqual,
 } from "./agent-conditional-logic-lexical-utils";
@@ -51,6 +53,19 @@ export function ConditionalLogicRuntimePlugin({
       (knowledgeBase) => {
         editor.update(() => {
           $insertKnowledgeBaseChip(knowledgeBase);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
+      (skill) => {
+        editor.update(() => {
+          $insertSkillChip(skill);
         });
         return true;
       },

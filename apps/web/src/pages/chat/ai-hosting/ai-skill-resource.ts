@@ -68,12 +68,37 @@ export type SkillContentSegment =
   | SkillContentTextSegment
   | SkillContentResourceSegment;
 
-export function getSkillResourceChipName(item: SkillResourceItem) {
-  if (item.variable?.name) {
-    return item.variable.name;
+/** 变量在资源池 / 引用菜单 / 描述块中的完整展示名 */
+export function getSkillVariableDisplayName(variable: SkillVariableConfig) {
+  if (variable.type === "custom_field") {
+    return `客户自定义属性 · ${variable.name}`;
   }
 
-  return item.title;
+  if (variable.type === "system_variable") {
+    return `系统变量 · ${variable.name}`;
+  }
+
+  if (variable.type === "work_tag") {
+    return `客户标签 · 企微标签 · ${variable.name}`;
+  }
+
+  if (variable.type === "mall_tag") {
+    return `客户标签 · 小店标签 · ${variable.name}`;
+  }
+
+  return `客户标签 · 自动化标签 · ${variable.name}`;
+}
+
+export function getSkillResourceChipName(item: SkillResourceItem) {
+  if (item.title) {
+    return item.title;
+  }
+
+  if (item.variable) {
+    return getSkillVariableDisplayName(item.variable);
+  }
+
+  return item.id;
 }
 
 export function getSkillResourceKind(
@@ -203,6 +228,85 @@ export function serializeSkillContentSegments(segments: SkillContentSegment[]) {
     .trim();
 }
 
+const skillResourceTagPattern = /<resource\b[^>]*\/>/gi;
+
+function readResourceAttribute(tag: string, attributeName: string) {
+  const matched = new RegExp(
+    `${attributeName}\\s*=\\s*"([^"]*)"`,
+    "i",
+  ).exec(tag);
+  if (!matched?.[1]) {
+    return "";
+  }
+
+  return matched[1]
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+export function parseSkillContentSegments(content: string): SkillContentSegment[] {
+  const source = content ?? "";
+  if (!source.trim()) {
+    return [{ type: "text", value: "" }];
+  }
+
+  const segments: SkillContentSegment[] = [];
+  let lastIndex = 0;
+  skillResourceTagPattern.lastIndex = 0;
+
+  for (const match of source.matchAll(skillResourceTagPattern)) {
+    const placeholder = match[0] ?? "";
+    const matchIndex = match.index ?? 0;
+
+    if (matchIndex > lastIndex) {
+      segments.push({
+        type: "text",
+        value: source.slice(lastIndex, matchIndex),
+      });
+    }
+
+    const type = readResourceAttribute(placeholder, "type");
+    const name = readResourceAttribute(placeholder, "name") || "资源";
+    let kind: SkillContentResourceKind = "variable";
+    let id = placeholder;
+
+    if (type === "tool") {
+      kind = "tool";
+      id = readResourceAttribute(placeholder, "toolId") || placeholder;
+    } else if (type === "knowledge_base") {
+      kind = "knowledge_base";
+      id = `kb:${readResourceAttribute(placeholder, "kbId") || placeholder}`;
+    } else {
+      const variableType = readResourceAttribute(placeholder, "variableType");
+      const variableKey = readResourceAttribute(placeholder, "variableKey");
+      const variableId = readResourceAttribute(placeholder, "variableId");
+      id = variableKey
+        ? `${variableType}:${variableKey}`
+        : `${variableType}:${variableId}`;
+    }
+
+    segments.push({
+      id,
+      kind,
+      name,
+      placeholder,
+      type: "resource",
+    });
+    lastIndex = matchIndex + placeholder.length;
+  }
+
+  if (lastIndex < source.length) {
+    segments.push({
+      type: "text",
+      value: source.slice(lastIndex),
+    });
+  }
+
+  return normalizeSkillContentSegments(segments);
+}
+
 export function escapeResourceAttribute(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -211,8 +315,11 @@ export function escapeResourceAttribute(value: string) {
     .replaceAll(">", "&gt;");
 }
 
-export function buildVariablePlaceholder(variable: SkillVariableConfig) {
-  const name = escapeResourceAttribute(variable.name);
+export function buildVariablePlaceholder(
+  variable: SkillVariableConfig,
+  displayName = getSkillVariableDisplayName(variable),
+) {
+  const name = escapeResourceAttribute(displayName);
 
   if (variable.type === "system_variable" || variable.type === "auto_tag") {
     return `<resource type="variable" variableType="${variable.type}" variableKey="${escapeResourceAttribute(
@@ -247,4 +354,22 @@ export function skillVariableStorageId(variable: SkillVariableConfig) {
   }
 
   return `${variable.type}:${variable.select_id}`;
+}
+
+export function buildSkillVariableResourceItem(
+  variable: SkillVariableConfig,
+  displayName = getSkillVariableDisplayName(variable),
+): SkillResourceItem {
+  return {
+    description:
+      variable.type === "custom_field"
+        ? "查询聊天客户的自定义属性后，插入到指定位置"
+        : variable.type === "system_variable"
+          ? "查询系统运行时变量，然后插入到指定位置"
+          : "查询您指定的客户标签，然后插入到指定位置",
+    id: skillVariableStorageId(variable),
+    placeholder: buildVariablePlaceholder(variable, displayName),
+    title: displayName,
+    variable,
+  };
 }

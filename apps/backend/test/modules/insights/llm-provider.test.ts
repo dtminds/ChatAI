@@ -34,6 +34,7 @@ afterEach(() => {
 async function runMultiStepAnalysis(input: {
   analysisScope?: "all" | "classification" | "qaFindings";
   context: InsightPromptContext;
+  generateActionItems?: boolean;
   mode?: "final" | "live" | "manual_reanalyze";
   onTokenUsage?: (usage: InsightTokenUsage) => void;
 }) {
@@ -99,6 +100,7 @@ async function runMultiStepAnalysis(input: {
   });
   const result = await analyzer.analyzeSession({
     context: input.context,
+    generateActionItems: input.generateActionItems ?? true,
     job: {
       analysisScope: input.analysisScope ?? "all",
       attemptCount: 1,
@@ -1112,6 +1114,27 @@ describe("LLM provider config", () => {
       expect(requestBodies.map((body) => body.model)).toEqual(expectedModels);
     },
   );
+
+  it("does not ask the model for action items when generation is disabled", async () => {
+    const { requestBodies, result } = await runMultiStepAnalysis({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      generateActionItems: false,
+    });
+    const summaryMessages = requestBodies[0]?.messages as Array<{
+      content: string;
+      role: string;
+    }>;
+    const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+
+    expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
+    expect(result.actionItems).toEqual([]);
+  });
 
   it("does not ask for follow-up outputs during scoped final analysis", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];

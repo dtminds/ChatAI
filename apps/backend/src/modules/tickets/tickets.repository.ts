@@ -229,6 +229,23 @@ export class TicketsRepository {
     return toNonNegativeNumber(row?.total);
   }
 
+  async countAssignedActiveTickets(input: {
+    assigneeSubUserId: number;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_session_action_item as ticket")
+      .select((expressionBuilder) =>
+        expressionBuilder.fn.countAll<number>().as("total"),
+      )
+      .where("ticket.uid", "=", input.uid)
+      .where("ticket.assignee_sub_user_id", "=", input.assigneeSubUserId)
+      .where("ticket.status", "in", ["open", "in_progress"])
+      .executeTakeFirst();
+
+    return toNonNegativeNumber(row?.total);
+  }
+
   async getConversationIdentity(uid: number, conversationId: number) {
     const row = await this.db
       .selectFrom("xy_wap_embed_conversation as conversation")

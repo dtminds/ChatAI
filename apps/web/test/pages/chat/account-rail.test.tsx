@@ -13,10 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appearanceThemes } from "@/lib/appearance-theme";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
-
-vi.mock("@/pages/chat/tickets/api/tickets-service", () => ({
-  getTicketCounts: vi.fn(async () => ({ assignedToMeActive: 3, unassignedOpen: 0 })),
-}));
+import {
+  resetTicketCountStore,
+  setTicketReminderDisplayMode,
+  useTicketCountStore,
+} from "@/pages/chat/tickets/ticket-count-store";
 
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children, ...props }: ComponentProps<"span">) => (
@@ -81,6 +82,13 @@ describe("AccountRail", () => {
     document.documentElement.classList.remove("dark");
     delete document.documentElement.dataset.appearanceTheme;
     window.localStorage.clear();
+    resetTicketCountStore();
+    useTicketCountStore.setState({
+      counts: { assignedToMeActive: 3 },
+      initialStatus: "ready",
+      isRefreshing: false,
+      lastSucceededAt: Date.now(),
+    });
   });
 
   afterEach(() => {
@@ -131,6 +139,35 @@ describe("AccountRail", () => {
     const ticketLink = screen.getByRole("link", { name: /工单/ });
     await waitFor(() => expect(ticketLink).toHaveTextContent("3"));
     expect(ticketLink).toHaveAttribute("href", "/chat/tickets");
+  });
+
+  it("supports dot-only and hidden ticket menu reminders", () => {
+    setTicketReminderDisplayMode("dot");
+    const dotView = render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const ticketLink = screen.getByRole("link", { name: /工单/ });
+    expect(within(ticketLink).getByLabelText("有待处理工单")).toBeInTheDocument();
+    expect(ticketLink).not.toHaveTextContent("3");
+    dotView.unmount();
+
+    setTicketReminderDisplayMode("hidden");
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /工单/ })).not.toHaveTextContent("3");
+    expect(screen.queryByLabelText("有待处理工单")).not.toBeInTheDocument();
   });
 
   it("keeps nested menus open while previewing theme colors and appearance modes", async () => {

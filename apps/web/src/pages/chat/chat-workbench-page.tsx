@@ -115,6 +115,7 @@ import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/qu
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
 import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
 import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
+import { useTicketCountPolling } from "@/pages/chat/tickets/use-ticket-count-polling";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
@@ -278,6 +279,7 @@ function ChatWorkbenchContent({
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
 }) {
+  useTicketCountPolling();
   const {
     accounts,
     activeAccountId,

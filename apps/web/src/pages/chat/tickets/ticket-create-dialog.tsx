@@ -31,6 +31,7 @@ import {
   createTicket,
   getTicketContextOptions,
 } from "@/pages/chat/tickets/api/tickets-service";
+import { refreshTicketCounts } from "@/pages/chat/tickets/ticket-count-store";
 import { TicketPriority as TicketPriorityDisplay, ticketPriorityText } from "@/pages/chat/tickets/ticket-display";
 
 type TicketCreateDialogProps = {
@@ -126,6 +127,7 @@ export function TicketCreateDialog({
         priority,
         title: normalizedTitle,
       });
+      void refreshTicketCounts();
       if (scopeRef.current !== requestScope) {
         return;
       }

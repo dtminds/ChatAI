@@ -10,8 +10,12 @@ const api = vi.hoisted(() => ({
   getConversationTickets: vi.fn(),
   updateTicket: vi.fn(),
 }));
+const ticketCounts = vi.hoisted(() => ({
+  refreshTicketCounts: vi.fn(),
+}));
 
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
+vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
 
 const ticket: Ticket = {
   anchorMessageId: null,
@@ -59,6 +63,7 @@ beforeEach(() => {
   api.getConversationTickets.mockReset().mockResolvedValue(response("conversation"));
   api.claimTicket.mockReset().mockResolvedValue({ ticket });
   api.updateTicket.mockReset().mockResolvedValue({ ticket });
+  ticketCounts.refreshTicketCounts.mockReset().mockResolvedValue(undefined);
 });
 
 function renderPanel(props: Partial<React.ComponentProps<typeof ConversationTicketsPanel>> = {}) {
@@ -111,6 +116,7 @@ describe("ConversationTicketsPanel", () => {
         status: "done",
       }),
     );
+    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(2);
   });
 
   it("does not show a previous conversation response after the scope changes", async () => {

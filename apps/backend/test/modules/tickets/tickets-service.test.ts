@@ -82,23 +82,20 @@ describe("TicketsService", () => {
     }));
   });
 
-  it("uses the same fixed scopes for navigation counts", async () => {
+  it("counts only active tickets assigned to the current operator for navigation", async () => {
     const repository = createRepository();
-    repository.countTickets
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(2);
+    repository.countAssignedActiveTickets.mockResolvedValueOnce(3);
     const service = new TicketsService(repository);
 
     await expect(service.getCounts(createActor("operator"))).resolves.toEqual({
       assignedToMeActive: 3,
-      unassignedOpen: 2,
     });
-    expect(repository.countTickets).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      view: "assigned_to_me_active",
-    }));
-    expect(repository.countTickets).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      view: "unassigned",
-    }));
+    expect(repository.countAssignedActiveTickets).toHaveBeenCalledOnce();
+    expect(repository.countAssignedActiveTickets).toHaveBeenCalledWith({
+      assigneeSubUserId: 101,
+      uid: 9001,
+    });
+    expect(repository.countTickets).not.toHaveBeenCalled();
   });
 
   it("derives edit and claim permissions from actor relation and viewer role", async () => {
@@ -837,6 +834,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
     })),
     canAccessConversation: vi.fn(async () => true),
     claimTicket: vi.fn(async () => true),
+    countAssignedActiveTickets: vi.fn(async () => 0),
     countTickets: vi.fn(async () => 0),
     createManualTicket: vi.fn(async () => 501),
     deleteTicket: vi.fn(async () => true),
@@ -870,6 +868,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
     updateTicket: vi.fn(async () => true),
   } satisfies TicketsRepositoryPort & {
     canAccessConversation: ReturnType<typeof vi.fn>;
+    countAssignedActiveTickets: ReturnType<typeof vi.fn>;
     countTickets: ReturnType<typeof vi.fn>;
     createManualTicket: ReturnType<typeof vi.fn>;
     getConversationIdentity: ReturnType<typeof vi.fn>;

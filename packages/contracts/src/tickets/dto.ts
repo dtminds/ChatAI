@@ -126,7 +126,6 @@ export const TicketListResponseSchema = Type.Object({
 
 export const TicketCountsResponseSchema = Type.Object({
   assignedToMeActive: Type.Integer({ minimum: 0 }),
-  unassignedOpen: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
 export const TicketCreateContextSchema = Type.Union([

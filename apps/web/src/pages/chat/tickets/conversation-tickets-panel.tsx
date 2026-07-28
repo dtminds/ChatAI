@@ -17,6 +17,7 @@ import {
   getConversationTickets,
   updateTicket,
 } from "@/pages/chat/tickets/api/tickets-service";
+import { refreshTicketCounts } from "@/pages/chat/tickets/ticket-count-store";
 
 const pageSize = 20;
 type TicketConversationScope = NonNullable<ConversationTicketsQuery["scope"]>;
@@ -113,6 +114,7 @@ export function ConversationTicketsPanel({
           status: action,
         });
       }
+      void refreshTicketCounts();
       if (mutationScopeRef.current === mutationScope) {
         setPage(1);
         setReloadKey((current) => current + 1);

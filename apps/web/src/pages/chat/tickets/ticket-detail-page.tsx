@@ -50,6 +50,7 @@ import { HistoryCompactMessageList } from "@/pages/chat/components/message-histo
 import { adaptInsightMessages } from "@/pages/chat/insights/insight-detail-panel";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { addTicketComment, claimTicket, deleteTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
+import { refreshTicketCounts } from "./ticket-count-store";
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketPriorityText, ticketStatusText } from "./ticket-display";
 import "./tickets.css";
 
@@ -175,12 +176,18 @@ export function TicketDetailPage() {
   const mutate = async (payload: TicketUpdateRequest) => {
     const requestedTicketId = ticketId;
     const generation = loadGenerationRef.current;
+    const shouldRefreshCounts = "status" in payload
+      || (
+        payload.assigneeSubUserId !== undefined
+        && payload.assigneeSubUserId !== (ticket?.assignee?.subUserId ?? null)
+      );
     const isCurrentRequest = () =>
       activeTicketIdRef.current === requestedTicketId
       && loadGenerationRef.current === generation;
     setIsSaving(true);
     try {
       const response = await updateTicket(requestedTicketId, payload);
+      if (shouldRefreshCounts) void refreshTicketCounts();
       if (!isCurrentRequest()) return false;
       setTicket(response.ticket);
       setForm(createTicketForm(response.ticket));
@@ -239,6 +246,7 @@ export function TicketDetailPage() {
     setIsSaving(true);
     try {
       const response = await claimTicket(requestedTicketId);
+      void refreshTicketCounts();
       if (!isCurrentRequest()) return;
       setTicket(response.ticket);
       const page = await getTicketActivities(requestedTicketId, { pageSize: ticketActivityPageSize });
@@ -256,6 +264,7 @@ export function TicketDetailPage() {
     setIsDeleting(true);
     try {
       await deleteTicket(requestedTicketId);
+      void refreshTicketCounts();
       if (activeTicketIdRef.current !== requestedTicketId) return;
       navigate(`/chat/tickets?view=${returnView}`);
     } catch (cause) {

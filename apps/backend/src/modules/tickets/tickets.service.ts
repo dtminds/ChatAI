@@ -65,6 +65,10 @@ export interface TicketsRepositoryPort {
     subUserId: number;
     uid: number;
   }): Promise<boolean>;
+  countAssignedActiveTickets(input: {
+    assigneeSubUserId: number;
+    uid: number;
+  }): Promise<number>;
   countTickets(input: TicketCountRepositoryInput): Promise<number>;
   deleteTicket(input: {
     createdBySubUserId: number;
@@ -325,23 +329,12 @@ export class TicketsService {
 
   async getCounts(actor: TicketsActorScope): Promise<TicketCountsResponse> {
     const subUserId = getActorSubUserId(actor);
-    const globalAccess = hasGlobalTicketAccess(actor);
-    const [assignedToMeActive, unassignedOpen] = await Promise.all([
-      this.repository.countTickets({
-        globalAccess,
-        subUserId,
-        uid: actor.uid,
-        view: "assigned_to_me_active",
-      }),
-      this.repository.countTickets({
-        globalAccess,
-        subUserId,
-        uid: actor.uid,
-        view: "unassigned",
-      }),
-    ]);
+    const assignedToMeActive = await this.repository.countAssignedActiveTickets({
+      assigneeSubUserId: subUserId,
+      uid: actor.uid,
+    });
 
-    return { assignedToMeActive, unassignedOpen };
+    return { assignedToMeActive };
   }
 
   async listConversationTickets(

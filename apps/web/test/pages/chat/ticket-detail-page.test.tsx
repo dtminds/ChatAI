@@ -14,8 +14,12 @@ import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 const api = vi.hoisted(() => ({
   addTicketComment: vi.fn(), claimTicket: vi.fn(), deleteTicket: vi.fn(), getTicketActivities: vi.fn(), getTicketAssigneeOptions: vi.fn(), getTicketContext: vi.fn(), getTicketDetail: vi.fn(), updateTicket: vi.fn(),
 }));
+const ticketCounts = vi.hoisted(() => ({
+  refreshTicketCounts: vi.fn(),
+}));
 const toast = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
+vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/pages/chat/insights/insight-detail-panel", () => ({ adaptInsightMessages: (messages: unknown[]) => messages }));
 vi.mock("@/pages/chat/components/message-history-side-panel", () => ({
@@ -61,6 +65,7 @@ beforeEach(() => {
   api.deleteTicket.mockResolvedValue({ deleted: true });
   api.getTicketActivities.mockResolvedValue(baseDetail.activities);
   api.addTicketComment.mockResolvedValue({ activity: baseDetail.activities.items[0] });
+  ticketCounts.refreshTicketCounts.mockReset().mockResolvedValue(undefined);
 });
 
 function renderPage(entry = "/chat/tickets/501") {
@@ -104,6 +109,7 @@ describe("TicketDetailPage", () => {
     expect(screen.queryByText("接待会话 401")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "标记为已解决" }));
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledWith("501", { expectedStatus: "open", status: "done" }));
+    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("messages")).toHaveTextContent("1");
   });
 
@@ -137,6 +143,7 @@ describe("TicketDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "删除" }));
 
     await waitFor(() => expect(api.deleteTicket).toHaveBeenCalledWith("501"));
+    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("工单列表")).toBeInTheDocument();
   });
 

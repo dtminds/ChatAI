@@ -4,12 +4,22 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FilterIcon,
   Male02Icon,
+  Notification01Icon,
   Search01Icon,
+  StickyNote02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,15 +34,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { InsightDateRangeFilter } from "@/pages/chat/insights/insight-date-range-filter";
 import { toBoundaryDate, type InsightDateRange } from "@/pages/chat/insights/insights-date-range";
-import { getTicketCounts, getTickets } from "./api/tickets-service";
+import { getTickets } from "./api/tickets-service";
+import {
+  setTicketReminderDisplayMode,
+  syncAssignedToMeActiveCount,
+  type TicketReminderDisplayMode,
+  useTicketCountStore,
+} from "./ticket-count-store";
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge } from "./ticket-display";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -50,11 +69,35 @@ const allStatusOptions: Array<[string, string]> = [
   ["done", "已完成"],
   ["canceled", "已取消"],
 ];
+const ticketReminderDisplayOptions: Array<{
+  description: string;
+  label: string;
+  value: TicketReminderDisplayMode;
+}> = [
+  {
+    description: "显示待处理工单数量",
+    label: "数字角标（默认）",
+    value: "number",
+  },
+  {
+    description: "仅提示存在待处理工单",
+    label: "仅圆点",
+    value: "dot",
+  },
+  {
+    description: "不显示工单提醒",
+    label: "不展示",
+    value: "hidden",
+  },
+];
 
 export function TicketsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const role = useAuthStore((state) => state.subUser?.role);
+  const ticketReminderDisplayMode = useTicketCountStore(
+    (state) => state.reminderDisplayMode,
+  );
   const canViewAll = role === "owner" || role === "admin";
   const requestedView = searchParams.get("view") as TicketView | null;
   const view = requestedView
@@ -68,9 +111,11 @@ export function TicketsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [dateRange, setDateRange] = useState<InsightDateRange>();
   const [result, setResult] = useState<TicketListResponse>();
-  const [unassignedCount, setUnassignedCount] = useState<number>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [reminderDisplayDraft, setReminderDisplayDraft] =
+    useState<TicketReminderDisplayMode>(ticketReminderDisplayMode);
   const hasActiveFilters = Boolean(
     searchInput.trim()
     || dateRange
@@ -85,6 +130,17 @@ export function TicketsPage() {
     status: view === "assigned_to_me_active" ? undefined : filters.status,
     view,
   }), [dateRange, filters, page, pageSize, view]);
+  const shouldSyncAssignedToMeActiveCount =
+    query.view === "assigned_to_me_active"
+    && query.assigneeSubUserId == null
+    && query.createdFrom == null
+    && query.createdTo == null
+    && query.dueScope == null
+    && query.ownerAccountId == null
+    && query.priority == null
+    && query.search == null
+    && query.sourceType == null
+    && query.status == null;
 
   useEffect(() => {
     setPage(1);
@@ -109,15 +165,19 @@ export function TicketsPage() {
     let active = true;
     setIsLoading(true);
     setError(undefined);
-    void getTickets(query).then((data) => active && setResult(data)).catch((cause: unknown) => {
+    void getTickets(query).then((data) => {
+      if (!active) {
+        return;
+      }
+      setResult(data);
+      if (shouldSyncAssignedToMeActiveCount) {
+        syncAssignedToMeActiveCount(data.total);
+      }
+    }).catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : "工单加载失败");
     }).finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [query]);
-  useEffect(() => {
-    void getTicketCounts().then((data) => setUnassignedCount(data.unassignedOpen)).catch(() => undefined);
-  }, []);
-
+  }, [query, shouldSyncAssignedToMeActiveCount]);
   const updateFilter = (key: keyof typeof filters, value: string | undefined) => {
     setFilters((current) => ({ ...current, [key]: value || undefined }));
     setPage(1);
@@ -127,9 +187,28 @@ export function TicketsPage() {
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-[1180px] space-y-5 px-8 py-6">
         <header className="space-y-4">
-          <div>
-            <h1 className="text-[22px] font-semibold">工单</h1>
-            <p className="mt-1 text-sm text-muted-foreground">记录、跟进、妥善解决每一个客户的诉求</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-[22px] font-semibold">工单</h1>
+              <p className="mt-1 text-sm text-muted-foreground">记录、跟进、妥善解决每一个客户的诉求</p>
+            </div>
+            <Button
+              onClick={() => {
+                setReminderDisplayDraft(ticketReminderDisplayMode);
+                setReminderDialogOpen(true);
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Notification01Icon}
+                size={15}
+                strokeWidth={1.8}
+              />
+              通知配置
+            </Button>
           </div>
           <Tabs
             onValueChange={(nextView) => navigate(`/chat/tickets?view=${nextView}`)}
@@ -143,9 +222,6 @@ export function TicketsPage() {
                   value={tab.value}
                 >
                   {tab.label}
-                  {tab.value === "unassigned" && (unassignedCount ?? 0) > 0 ? (
-                    <Badge className="ml-1.5 h-5 min-w-5 justify-center px-1.5">{unassignedCount}</Badge>
-                  ) : null}
                 </TabsTrigger>
               ))}
               {canViewAll ? (
@@ -159,6 +235,75 @@ export function TicketsPage() {
             </TabsList>
           </Tabs>
         </header>
+        <Dialog
+          onOpenChange={(open) => {
+            setReminderDialogOpen(open);
+            if (open) {
+              setReminderDisplayDraft(ticketReminderDisplayMode);
+            }
+          }}
+          open={reminderDialogOpen}
+        >
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>工单通知配置</DialogTitle>
+              <DialogDescription>设置左侧工单菜单的提醒方式</DialogDescription>
+            </DialogHeader>
+            <RadioGroup
+              aria-label="工单菜单提醒方式"
+              className="gap-2"
+              onValueChange={(value) =>
+                setReminderDisplayDraft(value as TicketReminderDisplayMode)}
+              value={reminderDisplayDraft}
+            >
+              {ticketReminderDisplayOptions.map((option) => (
+                <Label
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-[8px] border px-3.5 py-3 transition-colors",
+                    reminderDisplayDraft === option.value
+                      ? "border-primary/50 bg-primary/5"
+                      : "border-border hover:bg-muted/40",
+                  )}
+                  htmlFor={`ticket-reminder-${option.value}`}
+                  key={option.value}
+                >
+                  <RadioGroupItem
+                    className="mt-0.5"
+                    id={`ticket-reminder-${option.value}`}
+                    value={option.value}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground">
+                      {option.label}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                </Label>
+              ))}
+            </RadioGroup>
+            <TicketReminderPreview mode={reminderDisplayDraft} />
+            <DialogFooter>
+              <Button
+                onClick={() => setReminderDialogOpen(false)}
+                type="button"
+                variant="outline"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  setTicketReminderDisplayMode(reminderDisplayDraft);
+                  setReminderDialogOpen(false);
+                }}
+                type="button"
+              >
+                保存
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
           <div className="relative col-span-2 w-full sm:w-[220px]">
             <HugeiconsIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" icon={Search01Icon} size={16} />
@@ -269,6 +414,39 @@ export function TicketsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TicketReminderPreview({ mode }: { mode: TicketReminderDisplayMode }) {
+  return (
+    <section aria-label="工单提醒效果预览" className="space-y-2">
+      <p className="text-sm font-medium text-foreground">效果预览</p>
+      <div className="rounded-[8px] border border-border bg-background p-3">
+        <div className="mx-auto flex h-9 max-w-[220px] items-center gap-2 rounded-[8px] bg-sidebar px-3 text-sm text-sidebar-foreground">
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={StickyNote02Icon}
+            size={16}
+            strokeWidth={1.6}
+          />
+          <span>工单</span>
+          {mode === "number" ? (
+            <Badge
+              aria-label="3 个待处理工单"
+              className="ml-auto h-4 min-w-4 justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums"
+            >
+              3
+            </Badge>
+          ) : null}
+          {mode === "dot" ? (
+            <span
+              aria-label="有待处理工单"
+              className="ml-auto block size-2 rounded-full bg-destructive"
+            />
+          ) : null}
+        </div>
+      </div>
+    </section>
   );
 }
 

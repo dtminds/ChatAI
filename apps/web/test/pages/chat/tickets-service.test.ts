@@ -24,7 +24,7 @@ afterEach(() => mock.reset());
 describe("tickets service", () => {
   it("uses the public ticket endpoints and preserves query scope", async () => {
     mock.onGet("/server/tickets").reply((config) => [200, { data: { query: config.params }, success: true }]);
-    mock.onGet("/server/tickets/counts").reply(200, { data: { assignedToMeActive: 2, unassignedOpen: 1 }, success: true });
+    mock.onGet("/server/tickets/counts").reply(200, { data: { assignedToMeActive: 2 }, success: true });
     mock.onGet("/server/tickets/context-options").reply(200, { data: { assignees: [], sessions: [] }, success: true });
     mock.onGet("/server/tickets/by-conversation/301").reply(200, { data: { items: [] }, success: true });
     mock.onGet("/server/tickets/501").reply(200, { data: { ticket: {} }, success: true });

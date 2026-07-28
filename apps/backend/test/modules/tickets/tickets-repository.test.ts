@@ -61,6 +61,24 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("ticket.status in (?, ?)");
   });
 
+  it("counts assigned active tickets from the covering ticket index without joining conversations", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).countAssignedActiveTickets({
+      assigneeSubUserId: 101,
+      uid: 9001,
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("count(*)");
+    expect(sql).toContain("from xy_wap_embed_session_action_item as ticket");
+    expect(sql).toContain("ticket.uid = ?");
+    expect(sql).toContain("ticket.assignee_sub_user_id = ?");
+    expect(sql).toContain("ticket.status in (?, ?)");
+    expect(sql).not.toContain("join xy_wap_embed_conversation");
+    expect(sql).not.toContain("distinct");
+  });
+
   it("uses host ownership for reception and access relations for unassigned", async () => {
     const reception = createRecordingDatabase();
     const receptionRepository = new TicketsRepository(reception.db);

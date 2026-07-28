@@ -102,7 +102,7 @@ describe("tickets routes", () => {
       items: [ticket], page: 1, pageSize: 20, total: 1, totalPages: 1,
     });
     service.getCounts.mockResolvedValue({
-      assignedToMeActive: 1, unassignedOpen: 0,
+      assignedToMeActive: 1,
     });
     service.getContextOptions.mockResolvedValue({
       assignees: [],

@@ -1,7 +1,5 @@
 import {
   startTransition,
-  useEffect,
-  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -32,7 +30,10 @@ import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import { formatUnreadCount } from "@/pages/chat/components/unread-count-badge";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
-import { getTicketCounts } from "@/pages/chat/tickets/api/tickets-service";
+import {
+  type TicketReminderDisplayMode,
+  useTicketCountStore,
+} from "@/pages/chat/tickets/ticket-count-store";
 
 const railItems = [
   { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
@@ -110,17 +111,12 @@ export function AccountRail({
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const location = useLocation();
-  const [ticketCount, setTicketCount] = useState<number>();
+  const ticketCount = useTicketCountStore((state) => state.counts?.assignedToMeActive);
+  const ticketReminderDisplayMode = useTicketCountStore(
+    (state) => state.reminderDisplayMode,
+  );
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
-
-  useEffect(() => {
-    let active = true;
-    void getTicketCounts()
-      .then((counts) => { if (active) setTicketCount(counts.assignedToMeActive); })
-      .catch(() => { if (active) setTicketCount(undefined); });
-    return () => { active = false; };
-  }, []);
 
   if (isCollapsed) {
     return (
@@ -165,12 +161,21 @@ export function AccountRail({
               const isActive = item.label === activeNavItem;
               const isRouteActive = isRouteItemActive(location.pathname, item.to);
               const itemContent = (
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={item.icon}
-                  size={18}
-                  strokeWidth={1.6}
-                />
+                <span className="relative flex size-5 items-center justify-center">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={item.icon}
+                    size={18}
+                    strokeWidth={1.6}
+                  />
+                  {"ticketCount" in item ? (
+                    <TicketReminderIndicator
+                      compact
+                      count={ticketCount ?? 0}
+                      mode={ticketReminderDisplayMode}
+                    />
+                  ) : null}
+                </span>
               );
 
               return (
@@ -308,10 +313,11 @@ export function AccountRail({
                   {item.badge}
                 </Badge>
               ) : null}
-              {"ticketCount" in item && (ticketCount ?? 0) > 0 ? (
-                <Badge className="ml-auto h-4 min-w-4 justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums">
-                  {formatUnreadCount(ticketCount ?? 0)}
-                </Badge>
+              {"ticketCount" in item ? (
+                <TicketReminderIndicator
+                  count={ticketCount ?? 0}
+                  mode={ticketReminderDisplayMode}
+                />
               ) : null}
               {item.moduleEntry ? (
                 <HugeiconsIcon
@@ -404,5 +410,43 @@ export function AccountRail({
         type="button"
       />
     </section>
+  );
+}
+
+function TicketReminderIndicator({
+  compact = false,
+  count,
+  mode,
+}: {
+  compact?: boolean;
+  count: number;
+  mode: TicketReminderDisplayMode;
+}) {
+  if (count <= 0 || mode === "hidden") {
+    return null;
+  }
+
+  if (mode === "dot") {
+    return (
+      <span
+        aria-label="有待处理工单"
+        className={cn(
+          "block size-2 rounded-full bg-destructive",
+          compact ? "absolute -right-1 -top-0.5 border border-sidebar" : "ml-auto",
+        )}
+      />
+    );
+  }
+
+  return (
+    <Badge
+      aria-label={`${count} 个待处理工单`}
+      className={cn(
+        "h-4 min-w-4 justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums",
+        compact ? "absolute -right-2.5 -top-1.5" : "ml-auto",
+      )}
+    >
+      {formatUnreadCount(count)}
+    </Badge>
   );
 }

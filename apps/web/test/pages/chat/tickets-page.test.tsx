@@ -3,10 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TicketsPage } from "@/pages/chat/tickets/tickets-page";
+import {
+  resetTicketCountStore,
+  useTicketCountStore,
+} from "@/pages/chat/tickets/ticket-count-store";
 import { useAuthStore } from "@/store/auth-store";
 
 const api = vi.hoisted(() => ({
-  getTicketCounts: vi.fn(),
   getTickets: vi.fn(),
 }));
 
@@ -22,8 +25,9 @@ const ticket = {
 };
 
 beforeEach(() => {
-  api.getTicketCounts.mockResolvedValue({ assignedToMeActive: 1, unassignedOpen: 2 });
   api.getTickets.mockResolvedValue({ items: [ticket], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+  window.localStorage.clear();
+  resetTicketCountStore();
   useAuthStore.getState().setSession({ role: "operator" } as never);
 });
 
@@ -59,6 +63,46 @@ describe("TicketsPage", () => {
 
     await screen.findByRole("tab", { name: "我的待办" });
     expect(screen.queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+  });
+
+  it("persists the ticket menu reminder preference locally", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TicketsPage /></MemoryRouter>);
+
+    await user.click(screen.getByRole("button", { name: "通知配置" }));
+    expect(screen.getByRole("dialog", { name: "工单通知配置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("3 个待处理工单")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /仅圆点/ }));
+    expect(screen.getByLabelText("有待处理工单")).toBeInTheDocument();
+    expect(useTicketCountStore.getState().reminderDisplayMode).toBe("number");
+
+    await user.click(screen.getByRole("radio", { name: /不展示/ }));
+    expect(screen.queryByLabelText("3 个待处理工单")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("有待处理工单")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /仅圆点/ }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(useTicketCountStore.getState().reminderDisplayMode).toBe("dot");
+
+    resetTicketCountStore();
+    expect(useTicketCountStore.getState().reminderDisplayMode).toBe("dot");
+  });
+
+  it("uses the unfiltered my-todos list total for the shared ticket badge", async () => {
+    api.getTickets.mockResolvedValueOnce({
+      items: [ticket],
+      page: 1,
+      pageSize: 20,
+      total: 3,
+      totalPages: 1,
+    });
+    render(<MemoryRouter><TicketsPage /></MemoryRouter>);
+
+    await screen.findByRole("link", { name: /确认退款进度/ });
+    expect(useTicketCountStore.getState().counts).toEqual({
+      assignedToMeActive: 3,
+    });
   });
 
   it("does not send a stale status filter when switching to my todos", async () => {

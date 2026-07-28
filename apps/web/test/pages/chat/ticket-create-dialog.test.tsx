@@ -7,8 +7,12 @@ const api = vi.hoisted(() => ({
   createTicket: vi.fn(),
   getTicketContextOptions: vi.fn(),
 }));
+const ticketCounts = vi.hoisted(() => ({
+  refreshTicketCounts: vi.fn(),
+}));
 
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
+vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
 
 const contextOptions = {
   assignees: [
@@ -31,6 +35,7 @@ beforeEach(() => {
   api.createTicket.mockReset().mockResolvedValue({
     ticket: { ticketId: "501" },
   });
+  ticketCounts.refreshTicketCounts.mockReset().mockResolvedValue(undefined);
 });
 
 describe("TicketCreateDialog", () => {
@@ -79,6 +84,7 @@ describe("TicketCreateDialog", () => {
       }),
     );
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ ticketId: "501" }));
+    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(1);
   });
 
   it("offers only the returned recent sessions and allows creating without context", async () => {

@@ -15,6 +15,7 @@ import type {
   TicketCountsResponse,
   TicketCreateRequest,
   TicketCreateResponse,
+  TicketDeleteResponse,
   TicketDetailResponse,
   TicketListQuery,
   TicketListResponse,
@@ -99,6 +100,13 @@ export async function updateTicket(ticketId: string, payload: TicketUpdateReques
   const response = await http.patch<ApiSuccessEnvelope<TicketUpdateResponse>>(
     `/server/tickets/${encodeURIComponent(ticketId)}`,
     payload,
+  );
+  return response.data;
+}
+
+export async function deleteTicket(ticketId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<TicketDeleteResponse>>(
+    `/server/tickets/${encodeURIComponent(ticketId)}`,
   );
   return response.data;
 }

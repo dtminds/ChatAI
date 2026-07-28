@@ -2479,10 +2479,6 @@ export interface XyWapEmbedSessionActionItem {
    * 更新时间
    */
   update_time: Generated<Date>;
-  /**
-   * 最后更新子账号ID
-   */
-  updated_by_sub_user_id: number | null;
 }
 
 export interface XyWapEmbedSessionEntity {

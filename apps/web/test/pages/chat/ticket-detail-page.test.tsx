@@ -12,9 +12,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 
 const api = vi.hoisted(() => ({
-  addTicketComment: vi.fn(), claimTicket: vi.fn(), getTicketActivities: vi.fn(), getTicketAssigneeOptions: vi.fn(), getTicketContext: vi.fn(), getTicketDetail: vi.fn(), updateTicket: vi.fn(),
+  addTicketComment: vi.fn(), claimTicket: vi.fn(), deleteTicket: vi.fn(), getTicketActivities: vi.fn(), getTicketAssigneeOptions: vi.fn(), getTicketContext: vi.fn(), getTicketDetail: vi.fn(), updateTicket: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
+vi.mock("sonner", () => ({ toast }));
 vi.mock("@/pages/chat/insights/insight-detail-panel", () => ({ adaptInsightMessages: (messages: unknown[]) => messages }));
 vi.mock("@/pages/chat/components/message-history-side-panel", () => ({
   HistoryCompactMessageList: ({ messages }: { messages: Array<{ seq?: number }> }) => (
@@ -41,7 +43,7 @@ const baseDetail = {
   contextAccess: "allowed",
   evidenceMessages: [],
   ticket: {
-    anchorMessageId: null, assignee: null, canClaim: true, canEdit: true, canceledAt: null, completedAt: null,
+    anchorMessageId: null, assignee: null, canClaim: true, canDelete: false, canEdit: true, canceledAt: null, completedAt: null,
     conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" }, customerAvatarUrl: "/customer.png", customerName: "客户张三",
     description: null, dueAt: null, dueHint: null, overdue: false, ownerAccountAvatarUrl: "/account.png",
     ownerAccountId: "201", ownerAccountName: "账号", priority: "medium", sessionId: "401", snapshotId: null,
@@ -50,11 +52,13 @@ const baseDetail = {
 } as const;
 
 beforeEach(() => {
+  toast.error.mockReset();
   api.getTicketDetail.mockResolvedValue({ ticket: baseDetail.ticket });
   api.getTicketContext.mockResolvedValue({ context: baseDetail.context, contextAccess: baseDetail.contextAccess });
   api.getTicketAssigneeOptions.mockResolvedValue({ items: baseDetail.assigneeOptions });
   api.updateTicket.mockResolvedValue({ ticket: baseDetail.ticket });
   api.claimTicket.mockResolvedValue({ ticket: baseDetail.ticket });
+  api.deleteTicket.mockResolvedValue({ deleted: true });
   api.getTicketActivities.mockResolvedValue(baseDetail.activities);
   api.addTicketComment.mockResolvedValue({ activity: baseDetail.activities.items[0] });
 });
@@ -111,6 +115,52 @@ describe("TicketDetailPage", () => {
       "href",
       "/chat/tickets?view=reception",
     );
+  });
+
+  it("allows an eligible creator to confirm deletion and returns to the originating view", async () => {
+    api.getTicketDetail.mockResolvedValueOnce({
+      ticket: { ...baseDetail.ticket, canDelete: true, sourceType: "manual" },
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/chat/tickets/501?view=created_by_me"]}>
+        <Routes>
+          <Route element={<TicketDetailPage />} path="/chat/tickets/:ticketId" />
+          <Route element={<div>工单列表</div>} path="/chat/tickets" />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.hover(await screen.findByRole("button", { name: "更多操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "删除工单" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(api.deleteTicket).toHaveBeenCalledWith("501"));
+    expect(await screen.findByText("工单列表")).toBeInTheDocument();
+  });
+
+  it("does not expose deletion when the ticket is not deletable", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "跟进退款" });
+    expect(screen.queryByRole("button", { name: "更多操作" })).not.toBeInTheDocument();
+  });
+
+  it("closes the confirmation and reports deletion failures with a toast", async () => {
+    api.getTicketDetail.mockResolvedValueOnce({
+      ticket: { ...baseDetail.ticket, canDelete: true, sourceType: "manual" },
+    });
+    api.deleteTicket.mockRejectedValueOnce(new Error("删除失败，请稍后重试"));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.hover(await screen.findByRole("button", { name: "更多操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "删除工单" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(toast.error).toHaveBeenCalledWith("删除失败，请稍后重试");
+    expect(screen.queryByText("删除失败，请稍后重试")).not.toBeInTheDocument();
   });
 
   it("shows due-soon and overdue icons only for active tickets", async () => {

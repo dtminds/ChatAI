@@ -121,15 +121,84 @@ describe("TicketsService", () => {
     const operatorPage = await service.listTickets(createActor("operator"), {
       view: "assigned_to_me",
     });
-    expect(operatorPage.items[0]).toMatchObject({ canClaim: false, canEdit: true });
-    expect(operatorPage.items[1]).toMatchObject({ canClaim: true, canEdit: false });
+    expect(operatorPage.items[0]).toMatchObject({ canClaim: false, canDelete: true, canEdit: true });
+    expect(operatorPage.items[1]).toMatchObject({ canClaim: true, canDelete: false, canEdit: false });
 
     const viewerPage = await service.listTickets(createActor("viewer"), {
       view: "assigned_to_me",
     });
     expect(viewerPage.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canClaim: false, canEdit: false }),
+      expect.objectContaining({ canClaim: false, canDelete: false, canEdit: false }),
     ]));
+  });
+
+  it("allows only the manual ticket creator to delete any non-deleted status", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    for (const status of ["open", "in_progress", "done", "canceled"] as const) {
+      repository.getTicketDeleteRecordById.mockResolvedValueOnce({
+        createdBySubUserId: "101",
+        sourceType: "manual",
+        status,
+      });
+      await expect(service.deleteTicket(createActor("operator"), "501"))
+        .resolves.toEqual({ deleted: true });
+      expect(repository.deleteTicket).toHaveBeenLastCalledWith({
+        createdBySubUserId: 101,
+        ticketId: 501,
+        uid: 9001,
+      });
+    }
+  });
+
+  it("rejects ticket deletion by non-creators, elevated roles, and AI sources", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    repository.getTicketDeleteRecordById.mockResolvedValue({
+      createdBySubUserId: "202",
+      sourceType: "manual",
+      status: "open",
+    });
+    await expect(service.deleteTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_DELETE_FORBIDDEN", statusCode: 403 });
+    await expect(service.deleteTicket(createActor("admin"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_DELETE_FORBIDDEN", statusCode: 403 });
+
+    repository.getTicketDeleteRecordById.mockResolvedValueOnce({
+      createdBySubUserId: null,
+      sourceType: "ai",
+      status: "open",
+    });
+    await expect(service.deleteTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_DELETE_FORBIDDEN", statusCode: 403 });
+  });
+
+  it("treats missing, already deleted, and raced ticket deletion as not found", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+
+    repository.getTicketDeleteRecordById.mockResolvedValueOnce(undefined);
+    await expect(service.deleteTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_NOT_FOUND", statusCode: 404 });
+
+    repository.getTicketDeleteRecordById.mockResolvedValueOnce({
+      createdBySubUserId: "101",
+      sourceType: "manual",
+      status: "deleted",
+    });
+    await expect(service.deleteTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_NOT_FOUND", statusCode: 404 });
+
+    repository.getTicketDeleteRecordById.mockResolvedValueOnce({
+      createdBySubUserId: "101",
+      sourceType: "manual",
+      status: "open",
+    });
+    repository.deleteTicket.mockResolvedValueOnce(false);
+    await expect(service.deleteTicket(createActor("operator"), "501"))
+      .rejects.toMatchObject({ code: "TICKET_NOT_FOUND", statusCode: 404 });
   });
 
   it("maps legacy terminal statuses to canceled", async () => {
@@ -770,8 +839,14 @@ function createRepository(page?: { items: TicketRecord[] }) {
     claimTicket: vi.fn(async () => true),
     countTickets: vi.fn(async () => 0),
     createManualTicket: vi.fn(async () => 501),
+    deleteTicket: vi.fn(async () => true),
     getConversationIdentity: vi.fn(async () => undefined),
     getTicketAccessRecordById: vi.fn(async () => baseRecord),
+    getTicketDeleteRecordById: vi.fn(async () => ({
+      createdBySubUserId: baseRecord.createdBySubUserId,
+      sourceType: baseRecord.sourceType,
+      status: "open" as const,
+    })),
     getTicketRecordById: vi.fn(async () => baseRecord),
     isSessionInConversation: vi.fn(async () => false),
     isValidAssignee: vi.fn(async () => true),

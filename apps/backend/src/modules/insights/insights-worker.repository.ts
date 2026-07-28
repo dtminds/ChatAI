@@ -2293,6 +2293,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       ])
       .where("uid", "=", input.uid)
       .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .where("status", "!=", "deleted")
       .orderBy("id", "desc")
       .limit(Math.max(0, Math.min(input.limit, 10)))
       .execute() as Array<{
@@ -2919,6 +2920,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .select(["title"])
       .where("uid", "=", input.uid)
       .where("conversation_id", "=", input.conversationId)
+      .where("status", "!=", "deleted")
       .orderBy("id", "desc")
       .limit(Math.max(0, Math.min(input.limit, 10)))
       .execute() as Array<{ title: string }>;

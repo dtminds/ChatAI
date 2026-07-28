@@ -8,6 +8,7 @@ const service = vi.hoisted(() => ({
   addComment: vi.fn(),
   claimTicket: vi.fn(),
   createTicket: vi.fn(),
+  deleteTicket: vi.fn(),
   getContextOptions: vi.fn(),
   getCounts: vi.fn(),
   getTicketAssigneeOptions: vi.fn(),
@@ -24,6 +25,7 @@ const ticket = {
   anchorMessageId: null,
   assignee: { displayName: "客服甲", subUserId: "101" },
   canClaim: false,
+  canDelete: true,
   canEdit: true,
   canceledAt: null,
   completedAt: null,
@@ -76,6 +78,7 @@ describe("tickets routes", () => {
         payload: { priority: "high" },
         url: "/api/server/tickets/501",
       },
+      { method: "DELETE", url: "/api/server/tickets/501" },
       { method: "POST", url: "/api/server/tickets/501/claim" },
       {
         method: "POST",
@@ -127,6 +130,7 @@ describe("tickets routes", () => {
     });
     service.createTicket.mockResolvedValue({ ticket });
     service.updateTicket.mockResolvedValue({ ticket });
+    service.deleteTicket.mockResolvedValue({ deleted: true });
     service.claimTicket.mockResolvedValue({ ticket });
     service.addComment.mockResolvedValue({
       activity: {
@@ -165,6 +169,7 @@ describe("tickets routes", () => {
         payload: { expectedStatus: "open", status: "done" },
         url: "/api/server/tickets/501",
       },
+      { method: "DELETE", url: "/api/server/tickets/501" },
       { method: "POST", url: "/api/server/tickets/501/claim" },
       {
         method: "POST",
@@ -195,6 +200,10 @@ describe("tickets routes", () => {
       expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
       "501",
       { cursor: "cursor-1", pageSize: 50 },
+    );
+    expect(service.deleteTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
+      "501",
     );
     await app.close();
   });

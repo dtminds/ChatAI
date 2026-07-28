@@ -14,6 +14,7 @@ import {
   TicketContextResponseSchema,
   TicketCreateRequestSchema,
   TicketCreateResponseSchema,
+  TicketDeleteResponseSchema,
   TicketDetailResponseSchema,
   TicketListQuerySchema,
   TicketListResponseSchema,
@@ -29,6 +30,7 @@ const ticket = {
     subUserId: "2001",
   },
   canClaim: false,
+  canDelete: true,
   canEdit: true,
   canceledAt: null,
   completedAt: null,
@@ -87,6 +89,8 @@ describe("ticket DTOs", () => {
     }
 
     expect(Value.Check(TicketSchema, { ...ticket, status: "dismissed" })).toBe(false);
+    expect(Value.Check(TicketSchema, { ...ticket, status: "deleted" })).toBe(false);
+    expect(Value.Check(TicketDeleteResponseSchema, { deleted: true })).toBe(true);
     expect(Value.Check(TicketListQuerySchema, { view: "team" })).toBe(false);
   });
 

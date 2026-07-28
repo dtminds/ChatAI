@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
 
 const ticket = {
-  anchorMessageId: null, assignee: null, canClaim: true, canEdit: false, canceledAt: null,
+  anchorMessageId: null, assignee: null, canClaim: true, canDelete: false, canEdit: false, canceledAt: null,
   completedAt: null, conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" },
   customerAvatarUrl: null, customerName: "王女士", description: null, dueAt: null,
   dueHint: null, overdue: false, ownerAccountAvatarUrl: null, ownerAccountId: "201",

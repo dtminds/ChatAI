@@ -5,6 +5,7 @@ import {
   addTicketComment,
   claimTicket,
   createTicket,
+  deleteTicket,
   getConversationTickets,
   getTicketActivities,
   getTicketAssigneeOptions,
@@ -32,6 +33,7 @@ describe("tickets service", () => {
     mock.onGet("/server/tickets/501/context").reply((config) => [200, { data: { query: config.params }, success: true }]);
     mock.onPost("/server/tickets").reply(200, { data: { ticket: {} }, success: true });
     mock.onPatch("/server/tickets/501").reply(200, { data: { ticket: {} }, success: true });
+    mock.onDelete("/server/tickets/501").reply(200, { data: { deleted: true }, success: true });
     mock.onPost("/server/tickets/501/claim").reply(200, { data: { ticket: {} }, success: true });
     mock.onPost("/server/tickets/501/comments").reply(200, { data: { activity: {} }, success: true });
 
@@ -48,11 +50,13 @@ describe("tickets service", () => {
       .resolves.toMatchObject({ query: { cursor: "cursor-1", pageSize: 50 } });
     await createTicket({ context: { type: "none" }, conversationId: "301", priority: "medium", title: "跟进" });
     await updateTicket("501", { expectedStatus: "open", status: "done" });
+    await expect(deleteTicket("501")).resolves.toEqual({ deleted: true });
     await claimTicket("501");
     await addTicketComment("501", { content: "已处理" });
 
     expect(mock.history.get).toHaveLength(8);
     expect(mock.history.post).toHaveLength(3);
     expect(mock.history.patch[0]?.data).toContain("expectedStatus");
+    expect(mock.history.delete).toHaveLength(1);
   });
 });

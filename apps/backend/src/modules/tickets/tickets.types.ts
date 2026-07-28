@@ -5,11 +5,13 @@ import type {
   TicketListQuery,
   TicketPriority,
   TicketSourceType,
+  TicketStatus,
   TicketView,
 } from "@chatai/contracts";
 import type { InsightMessageSourceRow } from "../insights/insights.types.js";
 
 export type TicketRepositoryView = TicketView | "visible";
+export type TicketPersistenceStatus = TicketStatus | "deleted";
 
 export type TicketRecord = {
   anchorMessageId: string | null;
@@ -51,6 +53,12 @@ export type TicketAccessRecord = Pick<TicketRecord,
   | "sourceType"
   | "ticketId"
 >;
+
+export type TicketDeleteRecord = {
+  createdBySubUserId: string | null;
+  sourceType: TicketSourceType;
+  status: TicketPersistenceStatus;
+};
 
 export type TicketRecordPage = {
   items: TicketRecord[];
@@ -102,7 +110,7 @@ export type TicketActivityRecordPage = Omit<TicketActivityPage, "items"> & {
 };
 
 export type TicketMutationActivity = {
-  activityType: TicketActivity["activityType"];
+  activityType: TicketActivity["activityType"] | "deleted";
   content?: string | null;
   detail?: Record<string, unknown> | null;
 };

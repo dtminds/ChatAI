@@ -2754,6 +2754,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("action.uid", "=", scope.uid)
       .where("action.snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .where("action.source_type", "=", "ai")
+      .where("action.status", "!=", "deleted")
       .execute() as Array<{
         action_id: number | string;
         action_status: string;

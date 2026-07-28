@@ -13,6 +13,7 @@ import type {
   TicketActivityRecord,
   TicketActivityRecordPage,
   TicketCountRepositoryInput,
+  TicketDeleteRecord,
   TicketListRepositoryInput,
   TicketMessageCandidate,
   TicketMutationActivity,
@@ -522,7 +523,6 @@ export class TicketsRepository {
           status: "open",
           title: input.title,
           uid: input.uid,
-          updated_by_sub_user_id: input.createdBySubUserId,
         })
         .executeTakeFirstOrThrow();
       const ticketId = Number(insertResult.insertId);
@@ -612,7 +612,6 @@ export class TicketsRepository {
           status: "open",
           title: input.title,
           uid: input.uid,
-          updated_by_sub_user_id: null,
         })
         .executeTakeFirstOrThrow();
       const ticketId = Number(insertResult.insertId);
@@ -720,6 +719,24 @@ export class TicketsRepository {
     };
   }
 
+  async getTicketDeleteRecordById(input: {
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketDeleteRecord | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_session_action_item")
+      .select(["created_by_sub_user_id", "source_type", "status"])
+      .where("uid", "=", input.uid)
+      .where("id", "=", input.ticketId)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      createdBySubUserId: toNullableId(row.created_by_sub_user_id),
+      sourceType: row.source_type === "ai" ? "ai" : "manual",
+      status: normalizePersistenceStatus(row.status),
+    };
+  }
+
   async listTicketActivities(input: {
     beforeActivityId?: number;
     limit: number;
@@ -792,13 +809,13 @@ export class TicketsRepository {
         ...(input.values.priority !== undefined ? { priority: input.values.priority } : {}),
         ...(input.values.status !== undefined ? { status: input.values.status } : {}),
         ...(input.values.title !== undefined ? { title: input.values.title } : {}),
-        updated_by_sub_user_id: input.operatorSubUserId,
       };
       let update = transaction
         .updateTable("xy_wap_embed_session_action_item")
         .set(values)
         .where("uid", "=", input.uid)
-        .where("id", "=", input.ticketId);
+        .where("id", "=", input.ticketId)
+        .where("status", "!=", "deleted");
 
       if (input.expectedStatuses?.length) {
         update = update.where("status", "in", input.expectedStatuses);
@@ -831,16 +848,42 @@ export class TicketsRepository {
     });
   }
 
+  async deleteTicket(input: {
+    createdBySubUserId: number;
+    ticketId: number;
+    uid: number;
+  }) {
+    return this.db.transaction().execute(async (transaction) => {
+      const result = await transaction
+        .updateTable("xy_wap_embed_session_action_item")
+        .set({ status: "deleted" })
+        .where("uid", "=", input.uid)
+        .where("id", "=", input.ticketId)
+        .where("source_type", "=", "manual")
+        .where("created_by_sub_user_id", "=", input.createdBySubUserId)
+        .where("status", "!=", "deleted")
+        .executeTakeFirst();
+      if (Number(result.numUpdatedRows) !== 1) return false;
+      await insertActivities(transaction, {
+        activities: [{ activityType: "deleted" }],
+        operatorSubUserId: input.createdBySubUserId,
+        ticketId: input.ticketId,
+        uid: input.uid,
+      });
+      return true;
+    });
+  }
+
   async claimTicket(input: { assigneeSubUserId: number; ticketId: number; uid: number }) {
     return this.db.transaction().execute(async (transaction) => {
       const result = await transaction
         .updateTable("xy_wap_embed_session_action_item")
         .set({
           assignee_sub_user_id: input.assigneeSubUserId,
-          updated_by_sub_user_id: input.assigneeSubUserId,
         })
         .where("uid", "=", input.uid)
         .where("id", "=", input.ticketId)
+        .where("status", "!=", "deleted")
         .where("assignee_sub_user_id", "is", null)
         .executeTakeFirst();
 
@@ -872,10 +915,10 @@ export class TicketsRepository {
         .updateTable("xy_wap_embed_session_action_item")
         .set({
           update_time: new Date(),
-          updated_by_sub_user_id: input.operatorSubUserId,
         })
         .where("uid", "=", input.uid)
-        .where("id", "=", input.ticketId);
+        .where("id", "=", input.ticketId)
+        .where("status", "!=", "deleted");
 
       if (input.enforceWriteAccess) {
         update = update.where((expressionBuilder) =>
@@ -954,7 +997,8 @@ export class TicketsRepository {
           .onRef("conversation.id", "=", "ticket.conversation_id")
           .onRef("conversation.uid", "=", "ticket.uid"),
       )
-      .where("ticket.uid", "=", input.uid);
+      .where("ticket.uid", "=", input.uid)
+      .where("ticket.status", "!=", "deleted");
 
     query = this.applyView(query, input);
 
@@ -1255,6 +1299,15 @@ function mapTicketRecord(row: TicketQueryRow): TicketRecord {
 
 function normalizePriority(value: string) {
   return value === "low" || value === "high" ? value : "medium";
+}
+
+function normalizePersistenceStatus(value: string): TicketDeleteRecord["status"] {
+  if (value === "deleted") return "deleted";
+  if (value === "in_progress" || value === "done") return value;
+  if (value === "canceled" || value === "dismissed" || value === "expired") {
+    return "canceled";
+  }
+  return "open";
 }
 
 function toNullableId(value: number | string | null) {

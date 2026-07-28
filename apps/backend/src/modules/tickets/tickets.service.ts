@@ -18,6 +18,7 @@ import type {
   TicketCountsResponse,
   TicketCreateRequest,
   TicketCreateResponse,
+  TicketDeleteResponse,
   TicketDetailResponse,
   TicketListQuery,
   TicketListResponse,
@@ -33,6 +34,7 @@ import type {
   TicketConversationIdentity,
   TicketAccessRecord,
   TicketCountRepositoryInput,
+  TicketDeleteRecord,
   TicketActivityRecord,
   TicketActivityRecordPage,
   TicketListRepositoryInput,
@@ -64,6 +66,11 @@ export interface TicketsRepositoryPort {
     uid: number;
   }): Promise<boolean>;
   countTickets(input: TicketCountRepositoryInput): Promise<number>;
+  deleteTicket(input: {
+    createdBySubUserId: number;
+    ticketId: number;
+    uid: number;
+  }): Promise<boolean>;
   claimTicket(input: {
     assigneeSubUserId: number;
     ticketId: number;
@@ -97,6 +104,10 @@ export interface TicketsRepositoryPort {
     ticketId: number;
     uid: number;
   }): Promise<TicketAccessRecord | undefined>;
+  getTicketDeleteRecordById(input: {
+    ticketId: number;
+    uid: number;
+  }): Promise<TicketDeleteRecord | undefined>;
   listTicketActivities(input: {
     beforeActivityId?: number;
     limit: number;
@@ -490,6 +501,32 @@ export class TicketsService {
     }
 
     return { ticket: await this.getMappedTicket(actor, ticketId) };
+  }
+
+  async deleteTicket(
+    actor: TicketsActorScope,
+    ticketIdValue: string,
+  ): Promise<TicketDeleteResponse> {
+    const ticketId = parseMySqlId(ticketIdValue);
+    if (ticketId == null) {
+      throw new BadRequestError("INVALID_TICKET_ID", "工单参数无效");
+    }
+    const record = await this.repository.getTicketDeleteRecordById({ ticketId, uid: actor.uid });
+    if (!record || record.status === "deleted") {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在");
+    }
+    if (!canDeleteTicket(actor, record)) {
+      throw new ForbiddenError("TICKET_DELETE_FORBIDDEN", "无权删除该工单");
+    }
+    const deleted = await this.repository.deleteTicket({
+      createdBySubUserId: getActorSubUserId(actor),
+      ticketId,
+      uid: actor.uid,
+    });
+    if (!deleted) {
+      throw new NotFoundError("TICKET_NOT_FOUND", "工单不存在");
+    }
+    return { deleted: true };
   }
 
   async claimTicket(
@@ -981,6 +1018,15 @@ export function canModifyTicket(
     || (record.sourceType === "manual" && record.createdBySubUserId === actor.subUserId);
 }
 
+export function canDeleteTicket(
+  actor: TicketsActorScope,
+  record: Pick<TicketRecord, "createdBySubUserId" | "sourceType">,
+) {
+  return actor.role !== "viewer"
+    && record.sourceType === "manual"
+    && record.createdBySubUserId === actor.subUserId;
+}
+
 function mapTicketPage(page: TicketRecordPage, actor: TicketsActorScope): TicketListResponse {
   return {
     ...page,
@@ -1001,6 +1047,7 @@ export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticke
     canClaim: actor.role !== "viewer"
       && record.assigneeSubUserId == null
       && record.hasAccountAccess,
+    canDelete: canDeleteTicket(actor, record),
     canEdit: canModifyTicket(actor, record),
     canceledAt: record.canceledAt,
     completedAt: record.completedAt,

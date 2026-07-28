@@ -5,20 +5,39 @@ import {
   BadgeAlertIcon,
   Calendar03Icon,
   Comment02Icon,
+  Delete02Icon,
   Edit02Icon,
   FilePlusIcon,
   Flag01Icon,
   InformationCircleIcon,
   Loading03Icon,
   Male02Icon,
+  MoreHorizontalIcon,
   Pen01Icon,
   UserSwitchIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
@@ -30,7 +49,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
 import { adaptInsightMessages } from "@/pages/chat/insights/insight-detail-panel";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
-import { addTicketComment, claimTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
+import { addTicketComment, claimTicket, deleteTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketPriorityText, ticketStatusText } from "./ticket-display";
 import "./tickets.css";
 
@@ -39,6 +58,7 @@ const ticketActivityPageSize = 20;
 
 export function TicketDetailPage() {
   const { ticketId = "" } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedReturnView = searchParams.get("view");
   const returnView = ticketViews.has(requestedReturnView ?? "")
@@ -48,13 +68,15 @@ export function TicketDetailPage() {
   const [activities, setActivities] = useState<TicketActivityPage>({ hasMore: false, items: [], nextCursor: null });
   const [context, setContext] = useState<TicketContextResponse>();
   const [assigneeOptions, setAssigneeOptions] = useState<TicketUser[]>([]);
-  const [error, setError] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [isLoadingOlderContext, setIsLoadingOlderContext] = useState(false);
   const [isLoadingAssignees, setIsLoadingAssignees] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [activityError, setActivityError] = useState<string>();
   const [comment, setComment] = useState("");
@@ -70,7 +92,7 @@ export function TicketDetailPage() {
 
     if (activeTicketIdRef.current !== requestedTicketId) return;
     setIsLoading(true);
-    setError(undefined);
+    setLoadError(undefined);
     try {
       const next = await getTicketDetail(requestedTicketId);
       if (
@@ -84,7 +106,7 @@ export function TicketDetailPage() {
         activeTicketIdRef.current !== requestedTicketId
         || loadGenerationRef.current !== generation
       ) return;
-      setError(cause instanceof Error ? cause.message : "工单加载失败");
+      setLoadError(cause instanceof Error ? cause.message : "工单加载失败");
     } finally {
       if (
         activeTicketIdRef.current === requestedTicketId
@@ -167,8 +189,8 @@ export function TicketDetailPage() {
       return true;
     } catch (cause) {
       if (!isCurrentRequest()) return false;
+      toast.error(cause instanceof Error ? cause.message : "工单更新失败");
       if (isErrorCode(cause, "TICKET_STATE_CONFLICT")) await loadTicket();
-      else setError(cause instanceof Error ? cause.message : "工单更新失败");
       return false;
     } finally {
       if (isCurrentRequest()) setIsSaving(false);
@@ -202,7 +224,7 @@ export function TicketDetailPage() {
       } : current);
     } catch (cause) {
       if (!isCurrentRequest()) return;
-      setError(cause instanceof Error ? cause.message : "评论添加失败");
+      toast.error(cause instanceof Error ? cause.message : "评论添加失败");
     } finally {
       if (isCurrentRequest()) setIsSaving(false);
     }
@@ -223,9 +245,26 @@ export function TicketDetailPage() {
       if (isCurrentRequest()) setActivities(page);
     } catch (cause) {
       if (!isCurrentRequest()) return;
-      setError(cause instanceof Error ? cause.message : "分配失败");
+      toast.error(cause instanceof Error ? cause.message : "分配失败");
     } finally {
       if (isCurrentRequest()) setIsSaving(false);
+    }
+  };
+
+  const deleteCurrentTicket = async () => {
+    const requestedTicketId = ticketId;
+    setIsDeleting(true);
+    try {
+      await deleteTicket(requestedTicketId);
+      if (activeTicketIdRef.current !== requestedTicketId) return;
+      navigate(`/chat/tickets?view=${returnView}`);
+    } catch (cause) {
+      if (activeTicketIdRef.current === requestedTicketId) {
+        setIsDeleteDialogOpen(false);
+        toast.error(cause instanceof Error ? cause.message : "工单删除失败");
+      }
+    } finally {
+      if (activeTicketIdRef.current === requestedTicketId) setIsDeleting(false);
     }
   };
 
@@ -240,7 +279,7 @@ export function TicketDetailPage() {
       if (activeTicketIdRef.current === ticketId) setAssigneeOptions(response.items);
     } catch (cause) {
       if (activeTicketIdRef.current === ticketId) {
-        setError(cause instanceof Error ? cause.message : "负责人加载失败");
+        toast.error(cause instanceof Error ? cause.message : "负责人加载失败");
       }
     } finally {
       if (activeTicketIdRef.current === ticketId) setIsLoadingAssignees(false);
@@ -272,7 +311,7 @@ export function TicketDetailPage() {
         };
       });
     } catch {
-      setError("更早的关联聊天加载失败");
+      toast.error("更早的关联聊天加载失败");
     } finally {
       if (activeTicketIdRef.current === requestedTicketId) setIsLoadingOlderContext(false);
     }
@@ -314,7 +353,7 @@ export function TicketDetailPage() {
   };
 
   if (isLoading) return <div className="flex h-full min-h-[420px] items-center justify-center gap-2" role="status"><Spinner size={20} variant="classic" />正在加载</div>;
-  if (!ticket) return <div className="h-full py-16 text-center text-destructive" role="alert">{error ?? "工单不存在"}</div>;
+  if (!ticket) return <div className="h-full py-16 text-center text-destructive" role="alert">{loadError ?? "工单不存在"}</div>;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden">
@@ -349,10 +388,15 @@ export function TicketDetailPage() {
               ) : null}
               {ticket.canClaim ? <Button disabled={isSaving} onClick={() => void claimCurrentTicket()} size="sm" variant="secondary">分配给我</Button> : null}
               {ticket.canEdit ? <StatusActions canStart={ticket.assignee != null} disabled={isSaving} onChange={(status) => void mutate({ expectedStatus: ticket.status, status })} status={ticket.status} /> : null}
+              {ticket.canDelete ? (
+                <TicketDeleteMenu
+                  disabled={isSaving || isDeleting}
+                  onDelete={() => setIsDeleteDialogOpen(true)}
+                />
+              ) : null}
             </div>
           </div>
         </header>
-        {error ? <div className="text-sm text-destructive" role="alert">{error}</div> : null}
           <section className="space-y-4 border-b pb-6">
               <dl className="grid gap-x-10 gap-y-4 text-sm sm:grid-cols-2">
                 <div className="space-y-4">
@@ -582,11 +626,102 @@ export function TicketDetailPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-    </div>
+        <AlertDialog onOpenChange={setIsDeleteDialogOpen} open={isDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认要删除吗</AlertDialogTitle>
+              <AlertDialogDescription>删除后该工单将不再展示，且无法恢复</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isDeleting}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void deleteCurrentTicket();
+                }}
+              >
+                删除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
   );
 }
 
 const ticketViews = new Set(["assigned_to_me_active", "assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
+
+function TicketDeleteMenu({
+  disabled,
+  onDelete,
+}: {
+  disabled: boolean;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+  const openMenu = () => {
+    cancelClose();
+    setOpen(true);
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  useEffect(() => cancelClose, []);
+
+  return (
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(nextOpen) => {
+        cancelClose();
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="更多操作"
+          className="size-8"
+          disabled={disabled}
+          onMouseEnter={openMenu}
+          onMouseLeave={scheduleClose}
+          size="icon"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon aria-hidden="true" icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-[116px]"
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+      >
+        <DropdownMenuItem
+          className="text-destructive data-[highlighted]:text-destructive"
+          onSelect={() => {
+            setOpen(false);
+            onDelete();
+          }}
+        >
+          <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} size={15} strokeWidth={1.8} />
+          删除工单
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function StatusActions({ canStart, disabled, onChange, status }: { canStart: boolean; disabled: boolean; onChange: (status: TicketStatus) => void; status: TicketStatus }) {
   if (status === "done" || status === "canceled") return <Button disabled={disabled} onClick={() => onChange("open")} size="sm" variant="secondary">重新打开</Button>;

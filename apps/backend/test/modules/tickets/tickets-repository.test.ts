@@ -29,6 +29,7 @@ describe("TicketsRepository", () => {
 
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("ticket.uid = ?");
+    expect(sql).toContain("ticket.status != ?");
     expect(sql).toContain("ticket.assignee_sub_user_id = ?");
 
     const all = createRecordingDatabase();
@@ -369,12 +370,13 @@ describe("TicketsRepository", () => {
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("update xy_wap_embed_session_action_item");
     expect(sql).toContain("status in (?)");
+    expect(sql).toContain("status != ?");
     expect(sql).toContain("assignee_sub_user_id = ?");
     expect(sql).toContain("created_by_sub_user_id = ?");
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
-  it("claims only by assigning an unassigned ticket without changing or filtering status", async () => {
+  it("claims only by assigning an unassigned non-deleted ticket without changing public status", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -389,7 +391,7 @@ describe("TicketsRepository", () => {
       sql.startsWith("update xy_wap_embed_session_action_item"),
     );
     expect(updateSql).toContain("assignee_sub_user_id is null");
-    expect(updateSql).not.toContain("status");
+    expect(updateSql).toContain("status != ?");
     expect(normalizedQueries.join("\n")).toContain("insert into xy_wap_embed_ticket_activity");
   });
 
@@ -406,9 +408,33 @@ describe("TicketsRepository", () => {
     })).rejects.toThrow("TICKET_ACTIVITY_NOT_FOUND_AFTER_INSERT");
 
     const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("status != ?");
     expect(sql).toContain("assignee_sub_user_id = ?");
     expect(sql).toContain("created_by_sub_user_id = ?");
     expect(sql).toContain("insert into xy_wap_embed_ticket_activity");
+  });
+
+  it("deletes only a manual ticket by its creator and records the tombstone activity atomically", async () => {
+    const { db, queries } = createRecordingDatabase();
+    const repository = new TicketsRepository(db);
+
+    await expect(repository.deleteTicket({
+      createdBySubUserId: 101,
+      ticketId: 501,
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    const normalizedQueries = queries.map(normalizeSql);
+    const updateSql = normalizedQueries.find((sql) =>
+      sql.startsWith("update xy_wap_embed_session_action_item"),
+    );
+    expect(updateSql).toContain("source_type = ?");
+    expect(updateSql).toContain("created_by_sub_user_id = ?");
+    expect(updateSql).toContain("status != ?");
+    expect(queries.find((query) => normalizeSql(query).startsWith("update"))?.parameters)
+      .toEqual(expect.arrayContaining(["deleted", "manual", 101]));
+    expect(queries.find((query) => normalizeSql(query).startsWith("insert into xy_wap_embed_ticket_activity"))?.parameters)
+      .toEqual(expect.arrayContaining(["deleted"]));
   });
 
   it("reads activities with a descending id cursor", async () => {

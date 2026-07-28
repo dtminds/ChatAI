@@ -188,6 +188,17 @@ export async function registerTicketsRoutes(
     ),
   );
 
+  app.delete<{ Params: TicketParams }>(
+    "/api/server/tickets/:ticketId",
+    {
+      preHandler: app.authenticate,
+      schema: { params: TicketParamsSchema },
+    },
+    async (request) => apiSuccess(
+      await createService().deleteTicket(getTicketsActor(request), request.params.ticketId),
+    ),
+  );
+
   app.post<{ Params: TicketParams }>(
     "/api/server/tickets/:ticketId/claim",
     {

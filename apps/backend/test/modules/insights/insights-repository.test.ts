@@ -271,6 +271,7 @@ describe("InsightsRepository", () => {
       "=",
       301,
     ]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "!=", "deleted"]);
     expect(builders[0]?.limitCalls).toEqual([10]);
   });
 
@@ -570,6 +571,11 @@ describe("InsightsRepository", () => {
       "conversation_id",
       "=",
       301,
+    ]);
+    expect(selectedActionItemBuilders[0]?.whereCalls).toContainEqual([
+      "status",
+      "!=",
+      "deleted",
     ]);
     expect(selectedActionItemBuilders[0]?.limitCalls).toEqual([10]);
     expect(ticketWriter.createAiTicket).toHaveBeenCalledTimes(1);
@@ -2091,6 +2097,11 @@ describe("InsightsRepository", () => {
       "action.source_type",
       "=",
       "ai",
+    ]);
+    expect(actionQuery?.whereCalls).toContainEqual([
+      "action.status",
+      "!=",
+      "deleted",
     ]);
     expect(actionQuery?.whereCalls).not.toContainEqual([
       "action.conversation_id",

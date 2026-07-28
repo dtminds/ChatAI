@@ -75,6 +75,7 @@ export const TicketSchema = Type.Object({
   anchorMessageId: Type.Union([TicketIdSchema, Type.Null()]),
   assignee: Type.Union([TicketUserSchema, Type.Null()]),
   canClaim: Type.Boolean(),
+  canDelete: Type.Boolean(),
   canEdit: Type.Boolean(),
   canceledAt: NullableTimestampSchema,
   completedAt: NullableTimestampSchema,
@@ -187,6 +188,10 @@ export const TicketUpdateResponseSchema = Type.Object({
 
 export const TicketClaimResponseSchema = Type.Object({
   ticket: TicketSchema,
+}, { additionalProperties: false });
+
+export const TicketDeleteResponseSchema = Type.Object({
+  deleted: Type.Literal(true),
 }, { additionalProperties: false });
 
 export const TicketCommentRequestSchema = Type.Object({
@@ -308,6 +313,7 @@ export type TicketCreateResponse = Static<typeof TicketCreateResponseSchema>;
 export type TicketUpdateRequest = Static<typeof TicketUpdateRequestSchema>;
 export type TicketUpdateResponse = Static<typeof TicketUpdateResponseSchema>;
 export type TicketClaimResponse = Static<typeof TicketClaimResponseSchema>;
+export type TicketDeleteResponse = Static<typeof TicketDeleteResponseSchema>;
 export type TicketCommentRequest = Static<typeof TicketCommentRequestSchema>;
 export type TicketCommentResponse = Static<typeof TicketCommentResponseSchema>;
 export type TicketActivity = Static<typeof TicketActivitySchema>;

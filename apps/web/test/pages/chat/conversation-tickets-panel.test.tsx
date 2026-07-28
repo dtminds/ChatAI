@@ -17,6 +17,7 @@ const ticket: Ticket = {
   anchorMessageId: null,
   assignee: { displayName: "客服甲", subUserId: "101" },
   canClaim: false,
+  canDelete: true,
   canEdit: true,
   canceledAt: null,
   completedAt: null,

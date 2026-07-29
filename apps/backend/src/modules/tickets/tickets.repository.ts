@@ -104,7 +104,7 @@ export class TicketsRepository {
   async listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage> {
     const countRow = await this.buildFilteredTicketQuery(input)
       .select((expressionBuilder) =>
-        expressionBuilder.fn.count<number>("ticket.id").distinct().as("total"),
+        expressionBuilder.fn.countAll<number>().as("total"),
       )
       .executeTakeFirst();
     const total = toNonNegativeNumber(countRow?.total);
@@ -170,21 +170,9 @@ export class TicketsRepository {
         END`.as("overdue"),
       );
     if (options.ordered) {
-      query = query.orderBy(
-        sql<number>`CASE
-          WHEN ticket.status IN ('open', 'in_progress')
-            AND ticket.due_at IS NOT NULL
-            AND ticket.due_at < CURRENT_TIMESTAMP THEN 0
-          WHEN ticket.status IN ('open', 'in_progress')
-            AND ticket.due_at >= CURRENT_DATE
-            AND ticket.due_at < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN 1
-          WHEN ticket.priority = 'high' THEN 2
-          ELSE 3
-        END`,
-        "asc",
-      )
-      .orderBy("ticket.update_time", "desc")
-      .orderBy("ticket.id", "desc");
+      query = query
+        .orderBy("ticket.update_time", "desc")
+        .orderBy("ticket.id", "desc");
     }
     const pageRows = await query
       .limit(options.limit)
@@ -1001,23 +989,8 @@ export class TicketsRepository {
     }
     if (input.view === "reception") {
       return query.where((expressionBuilder) =>
-        expressionBuilder.exists(
-          expressionBuilder
-            .selectFrom("xy_wap_embed_user_seat as reception_seat")
-            .select(sql<number>`1`.as("one"))
-            .whereRef("reception_seat.uid", "=", "conversation.uid")
-            .whereRef("reception_seat.platform", "=", "conversation.platform")
-            .whereRef("reception_seat.third_userid", "=", "conversation.third_userid")
-            .where("reception_seat.biz_status", "=", 1)
-            .where("reception_seat.host_sub_id", "=", input.subUserId),
-        ),
+        this.buildAccountAccessExists(expressionBuilder, input),
       );
-    }
-    if (input.view === "unassigned") {
-      return query
-        .where("ticket.assignee_sub_user_id", "is", null)
-        .where("ticket.status", "=", "open")
-        .where((expressionBuilder) => this.buildAccountAccessExists(expressionBuilder, input));
     }
     if (input.view === "created_by_me") {
       return query
@@ -1057,7 +1030,6 @@ export class TicketsRepository {
         .whereRef("access_seat.uid", "=", "conversation.uid")
         .whereRef("access_seat.platform", "=", "conversation.platform")
         .whereRef("access_seat.third_userid", "=", "conversation.third_userid")
-        .where("access_seat.biz_status", "=", 1)
         .where("relation.uid", "=", input.uid)
         .where("relation.sub_id", "=", input.subUserId),
     );

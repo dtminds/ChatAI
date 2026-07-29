@@ -55,13 +55,12 @@ import {
 import { TicketOverdueBadge, TicketPriority, TicketStatusBadge } from "./ticket-display";
 import { useAuthStore } from "@/store/auth-store";
 
-const views = new Set<TicketView>(["assigned_to_me_active", "assigned_to_me", "reception", "unassigned", "created_by_me", "all"]);
+const views = new Set<TicketView>(["assigned_to_me_active", "assigned_to_me", "reception", "created_by_me", "all"]);
 const viewTabs: Array<{ label: string; value: TicketView }> = [
   { label: "我的待办", value: "assigned_to_me_active" },
   { label: "分配给我", value: "assigned_to_me" },
   { label: "我接待的", value: "reception" },
   { label: "我创建的", value: "created_by_me" },
-  { label: "待领取", value: "unassigned" },
 ];
 const allStatusOptions: Array<[string, string]> = [
   ["open", "待处理"],
@@ -365,7 +364,7 @@ export function TicketsPage() {
               {isLoading ? <TableRow><TableCell colSpan={6}><div className="flex h-32 items-center justify-center gap-2" role="status"><Spinner size={18} variant="classic" />正在加载</div></TableCell></TableRow>
                 : error ? <TableRow><TableCell colSpan={6}><div className="py-12 text-center text-sm text-destructive" role="alert">{error}</div></TableCell></TableRow>
                 : (result?.items.length ?? 0) === 0 ? <TableRow><TableCell className="py-12 text-center text-muted-foreground" colSpan={6}>暂无数据</TableCell></TableRow>
-                : result!.items.map((ticket) => <TableRow key={ticket.ticketId}>
+                : result!.items.map((ticket) => <TableRow className="[&>td]:py-2.5" key={ticket.ticketId}>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar className="size-9 shrink-0 rounded-[6px]">
@@ -387,6 +386,7 @@ export function TicketsPage() {
                           <Badge className="shrink-0 rounded-[5px] bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground" variant="secondary">
                             #{ticket.ticketId}
                           </Badge>
+                          {ticket.overdue ? <TicketOverdueBadge className="shrink-0" /> : null}
                         </div>
                       </div>
                     </div>
@@ -394,7 +394,6 @@ export function TicketsPage() {
                   <TableCell className="text-center">
                     <div className="flex h-6 items-center justify-center">
                       <TicketStatusBadge status={ticket.status} />
-                      {ticket.overdue ? <TicketOverdueBadge className="ml-1.5" /> : null}
                     </div>
                   </TableCell>
                   <TableCell className="text-center">

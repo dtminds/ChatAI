@@ -26,7 +26,6 @@ export const TicketViewSchema = Type.Union([
   Type.Literal("assigned_to_me_active"),
   Type.Literal("assigned_to_me"),
   Type.Literal("reception"),
-  Type.Literal("unassigned"),
   Type.Literal("created_by_me"),
   Type.Literal("all"),
 ]);

@@ -40,6 +40,7 @@ describe("TicketsPage", () => {
     expect(screen.getByText("客服乙")).toBeInTheDocument();
     expect(api.getTickets).toHaveBeenCalledWith(expect.objectContaining({ view: "reception" }));
     expect(screen.queryByRole("button", { name: /新建|创建工单/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "待领取" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "全部工单" })).not.toBeInTheDocument();
   });
 

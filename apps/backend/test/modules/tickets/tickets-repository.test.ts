@@ -44,6 +44,25 @@ describe("TicketsRepository", () => {
     expect(all.queries.map(normalizeSql).join("\n")).toContain("ticket.uid = ?");
   });
 
+  it("counts paginated tickets without distinct because access checks cannot duplicate rows", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).listTickets({
+      globalAccess: false,
+      page: 1,
+      pageSize: 20,
+      subUserId: 101,
+      uid: 9001,
+      view: "reception",
+    });
+
+    const countSql = normalizeSql(
+      queries.find((query) => query.sql.includes("count("))!,
+    );
+    expect(countSql).toContain("count(*)");
+    expect(countSql).not.toContain("distinct");
+  });
+
   it("limits my active tickets to assigned open and in-progress records", async () => {
     const { db, queries } = createRecordingDatabase();
 
@@ -116,7 +135,7 @@ describe("TicketsRepository", () => {
     expect(sql).not.toContain("distinct");
   });
 
-  it("uses host ownership for reception and access relations for unassigned", async () => {
+  it("uses account access relations for reception without requiring an active seat", async () => {
     const reception = createRecordingDatabase();
     const receptionRepository = new TicketsRepository(reception.db);
     await receptionRepository.listTickets({
@@ -128,27 +147,13 @@ describe("TicketsRepository", () => {
       view: "reception",
     });
     const receptionSql = reception.queries.map(normalizeSql).join("\n");
-    expect(receptionSql).toContain("host_sub_id = ?");
-    expect(receptionSql).toContain("reception_seat.biz_status = ?");
-
-    const unassigned = createRecordingDatabase();
-    const unassignedRepository = new TicketsRepository(unassigned.db);
-    await unassignedRepository.listTickets({
-      globalAccess: false,
-      page: 1,
-      pageSize: 20,
-      subUserId: 101,
-      uid: 9001,
-      view: "unassigned",
-    });
-    const sql = unassigned.queries.map(normalizeSql).join("\n");
-    expect(sql).toContain("ticket.assignee_sub_user_id is null");
-    expect(sql).toContain("relation.sub_id = ?");
-    expect(sql).toContain("access_seat.biz_status = ?");
-    expect(sql).toContain("ticket.status = ?");
+    expect(receptionSql).toContain("relation.sub_id = ?");
+    expect(receptionSql).toContain("access_seat.third_userid = conversation.third_userid");
+    expect(receptionSql).not.toContain("host_sub_id = ?");
+    expect(receptionSql).not.toContain("access_seat.biz_status = ?");
   });
 
-  it("searches only ticket id and title before pagination and uses the fixed priority ordering", async () => {
+  it("searches only ticket id and title before pagination and orders by recent updates", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -169,9 +174,8 @@ describe("TicketsRepository", () => {
     expect(listSql).not.toContain("contact.real_name like ?");
     expect(listSql).not.toContain("left join xy_wap_embed_contact");
     expect(listSql).not.toContain("left join xy_wap_embed_sub_user as assignee");
-    expect(listSql).toContain("case when");
-    expect(listSql).toContain("ticket.due_at < current_timestamp");
-    expect(listSql).toContain("ticket.update_time desc");
+    expect(listSql).not.toContain("order by case when");
+    expect(listSql).toContain("order by ticket.update_time desc, ticket.id desc");
     expect(listSql).toContain("ticket.created_by_sub_user_id = ?");
     expect(listSql).toContain("relation.sub_id = ?");
   });

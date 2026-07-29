@@ -48,7 +48,6 @@ describe("TicketsService", () => {
       "assigned_to_me_active",
       "assigned_to_me",
       "reception",
-      "unassigned",
       "created_by_me",
     ] as const) {
       await service.listTickets(actor, { view });

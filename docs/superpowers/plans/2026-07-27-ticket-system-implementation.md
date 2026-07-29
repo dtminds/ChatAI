@@ -189,7 +189,7 @@ detail_json
 create_time
 ```
 
-不要给 `detail_json` 内字段建立 JSON 索引。工单默认排序中的 `CASE WHEN` 不通过堆叠组合索引解决。
+不要给 `detail_json` 内字段建立 JSON 索引。
 
 - [x] **Step 3：在 change-log 编写可复制的 expand/contract SQL**
 
@@ -249,7 +249,7 @@ corepack pnpm --filter @chatai/backend build
 覆盖：
 
 - 枚举：`open/in_progress/done/canceled`、`low/medium/high`、`manual/ai`。
-- 视图：`assigned_to_me_active/assigned_to_me/reception/unassigned/created_by_me/all`。
+- 视图：`assigned_to_me_active/assigned_to_me/reception/created_by_me/all`。
 - 创建上下文 discriminated union：`current`、`session + sessionId`、`none`。
 - 创建请求拒绝客户端传 `anchorMessageId`。
 - 标题 1-120、描述最多 2000、评论 1-1000；新建和编辑表单显示标题与描述的实时字数。
@@ -311,11 +311,11 @@ corepack pnpm --filter @chatai/contracts build
 
 - `assigned_to_me_active`：负责人为 JWT 子账号，且状态为 `open/in_progress`；作为默认视图，对客名称为“我的待办”。
 - `assigned_to_me`：负责人为 JWT 子账号，不限制状态。
-- `reception`：账号当前 `host_sub_id` 为 JWT 子账号，不限制工单负责人。
-- `unassigned`：当前子账号有账号访问权的范围内 `assignee IS NULL AND status = open`。
+- `reception`：当前 JWT 子账号有访问权的账号下全部工单，不限制工单负责人。
 - `created_by_me`：当前子账号人工创建。
 - `all`：仅管理员和 Owner；普通客服返回 `TICKET_FORBIDDEN`。
-- 普通客服的最终可见集合是本人负责、本人创建、所属账号访问范围三者并集；`reception` 只是其中按当前接管关系组织的固定视图。
+- 普通客服的最终可见集合是本人负责、本人创建、所属账号访问范围三者并集；`reception` 是账号访问范围对应的固定视图。
+- 工单账号访问范围以 seat-sub relation 为准，不用 `user_seat.biz_status` 隐藏失效账号下的既有工单。
 - `viewer` 只能读，不能进入任何写权限判断或负责人候选。
 - contract SQL 执行前，旧 `dismissed/expired` 行在 API 中统一映射为 `canceled`；新代码不得再写旧状态。
 - 所有分支先限制 `uid`，不得跨租户。
@@ -333,7 +333,7 @@ permissions
 
 Repository 负责数据事实；Service 负责“能否查看/修改/领取/分配/评论”的领域判断。不要在每条 route 内复制角色判断。
 
-“接待工单”的查询事实来自账号当前 `host_sub_id`；普通工单可见范围和“待领取”仍来自账号访问关系。两者不得共用一个含义模糊的账号 ID 集合。接管变化只改变后续查询结果，不更新工单行。
+“我接待的”和普通工单可见范围使用同一套账号访问关系，不读取账号当前 `host_sub_id`。接管变化只影响后续 AI 工单默认负责人，不改变“我接待的”查询范围，也不更新工单行。
 
 - [x] **Step 3：实现列表、筛选、搜索和排序查询**
 
@@ -341,7 +341,7 @@ Repository 负责数据事实；Service 负责“能否查看/修改/领取/分�
 
 - 筛选只收窄视图，不扩大权限范围。
 - 客户名称搜索必须在分页前生效；可复用现有联系人查询先解析受限 `conversation_id`，不得对分页后的 hydration 结果再过滤。
-- 默认排序使用数据库 `CASE WHEN` 表达逾期、今日到期、高优先级，再按 `update_time DESC, id DESC`。
+- 默认排序按 `update_time DESC, id DESC`，逾期、到期范围和优先级由筛选与标签表达。
 - 列表与 count 共用同一过滤构建器，避免角标和页面口径漂移。
 - 客户、所属账号、负责人展示信息按当前页 ID 批量 hydration，不做 N+1。
 - 真实 SQL 以最终 `EXPLAIN` 决定索引，不在 mock 测试中推断性能。
@@ -642,7 +642,6 @@ corepack pnpm --filter @chatai/backend build
 分配给我
 我接待的
 我创建的
-待领取（带数量）
 全部工单（仅管理员/Owner）
 ```
 
@@ -888,11 +887,11 @@ corepack pnpm --filter @chatai/web build
 至少覆盖：
 
 - 五个视图的列表和 count。
-- 默认 `CASE WHEN` 排序。
+- 默认 `update_time DESC, id DESC` 排序。
 - 负责人/状态/来源/截止时间组合筛选。
 - 当前聊天窗口最新消息字段、最近逻辑会话和锚点前后消息路径的真实 SQL；仅锚点上下文读取访问平台消息表。
 
-验收标准：不出现无租户边界的消息表/工单表全扫；表达式排序可接受 filesort，但必须先用权限和筛选显著缩小结果集。若真实执行计划未使用可接受索引，再基于实际 SQL 单独评估索引，不提前增加猜测性索引。
+验收标准：不出现无租户边界的消息表/工单表全扫；排序必须在数据库分页前完成。若真实执行计划未使用可接受索引，再基于实际 SQL 单独评估索引，不提前增加猜测性索引。
 
 执行记录：
 
@@ -925,8 +924,8 @@ corepack pnpm --filter @chatai/web build
 1. 单聊分别以 open 会话覆盖、已关闭会话覆盖、最新消息超过覆盖边界、无消息锚点、不关联、历史接待会话创建。
 2. 群聊确认无入口，直接 API 创建被拒绝。
 3. 普通客服逐项验证负责人、创建人、仅因所属账号访问权可见时的只读和领取权限。
-4. 管理员同时验证“接待工单”和“全部工单”范围不同。
-5. 将一个账号从客服 A 接管给客服 B，确认该账号工单动态移出 A、进入 B 的“接待工单”，但既有负责人不变。
+4. 管理员同时验证“我接待的”和“全部工单”范围不同。
+5. 调整客服 A、B 的账号访问关系，确认该账号工单动态移出 A、进入 B 的“我接待的”；仅变更账号接管人时，该视图范围和既有负责人均不变化。
 6. 未分配工单领取；并发两次领取只有一次成功。
 7. 清空处理中负责人后回到待处理。
 8. 工单可见但聊天权限丢失时不泄露消息上下文。

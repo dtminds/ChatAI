@@ -45,7 +45,7 @@
 3. 工单可被领取、分配、处理、完成和取消，并保留完整操作记录。
 4. 工单可选关联接待会话；切片延迟时可使用消息锚点提供上下文。
 5. 提供独立工单中心，支持客服个人、接待范围和管理员全局视图。
-6. 聊天窗口可查看当前聊天或当前客户的历史工单。
+6. 聊天窗口只查看当前聊天的历史工单。
 7. 保持会话洞察详情中原有待办区域的布局和快捷处理体验。
 
 ### 3.2 非目标
@@ -398,26 +398,13 @@ canceled -> open
 
 - 一级“工单”导航：当前用户“我的待办”的数量，即负责人为当前子账号且状态为 `open + in_progress`。
 - “待领取”视图：当前有访问权的账号范围内 `assignee_sub_user_id IS NULL AND status = open` 的数量。
-- 聊天侧：数量随“当前聊天 / 该客户全部工单”Tab 切换，分别统计当前选定范围内 `open + in_progress` 的工单数量。
+- 聊天侧：只统计当前 `conversation_id` 下 `open + in_progress` 的工单数量。
 
 ## 11. 聊天窗口工单区
 
 ### 11.1 展示范围
 
-聊天窗口右侧增加工单区域或 Tab，提供两个范围：
-
-- 当前聊天：只展示当前 `conversation_id` 下的工单，默认选中。
-- 该客户全部工单：展示当前租户内同一客户在其他单聊窗口下的工单，但结果仍按操作者可见权限过滤。
-
-“该客户”的稳定键固定为：
-
-```text
-uid + platform + third_external_userid
-```
-
-服务端只能根据当前 `conversation_id` 解析该键，只查询 `chat_type = 1` 的单聊窗口，再将候选结果按操作者当前可见的 `conversation_id` 范围过滤。前端只传当前 `conversation_id`，不得提交客户 ID、`third_external_userid` 或其他可扩大范围的客户标识。
-
-如果当前聊天缺少可用的 `platform` 或 `third_external_userid`，则“该客户全部工单”降级为当前聊天范围，不得用空值匹配其他客户。
+聊天窗口右侧工单区域只展示当前 `conversation_id` 下的工单，不提供“该客户全部工单”或其他跨聊天窗口范围。前端和公开 API 均不得接收客户标识或范围参数；服务端始终以路径中的当前聊天 ID 作为唯一查询范围，并继续执行单聊和访问权限校验。
 
 ### 11.2 快捷处理
 
@@ -582,7 +569,7 @@ none
 ```text
 GET /api/server/tickets
 GET /api/server/tickets/counts
-GET /api/server/tickets/by-conversation/:conversationId?scope=conversation|customer
+GET /api/server/tickets/by-conversation/:conversationId
 GET /api/server/tickets/:ticketId
 GET /api/server/tickets/:ticketId/activities?beforeActivityId=<id>&pageSize=20
 ```
@@ -763,7 +750,7 @@ content_updated
 4. 接管关系变化只改变动态范围，不修改既有工单负责人。
 5. 工单可见但无聊天权限时，工单内容可见、消息上下文不可见。
 6. 负责人和人工创建人具有写权限；仅因所属账号访问权可见的客服只能读取或领取未分配工单。
-7. “该客户全部工单”只使用服务端解析的 `uid + platform + third_external_userid`，并再次按可见聊天范围过滤。
+7. 聊天侧接口只查询路径指定的当前 `conversation_id`，不接受跨聊天窗口范围参数。
 
 ### 18.4 AI 创建
 

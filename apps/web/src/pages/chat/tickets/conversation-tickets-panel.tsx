@@ -11,7 +11,6 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +26,12 @@ import {
   EmptyMedia,
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -42,6 +47,7 @@ import {
   updateTicket,
 } from "@/pages/chat/tickets/api/tickets-service";
 import { refreshTicketCounts } from "@/pages/chat/tickets/ticket-count-store";
+import { TicketDetailContent } from "@/pages/chat/tickets/ticket-detail-page";
 import {
   TicketOverdueBadge,
   TicketPriority,
@@ -97,8 +103,11 @@ function ConversationTicketsPanelContent({
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [pendingTicketId, setPendingTicketId] = useState<string>();
+  const [selectedTicketId, setSelectedTicketId] = useState<string>();
   const requestScopeRef = useRef("");
   const mutationScopeRef = useRef("");
+  const detailChangedRef = useRef(false);
+  const selectedTicketIdRef = useRef<string | undefined>(undefined);
   const requestScope = `${conversationId}:${filter}:${page}:${refreshKey}:${reloadKey}`;
   requestScopeRef.current = requestScope;
   mutationScopeRef.current = `${conversationId}:${filter}`;
@@ -109,6 +118,9 @@ function ConversationTicketsPanelContent({
     setResult(undefined);
     setError(undefined);
     setActionError(undefined);
+    setSelectedTicketId(undefined);
+    detailChangedRef.current = false;
+    selectedTicketIdRef.current = undefined;
   }, [conversationId]);
 
   useEffect(() => {
@@ -125,7 +137,6 @@ function ConversationTicketsPanelContent({
     void getConversationTickets(conversationId, {
       page,
       pageSize,
-      scope: "conversation",
       filter,
     })
       .then((next) => {
@@ -199,8 +210,22 @@ function ConversationTicketsPanelContent({
     }
   };
 
+  const refreshList = () => {
+    setPage(1);
+    setReloadKey((current) => current + 1);
+  };
+  const closeTicketDetail = () => {
+    selectedTicketIdRef.current = undefined;
+    setSelectedTicketId(undefined);
+    if (detailChangedRef.current) {
+      detailChangedRef.current = false;
+      refreshList();
+    }
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <>
+      <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-divider px-3 pb-3">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <Tabs
@@ -305,6 +330,11 @@ function ConversationTicketsPanelContent({
               <TicketRow
                 key={ticket.ticketId}
                 onAction={(action) => void runAction(ticket, action)}
+                onOpen={() => {
+                  detailChangedRef.current = false;
+                  selectedTicketIdRef.current = ticket.ticketId;
+                  setSelectedTicketId(ticket.ticketId);
+                }}
                 pending={pendingTicketId === ticket.ticketId}
                 ticket={ticket}
               />
@@ -324,28 +354,45 @@ function ConversationTicketsPanelContent({
           ) : null}
         </ScrollArea>
       )}
-    </div>
+      </div>
+      <TicketDetailDrawer
+        onClose={closeTicketDetail}
+        onTicketChange={() => {
+          if (selectedTicketIdRef.current == null) {
+            refreshList();
+          } else {
+            detailChangedRef.current = true;
+          }
+        }}
+        ticketId={selectedTicketId}
+      />
+    </>
   );
 }
 
 function TicketRow({
   onAction,
+  onOpen,
   pending,
   ticket,
 }: {
   onAction: (action: "claim" | TicketStatus) => void;
+  onOpen: () => void;
   pending: boolean;
   ticket: Ticket;
 }) {
   return (
     <article className="w-full min-w-0 max-w-full space-y-2 overflow-hidden px-4 py-4">
       <div className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden">
-        <Link
-          className="block min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-foreground hover:underline"
-          to={`/chat/tickets/${ticket.ticketId}`}
+        <Button
+          aria-label={`查看工单 ${ticket.title}`}
+          className="h-auto min-w-0 flex-1 justify-start truncate p-0 text-left text-sm font-semibold leading-5 text-foreground"
+          onClick={onOpen}
+          type="button"
+          variant="link"
         >
-          {ticket.title}
-        </Link>
+          <span className="truncate">{ticket.title}</span>
+        </Button>
         {ticket.canClaim || ticket.canEdit ? (
           <TicketActionsMenu
             onAction={onAction}
@@ -389,6 +436,47 @@ function TicketRow({
         {formatInsightTime(ticket.updatedAt)}
       </p>
     </article>
+  );
+}
+
+function TicketDetailDrawer({
+  onClose,
+  onTicketChange,
+  ticketId,
+}: {
+  onClose: () => void;
+  onTicketChange: () => void;
+  ticketId: string | undefined;
+}) {
+  return (
+    <Sheet
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open={ticketId != null}
+    >
+      <SheetContent
+        className="w-full max-w-none overflow-hidden p-0 sm:w-[min(1040px,calc(100vw-2rem))] sm:max-w-none"
+        side="right"
+      >
+        <SheetTitle className="sr-only">工单详情</SheetTitle>
+        <SheetDescription className="sr-only">
+          查看和处理当前聊天中的工单
+        </SheetDescription>
+        {ticketId ? (
+          <TicketDetailContent
+            key={ticketId}
+            onDeleted={() => {
+              onTicketChange();
+              onClose();
+            }}
+            onTicketChange={onTicketChange}
+            presentation="drawer"
+            ticketId={ticketId}
+          />
+        ) : null}
+      </SheetContent>
+    </Sheet>
   );
 }
 

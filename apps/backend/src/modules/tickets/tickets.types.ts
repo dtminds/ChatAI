@@ -86,9 +86,6 @@ export type TicketConversationIdentity = {
   conversationId: number;
   lastAuditInfoId: number | null;
   lastMessageAt: number | null;
-  platform: number;
-  thirdExternalUserId: string;
-  thirdUserId: string;
 };
 
 export type TicketSessionOptions = TicketContextOptionsResponse["sessions"];

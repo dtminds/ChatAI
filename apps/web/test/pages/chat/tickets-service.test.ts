@@ -23,7 +23,7 @@ const mock = new MockAdapter(requestInstance);
 afterEach(() => mock.reset());
 
 describe("tickets service", () => {
-  it("uses the public ticket endpoints and preserves query scope", async () => {
+  it("uses the public ticket endpoints and preserves query parameters", async () => {
     mock.onGet("/server/tickets").reply((config) => [200, { data: { query: config.params }, success: true }]);
     mock.onGet("/server/tickets/counts").reply(200, { data: { assignedToMeActive: 2 }, success: true });
     mock.onGet("/server/tickets/context-options").reply(200, { data: { assignees: [], sessions: [] }, success: true });
@@ -43,7 +43,7 @@ describe("tickets service", () => {
       .resolves.toMatchObject({ query: { page: 2, status: "open", view: "reception" } });
     await getTicketCounts();
     await getTicketContextOptions({ conversationId: "301" });
-    await getConversationTickets("301", { filter: "active", scope: "customer" });
+    await getConversationTickets("301", { filter: "active" });
     await expect(getConversationTicketActiveCount("301")).resolves.toEqual({ activeCount: 3 });
     await getTicketDetail("501");
     await expect(getTicketActivities("501", { beforeActivityId: "601", pageSize: 50 }))

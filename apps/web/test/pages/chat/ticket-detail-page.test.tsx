@@ -9,7 +9,10 @@ import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
+import {
+  TicketDetailContent,
+  TicketDetailPage,
+} from "@/pages/chat/tickets/ticket-detail-page";
 
 const api = vi.hoisted(() => ({
   addTicketComment: vi.fn(), claimTicket: vi.fn(), deleteTicket: vi.fn(), getTicketActivities: vi.fn(), getTicketAssigneeOptions: vi.fn(), getTicketContext: vi.fn(), getTicketDetail: vi.fn(), updateTicket: vi.fn(),
@@ -97,6 +100,17 @@ function renderNavigablePage() {
 }
 
 describe("TicketDetailPage", () => {
+  it("renders the shared detail content in drawer mode without page navigation", async () => {
+    render(
+      <MemoryRouter>
+        <TicketDetailContent presentation="drawer" ticketId="501" />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "跟进退款" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "返回工单列表" })).not.toBeInTheDocument();
+  });
+
   it("loads direct routes and sends expectedStatus with status changes", async () => {
     const user = userEvent.setup(); renderPage();
     await screen.findByRole("heading", { name: "跟进退款" });

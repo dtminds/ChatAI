@@ -230,13 +230,15 @@ describe("ticket DTOs", () => {
       filter: "active",
       page: 1,
       pageSize: 20,
-      scope: "customer",
     })).toBe(true);
+    expect(Value.Check(ConversationTicketsQuerySchema, {
+      filter: "active",
+      scope: "customer",
+    })).toBe(false);
     expect(Value.Check(ConversationTicketsResponseSchema, {
       items: [ticket],
       page: 1,
       pageSize: 20,
-      scope: "customer",
       total: 1,
       totalPages: 1,
     })).toBe(true);

@@ -133,11 +133,6 @@ export interface TicketsRepositoryPort {
     conversationId: number;
     uid: number;
   }): Promise<TicketContextOptionsResponse["assignees"]>;
-  listCustomerConversationIds(input: {
-    platform: number;
-    thirdExternalUserId: string;
-    uid: number;
-  }): Promise<number[]>;
   listSessionOptions(input: {
     conversationId: number;
     limit: number;
@@ -348,15 +343,11 @@ export class TicketsService {
       throw new BadRequestError("TICKET_SINGLE_CHAT_ONLY", "工单仅支持单聊客户");
     }
 
-    const scope = query.scope ?? "conversation";
     const subUserId = getActorSubUserId(actor);
-    const conversationIds = scope === "customer"
-      ? await this.resolveCustomerConversationIds(identity, actor.uid, subUserId)
-      : [identity.conversationId];
     const globalAccess = hasGlobalTicketAccess(actor);
     const filter = query.filter ?? "active";
     const repositoryInput: TicketListRepositoryInput = {
-      conversationIds,
+      conversationIds: [identity.conversationId],
       ...(filter === "active"
         ? { statuses: ["open", "in_progress"] }
         : { status: filter }),
@@ -371,7 +362,6 @@ export class TicketsService {
 
     return {
       ...mapTicketPage(page, actor),
-      scope,
     };
   }
 
@@ -846,24 +836,6 @@ export class TicketsService {
         : undefined,
       values,
     };
-  }
-
-  private async resolveCustomerConversationIds(
-    identity: TicketConversationIdentity,
-    uid: number,
-    subUserId: number,
-  ) {
-    if (!identity.thirdExternalUserId) {
-      return [identity.conversationId];
-    }
-
-    const conversationIds = await this.repository.listCustomerConversationIds({
-      platform: identity.platform,
-      thirdExternalUserId: identity.thirdExternalUserId,
-      uid,
-    });
-
-    return conversationIds.length > 0 ? conversationIds : [identity.conversationId];
   }
 
   private async getCreationConversation(

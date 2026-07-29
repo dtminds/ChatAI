@@ -346,17 +346,7 @@ Repository 负责数据事实；Service 负责“能否查看/修改/领取/分�
 - 客户、所属账号、负责人展示信息按当前页 ID 批量 hydration，不做 N+1。
 - 真实 SQL 以最终 `EXPLAIN` 决定索引，不在 mock 测试中推断性能。
 
-- [x] **Step 4：实现客户范围查询**
-
-`scope=customer` 固定由服务端通过当前 `conversation_id` 解析：
-
-```text
-uid + platform + third_external_userid
-```
-
-只匹配 `chat_type = 1`，再与当前用户可见 `conversation_id` 求交集。客户键缺失时退化为当前聊天。前端传来的第三方客户 ID 一律不参与查询。
-
-- [x] **Step 5：运行聚焦测试**
+- [x] **Step 4：运行聚焦测试**
 
 ```bash
 cd apps/backend
@@ -767,8 +757,8 @@ corepack pnpm --filter @chatai/web build
 - [x] **Step 3：实现聊天右侧工单 Tab**
 
 - 只在单聊展示。
-- 两个范围：“当前聊天”“该客户全部工单”。
-- 数量随 Tab 切换。
+- 只查询和展示当前 `conversation_id`，不提供跨聊天窗口范围。
+- 数量统计当前聊天内 `open + in_progress` 的工单。
 - 支持打开详情、领取、状态快捷操作。
 - 完整编辑和活动记录跳转工单详情。
 - 切换客户时使用 conversation scope key 保护异步响应，旧客户的列表、错误和提交结果不得覆盖新客户状态。
@@ -901,14 +891,12 @@ corepack pnpm --filter @chatai/web build
 - 默认 `CASE WHEN` 排序。
 - 负责人/状态/来源/截止时间组合筛选。
 - 当前聊天窗口最新消息字段、最近逻辑会话和锚点前后消息路径的真实 SQL；仅锚点上下文读取访问平台消息表。
-- 当前客户全部工单的 conversation scope 查询。
 
 验收标准：不出现无租户边界的消息表/工单表全扫；表达式排序可接受 filesort，但必须先用权限和筛选显著缩小结果集。若真实执行计划未使用可接受索引，再基于实际 SQL 单独评估索引，不提前增加猜测性索引。
 
 执行记录：
 
 - 使用现有只读开发库连接执行，不使用 Docker。共享库尚未应用本期工单 expand SQL，且当前账号无 `CREATE TEMPORARY TABLE` 权限，因此无法对最终工单主表的五个视图、count 和组合筛选执行运行时 `EXPLAIN`；这些查询已按最终 schema 的租户前缀索引逐项静态核对，限制需在 PR 中保留。
-- 客户聊天范围查询由原先可能全扫 `conversation` 调整为先从当前子账号可访问席位关联，`conversation` 使用 `uk_thirdUserid_exUserid_groupId_uid_platform`，执行计划为 `eq_ref`。
 - 锚点消息按主键定位使用 `PRIMARY`，执行计划为 `const`；锚点前后消息按 `(msgtime, id)` 范围读取使用平台现有 `idx_single`，执行计划为 `range`，前序读取为反向索引扫描。
 - “当前会话”解析直接读取聊天窗口的 `last_msgtime/last_audit_info_id`，并按 `conversation_id` 有界查询最近逻辑会话，不再扫描平台消息表或反查 `logical_session_message`，未新增索引。
 
@@ -942,7 +930,7 @@ corepack pnpm --filter @chatai/web build
 6. 未分配工单领取；并发两次领取只有一次成功。
 7. 清空处理中负责人后回到待处理。
 8. 工单可见但聊天权限丢失时不泄露消息上下文。
-9. 聊天侧切换当前聊天/客户全部工单，数量和列表同步变化。
+9. 聊天侧只展示当前聊天工单，数量与 `open + in_progress` 列表口径一致。
 10. 正常自动 Final 创建 AI 工单；Live 和人工重刷不创建。
 11. 洞察详情只显示当前快照 AI 工单，快捷状态操作和新窗口标题链接正常。
 12. 旧 `/chat/insights/follow-ups` 显示 NotFound，不跳转。

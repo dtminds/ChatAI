@@ -248,9 +248,6 @@ export class TicketsRepository {
         "conversation.id as conversation_id",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.last_msgtime as last_msgtime",
-        "conversation.platform as platform",
-        "conversation.third_external_userid as third_external_userid",
-        "conversation.third_userid as third_userid",
         "conversation.chat_type as chat_type",
       ])
       .where("conversation.uid", "=", uid)
@@ -267,30 +264,7 @@ export class TicketsRepository {
       conversationId: Number(row.conversation_id),
       lastAuditInfoId: toNullablePositiveNumber(row.last_audit_info_id),
       lastMessageAt: toNullablePositiveNumber(row.last_msgtime),
-      platform: Number(row.platform),
-      thirdExternalUserId: row.third_external_userid ?? "",
-      thirdUserId: row.third_userid,
     } satisfies TicketConversationIdentity;
-  }
-
-  async listCustomerConversationIds(input: {
-    platform: number;
-    thirdExternalUserId: string;
-    uid: number;
-  }) {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_conversation as conversation")
-      .select("conversation.id")
-      .distinct()
-      .where("conversation.uid", "=", input.uid)
-      .where("conversation.platform", "=", input.platform)
-      .where("conversation.third_external_userid", "=", input.thirdExternalUserId)
-      .where("conversation.third_group_id", "=", "")
-      .where("conversation.chat_type", "=", 1)
-      .where("conversation.biz_status", "=", 1)
-      .execute();
-
-    return rows.map((row) => Number(row.id)).filter(Number.isSafeInteger);
   }
 
   async canAccessConversation(input: {

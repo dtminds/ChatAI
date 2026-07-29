@@ -237,26 +237,6 @@ describe("TicketsRepository", () => {
     expect(normalizedQueries.join("\n")).toContain("id in (?, ?)");
   });
 
-  it("restricts customer conversation discovery to single chats and server-resolved identity", async () => {
-    const { db, queries } = createRecordingDatabase();
-    const repository = new TicketsRepository(db);
-
-    await repository.listCustomerConversationIds({
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      uid: 9001,
-    });
-
-    const sql = queries.map(normalizeSql).join("\n");
-    expect(sql).not.toContain("xy_wap_embed_user_seat_sub_relation as relation");
-    expect(sql).not.toContain("relation.sub_id = ?");
-    expect(sql).toContain("conversation.uid = ?");
-    expect(sql).toContain("conversation.platform = ?");
-    expect(sql).toContain("conversation.third_external_userid = ?");
-    expect(sql).toContain("conversation.third_group_id = ?");
-    expect(sql).toContain("conversation.chat_type = ?");
-  });
-
   it("loads the conversation's latest message boundary with its identity", async () => {
     const { db, queries } = createRecordingDatabase();
 

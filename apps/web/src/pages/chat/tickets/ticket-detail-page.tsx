@@ -65,6 +65,31 @@ export function TicketDetailPage() {
   const returnView = ticketViews.has(requestedReturnView ?? "")
     ? requestedReturnView
     : "assigned_to_me_active";
+
+  return (
+    <TicketDetailContent
+      backTo={`/chat/tickets?view=${returnView}`}
+      onDeleted={() => navigate(`/chat/tickets?view=${returnView}`)}
+      ticketId={ticketId}
+    />
+  );
+}
+
+type TicketDetailContentProps = {
+  backTo?: string;
+  onDeleted?: () => void;
+  onTicketChange?: () => void;
+  presentation?: "drawer" | "page";
+  ticketId: string;
+};
+
+export function TicketDetailContent({
+  backTo,
+  onDeleted,
+  onTicketChange,
+  presentation = "page",
+  ticketId,
+}: TicketDetailContentProps) {
   const [ticket, setTicket] = useState<Ticket>();
   const [activities, setActivities] = useState<TicketActivityPage>({ hasMore: false, items: [], nextCursor: null });
   const [context, setContext] = useState<TicketContextResponse>();
@@ -209,6 +234,7 @@ export function TicketDetailPage() {
       if (!isCurrentRequest()) return false;
       setTicket(response.ticket);
       setForm(createTicketForm(response.ticket));
+      onTicketChange?.();
       void refreshActivitiesAfterMutation(requestedTicketId, isCurrentRequest);
       return true;
     } catch (cause) {
@@ -246,6 +272,7 @@ export function TicketDetailPage() {
         ...current,
         updatedAt: Math.max(current.updatedAt, response.activity.createdAt),
       } : current);
+      onTicketChange?.();
     } catch (cause) {
       if (!isCurrentRequest()) return;
       toast.error(cause instanceof Error ? cause.message : "评论添加失败");
@@ -267,6 +294,7 @@ export function TicketDetailPage() {
       void refreshTicketCounts();
       if (!isCurrentRequest()) return;
       setTicket(response.ticket);
+      onTicketChange?.();
       void refreshActivitiesAfterMutation(requestedTicketId, isCurrentRequest);
     } catch (cause) {
       if (!isCurrentRoute()) return;
@@ -283,7 +311,7 @@ export function TicketDetailPage() {
       await deleteTicket(requestedTicketId);
       void refreshTicketCounts();
       if (activeTicketIdRef.current !== requestedTicketId) return;
-      navigate(`/chat/tickets?view=${returnView}`);
+      onDeleted?.();
     } catch (cause) {
       if (activeTicketIdRef.current === requestedTicketId) {
         setIsDeleteDialogOpen(false);
@@ -383,23 +411,25 @@ export function TicketDetailPage() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden">
-      <div className="mx-auto w-full max-w-[1180px] xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className={`${presentation === "drawer" ? "w-full" : "mx-auto w-full max-w-[1180px]"} xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_380px]`}>
         <ScrollArea className="xl:min-h-0" viewportProps={{ className: "overflow-x-hidden" }}>
         <div className="space-y-6 px-8 py-6 xl:pr-6">
         <header>
           <div>
-            <Button
-              asChild
-              className="-ml-2 h-8 w-fit justify-start rounded-[8px] px-2 text-muted-foreground hover:text-foreground"
-              variant="ghost"
-            >
-              <Link to={`/chat/tickets?view=${returnView}`}>
-                <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
-                <span>返回工单列表</span>
-              </Link>
-            </Button>
-            <h1 className="mt-1 text-[22px] font-semibold">{ticket.title}</h1>
-            <div className="mt-3 flex gap-2">
+            {backTo ? (
+              <Button
+                asChild
+                className="-ml-2 h-8 w-fit justify-start rounded-[8px] px-2 text-muted-foreground hover:text-foreground"
+                variant="ghost"
+              >
+                <Link to={backTo}>
+                  <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
+                  <span>返回工单列表</span>
+                </Link>
+              </Button>
+            ) : null}
+            <h1 className={`${backTo ? "mt-1" : "pr-10"} text-[22px] font-semibold`}>{ticket.title}</h1>
+            <div className="mt-3 flex flex-wrap gap-2">
               {ticket.canEdit ? (
                 <Button
                   disabled={isSaving}

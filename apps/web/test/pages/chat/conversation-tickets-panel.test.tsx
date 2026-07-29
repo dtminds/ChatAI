@@ -17,6 +17,20 @@ const toast = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
 vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
+vi.mock("@/pages/chat/tickets/ticket-detail-page", () => ({
+  TicketDetailContent: ({
+    onTicketChange,
+    ticketId,
+  }: {
+    onTicketChange?: () => void;
+    ticketId: string;
+  }) => (
+    <div>
+      <h1>工单详情 {ticketId}</h1>
+      <button onClick={onTicketChange} type="button">模拟详情更新</button>
+    </div>
+  ),
+}));
 vi.mock("sonner", () => ({ toast }));
 
 const ticket: Ticket = {
@@ -49,12 +63,11 @@ const ticket: Ticket = {
   updatedAt: 2,
 };
 
-function response(scope: "conversation" | "customer", items: Ticket[] = [ticket]) {
+function response(items: Ticket[] = [ticket]) {
   return {
     items,
     page: 1,
     pageSize: 20,
-    scope,
     total: items.length,
     totalPages: 1,
   };
@@ -62,7 +75,7 @@ function response(scope: "conversation" | "customer", items: Ticket[] = [ticket]
 
 beforeEach(() => {
   toast.error.mockReset();
-  api.getConversationTickets.mockReset().mockResolvedValue(response("conversation"));
+  api.getConversationTickets.mockReset().mockResolvedValue(response());
   api.claimTicket.mockReset().mockResolvedValue({ ticket });
   api.updateTicket.mockReset().mockResolvedValue({ ticket });
   ticketCounts.refreshTicketCounts.mockReset().mockResolvedValue(undefined);
@@ -81,7 +94,7 @@ describe("ConversationTicketsPanel", () => {
     const user = userEvent.setup();
     const onCreateTicket = vi.fn();
     api.getConversationTickets
-      .mockResolvedValueOnce(response("conversation", [
+      .mockResolvedValueOnce(response([
         ticket,
         {
           ...ticket,
@@ -90,7 +103,7 @@ describe("ConversationTicketsPanel", () => {
           title: "处理中工单",
         },
       ]))
-      .mockResolvedValueOnce(response("conversation", [{
+      .mockResolvedValueOnce(response([{
         ...ticket,
         status: "done",
         ticketId: "504",
@@ -98,28 +111,26 @@ describe("ConversationTicketsPanel", () => {
       }]));
 
     const { rerender } = renderPanel({ onCreateTicket });
-    expect(await screen.findByRole("link", { name: /跟进退款/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /跟进退款/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /处理中工单/ })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "处理中" })).not.toBeInTheDocument();
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
       filter: "active",
       page: 1,
       pageSize: 20,
-      scope: "conversation",
     });
     await user.click(screen.getByRole("button", { name: "创建工单" }));
     expect(onCreateTicket).toHaveBeenCalledOnce();
 
     await user.click(screen.getByRole("tab", { name: "已完成" }));
-    expect(await screen.findByRole("link", { name: /已完成工单/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /已完成工单/ })).toBeInTheDocument();
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
       filter: "done",
       page: 1,
       pageSize: 20,
-      scope: "conversation",
     });
 
-    api.getConversationTickets.mockResolvedValueOnce(response("conversation", [{
+    api.getConversationTickets.mockResolvedValueOnce(response([{
       ...ticket,
       ticketId: "503",
       title: "新建待处理工单",
@@ -134,7 +145,7 @@ describe("ConversationTicketsPanel", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: /新建待处理工单/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /新建待处理工单/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "待处理" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -143,14 +154,32 @@ describe("ConversationTicketsPanel", () => {
       filter: "active",
       page: 1,
       pageSize: 20,
-      scope: "conversation",
     });
+  });
+
+  it("opens ticket details in a drawer and returns to the conversation panel on close", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /查看工单 跟进退款/ }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "工单详情 501" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "模拟详情更新" }));
+    expect(api.getConversationTickets).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(api.getConversationTickets).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("tab", { name: "待处理" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /查看工单 跟进退款/ })).toBeInTheDocument();
   });
 
   it("claims unassigned tickets and updates status with the expected state", async () => {
     const user = userEvent.setup();
     api.getConversationTickets.mockResolvedValue(
-      response("conversation", [{ ...ticket, assignee: null, canClaim: true, canEdit: false }]),
+      response([{ ...ticket, assignee: null, canClaim: true, canEdit: false }]),
     );
 
     const { rerender } = renderPanel();
@@ -160,7 +189,7 @@ describe("ConversationTicketsPanel", () => {
     await user.click(screen.getByRole("menuitem", { name: "分配给我" }));
     await waitFor(() => expect(api.claimTicket).toHaveBeenCalledWith("501"));
 
-    api.getConversationTickets.mockResolvedValue(response("conversation"));
+    api.getConversationTickets.mockResolvedValue(response());
     rerender(
       <MemoryRouter>
         <ConversationTicketsPanel conversationId="301" refreshKey={1} />
@@ -187,8 +216,8 @@ describe("ConversationTicketsPanel", () => {
     });
     api.getConversationTickets
       .mockReset()
-      .mockResolvedValueOnce(response("conversation"))
-      .mockResolvedValueOnce(response("conversation", [{ ...ticket, status: "done" }]));
+      .mockResolvedValueOnce(response())
+      .mockResolvedValueOnce(response([{ ...ticket, status: "done" }]));
     api.updateTicket.mockRejectedValueOnce(conflict);
     const user = userEvent.setup();
     renderPanel();
@@ -219,7 +248,7 @@ describe("ConversationTicketsPanel", () => {
       .mockImplementationOnce(
         () => new Promise((resolve) => { resolveFirst = resolve; }),
       )
-      .mockResolvedValueOnce(response("conversation", [{
+      .mockResolvedValueOnce(response([{
         ...ticket,
         status: "done",
         ticketId: "601",
@@ -230,8 +259,8 @@ describe("ConversationTicketsPanel", () => {
     renderPanel();
     await user.click(screen.getByRole("tab", { name: "已完成" }));
 
-    expect(await screen.findByRole("link", { name: /已完成工单/ })).toBeInTheDocument();
-    resolveFirst(response("conversation", [{ ...ticket, title: "旧客户工单" }]));
+    expect(await screen.findByRole("button", { name: /已完成工单/ })).toBeInTheDocument();
+    resolveFirst(response([{ ...ticket, title: "旧客户工单" }]));
     await waitFor(() => expect(screen.queryByText("旧客户工单")).not.toBeInTheDocument());
   });
 });

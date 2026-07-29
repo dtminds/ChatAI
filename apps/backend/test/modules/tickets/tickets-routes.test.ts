@@ -115,7 +115,6 @@ describe("tickets routes", () => {
       items: [ticket],
       page: 1,
       pageSize: 20,
-      scope: "conversation",
       total: 1,
       totalPages: 1,
     });
@@ -151,7 +150,7 @@ describe("tickets routes", () => {
       { method: "GET", url: "/api/server/tickets?view=reception&page=1&pageSize=20" },
       { method: "GET", url: "/api/server/tickets/counts" },
       { method: "GET", url: "/api/server/tickets/context-options?conversationId=301" },
-      { method: "GET", url: "/api/server/tickets/by-conversation/301?scope=conversation" },
+      { method: "GET", url: "/api/server/tickets/by-conversation/301" },
       { method: "GET", url: "/api/server/tickets/by-conversation/301/active-count" },
       { method: "GET", url: "/api/server/tickets/501" },
       { method: "GET", url: "/api/server/tickets/501/activities?beforeActivityId=601&pageSize=50" },
@@ -224,6 +223,7 @@ describe("tickets routes", () => {
     expect(service.updateTicket).not.toHaveBeenCalled();
     await app.close();
   });
+
 });
 
 async function createTicketsApp() {

@@ -214,51 +214,23 @@ describe("TicketsService", () => {
     expect(page.items.map((item) => item.status)).toEqual(["canceled", "canceled"]);
   });
 
-  it("resolves customer conversations on the server and falls back to current chat", async () => {
+  it("lists tickets only from the requested conversation", async () => {
     const repository = createRepository();
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 1,
       conversationId: 301,
       lastAuditInfoId: 9003,
       lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      thirdUserId: "account-1",
     });
-    repository.listCustomerConversationIds.mockResolvedValueOnce([301, 302]);
     const service = new TicketsService(repository);
 
     await service.listConversationTickets(createActor("operator"), "301", {
       filter: "active",
-      scope: "customer",
-    });
-    expect(repository.listCustomerConversationIds).toHaveBeenCalledWith({
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      uid: 9001,
-    });
-    expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
-      conversationIds: [301, 302],
-      statuses: ["open", "in_progress"],
-      view: "visible",
-    }));
-
-    repository.getConversationIdentity.mockResolvedValueOnce({
-      chatType: 1,
-      conversationId: 301,
-      lastAuditInfoId: 9003,
-      lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "",
-      thirdUserId: "account-1",
-    });
-    await service.listConversationTickets(createActor("operator"), "301", {
-      filter: "done",
-      scope: "customer",
     });
     expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationIds: [301],
-      status: "done",
+      statuses: ["open", "in_progress"],
+      view: "visible",
     }));
   });
 
@@ -269,9 +241,6 @@ describe("TicketsService", () => {
       conversationId: 301,
       lastAuditInfoId: 9003,
       lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      thirdUserId: "account-1",
     });
     repository.countActiveConversationTickets.mockResolvedValueOnce(3);
     const service = new TicketsService(repository);
@@ -300,9 +269,6 @@ describe("TicketsService", () => {
       conversationId: 301,
       lastAuditInfoId: 9003,
       lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      thirdUserId: "account-1",
     });
     const service = new TicketsService(repository);
 
@@ -319,9 +285,6 @@ describe("TicketsService", () => {
       conversationId: 301,
       lastAuditInfoId: 9003,
       lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      thirdUserId: "account-1",
     });
     repository.canAccessConversation.mockResolvedValueOnce(false);
     const service = new TicketsService(repository);
@@ -341,9 +304,6 @@ describe("TicketsService", () => {
       conversationId: 301,
       lastAuditInfoId: 9003,
       lastMessageAt: 1_785_168_000_000,
-      platform: 5,
-      thirdExternalUserId: "customer-1",
-      thirdUserId: "account-1",
     });
     await expect(service.createTicket(createActor("operator"), createPayload()))
       .rejects.toMatchObject({ code: "TICKET_SINGLE_CHAT_ONLY" });
@@ -989,7 +949,6 @@ function createRepository(page?: { items: TicketRecord[] }) {
     isSessionInConversation: vi.fn(async () => false),
     isValidAssignee: vi.fn(async () => true),
     listAssigneeOptions: vi.fn(async () => []),
-    listCustomerConversationIds: vi.fn(async () => []),
     listSessionOptions: vi.fn(async () => []),
     listTicketActivities: vi.fn(async () => ({
       hasMore: false,
@@ -1015,7 +974,6 @@ function createRepository(page?: { items: TicketRecord[] }) {
     isSessionInConversation: ReturnType<typeof vi.fn>;
     isValidAssignee: ReturnType<typeof vi.fn>;
     listAssigneeOptions: ReturnType<typeof vi.fn>;
-    listCustomerConversationIds: ReturnType<typeof vi.fn>;
     listSessionOptions: ReturnType<typeof vi.fn>;
     listTickets: ReturnType<typeof vi.fn>;
   };
@@ -1047,9 +1005,6 @@ function configureCreationConversation(
     conversationId: 301,
     lastAuditInfoId: 9003,
     lastMessageAt: 1_785_168_000_000,
-    platform: 5,
-    thirdExternalUserId: "customer-1",
-    thirdUserId: "account-1",
     ...overrides,
   });
 }

@@ -31,11 +31,6 @@ export const TicketViewSchema = Type.Union([
   Type.Literal("all"),
 ]);
 
-export const TicketConversationScopeSchema = Type.Union([
-  Type.Literal("conversation"),
-  Type.Literal("customer"),
-]);
-
 export const ConversationTicketFilterSchema = Type.Union([
   Type.Literal("active"),
   Type.Literal("done"),
@@ -291,14 +286,12 @@ export const ConversationTicketsQuerySchema = Type.Object({
   filter: Type.Optional(ConversationTicketFilterSchema),
   page: Type.Optional(Type.Integer({ minimum: 1 })),
   pageSize: Type.Optional(Type.Integer({ maximum: 100, minimum: 1 })),
-  scope: Type.Optional(TicketConversationScopeSchema),
 }, { additionalProperties: false });
 
 export const ConversationTicketsResponseSchema = Type.Object({
   items: Type.Array(TicketSchema),
   page: Type.Integer({ minimum: 1 }),
   pageSize: Type.Integer({ minimum: 1 }),
-  scope: TicketConversationScopeSchema,
   total: Type.Integer({ minimum: 0 }),
   totalPages: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });

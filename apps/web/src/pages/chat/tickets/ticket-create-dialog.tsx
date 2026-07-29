@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   Ticket,
   TicketContextOptionsResponse,
@@ -26,6 +28,12 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import {
   createTicket,
@@ -182,7 +190,14 @@ export function TicketCreateDialog({
                 value={assigneeSubUserId}
               >
                 <SelectTrigger aria-label="负责人" className="w-full">
-                  <SelectValue placeholder="默认负责人" />
+                  {isOptionsLoading ? (
+                    <div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-muted-foreground" role="status">
+                      <Spinner size={14} variant="classic" />
+                      <span>正在加载</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="默认负责人" />
+                  )}
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   <SelectItem value="unassigned">未分配</SelectItem>
@@ -193,12 +208,6 @@ export function TicketCreateDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {isOptionsLoading ? (
-                <span className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-                  <Spinner size={14} variant="classic" />
-                  正在加载
-                </span>
-              ) : null}
             </Field>
             <Field label="优先级" required>
               <SegmentedControl
@@ -231,7 +240,11 @@ export function TicketCreateDialog({
                 value={dueAt}
               />
             </Field>
-            <Field label="关联接待会话" required>
+            <Field
+              hint="用于协作者了解工单对应的对话背景"
+              label="关联接待会话"
+              required
+            >
               <Select
                 disabled={isOptionsLoading}
                 onValueChange={setContextValue}
@@ -297,18 +310,44 @@ export function TicketCreateDialog({
 
 function Field({
   children,
+  hint,
   label,
   required = false,
 }: {
   children: ReactNode;
+  hint?: string;
   label: string;
   required?: boolean;
 }) {
   return (
     <div className="grid gap-2">
-      <div className="text-sm font-medium text-foreground">
-        {label}
+      <div className="flex items-center text-sm font-medium text-foreground">
+        <span>{label}</span>
         {required ? <span className="ml-1 text-destructive">*</span> : null}
+        {hint ? (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label={`${label}说明`}
+                  className="ml-1 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    color="currentColor"
+                    icon={InformationCircleIcon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>
+                {hint}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
       </div>
       {children}
     </div>

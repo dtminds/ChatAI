@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
@@ -39,6 +39,32 @@ beforeEach(() => {
 });
 
 describe("TicketCreateDialog", () => {
+  it("keeps the options loading status inside the assignee control", async () => {
+    let resolveOptions!: (value: typeof contextOptions) => void;
+    api.getTicketContextOptions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOptions = resolve;
+      }),
+    );
+
+    render(
+      <TicketCreateDialog
+        conversationId="301"
+        onCreated={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    );
+
+    const assignee = screen.getByRole("combobox", { name: "负责人" });
+    expect(within(assignee).getByRole("status")).toBeInTheDocument();
+
+    resolveOptions(contextOptions);
+    await waitFor(() =>
+      expect(within(assignee).queryByRole("status")).not.toBeInTheDocument(),
+    );
+  });
+
   it("uses the current reception session and server-provided default assignee", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
@@ -60,6 +86,8 @@ describe("TicketCreateDialog", () => {
     expect(screen.getByRole("combobox", { name: "关联接待会话" })).toHaveTextContent(
       "当前会话",
     );
+    await user.hover(screen.getByRole("button", { name: "关联接待会话说明" }));
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "负责人" })).toHaveTextContent(
       "客服甲",
     );

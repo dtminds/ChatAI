@@ -378,6 +378,7 @@ export function CustomerSidePanel({
                 <GroupMembersSidePanel
                   groupMembers={groupMembers}
                   isLoading={isGroupMembersLoading}
+                  key={sidebarIframeConversationId}
                   onRefresh={onRefreshGroupMembers}
                 />
               ) : (

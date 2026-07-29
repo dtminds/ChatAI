@@ -20,6 +20,7 @@ const routePageModules = [
   "@/pages/chat/insights/insights-follow-ups-page",
   "@/pages/chat/insights/insights-business-page",
   "@/pages/chat/insights/insights-settings-page",
+  "@/pages/chat/insights/insights-worker-observability-page",
 ] as const;
 
 const routerSourcePath = join(process.cwd(), "src/router/index.tsx");

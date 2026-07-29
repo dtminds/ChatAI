@@ -24,6 +24,9 @@ import {
   getInsightQualityResults,
   getInsightRescanTasks,
   getInsightSettings,
+  getInsightsWorkerSummary,
+  getInsightsWorkerUidDetail,
+  getInsightsWorkerUids,
   updateInsightAnalysisPolicy,
   updateInsightActionStatus,
   updateInsightFeatureConfig,
@@ -354,5 +357,61 @@ describe("insights service adapter", () => {
       pageSize: 10,
       status: "open",
     });
+  });
+
+  it("uses public worker observability endpoints and preserves query signals", async () => {
+    const summaryController = new AbortController();
+    const listController = new AbortController();
+    const detailController = new AbortController();
+
+    mock.onGet("/server/insights/worker-observability/summary").reply(200, {
+      data: { observedAt: 1 },
+      success: true,
+    });
+    mock.onGet("/server/insights/worker-observability/uids").reply(200, {
+      data: { items: [], observedAt: 1, page: 2, pageSize: 50, total: 0, totalPages: 0 },
+      success: true,
+    });
+    mock.onGet("/server/insights/worker-observability/uids/2002").reply(200, {
+      data: { observedAt: 1, uid: 2002 },
+      success: true,
+    });
+
+    await getInsightsWorkerSummary({ signal: summaryController.signal });
+    await getInsightsWorkerUids(
+      {
+        analysisState: "error",
+        page: 2,
+        pageSize: 50,
+        sessionizationState: "queued",
+        state: "blocked",
+        uid: 2002,
+      },
+      { signal: listController.signal },
+    );
+    await getInsightsWorkerUidDetail(2002, {
+      signal: detailController.signal,
+    });
+
+    expect(mock.history.get[0]?.url).toBe(
+      "/server/insights/worker-observability/summary",
+    );
+    expect(mock.history.get[0]?.signal).toBe(summaryController.signal);
+    expect(mock.history.get[1]?.url).toBe(
+      "/server/insights/worker-observability/uids",
+    );
+    expect(mock.history.get[1]?.params).toEqual({
+      analysisState: "error",
+      page: 2,
+      pageSize: 50,
+      sessionizationState: "queued",
+      state: "blocked",
+      uid: 2002,
+    });
+    expect(mock.history.get[1]?.signal).toBe(listController.signal);
+    expect(mock.history.get[2]?.url).toBe(
+      "/server/insights/worker-observability/uids/2002",
+    );
+    expect(mock.history.get[2]?.signal).toBe(detailController.signal);
   });
 });

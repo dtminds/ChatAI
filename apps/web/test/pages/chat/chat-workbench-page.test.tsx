@@ -482,6 +482,177 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("does not reload unread conversations after switching conversations", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const staleUnreadResponseGate = createDeferred();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+    let unreadRequestCount = 0;
+    const getConversations = vi.fn(async (seatId, options) => {
+      const response = await baseService.getConversations(
+        seatId,
+        options?.unreadOnly
+          ? {
+              ...options,
+              unreadOnly: false,
+            }
+          : options,
+      );
+
+      if (seatId !== "drc" || options?.mode !== "single") {
+        return response;
+      }
+
+      const items = response.items.map((conversation) => ({
+        ...conversation,
+        unreadCount: 1,
+      }));
+
+      if (options.unreadOnly) {
+        unreadRequestCount += 1;
+
+        if (unreadRequestCount > 1) {
+          await staleUnreadResponseGate.promise;
+        }
+      }
+
+      return {
+        ...response,
+        items,
+        unreadSummary: options.unreadOnly
+          ? {
+              group: 0,
+              single: items.length,
+              total: items.length,
+            }
+          : response.unreadSummary,
+      };
+    });
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await waitFor(() => {
+      expect(unreadRequestCount).toBe(1);
+    });
+
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-002");
+    });
+    staleUnreadResponseGate.resolve();
+
+    expect(unreadRequestCount).toBe(1);
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-002",
+        )?.unread,
+    ).toBe(0);
+  });
+
+  it("preserves the default conversation read state when entering the unread view", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const staleUnreadResponseGate = createDeferred();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+    const getConversations = vi.fn(async (seatId, options) => {
+      const response = await baseService.getConversations(
+        seatId,
+        options?.unreadOnly
+          ? {
+              ...options,
+              unreadOnly: false,
+            }
+          : options,
+      );
+
+      if (seatId !== "drc" || options?.mode !== "single") {
+        return response;
+      }
+
+      const items = response.items.map((conversation) => ({
+        ...conversation,
+        unreadCount: conversation.conversationId === "conv-002" ? 1 : 0,
+      }));
+
+      if (options.unreadOnly) {
+        await staleUnreadResponseGate.promise;
+      }
+
+      return {
+        ...response,
+        hasMore: options.unreadOnly ? true : response.hasMore,
+        items,
+        unreadSummary: options.unreadOnly
+          ? {
+              group: 0,
+              single: 1,
+              total: 1,
+            }
+          : response.unreadSummary,
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^未读/ }));
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-002");
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc?.find(
+            (conversation) => conversation.id === "conv-002",
+          )?.unread,
+      ).toBe(0);
+    });
+    const activeAccountAfterRead = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "drc");
+
+    staleUnreadResponseGate.resolve();
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().hasMoreUnreadByScope.drc?.single).toBe(
+        true,
+      );
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-002",
+        )?.unread,
+    ).toBe(0);
+    expect(
+      useWorkbenchStore.getState().accounts.find((account) => account.id === "drc"),
+    ).toBe(activeAccountAfterRead);
+  });
+
   it("keeps the active conversation empty when the selected view has no conversations", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

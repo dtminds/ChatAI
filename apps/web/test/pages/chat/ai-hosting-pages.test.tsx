@@ -4483,7 +4483,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
     expect(screen.getByText("更新时间")).toBeInTheDocument();
-    expect(screen.getByText("20260630131921038-3")).toBeInTheDocument();
+    expect(await screen.findByText("20260630131921038-3")).toBeInTheDocument();
     expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
     expect(screen.queryByText("#1")).not.toBeInTheDocument();
     expect(screen.queryByText("chunk-qa-1")).not.toBeInTheDocument();

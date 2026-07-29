@@ -16,6 +16,7 @@ const scope = {
 const baseRows = [
   {
     actionOpenCount: 1,
+    agentMessageCount: 2,
     agentAvatarUrl: "https://example.com/agent-1.png",
     agentName: "客服一号",
     agentSeatId: "seat-1",
@@ -24,10 +25,13 @@ const baseRows = [
     currentSnapshotId: "7001",
     generatedAt: 1_780_245_100_000,
     customerAvatarUrl: "https://example.com/customer-1.png",
+    customerMessageCount: 3,
     customerName: "张三",
     endedAt: 1_780_245_000_000,
     lastMessageAt: 1_780_244_950_000,
     lastCustomerMessageAt: 1_780_244_900_000,
+    logicalSessionStatus: "analyzed" as const,
+    messageCount: 5,
     phase: "final",
     problemDetected: true,
     problemEvidenceMessageIds: ["9001", "9002"],
@@ -42,6 +46,7 @@ const baseRows = [
   },
   {
     actionOpenCount: 0,
+    agentMessageCount: 1,
     agentAvatarUrl: "https://example.com/agent-2.png",
     agentName: "客服二号",
     agentSeatId: "seat-2",
@@ -50,10 +55,13 @@ const baseRows = [
     currentSnapshotId: "7002",
     generatedAt: 1_780_244_600_000,
     customerAvatarUrl: "https://example.com/customer-2.png",
+    customerMessageCount: 2,
     customerName: "李四",
     endedAt: null,
     lastMessageAt: 1_780_243_950_000,
     lastCustomerMessageAt: 1_780_243_900_000,
+    logicalSessionStatus: "open" as const,
+    messageCount: 3,
     phase: "live",
     problemDetected: true,
     problemEvidenceMessageIds: ["9004"],
@@ -67,6 +75,7 @@ const baseRows = [
   },
   {
     actionOpenCount: 0,
+    agentMessageCount: 1,
     agentAvatarUrl: null,
     agentName: null,
     agentSeatId: null,
@@ -75,10 +84,13 @@ const baseRows = [
     currentSnapshotId: "7003",
     generatedAt: 1_780_242_500_000,
     customerAvatarUrl: "https://example.com/customer-3.png",
+    customerMessageCount: 1,
     customerName: "王五",
     endedAt: null,
     lastMessageAt: null,
     lastCustomerMessageAt: null,
+    logicalSessionStatus: "open" as const,
+    messageCount: 2,
     phase: "live",
     problemDetected: false,
     problemEvidenceMessageIds: [],
@@ -92,6 +104,7 @@ const baseRows = [
   },
   {
     actionOpenCount: 1,
+    agentMessageCount: 1,
     agentAvatarUrl: "https://example.com/agent-3.png",
     agentName: "客服三号",
     agentSeatId: "seat-3",
@@ -100,10 +113,13 @@ const baseRows = [
     currentSnapshotId: "7004",
     generatedAt: 1_780_241_500_000,
     customerAvatarUrl: "https://example.com/customer-4.png",
+    customerMessageCount: 2,
     customerName: "赵六",
     endedAt: null,
     lastMessageAt: 1_780_241_400_000,
     lastCustomerMessageAt: 1_780_241_400_000,
+    logicalSessionStatus: "open" as const,
+    messageCount: 3,
     phase: "live",
     problemDetected: true,
     problemEvidenceMessageIds: ["9006"],
@@ -117,6 +133,7 @@ const baseRows = [
   },
   {
     actionOpenCount: 0,
+    agentMessageCount: 2,
     agentAvatarUrl: "https://example.com/agent-4.png",
     agentName: "客服四号",
     agentSeatId: "seat-4",
@@ -125,10 +142,13 @@ const baseRows = [
     currentSnapshotId: undefined,
     generatedAt: undefined,
     customerAvatarUrl: "https://example.com/customer-5.png",
+    customerMessageCount: 1,
     customerName: "孙七",
     endedAt: null,
     lastMessageAt: 1_780_245_500_000,
     lastCustomerMessageAt: 1_780_245_400_000,
+    logicalSessionStatus: "closed_pending_analysis" as const,
+    messageCount: 3,
     phase: undefined,
     problemDetected: false,
     problemEvidenceMessageIds: [],
@@ -397,6 +417,15 @@ function createRepository(
   return {
     countEnabledConfigs: vi.fn(async () => 0),
     countActiveConfigs: vi.fn(async () => 0),
+    getFeatureConfig: vi.fn(async () => ({
+      entityEnabled: true,
+      insightEnabled: true,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: true,
+    })),
+    getSessionizationCoverageStart: vi.fn(async () => undefined),
     createRescanJob: vi.fn(async () => ({ jobId: "8801", taskId: "9901" })),
     hasSession: vi.fn(async () => true),
     findDetail: vi.fn(async () => ({
@@ -962,6 +991,39 @@ describe("InsightsService", () => {
     });
   });
 
+  it("keeps AI aggregates in the basic overview response", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getOverview(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+
+    expect(result).toMatchObject({
+      actionItemsOpen: overviewAggregate.actionItemsOpen,
+      analysis: overviewAggregate.analysis,
+      comparisonAvailable: true,
+      mode: "basic",
+      problemSessions: overviewAggregate.problemSessions,
+      readySessions: overviewAggregate.readySessions,
+      resolution: overviewAggregate.resolution,
+      totalSessions: overviewAggregate.totalSessions,
+      totals: overviewAggregate.totals,
+      trend: overviewAggregate.trend,
+      unresolvedSessions: overviewAggregate.unresolvedSessions,
+    });
+  });
+
   it("paginates overview sessions separately from overview metrics", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
@@ -970,6 +1032,7 @@ describe("InsightsService", () => {
       page: 2,
       pageSize: 1,
       resolutionStatus: "unresolved",
+      searchMode: "insight",
       to: "2026-06-30",
     });
 
@@ -991,8 +1054,35 @@ describe("InsightsService", () => {
       page: 2,
       pageSize: 1,
       resolutionStatus: "unresolved",
+      searchMode: "insight",
       to: "2026-06-30",
     });
+  });
+
+  it("uses basic keyword search when insights are disabled", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await service.getOverviewSessions(scope, {
+      keyword: "张三",
+    });
+
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        keyword: "张三",
+        searchMode: "basic",
+      }),
+    );
   });
 
   it("defaults overview session reads to a recent bounded date range", async () => {
@@ -1008,6 +1098,7 @@ describe("InsightsService", () => {
         from: "2026-05-07T00:00:00.000+08:00",
         page: 1,
         pageSize: 20,
+        searchMode: "insight",
         to: "2026-06-05T23:59:59.999+08:00",
       });
     } finally {
@@ -1032,7 +1123,8 @@ describe("InsightsService", () => {
         problemSummary: undefined,
         resolutionStatus: "unknown",
         sessionId: "505",
-        summarySessionTitle: "",
+        sessionState: "ended",
+        summarySessionTitle: undefined,
       }),
     ]);
   });
@@ -1332,7 +1424,16 @@ describe("InsightsService", () => {
       items: [baseRows[0]],
       total: 1,
     }));
+    const getFeatureConfig = vi.fn(async () => ({
+      entityEnabled: true,
+      insightEnabled: false,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: true,
+    }));
     const repository = createRepository({
+      getFeatureConfig,
       listBusinessRelatedSessions,
       listCurrentSessions: vi.fn(async (_scope, filters) => ({
         items: [baseRows[0]],
@@ -1357,6 +1458,7 @@ describe("InsightsService", () => {
           sessionId: "501",
         }),
       ],
+      mode: "basic",
       page: 2,
       pageSize: 1,
       total: 1,
@@ -1373,6 +1475,7 @@ describe("InsightsService", () => {
         to: "2026-06-30",
       }),
     );
+    expect(getFeatureConfig).toHaveBeenCalledWith(scope);
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
   });
@@ -1741,6 +1844,61 @@ describe("InsightsService", () => {
     expect(repository.findDetail).not.toHaveBeenCalled();
   });
 
+  it("keeps historical AI data and actions available in basic mode", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(service.getDetail(scope, "501")).resolves.toMatchObject({
+      currentSnapshotId: "7001",
+      summary: { sessionTitle: "查物流" },
+    });
+    await expect(service.getFilterOptions(scope)).resolves.toMatchObject({
+      entities: expect.any(Array),
+      intents: expect.any(Array),
+      tags: expect.any(Array),
+    });
+    await expect(service.getMessageContext(scope, "301", "9002")).resolves.toMatchObject({
+      messages: expect.any(Array),
+    });
+    await expect(service.updateActionStatus(scope, "801", "done")).resolves.toMatchObject({
+      actionItemId: "801",
+      status: "done",
+    });
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      priority: "high",
+      sessionId: "501",
+      title: "回访物流状态",
+    })).resolves.toMatchObject({
+      actionItemId: expect.any(String),
+    });
+    await expect(service.getSessionMessages(scope, "501")).resolves.toMatchObject({
+      messages: expect.any(Array),
+    });
+    const rescanTo = new Date();
+    const rescanFrom = new Date(rescanTo.getTime() - 24 * 60 * 60 * 1000);
+    await expect(service.createRescanJob(scope, "owner", {
+      analysisScope: "all",
+      from: rescanFrom.toISOString(),
+      to: rescanTo.toISOString(),
+    })).rejects.toMatchObject({ code: "INSIGHT_DISABLED" });
+    expect(repository.findDetail).toHaveBeenCalledWith(scope, "501");
+    expect(repository.getFilterOptions).toHaveBeenCalledWith(scope);
+    expect(repository.listMessageContext).toHaveBeenCalled();
+    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
+    expect(repository.createActionItem).toHaveBeenCalled();
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
   it("throws not found when session messages are requested outside uid scope", async () => {
     const service = new InsightsService(
       createRepository({
@@ -1848,6 +2006,26 @@ describe("InsightsService", () => {
         process.env.INSIGHTS_WORKER_UID_ALLOWLIST = previousInsightUidAllowlist;
       }
     }
+  });
+
+  it("reports both owner and admin roles as able to manage insights", async () => {
+    const service = new InsightsService(
+      createRepository(),
+      new Set(["9001:observer-1"]),
+    );
+
+    await expect(service.getCapabilities(scope, "owner", "observer-1")).resolves.toMatchObject({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+    });
+    await expect(service.getCapabilities(scope, "admin", "other")).resolves.toMatchObject({
+      canManageInsights: true,
+      canViewWorkerObservability: false,
+    });
+    await expect(service.getCapabilities(scope, "operator", "observer-1")).resolves.toMatchObject({
+      canManageInsights: false,
+      canViewWorkerObservability: true,
+    });
   });
 
   it("persists insight settings mutations for admin roles", async () => {
@@ -2357,14 +2535,17 @@ describe("InsightsService", () => {
   it("creates a scoped historical rescan task on each manual trigger", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
 
     await expect(
       service.createRescanJob(
         scope,
+        "admin",
         {
           analysisScope: "qaFindings",
-          from: "2026-06-01T00:00:00.000Z",
-          to: "2026-06-02T00:00:00.000Z",
+          from: from.toISOString(),
+          to: to.toISOString(),
         },
         "客服主管",
       ),
@@ -2378,25 +2559,134 @@ describe("InsightsService", () => {
       {
         analysisScope: "qaFindings",
         createdBy: "客服主管",
-        from: new Date("2026-06-01T00:00:00.000Z"),
-        to: new Date("2026-06-02T00:00:00.000Z"),
+        from,
+        to,
       },
-      expect.stringMatching(
-        /^rescan:9001:qaFindings:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/,
+      expect.stringContaining(
+        `rescan:9001:qaFindings:${from.toISOString()}:${to.toISOString()}:`,
       ),
     );
   });
 
   it("rejects rescan tasks with an end time before the start time", async () => {
     const service = new InsightsService(createRepository());
+    const from = new Date();
+    const to = new Date(from.getTime() - 60_000);
 
     await expect(
-      service.createRescanJob(scope, {
+      service.createRescanJob(scope, "owner", {
         analysisScope: "all",
-        from: "2026-06-02T00:00:00.000Z",
-        to: "2026-06-01T00:00:00.000Z",
+        from: from.toISOString(),
+        to: to.toISOString(),
       }),
     ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+  });
+
+  it("allows rescan tasks starting exactly seven days ago", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-27T08:00:00.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await expect(
+        service.createRescanJob(scope, "owner", {
+          analysisScope: "all",
+          from: "2026-07-20T08:00:00.000Z",
+          to: "2026-07-27T07:59:00.000Z",
+        }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("allows the seven-day UI boundary after a short submission delay", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-27T08:00:05.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await expect(
+        service.createRescanJob(scope, "owner", {
+          analysisScope: "all",
+          from: "2026-07-20T08:00:00.000Z",
+          to: "2026-07-27T08:00:00.000Z",
+        }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects rescan tasks beyond the seven-day submission buffer", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "owner", {
+        analysisScope: "all",
+        from: new Date(
+          Date.now() - 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000 - 60_000,
+        ).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects rescan tasks with a future boundary", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+    const now = Date.now();
+
+    await expect(
+      service.createRescanJob(scope, "owner", {
+        analysisScope: "all",
+        from: new Date(now - 60_000).toISOString(),
+        to: new Date(now + 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects rescan creation when insights are disabled", async () => {
+    const repository = createRepository({
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "admin", {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "INSIGHT_DISABLED" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+  });
+
+  it("allows only admins to create or list rescan tasks", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, "operator", {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(service.listRescanTasks(scope, "viewer")).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
+    expect(repository.listRescanTasks).not.toHaveBeenCalled();
   });
 
   it("rejects creating a rescan task when another task is active", async () => {
@@ -2406,10 +2696,10 @@ describe("InsightsService", () => {
     const service = new InsightsService(repository);
 
     await expect(
-      service.createRescanJob(scope, {
+      service.createRescanJob(scope, "admin", {
         analysisScope: "qaFindings",
-        from: "2026-06-01T00:00:00.000Z",
-        to: "2026-06-02T00:00:00.000Z",
+        from: new Date(Date.now() - 2 * 60_000).toISOString(),
+        to: new Date(Date.now() - 60_000).toISOString(),
       }),
     ).rejects.toMatchObject({ code: "RESCAN_TASK_ACTIVE" });
     expect(repository.createRescanJob).not.toHaveBeenCalled();
@@ -2419,7 +2709,7 @@ describe("InsightsService", () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.listRescanTasks(scope)).resolves.toEqual({
+    await expect(service.listRescanTasks(scope, "owner")).resolves.toEqual({
       items: [
         expect.objectContaining({
           analysisScope: "classification",

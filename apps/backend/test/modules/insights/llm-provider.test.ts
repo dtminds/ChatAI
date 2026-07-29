@@ -4,10 +4,128 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
+import type { InsightPromptContext } from "../../../src/modules/insights/insight-prompt-builder";
+import type { InsightTokenUsage } from "../../../src/modules/insights/insights-worker";
+import { InsightsWorkerObservability } from "../../../src/modules/insights/insights-worker-observability";
+
+function createObservabilityHarness() {
+  const logger = {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  };
+  const observability = new InsightsWorkerObservability({
+    logger,
+    reportedBy: "worker-test:1",
+    repository: {
+      upsertWorkerPipelineRuntimeState: vi.fn(async () => undefined),
+    },
+    traceUids: new Set(),
+  });
+
+  return { logger, observability };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+async function runMultiStepAnalysis(input: {
+  analysisScope?: "all" | "classification" | "qaFindings";
+  context: InsightPromptContext;
+  generateActionItems?: boolean;
+  mode?: "final" | "live" | "manual_reanalyze";
+  onTokenUsage?: (usage: InsightTokenUsage) => void;
+}) {
+  const requestBodies: Array<Record<string, unknown>> = [];
+  const fetchMock = vi.fn(
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
+      requestBodies.push(requestBody);
+      const serializedMessages = JSON.stringify(requestBody.messages);
+      const content = serializedMessages.includes("qaFindings")
+        ? { qaFindings: [] }
+        : serializedMessages.includes("tags, entities, intents")
+          ? { entities: [], intents: [], tags: [] }
+          : {
+              problemResolution: {
+                confidence: 0.8,
+                evidence: [],
+                evidenceMessageIds: ["9001"],
+                problemDetected: true,
+                problemSummary: "客户反馈物流异常",
+                resolutionStatus: "unknown",
+              },
+              sentiment: [],
+              summary: {
+                sessionTitle: "查物流",
+                text: "客服处理中",
+              },
+            };
+
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(content) } }],
+          usage: {
+            completion_tokens: 9,
+            completion_tokens_details: {
+              reasoning_tokens: 2,
+            },
+            prompt_tokens: 19,
+            prompt_tokens_details: {
+              cached_tokens: 4,
+            },
+            total_tokens: 28,
+          },
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 },
+      );
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const analyzer = new OpenAiCompatibleInsightAnalyzer({
+    apiKey: "secret",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    liteMaxTokens: 1024,
+    liteModel: "ep-lite",
+    maxTokens: 4096,
+    model: "ep-main",
+    providerCode: "volcengine_ark",
+    protocol: "openai-compatible",
+    responseFormat: "json_object",
+  });
+  const result = await analyzer.analyzeSession({
+    context: input.context,
+    generateActionItems: input.generateActionItems ?? true,
+    job: {
+      analysisScope: input.analysisScope ?? "all",
+      attemptCount: 1,
+      jobId: "job-1",
+      maxAttempts: 3,
+      mode: input.mode ?? "final",
+      sessionId: "501",
+      uid: 9001,
+    },
+    messages: [
+      {
+        aiText: "快递一直没更新",
+        contentStatus: "ready",
+        messageType: "text",
+        occurredAt: 1,
+        senderRole: "customer",
+        sourceMessageId: "9001",
+      },
+    ],
+    onTokenUsage: input.onTokenUsage,
+    previousSessionContexts: [],
+  });
+
+  return { fetchMock, requestBodies, result };
+}
 
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
@@ -48,6 +166,119 @@ describe("LLM provider config", () => {
       liteModel: "ep-main",
       maxTokens: 2048,
       model: "ep-main",
+    });
+  });
+
+  it("reports token usage for every model response in a multi-step analysis", async () => {
+    const onTokenUsage = vi.fn();
+
+    const { requestBodies } = await runMultiStepAnalysis({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [
+          {
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: [],
+            weight: 1,
+          },
+        ],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "reply_quality",
+            ruleName: "回复质量",
+            severity: "high",
+          },
+        ],
+      },
+      onTokenUsage,
+    });
+
+    expect(requestBodies).toHaveLength(3);
+    expect(onTokenUsage).toHaveBeenCalledTimes(3);
+    expect(onTokenUsage).toHaveBeenNthCalledWith(1, {
+      completion_tokens: 9,
+      completion_tokens_details: {
+        reasoning_tokens: 2,
+      },
+      prompt_tokens: 19,
+      prompt_tokens_details: {
+        cached_tokens: 4,
+      },
+      total_tokens: 28,
+    });
+  });
+
+  it("reports token usage before validating the model JSON payload", async () => {
+    const onTokenUsage = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "not-json" } }],
+            usage: {
+              completion_tokens: 3,
+              completion_tokens_details: { reasoning_tokens: 1 },
+              prompt_tokens: 7,
+              prompt_tokens_details: { cached_tokens: 2 },
+              total_tokens: 10,
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        ),
+      ),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 1024,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      retry: {
+        baseDelayMs: 1,
+        maxAttempts: 1,
+      },
+    });
+
+    await expect(analyzer.analyzeSession({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [],
+      onTokenUsage,
+      previousSessionContexts: [],
+    })).rejects.toThrow();
+
+    expect(onTokenUsage).toHaveBeenCalledWith({
+      completion_tokens: 3,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 7,
+      prompt_tokens_details: { cached_tokens: 2 },
+      total_tokens: 10,
     });
   });
 
@@ -772,100 +1003,137 @@ describe("LLM provider config", () => {
     ]);
   });
 
-  it("does not ask for follow-up outputs during manual all reanalysis", async () => {
-    const requestBodies: Array<Record<string, unknown>> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<
-          string,
-          unknown
-        >;
-        requestBodies.push(requestBody);
-        const content =
-          requestBodies.length === 1
-            ? {
-                problemResolution: {
-                  confidence: 0.8,
-                  evidence: [],
-                  evidenceMessageIds: ["9001"],
-                  problemDetected: true,
-                  problemSummary: "客户反馈物流异常",
-                  resolutionStatus: "unknown",
-                },
-                sentiment: [],
-                summary: {
-                  sessionTitle: "查物流",
-                  text: "客服处理中",
-                },
-              }
-            : requestBodies.length === 2
-              ? { qaFindings: [] }
-              : { entities: [], intents: [], tags: [] };
-
-        return new Response(
-          JSON.stringify({
-            choices: [{ message: { content: JSON.stringify(content) } }],
-          }),
-          { headers: { "Content-Type": "application/json" }, status: 200 },
-        );
-      }),
-    );
-    const analyzer = new OpenAiCompatibleInsightAnalyzer({
-      apiKey: "secret",
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      liteMaxTokens: 1024,
-      liteModel: "ep-lite",
-      maxTokens: 4096,
-      model: "ep-main",
-      providerCode: "volcengine_ark",
-      protocol: "openai-compatible",
-      responseFormat: "json_object",
+  it("skips classification in live analysis when all classification configs are empty", async () => {
+    const { requestBodies, result } = await runMultiStepAnalysis({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high",
+          },
+        ],
+      },
+      mode: "live",
     });
 
-    await analyzer.analyzeSession({
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]?.model).toBe("ep-main");
+    expect(result).toMatchObject({
+      entities: [],
+      intents: [],
+      qaFindings: [],
+      tags: [],
+    });
+  });
+
+  it.each(["final", "manual_reanalyze"] as const)(
+    "skips QA and classification during %s analysis when their configs are empty",
+    async (mode) => {
+      const { requestBodies, result } = await runMultiStepAnalysis({
+        context: {
+          entityDictionary: [],
+          intentConfigs: [],
+          labelConfigs: [],
+          qaRuleConfigs: [],
+        },
+        mode,
+      });
+
+      expect(requestBodies).toHaveLength(1);
+      expect(requestBodies[0]?.model).toBe("ep-main");
+      if (mode === "manual_reanalyze") {
+        const summaryMessages = requestBodies[0]?.messages as Array<{
+          content: string;
+          role: string;
+        }>;
+        const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+        expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+        expect(summaryPayload.outputContract).not.toHaveProperty(
+          "faqCandidates",
+        );
+      }
+      expect(result).toMatchObject({
+        entities: [],
+        intents: [],
+        qaFindings: [],
+        tags: [],
+      });
+    },
+  );
+
+  it.each([
+    {
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high" as const,
+          },
+        ],
+      },
+      expectedModels: ["ep-main", "ep-main"],
+      name: "QA",
+    },
+    {
+      context: {
+        entityDictionary: [],
+        intentConfigs: [
+          {
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: [],
+            weight: 1,
+          },
+        ],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      expectedModels: ["ep-main", "ep-lite"],
+      name: "classification",
+    },
+  ])(
+    "runs only summary and $name when the other optional dimension is empty",
+    async ({ context, expectedModels }) => {
+      const { requestBodies } = await runMultiStepAnalysis({
+        context,
+      });
+
+      expect(requestBodies.map((body) => body.model)).toEqual(expectedModels);
+    },
+  );
+
+  it("does not ask the model for action items when generation is disabled", async () => {
+    const { requestBodies, result } = await runMultiStepAnalysis({
       context: {
         entityDictionary: [],
         intentConfigs: [],
         labelConfigs: [],
         qaRuleConfigs: [],
       },
-      job: {
-        analysisScope: "all",
-        attemptCount: 1,
-        jobId: "job-1",
-        maxAttempts: 3,
-        mode: "manual_reanalyze",
-        sessionId: "501",
-        uid: 9001,
-      },
-      messages: [
-        {
-          aiText: "快递一直没更新",
-          contentStatus: "ready",
-          messageType: "text",
-          occurredAt: 1,
-          senderRole: "customer",
-          sourceMessageId: "9001",
-        },
-      ],
-      previousSessionContexts: [],
+      generateActionItems: false,
     });
-
-    expect(requestBodies).toHaveLength(3);
     const summaryMessages = requestBodies[0]?.messages as Array<{
       content: string;
       role: string;
     }>;
     const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+
     expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
-    expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
-      "actionItems",
-    );
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
-      "faqCandidates",
-    );
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
+    expect(result.actionItems).toEqual([]);
   });
 
   it("does not ask for follow-up outputs during scoped final analysis", async () => {
@@ -1012,9 +1280,22 @@ describe("LLM provider config", () => {
 
     const result = await analyzer.analyzeSession({
       context: {
-        entityDictionary: [],
+        entityDictionary: [
+          {
+            aliases: ["mask"],
+            entityCode: "mask",
+            entityName: "补水面膜",
+          },
+        ],
         intentConfigs: [],
-        labelConfigs: [],
+        labelConfigs: [
+          {
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: [],
+          },
+        ],
         qaRuleConfigs: [],
       },
       job: {
@@ -1053,6 +1334,30 @@ describe("LLM provider config", () => {
     expect(result.summary.sessionTitle).toBe("");
     expect(result.summary.text).toBe("");
   });
+
+  it.each(["qaFindings", "classification"] as const)(
+    "does not call the model for empty %s scoped reanalysis",
+    async (analysisScope) => {
+      const { fetchMock, result } = await runMultiStepAnalysis({
+        analysisScope,
+        context: {
+          entityDictionary: [],
+          intentConfigs: [],
+          labelConfigs: [],
+          qaRuleConfigs: [],
+        },
+        mode: "manual_reanalyze",
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        entities: [],
+        intents: [],
+        qaFindings: [],
+        tags: [],
+      });
+    },
+  );
 
   it("retries retryable optional classification failures before degrading the dimension", async () => {
     vi.useFakeTimers();
@@ -1126,6 +1431,8 @@ describe("LLM provider config", () => {
       },
     );
     vi.stubGlobal("fetch", fetchMock);
+    const { observability } = createObservabilityHarness();
+    const recoverSpy = vi.spyOn(observability, "recover");
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -1140,7 +1447,7 @@ describe("LLM provider config", () => {
         baseDelayMs: 100,
         maxAttempts: 2,
       },
-    });
+    }, observability);
 
     const resultPromise = analyzer.analyzeSession({
       context: {
@@ -1189,6 +1496,11 @@ describe("LLM provider config", () => {
       "ep-lite",
       "ep-lite",
     ]);
+    expect(recoverSpy).not.toHaveBeenCalledWith(
+      "provider_optional_step",
+      "analysis",
+      9001,
+    );
     vi.useRealTimers();
   });
 
@@ -1275,8 +1587,125 @@ describe("LLM provider config", () => {
     vi.useRealTimers();
   });
 
+  it("reports each real request and retry without logging provider response text", async () => {
+    vi.useFakeTimers();
+    const providerBody = "rate limited customer-content-marker";
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) {
+        return new Response(providerBody, { status: 429 });
+      }
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  actionItems: [],
+                  entities: [],
+                  faqCandidates: [],
+                  intents: [],
+                  problemResolution: {
+                    confidence: 0.8,
+                    evidence: [],
+                    evidenceMessageIds: [],
+                    problemDetected: false,
+                    problemSummary: "",
+                    resolutionStatus: "no_customer_problem",
+                  },
+                  qaFindings: [],
+                  sentiment: [],
+                  summary: {
+                    sessionTitle: "寒暄",
+                    text: "无明确问题",
+                  },
+                  tags: [],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { logger, observability } = createObservabilityHarness();
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      retry: {
+        baseDelayMs: 100,
+        maxAttempts: 2,
+      },
+    }, observability);
+
+    const resultPromise = analyzer.analyzeSession({
+      job: {
+        analysisScope: "all",
+        attemptCount: 0,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(resultPromise).resolves.toMatchObject({
+      summary: { sessionTitle: "寒暄" },
+    });
+
+    const requestEvents = logger.debug.mock.calls.filter(
+      ([payload]) => payload.eventCode === "insights_worker.llm_request_completed",
+    );
+    expect(requestEvents).toHaveLength(2);
+    expect(requestEvents[0]?.[0]).toMatchObject({
+      errorCode: "LLM_REQUEST_FAILED",
+      httpStatus: 429,
+      outcome: "failed",
+      step: "single",
+      uid: 9001,
+    });
+    expect(requestEvents[1]?.[0]).toMatchObject({
+      httpStatus: 200,
+      outcome: "succeeded",
+      step: "single",
+      uid: 9001,
+    });
+    expect(JSON.stringify(requestEvents)).not.toContain(providerBody);
+
+    await observability.stop();
+    const summary = logger.info.mock.calls.find(
+      ([payload]) => payload.eventCode === "insights_worker.pipeline_summary"
+        && payload.pipeline === "analysis",
+    )?.[0];
+    expect(summary).toMatchObject({
+      modelFailures: 1,
+      modelRequests: 2,
+      modelRetries: 1,
+    });
+    vi.useRealTimers();
+  });
+
   it("falls back without JSON response format when the model does not support it", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
+    const { logger, observability } = createObservabilityHarness();
     const fetchMock = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
         requestBodies.push(JSON.parse(String(init?.body)));
@@ -1347,10 +1776,19 @@ describe("LLM provider config", () => {
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
       responseFormat: "json_object",
-    });
+    }, observability);
 
     await expect(
       analyzer.analyzeSession({
+        job: {
+          analysisScope: "all",
+          attemptCount: 0,
+          jobId: "job-1",
+          maxAttempts: 2,
+          mode: "final",
+          sessionId: "501",
+          uid: 9001,
+        },
         messages: [
           {
             aiText: "你好",
@@ -1368,6 +1806,18 @@ describe("LLM provider config", () => {
 
     expect(requestBodies[0]).toHaveProperty("response_format");
     expect(requestBodies[1]).not.toHaveProperty("response_format");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.llm_response_format_fallback",
+        uid: 9001,
+      }),
+      expect.any(String),
+    );
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventCode: "insights_worker.error_recovered" }),
+      expect.any(String),
+    );
+    await observability.stop();
   });
 
   it("times out stalled LLM requests", async () => {
@@ -1419,6 +1869,79 @@ describe("LLM provider config", () => {
 
     await vi.advanceTimersByTimeAsync(2_000);
     await expectation;
+    vi.useRealTimers();
+  });
+
+  it("reports model timeouts with a stable error code", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
+    const { logger, observability } = createObservabilityHarness();
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      requestTimeoutMs: 2_000,
+      retry: {
+        baseDelayMs: 1_000,
+        maxAttempts: 1,
+      },
+    }, observability);
+
+    const resultPromise = analyzer.analyzeSession({
+      job: {
+        analysisScope: "all",
+        attemptCount: 0,
+        jobId: "job-1",
+        maxAttempts: 2,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+    const expectation = expect(resultPromise).rejects.toThrow(
+      "LLM request timed out after 2000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expectation;
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: "LLM_TIMEOUT",
+        errorName: "LlmTimeoutError",
+        eventCode: "insights_worker.llm_request_completed",
+        failedStep: "single",
+        timeoutMs: 2_000,
+      }),
+      expect.any(String),
+    );
+    await observability.stop();
     vi.useRealTimers();
   });
 

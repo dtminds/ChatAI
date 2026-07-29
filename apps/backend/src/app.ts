@@ -10,6 +10,7 @@ import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
+import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
 import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
@@ -18,7 +19,7 @@ import { registerErrorHandler } from "./plugins/error-handler.js";
 import { redisPlugin } from "./plugins/redis.js";
 
 export async function buildApp() {
-  validateBackendEnv();
+  const { workerObserverSubjects } = validateBackendEnv();
 
   const app = Fastify({
     disableRequestLogging: shouldDisableRequestLogging,
@@ -51,12 +52,14 @@ export async function buildApp() {
   await registerKbAttachmentRoutes(app);
   await registerKbRoutes(app);
   await registerChatRoutes(app);
-  await registerInsightsRoutes(app);
+  await registerInsightsRoutes(app, workerObserverSubjects);
+  await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);
 
   return app;
 }
 
 export function shouldDisableRequestLogging(request: { url: string }) {
-  return request.url.startsWith("/api/server/media/playable-voice");
+  return request.url.startsWith("/api/server/media/playable-voice")
+    || request.url.startsWith("/api/server/insights/worker-observability");
 }

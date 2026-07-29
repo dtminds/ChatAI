@@ -6,6 +6,7 @@ import {
   InsightBusinessTopicSchema,
   InsightBusinessTrendPointSchema,
   InsightBusinessTopicsResponseSchema,
+  InsightCapabilitiesResponseSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightFilterOptionsResponseSchema,
@@ -25,9 +26,115 @@ import {
   InsightsQualityOverviewResponseSchema,
   InsightsQualityResultsResponseSchema,
   InsightsRescanRequestSchema,
+  InsightsWorkerSummaryResponseSchema,
+  InsightsWorkerUidDetailResponseSchema,
+  InsightsWorkerUidListResponseSchema,
 } from "../src/insights/dto";
 
 describe("insights DTOs", () => {
+  it("requires worker observability capability and validates observer responses", () => {
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(true);
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(false);
+
+    const pipeline = {
+      activity: "idle",
+      health: "healthy",
+      lastDurationMs: 12,
+      lastSuccessAt: 1784800000000,
+      pipeline: "discovery",
+      reportedAt: 1784800001000,
+      reportedBy: "worker-a:101",
+    };
+    const sessionization = {
+      queueAgeMs: 0,
+      state: "idle",
+    };
+    const analysis = {
+      failedLast24h: 0,
+      pending: 0,
+      processing: 0,
+      queueAgeMs: 0,
+      retrying: 0,
+      state: "idle",
+    };
+    const sessions = {
+      open: 0,
+      overdue: 0,
+    };
+
+    expect(Value.Check(InsightsWorkerSummaryResponseSchema, {
+      analysisJobs: {
+        expiredLease: 0,
+        failedLast24h: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      discovery: {
+        auditIdGap: 0,
+        cursorAuditId: 100,
+        hasBacklog: false,
+        sourceHeadAuditId: 100,
+      },
+      observedAt: 1784800001000,
+      observedUids: {
+        blocked: 0,
+        error: 0,
+        idle: 1,
+        processing: 0,
+        queued: 0,
+        retrying: 0,
+        total: 1,
+      },
+      pipelines: [pipeline],
+      sessionizationJobs: {
+        expiredLease: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      sessions,
+    })).toBe(true);
+
+    const uidItem = {
+      analysis,
+      overallState: "idle",
+      sessionization,
+      sessions,
+      uid: 9001,
+    };
+    expect(Value.Check(InsightsWorkerUidListResponseSchema, {
+      items: [uidItem],
+      observedAt: 1784800001000,
+      page: 1,
+      pageSize: 50,
+      total: 1,
+      totalPages: 1,
+    })).toBe(true);
+    expect(Value.Check(InsightsWorkerUidDetailResponseSchema, {
+      ...uidItem,
+      hasPendingMessages: false,
+      observedAt: 1784800001000,
+      recentAnalysisRuns: [],
+      recentErrors: [],
+      recentRescans: [],
+      recentSessions: [],
+      sourceHead: {
+        auditId: 100,
+        msgtime: 1784800000000,
+      },
+    })).toBe(true);
+  });
+
   it("accepts overview responses with statistics only", () => {
     expect(
       Value.Check(InsightsOverviewResponseSchema, {
@@ -38,6 +145,8 @@ describe("insights DTOs", () => {
           ready: 30,
           stale: 3,
         },
+        comparisonAvailable: true,
+        mode: "insight",
         problemSessions: 20,
         readySessions: 30,
         resolution: {
@@ -102,20 +211,49 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
+  it("accepts basic overview responses without AI aggregate fields", () => {
+    expect(
+      Value.Check(InsightsOverviewResponseSchema, {
+        comparison: {
+          agentMessages: { current: 12, delta: 2, deltaRate: 0.2, previous: 10 },
+          consultingCustomers: { current: 4, delta: 1, deltaRate: 1 / 3, previous: 3 },
+          customerMessages: { current: 18, delta: 3, deltaRate: 0.2, previous: 15 },
+          logicalSessions: { current: 5, delta: 1, deltaRate: 0.25, previous: 4 },
+          messages: { current: 30, delta: 5, deltaRate: 0.2, previous: 25 },
+        },
+        comparisonAvailable: true,
+        mode: "basic",
+        totals: {
+          agentMessages: 12,
+          consultingCustomers: 4,
+          customerMessages: 18,
+          logicalSessions: 5,
+          messages: 30,
+        },
+        trend: [],
+      }),
+    ).toBe(true);
+  });
+
   it("accepts overview session list responses separately", () => {
     expect(
       Value.Check(InsightOverviewSessionsResponseSchema, {
         items: [
           {
+            agentMessageCount: 2,
             analysisStatus: "ready",
             conversationId: "301",
+            customerMessageCount: 3,
             customerName: "张三",
+            messageCount: 5,
             resolutionStatus: "unresolved",
             sessionId: "session-1",
+            sessionState: "ended",
             startedAt: 1780243200000,
             summarySessionTitle: "退款进度咨询",
           },
         ],
+        mode: "insight",
         page: 1,
         pageSize: 20,
         total: 36,

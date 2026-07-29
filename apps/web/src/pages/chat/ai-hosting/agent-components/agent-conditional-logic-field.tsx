@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  AiBookIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  BracketsIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -13,9 +20,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { listAgentSkills } from "../api/agent-skill-service";
 import { listKbs } from "../api/kb-service";
-import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
-import { KnowledgeBaseChipNode } from "./agent-conditional-logic-lexical-nodes";
+import {
+  INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
+  INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
+} from "./agent-conditional-logic-lexical-commands";
+import {
+  KnowledgeBaseChipNode,
+  SkillChipNode,
+} from "./agent-conditional-logic-lexical-nodes";
 import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
 import {
   isConditionalLogicEmpty,
@@ -24,10 +38,13 @@ import {
 import {
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
+  type SkillOption,
 } from "./agent-settings.constants";
 import "./agent-conditional-logic.css";
 
-const knowledgeBasePickerPageSize = 200;
+const pickerPageSize = 200;
+
+type PickerView = "categories" | "knowledge-bases" | "skills";
 
 export function AgentConditionalLogicField({
   disabled = false,
@@ -39,10 +56,14 @@ export function AgentConditionalLogicField({
   segments: ConditionalLogicSegment[];
 }) {
   const [open, setOpen] = useState(false);
+  const [pickerView, setPickerView] = useState<PickerView>("categories");
   const [searchQuery, setSearchQuery] = useState("");
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
   const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(false);
+  const [skills, setSkills] = useState<SkillOption[]>([]);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
+  const [skillsLoading, setSkillsLoading] = useState(false);
   const editorRef = useRef<LexicalEditor | null>(null);
   const isMountedRef = useRef(false);
 
@@ -65,10 +86,20 @@ export function AgentConditionalLogicField({
     );
   }, [knowledgeBases, searchQuery]);
 
+  const filteredSkills = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return skills;
+    }
+
+    return skills.filter((skill) => skill.name.toLowerCase().includes(normalizedQuery));
+  }, [searchQuery, skills]);
+
   const editorConfig = useMemo(
     () => ({
       namespace: "AgentConditionalLogicField",
-      nodes: [KnowledgeBaseChipNode],
+      nodes: [KnowledgeBaseChipNode, SkillChipNode],
       onError(error: Error) {
         throw error;
       },
@@ -97,7 +128,7 @@ export function AgentConditionalLogicField({
     try {
       const response = await listKbs({
         page: 1,
-        pageSize: knowledgeBasePickerPageSize,
+        pageSize: pickerPageSize,
       });
 
       if (!isMountedRef.current) {
@@ -116,7 +147,7 @@ export function AgentConditionalLogicField({
         return;
       }
 
-      setOpen(false);
+      setPickerView("categories");
       toast.error("知识库加载失败，请稍后重试");
     } finally {
       if (isMountedRef.current) {
@@ -125,8 +156,44 @@ export function AgentConditionalLogicField({
     }
   }, []);
 
+  const loadSkills = useCallback(async () => {
+    setSkillsLoading(true);
+
+    try {
+      const response = await listAgentSkills({
+        page: 1,
+        pageSize: pickerPageSize,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setSkills(
+        response.skills
+          .filter((skill) => skill.status === "enabled")
+          .map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+          })),
+      );
+      setSkillsLoaded(true);
+    } catch {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setPickerView("categories");
+      toast.error("技能加载失败，请稍后重试");
+    } finally {
+      if (isMountedRef.current) {
+        setSkillsLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    if (!open || knowledgeBasesLoaded || knowledgeBasesLoading) {
+    if (!open || pickerView !== "knowledge-bases" || knowledgeBasesLoaded || knowledgeBasesLoading) {
       return;
     }
 
@@ -136,13 +203,27 @@ export function AgentConditionalLogicField({
     knowledgeBasesLoading,
     loadKnowledgeBases,
     open,
+    pickerView,
   ]);
+
+  useEffect(() => {
+    if (!open || pickerView !== "skills" || skillsLoaded || skillsLoading) {
+      return;
+    }
+
+    void loadSkills();
+  }, [loadSkills, open, pickerView, skillsLoaded, skillsLoading]);
 
   useEffect(() => {
     if (disabled) {
       setOpen(false);
     }
   }, [disabled]);
+
+  function resetPicker() {
+    setPickerView("categories");
+    setSearchQuery("");
+  }
 
   function insertKnowledgeBase(knowledgeBase: KnowledgeBaseOption) {
     if (disabled) {
@@ -157,7 +238,21 @@ export function AgentConditionalLogicField({
       },
     );
     setOpen(false);
-    setSearchQuery("");
+    resetPicker();
+    editorRef.current?.focus();
+  }
+
+  function insertSkill(skill: SkillOption) {
+    if (disabled) {
+      return;
+    }
+
+    editorRef.current?.dispatchCommand(INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND, {
+      id: skill.id,
+      name: skill.name,
+    });
+    setOpen(false);
+    resetPicker();
     editorRef.current?.focus();
   }
 
@@ -173,7 +268,7 @@ export function AgentConditionalLogicField({
           onOpenChange={(nextOpen) => {
             setOpen(nextOpen);
             if (!nextOpen) {
-              setSearchQuery("");
+              resetPicker();
             }
           }}
           open={open}
@@ -181,7 +276,7 @@ export function AgentConditionalLogicField({
           <PopoverTrigger asChild>
             <Button
               aria-expanded={open}
-              aria-label="添加关联知识库"
+              aria-label="添加条件逻辑资源"
               className="absolute left-0 top-0 z-10 size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
               disabled={disabled}
               onMouseDown={(event) => {
@@ -201,52 +296,112 @@ export function AgentConditionalLogicField({
             onOpenAutoFocus={(event) => event.preventDefault()}
             sideOffset={8}
           >
-            <div aria-label="选择知识库" className="min-w-0 max-w-full" role="listbox">
-              <div className="border-b border-border p-2">
-                <div className="relative">
-                  <HugeiconsIcon
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    icon={Search01Icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                  <Input
-                    aria-label="搜索知识库"
-                    className="h-9 rounded-[8px] pl-8"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="搜索"
-                    value={searchQuery}
-                  />
-                </div>
+            {pickerView === "categories" ? (
+              <div aria-label="选择资源类型" className="min-w-0 max-w-full p-1" role="listbox">
+                <CategoryOptionRow
+                  icon={AiBookIcon}
+                  label="知识库"
+                  onSelect={() => {
+                    setSearchQuery("");
+                    setPickerView("knowledge-bases");
+                  }}
+                />
+                <CategoryOptionRow
+                  icon={BracketsIcon}
+                  label="技能"
+                  onSelect={() => {
+                    setSearchQuery("");
+                    setPickerView("skills");
+                  }}
+                />
               </div>
-
-              <ScrollArea className="max-h-72 w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full">
-                <div className="w-full min-w-0 max-w-full p-1">
-                  {knowledgeBasesLoading ? (
-                    <div
-                      aria-label="正在加载"
-                      className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground"
-                      role="status"
-                    >
-                      <Spinner aria-hidden="true" size={14} />
-                      <span>正在加载</span>
-                    </div>
-                  ) : filteredKnowledgeBases.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      未找到匹配知识库
-                    </p>
-                  ) : (
-                    filteredKnowledgeBases.map((knowledgeBase) => (
-                      <KnowledgeBaseOptionRow
-                        key={knowledgeBase.id}
-                        knowledgeBase={knowledgeBase}
-                        onSelect={() => insertKnowledgeBase(knowledgeBase)}
-                      />
-                    ))
-                  )}
+            ) : (
+              <div
+                aria-label={pickerView === "knowledge-bases" ? "选择知识库" : "选择技能"}
+                className="min-w-0 max-w-full"
+                role="listbox"
+              >
+                <div className="flex items-center gap-1 border-b border-border px-1 py-1">
+                  <Button
+                    aria-label="返回"
+                    className="size-8 shrink-0 rounded-[8px] p-0 text-muted-foreground"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setPickerView("categories");
+                    }}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.8} />
+                  </Button>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                    {pickerView === "knowledge-bases" ? "知识库" : "技能"}
+                  </span>
                 </div>
-              </ScrollArea>
-            </div>
+
+                <div className="border-b border-border p-2">
+                  <div className="relative">
+                    <HugeiconsIcon
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      icon={Search01Icon}
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                    <Input
+                      aria-label={
+                        pickerView === "knowledge-bases" ? "搜索知识库" : "搜索技能"
+                      }
+                      className="h-9 rounded-[8px] pl-8"
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="搜索"
+                      value={searchQuery}
+                    />
+                  </div>
+                </div>
+
+                <ScrollArea className="max-h-72 w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full">
+                  <div className="w-full min-w-0 max-w-full p-1">
+                    {pickerView === "knowledge-bases" ? (
+                      knowledgeBasesLoading ? (
+                        <PickerLoadingState />
+                      ) : filteredKnowledgeBases.length === 0 ? (
+                        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          暂无数据
+                        </p>
+                      ) : (
+                        filteredKnowledgeBases.map((knowledgeBase) => (
+                          <ResourceOptionRow
+                            icon={AiBookIcon}
+                            key={knowledgeBase.id}
+                            label={knowledgeBase.name}
+                            onSelect={() => insertKnowledgeBase(knowledgeBase)}
+                          />
+                        ))
+                      )
+                    ) : skillsLoading ? (
+                      <PickerLoadingState />
+                    ) : filteredSkills.length === 0 ? (
+                      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                        暂无数据
+                      </p>
+                    ) : (
+                      filteredSkills.map((skill) => (
+                        <ResourceOptionRow
+                          icon={BracketsIcon}
+                          key={skill.id}
+                          label={skill.name}
+                          onSelect={() => insertSkill(skill)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
           </PopoverContent>
         </Popover>
 
@@ -289,19 +444,32 @@ export function AgentConditionalLogicField({
   );
 }
 
-function KnowledgeBaseOptionRow({
-  knowledgeBase,
+function PickerLoadingState() {
+  return (
+    <div
+      aria-label="正在加载"
+      className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground"
+      role="status"
+    >
+      <Spinner aria-hidden="true" size={14} />
+      <span>正在加载</span>
+    </div>
+  );
+}
+
+function CategoryOptionRow({
+  icon,
+  label,
   onSelect,
 }: {
-  knowledgeBase: KnowledgeBaseOption;
+  icon: typeof AiBookIcon;
+  label: string;
   onSelect: () => void;
 }) {
   return (
     <button
-      aria-label={knowledgeBase.name}
-      className={cn(
-        "flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40",
-      )}
+      aria-label={label}
+      className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40"
       onClick={onSelect}
       onMouseDown={(event) => {
         event.preventDefault();
@@ -311,12 +479,49 @@ function KnowledgeBaseOptionRow({
     >
       <HugeiconsIcon
         className="shrink-0 text-muted-foreground"
-        icon={AiBookIcon}
+        icon={icon}
         size={15}
         strokeWidth={1.8}
       />
-      <span className="min-w-0 flex-1 truncate" title={knowledgeBase.name}>
-        {knowledgeBase.name}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <HugeiconsIcon
+        className="shrink-0 text-muted-foreground"
+        icon={ArrowRight01Icon}
+        size={14}
+        strokeWidth={1.8}
+      />
+    </button>
+  );
+}
+
+function ResourceOptionRow({
+  icon,
+  label,
+  onSelect,
+}: {
+  icon: typeof AiBookIcon;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40"
+      onClick={onSelect}
+      onMouseDown={(event) => {
+        event.preventDefault();
+      }}
+      role="option"
+      type="button"
+    >
+      <HugeiconsIcon
+        className="shrink-0 text-muted-foreground"
+        icon={icon}
+        size={15}
+        strokeWidth={1.8}
+      />
+      <span className="min-w-0 flex-1 truncate" title={label}>
+        {label}
       </span>
     </button>
   );

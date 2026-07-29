@@ -9,6 +9,8 @@ import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-
 import { AgentOptimizationSuggestionsPage } from "@/pages/chat/ai-hosting/agent-optimization-suggestions-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { AgentSubscriptionPage } from "@/pages/chat/ai-hosting/agent-subscription-page";
+import { AiSkillsPage } from "@/pages/chat/ai-hosting/ai-skills-page";
+import { AiSkillSettingsPage } from "@/pages/chat/ai-hosting/ai-skill-settings-page";
 import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
 import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
@@ -18,6 +20,10 @@ import { resetMockKbData } from "./kb-service-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import * as agentLearningService from "@/pages/chat/ai-hosting/api/agent-learning-service";
 import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
+import * as customFieldService from "@/pages/chat/ai-hosting/api/custom-field-service";
+import * as agentSkillService from "@/pages/chat/ai-hosting/api/agent-skill-service";
+import * as systemVariableService from "@/pages/chat/ai-hosting/api/system-variable-service";
+import * as workTagService from "@/pages/chat/ai-hosting/api/work-tag-service";
 import { useAuthStore } from "@/store/auth-store";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
@@ -87,12 +93,34 @@ const kbServiceMock = vi.hoisted(() => ({
   listKbs: vi.fn(),
   updateKb: vi.fn(),
 }));
+const customFieldServiceMock = vi.hoisted(() => ({
+  listCustomFields: vi.fn(),
+}));
+const systemVariableServiceMock = vi.hoisted(() => ({
+  listSystemVariables: vi.fn(),
+}));
+const agentSkillServiceMock = vi.hoisted(() => ({
+  createAgentSkill: vi.fn(),
+  deleteAgentSkill: vi.fn(),
+  getAgentSkill: vi.fn(),
+  listAgentSkills: vi.fn(),
+  updateAgentSkill: vi.fn(),
+  updateAgentSkillStatus: vi.fn(),
+}));
+const workTagServiceMock = vi.hoisted(() => ({
+  listWorkTagGroups: vi.fn(),
+  listWorkTags: vi.fn(),
+}));
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
 }));
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/agent-learning-service", () => agentLearningServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/agent-skill-service", () => agentSkillServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => customFieldServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/system-variable-service", () => systemVariableServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/work-tag-service", () => workTagServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/kb-service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/pages/chat/ai-hosting/api/kb-service")>();
 
@@ -303,6 +331,7 @@ const mockAgentDetail = {
   name: "护肤小助理",
   promptConfig: {
     availableKbIds: [],
+    availableSkillIds: [],
     conditionLogic: "如果客户咨询成分，那么说明功效",
     replyStyle: {
       length: "简洁",
@@ -568,6 +597,176 @@ describe("AI hosting pages", () => {
     vi.mocked(kbService.listKbs).mockImplementation(async (params) =>
       createMockKbListResponse(params?.query),
     );
+    vi.mocked(customFieldService.listCustomFields).mockResolvedValue({
+      fields: [
+        {
+          id: 1,
+          key: "gender",
+          options: [],
+          sort: 10,
+          title: "性别",
+          type: 1,
+        },
+        {
+          id: 2,
+          key: "level",
+          options: [],
+          sort: 20,
+          title: "客户等级",
+          type: 1,
+        },
+      ],
+    });
+    vi.mocked(systemVariableService.listSystemVariables).mockResolvedValue({
+      variables: [
+        { key: "last_handoff_time", name: "上一次转人工时间" },
+        { key: "customer_nickname", name: "客户昵称" },
+        { key: "current_agent_name", name: "当前接待 Agent" },
+      ],
+    });
+    vi.mocked(agentSkillService.listAgentSkills).mockResolvedValue({
+      pagination: { page: 1, pageSize: 10, total: 2 },
+      skills: [
+        {
+          applyScene:
+            "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况",
+          createdAt: "2026-06-18 23:22:22",
+          id: "1",
+          name: "订单与物流场景查询",
+          status: "enabled",
+          updatedAt: "2026-06-20 23:22:22",
+        },
+        {
+          applyScene:
+            "处理用户的退货、换货、维修等售后申请，判断是否符合售后条件并引导处理流程",
+          createdAt: "2026-06-17 23:22:22",
+          id: "2",
+          name: "退换货",
+          status: "disabled",
+          updatedAt: "2026-06-19 23:22:22",
+        },
+      ],
+    });
+    vi.mocked(agentSkillService.createAgentSkill).mockResolvedValue({ id: "3" });
+    vi.mocked(agentSkillService.updateAgentSkill).mockResolvedValue({ id: "1" });
+    vi.mocked(agentSkillService.getAgentSkill).mockResolvedValue({
+      applyScene:
+        "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况",
+      content: "查询订单物流",
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      kbs: [],
+      name: "订单与物流场景查询",
+      status: "enabled",
+      tools: [],
+      updatedAt: "2026-06-20 23:22:22",
+      variables: [],
+    });
+    vi.mocked(agentSkillService.updateAgentSkillStatus).mockResolvedValue({ id: "1" });
+    vi.mocked(agentSkillService.deleteAgentSkill).mockResolvedValue({ id: "1" });
+    vi.mocked(workTagService.listWorkTagGroups).mockResolvedValue({
+      groups: [
+        {
+          attr: 1,
+          id: 11,
+          name: "意向标签组",
+          tagCount: 3,
+        },
+        {
+          attr: 2,
+          id: 21,
+          name: "会员等级组",
+          tagCount: 3,
+        },
+      ],
+      tagLimit: 5,
+    });
+    vi.mocked(workTagService.listWorkTags).mockImplementation(async (params) => {
+      const type = params?.type ?? 0;
+      const allTags =
+        type === 12
+          ? [
+              {
+                groupAttr: 1 as const,
+                groupId: 31,
+                groupName: "基础会员标签",
+                groupSort: 20,
+                id: 311,
+                name: "银卡会员",
+                type: 12 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 31,
+                groupName: "基础会员标签",
+                groupSort: 20,
+                id: 312,
+                name: "金卡会员",
+                type: 12 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 32,
+                groupName: "消费行为",
+                groupSort: 10,
+                id: 321,
+                name: "复购用户",
+                type: 12 as const,
+              },
+            ]
+          : [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 111,
+                name: "高意向",
+                type: 0 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 112,
+                name: "中意向",
+                type: 0 as const,
+              },
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 113,
+                name: "低意向",
+                type: 0 as const,
+              },
+            ];
+
+      const tags = allTags.filter((tag) => {
+        if (params?.groupId != null && tag.groupId !== params.groupId) {
+          return false;
+        }
+
+        const keyword = params?.keyword?.trim();
+        if (keyword && !tag.name.includes(keyword)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      return {
+        pagination: {
+          hasNext: false,
+          page: params?.page ?? 1,
+          pageSize: params?.pageSize ?? 100,
+          total: tags.length,
+        },
+        tags,
+      };
+    });
     vi.mocked(kbService.createKb).mockImplementation(async (payload) => {
       const created = addMockKbListItem({
         description: payload.description ?? "",
@@ -748,6 +947,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb",
+    );
+    expect(screen.getByRole("link", { name: "AI技能" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/skills",
     );
     expect(screen.getByRole("link", { name: "托管设置" })).toHaveAttribute(
       "href",
@@ -1563,6 +1766,427 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByText("当前为内测期，暂不计费")).toHaveLength(2);
     expect(agentService.listAiHostingAgents).not.toHaveBeenCalled();
+  });
+
+  it("renders the AI skills marketplace with expandable categories", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "AI技能" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AI技能" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/skills",
+    );
+    expect(screen.getByRole("tab", { name: "技能广场" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByRole("heading", { level: 2, name: "私域通用技能" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "「美妆个护」行业严选技能" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "私域通用技能" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: "「美妆个护」行业严选技能" }),
+    ).toBeInTheDocument();
+
+    const collapseTrigger = screen.getAllByRole("button", { name: "收起" })[0];
+    expect(collapseTrigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(collapseTrigger);
+    expect(collapseTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(collapseTrigger).toHaveAccessibleName("展开");
+
+    await user.click(screen.getByRole("tab", { name: "我的技能" }));
+    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "我的技能" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索技能" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加技能" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "我的技能列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "技能名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "应用场景" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
+    expect(await screen.findByText("订单与物流场景查询")).toBeInTheDocument();
+    expect(screen.getAllByText("已启用").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未启用").length).toBeGreaterThan(0);
+  });
+
+  it("toggles my skill status from the skills list", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentSkillService.updateAgentSkillStatus).mockImplementation(
+      async (skillId, status) => {
+        const skills: Awaited<
+          ReturnType<typeof agentSkillService.listAgentSkills>
+        >["skills"] = [
+          {
+            applyScene:
+              "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况",
+            createdAt: "2026-06-18 23:22:22",
+            id: "1",
+            name: "订单与物流场景查询",
+            status: skillId === "1" ? status : "enabled",
+            updatedAt: "2026-06-20 23:22:22",
+          },
+          {
+            applyScene:
+              "处理用户的退货、换货、维修等售后申请，判断是否符合售后条件并引导处理流程",
+            createdAt: "2026-06-17 23:22:22",
+            id: "2",
+            name: "退换货",
+            status: "disabled",
+            updatedAt: "2026-06-19 23:22:22",
+          },
+        ];
+        vi.mocked(agentSkillService.listAgentSkills).mockResolvedValue({
+          pagination: { page: 1, pageSize: 10, total: 2 },
+          skills,
+        });
+        return { id: skillId };
+      },
+    );
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+    await user.click(screen.getByRole("tab", { name: "我的技能" }));
+    expect(await screen.findByText("订单与物流场景查询")).toBeInTheDocument();
+
+    const disableButton = screen.getAllByRole("button", { name: "停用" })[0];
+    await user.click(disableButton);
+
+    await waitFor(() => {
+      expect(agentSkillService.updateAgentSkillStatus).toHaveBeenCalledWith(
+        "1",
+        "disabled",
+      );
+    });
+    expect(await screen.findAllByRole("button", { name: "启用" })).toHaveLength(2);
+  });
+
+  it("confirms enabling a skill from the my skills list", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+    await user.click(screen.getByRole("tab", { name: "我的技能" }));
+    expect(await screen.findByText("退换货")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "启用" })[0]);
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "是否确认启用？" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    await waitFor(() => {
+      expect(agentSkillService.updateAgentSkillStatus).toHaveBeenCalledWith(
+        "2",
+        "enabled",
+      );
+    });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("confirms deleting a skill from the my skills list", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentSkillService.deleteAgentSkill).mockImplementation(async (skillId) => {
+      vi.mocked(agentSkillService.listAgentSkills).mockResolvedValue({
+        pagination: { page: 1, pageSize: 10, total: skillId === "1" ? 1 : 0 },
+        skills:
+          skillId === "1"
+            ? [
+                {
+                  applyScene:
+                    "处理用户的退货、换货、维修等售后申请，判断是否符合售后条件并引导处理流程",
+                  createdAt: "2026-06-17 23:22:22",
+                  id: "2",
+                  name: "退换货",
+                  status: "disabled",
+                  updatedAt: "2026-06-19 23:22:22",
+                },
+              ]
+            : [],
+      });
+      return { id: skillId };
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+    await user.click(screen.getByRole("tab", { name: "我的技能" }));
+
+    expect(await screen.findByText("订单与物流场景查询")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    expect(screen.getByRole("heading", { name: "是否确认删除？" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    await waitFor(() => {
+      expect(agentSkillService.deleteAgentSkill).toHaveBeenCalledWith("1");
+    });
+    expect(screen.queryByText("订单与物流场景查询")).not.toBeInTheDocument();
+  });
+
+  it("opens a skill detail dialog when a marketplace skill card is clicked", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+
+    await user.click(screen.getByRole("button", { name: /肤质适配推荐/ }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "肤质适配推荐" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("tab", { name: "技能应用场景" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(dialog).getByRole("region", { name: "推荐变量" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "推荐工具" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "推荐知识库" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "预览技能" })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("tab", { name: "技能描述" }));
+    expect(within(dialog).getByRole("tab", { name: "技能描述" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens my skills tab from the tab query and navigates to skill settings", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/new",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills?tab=mine"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加技能" }));
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills/new");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "AI技能设置" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回我的技能" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/skills?tab=mine",
+    );
+    expect(screen.getByLabelText(/技能名称/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "技能应用场景" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "技能描述" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "插入资源" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "引用变量" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/技能名称/), "测试技能");
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+    await waitFor(() => {
+      expect(agentSkillService.createAgentSkill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "测试技能",
+        }),
+      );
+    });
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills");
+    expect(router.state.location.search).toBe("?tab=mine");
+  });
+
+  it("navigates to skill edit settings from my skills table", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/:skillId/edit",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills?tab=mine"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("订单与物流场景查询")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]!);
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills/1/edit");
+    expect(await screen.findByLabelText(/技能名称/)).toHaveValue(
+      "订单与物流场景查询",
+    );
+    expect(agentSkillService.getAgentSkill).toHaveBeenCalledWith("1");
+
+    await user.clear(screen.getByLabelText(/技能名称/));
+    await user.type(screen.getByLabelText(/技能名称/), "订单物流查询改");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(agentSkillService.updateAgentSkill).toHaveBeenCalledWith(
+        "1",
+        expect.objectContaining({
+          name: "订单物流查询改",
+        }),
+      );
+    });
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills");
+    expect(router.state.location.search).toBe("?tab=mine");
+  });
+
+  it("opens insert resource dialogs from skill settings", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    expect(screen.getByRole("heading", { name: "插入变量" })).toBeInTheDocument();
+    expect(screen.getByText("客户自定义属性")).toBeInTheDocument();
+    expect(screen.getByText("客户标签")).toBeInTheDocument();
+    expect(screen.getByText("系统变量")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加客户自定义属性" }));
+    expect(await screen.findByLabelText(/字段/)).toBeInTheDocument();
+    expect(customFieldService.listCustomFields).toHaveBeenCalledWith({ status: 1 });
+    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
+
+    await user.click(screen.getByRole("combobox", { name: /字段/ }));
+    await user.click(await screen.findByRole("option", { name: "性别" }));
+    expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.queryByRole("heading", { name: "插入变量" })).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "客户自定义属性 · 性别",
+    );
+    // 右侧添加只进入可选池，不会直接写入技能描述
+    expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent("性别");
+    await user.click(screen.getByRole("button", { name: "删除客户自定义属性 · 性别" }));
+    expect(screen.getByRole("heading", { name: "删除变量" })).toBeInTheDocument();
+    expect(screen.getByText("将删除技能描述中引用的变量，确认删除吗？")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "客户自定义属性 · 性别",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("button", { name: "添加系统变量" }));
+    expect(await screen.findByRole("combobox", { name: /变量/ })).toBeInTheDocument();
+    expect(systemVariableService.listSystemVariables).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
+    await user.click(screen.getByRole("combobox", { name: /变量/ }));
+    await user.click(await screen.findByRole("option", { name: "客户昵称" }));
+    expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "系统变量 · 客户昵称",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("button", { name: "添加客户标签" }));
+    expect(screen.getByText("标签类型")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "企微标签" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "选择标签" }));
+    expect(await screen.findByRole("tab", { name: "普通标签" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "互斥标签" })).toBeInTheDocument();
+    expect(workTagService.listWorkTagGroups).toHaveBeenCalledWith({
+      attr: 1,
+      type: 0,
+    });
+    expect(await screen.findByRole("button", { name: "意向标签组" })).toBeInTheDocument();
+    const wecomTagCall = vi
+      .mocked(workTagService.listWorkTags)
+      .mock.calls.find(([params]) => params?.groupId === 11 && params?.type === 0);
+    expect(wecomTagCall?.[0]).toMatchObject({
+      groupId: 11,
+      type: 0,
+    });
+    expect(wecomTagCall?.[0]).not.toHaveProperty("attr");
+    await user.click(await screen.findByRole("checkbox", { name: "高意向" }));
+    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "客户标签 · 企微标签 · 意向标签组 · 高意向",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("button", { name: "添加客户标签" }));
+    await user.click(screen.getByRole("radio", { name: "小店标签" }));
+    await user.click(screen.getByRole("button", { name: "选择标签" }));
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 12,
+      }),
+    );
+    expect(await screen.findByRole("button", { name: "基础会员标签" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("checkbox", { name: "银卡会员" }));
+    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "客户标签 · 小店标签 · 基础会员标签 · 银卡会员",
+    );
+
+    await user.click(screen.getByRole("button", { name: "引用变量" }));
+    expect(screen.getByRole("menuitem", { name: "引用变量" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "引用工具" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "引用知识库" })).toBeInTheDocument();
+
+    await user.hover(screen.getByRole("menuitem", { name: "引用变量" }));
+    // 嵌套子菜单在 jsdom 下用 fireEvent 触发 onSelect，与账号菜单主题切换一致
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "客户自定义属性 · 性别" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveTextContent(
+        "客户自定义属性 · 性别",
+      );
+    });
+    expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent(
+      "variableType=",
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加工具" }));
+    expect(screen.getByRole("heading", { name: "插入工具" })).toBeInTheDocument();
+    expect(screen.getByText("绑定订单")).toBeInTheDocument();
+    expect(screen.getByText("小店订单物流查询")).toBeInTheDocument();
+    expect(screen.queryByText("物业查询")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加订单查询" }));
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("list", { name: "已添加工具" })).toHaveTextContent("订单查询");
+
+    await user.click(screen.getByRole("button", { name: "引用变量" }));
+    await user.hover(screen.getByRole("menuitem", { name: "引用工具" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "订单查询" }));
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveTextContent("订单查询");
+    });
+
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    expect(screen.getByRole("heading", { name: "插入知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往知识库管理" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb",
+    );
+    expect(await screen.findByText("华为产品知识")).toBeInTheDocument();
+    expect(screen.getByText("售后问题解答")).toBeInTheDocument();
+    expect(kbService.listKbs).toHaveBeenCalled();
   });
 
   it("shows document storage below 1MB with one decimal place", async () => {
@@ -3085,7 +3709,9 @@ describe("AI hosting pages", () => {
 
     await user.click(descriptionInput);
     await user.paste("111 ");
-    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    expect(await screen.findByRole("listbox", { name: "选择资源类型" })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "知识库" }));
 
     const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
 
@@ -3115,6 +3741,7 @@ describe("AI hosting pages", () => {
         expect.objectContaining({
           promptConfig: expect.objectContaining({
             availableKbIds: [3],
+            availableSkillIds: [],
             conditionLogic:
               '111 <resource type="knowledge_base" kbId="3" name="真实彩妆知识库" /> ',
           }),
@@ -3132,7 +3759,8 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "知识库" }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("知识库加载失败，请稍后重试");
@@ -3165,7 +3793,8 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "知识库" }));
 
     const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
     const option = within(listbox).getByRole("option", {
@@ -3210,7 +3839,8 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "知识库" }));
 
     expect(await screen.findByRole("listbox", { name: "选择知识库" })).toBeInTheDocument();
 
@@ -3218,6 +3848,46 @@ describe("AI hosting pages", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("listbox", { name: "选择知识库" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("inserts enabled skills from conditional logic picker", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "技能" }));
+
+    expect(agentSkillService.listAgentSkills).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 200,
+    });
+    expect(await screen.findByRole("option", { name: "订单与物流场景查询" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "退换货" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: "订单与物流场景查询" }));
+
+    expect(screen.getByRole("group", { name: "条件逻辑" })).toHaveTextContent(
+      "订单与物流场景查询",
+    );
+
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "技能小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          promptConfig: expect.objectContaining({
+            availableSkillIds: [1],
+            conditionLogic: expect.stringContaining(
+              '<resource type="skill" skillId="1" name="订单与物流场景查询" />',
+            ),
+          }),
+        }),
+      );
     });
   });
 

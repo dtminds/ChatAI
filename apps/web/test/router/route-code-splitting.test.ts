@@ -13,6 +13,8 @@ const routePageModules = [
   "@/pages/chat/ai-hosting/agent-management-page",
   "@/pages/chat/ai-hosting/agent-hosting-settings-page",
   "@/pages/chat/ai-hosting/agent-subscription-page",
+  "@/pages/chat/ai-hosting/ai-skills-page",
+  "@/pages/chat/ai-hosting/ai-skill-settings-page",
   "@/pages/chat/ai-hosting/kb-list-page",
   "@/pages/chat/ai-hosting/kb-detail-page",
   "@/pages/chat/insights/insights-overview-page",

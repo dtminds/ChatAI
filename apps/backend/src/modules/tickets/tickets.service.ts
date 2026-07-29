@@ -1,6 +1,7 @@
 import type {
   AccountPermission,
   AccountRole,
+  ConversationTicketCountResponse,
   ConversationTicketsQuery,
   ConversationTicketsResponse,
   Ticket,
@@ -33,7 +34,6 @@ import { buildInsightMessageInput } from "../insights/insight-message-input-buil
 import type {
   TicketConversationIdentity,
   TicketAccessRecord,
-  TicketCountRepositoryInput,
   TicketDeleteRecord,
   TicketActivityRecord,
   TicketActivityRecordPage,
@@ -69,7 +69,10 @@ export interface TicketsRepositoryPort {
     assigneeSubUserId: number;
     uid: number;
   }): Promise<number>;
-  countTickets(input: TicketCountRepositoryInput): Promise<number>;
+  countActiveConversationTickets(input: {
+    conversationId: number;
+    uid: number;
+  }): Promise<number>;
   deleteTicket(input: {
     createdBySubUserId: number;
     ticketId: number;
@@ -363,32 +366,62 @@ export class TicketsService {
       ? await this.resolveCustomerConversationIds(identity, actor.uid, subUserId)
       : [identity.conversationId];
     const globalAccess = hasGlobalTicketAccess(actor);
+    const filter = query.filter ?? "active";
     const repositoryInput: TicketListRepositoryInput = {
       conversationIds,
+      ...(filter === "active"
+        ? { statuses: ["open", "in_progress"] }
+        : { status: filter }),
       globalAccess,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
-      status: query.status,
       subUserId,
       uid: actor.uid,
       view: "visible",
     };
-    const [page, activeCount] = await Promise.all([
-      this.repository.listTickets(repositoryInput),
-      this.repository.countTickets({
-        conversationIds,
-        globalAccess,
-        statuses: ["open", "in_progress"],
-        subUserId,
-        uid: actor.uid,
-        view: "visible",
-      }),
-    ]);
+    const page = await this.repository.listTickets(repositoryInput);
 
     return {
       ...mapTicketPage(page, actor),
-      activeCount,
       scope,
+    };
+  }
+
+  async countConversationActiveTickets(
+    actor: TicketsActorScope,
+    conversationIdValue: string,
+  ): Promise<ConversationTicketCountResponse> {
+    const conversationId = parseMySqlId(conversationIdValue);
+
+    if (conversationId == null) {
+      throw new BadRequestError("INVALID_TICKET_CONTEXT", "聊天窗口参数无效");
+    }
+
+    const identity = await this.repository.getConversationIdentity(
+      actor.uid,
+      conversationId,
+    );
+
+    if (!identity || identity.chatType !== 1) {
+      throw new BadRequestError("TICKET_SINGLE_CHAT_ONLY", "工单仅支持单聊客户");
+    }
+
+    if (
+      !hasGlobalTicketAccess(actor)
+      && !(await this.repository.canAccessConversation({
+        conversationId,
+        subUserId: getActorSubUserId(actor),
+        uid: actor.uid,
+      }))
+    ) {
+      throw new ForbiddenError("TICKET_FORBIDDEN", "无权访问当前聊天");
+    }
+
+    return {
+      activeCount: await this.repository.countActiveConversationTickets({
+        conversationId,
+        uid: actor.uid,
+      }),
     };
   }
 

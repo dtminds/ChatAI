@@ -59,6 +59,49 @@ describe("ChatHeader", () => {
     );
     expect(screen.queryByRole("button", { name: "工单" })).not.toBeInTheDocument();
   });
+
+  it("shows the configured current-conversation ticket reminder on the ticket action", () => {
+    const { rerender } = render(
+      <ChatHeader
+        activeConversation={conversation}
+        onToggleTickets={vi.fn()}
+        ticketReminderCount={3}
+        ticketReminderDisplayMode="number"
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "3 个待处理工单" })).toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={conversation}
+        onToggleTickets={vi.fn()}
+        ticketReminderCount={12}
+        ticketReminderDisplayMode="number"
+      />,
+    );
+    expect(screen.getByRole("status", { name: "12 个待处理工单" })).toHaveTextContent("9+");
+
+    rerender(
+      <ChatHeader
+        activeConversation={conversation}
+        onToggleTickets={vi.fn()}
+        ticketReminderCount={3}
+        ticketReminderDisplayMode="dot"
+      />,
+    );
+    expect(screen.getByRole("status", { name: "有待处理工单" })).toBeInTheDocument();
+
+    rerender(
+      <ChatHeader
+        activeConversation={conversation}
+        onToggleTickets={vi.fn()}
+        ticketReminderCount={3}
+        ticketReminderDisplayMode="hidden"
+      />,
+    );
+    expect(screen.queryByRole("status", { name: /待处理工单/ })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     document.documentElement.classList.remove("dark");
     window.localStorage.clear();

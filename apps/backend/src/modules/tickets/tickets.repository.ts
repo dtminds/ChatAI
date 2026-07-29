@@ -12,7 +12,6 @@ import type {
   TicketConversationIdentity,
   TicketActivityRecord,
   TicketActivityRecordPage,
-  TicketCountRepositoryInput,
   TicketDeleteRecord,
   TicketListRepositoryInput,
   TicketMessageCandidate,
@@ -209,26 +208,6 @@ export class TicketsRepository {
     return rows.map(mapTicketRecord);
   }
 
-  async countTickets(input: TicketCountRepositoryInput) {
-    let query = this.buildFilteredTicketQuery({
-      ...input,
-      page: 1,
-      pageSize: 1,
-    });
-
-    if (input.statuses?.length) {
-      query = query.where("ticket.status", "in", input.statuses);
-    }
-
-    const row = await query
-      .select((expressionBuilder) =>
-        expressionBuilder.fn.count<number>("ticket.id").distinct().as("total"),
-      )
-      .executeTakeFirst();
-
-    return toNonNegativeNumber(row?.total);
-  }
-
   async countAssignedActiveTickets(input: {
     assigneeSubUserId: number;
     uid: number;
@@ -240,6 +219,23 @@ export class TicketsRepository {
       )
       .where("ticket.uid", "=", input.uid)
       .where("ticket.assignee_sub_user_id", "=", input.assigneeSubUserId)
+      .where("ticket.status", "in", ["open", "in_progress"])
+      .executeTakeFirst();
+
+    return toNonNegativeNumber(row?.total);
+  }
+
+  async countActiveConversationTickets(input: {
+    conversationId: number;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_session_action_item as ticket")
+      .select((expressionBuilder) =>
+        expressionBuilder.fn.countAll<number>().as("total"),
+      )
+      .where("ticket.uid", "=", input.uid)
+      .where("ticket.conversation_id", "=", input.conversationId)
       .where("ticket.status", "in", ["open", "in_progress"])
       .executeTakeFirst();
 
@@ -1052,7 +1048,9 @@ export class TicketsRepository {
     if (input.sourceType) {
       query = query.where("ticket.source_type", "=", input.sourceType);
     }
-    if (input.status) {
+    if (input.statuses?.length) {
+      query = query.where("ticket.status", "in", input.statuses);
+    } else if (input.status) {
       query = input.status === "canceled"
         ? query.where("ticket.status", "in", ["canceled", "dismissed", "expired"])
         : query.where("ticket.status", "=", input.status);

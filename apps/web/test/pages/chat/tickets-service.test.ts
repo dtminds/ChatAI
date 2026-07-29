@@ -7,6 +7,7 @@ import {
   createTicket,
   deleteTicket,
   getConversationTickets,
+  getConversationTicketActiveCount,
   getTicketActivities,
   getTicketAssigneeOptions,
   getTicketContext,
@@ -27,6 +28,7 @@ describe("tickets service", () => {
     mock.onGet("/server/tickets/counts").reply(200, { data: { assignedToMeActive: 2 }, success: true });
     mock.onGet("/server/tickets/context-options").reply(200, { data: { assignees: [], sessions: [] }, success: true });
     mock.onGet("/server/tickets/by-conversation/301").reply(200, { data: { items: [] }, success: true });
+    mock.onGet("/server/tickets/by-conversation/301/active-count").reply(200, { data: { activeCount: 3 }, success: true });
     mock.onGet("/server/tickets/501").reply(200, { data: { ticket: {} }, success: true });
     mock.onGet("/server/tickets/501/activities").reply((config) => [200, { data: { query: config.params }, success: true }]);
     mock.onGet("/server/tickets/501/assignee-options").reply(200, { data: { items: [] }, success: true });
@@ -41,7 +43,8 @@ describe("tickets service", () => {
       .resolves.toMatchObject({ query: { page: 2, status: "open", view: "reception" } });
     await getTicketCounts();
     await getTicketContextOptions({ conversationId: "301" });
-    await getConversationTickets("301", { scope: "customer" });
+    await getConversationTickets("301", { filter: "active", scope: "customer" });
+    await expect(getConversationTicketActiveCount("301")).resolves.toEqual({ activeCount: 3 });
     await getTicketDetail("501");
     await expect(getTicketActivities("501", { beforeActivityId: "601", pageSize: 50 }))
       .resolves.toMatchObject({ query: { beforeActivityId: "601", pageSize: 50 } });
@@ -54,7 +57,7 @@ describe("tickets service", () => {
     await claimTicket("501");
     await addTicketComment("501", { content: "已处理" });
 
-    expect(mock.history.get).toHaveLength(8);
+    expect(mock.history.get).toHaveLength(9);
     expect(mock.history.post).toHaveLength(3);
     expect(mock.history.patch[0]?.data).toContain("expectedStatus");
     expect(mock.history.delete).toHaveLength(1);

@@ -247,10 +247,10 @@ export function TicketsPage() {
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>工单通知配置</DialogTitle>
-              <DialogDescription>设置左侧工单菜单的提醒方式</DialogDescription>
+              <DialogDescription>设置工单角标的提醒方式</DialogDescription>
             </DialogHeader>
             <RadioGroup
-              aria-label="工单菜单提醒方式"
+              aria-label="工单角标提醒方式"
               className="gap-2"
               onValueChange={(value) =>
                 setReminderDisplayDraft(value as TicketReminderDisplayMode)}

@@ -51,7 +51,6 @@ const ticket: Ticket = {
 
 function response(scope: "conversation" | "customer", items: Ticket[] = [ticket]) {
   return {
-    activeCount: items.length,
     items,
     page: 1,
     pageSize: 20,
@@ -78,36 +77,46 @@ function renderPanel(props: Partial<React.ComponentProps<typeof ConversationTick
 }
 
 describe("ConversationTicketsPanel", () => {
-  it("defaults to pending tickets and filters the current conversation by status", async () => {
+  it("groups open and in-progress tickets into the pending filter", async () => {
     const user = userEvent.setup();
     const onCreateTicket = vi.fn();
     api.getConversationTickets
-      .mockResolvedValueOnce(response("conversation"))
+      .mockResolvedValueOnce(response("conversation", [
+        ticket,
+        {
+          ...ticket,
+          status: "in_progress",
+          ticketId: "502",
+          title: "处理中工单",
+        },
+      ]))
       .mockResolvedValueOnce(response("conversation", [{
         ...ticket,
-        status: "in_progress",
-        ticketId: "502",
-        title: "处理中工单",
+        status: "done",
+        ticketId: "504",
+        title: "已完成工单",
       }]));
 
     const { rerender } = renderPanel({ onCreateTicket });
     expect(await screen.findByRole("link", { name: /跟进退款/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "处理中" })).not.toBeInTheDocument();
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
+      filter: "active",
       page: 1,
       pageSize: 20,
       scope: "conversation",
-      status: "open",
     });
     await user.click(screen.getByRole("button", { name: "创建工单" }));
     expect(onCreateTicket).toHaveBeenCalledOnce();
 
-    await user.click(screen.getByRole("tab", { name: "处理中" }));
-    expect(await screen.findByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "已完成" }));
+    expect(await screen.findByRole("link", { name: /已完成工单/ })).toBeInTheDocument();
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
+      filter: "done",
       page: 1,
       pageSize: 20,
       scope: "conversation",
-      status: "in_progress",
     });
 
     api.getConversationTickets.mockResolvedValueOnce(response("conversation", [{
@@ -131,10 +140,10 @@ describe("ConversationTicketsPanel", () => {
       "true",
     );
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
+      filter: "active",
       page: 1,
       pageSize: 20,
       scope: "conversation",
-      status: "open",
     });
   });
 
@@ -204,7 +213,7 @@ describe("ConversationTicketsPanel", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("does not show a previous status response after the filter changes", async () => {
+  it("does not show a previous response after the filter changes", async () => {
     let resolveFirst!: (value: ReturnType<typeof response>) => void;
     api.getConversationTickets
       .mockImplementationOnce(
@@ -212,16 +221,16 @@ describe("ConversationTicketsPanel", () => {
       )
       .mockResolvedValueOnce(response("conversation", [{
         ...ticket,
-        status: "in_progress",
+        status: "done",
         ticketId: "601",
-        title: "处理中工单",
+        title: "已完成工单",
       }]));
 
     const user = userEvent.setup();
     renderPanel();
-    await user.click(screen.getByRole("tab", { name: "处理中" }));
+    await user.click(screen.getByRole("tab", { name: "已完成" }));
 
-    expect(await screen.findByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /已完成工单/ })).toBeInTheDocument();
     resolveFirst(response("conversation", [{ ...ticket, title: "旧客户工单" }]));
     await waitFor(() => expect(screen.queryByText("旧客户工单")).not.toBeInTheDocument());
   });

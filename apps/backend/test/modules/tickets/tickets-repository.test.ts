@@ -61,6 +61,25 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("ticket.status in (?, ?)");
   });
 
+  it("filters conversation ticket pages by multiple active statuses", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).listTickets({
+      conversationIds: [301],
+      globalAccess: false,
+      page: 1,
+      pageSize: 20,
+      statuses: ["open", "in_progress"],
+      subUserId: 101,
+      uid: 9001,
+      view: "visible",
+    });
+
+    expect(queries.map(normalizeSql).join("\n")).toContain(
+      "ticket.status in (?, ?)",
+    );
+  });
+
   it("counts assigned active tickets from the covering ticket index without joining conversations", async () => {
     const { db, queries } = createRecordingDatabase();
 
@@ -74,6 +93,24 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("from xy_wap_embed_session_action_item as ticket");
     expect(sql).toContain("ticket.uid = ?");
     expect(sql).toContain("ticket.assignee_sub_user_id = ?");
+    expect(sql).toContain("ticket.status in (?, ?)");
+    expect(sql).not.toContain("join xy_wap_embed_conversation");
+    expect(sql).not.toContain("distinct");
+  });
+
+  it("counts active tickets for one conversation without joining conversations", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).countActiveConversationTickets({
+      conversationId: 301,
+      uid: 9001,
+    });
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("count(*)");
+    expect(sql).toContain("from xy_wap_embed_session_action_item as ticket");
+    expect(sql).toContain("ticket.uid = ?");
+    expect(sql).toContain("ticket.conversation_id = ?");
     expect(sql).toContain("ticket.status in (?, ?)");
     expect(sql).not.toContain("join xy_wap_embed_conversation");
     expect(sql).not.toContain("distinct");

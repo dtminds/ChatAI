@@ -101,6 +101,12 @@ export function resetChatWorkbenchTestState() {
     data: { assignedToMeActive: 0 },
     success: true,
   });
+  workbenchHttpMock
+    .onGet(/\/server\/tickets\/by-conversation\/[^/]+\/active-count$/)
+    .reply(200, {
+      data: { activeCount: 0 },
+      success: true,
+    });
   resetWorkbenchService();
   vi.mocked(mediaUploadMocks.resolveImageSegmentsForSend).mockImplementation(
     async (_conversationId, segments) =>

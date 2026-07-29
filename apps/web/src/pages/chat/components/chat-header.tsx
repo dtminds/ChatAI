@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
   ArrowLeft01Icon,
   BubbleChatNotificationIcon,
@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
+import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
@@ -43,6 +44,8 @@ type ChatHeaderProps = {
   isMobileLayout?: boolean;
   isSidebarOpen?: boolean;
   isTicketsPanelOpen?: boolean;
+  ticketReminderCount?: number;
+  ticketReminderDisplayMode?: TicketReminderDisplayMode;
   onBack?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
@@ -59,6 +62,8 @@ export function ChatHeader({
   isMobileLayout = false,
   isSidebarOpen = false,
   isTicketsPanelOpen = false,
+  ticketReminderCount,
+  ticketReminderDisplayMode,
   onBack,
   onMarkConversationRead,
   onMarkConversationUnread,
@@ -130,6 +135,12 @@ export function ChatHeader({
               label="工单"
               onClick={onToggleTickets}
               pressed={isTicketsPanelOpen}
+              indicator={
+                <ConversationTicketReminderIndicator
+                  count={ticketReminderCount}
+                  mode={ticketReminderDisplayMode}
+                />
+              }
             />
           ) : null}
           {hasConversationActions && activeConversation ? (
@@ -231,12 +242,14 @@ function HeaderIconButton({
   label,
   onClick,
   pressed,
+  indicator,
 }: {
   disabled?: boolean;
   icon: ComponentProps<typeof HugeiconsIcon>["icon"];
   label: string;
   onClick: () => void;
   pressed?: boolean;
+  indicator?: ReactNode;
 }) {
   return (
     <TooltipProvider delayDuration={300}>
@@ -256,12 +269,15 @@ function HeaderIconButton({
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={icon}
-              size={16}
-              strokeWidth={1.8}
-            />
+            <span className="relative inline-flex">
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              {indicator}
+            </span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
@@ -269,6 +285,38 @@ function HeaderIconButton({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ConversationTicketReminderIndicator({
+  count,
+  mode,
+}: {
+  count?: number;
+  mode?: TicketReminderDisplayMode;
+}) {
+  if (!count || !mode || mode === "hidden") {
+    return null;
+  }
+
+  if (mode === "dot") {
+    return (
+      <span
+        aria-label="有待处理工单"
+        className="absolute -right-1 -top-1 block size-2 animate-in rounded-full border border-background bg-destructive duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] zoom-in-50 motion-reduce:animate-none"
+        role="status"
+      />
+    );
+  }
+
+  return (
+    <Badge
+      aria-label={`${count} 个待处理工单`}
+      className="absolute -right-2.5 -top-2.5 h-4 min-w-4 animate-in justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] zoom-in-50 motion-reduce:animate-none"
+      role="status"
+    >
+      {count > 9 ? "9+" : count}
+    </Badge>
   );
 }
 

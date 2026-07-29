@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  ConversationTicketCountResponseSchema,
   ConversationTicketsQuerySchema,
   ConversationTicketsResponseSchema,
   TicketClaimResponseSchema,
@@ -226,18 +227,21 @@ describe("ticket DTOs", () => {
       }],
     })).toBe(true);
     expect(Value.Check(ConversationTicketsQuerySchema, {
+      filter: "active",
       page: 1,
       pageSize: 20,
       scope: "customer",
     })).toBe(true);
     expect(Value.Check(ConversationTicketsResponseSchema, {
-      activeCount: 1,
       items: [ticket],
       page: 1,
       pageSize: 20,
       scope: "customer",
       total: 1,
       totalPages: 1,
+    })).toBe(true);
+    expect(Value.Check(ConversationTicketCountResponseSchema, {
+      activeCount: 1,
     })).toBe(true);
   });
 

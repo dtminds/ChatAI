@@ -76,16 +76,10 @@ export type TicketListRepositoryInput = Omit<TicketListQuery, "assigneeSubUserId
   page: number;
   pageSize: number;
   subUserId: number;
+  statuses?: TicketStatus[];
   ticketIds?: number[];
   uid: number;
   view: TicketRepositoryView;
-};
-
-export type TicketCountRepositoryInput = Pick<
-  TicketListRepositoryInput,
-  "conversationIds" | "globalAccess" | "subUserId" | "uid" | "view"
-> & {
-  statuses?: string[];
 };
 
 export type TicketConversationIdentity = {

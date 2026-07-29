@@ -38,6 +38,7 @@ import type {
   Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
 import type {
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
@@ -189,6 +190,8 @@ type ChatPanelProps = {
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   quickReplyPanel?: ReactNode;
   ticketPanel?: ReactNode;
+  ticketReminderCount?: number;
+  ticketReminderDisplayMode?: TicketReminderDisplayMode;
   scopeTransitionError?: string;
   sidebarItems: SettingsSidebarItem[];
   fileUploadQueue: FileUploadQueueItem[];
@@ -306,6 +309,8 @@ export function ChatPanel({
   onQuickReplyActiveChange,
   quickReplyPanel,
   ticketPanel,
+  ticketReminderCount,
+  ticketReminderDisplayMode,
   scopeTransitionError,
   sidebarItems,
   fileUploadQueue,
@@ -486,6 +491,8 @@ export function ChatPanel({
         onToggleTickets={
           ticketPanel && onToggleTickets ? handleToggleTickets : undefined
         }
+        ticketReminderCount={ticketReminderCount}
+        ticketReminderDisplayMode={ticketReminderDisplayMode}
         onUnpinConversation={
           activeConversation && onUnpinConversation
             ? () => onUnpinConversation(activeConversation.id)

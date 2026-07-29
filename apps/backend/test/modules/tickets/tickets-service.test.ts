@@ -95,7 +95,7 @@ describe("TicketsService", () => {
       assigneeSubUserId: 101,
       uid: 9001,
     });
-    expect(repository.countTickets).not.toHaveBeenCalled();
+    expect(repository.countActiveConversationTickets).not.toHaveBeenCalled();
   });
 
   it("derives edit and claim permissions from actor relation and viewer role", async () => {
@@ -227,6 +227,7 @@ describe("TicketsService", () => {
     const service = new TicketsService(repository);
 
     await service.listConversationTickets(createActor("operator"), "301", {
+      filter: "active",
       scope: "customer",
     });
     expect(repository.listCustomerConversationIds).toHaveBeenCalledWith({
@@ -236,6 +237,7 @@ describe("TicketsService", () => {
     });
     expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationIds: [301, 302],
+      statuses: ["open", "in_progress"],
       view: "visible",
     }));
 
@@ -247,11 +249,77 @@ describe("TicketsService", () => {
       thirdUserId: "account-1",
     });
     await service.listConversationTickets(createActor("operator"), "301", {
+      filter: "done",
       scope: "customer",
     });
     expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
       conversationIds: [301],
+      status: "done",
     }));
+  });
+
+  it("counts active tickets for an accessible single conversation", async () => {
+    const repository = createRepository();
+    repository.getConversationIdentity.mockResolvedValueOnce({
+      chatType: 1,
+      conversationId: 301,
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      thirdUserId: "account-1",
+    });
+    repository.countActiveConversationTickets.mockResolvedValueOnce(3);
+    const service = new TicketsService(repository);
+
+    await expect(
+      service.countConversationActiveTickets(
+        createActor("operator"),
+        "301",
+      ),
+    ).resolves.toEqual({ activeCount: 3 });
+    expect(repository.canAccessConversation).toHaveBeenCalledWith({
+      conversationId: 301,
+      subUserId: 101,
+      uid: 9001,
+    });
+    expect(repository.countActiveConversationTickets).toHaveBeenCalledWith({
+      conversationId: 301,
+      uid: 9001,
+    });
+  });
+
+  it("rejects active ticket counts for group conversations", async () => {
+    const repository = createRepository();
+    repository.getConversationIdentity.mockResolvedValueOnce({
+      chatType: 2,
+      conversationId: 301,
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      thirdUserId: "account-1",
+    });
+    const service = new TicketsService(repository);
+
+    await expect(
+      service.countConversationActiveTickets(createActor("operator"), "301"),
+    ).rejects.toMatchObject({ code: "TICKET_SINGLE_CHAT_ONLY" });
+    expect(repository.countActiveConversationTickets).not.toHaveBeenCalled();
+  });
+
+  it("rejects active ticket counts without conversation access", async () => {
+    const repository = createRepository();
+    repository.getConversationIdentity.mockResolvedValueOnce({
+      chatType: 1,
+      conversationId: 301,
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      thirdUserId: "account-1",
+    });
+    repository.canAccessConversation.mockResolvedValueOnce(false);
+    const service = new TicketsService(repository);
+
+    await expect(
+      service.countConversationActiveTickets(createActor("operator"), "301"),
+    ).rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+    expect(repository.countActiveConversationTickets).not.toHaveBeenCalled();
   });
 
   it("rejects group chats viewers and actors without chat access", async () => {
@@ -835,7 +903,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
     canAccessConversation: vi.fn(async () => true),
     claimTicket: vi.fn(async () => true),
     countAssignedActiveTickets: vi.fn(async () => 0),
-    countTickets: vi.fn(async () => 0),
+    countActiveConversationTickets: vi.fn(async () => 0),
     createManualTicket: vi.fn(async () => 501),
     deleteTicket: vi.fn(async () => true),
     getConversationIdentity: vi.fn(async () => undefined),
@@ -869,7 +937,7 @@ function createRepository(page?: { items: TicketRecord[] }) {
   } satisfies TicketsRepositoryPort & {
     canAccessConversation: ReturnType<typeof vi.fn>;
     countAssignedActiveTickets: ReturnType<typeof vi.fn>;
-    countTickets: ReturnType<typeof vi.fn>;
+    countActiveConversationTickets: ReturnType<typeof vi.fn>;
     createManualTicket: ReturnType<typeof vi.fn>;
     getConversationIdentity: ReturnType<typeof vi.fn>;
     getTicketAccessRecordById: ReturnType<typeof vi.fn>;

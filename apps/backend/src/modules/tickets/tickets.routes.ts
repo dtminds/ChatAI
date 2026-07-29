@@ -76,6 +76,20 @@ export async function registerTicketsRoutes(
     ),
   );
 
+  app.get<{ Params: ConversationParams }>(
+    "/api/server/tickets/by-conversation/:conversationId/active-count",
+    {
+      preHandler: app.authenticate,
+      schema: { params: ConversationParamsSchema },
+    },
+    async (request) => apiSuccess(
+      await createService().countConversationActiveTickets(
+        getTicketsActor(request),
+        request.params.conversationId,
+      ),
+    ),
+  );
+
   app.get<{
     Params: ConversationParams;
     Querystring: ConversationTicketsQuery;

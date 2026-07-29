@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  ConversationTicketFilter,
   ConversationTicketsResponse,
   Ticket,
   TicketStatus,
@@ -45,7 +46,6 @@ import {
   TicketOverdueBadge,
   TicketPriority,
   TicketStatusBadge,
-  ticketStatusText,
 } from "@/pages/chat/tickets/ticket-display";
 
 const pageSize = 20;
@@ -53,11 +53,13 @@ const emptyStateIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 const ticketSummaryTagClass =
   "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-xs font-medium";
-const ticketStatusFilters: TicketStatus[] = [
-  "open",
-  "in_progress",
-  "done",
-  "canceled",
+const ticketFilters: Array<{
+  label: string;
+  value: ConversationTicketFilter;
+}> = [
+  { label: "待处理", value: "active" },
+  { label: "已完成", value: "done" },
+  { label: "已取消", value: "canceled" },
 ];
 
 type ConversationTicketsPanelProps = {
@@ -86,7 +88,7 @@ function ConversationTicketsPanelContent({
   onCreateTicket,
   refreshKey = 0,
 }: ConversationTicketsPanelProps) {
-  const [status, setStatus] = useState<TicketStatus>("open");
+  const [filter, setFilter] = useState<ConversationTicketFilter>("active");
   const [page, setPage] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
   const [result, setResult] = useState<ConversationTicketsResponse>();
@@ -97,12 +99,12 @@ function ConversationTicketsPanelContent({
   const [pendingTicketId, setPendingTicketId] = useState<string>();
   const requestScopeRef = useRef("");
   const mutationScopeRef = useRef("");
-  const requestScope = `${conversationId}:${status}:${page}:${refreshKey}:${reloadKey}`;
+  const requestScope = `${conversationId}:${filter}:${page}:${refreshKey}:${reloadKey}`;
   requestScopeRef.current = requestScope;
-  mutationScopeRef.current = `${conversationId}:${status}`;
+  mutationScopeRef.current = `${conversationId}:${filter}`;
 
   useEffect(() => {
-    setStatus("open");
+    setFilter("active");
     setPage(1);
     setResult(undefined);
     setError(undefined);
@@ -124,7 +126,7 @@ function ConversationTicketsPanelContent({
       page,
       pageSize,
       scope: "conversation",
-      status,
+      filter,
     })
       .then((next) => {
         if (!active || requestScopeRef.current !== requestScope) {
@@ -159,7 +161,7 @@ function ConversationTicketsPanelContent({
     return () => {
       active = false;
     };
-  }, [conversationId, page, refreshKey, reloadKey, requestScope, status]);
+  }, [conversationId, filter, page, refreshKey, reloadKey, requestScope]);
 
   const runAction = async (ticket: Ticket, action: "claim" | TicketStatus) => {
     const mutationScope = mutationScopeRef.current;
@@ -204,21 +206,21 @@ function ConversationTicketsPanelContent({
           <Tabs
             className="min-w-0"
             onValueChange={(value) => {
-              setStatus(value as TicketStatus);
+              setFilter(value as ConversationTicketFilter);
               setPage(1);
               setResult(undefined);
               setActionError(undefined);
             }}
-            value={status}
+            value={filter}
           >
-            <TabsList className="grid h-9 min-w-0 grid-cols-4 rounded-[10px] p-1">
-              {ticketStatusFilters.map((itemStatus) => (
+            <TabsList className="grid h-9 min-w-0 grid-cols-3 rounded-[10px] p-1">
+              {ticketFilters.map((item) => (
                 <TabsTrigger
                   className="h-7 min-w-0 rounded-[8px] px-1 py-1 text-[13px]"
-                  key={itemStatus}
-                  value={itemStatus}
+                  key={item.value}
+                  value={item.value}
                 >
-                  {ticketStatusText(itemStatus)}
+                  {item.label}
                 </TabsTrigger>
               ))}
             </TabsList>

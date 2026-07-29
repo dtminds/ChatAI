@@ -36,6 +36,12 @@ export const TicketConversationScopeSchema = Type.Union([
   Type.Literal("customer"),
 ]);
 
+export const ConversationTicketFilterSchema = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("done"),
+  Type.Literal("canceled"),
+]);
+
 export const TicketDueScopeSchema = Type.Union([
   Type.Literal("overdue"),
   Type.Literal("today"),
@@ -282,14 +288,13 @@ export const TicketContextOptionsResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ConversationTicketsQuerySchema = Type.Object({
+  filter: Type.Optional(ConversationTicketFilterSchema),
   page: Type.Optional(Type.Integer({ minimum: 1 })),
   pageSize: Type.Optional(Type.Integer({ maximum: 100, minimum: 1 })),
   scope: Type.Optional(TicketConversationScopeSchema),
-  status: Type.Optional(TicketStatusSchema),
 }, { additionalProperties: false });
 
 export const ConversationTicketsResponseSchema = Type.Object({
-  activeCount: Type.Integer({ minimum: 0 }),
   items: Type.Array(TicketSchema),
   page: Type.Integer({ minimum: 1 }),
   pageSize: Type.Integer({ minimum: 1 }),
@@ -298,10 +303,15 @@ export const ConversationTicketsResponseSchema = Type.Object({
   totalPages: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
+export const ConversationTicketCountResponseSchema = Type.Object({
+  activeCount: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+
 export type TicketStatus = Static<typeof TicketStatusSchema>;
 export type TicketPriority = Static<typeof TicketPrioritySchema>;
 export type TicketSourceType = Static<typeof TicketSourceTypeSchema>;
 export type TicketView = Static<typeof TicketViewSchema>;
+export type ConversationTicketFilter = Static<typeof ConversationTicketFilterSchema>;
 export type TicketUser = Static<typeof TicketUserSchema>;
 export type Ticket = Static<typeof TicketSchema>;
 export type TicketListQuery = Static<typeof TicketListQuerySchema>;
@@ -326,3 +336,4 @@ export type TicketContextOptionsQuery = Static<typeof TicketContextOptionsQueryS
 export type TicketContextOptionsResponse = Static<typeof TicketContextOptionsResponseSchema>;
 export type ConversationTicketsQuery = Static<typeof ConversationTicketsQuerySchema>;
 export type ConversationTicketsResponse = Static<typeof ConversationTicketsResponseSchema>;
+export type ConversationTicketCountResponse = Static<typeof ConversationTicketCountResponseSchema>;

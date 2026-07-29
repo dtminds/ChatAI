@@ -119,6 +119,8 @@ import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-
 import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
 import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
 import { useTicketCountPolling } from "@/pages/chat/tickets/use-ticket-count-polling";
+import { useConversationTicketReminder } from "@/pages/chat/tickets/use-conversation-ticket-reminder";
+import { useTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
@@ -702,6 +704,15 @@ function ChatWorkbenchContent({
     activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
     );
+  const ticketReminderDisplayMode = useTicketCountStore(
+    (state) => state.reminderDisplayMode,
+  );
+  const conversationTicketReminderCount = useConversationTicketReminder({
+    conversationId:
+      activeConversation?.mode === "single" ? activeConversation.id : undefined,
+    enabled: ticketReminderDisplayMode !== "hidden",
+    isPanelOpen: activeAuxiliaryPanel === "tickets",
+  });
   useEffect(() => {
     if (
       ticketCreateConversationId &&
@@ -2387,6 +2398,8 @@ function ChatWorkbenchContent({
           />
         ) : undefined
       }
+      ticketReminderCount={conversationTicketReminderCount}
+      ticketReminderDisplayMode={ticketReminderDisplayMode}
       onDismissScopeTransitionError={() => {
         setFileUploadTransitionError(undefined);
         dismissScopeTransitionError();

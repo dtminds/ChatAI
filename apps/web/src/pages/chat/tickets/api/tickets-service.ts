@@ -1,5 +1,6 @@
 import type {
   ApiSuccessEnvelope,
+  ConversationTicketCountResponse,
   ConversationTicketsQuery,
   ConversationTicketsResponse,
   TicketActivityListQuery,
@@ -51,6 +52,13 @@ export async function getConversationTickets(
   const response = await http.get<ApiSuccessEnvelope<ConversationTicketsResponse>>(
     `/server/tickets/by-conversation/${encodeURIComponent(conversationId)}`,
     { params: compactQuery(query) },
+  );
+  return response.data;
+}
+
+export async function getConversationTicketActiveCount(conversationId: string) {
+  const response = await http.get<ApiSuccessEnvelope<ConversationTicketCountResponse>>(
+    `/server/tickets/by-conversation/${encodeURIComponent(conversationId)}/active-count`,
   );
   return response.data;
 }

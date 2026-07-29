@@ -7,6 +7,7 @@ import { registerTicketsRoutes } from "../../../src/modules/tickets/tickets.rout
 const service = vi.hoisted(() => ({
   addComment: vi.fn(),
   claimTicket: vi.fn(),
+  countConversationActiveTickets: vi.fn(),
   createTicket: vi.fn(),
   deleteTicket: vi.fn(),
   getContextOptions: vi.fn(),
@@ -59,6 +60,7 @@ describe("tickets routes", () => {
       { method: "GET", url: "/api/server/tickets/counts" },
       { method: "GET", url: "/api/server/tickets/context-options?conversationId=301" },
       { method: "GET", url: "/api/server/tickets/by-conversation/301" },
+      { method: "GET", url: "/api/server/tickets/by-conversation/301/active-count" },
       { method: "GET", url: "/api/server/tickets/501" },
       { method: "GET", url: "/api/server/tickets/501/activities" },
       { method: "GET", url: "/api/server/tickets/501/assignee-options" },
@@ -110,7 +112,6 @@ describe("tickets routes", () => {
       sessions: [],
     });
     service.listConversationTickets.mockResolvedValue({
-      activeCount: 1,
       items: [ticket],
       page: 1,
       pageSize: 20,
@@ -118,6 +119,7 @@ describe("tickets routes", () => {
       total: 1,
       totalPages: 1,
     });
+    service.countConversationActiveTickets.mockResolvedValue({ activeCount: 1 });
     service.getTicketDetail.mockResolvedValue({
       ticket,
     });
@@ -150,6 +152,7 @@ describe("tickets routes", () => {
       { method: "GET", url: "/api/server/tickets/counts" },
       { method: "GET", url: "/api/server/tickets/context-options?conversationId=301" },
       { method: "GET", url: "/api/server/tickets/by-conversation/301?scope=conversation" },
+      { method: "GET", url: "/api/server/tickets/by-conversation/301/active-count" },
       { method: "GET", url: "/api/server/tickets/501" },
       { method: "GET", url: "/api/server/tickets/501/activities?beforeActivityId=601&pageSize=50" },
       { method: "GET", url: "/api/server/tickets/501/assignee-options" },

@@ -253,11 +253,15 @@ export function TicketCreateDialog({
                 <SelectTrigger aria-label="关联接待会话" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-h-64">
+                <SelectContent className="max-h-64 w-[var(--radix-select-trigger-width)]">
                   <SelectItem value="current">当前会话</SelectItem>
                   <SelectItem value="none">不关联</SelectItem>
                   {sessions.map((session) => (
-                    <SelectItem key={session.sessionId} value={`session:${session.sessionId}`}>
+                    <SelectItem
+                      className="min-w-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:truncate"
+                      key={session.sessionId}
+                      value={`session:${session.sessionId}`}
+                    >
                       {sessionLabel(session)}
                     </SelectItem>
                   ))}

@@ -31,6 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -41,12 +42,13 @@ type ChatHeaderProps = {
   isConversationActionDisabled?: boolean;
   isMobileLayout?: boolean;
   isSidebarOpen?: boolean;
+  isTicketsPanelOpen?: boolean;
   onBack?: () => void;
-  onCreateTicket?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
   onPinConversation?: () => void | Promise<void>;
   onToggleSidebar?: () => void;
+  onToggleTickets?: () => void;
   onUnpinConversation?: () => void | Promise<void>;
 };
 
@@ -56,12 +58,13 @@ export function ChatHeader({
   isConversationActionDisabled = false,
   isMobileLayout = false,
   isSidebarOpen = false,
+  isTicketsPanelOpen = false,
   onBack,
-  onCreateTicket,
   onMarkConversationRead,
   onMarkConversationUnread,
   onPinConversation,
   onToggleSidebar,
+  onToggleTickets,
   onUnpinConversation,
 }: ChatHeaderProps) {
   const hasConversationActions = Boolean(
@@ -121,11 +124,12 @@ export function ChatHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {activeConversation?.mode === "single" && onCreateTicket ? (
+          {activeConversation?.mode === "single" && onToggleTickets ? (
             <HeaderIconButton
               icon={StickyNote02Icon}
-              label="创建工单"
-              onClick={onCreateTicket}
+              label="工单"
+              onClick={onToggleTickets}
+              pressed={isTicketsPanelOpen}
             />
           ) : null}
           {hasConversationActions && activeConversation ? (
@@ -226,11 +230,13 @@ function HeaderIconButton({
   icon,
   label,
   onClick,
+  pressed,
 }: {
   disabled?: boolean;
   icon: ComponentProps<typeof HugeiconsIcon>["icon"];
   label: string;
   onClick: () => void;
+  pressed?: boolean;
 }) {
   return (
     <TooltipProvider delayDuration={300}>
@@ -238,7 +244,12 @@ function HeaderIconButton({
         <TooltipTrigger asChild>
           <Button
             aria-label={label}
-            className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+            aria-pressed={pressed}
+            className={cn(
+              "size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground",
+              pressed &&
+                "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
             disabled={disabled}
             onClick={onClick}
             size="icon"

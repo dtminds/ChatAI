@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,21 +78,63 @@ function renderPanel(props: Partial<React.ComponentProps<typeof ConversationTick
 }
 
 describe("ConversationTicketsPanel", () => {
-  it("switches between current conversation and customer-visible tickets", async () => {
+  it("defaults to pending tickets and filters the current conversation by status", async () => {
     const user = userEvent.setup();
+    const onCreateTicket = vi.fn();
     api.getConversationTickets
       .mockResolvedValueOnce(response("conversation"))
-      .mockResolvedValueOnce(response("customer", [{ ...ticket, ticketId: "502", title: "其他聊天工单" }]));
+      .mockResolvedValueOnce(response("conversation", [{
+        ...ticket,
+        status: "in_progress",
+        ticketId: "502",
+        title: "处理中工单",
+      }]));
 
-    renderPanel();
+    const { rerender } = renderPanel({ onCreateTicket });
     expect(await screen.findByRole("link", { name: /跟进退款/ })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("tab", { name: /该客户/ }));
-    expect(await screen.findByRole("link", { name: /其他聊天工单/ })).toBeInTheDocument();
     expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
       page: 1,
       pageSize: 20,
-      scope: "customer",
+      scope: "conversation",
+      status: "open",
+    });
+    await user.click(screen.getByRole("button", { name: "创建工单" }));
+    expect(onCreateTicket).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole("tab", { name: "处理中" }));
+    expect(await screen.findByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
+    expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
+      page: 1,
+      pageSize: 20,
+      scope: "conversation",
+      status: "in_progress",
+    });
+
+    api.getConversationTickets.mockResolvedValueOnce(response("conversation", [{
+      ...ticket,
+      ticketId: "503",
+      title: "新建待处理工单",
+    }]));
+    rerender(
+      <MemoryRouter>
+        <ConversationTicketsPanel
+          conversationId="301"
+          onCreateTicket={onCreateTicket}
+          refreshKey={1}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("link", { name: /新建待处理工单/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "待处理" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(api.getConversationTickets).toHaveBeenLastCalledWith("301", {
+      page: 1,
+      pageSize: 20,
+      scope: "conversation",
+      status: "open",
     });
   });
 
@@ -103,7 +145,10 @@ describe("ConversationTicketsPanel", () => {
     );
 
     const { rerender } = renderPanel();
-    await user.click(await screen.findByRole("button", { name: "分配给我" }));
+    await user.click(
+      await screen.findByRole("button", { name: "更多工单操作" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "分配给我" }));
     await waitFor(() => expect(api.claimTicket).toHaveBeenCalledWith("501"));
 
     api.getConversationTickets.mockResolvedValue(response("conversation"));
@@ -112,7 +157,12 @@ describe("ConversationTicketsPanel", () => {
         <ConversationTicketsPanel conversationId="301" refreshKey={1} />
       </MemoryRouter>,
     );
-    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
+    await user.click(
+      await screen.findByRole("button", { name: "更多工单操作" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "标记为已解决" }),
+    );
     await waitFor(() =>
       expect(api.updateTicket).toHaveBeenCalledWith("501", {
         expectedStatus: "open",
@@ -134,7 +184,12 @@ describe("ConversationTicketsPanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
+    await user.click(
+      await screen.findByRole("button", { name: "更多工单操作" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "标记为已解决" }),
+    );
     await waitFor(() => {
       expect(api.updateTicket).toHaveBeenCalledWith("501", {
         expectedStatus: "open",
@@ -142,27 +197,31 @@ describe("ConversationTicketsPanel", () => {
       });
     });
     await waitFor(() => expect(api.getConversationTickets).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("已完成")).toBeInTheDocument();
+    expect(
+      within(await screen.findByRole("article")).getByText("已完成"),
+    ).toBeInTheDocument();
     expect(toast.error).toHaveBeenCalledWith("工单状态已变化，请刷新后重试");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("does not show a previous conversation response after the scope changes", async () => {
+  it("does not show a previous status response after the filter changes", async () => {
     let resolveFirst!: (value: ReturnType<typeof response>) => void;
     api.getConversationTickets
       .mockImplementationOnce(
         () => new Promise((resolve) => { resolveFirst = resolve; }),
       )
-      .mockResolvedValueOnce(response("conversation", [{ ...ticket, ticketId: "601", title: "新客户工单" }]));
+      .mockResolvedValueOnce(response("conversation", [{
+        ...ticket,
+        status: "in_progress",
+        ticketId: "601",
+        title: "处理中工单",
+      }]));
 
-    const { rerender } = renderPanel();
-    rerender(
-      <MemoryRouter>
-        <ConversationTicketsPanel conversationId="302" />
-      </MemoryRouter>,
-    );
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("tab", { name: "处理中" }));
 
-    expect(await screen.findByRole("link", { name: /新客户工单/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /处理中工单/ })).toBeInTheDocument();
     resolveFirst(response("conversation", [{ ...ticket, title: "旧客户工单" }]));
     await waitFor(() => expect(screen.queryByText("旧客户工单")).not.toBeInTheDocument());
   });

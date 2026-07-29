@@ -18,7 +18,15 @@ export function ticketStatusText(status: unknown) {
   } as Record<string, string>)[String(status)] ?? String(status ?? "-");
 }
 
-export function TicketStatusBadge({ size = "compact", status }: { size?: "compact" | "default"; status: string }) {
+export function TicketStatusBadge({
+  className,
+  size = "compact",
+  status,
+}: {
+  className?: string;
+  size?: "compact" | "default";
+  status: string;
+}) {
   return (
     <Badge
       className={cn(
@@ -28,6 +36,7 @@ export function TicketStatusBadge({ size = "compact", status }: { size?: "compac
         status === "in_progress" && "bg-info/10 text-info",
         status === "done" && "bg-success-muted/55 text-success",
         status === "canceled" && "bg-muted text-muted-foreground",
+        className,
       )}
     >
       {ticketStatusText(status)}

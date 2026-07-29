@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -53,6 +54,8 @@ import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-pr
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
 
+export type ChatAuxiliaryPanel = "history" | "tickets" | null;
+
 type ChatPanelProps = {
   accountName?: string;
   accountAvatarUrl?: string;
@@ -62,7 +65,6 @@ type ChatPanelProps = {
   canConfigureSeatSemiAuto?: boolean;
   canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
-  canCreateTicket?: boolean;
   canSendMessage: boolean;
   canMarkHandoffHandled?: boolean;
   canUseMessageForward?: boolean;
@@ -114,16 +116,14 @@ type ChatPanelProps = {
       scope: "all" | "file" | "media" | "h5" | "mini-program";
     };
     scrollMode?: "end";
-    isOpen: boolean;
   };
-  isHistoryPanelOpen: boolean;
+  activeAuxiliaryPanel?: ChatAuxiliaryPanel;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
-  onCreateTicket?: () => void;
   onCancelAgentHosting?: () => void;
   onEnableAgentHosting?: () => void;
   onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
@@ -147,6 +147,7 @@ type ChatPanelProps = {
   onFileSelect: (files: FileList | File[] | null) => void;
   onBackToConversationList?: () => void;
   onOpenHistory: () => void;
+  onAuxiliaryPanelClose?: () => void;
   onHistoryClose: () => void;
   onHistoryLoadMoreNext: () => void;
   onHistoryLoadMorePrev: () => void;
@@ -175,6 +176,7 @@ type ChatPanelProps = {
     options?: { force?: boolean },
   ) => void;
   onToggleMessageSelection?: (message: ChatMessage) => void;
+  onToggleTickets?: () => void;
   onUnpinConversation?: (conversationId: string) => void | Promise<void>;
   onVoicePlaybackReady?: (
     message: ChatMessage,
@@ -204,7 +206,6 @@ export function ChatPanel({
   canConfigureSeatSemiAuto = false,
   canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
-  canCreateTicket = false,
   canSendMessage,
   canMarkHandoffHandled = false,
   canUseMessageForward = false,
@@ -239,14 +240,13 @@ export function ChatPanel({
   hasMoreHistory,
   historyLoadLabel,
   historyPanel,
-  isHistoryPanelOpen,
+  activeAuxiliaryPanel,
   onCustomerPanelResizeStart,
   onComposerSegmentsChange,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
-  onCreateTicket,
   onCancelAgentHosting,
   onEnableAgentHosting,
   onChangeSeatAgentMode,
@@ -270,6 +270,7 @@ export function ChatPanel({
   onFileSelect,
   onBackToConversationList,
   onOpenHistory,
+  onAuxiliaryPanelClose,
   onHistoryClose,
   onHistoryLoadMoreNext,
   onHistoryLoadMorePrev,
@@ -295,6 +296,7 @@ export function ChatPanel({
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
+  onToggleTickets,
   onUnpinConversation,
   onVoicePlaybackReady,
   retryingMessageIds,
@@ -315,6 +317,7 @@ export function ChatPanel({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
+  const resolvedAuxiliaryPanel = activeAuxiliaryPanel ?? null;
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
@@ -344,8 +347,8 @@ export function ChatPanel({
       scrollMode={historyPanel.scrollMode}
       customer={customer}
       groupMembers={groupMembers}
-      isOpen={historyPanel.isOpen}
-      onClose={onHistoryClose}
+      isOpen={resolvedAuxiliaryPanel === "history"}
+      onClose={onAuxiliaryPanelClose ?? onHistoryClose}
       onLoadMoreNext={onHistoryLoadMoreNext}
       onLoadMorePrev={onHistoryLoadMorePrev}
       onRefresh={onHistoryRefresh}
@@ -354,6 +357,37 @@ export function ChatPanel({
       onSetSenderId={onHistorySetSenderId}
     />
   ) : null;
+  const ticketsPanelNode =
+    ticketPanel && resolvedAuxiliaryPanel === "tickets" ? (
+      <aside
+        aria-label="工单"
+        className="absolute inset-0 z-20 flex w-full min-w-0 flex-col border-l border-divider bg-surface"
+      >
+        <div className="flex items-center justify-between px-4 py-3">
+          <p className="min-w-0 text-sm font-semibold text-foreground">工单</p>
+          <Button
+            aria-label="关闭工单"
+            className="size-8 p-0"
+            onClick={onAuxiliaryPanelClose ?? onHistoryClose}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Cancel01Icon}
+              size={18}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1">{ticketPanel}</div>
+      </aside>
+    ) : null;
+  const auxiliaryPanelNode =
+    resolvedAuxiliaryPanel === "history"
+      ? historyPanelNode
+      : ticketsPanelNode;
   const customerSidePanelNode = activeConversation ? (
     <CustomerSidePanel
       accountName={accountName}
@@ -367,7 +401,6 @@ export function ChatPanel({
       onQuickReplyActiveChange={onQuickReplyActiveChange}
       panelWidth={isMobileLayout ? undefined : customerPanelWidth}
       quickReplyPanel={quickReplyPanel}
-      ticketPanel={ticketPanel}
       showResizeHandle={!isMobileLayout}
       sidebarIframeConversationId={activeConversation.id}
       sidebarIframeSeatId={activeConversation.accountId}
@@ -397,8 +430,8 @@ export function ChatPanel({
       return;
     }
 
-    if (!isDesktopSidebarCollapsed && isHistoryPanelOpen) {
-      onHistoryClose();
+    if (!isDesktopSidebarCollapsed && resolvedAuxiliaryPanel) {
+      (onAuxiliaryPanelClose ?? onHistoryClose)();
     }
     if (!isDesktopSidebarCollapsed) {
       onQuickReplyActiveChange?.(false);
@@ -416,6 +449,13 @@ export function ChatPanel({
     }
     onOpenHistory();
   };
+  const handleToggleTickets = () => {
+    if (resolvedAuxiliaryPanel !== "tickets" && !isMobileLayout) {
+      setIsDesktopSidebarCollapsed(false);
+      writeDesktopSidebarCollapsedPreference(false);
+    }
+    onToggleTickets?.();
+  };
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
@@ -425,8 +465,8 @@ export function ChatPanel({
         isConversationActionDisabled={isConversationActionDisabled}
         isMobileLayout={isMobileLayout}
         isSidebarOpen={isSidebarOpen}
+        isTicketsPanelOpen={resolvedAuxiliaryPanel === "tickets"}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
-        onCreateTicket={canCreateTicket ? onCreateTicket : undefined}
         onMarkConversationRead={
           activeConversation && onMarkConversationRead
             ? () => onMarkConversationRead(activeConversation.id)
@@ -443,6 +483,9 @@ export function ChatPanel({
             : undefined
         }
         onToggleSidebar={hasActiveConversation ? handleToggleSidebar : undefined}
+        onToggleTickets={
+          ticketPanel && onToggleTickets ? handleToggleTickets : undefined
+        }
         onUnpinConversation={
           activeConversation && onUnpinConversation
             ? () => onUnpinConversation(activeConversation.id)
@@ -578,7 +621,7 @@ export function ChatPanel({
                       isEmojiPickerOpen={isEmojiPickerOpen}
                       isMobileLayout={isMobileLayout}
                       isSending={isSendingDraft}
-                      isHistoryPanelOpen={isHistoryPanelOpen}
+                      isHistoryPanelOpen={resolvedAuxiliaryPanel === "history"}
                       accountAvatarUrl={activeAccount?.avatarUrl ?? accountAvatarUrl}
                       accountName={activeAccount?.name ?? accountName}
                       seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
@@ -626,7 +669,7 @@ export function ChatPanel({
                   </div>
                 </div>
               </div>
-              {isMobileLayout ? historyPanelNode : null}
+              {isMobileLayout ? auxiliaryPanelNode : null}
             </div>
 
             {isMobileLayout ? (
@@ -654,7 +697,7 @@ export function ChatPanel({
                 <div
                   className={cn(
                     "flex h-full min-h-0 shrink-0",
-                    historyPanel?.isOpen
+                    resolvedAuxiliaryPanel
                       ? "invisible pointer-events-none"
                       : "visible",
                   )}
@@ -662,7 +705,7 @@ export function ChatPanel({
                 >
                   {customerSidePanelNode}
                 </div>
-                {historyPanelNode}
+                {auxiliaryPanelNode}
               </div>
             )}
           </>

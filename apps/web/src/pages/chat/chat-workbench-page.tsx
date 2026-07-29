@@ -41,7 +41,10 @@ import {
 } from "@chatai/contracts";
 import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import { ChatPanel } from "@/pages/chat/components/chat-panel";
+import {
+  ChatPanel,
+  type ChatAuxiliaryPanel,
+} from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-forward/message-forward-recipient-dialog";
 import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
@@ -303,7 +306,6 @@ function ChatWorkbenchContent({
     historyPanelFiltersByConversationId,
     historyPanelLoadingByConversationId,
     historyPanelScrollModeByConversationId,
-    historyPanelOpenConversationId,
     fullAutoActionError,
     initializeWorkbench,
     isConversationLoading,
@@ -394,7 +396,6 @@ function ChatWorkbenchContent({
         state.historyPanelFiltersByConversationId,
       historyPanelLoadingByConversationId:
         state.historyPanelLoadingByConversationId,
-      historyPanelOpenConversationId: state.historyPanelOpenConversationId,
       historyPanelScrollModeByConversationId:
         state.historyPanelScrollModeByConversationId,
       historyStatusByConversationId: state.historyStatusByConversationId,
@@ -475,6 +476,8 @@ function ChatWorkbenchContent({
   const [ticketCreateConversationId, setTicketCreateConversationId] =
     useState<string | null>(null);
   const [ticketRefreshKey, setTicketRefreshKey] = useState(0);
+  const [activeAuxiliaryPanel, setActiveAuxiliaryPanel] =
+    useState<ChatAuxiliaryPanel>(null);
   const quickReplyInitialValues = useMemo(
     () => getQuickReplyInitialValues(quickReplyFormState),
     [quickReplyFormState],
@@ -707,8 +710,10 @@ function ChatWorkbenchContent({
       setTicketCreateConversationId(null);
     }
   }, [activeConversation?.id, ticketCreateConversationId]);
-  const isHistoryPanelOpen =
-    historyPanelOpenConversationId === activeConversation?.id;
+  useEffect(() => {
+    setActiveAuxiliaryPanel(null);
+    closeHistoryPanel();
+  }, [activeConversation?.id, closeHistoryPanel]);
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
@@ -2198,11 +2203,6 @@ function ChatWorkbenchContent({
       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
       canToggleConversationAIHosting={canToggleConversationAIHosting}
       canCollectMaterialActions={canCollectMaterialActions}
-      canCreateTicket={Boolean(
-        activeConversation?.mode === "single" &&
-          subUser &&
-          subUser.role !== "viewer",
-      )}
       canSendMessage={canSendMessage}
       canMarkHandoffHandled={canMarkHandoffHandled}
       canUseMessageForward={canUseMessageForward}
@@ -2264,11 +2264,6 @@ function ChatWorkbenchContent({
       onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
       onComposerSegmentsChange={handleComposerSegmentsChange}
       onCancelFileUpload={handleCancelFileUpload}
-      onCreateTicket={() => {
-        if (activeConversation?.mode === "single") {
-          setTicketCreateConversationId(activeConversation.id);
-        }
-      }}
       onCancelAgentHosting={() => handleChangeFullAuto(false)}
       onChangeSeatAgentMode={handleChangeSeatAgentMode}
       onChangeFullAuto={handleChangeFullAuto}
@@ -2291,12 +2286,18 @@ function ChatWorkbenchContent({
       onBackToConversationList={handleMobileBackToConversationList}
       onOpenMaterialLibrary={handleOpenMaterialLibrary}
       onOpenHistory={() => {
-        if (isHistoryPanelOpen) {
+        if (activeAuxiliaryPanel === "history") {
+          setActiveAuxiliaryPanel(null);
           closeHistoryPanel();
           return;
         }
 
+        setActiveAuxiliaryPanel("history");
         void openHistoryPanel(activeConversation?.id);
+      }}
+      onAuxiliaryPanelClose={() => {
+        setActiveAuxiliaryPanel(null);
+        closeHistoryPanel();
       }}
       onHistoryClose={() => closeHistoryPanel()}
       onHistoryLoadMoreNext={() => {
@@ -2352,6 +2353,15 @@ function ChatWorkbenchContent({
       onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
+      onToggleTickets={() => {
+        if (activeAuxiliaryPanel === "tickets") {
+          setActiveAuxiliaryPanel(null);
+          return;
+        }
+
+        closeHistoryPanel();
+        setActiveAuxiliaryPanel("tickets");
+      }}
       onRevokeMessage={
         activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
       }
@@ -2368,6 +2378,11 @@ function ChatWorkbenchContent({
           <ConversationTicketsPanel
             conversationId={activeConversation.id}
             key={activeConversation.id}
+            onCreateTicket={
+              subUser && subUser.role !== "viewer"
+                ? () => setTicketCreateConversationId(activeConversation.id)
+                : undefined
+            }
             refreshKey={ticketRefreshKey}
           />
         ) : undefined
@@ -2392,11 +2407,10 @@ function ChatWorkbenchContent({
                 false,
               scrollMode:
                 historyPanelScrollModeByConversationId[activeConversation.id],
-              isOpen: isHistoryPanelOpen,
             }
           : undefined
       }
-      isHistoryPanelOpen={isHistoryPanelOpen}
+      activeAuxiliaryPanel={activeAuxiliaryPanel}
       composerRef={composerRef}
       workbenchBodyRef={workbenchBodyRef}
     />

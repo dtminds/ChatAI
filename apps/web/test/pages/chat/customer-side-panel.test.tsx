@@ -86,29 +86,6 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).getByText("暂未加载快捷话术")).toBeInTheDocument();
   });
 
-  it("shows the ticket tab only for single conversations", async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <CustomerSidePanel
-        {...defaultProps}
-        conversationMode="single"
-        ticketPanel={<div>工单内容</div>}
-      />,
-    );
-
-    await user.click(screen.getByRole("tab", { name: "工单" }));
-    expect(screen.getByText("工单内容")).toBeInTheDocument();
-
-    rerender(
-      <CustomerSidePanel
-        {...defaultProps}
-        conversationMode="group"
-        ticketPanel={<div>工单内容</div>}
-      />,
-    );
-    expect(screen.queryByRole("tab", { name: "工单" })).not.toBeInTheDocument();
-  });
-
   it("keeps the basic info tab for group conversations without custom sidebar items", () => {
     render(
       <CustomerSidePanel

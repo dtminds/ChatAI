@@ -76,7 +76,6 @@ type CustomerSidePanelProps = {
   isResizing: boolean;
   panelWidth?: number;
   quickReplyPanel?: ReactNode;
-  ticketPanel?: ReactNode;
   sidebarItems?: SettingsSidebarItem[];
   showResizeHandle?: boolean;
   onQuickReplyActiveChange?: (isActive: boolean) => void;
@@ -98,7 +97,6 @@ export function CustomerSidePanel({
   isResizing,
   panelWidth,
   quickReplyPanel,
-  ticketPanel,
   sidebarItems = [],
   showResizeHandle = true,
   onQuickReplyActiveChange,
@@ -156,16 +154,6 @@ export function CustomerSidePanel({
       name: "快捷话术",
       value: "quick-reply",
     },
-    ...(!isGroupConversation && ticketPanel
-      ? [
-          {
-            id: "tickets",
-            kind: "tickets" as const,
-            name: "工单",
-            value: "tickets",
-          },
-        ]
-      : []),
     ...activeSidebarItems.map((item) => ({
       id: item.id,
       item,
@@ -410,13 +398,6 @@ export function CustomerSidePanel({
                   暂未加载快捷话术
                 </div>
               )}
-            </TabsContent>
-
-            <TabsContent
-              className="mt-0 min-h-0 flex-1 overflow-hidden"
-              value="tickets"
-            >
-              {ticketPanel}
             </TabsContent>
 
             {activeSidebarItems.map((item) => (

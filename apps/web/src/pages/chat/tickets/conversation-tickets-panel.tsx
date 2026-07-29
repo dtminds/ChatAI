@@ -1,17 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import type {
-  ConversationTicketsQuery,
   ConversationTicketsResponse,
   Ticket,
   TicketStatus,
 } from "@chatai/contracts";
+import {
+  Add01Icon,
+  MoreHorizontalIcon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+} from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import {
   claimTicket,
@@ -19,20 +41,52 @@ import {
   updateTicket,
 } from "@/pages/chat/tickets/api/tickets-service";
 import { refreshTicketCounts } from "@/pages/chat/tickets/ticket-count-store";
+import {
+  TicketOverdueBadge,
+  TicketPriority,
+  TicketStatusBadge,
+  ticketStatusText,
+} from "@/pages/chat/tickets/ticket-display";
 
 const pageSize = 20;
-type TicketConversationScope = NonNullable<ConversationTicketsQuery["scope"]>;
+const emptyStateIllustrationUrl =
+  "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
+const ticketSummaryTagClass =
+  "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-xs font-medium";
+const ticketStatusFilters: TicketStatus[] = [
+  "open",
+  "in_progress",
+  "done",
+  "canceled",
+];
 
 type ConversationTicketsPanelProps = {
   conversationId: string;
+  onCreateTicket?: () => void;
   refreshKey?: number;
 };
 
 export function ConversationTicketsPanel({
   conversationId,
+  onCreateTicket,
   refreshKey = 0,
 }: ConversationTicketsPanelProps) {
-  const [scope, setScope] = useState<TicketConversationScope>("conversation");
+  return (
+    <ConversationTicketsPanelContent
+      conversationId={conversationId}
+      key={`${conversationId}:${refreshKey}`}
+      onCreateTicket={onCreateTicket}
+      refreshKey={refreshKey}
+    />
+  );
+}
+
+function ConversationTicketsPanelContent({
+  conversationId,
+  onCreateTicket,
+  refreshKey = 0,
+}: ConversationTicketsPanelProps) {
+  const [status, setStatus] = useState<TicketStatus>("open");
   const [page, setPage] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
   const [result, setResult] = useState<ConversationTicketsResponse>();
@@ -43,12 +97,12 @@ export function ConversationTicketsPanel({
   const [pendingTicketId, setPendingTicketId] = useState<string>();
   const requestScopeRef = useRef("");
   const mutationScopeRef = useRef("");
-  const requestScope = `${conversationId}:${scope}:${page}:${refreshKey}:${reloadKey}`;
+  const requestScope = `${conversationId}:${status}:${page}:${refreshKey}:${reloadKey}`;
   requestScopeRef.current = requestScope;
-  mutationScopeRef.current = `${conversationId}:${scope}`;
+  mutationScopeRef.current = `${conversationId}:${status}`;
 
   useEffect(() => {
-    setScope("conversation");
+    setStatus("open");
     setPage(1);
     setResult(undefined);
     setError(undefined);
@@ -66,7 +120,12 @@ export function ConversationTicketsPanel({
     }
     setError(undefined);
 
-    void getConversationTickets(conversationId, { page, pageSize, scope })
+    void getConversationTickets(conversationId, {
+      page,
+      pageSize,
+      scope: "conversation",
+      status,
+    })
       .then((next) => {
         if (!active || requestScopeRef.current !== requestScope) {
           return;
@@ -100,7 +159,7 @@ export function ConversationTicketsPanel({
     return () => {
       active = false;
     };
-  }, [conversationId, page, refreshKey, reloadKey, requestScope, scope]);
+  }, [conversationId, page, refreshKey, reloadKey, requestScope, status]);
 
   const runAction = async (ticket: Ticket, action: "claim" | TicketStatus) => {
     const mutationScope = mutationScopeRef.current;
@@ -140,31 +199,57 @@ export function ConversationTicketsPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-divider px-4 py-3">
-        <Tabs
-          onValueChange={(value) => {
-            setScope(value as TicketConversationScope);
-            setPage(1);
-            setResult(undefined);
-            setActionError(undefined);
-          }}
-          value={scope}
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="conversation">
-              当前聊天
-              {scope === "conversation" && result ? (
-                <span className="text-xs">{result.activeCount}</span>
-              ) : null}
-            </TabsTrigger>
-            <TabsTrigger value="customer">
-              该客户
-              {scope === "customer" && result ? (
-                <span className="text-xs">{result.activeCount}</span>
-              ) : null}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="border-b border-divider px-3 pb-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <Tabs
+            className="min-w-0"
+            onValueChange={(value) => {
+              setStatus(value as TicketStatus);
+              setPage(1);
+              setResult(undefined);
+              setActionError(undefined);
+            }}
+            value={status}
+          >
+            <TabsList className="grid h-9 min-w-0 grid-cols-4 rounded-[10px] p-1">
+              {ticketStatusFilters.map((itemStatus) => (
+                <TabsTrigger
+                  className="h-7 min-w-0 rounded-[8px] px-1 py-1 text-[13px]"
+                  key={itemStatus}
+                  value={itemStatus}
+                >
+                  {ticketStatusText(itemStatus)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          {onCreateTicket ? (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="创建工单"
+                    className="size-9 shrink-0 rounded-[10px] p-0"
+                    onClick={onCreateTicket}
+                    size="icon"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Add01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={6}>
+                  创建工单
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+        </div>
       </div>
 
       {actionError ? (
@@ -188,12 +273,32 @@ export function ConversationTicketsPanel({
           </Button>
         </div>
       ) : !result?.items.length ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-muted-foreground">
-          暂无数据
-        </div>
+        <Empty
+          aria-label="暂无数据"
+          className="min-h-0 flex-1 gap-3 border-0 px-6 py-8"
+          role="status"
+        >
+          <EmptyMedia className="mb-0">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="h-[100px] w-[135px] object-contain opacity-40"
+              src={emptyStateIllustrationUrl}
+            />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyDescription>暂无数据</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="divide-y divide-divider">
+        <ScrollArea
+          className="min-h-0 min-w-0 flex-1"
+          viewportProps={{
+            className:
+              "max-w-full overflow-x-hidden [&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full",
+          }}
+        >
+          <div className="w-full min-w-0 max-w-full divide-y divide-divider overflow-hidden">
             {result.items.map((ticket) => (
               <TicketRow
                 key={ticket.ticketId}
@@ -231,73 +336,121 @@ function TicketRow({
   ticket: Ticket;
 }) {
   return (
-    <article className="space-y-2.5 px-4 py-3.5">
-      <div className="flex items-start justify-between gap-3">
+    <article className="w-full min-w-0 max-w-full space-y-2 overflow-hidden px-4 py-4">
+      <div className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden">
         <Link
-          className="min-w-0 font-medium leading-5 text-foreground hover:underline"
+          className="block min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-foreground hover:underline"
           to={`/chat/tickets/${ticket.ticketId}`}
         >
-          <span className="mr-1 text-xs text-muted-foreground">#{ticket.ticketId}</span>
           {ticket.title}
         </Link>
-        <Badge className="shrink-0" variant="outline">
-          {statusText(ticket.status)}
-        </Badge>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>{priorityText(ticket.priority)}</span>
-        <span>{ticket.assignee?.displayName ?? "未分配"}</span>
-        {ticket.dueAt ? (
-          <span className={ticket.overdue ? "text-destructive" : undefined}>
-            {formatInsightTime(ticket.dueAt)}
-          </span>
+        {ticket.canClaim || ticket.canEdit ? (
+          <TicketActionsMenu
+            onAction={onAction}
+            pending={pending}
+            ticket={ticket}
+          />
         ) : null}
       </div>
-      {ticket.canClaim || ticket.canEdit ? (
-        <div className="flex flex-wrap gap-2">
-          {ticket.canClaim ? (
-            <Button disabled={pending} onClick={() => onAction("claim")} size="sm" variant="outline">
-              分配给我
-            </Button>
-          ) : null}
-          {ticket.canEdit && ticket.status === "open" && ticket.assignee ? (
-            <Button disabled={pending} onClick={() => onAction("in_progress")} size="sm" variant="outline">
-              开始处理
-            </Button>
-          ) : null}
-          {ticket.canEdit && (ticket.status === "open" || ticket.status === "in_progress") ? (
-            <>
-              <Button disabled={pending} onClick={() => onAction("done")} size="sm">
-                标记为已解决
-              </Button>
-              <Button disabled={pending} onClick={() => onAction("canceled")} size="sm" variant="ghost">
-                关闭工单
-              </Button>
-            </>
-          ) : null}
-          {ticket.canEdit && (ticket.status === "done" || ticket.status === "canceled") ? (
-            <Button disabled={pending} onClick={() => onAction("open")} size="sm" variant="outline">
-              重新打开
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+        <TicketStatusBadge
+          className="h-7 shrink-0 rounded-[6px] px-2 py-0 text-xs"
+          status={ticket.status}
+        />
+        <span
+          className={`${ticketSummaryTagClass} shrink-0 bg-surface-muted`}
+        >
+          <TicketPriority priority={ticket.priority} />
+        </span>
+        {ticket.overdue ? (
+          <TicketOverdueBadge className="h-7 shrink-0 rounded-[6px] px-2 py-0 text-xs" />
+        ) : null}
+        <span
+          className={`${ticketSummaryTagClass} min-w-0 max-w-44 shrink overflow-hidden bg-surface-muted text-muted-foreground`}
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={UserIcon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          <span className="truncate">
+            负责人：{ticket.assignee?.displayName ?? "未分配"}
+          </span>
+        </span>
+      </div>
+
+      <p className="text-xs text-muted-foreground/75 pt-2.5">
+        {ticket.createdBy?.displayName ??
+          (ticket.sourceType === "ai" ? "AI" : "未知用户")} 创建，更新于{" "}
+        {formatInsightTime(ticket.updatedAt)}
+      </p>
     </article>
   );
 }
 
-function statusText(status: TicketStatus) {
-  return {
-    canceled: "已取消",
-    done: "已完成",
-    in_progress: "处理中",
-    open: "待处理",
-  }[status];
+function TicketActionsMenu({
+  onAction,
+  pending,
+  ticket,
+}: {
+  onAction: (action: "claim" | TicketStatus) => void;
+  pending: boolean;
+  ticket: Ticket;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="更多工单操作"
+          className="size-8 shrink-0 p-0"
+          disabled={pending}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={MoreHorizontalIcon}
+            size={17}
+            strokeWidth={1.8}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {ticket.canClaim ? (
+          <DropdownMenuItem onSelect={() => onAction("claim")}>
+            分配给我
+          </DropdownMenuItem>
+        ) : null}
+        {ticket.canEdit && ticket.status === "open" && ticket.assignee ? (
+          <DropdownMenuItem onSelect={() => onAction("in_progress")}>
+            开始处理
+          </DropdownMenuItem>
+        ) : null}
+        {ticket.canEdit &&
+        (ticket.status === "open" || ticket.status === "in_progress") ? (
+          <>
+            <DropdownMenuItem onSelect={() => onAction("done")}>
+              标记为已解决
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAction("canceled")}>
+              关闭工单
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {ticket.canEdit &&
+        (ticket.status === "done" || ticket.status === "canceled") ? (
+          <DropdownMenuItem onSelect={() => onAction("open")}>
+            重新打开
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
-function priorityText(priority: Ticket["priority"]) {
-  return { high: "高优先级", low: "低优先级", medium: "中优先级" }[priority];
-}
 
 function errorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error && cause.message ? cause.message : fallback;

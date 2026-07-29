@@ -31,33 +31,33 @@ const conversation: Conversation = {
 };
 
 describe("ChatHeader", () => {
-  it("shows ticket creation before conversation actions for writable single chats", async () => {
+  it("shows the ticket panel action before conversation actions for single chats", async () => {
     const user = userEvent.setup();
-    const onCreateTicket = vi.fn();
+    const onToggleTickets = vi.fn();
 
     const { rerender } = render(
       <ChatHeader
         activeConversation={conversation}
-        onCreateTicket={onCreateTicket}
         onPinConversation={vi.fn()}
+        onToggleTickets={onToggleTickets}
       />,
     );
 
-    const createButton = screen.getByRole("button", { name: "创建工单" });
+    const ticketButton = screen.getByRole("button", { name: "工单" });
     const moreButton = screen.getByRole("button", { name: "更多会话操作" });
-    expect(createButton.compareDocumentPosition(moreButton)).toBe(
+    expect(ticketButton.compareDocumentPosition(moreButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    await user.click(createButton);
-    expect(onCreateTicket).toHaveBeenCalledOnce();
+    await user.click(ticketButton);
+    expect(onToggleTickets).toHaveBeenCalledOnce();
 
     rerender(
       <ChatHeader
         activeConversation={{ ...conversation, mode: "group" }}
-        onCreateTicket={onCreateTicket}
+        onToggleTickets={onToggleTickets}
       />,
     );
-    expect(screen.queryByRole("button", { name: "创建工单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "工单" })).not.toBeInTheDocument();
   });
   beforeEach(() => {
     document.documentElement.classList.remove("dark");

@@ -80,6 +80,81 @@ describe("TicketsService", () => {
     }));
   });
 
+  it("bounds reception and all views to a 30-day default and 60-day maximum", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-29T10:00:00+08:00"));
+    try {
+      const repository = createRepository();
+      const service = new TicketsService(repository);
+      const expectedDefaultRange = {
+        createdFrom: Date.parse("2026-06-30T00:00:00.000+08:00"),
+        createdTo: Date.parse("2026-07-29T23:59:59.999+08:00"),
+      };
+
+      await service.listTickets(createActor("operator"), { view: "reception" });
+      expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+        ...expectedDefaultRange,
+        view: "reception",
+      }));
+
+      await service.listTickets(createActor("admin"), { view: "all" });
+      expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+        ...expectedDefaultRange,
+        view: "all",
+      }));
+
+      await service.listTickets(createActor("operator"), { view: "assigned_to_me" });
+      expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+        createdFrom: undefined,
+        createdTo: undefined,
+        view: "assigned_to_me",
+      }));
+
+      const createdFrom = Date.parse("2026-06-01T00:00:00.000+08:00");
+      const createdTo = Date.parse("2026-07-30T23:59:59.999+08:00");
+      await service.listTickets(createActor("operator"), {
+        createdFrom,
+        createdTo,
+        view: "reception",
+      });
+      expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+        createdFrom,
+        createdTo,
+      }));
+
+      await expect(service.listTickets(createActor("operator"), {
+        createdFrom,
+        view: "reception",
+      })).rejects.toMatchObject({ code: "INVALID_TICKET_DATE_RANGE" });
+      await expect(service.listTickets(createActor("operator"), {
+        createdFrom,
+        createdTo: Date.parse("2026-07-31T00:00:00.000+08:00"),
+        view: "reception",
+      })).rejects.toMatchObject({ code: "INVALID_TICKET_DATE_RANGE" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("normalizes explicit ticket ID and title search filters", async () => {
+    const repository = createRepository();
+    const service = new TicketsService(repository);
+    const actor = createActor("operator");
+
+    await service.listTickets(actor, {
+      ticketId: "501",
+      titleSearch: " 退款 ",
+    });
+
+    expect(repository.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+      ticketId: 501,
+      titleSearch: "退款",
+    }));
+
+    await expect(service.listTickets(actor, { ticketId: "0" }))
+      .rejects.toMatchObject({ code: "INVALID_TICKET_FILTER", statusCode: 400 });
+  });
+
   it("counts only active tickets assigned to the current operator for navigation", async () => {
     const repository = createRepository();
     repository.countAssignedActiveTickets.mockResolvedValueOnce(3);
@@ -96,7 +171,7 @@ describe("TicketsService", () => {
     expect(repository.countActiveConversationTickets).not.toHaveBeenCalled();
   });
 
-  it("derives edit and claim permissions from actor relation and viewer role", async () => {
+  it("returns list edit permissions without exposing detail-only claim permissions", async () => {
     const repository = createRepository({
       items: [
         baseRecord,
@@ -116,15 +191,18 @@ describe("TicketsService", () => {
     const operatorPage = await service.listTickets(createActor("operator"), {
       view: "assigned_to_me",
     });
-    expect(operatorPage.items[0]).toMatchObject({ canClaim: false, canDelete: true, canEdit: true });
-    expect(operatorPage.items[1]).toMatchObject({ canClaim: true, canDelete: false, canEdit: false });
+    expect(operatorPage.items[0]).toMatchObject({ canDelete: true, canEdit: true });
+    expect(operatorPage.items[1]).toMatchObject({ canDelete: false, canEdit: false });
+    expect(operatorPage.items[0]).not.toHaveProperty("canClaim");
+    expect(operatorPage.items[1]).not.toHaveProperty("canClaim");
 
     const viewerPage = await service.listTickets(createActor("viewer"), {
       view: "assigned_to_me",
     });
     expect(viewerPage.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canClaim: false, canDelete: false, canEdit: false }),
+      expect.objectContaining({ canDelete: false, canEdit: false }),
     ]));
+    expect(viewerPage.items[0]).not.toHaveProperty("canClaim");
   });
 
   it("allows only the manual ticket creator to delete any non-deleted status", async () => {

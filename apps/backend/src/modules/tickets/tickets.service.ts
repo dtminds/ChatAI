@@ -21,9 +21,11 @@ import type {
   TicketCreateResponse,
   TicketDeleteResponse,
   TicketDetailResponse,
+  TicketListItem,
   TicketListQuery,
   TicketListResponse,
   TicketStatus,
+  TicketView,
   TicketUpdateRequest,
   TicketUpdateResponse,
   WorkbenchMessageDto,
@@ -301,7 +303,7 @@ export class TicketsService {
     }
 
     const page = await this.repository.listTickets({
-      ...normalizeListFilters(query),
+      ...normalizeListFilters(query, view),
       globalAccess,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -988,11 +990,14 @@ export function canDeleteTicket(
 function mapTicketPage(page: TicketRecordPage, actor: TicketsActorScope): TicketListResponse {
   return {
     ...page,
-    items: page.items.map((record) => mapTicket(record, actor)),
+    items: page.items.map((record) => mapTicketListItem(record, actor)),
   };
 }
 
-export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticket {
+function mapTicketListItem(
+  record: TicketRecord,
+  actor: TicketsActorScope,
+): TicketListItem {
   const status = normalizeTicketStatus(record.status);
   return {
     anchorMessageId: record.anchorMessageId,
@@ -1002,9 +1007,6 @@ export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticke
           displayName: record.assigneeDisplayName ?? "",
           subUserId: record.assigneeSubUserId,
         },
-    canClaim: actor.role !== "viewer"
-      && record.assigneeSubUserId == null
-      && record.hasAccountAccess,
     canDelete: canDeleteTicket(actor, record),
     canEdit: canModifyTicket(actor, record),
     canceledAt: record.canceledAt,
@@ -1036,6 +1038,15 @@ export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticke
   };
 }
 
+export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticket {
+  return {
+    ...mapTicketListItem(record, actor),
+    canClaim: actor.role !== "viewer"
+      && record.assigneeSubUserId == null
+      && record.hasAccountAccess,
+  };
+}
+
 function normalizeTicketStatus(status: string): TicketStatus {
   if (status === "in_progress" || status === "done" || status === "canceled") {
     return status;
@@ -1048,17 +1059,71 @@ function normalizeTicketStatus(status: string): TicketStatus {
   return "open";
 }
 
-function normalizeListFilters(query: TicketListQuery) {
+const millisecondsPerDay = 24 * 60 * 60 * 1000;
+const shanghaiUtcOffsetMs = 8 * 60 * 60 * 1000;
+const boundedTicketListDefaultDays = 30;
+const boundedTicketListMaximumDays = 60;
+
+function normalizeListFilters(query: TicketListQuery, view: TicketView) {
+  const createdRange = normalizeTicketListCreatedRange(query, view);
+
   return {
     assigneeSubUserId: parseOptionalFilterId(query.assigneeSubUserId, "负责人"),
-    createdFrom: query.createdFrom,
-    createdTo: query.createdTo,
+    createdFrom: createdRange.createdFrom,
+    createdTo: createdRange.createdTo,
     dueScope: query.dueScope,
     ownerAccountId: parseOptionalFilterId(query.ownerAccountId, "所属账号"),
     priority: query.priority,
-    search: query.search,
     sourceType: query.sourceType,
     status: query.status,
+    ticketId: parseOptionalFilterId(query.ticketId, "工单 ID"),
+    titleSearch: query.titleSearch?.trim() || undefined,
+  };
+}
+
+function normalizeTicketListCreatedRange(
+  query: Pick<TicketListQuery, "createdFrom" | "createdTo">,
+  view: TicketView,
+) {
+  if (view !== "reception" && view !== "all") {
+    return {
+      createdFrom: query.createdFrom,
+      createdTo: query.createdTo,
+    };
+  }
+
+  if (query.createdFrom == null && query.createdTo == null) {
+    return getDefaultTicketListCreatedRange();
+  }
+
+  if (
+    query.createdFrom == null
+    || query.createdTo == null
+    || !Number.isSafeInteger(query.createdFrom)
+    || !Number.isSafeInteger(query.createdTo)
+    || query.createdTo < query.createdFrom
+    || query.createdTo - query.createdFrom >= boundedTicketListMaximumDays * millisecondsPerDay
+  ) {
+    throw new BadRequestError(
+      "INVALID_TICKET_DATE_RANGE",
+      "创建时间范围应完整且不超过 60 天",
+    );
+  }
+
+  return {
+    createdFrom: query.createdFrom,
+    createdTo: query.createdTo,
+  };
+}
+
+function getDefaultTicketListCreatedRange(now = Date.now()) {
+  const shanghaiDayStart = Math.floor(
+    (now + shanghaiUtcOffsetMs) / millisecondsPerDay,
+  ) * millisecondsPerDay - shanghaiUtcOffsetMs;
+
+  return {
+    createdFrom: shanghaiDayStart - (boundedTicketListDefaultDays - 1) * millisecondsPerDay,
+    createdTo: shanghaiDayStart + millisecondsPerDay - 1,
   };
 }
 

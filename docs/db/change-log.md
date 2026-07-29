@@ -6,10 +6,18 @@ Manual database changes for the backend should be recorded here.
 
 - Removed the unused `due_hint` free-text field from tickets. AI ticket generation no longer requests or stores an unstructured time hint; explicit deadlines continue to use `due_at`.
 - Deploy the application version that no longer reads or writes `due_hint` before running this migration.
+- Added a tenant-and-creation-time index for the bounded 30-day default queries used by the reception and global ticket views. Custom ranges are limited to 60 days by the application.
 
 ```sql
 ALTER TABLE xy_wap_embed_session_action_item
   DROP COLUMN due_hint;
+```
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  ADD KEY idx_ticket_uid_created_id (uid, create_time, id);
+
+ANALYZE TABLE xy_wap_embed_session_action_item;
 ```
 
 ## 2026-07-27

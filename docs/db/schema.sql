@@ -374,6 +374,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   KEY idx_action_uid_session_status (uid, session_id, status),
   KEY idx_ticket_uid_assignee_status_updated (uid, assignee_sub_user_id, status, update_time, id),
   KEY idx_ticket_uid_conversation_status_updated (uid, conversation_id, status, update_time, id),
+  KEY idx_ticket_uid_created_id (uid, create_time, id),
   KEY idx_ticket_uid_status_due_priority_updated (uid, status, due_at, priority, update_time, id),
   KEY idx_ticket_uid_creator_updated (uid, created_by_sub_user_id, update_time, id),
   KEY idx_ticket_uid_source_status_updated (uid, source_type, status, update_time, id)

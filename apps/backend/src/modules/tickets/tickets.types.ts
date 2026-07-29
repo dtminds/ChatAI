@@ -66,7 +66,12 @@ export type TicketRecordPage = {
   totalPages: number;
 };
 
-export type TicketListRepositoryInput = Omit<TicketListQuery, "assigneeSubUserId" | "ownerAccountId" | "view"> & {
+export type TicketListRepositoryInput = Omit<TicketListQuery,
+  | "assigneeSubUserId"
+  | "ownerAccountId"
+  | "ticketId"
+  | "view"
+> & {
   assigneeSubUserId?: number;
   conversationIds?: number[];
   globalAccess: boolean;
@@ -75,6 +80,7 @@ export type TicketListRepositoryInput = Omit<TicketListQuery, "assigneeSubUserId
   pageSize: number;
   subUserId: number;
   statuses?: TicketStatus[];
+  ticketId?: number;
   ticketIds?: number[];
   uid: number;
   view: TicketRepositoryView;

@@ -18,6 +18,7 @@ import {
   TicketDeleteResponseSchema,
   TicketDetailResponseSchema,
   TicketListQuerySchema,
+  TicketListItemSchema,
   TicketListResponseSchema,
   TicketSchema,
   TicketUpdateRequestSchema,
@@ -73,6 +74,10 @@ const activity = {
   ticketId: "5001",
 };
 
+const listTicket = Object.fromEntries(
+  Object.entries(ticket).filter(([key]) => key !== "canClaim"),
+);
+
 describe("ticket DTOs", () => {
   it("accepts all ticket enums and rejects unsupported values", () => {
     for (const status of ["open", "in_progress", "done", "canceled"]) {
@@ -91,6 +96,9 @@ describe("ticket DTOs", () => {
     expect(Value.Check(TicketSchema, { ...ticket, status: "dismissed" })).toBe(false);
     expect(Value.Check(TicketSchema, { ...ticket, status: "deleted" })).toBe(false);
     expect(Value.Check(TicketDeleteResponseSchema, { deleted: true })).toBe(true);
+    expect(Value.Check(TicketListQuerySchema, { ticketId: "5001" })).toBe(true);
+    expect(Value.Check(TicketListQuerySchema, { titleSearch: "退款" })).toBe(true);
+    expect(Value.Check(TicketListQuerySchema, { search: "退款" })).toBe(false);
     expect(Value.Check(TicketListQuerySchema, { view: "unassigned" })).toBe(false);
     expect(Value.Check(TicketListQuerySchema, { view: "team" })).toBe(false);
   });
@@ -171,13 +179,22 @@ describe("ticket DTOs", () => {
   });
 
   it("validates list detail context counts and conversation response shapes", () => {
+    expect(Value.Check(TicketListItemSchema, listTicket)).toBe(true);
+    expect(Value.Check(TicketListItemSchema, ticket)).toBe(false);
+    expect(Value.Check(TicketListResponseSchema, {
+      items: [listTicket],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    })).toBe(true);
     expect(Value.Check(TicketListResponseSchema, {
       items: [ticket],
       page: 1,
       pageSize: 20,
       total: 1,
       totalPages: 1,
-    })).toBe(true);
+    })).toBe(false);
     expect(Value.Check(TicketDetailResponseSchema, {
       ticket,
     })).toBe(true);
@@ -236,7 +253,7 @@ describe("ticket DTOs", () => {
       scope: "customer",
     })).toBe(false);
     expect(Value.Check(ConversationTicketsResponseSchema, {
-      items: [ticket],
+      items: [listTicket],
       page: 1,
       pageSize: 20,
       total: 1,

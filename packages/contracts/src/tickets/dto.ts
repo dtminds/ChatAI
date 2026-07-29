@@ -100,6 +100,8 @@ export const TicketSchema = Type.Object({
   updatedAt: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
+export const TicketListItemSchema = Type.Omit(TicketSchema, ["canClaim"]);
+
 export const TicketListQuerySchema = Type.Object({
   assigneeSubUserId: Type.Optional(TicketIdSchema),
   createdFrom: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -109,14 +111,15 @@ export const TicketListQuerySchema = Type.Object({
   page: Type.Optional(Type.Integer({ minimum: 1 })),
   pageSize: Type.Optional(Type.Integer({ maximum: 100, minimum: 1 })),
   priority: Type.Optional(TicketPrioritySchema),
-  search: Type.Optional(Type.String({ maxLength: 255 })),
   sourceType: Type.Optional(TicketSourceTypeSchema),
   status: Type.Optional(TicketStatusSchema),
+  ticketId: Type.Optional(TicketIdSchema),
+  titleSearch: Type.Optional(Type.String({ maxLength: 255 })),
   view: Type.Optional(TicketViewSchema),
 }, { additionalProperties: false });
 
 export const TicketListResponseSchema = Type.Object({
-  items: Type.Array(TicketSchema),
+  items: Type.Array(TicketListItemSchema),
   page: Type.Integer({ minimum: 1 }),
   pageSize: Type.Integer({ minimum: 1 }),
   total: Type.Integer({ minimum: 0 }),
@@ -287,7 +290,7 @@ export const ConversationTicketsQuerySchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ConversationTicketsResponseSchema = Type.Object({
-  items: Type.Array(TicketSchema),
+  items: Type.Array(TicketListItemSchema),
   page: Type.Integer({ minimum: 1 }),
   pageSize: Type.Integer({ minimum: 1 }),
   total: Type.Integer({ minimum: 0 }),
@@ -305,6 +308,7 @@ export type TicketView = Static<typeof TicketViewSchema>;
 export type ConversationTicketFilter = Static<typeof ConversationTicketFilterSchema>;
 export type TicketUser = Static<typeof TicketUserSchema>;
 export type Ticket = Static<typeof TicketSchema>;
+export type TicketListItem = Static<typeof TicketListItemSchema>;
 export type TicketListQuery = Static<typeof TicketListQuerySchema>;
 export type TicketListResponse = Static<typeof TicketListResponseSchema>;
 export type TicketCountsResponse = Static<typeof TicketCountsResponseSchema>;

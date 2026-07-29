@@ -2,11 +2,10 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Ticket } from "@chatai/contracts";
+import type { Ticket, TicketListItem } from "@chatai/contracts";
 import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
 
 const api = vi.hoisted(() => ({
-  claimTicket: vi.fn(),
   getConversationTickets: vi.fn(),
   updateTicket: vi.fn(),
 }));
@@ -62,7 +61,10 @@ const ticket: Ticket = {
   updatedAt: 2,
 };
 
-function response(items: Ticket[] = [ticket]) {
+const listTicket: TicketListItem = { ...ticket };
+delete (listTicket as Partial<Ticket>).canClaim;
+
+function response(items: TicketListItem[] = [listTicket]) {
   return {
     items,
     page: 1,
@@ -75,7 +77,6 @@ function response(items: Ticket[] = [ticket]) {
 beforeEach(() => {
   toast.error.mockReset();
   api.getConversationTickets.mockReset().mockResolvedValue(response());
-  api.claimTicket.mockReset().mockResolvedValue({ ticket });
   api.updateTicket.mockReset().mockResolvedValue({ ticket });
   ticketCounts.refreshTicketCounts.mockReset().mockResolvedValue(undefined);
 });
@@ -94,16 +95,16 @@ describe("ConversationTicketsPanel", () => {
     const onCreateTicket = vi.fn();
     api.getConversationTickets
       .mockResolvedValueOnce(response([
-        ticket,
+        listTicket,
         {
-          ...ticket,
+          ...listTicket,
           status: "in_progress",
           ticketId: "502",
           title: "处理中工单",
         },
       ]))
       .mockResolvedValueOnce(response([{
-        ...ticket,
+        ...listTicket,
         status: "done",
         ticketId: "504",
         title: "已完成工单",
@@ -130,7 +131,7 @@ describe("ConversationTicketsPanel", () => {
     });
 
     api.getConversationTickets.mockResolvedValueOnce(response([{
-      ...ticket,
+      ...listTicket,
       ticketId: "503",
       title: "新建待处理工单",
     }]));
@@ -175,20 +176,19 @@ describe("ConversationTicketsPanel", () => {
     expect(screen.getByRole("button", { name: /查看工单 跟进退款/ })).toBeInTheDocument();
   });
 
-  it("claims unassigned tickets and updates status with the expected state", async () => {
+  it("does not offer list claiming and updates status with the expected state", async () => {
     const user = userEvent.setup();
     api.getConversationTickets.mockResolvedValue(
-      response([{ ...ticket, assignee: null, canClaim: true, canEdit: false }]),
+      response([{ ...listTicket, assignee: null, canEdit: true }]),
     );
 
     const { rerender } = renderPanel();
     await user.click(
       await screen.findByRole("button", { name: "更多工单操作" }),
     );
-    await user.click(screen.getByRole("menuitem", { name: "分配给我" }));
-    await waitFor(() => expect(api.claimTicket).toHaveBeenCalledWith("501"));
+    expect(screen.queryByRole("menuitem", { name: "分配给我" })).not.toBeInTheDocument();
 
-    api.getConversationTickets.mockResolvedValue(response());
+    api.getConversationTickets.mockResolvedValue(response([listTicket]));
     rerender(
       <MemoryRouter>
         <ConversationTicketsPanel conversationId="301" refreshKey={1} />
@@ -206,7 +206,7 @@ describe("ConversationTicketsPanel", () => {
         status: "done",
       }),
     );
-    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(2);
+    expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledOnce();
   });
 
   it("reloads the ticket list after a state conflict", async () => {
@@ -216,7 +216,7 @@ describe("ConversationTicketsPanel", () => {
     api.getConversationTickets
       .mockReset()
       .mockResolvedValueOnce(response())
-      .mockResolvedValueOnce(response([{ ...ticket, status: "done" }]));
+      .mockResolvedValueOnce(response([{ ...listTicket, status: "done" }]));
     api.updateTicket.mockRejectedValueOnce(conflict);
     const user = userEvent.setup();
     renderPanel();
@@ -248,7 +248,7 @@ describe("ConversationTicketsPanel", () => {
         () => new Promise((resolve) => { resolveFirst = resolve; }),
       )
       .mockResolvedValueOnce(response([{
-        ...ticket,
+        ...listTicket,
         status: "done",
         ticketId: "601",
         title: "已完成工单",
@@ -259,7 +259,7 @@ describe("ConversationTicketsPanel", () => {
     await user.click(screen.getByRole("tab", { name: "已完成" }));
 
     expect(await screen.findByRole("button", { name: /已完成工单/ })).toBeInTheDocument();
-    resolveFirst(response([{ ...ticket, title: "旧客户工单" }]));
+    resolveFirst(response([{ ...listTicket, title: "旧客户工单" }]));
     await waitFor(() => expect(screen.queryByText("旧客户工单")).not.toBeInTheDocument());
   });
 });

@@ -321,7 +321,7 @@ function buildSummarySystemPrompt(includeActionItems: boolean) {
     "summary.text 必须是 1-3 句纯会话摘要，只概括客户诉求、客服回应和当前状态；不要输出下一步建议、待办、意图标签或未解决判定理由。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     ...(includeActionItems
-      ? ["actionItems 只输出明确需要人工后续处理的事项；未解决或部分解决不等于一定要生成待办；如果与 existingActionItems 语义重复，不要输出。"]
+      ? ["actionItems 只输出明确需要人工后续处理的事项，最多 10 条；未解决或部分解决不等于一定要生成待办；如果与 existingActionItems 语义重复，不要输出。"]
       : ["不要在 summary.text 中输出下一步建议或后续处理事项。"]),
     "判断类结果的 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
     "</analysis_rules>",

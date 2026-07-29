@@ -34,7 +34,9 @@ import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js
 import { InsightsRepository } from "./insights.repository.js";
 import { TicketsRepository } from "../tickets/tickets.repository.js";
 
-type AiTicketWriter = Pick<TicketsRepository, "createAiTicket">;
+type AiTicketWriter = Pick<TicketsRepository, "createAiTickets">;
+
+const MAX_AI_TICKETS_PER_ANALYSIS = 10;
 
 type InsertResult = {
   id?: bigint | number | string | null;
@@ -2611,6 +2613,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     const aiTicketItems = input.job.mode === "final" && input.job.analysisScope === "all"
       ? output.actionItems
       : [];
+    const newAiTicketItems: typeof aiTicketItems = [];
 
     for (const item of aiTicketItems) {
       const normalizedTitle = normalizeActionTitle(item.title);
@@ -2619,16 +2622,33 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         continue;
       }
 
-      const id = await this.ticketWriter.createAiTicket({
-        conversationId,
-        priority: item.priority,
-        sessionId,
-        snapshotId,
-        title: item.title,
-        uid: input.job.uid,
-      });
       recentActionItemTitles.add(normalizedTitle);
-      await this.collectEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
+      newAiTicketItems.push(item);
+
+      if (newAiTicketItems.length === MAX_AI_TICKETS_PER_ANALYSIS) {
+        break;
+      }
+    }
+
+    const aiTicketIds = await this.ticketWriter.createAiTickets({
+      conversationId,
+      items: newAiTicketItems.map((item) => ({
+        priority: item.priority,
+        title: item.title,
+      })),
+      sessionId,
+      snapshotId,
+      uid: input.job.uid,
+    });
+
+    for (const [index, item] of newAiTicketItems.entries()) {
+      const ticketId = aiTicketIds[index];
+
+      if (ticketId == null) {
+        throw new Error("AI_TICKET_INSERT_ID_MISSING");
+      }
+
+      await this.collectEvidenceRows(input, snapshotId, "action_item", ticketId, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
     for (const item of output.faqCandidates) {

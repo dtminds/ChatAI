@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { TicketListQuery, TicketListResponse, TicketView } from "@chatai/contracts";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  ArrowDown01Icon,
   FilterIcon,
   Male02Icon,
   Notification01Icon,
@@ -33,7 +34,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -44,7 +50,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { InsightDateRangeFilter } from "@/pages/chat/insights/insight-date-range-filter";
-import { toBoundaryDate, type InsightDateRange } from "@/pages/chat/insights/insights-date-range";
+import {
+  getDefaultDateRange,
+  toBoundaryDate,
+  type InsightDateRange,
+} from "@/pages/chat/insights/insights-date-range";
 import { getTickets } from "./api/tickets-service";
 import {
   setTicketReminderDisplayMode,
@@ -59,15 +69,20 @@ const views = new Set<TicketView>(["assigned_to_me_active", "assigned_to_me", "r
 const viewTabs: Array<{ label: string; value: TicketView }> = [
   { label: "我的待办", value: "assigned_to_me_active" },
   { label: "分配给我", value: "assigned_to_me" },
-  { label: "我接待的", value: "reception" },
   { label: "我创建的", value: "created_by_me" },
+  { label: "我接待的", value: "reception" },
 ];
+const boundedDateViews = new Set<TicketView>(["reception", "all"]);
+const ticketMaximumDateRangeDays = 60;
+const millisecondsPerDay = 24 * 60 * 60 * 1000;
 const allStatusOptions: Array<[string, string]> = [
   ["open", "待处理"],
   ["in_progress", "处理中"],
   ["done", "已完成"],
   ["canceled", "已取消"],
 ];
+type TicketSearchType = "ticket_id" | "title";
+
 const ticketReminderDisplayOptions: Array<{
   description: string;
   label: string;
@@ -107,28 +122,45 @@ export function TicketsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useState<Omit<TicketListQuery, "page" | "pageSize" | "view">>({});
+  const [searchType, setSearchType] = useState<TicketSearchType>("ticket_id");
   const [searchInput, setSearchInput] = useState("");
-  const [dateRange, setDateRange] = useState<InsightDateRange>();
+  const [boundedDateRange, setBoundedDateRange] = useState<InsightDateRange>();
+  const [unboundedDateRange, setUnboundedDateRange] = useState<InsightDateRange>();
+  const defaultTicketDateRange = useMemo(() => getDefaultDateRange(), []);
+  const requiresBoundedDateRange = boundedDateViews.has(view);
+  const effectiveDateRange = useMemo(
+    () => requiresBoundedDateRange
+      ? resolveBoundedTicketDateRange(boundedDateRange, defaultTicketDateRange)
+      : unboundedDateRange,
+    [
+      boundedDateRange,
+      defaultTicketDateRange,
+      requiresBoundedDateRange,
+      unboundedDateRange,
+    ],
+  );
   const [result, setResult] = useState<TicketListResponse>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
   const [reminderDisplayDraft, setReminderDisplayDraft] =
     useState<TicketReminderDisplayMode>(ticketReminderDisplayMode);
-  const hasActiveFilters = Boolean(
-    searchInput.trim()
-    || dateRange
-    || Object.values(filters).some(Boolean),
-  );
+  const advancedFilterCount = [filters.sourceType, filters.dueScope]
+    .filter(Boolean)
+    .length;
   const query = useMemo(() => ({
     ...filters,
-    createdFrom: dateRange ? Date.parse(toBoundaryDate(dateRange.from, "start")!) : undefined,
-    createdTo: dateRange ? Date.parse(toBoundaryDate(dateRange.to, "end")!) : undefined,
+    createdFrom: effectiveDateRange
+      ? Date.parse(toBoundaryDate(effectiveDateRange.from, "start")!)
+      : undefined,
+    createdTo: effectiveDateRange
+      ? Date.parse(toBoundaryDate(effectiveDateRange.to, "end")!)
+      : undefined,
     page,
     pageSize,
     status: view === "assigned_to_me_active" ? undefined : filters.status,
     view,
-  }), [dateRange, filters, page, pageSize, view]);
+  }), [effectiveDateRange, filters, page, pageSize, view]);
   const shouldSyncAssignedToMeActiveCount =
     query.view === "assigned_to_me_active"
     && query.assigneeSubUserId == null
@@ -137,9 +169,10 @@ export function TicketsPage() {
     && query.dueScope == null
     && query.ownerAccountId == null
     && query.priority == null
-    && query.search == null
     && query.sourceType == null
-    && query.status == null;
+    && query.status == null
+    && query.ticketId == null
+    && query.titleSearch == null;
 
   useEffect(() => {
     setPage(1);
@@ -154,12 +187,18 @@ export function TicketsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const search = searchInput.trim() || undefined;
-      setFilters((current) => current.search === search ? current : { ...current, search });
+      const ticketId = searchType === "ticket_id" ? search : undefined;
+      const titleSearch = searchType === "title" ? search : undefined;
+      setFilters((current) =>
+        current.ticketId === ticketId && current.titleSearch === titleSearch
+          ? current
+          : { ...current, ticketId, titleSearch },
+      );
       setPage(1);
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, searchType]);
   useEffect(() => {
     let active = true;
     setIsLoading(true);
@@ -304,9 +343,54 @@ export function TicketsPage() {
           </DialogContent>
         </Dialog>
         <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-          <div className="relative col-span-2 w-full sm:w-[220px]">
-            <HugeiconsIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" icon={Search01Icon} size={16} />
-            <Input aria-label="搜索工单" className="pl-9" onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索编号或标题" value={searchInput} />
+          <div className="col-span-2 w-full sm:w-[280px]">
+            <InputGroup>
+              <InputGroupAddon align="inline-start" className="gap-1 pl-2">
+                <HugeiconsIcon aria-hidden="true" icon={Search01Icon} size={16} />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <InputGroupButton
+                      aria-label="搜索类型"
+                      className="h-7 w-auto gap-1 rounded-[7px] px-2 text-foreground"
+                    >
+                      {searchType === "ticket_id" ? "工单 ID" : "标题"}
+                      <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={14} />
+                    </InputGroupButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[104px]">
+                    <DropdownMenuRadioGroup
+                      onValueChange={(value) => {
+                        setSearchType(value as TicketSearchType);
+                        setSearchInput("");
+                        setFilters((current) => ({
+                          ...current,
+                          ticketId: undefined,
+                          titleSearch: undefined,
+                        }));
+                        setPage(1);
+                      }}
+                      value={searchType}
+                    >
+                      <DropdownMenuRadioItem value="title">标题</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="ticket_id">工单 ID</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="搜索工单"
+                inputMode={searchType === "ticket_id" ? "numeric" : undefined}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (searchType === "ticket_id" && value && !/^[1-9]\d*$/.test(value)) {
+                    return;
+                  }
+                  setSearchInput(value);
+                }}
+                placeholder={searchType === "ticket_id" ? "输入工单 ID" : "输入标题关键词"}
+                value={searchInput}
+              />
+            </InputGroup>
           </div>
           {view !== "assigned_to_me_active" ? (
             <TicketFilter
@@ -323,25 +407,39 @@ export function TicketsPage() {
             value={filters.priority}
           />
           <div className="min-w-0 sm:contents">
-            <InsightDateRangeFilter
-              allowEmpty
-              emptyLabel="创建时间"
-              from={dateRange?.from}
-              maxRangeDays={3650}
-              onChange={(range) => {
-                setDateRange(range);
-                setPage(1);
-              }}
-              to={dateRange?.to}
-            />
+            {requiresBoundedDateRange ? (
+              <InsightDateRangeFilter
+                from={effectiveDateRange!.from}
+                maxRangeDays={ticketMaximumDateRangeDays}
+                onChange={(range) => {
+                  setBoundedDateRange(range);
+                  setPage(1);
+                }}
+                to={effectiveDateRange!.to}
+              />
+            ) : (
+              <InsightDateRangeFilter
+                allowEmpty
+                emptyLabel="创建时间"
+                from={unboundedDateRange?.from}
+                maxRangeDays={3650}
+                onChange={(range) => {
+                  setUnboundedDateRange(range);
+                  setPage(1);
+                }}
+                to={unboundedDateRange?.to}
+              />
+            )}
           </div>
           <TicketAdvancedFilterDropdown
+            activeCount={advancedFilterCount}
             filters={filters}
-            hasActiveFilters={hasActiveFilters}
             onReset={() => {
-              setFilters({});
-              setSearchInput("");
-              setDateRange(undefined);
+              setFilters((current) => ({
+                ...current,
+                dueScope: undefined,
+                sourceType: undefined,
+              }));
               setPage(1);
             }}
             onUpdate={updateFilter}
@@ -416,6 +514,25 @@ export function TicketsPage() {
   );
 }
 
+function resolveBoundedTicketDateRange(
+  range: InsightDateRange | undefined,
+  defaultRange: InsightDateRange,
+) {
+  if (!range) {
+    return defaultRange;
+  }
+
+  const from = Date.parse(`${range.from}T00:00:00.000+08:00`);
+  const to = Date.parse(`${range.to}T00:00:00.000+08:00`);
+
+  return Number.isFinite(from)
+    && Number.isFinite(to)
+    && to >= from
+    && to - from < ticketMaximumDateRangeDays * millisecondsPerDay
+    ? range
+    : defaultRange;
+}
+
 function TicketReminderPreview({ mode }: { mode: TicketReminderDisplayMode }) {
   return (
     <section aria-label="工单提醒效果预览" className="space-y-2">
@@ -454,13 +571,13 @@ function TicketFilter({ label, onChange, options, value }: { label: string; onCh
 }
 
 function TicketAdvancedFilterDropdown({
+  activeCount,
   filters,
-  hasActiveFilters,
   onReset,
   onUpdate,
 }: {
+  activeCount: number;
   filters: Omit<TicketListQuery, "page" | "pageSize" | "view">;
-  hasActiveFilters: boolean;
   onReset: () => void;
   onUpdate: (key: keyof Omit<TicketListQuery, "page" | "pageSize" | "view">, value: string | undefined) => void;
 }) {
@@ -470,7 +587,7 @@ function TicketAdvancedFilterDropdown({
         <Button className="relative h-9 w-full rounded-[8px] sm:w-auto" variant="outline">
           <HugeiconsIcon icon={FilterIcon} size={16} />
           更多筛选
-          {hasActiveFilters ? <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" /> : null}
+          {activeCount > 0 ? <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" /> : null}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" aria-label="更多筛选" className="w-52">
@@ -478,7 +595,7 @@ function TicketAdvancedFilterDropdown({
         <TicketFilterSubMenu label="来源" onValueChange={(value) => onUpdate("sourceType", value === "all" ? undefined : value)} options={[["all", "全部来源"], ["manual", "人工创建"], ["ai", "智能创建"]]} value={filters.sourceType ?? "all"} />
         <TicketFilterSubMenu label="截止时间" onValueChange={(value) => onUpdate("dueScope", value === "all" ? undefined : value)} options={[["all", "全部截止时间"], ["overdue", "已逾期"], ["today", "今日到期"], ["next_7_days", "未来 7 天"], ["none", "无截止时间"]]} value={filters.dueScope ?? "all"} />
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={!hasActiveFilters} onClick={onReset}>重置筛选</DropdownMenuItem>
+        <DropdownMenuItem disabled={activeCount === 0} onClick={onReset}>重置筛选</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

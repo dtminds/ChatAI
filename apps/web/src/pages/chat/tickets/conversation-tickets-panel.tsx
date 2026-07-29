@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   ConversationTicketFilter,
   ConversationTicketsResponse,
-  Ticket,
+  TicketListItem,
   TicketStatus,
 } from "@chatai/contracts";
 import {
@@ -42,7 +42,6 @@ import {
 } from "@/components/ui/tooltip";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import {
-  claimTicket,
   getConversationTickets,
   updateTicket,
 } from "@/pages/chat/tickets/api/tickets-service";
@@ -174,19 +173,15 @@ function ConversationTicketsPanelContent({
     };
   }, [conversationId, filter, page, refreshKey, reloadKey, requestScope]);
 
-  const runAction = async (ticket: Ticket, action: "claim" | TicketStatus) => {
+  const runAction = async (ticket: TicketListItem, action: TicketStatus) => {
     const mutationScope = mutationScopeRef.current;
     setPendingTicketId(ticket.ticketId);
     setActionError(undefined);
     try {
-      if (action === "claim") {
-        await claimTicket(ticket.ticketId);
-      } else {
-        await updateTicket(ticket.ticketId, {
-          expectedStatus: ticket.status,
-          status: action,
-        });
-      }
+      await updateTicket(ticket.ticketId, {
+        expectedStatus: ticket.status,
+        status: action,
+      });
       void refreshTicketCounts();
       if (mutationScopeRef.current === mutationScope) {
         setPage(1);
@@ -376,10 +371,10 @@ function TicketRow({
   pending,
   ticket,
 }: {
-  onAction: (action: "claim" | TicketStatus) => void;
+  onAction: (action: TicketStatus) => void;
   onOpen: () => void;
   pending: boolean;
-  ticket: Ticket;
+  ticket: TicketListItem;
 }) {
   return (
     <article className="w-full min-w-0 max-w-full space-y-2 overflow-hidden px-4 py-4">
@@ -393,7 +388,7 @@ function TicketRow({
         >
           <span className="truncate">{ticket.title}</span>
         </Button>
-        {ticket.canClaim || ticket.canEdit ? (
+        {ticket.canEdit ? (
           <TicketActionsMenu
             onAction={onAction}
             pending={pending}
@@ -485,9 +480,9 @@ function TicketActionsMenu({
   pending,
   ticket,
 }: {
-  onAction: (action: "claim" | TicketStatus) => void;
+  onAction: (action: TicketStatus) => void;
   pending: boolean;
-  ticket: Ticket;
+  ticket: TicketListItem;
 }) {
   return (
     <DropdownMenu>
@@ -509,11 +504,6 @@ function TicketActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {ticket.canClaim ? (
-          <DropdownMenuItem onSelect={() => onAction("claim")}>
-            分配给我
-          </DropdownMenuItem>
-        ) : null}
         {ticket.canEdit && ticket.status === "open" && ticket.assignee ? (
           <DropdownMenuItem onSelect={() => onAction("in_progress")}>
             开始处理

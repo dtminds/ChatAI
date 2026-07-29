@@ -31,11 +31,21 @@ type TicketBaseQuery = SelectQueryBuilder<
   {}
 >;
 
+type TicketAccountAccessIdentity = {
+  platform: number;
+  thirdUserId: string;
+};
+
+type ResolvedTicketListRepositoryInput = TicketListRepositoryInput & {
+  accountAccessIdentities?: TicketAccountAccessIdentity[];
+};
+
 type TicketPageRow = Omit<TicketQueryRow,
   | "assignee_display_name"
   | "created_by_display_name"
   | "customer_avatar_url"
   | "customer_name"
+  | "has_account_access"
   | "owner_account_avatar_url"
   | "owner_account_id"
   | "owner_account_name"
@@ -43,6 +53,7 @@ type TicketPageRow = Omit<TicketQueryRow,
   conversation_platform: number | string;
   conversation_third_external_userid: string;
   conversation_third_userid: string;
+  has_account_access?: number | string;
 };
 
 type TicketHydrationRow = Pick<TicketQueryRow,
@@ -101,14 +112,16 @@ export class TicketsRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   async listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage> {
-    const countRow = await this.buildFilteredTicketQuery(input)
+    const resolvedInput = await this.resolveListInput(input);
+    const countRow = await this.buildFilteredTicketQuery(resolvedInput)
       .select((expressionBuilder) =>
         expressionBuilder.fn.countAll<number>().as("total"),
       )
       .executeTakeFirst();
     const total = toNonNegativeNumber(countRow?.total);
 
-    const items = await this.listTicketRecords(input, {
+    const items = await this.listTicketRecords(resolvedInput, {
+      includeAccountAccess: false,
       limit: input.pageSize,
       offset: (input.page - 1) * input.pageSize,
       ordered: true,
@@ -124,8 +137,13 @@ export class TicketsRepository {
   }
 
   private async listTicketRecords(
-    input: TicketListRepositoryInput,
-    options: { limit: number; offset: number; ordered: boolean },
+    input: ResolvedTicketListRepositoryInput,
+    options: {
+      includeAccountAccess: boolean;
+      limit: number;
+      offset: number;
+      ordered: boolean;
+    },
   ) {
     let query = this.buildFilteredTicketQuery(input)
       .select([
@@ -150,15 +168,6 @@ export class TicketsRepository {
         "conversation.third_external_userid as conversation_third_external_userid",
         "conversation.third_userid as conversation_third_userid",
       ])
-      .select((expressionBuilder) =>
-        expressionBuilder
-          .case()
-          .when(this.buildAccountAccessExists(expressionBuilder, input))
-          .then(1)
-          .else(0)
-          .end()
-          .as("has_account_access"),
-      )
       .select(
         sql<number>`CASE
           WHEN ticket.status IN ('open', 'in_progress')
@@ -167,6 +176,17 @@ export class TicketsRepository {
           ELSE 0
         END`.as("overdue"),
       );
+    if (options.includeAccountAccess) {
+      query = query.select((expressionBuilder) =>
+        expressionBuilder
+          .case()
+          .when(this.buildAccountAccessExists(expressionBuilder, input))
+          .then(1)
+          .else(0)
+          .end()
+          .as("has_account_access"),
+      );
+    }
     if (options.ordered) {
       query = query
         .orderBy("ticket.update_time", "desc")
@@ -186,6 +206,7 @@ export class TicketsRepository {
       } = row;
       return {
         ...ticket,
+        has_account_access: row.has_account_access ?? 0,
         ...(hydrationByTicketId.get(String(row.ticket_id)) ?? emptyTicketHydration),
       };
     });
@@ -458,91 +479,111 @@ export class TicketsRepository {
     });
   }
 
-  async createAiTicket(input: {
+  async createAiTickets(input: {
     conversationId: number;
-    priority: TicketPriority;
+    items: Array<{
+      priority: TicketPriority;
+      title: string;
+    }>;
     sessionId: number;
     snapshotId: number;
-    title: string;
     uid: number;
   }) {
-    return this.db.transaction().execute(async (transaction) => {
-      const assignee = await transaction
-        .selectFrom("xy_wap_embed_conversation as conversation")
-        .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-          join
-            .onRef("seat.uid", "=", "conversation.uid")
-            .onRef("seat.platform", "=", "conversation.platform")
-            .onRef("seat.third_userid", "=", "conversation.third_userid"),
-        )
-        .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
-          join
-            .onRef("sub_user.id", "=", "seat.host_sub_id")
-            .onRef("sub_user.uid", "=", "seat.uid"),
-        )
-        .select("seat.host_sub_id as assignee_sub_user_id")
-        .where("conversation.uid", "=", input.uid)
-        .where("conversation.id", "=", input.conversationId)
-        .where("conversation.biz_status", "=", 1)
-        .where("seat.biz_status", "=", 1)
-        .where("sub_user.status", "=", 1)
-        .where((expressionBuilder) =>
-          expressionBuilder.or([
-            expressionBuilder("sub_user.type", "=", 1),
-            expressionBuilder("sub_user.role", "!=", "viewer"),
-          ]),
-        )
-        .executeTakeFirst();
-      const assigneeSubUserId = assignee?.assignee_sub_user_id == null
-        ? null
-        : Number(assignee.assignee_sub_user_id);
-      const insertResult = await transaction
-        .insertInto("xy_wap_embed_session_action_item")
-        .values({
-          action_type: "follow_up",
-          anchor_message_id: null,
-          assignee_sub_user_id: Number.isSafeInteger(assigneeSubUserId)
-            && (assigneeSubUserId ?? 0) > 0
-            ? assigneeSubUserId
-            : null,
-          canceled_at: null,
-          canceled_by_sub_user_id: null,
-          completed_at: null,
-          completed_by_sub_user_id: null,
-          conversation_id: input.conversationId,
-          created_by_sub_user_id: null,
-          description: null,
-          due_at: null,
-          priority: input.priority,
-          session_id: input.sessionId,
-          snapshot_id: input.snapshotId,
-          source_type: "ai",
-          status: "open",
-          title: input.title,
-          uid: input.uid,
-        })
-        .executeTakeFirstOrThrow();
-      const ticketId = Number(insertResult.insertId);
+    if (input.items.length === 0) {
+      return [];
+    }
 
-      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
-        throw new Error("TICKET_INSERT_ID_MISSING");
+    return this.db.transaction().execute(async (transaction) => {
+      const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
+      const ticketIds: number[] = [];
+
+      for (const item of input.items) {
+        const insertResult = await transaction
+          .insertInto("xy_wap_embed_session_action_item")
+          .values({
+            action_type: "follow_up",
+            anchor_message_id: null,
+            assignee_sub_user_id: assigneeSubUserId,
+            canceled_at: null,
+            canceled_by_sub_user_id: null,
+            completed_at: null,
+            completed_by_sub_user_id: null,
+            conversation_id: input.conversationId,
+            created_by_sub_user_id: null,
+            description: null,
+            due_at: null,
+            priority: item.priority,
+            session_id: input.sessionId,
+            snapshot_id: input.snapshotId,
+            source_type: "ai",
+            status: "open",
+            title: item.title,
+            uid: input.uid,
+          })
+          .executeTakeFirstOrThrow();
+        const ticketId = Number(insertResult.insertId);
+
+        if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+          throw new Error("TICKET_INSERT_ID_MISSING");
+        }
+
+        ticketIds.push(ticketId);
       }
 
       await transaction
         .insertInto("xy_wap_embed_ticket_activity")
-        .values({
-          activity_type: "created",
+        .values(ticketIds.map((ticketId) => ({
+          activity_type: "created" as const,
           content: null,
           detail_json: null,
           operator_sub_user_id: null,
-          operator_type: "ai",
+          operator_type: "ai" as const,
           ticket_id: ticketId,
           uid: input.uid,
-        })
+        })))
         .executeTakeFirstOrThrow();
 
-      return ticketId;
+      return ticketIds;
     });
+  }
+
+  private async resolveAiTicketAssignee(
+    transaction: Transaction<Database>,
+    input: { conversationId: number; uid: number },
+  ) {
+    const assignee = await transaction
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform")
+          .onRef("seat.third_userid", "=", "conversation.third_userid"),
+      )
+      .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
+        join
+          .onRef("sub_user.id", "=", "seat.host_sub_id")
+          .onRef("sub_user.uid", "=", "seat.uid"),
+      )
+      .select("seat.host_sub_id as assignee_sub_user_id")
+      .where("conversation.uid", "=", input.uid)
+      .where("conversation.id", "=", input.conversationId)
+      .where("conversation.biz_status", "=", 1)
+      .where("seat.biz_status", "=", 1)
+      .where("sub_user.status", "=", 1)
+      .where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("sub_user.type", "=", 1),
+          expressionBuilder("sub_user.role", "!=", "viewer"),
+        ]),
+      )
+      .executeTakeFirst();
+    const assigneeSubUserId = assignee?.assignee_sub_user_id == null
+      ? null
+      : Number(assignee.assignee_sub_user_id);
+
+    return Number.isSafeInteger(assigneeSubUserId) && (assigneeSubUserId ?? 0) > 0
+      ? assigneeSubUserId
+      : null;
   }
 
   async getTicketRecordById(input: {
@@ -560,6 +601,7 @@ export class TicketsRepository {
       uid: input.uid,
       view: "visible",
     }, {
+      includeAccountAccess: true,
       limit: 1,
       offset: 0,
       ordered: false,
@@ -897,7 +939,7 @@ export class TicketsRepository {
       ]);
   }
 
-  private buildFilteredTicketQuery(input: TicketListRepositoryInput): TicketBaseQuery {
+  private buildFilteredTicketQuery(input: ResolvedTicketListRepositoryInput): TicketBaseQuery {
     let query = this.db
       .selectFrom("xy_wap_embed_session_action_item as ticket")
       .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
@@ -919,6 +961,9 @@ export class TicketsRepository {
       query = input.ticketIds.length === 0
         ? query.where(sql<boolean>`FALSE`)
         : query.where("ticket.id", "in", input.ticketIds);
+    }
+    if (input.ticketId != null) {
+      query = query.where("ticket.id", "=", input.ticketId);
     }
     if (input.assigneeSubUserId) {
       query = query.where("ticket.assignee_sub_user_id", "=", input.assigneeSubUserId);
@@ -959,21 +1004,15 @@ export class TicketsRepository {
 
     query = this.applyDueScope(query, input.dueScope);
 
-    const search = input.search?.trim();
-    if (search) {
-      const pattern = `%${search}%`;
-      query = query.where((expressionBuilder) =>
-        expressionBuilder.or([
-          sql<boolean>`CAST(${expressionBuilder.ref("ticket.id")} AS CHAR) LIKE ${pattern}`,
-          expressionBuilder("ticket.title", "like", pattern),
-        ]),
-      );
+    const titleSearch = input.titleSearch?.trim();
+    if (titleSearch) {
+      query = query.where("ticket.title", "like", `%${titleSearch}%`);
     }
 
     return query;
   }
 
-  private applyView(query: TicketBaseQuery, input: TicketListRepositoryInput): TicketBaseQuery {
+  private applyView(query: TicketBaseQuery, input: ResolvedTicketListRepositoryInput): TicketBaseQuery {
     if (input.view === "assigned_to_me_active") {
       return query
         .where("ticket.assignee_sub_user_id", "=", input.subUserId)
@@ -984,7 +1023,7 @@ export class TicketsRepository {
     }
     if (input.view === "reception") {
       return query.where((expressionBuilder) =>
-        this.buildAccountAccessExists(expressionBuilder, input),
+        this.buildAccountAccessPredicate(expressionBuilder, input),
       );
     }
     if (input.view === "created_by_me") {
@@ -1003,9 +1042,78 @@ export class TicketsRepository {
       expressionBuilder.or([
         expressionBuilder("ticket.assignee_sub_user_id", "=", input.subUserId),
         expressionBuilder("ticket.created_by_sub_user_id", "=", input.subUserId),
-        this.buildAccountAccessExists(expressionBuilder, input),
+        this.buildAccountAccessPredicate(expressionBuilder, input),
       ]),
     );
+  }
+
+  private async resolveListInput(
+    input: TicketListRepositoryInput,
+  ): Promise<ResolvedTicketListRepositoryInput> {
+    if (!this.requiresAccountAccessResolution(input)) {
+      return input;
+    }
+
+    return {
+      ...input,
+      accountAccessIdentities: await this.listAccountAccessIdentities(input),
+    };
+  }
+
+  private requiresAccountAccessResolution(input: TicketListRepositoryInput) {
+    return (input.view === "reception" || !input.globalAccess)
+      && input.view !== "assigned_to_me_active"
+      && input.view !== "assigned_to_me"
+      && input.view !== "created_by_me";
+  }
+
+  private async listAccountAccessIdentities(input: Pick<TicketListRepositoryInput, "subUserId" | "uid">) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as access_seat", (join) =>
+        join
+          .onRef("access_seat.id", "=", "relation.user_seat_id")
+          .onRef("access_seat.uid", "=", "relation.uid")
+          .onRef("access_seat.platform", "=", "relation.platform"),
+      )
+      .select([
+        "access_seat.platform as platform",
+        "access_seat.third_userid as third_userid",
+      ])
+      .distinct()
+      .where("relation.uid", "=", input.uid)
+      .where("relation.sub_id", "=", input.subUserId)
+      .execute();
+
+    return rows
+      .map((row) => ({
+        platform: Number(row.platform),
+        thirdUserId: row.third_userid,
+      }))
+      .filter((row) => Number.isSafeInteger(row.platform) && row.thirdUserId.length > 0);
+  }
+
+  private buildAccountAccessPredicate(
+    expressionBuilder: ExpressionBuilder<TicketQueryDatabase, "conversation" | "ticket">,
+    input: ResolvedTicketListRepositoryInput,
+  ) {
+    return input.accountAccessIdentities == null
+      ? this.buildAccountAccessExists(expressionBuilder, input)
+      : this.buildAccountAccessIdentityFilter(input.accountAccessIdentities);
+  }
+
+  private buildAccountAccessIdentityFilter(identities: TicketAccountAccessIdentity[]) {
+    if (identities.length === 0) {
+      return sql<boolean>`FALSE`;
+    }
+
+    const tuples = identities.map((identity) =>
+      sql`(${identity.platform}, ${identity.thirdUserId})`,
+    );
+    return sql<boolean>`(
+      ${sql.ref("conversation.platform")},
+      ${sql.ref("conversation.third_userid")}
+    ) IN (${sql.join(tuples)})`;
   }
 
   private buildAccountAccessExists(

@@ -545,7 +545,7 @@ describe("InsightsRepository", () => {
     });
   });
 
-  it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
+  it("deduplicates and caps AI action items before one batch write", async () => {
     const selectedActionItemBuilders: SelectBuilderStub[] = [];
     let nextInsertId = 7001;
     const db = {
@@ -575,7 +575,7 @@ describe("InsightsRepository", () => {
       ),
     };
     const ticketWriter = {
-      createAiTicket: vi.fn(async () => 7801),
+      createAiTickets: vi.fn(async () => Array.from({ length: 10 }, (_, index) => 7801 + index)),
     };
     const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
@@ -606,6 +606,16 @@ describe("InsightsRepository", () => {
             priority: "medium",
             title: "提醒 客户 补充 地址",
           },
+          {
+            evidenceMessageIds: ["9204"],
+            priority: "medium",
+            title: "确认客户收货",
+          },
+          ...Array.from({ length: 10 }, (_, index) => ({
+            evidenceMessageIds: [`93${index}`],
+            priority: "medium" as const,
+            title: `补充跟进事项${index + 1}`,
+          })),
         ],
         entities: [],
         faqCandidates: [],
@@ -658,13 +668,21 @@ describe("InsightsRepository", () => {
       "deleted",
     ]);
     expect(selectedActionItemBuilders[0]?.limitCalls).toEqual([10]);
-    expect(ticketWriter.createAiTicket).toHaveBeenCalledTimes(1);
-    expect(ticketWriter.createAiTicket).toHaveBeenCalledWith(expect.objectContaining({
+    expect(ticketWriter.createAiTickets).toHaveBeenCalledTimes(1);
+    const batchInput = ticketWriter.createAiTickets.mock.calls[0]?.[0];
+    expect(batchInput).toEqual(expect.objectContaining({
       conversationId: 301,
+      items: expect.arrayContaining([{
+        priority: "medium",
+        title: "提醒客户补充地址",
+      }]),
       sessionId: 501,
       snapshotId: 7001,
-      title: "提醒客户补充地址",
       uid: 9001,
+    }));
+    expect(batchInput?.items).toHaveLength(10);
+    expect(batchInput?.items).not.toContainEqual(expect.objectContaining({
+      title: "补充跟进事项9",
     }));
   });
 
@@ -6223,7 +6241,7 @@ describe("MysqlInsightWorkerRepository", () => {
       ),
     };
     const ticketWriter = {
-      createAiTicket: vi.fn(async () => 7901),
+      createAiTickets: vi.fn(async () => [7901]),
     };
     const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
@@ -6315,11 +6333,14 @@ describe("MysqlInsightWorkerRepository", () => {
       const insert = insertValues.find((entry) => entry.table === table);
       expect(insert?.values).toEqual(expect.objectContaining({ uid: 9001 }));
     }
-    expect(ticketWriter.createAiTicket).toHaveBeenCalledWith(expect.objectContaining({
+    expect(ticketWriter.createAiTickets).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: 301,
+      items: [{
+        priority: "high",
+        title: "跟进退款",
+      }],
       sessionId: 501,
       snapshotId: 7001,
-      title: "跟进退款",
       uid: 9001,
     }));
     expect(evidenceInserts).toHaveLength(1);

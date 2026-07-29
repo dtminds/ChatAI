@@ -113,6 +113,65 @@ describe("TicketDetailPage", () => {
     expect(screen.getByTestId("messages")).toHaveTextContent("1");
   });
 
+  it("keeps a successful update successful when refreshing activities fails", async () => {
+    api.getTicketActivities
+      .mockResolvedValueOnce(baseDetail.activities)
+      .mockRejectedValueOnce(new Error("处理记录刷新失败"));
+    api.updateTicket.mockResolvedValueOnce({
+      ticket: { ...baseDetail.ticket, status: "done" },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
+
+    await waitFor(() => {
+      expect(api.updateTicket).toHaveBeenCalledWith("501", {
+        expectedStatus: "open",
+        status: "done",
+      });
+    });
+    expect(toast.error).not.toHaveBeenCalledWith("工单更新失败");
+    expect(await screen.findByText("处理记录刷新失败")).toBeInTheDocument();
+  });
+
+  it("keeps a successful claim successful when refreshing activities fails", async () => {
+    api.getTicketActivities
+      .mockResolvedValueOnce(baseDetail.activities)
+      .mockRejectedValueOnce(new Error("处理记录刷新失败"));
+    api.claimTicket.mockResolvedValueOnce({
+      ticket: {
+        ...baseDetail.ticket,
+        assignee: { displayName: "客服甲", subUserId: "101" },
+        canClaim: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "分配给我" }));
+
+    await waitFor(() => expect(api.claimTicket).toHaveBeenCalledWith("501"));
+    expect(toast.error).not.toHaveBeenCalledWith("分配失败");
+    expect(await screen.findByText("处理记录刷新失败")).toBeInTheDocument();
+  });
+
+  it("clears saving after a state conflict reloads the ticket", async () => {
+    const conflict = Object.assign(new Error("工单状态已变化，请刷新后重试"), {
+      code: "TICKET_STATE_CONFLICT",
+    });
+    api.updateTicket.mockRejectedValueOnce(conflict);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
+
+    await waitFor(() => expect(api.getTicketDetail).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "分配给我" })).not.toBeDisabled();
+    });
+  });
+
   it("returns to the ticket view used to open the detail", async () => {
     renderPage("/chat/tickets/501?view=reception");
 

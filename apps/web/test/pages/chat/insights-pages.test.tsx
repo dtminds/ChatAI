@@ -67,6 +67,10 @@ const serviceMocks = vi.hoisted(() => ({
 const ticketServiceMocks = vi.hoisted(() => ({
   updateTicket: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}));
 
 const mockInsightSettings = {
   analysisPolicy: {
@@ -202,6 +206,7 @@ async function openSettingsDialog(
 
 vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => ticketServiceMocks);
+vi.mock("sonner", () => ({ Toaster: () => null, toast }));
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -1924,6 +1929,64 @@ describe("conversation insights pages", () => {
         status: "canceled",
       });
     });
+  });
+
+  it("reloads insight detail after a ticket state conflict", async () => {
+    const conflict = Object.assign(new Error("工单状态已变化，请刷新后重试"), {
+      code: "TICKET_STATE_CONFLICT",
+    });
+    serviceMocks.getInsightDetail
+      .mockResolvedValueOnce(createMockInsightDetail())
+      .mockResolvedValueOnce({
+        ...createMockInsightDetail(),
+        actionItems: [
+          {
+            canEdit: true,
+            status: "done",
+            ticketId: "801",
+            title: "跟进物流是否已更新",
+          },
+          {
+            canEdit: true,
+            status: "done",
+            ticketId: "802",
+            title: "发送补偿说明",
+          },
+        ],
+      });
+    ticketServiceMocks.updateTicket.mockRejectedValueOnce(conflict);
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    await userEvent.click(
+      within(insightRegion).getByRole("button", {
+        name: "标记完成：跟进物流是否已更新",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(ticketServiceMocks.updateTicket).toHaveBeenCalledWith("801", {
+        expectedStatus: "open",
+        status: "done",
+      });
+    });
+    await waitFor(() => {
+      expect(serviceMocks.getInsightDetail).toHaveBeenCalledTimes(2);
+      expect(
+        within(insightRegion).getByRole("button", {
+          name: "重新打开：跟进物流是否已更新",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(toast.error).toHaveBeenCalledWith("工单状态已变化，请刷新后重试");
   });
 
   it("opens analyzing physical session detail without a generated snapshot", async () => {

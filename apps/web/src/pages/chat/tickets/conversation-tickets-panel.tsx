@@ -6,6 +6,7 @@ import type {
   TicketStatus,
 } from "@chatai/contracts";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,7 +122,14 @@ export function ConversationTicketsPanel({
       }
     } catch (cause) {
       if (mutationScopeRef.current === mutationScope) {
-        setActionError(errorMessage(cause, "工单操作失败"));
+        const message = errorMessage(cause, "工单操作失败");
+        if (isErrorCode(cause, "TICKET_STATE_CONFLICT")) {
+          toast.error(message);
+          setPage(1);
+          setReloadKey((current) => current + 1);
+        } else {
+          setActionError(message);
+        }
       }
     } finally {
       if (mutationScopeRef.current === mutationScope) {
@@ -293,4 +301,13 @@ function priorityText(priority: Ticket["priority"]) {
 
 function errorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error && cause.message ? cause.message : fallback;
+}
+
+function isErrorCode(value: unknown, code: string) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && "code" in value
+    && value.code === code,
+  );
 }

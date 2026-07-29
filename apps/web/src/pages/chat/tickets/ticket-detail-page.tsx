@@ -173,6 +173,23 @@ export function TicketDetailPage() {
     return names;
   }, [assigneeOptions, ticket?.assignee]);
 
+  const refreshActivitiesAfterMutation = async (
+    requestedTicketId: string,
+    isCurrentRequest: () => boolean,
+  ) => {
+    try {
+      const page = await getTicketActivities(requestedTicketId, { pageSize: ticketActivityPageSize });
+      if (isCurrentRequest()) {
+        setActivities(page);
+        setActivityError(undefined);
+      }
+    } catch (cause) {
+      if (isCurrentRequest()) {
+        setActivityError(cause instanceof Error ? cause.message : "处理记录加载失败");
+      }
+    }
+  };
+
   const mutate = async (payload: TicketUpdateRequest) => {
     const requestedTicketId = ticketId;
     const generation = loadGenerationRef.current;
@@ -184,6 +201,7 @@ export function TicketDetailPage() {
     const isCurrentRequest = () =>
       activeTicketIdRef.current === requestedTicketId
       && loadGenerationRef.current === generation;
+    const isCurrentRoute = () => activeTicketIdRef.current === requestedTicketId;
     setIsSaving(true);
     try {
       const response = await updateTicket(requestedTicketId, payload);
@@ -191,16 +209,15 @@ export function TicketDetailPage() {
       if (!isCurrentRequest()) return false;
       setTicket(response.ticket);
       setForm(createTicketForm(response.ticket));
-      const page = await getTicketActivities(requestedTicketId, { pageSize: ticketActivityPageSize });
-      if (isCurrentRequest()) setActivities(page);
+      void refreshActivitiesAfterMutation(requestedTicketId, isCurrentRequest);
       return true;
     } catch (cause) {
-      if (!isCurrentRequest()) return false;
+      if (!isCurrentRoute()) return false;
       toast.error(cause instanceof Error ? cause.message : "工单更新失败");
       if (isErrorCode(cause, "TICKET_STATE_CONFLICT")) await loadTicket();
       return false;
     } finally {
-      if (isCurrentRequest()) setIsSaving(false);
+      if (isCurrentRoute()) setIsSaving(false);
     }
   };
 
@@ -243,19 +260,19 @@ export function TicketDetailPage() {
     const isCurrentRequest = () =>
       activeTicketIdRef.current === requestedTicketId
       && loadGenerationRef.current === generation;
+    const isCurrentRoute = () => activeTicketIdRef.current === requestedTicketId;
     setIsSaving(true);
     try {
       const response = await claimTicket(requestedTicketId);
       void refreshTicketCounts();
       if (!isCurrentRequest()) return;
       setTicket(response.ticket);
-      const page = await getTicketActivities(requestedTicketId, { pageSize: ticketActivityPageSize });
-      if (isCurrentRequest()) setActivities(page);
+      void refreshActivitiesAfterMutation(requestedTicketId, isCurrentRequest);
     } catch (cause) {
-      if (!isCurrentRequest()) return;
+      if (!isCurrentRoute()) return;
       toast.error(cause instanceof Error ? cause.message : "分配失败");
     } finally {
-      if (isCurrentRequest()) setIsSaving(false);
+      if (isCurrentRoute()) setIsSaving(false);
     }
   };
 

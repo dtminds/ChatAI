@@ -13,9 +13,11 @@ const api = vi.hoisted(() => ({
 const ticketCounts = vi.hoisted(() => ({
   refreshTicketCounts: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("@/pages/chat/tickets/api/tickets-service", () => api);
 vi.mock("@/pages/chat/tickets/ticket-count-store", () => ticketCounts);
+vi.mock("sonner", () => ({ toast }));
 
 const ticket: Ticket = {
   anchorMessageId: null,
@@ -60,6 +62,7 @@ function response(scope: "conversation" | "customer", items: Ticket[] = [ticket]
 }
 
 beforeEach(() => {
+  toast.error.mockReset();
   api.getConversationTickets.mockReset().mockResolvedValue(response("conversation"));
   api.claimTicket.mockReset().mockResolvedValue({ ticket });
   api.updateTicket.mockReset().mockResolvedValue({ ticket });
@@ -117,6 +120,31 @@ describe("ConversationTicketsPanel", () => {
       }),
     );
     expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads the ticket list after a state conflict", async () => {
+    const conflict = Object.assign(new Error("工单状态已变化，请刷新后重试"), {
+      code: "TICKET_STATE_CONFLICT",
+    });
+    api.getConversationTickets
+      .mockReset()
+      .mockResolvedValueOnce(response("conversation"))
+      .mockResolvedValueOnce(response("conversation", [{ ...ticket, status: "done" }]));
+    api.updateTicket.mockRejectedValueOnce(conflict);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "标记为已解决" }));
+    await waitFor(() => {
+      expect(api.updateTicket).toHaveBeenCalledWith("501", {
+        expectedStatus: "open",
+        status: "done",
+      });
+    });
+    await waitFor(() => expect(api.getConversationTickets).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("已完成")).toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledWith("工单状态已变化，请刷新后重试");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("does not show a previous conversation response after the scope changes", async () => {

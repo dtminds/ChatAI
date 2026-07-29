@@ -52,7 +52,7 @@ const baseDetail = {
   ticket: {
     anchorMessageId: null, assignee: null, canClaim: true, canDelete: false, canEdit: true, canceledAt: null, completedAt: null,
     conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" }, customerAvatarUrl: "/customer.png", customerName: "客户张三",
-    description: null, dueAt: null, dueHint: null, overdue: false, ownerAccountAvatarUrl: "/account.png",
+    description: null, dueAt: null, overdue: false, ownerAccountAvatarUrl: "/account.png",
     ownerAccountId: "201", ownerAccountName: "账号", priority: "medium", sessionId: "401", snapshotId: null,
     sourceType: "ai", status: "open", ticketId: "501", title: "跟进退款", updatedAt: 2,
   },

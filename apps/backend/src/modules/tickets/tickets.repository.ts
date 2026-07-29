@@ -82,7 +82,6 @@ type TicketQueryRow = {
   customer_name: string | null;
   description: string | null;
   due_at: Date | string | null;
-  due_hint: string | null;
   has_account_access: number | string;
   owner_account_avatar_url: string | null;
   owner_account_id: number | string | null;
@@ -142,7 +141,6 @@ export class TicketsRepository {
         "ticket.assignee_sub_user_id as assignee_sub_user_id",
         "ticket.created_by_sub_user_id as created_by_sub_user_id",
         "ticket.due_at as due_at",
-        "ticket.due_hint as due_hint",
         "ticket.status as status",
         "ticket.create_time as create_time",
         "ticket.update_time as update_time",
@@ -428,7 +426,6 @@ export class TicketsRepository {
           created_by_sub_user_id: input.createdBySubUserId,
           description: input.description,
           due_at: input.dueAt,
-          due_hint: null,
           priority: input.priority,
           session_id: input.sessionId,
           snapshot_id: null,
@@ -463,7 +460,6 @@ export class TicketsRepository {
 
   async createAiTicket(input: {
     conversationId: number;
-    dueHint: string | null;
     priority: TicketPriority;
     sessionId: number;
     snapshotId: number;
@@ -517,7 +513,6 @@ export class TicketsRepository {
           created_by_sub_user_id: null,
           description: null,
           due_at: null,
-          due_hint: input.dueHint,
           priority: input.priority,
           session_id: input.sessionId,
           snapshot_id: input.snapshotId,
@@ -1179,7 +1174,6 @@ function mapTicketRecord(row: TicketQueryRow): TicketRecord {
     customerName: row.customer_name ?? "",
     description: row.description,
     dueAt: toNullableTimestamp(row.due_at),
-    dueHint: row.due_hint,
     hasAccountAccess: Number(row.has_account_access) === 1,
     ownerAccountAvatarUrl: row.owner_account_avatar_url,
     ownerAccountId: row.owner_account_id == null ? "" : String(row.owner_account_id),

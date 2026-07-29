@@ -26,7 +26,6 @@ export type TicketRecord = {
   customerName: string;
   description: string | null;
   dueAt: number | null;
-  dueHint: string | null;
   hasAccountAccess: boolean;
   ownerAccountAvatarUrl: string | null;
   ownerAccountId: string;

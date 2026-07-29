@@ -2440,10 +2440,6 @@ export interface XyWapEmbedSessionActionItem {
    */
   due_at: Date | null;
   /**
-   * 时效提示
-   */
-  due_hint: string | null;
-  /**
    * 主键ID
    */
   id: Generated<number>;

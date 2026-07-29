@@ -2621,7 +2621,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
       const id = await this.ticketWriter.createAiTicket({
         conversationId,
-        dueHint: item.dueHint ?? null,
         priority: item.priority,
         sessionId,
         snapshotId,

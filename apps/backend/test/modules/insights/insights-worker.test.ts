@@ -4239,7 +4239,6 @@ describe("InsightsWorkerService", () => {
       analyzeSession: vi.fn(async () => ({
         actionItems: [
           {
-            dueHint: "今天",
             evidenceMessageIds: ["9001"],
             priority: "high" as const,
             title: "跟进物流",
@@ -4316,7 +4315,6 @@ describe("InsightsWorkerService", () => {
       analyzeSession: vi.fn(async () => ({
         actionItems: [
           {
-            dueHint: "今天",
             evidenceMessageIds: ["9001"],
             priority: "high" as const,
             title: "跟进物流",

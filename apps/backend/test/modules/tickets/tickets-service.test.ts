@@ -22,7 +22,6 @@ const baseRecord: TicketRecord = {
   customerName: "客户甲",
   description: null,
   dueAt: null,
-  dueHint: null,
   hasAccountAccess: true,
   ownerAccountAvatarUrl: null,
   ownerAccountId: "201",

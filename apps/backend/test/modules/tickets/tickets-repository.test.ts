@@ -195,7 +195,6 @@ describe("TicketsRepository", () => {
         created_by_sub_user_id: 102,
         description: null,
         due_at: null,
-        due_hint: null,
         has_account_access: 1,
         overdue: 0,
         priority: "medium",
@@ -326,7 +325,6 @@ describe("TicketsRepository", () => {
 
     await expect(repository.createAiTicket({
       conversationId: 301,
-      dueHint: "今天内",
       priority: "high",
       sessionId: 401,
       snapshotId: 701,
@@ -355,7 +353,6 @@ describe("TicketsRepository", () => {
 
     await new TicketsRepository(db).createAiTicket({
       conversationId: 301,
-      dueHint: null,
       priority: "medium",
       sessionId: 401,
       snapshotId: 701,

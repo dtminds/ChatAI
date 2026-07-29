@@ -37,7 +37,6 @@ const ticket = {
   customerName: "客户甲",
   description: null,
   dueAt: null,
-  dueHint: null,
   overdue: false,
   ownerAccountAvatarUrl: null,
   ownerAccountId: "201",

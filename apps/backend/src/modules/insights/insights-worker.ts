@@ -240,7 +240,6 @@ export type InsightTokenUsage = {
 
 export type InsightAnalysisOutput = {
   actionItems: Array<{
-    dueHint?: string;
     evidenceMessageIds: string[];
     priority: "high" | "low" | "medium";
     title: string;

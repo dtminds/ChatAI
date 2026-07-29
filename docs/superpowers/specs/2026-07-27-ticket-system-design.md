@@ -190,7 +190,6 @@ Tickets 不扫描原始审计消息、不批量查询 `logical_session_message` 
 | `priority` | `low` / `medium` / `high` |
 | `assignee_sub_user_id` | 新增，可空，负责人子账号 |
 | `due_at` | 新增，可空，明确截止时间 |
-| `due_hint` | 保留为 AI 原始时效提示，不参与逾期计算 |
 | `status` | 工单状态，见 7.2 |
 | 创建、更新、完成、取消信息 | 记录对应操作者和时间；取消人使用 `canceled_by_sub_user_id` |
 
@@ -451,9 +450,9 @@ AI 工单写入：
 - `source_type = ai`。
 - `action_type = follow_up`。
 - `assignee_sub_user_id`：生成时所属账号有效的 `host_sub_id`，不存在则为空。
-- 标题、优先级、`due_hint` 和证据：沿用模型输出及现有校验。
+- 标题、优先级和证据：沿用模型输出及现有校验。
 
-AI 工单保留 `session_id + snapshot_id + evidence` 的证据链，证据 `dimension_type` 第一阶段固定沿用 `action_item`。`due_hint` 不自动等价为 `due_at`；只有后续具备可靠的绝对时间转换规则时才写入明确截止时间。
+AI 工单保留 `session_id + snapshot_id + evidence` 的证据链，证据 `dimension_type` 第一阶段固定沿用 `action_item`。第一期 AI 工单不生成描述或明确截止时间，`description` 与 `due_at` 均为空。
 
 ### 12.4 去重与数量保护
 

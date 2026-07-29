@@ -1021,7 +1021,6 @@ export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticke
     customerName: record.customerName,
     description: record.description,
     dueAt: record.dueAt,
-    dueHint: record.dueHint,
     overdue: record.overdue,
     ownerAccountAvatarUrl: record.ownerAccountAvatarUrl,
     ownerAccountId: record.ownerAccountId,

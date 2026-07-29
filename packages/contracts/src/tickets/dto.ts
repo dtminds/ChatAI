@@ -86,7 +86,6 @@ export const TicketSchema = Type.Object({
   customerName: Type.String(),
   description: NullableStringSchema,
   dueAt: NullableTimestampSchema,
-  dueHint: NullableStringSchema,
   overdue: Type.Boolean(),
   ownerAccountAvatarUrl: NullableStringSchema,
   ownerAccountId: TicketIdSchema,

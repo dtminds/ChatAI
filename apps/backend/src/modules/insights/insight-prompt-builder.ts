@@ -522,7 +522,6 @@ function buildSummaryOutputContract(options: { includeActionItems?: boolean } = 
   return {
     actionItems: [
       {
-        dueHint: "<string optional: 处理时效或时间提示>",
         evidenceMessageIds: ["<sourceMessageId>"],
         priority: "<high|medium|low>",
         title: "<string: 待跟进事项标题>",

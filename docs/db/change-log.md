@@ -2,6 +2,16 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-29
+
+- Removed the unused `due_hint` free-text field from tickets. AI ticket generation no longer requests or stores an unstructured time hint; explicit deadlines continue to use `due_at`.
+- Deploy the application version that no longer reads or writes `due_hint` before running this migration.
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  DROP COLUMN due_hint;
+```
+
 ## 2026-07-27
 
 - Expanded `xy_wap_embed_session_action_item` into the ticket-system main table while preserving the physical table name for compatibility.

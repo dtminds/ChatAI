@@ -19,7 +19,7 @@ const ticket = {
   anchorMessageId: null, assignee: null, canClaim: true, canDelete: false, canEdit: false, canceledAt: null,
   completedAt: null, conversationId: "301", createdAt: 1, createdBy: { displayName: "客服乙", subUserId: "102" },
   customerAvatarUrl: null, customerName: "王女士", description: null, dueAt: null,
-  dueHint: null, overdue: false, ownerAccountAvatarUrl: null, ownerAccountId: "201",
+  overdue: false, ownerAccountAvatarUrl: null, ownerAccountId: "201",
   ownerAccountName: "售后账号", priority: "high", sessionId: "401", snapshotId: null,
   sourceType: "ai", status: "open", ticketId: "501", title: "确认退款进度", updatedAt: 2,
 };

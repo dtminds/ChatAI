@@ -365,7 +365,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   title VARCHAR(255) NOT NULL COMMENT '工单标题',
   description TEXT NULL COMMENT '工单描述',
   priority VARCHAR(32) NOT NULL COMMENT '优先级，low：低，medium：中，high：高',
-  due_hint VARCHAR(64) NULL COMMENT '时效提示',
   due_at DATETIME NULL COMMENT '明确截止时间',
   status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消，deleted：内部逻辑删除墓碑',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

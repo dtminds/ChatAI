@@ -45,7 +45,6 @@ const ticket = {
   customerName: "王女士",
   description: "确认退款到账时间",
   dueAt: 1785254400000,
-  dueHint: null,
   overdue: false,
   ownerAccountAvatarUrl: null,
   ownerAccountId: "7001",

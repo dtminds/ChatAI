@@ -20,7 +20,7 @@ describe("useConversationTicketReminder", () => {
     vi.useRealTimers();
   });
 
-  it("waits six seconds and cancels the previous conversation request", async () => {
+  it("waits four seconds and cancels the previous conversation request", async () => {
     const { result, rerender } = renderHook(
       ({ conversationId }) => useConversationTicketReminder({
         conversationId,
@@ -30,11 +30,11 @@ describe("useConversationTicketReminder", () => {
       { initialProps: { conversationId: "301" } },
     );
 
-    await act(() => vi.advanceTimersByTimeAsync(5_999));
+    await act(() => vi.advanceTimersByTimeAsync(3_999));
     expect(api.getConversationTicketActiveCount).not.toHaveBeenCalled();
 
     rerender({ conversationId: "302" });
-    await act(() => vi.advanceTimersByTimeAsync(6_000));
+    await act(() => vi.advanceTimersByTimeAsync(4_000));
 
     expect(api.getConversationTicketActiveCount).toHaveBeenCalledTimes(1);
     expect(api.getConversationTicketActiveCount).toHaveBeenCalledWith("302");
@@ -51,7 +51,7 @@ describe("useConversationTicketReminder", () => {
       { initialProps: { isPanelOpen: false } },
     );
 
-    await act(() => vi.advanceTimersByTimeAsync(6_000));
+    await act(() => vi.advanceTimersByTimeAsync(4_000));
     expect(result.current).toBe(2);
 
     rerender({ isPanelOpen: true });
@@ -79,7 +79,7 @@ describe("useConversationTicketReminder", () => {
 
     await act(() => vi.advanceTimersByTimeAsync(3_000));
     rerender({ isPanelOpen: true });
-    await act(() => vi.advanceTimersByTimeAsync(6_000));
+    await act(() => vi.advanceTimersByTimeAsync(4_000));
 
     expect(api.getConversationTicketActiveCount).not.toHaveBeenCalled();
 
@@ -120,7 +120,7 @@ describe("useConversationTicketReminder", () => {
 
     rerender({ conversationId: "302", isPanelOpen: true });
     rerender({ conversationId: "302", isPanelOpen: false });
-    await act(() => vi.advanceTimersByTimeAsync(5_999));
+    await act(() => vi.advanceTimersByTimeAsync(3_999));
     expect(api.getConversationTicketActiveCount).not.toHaveBeenCalled();
 
     await act(() => vi.advanceTimersByTimeAsync(1));

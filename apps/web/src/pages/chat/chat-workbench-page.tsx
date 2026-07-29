@@ -120,6 +120,7 @@ import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tick
 import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
 import { useTicketCountPolling } from "@/pages/chat/tickets/use-ticket-count-polling";
 import { useConversationTicketReminder } from "@/pages/chat/tickets/use-conversation-ticket-reminder";
+import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import { useTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
@@ -704,13 +705,18 @@ function ChatWorkbenchContent({
     activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
     );
+  const isActiveConversationTicketSupported =
+    isConversationTicketSupported(activeConversation);
   const ticketReminderDisplayMode = useTicketCountStore(
     (state) => state.reminderDisplayMode,
   );
   const conversationTicketReminderCount = useConversationTicketReminder({
-    conversationId:
-      activeConversation?.mode === "single" ? activeConversation.id : undefined,
-    enabled: ticketReminderDisplayMode !== "hidden",
+    conversationId: isActiveConversationTicketSupported
+      ? activeConversation?.id
+      : undefined,
+    enabled:
+      isActiveConversationTicketSupported &&
+      ticketReminderDisplayMode !== "hidden",
     isPanelOpen: activeAuxiliaryPanel === "tickets",
   });
   useEffect(() => {
@@ -2364,15 +2370,19 @@ function ChatWorkbenchContent({
       onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
-      onToggleTickets={() => {
-        if (activeAuxiliaryPanel === "tickets") {
-          setActiveAuxiliaryPanel(null);
-          return;
-        }
+      onToggleTickets={
+        isActiveConversationTicketSupported
+          ? () => {
+              if (activeAuxiliaryPanel === "tickets") {
+                setActiveAuxiliaryPanel(null);
+                return;
+              }
 
-        closeHistoryPanel();
-        setActiveAuxiliaryPanel("tickets");
-      }}
+              closeHistoryPanel();
+              setActiveAuxiliaryPanel("tickets");
+            }
+          : undefined
+      }
       onRevokeMessage={
         activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
       }
@@ -2385,7 +2395,7 @@ function ChatWorkbenchContent({
       onQuickReplyActiveChange={setIsQuickReplyPanelActive}
       quickReplyPanel={quickReplyPanel}
       ticketPanel={
-        activeConversation?.mode === "single" ? (
+        isActiveConversationTicketSupported && activeConversation ? (
           <ConversationTicketsPanel
             conversationId={activeConversation.id}
             key={activeConversation.id}

@@ -1176,10 +1176,11 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("group-ai-dialog-content")).not.toBeInTheDocument();
   });
 
-  it("hides the AI dialog button in application-message conversations", () => {
+  it("hides AI and ticket actions in application-message conversations", () => {
     render(
       <ChatPanel
         activeAccount={account}
+        activeAuxiliaryPanel="tickets"
         activeConversation={{
           ...createConversation(),
           customerBindType: 2,
@@ -1205,6 +1206,8 @@ describe("ChatPanel", () => {
         messages={[]}
         quotedMessage={null}
         sidebarItems={[]}
+        ticketPanel={<div>工单列表内容</div>}
+        ticketReminderCount={3}
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
@@ -1231,10 +1234,13 @@ describe("ChatPanel", () => {
         onRefreshGroupMembers={vi.fn()}
         onRetryMessage={vi.fn()}
         onSendDraft={vi.fn()}
+        onToggleTickets={vi.fn()}
       />,
     );
 
     expect(screen.queryByRole("button", { name: "AI 对话" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "工单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "工单" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "历史记录" })).toBeInTheDocument();
   });
 

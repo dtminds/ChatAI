@@ -39,6 +39,7 @@ import type {
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
+import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import type {
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
@@ -334,6 +335,7 @@ export function ChatPanel({
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
+  const isTicketSupported = isConversationTicketSupported(activeConversation);
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -363,7 +365,7 @@ export function ChatPanel({
     />
   ) : null;
   const ticketsPanelNode =
-    ticketPanel && resolvedAuxiliaryPanel === "tickets" ? (
+    isTicketSupported && ticketPanel && resolvedAuxiliaryPanel === "tickets" ? (
       <aside
         aria-label="工单"
         className="absolute inset-0 z-20 flex w-full min-w-0 flex-col border-l border-divider bg-surface"
@@ -489,7 +491,9 @@ export function ChatPanel({
         }
         onToggleSidebar={hasActiveConversation ? handleToggleSidebar : undefined}
         onToggleTickets={
-          ticketPanel && onToggleTickets ? handleToggleTickets : undefined
+          isTicketSupported && ticketPanel && onToggleTickets
+            ? handleToggleTickets
+            : undefined
         }
         ticketReminderCount={ticketReminderCount}
         ticketReminderDisplayMode={ticketReminderDisplayMode}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getConversationTicketActiveCount } from "./api/tickets-service";
 
-const conversationTicketReminderDelayMs = 6_000;
+const conversationTicketReminderDelayMs = 4_000;
 
 type ConversationTicketReminderOptions = {
   conversationId?: string;

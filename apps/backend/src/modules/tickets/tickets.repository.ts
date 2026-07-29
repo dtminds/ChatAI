@@ -14,11 +14,10 @@ import type {
   TicketActivityRecordPage,
   TicketDeleteRecord,
   TicketListRepositoryInput,
-  TicketMessageCandidate,
   TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
-  TicketSessionOptions,
+  TicketSessionOptionRecord,
 } from "./tickets.types.js";
 
 type TicketQueryDatabase = Database & {
@@ -247,6 +246,8 @@ export class TicketsRepository {
       .selectFrom("xy_wap_embed_conversation as conversation")
       .select([
         "conversation.id as conversation_id",
+        "conversation.last_audit_info_id as last_audit_info_id",
+        "conversation.last_msgtime as last_msgtime",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_userid as third_userid",
@@ -264,6 +265,8 @@ export class TicketsRepository {
     return {
       chatType: Number(row.chat_type),
       conversationId: Number(row.conversation_id),
+      lastAuditInfoId: toNullablePositiveNumber(row.last_audit_info_id),
+      lastMessageAt: toNullablePositiveNumber(row.last_msgtime),
       platform: Number(row.platform),
       thirdExternalUserId: row.third_external_userid ?? "",
       thirdUserId: row.third_userid,
@@ -383,7 +386,7 @@ export class TicketsRepository {
     conversationId: number;
     limit: number;
     uid: number;
-  }): Promise<TicketSessionOptions> {
+  }): Promise<TicketSessionOptionRecord[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_logical_session as session")
       .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
@@ -391,6 +394,7 @@ export class TicketsRepository {
       )
       .select([
         "session.id as session_id",
+        "session.next_close_at as next_close_at",
         "session.started_at as started_at",
         "session.ended_at as ended_at",
         "session.status as status",
@@ -409,78 +413,12 @@ export class TicketsRepository {
 
     return rows.map((row) => ({
       endedAt: row.ended_at == null ? null : Number(row.ended_at),
+      nextCloseAt: row.next_close_at == null ? null : Number(row.next_close_at),
       sessionId: String(row.session_id),
       startedAt: Number(row.started_at),
       status: row.status === "open" ? "open" : "ended",
       summary: row.summary_text || null,
       title: row.session_title || null,
-    }));
-  }
-
-  async listRecentMessageCandidates(input: {
-    beforeMessageId?: number;
-    conversation: TicketConversationIdentity;
-    limit: number;
-    uid: number;
-  }): Promise<TicketMessageCandidate[]> {
-    let query = this.db
-      .selectFrom("xy_wap_embed_msg_audit_info as message")
-      .select([
-        "message.chat_type as chat_type",
-        "message.content as content",
-        "message.from_type as from_type",
-        "message.id as id",
-        "message.msgtime as msgtime",
-        "message.msgtype as msgtype",
-        "message.third_from_id as third_from_id",
-        "message.third_user_id as third_user_id",
-      ])
-      .select(sql<number>`${input.conversation.conversationId}`.as("conversation_id"))
-      .where("message.uid", "=", input.uid)
-      .where("message.platform", "=", input.conversation.platform)
-      .where("message.chat_type", "=", 1)
-      .where("message.third_user_id", "=", input.conversation.thirdUserId)
-      .where("message.third_external_id", "=", input.conversation.thirdExternalUserId);
-
-    if (input.beforeMessageId != null) {
-      query = query.where("message.id", "<", input.beforeMessageId);
-    }
-
-    return query
-      .orderBy("message.id", "desc")
-      .limit(input.limit)
-      .execute() as Promise<TicketMessageCandidate[]>;
-  }
-
-  async listOpenSessionAssignments(input: {
-    conversationId: number;
-    sourceMessageIds: number[];
-    uid: number;
-  }) {
-    if (input.sourceMessageIds.length === 0) {
-      return [];
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_logical_session_message as session_message")
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join
-          .onRef("session.id", "=", "session_message.session_id")
-          .onRef("session.uid", "=", "session_message.uid"),
-      )
-      .select([
-        "session_message.source_message_id as source_message_id",
-        "session_message.session_id as session_id",
-      ])
-      .where("session_message.uid", "=", input.uid)
-      .where("session_message.conversation_id", "=", input.conversationId)
-      .where("session_message.source_message_id", "in", input.sourceMessageIds)
-      .where("session.status", "=", "open")
-      .execute();
-
-    return rows.map((row) => ({
-      sessionId: String(row.session_id),
-      sourceMessageId: String(row.source_message_id),
     }));
   }
 
@@ -1348,6 +1286,15 @@ function toNonNegativeNumber(value: number | string | bigint | undefined) {
   const number = Number(value ?? 0);
 
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+}
+
+function toNullablePositiveNumber(value: number | string | null) {
+  if (value == null) {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 async function insertActivities(

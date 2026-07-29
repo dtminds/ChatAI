@@ -8,7 +8,6 @@ import type {
   TicketStatus,
   TicketView,
 } from "@chatai/contracts";
-import type { InsightMessageSourceRow } from "../insights/insights.types.js";
 
 export type TicketRepositoryView = TicketView | "visible";
 export type TicketPersistenceStatus = TicketStatus | "deleted";
@@ -85,14 +84,17 @@ export type TicketListRepositoryInput = Omit<TicketListQuery, "assigneeSubUserId
 export type TicketConversationIdentity = {
   chatType: number;
   conversationId: number;
+  lastAuditInfoId: number | null;
+  lastMessageAt: number | null;
   platform: number;
   thirdExternalUserId: string;
   thirdUserId: string;
 };
 
 export type TicketSessionOptions = TicketContextOptionsResponse["sessions"];
-
-export type TicketMessageCandidate = InsightMessageSourceRow;
+export type TicketSessionOptionRecord = TicketSessionOptions[number] & {
+  nextCloseAt: number | null;
+};
 
 export type TicketActivityRecord = Omit<TicketActivity, "operator"> & {
   operatorDisplayName: string | null;

@@ -219,6 +219,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 1,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "customer-1",
       thirdUserId: "account-1",
@@ -244,6 +246,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 1,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "",
       thirdUserId: "account-1",
@@ -263,6 +267,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 1,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "customer-1",
       thirdUserId: "account-1",
@@ -292,6 +298,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 2,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "customer-1",
       thirdUserId: "account-1",
@@ -309,6 +317,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 1,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "customer-1",
       thirdUserId: "account-1",
@@ -329,6 +339,8 @@ describe("TicketsService", () => {
     repository.getConversationIdentity.mockResolvedValueOnce({
       chatType: 2,
       conversationId: 301,
+      lastAuditInfoId: 9003,
+      lastMessageAt: 1_785_168_000_000,
       platform: 5,
       thirdExternalUserId: "customer-1",
       thirdUserId: "account-1",
@@ -345,17 +357,45 @@ describe("TicketsService", () => {
       .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
   });
 
-  it("links current context only when the latest meaningful message is in an open session", async () => {
+  it("links current context to an open latest session at its close boundary", async () => {
     const repository = createRepository();
     configureCreationConversation(repository);
-    repository.listRecentMessageCandidates.mockResolvedValueOnce([
-      messageRow(9003, "最新消息"),
-      messageRow(9002, "较早消息"),
-    ]);
-    repository.listOpenSessionAssignments.mockResolvedValueOnce([
-      { sessionId: "401", sourceMessageId: "9003" },
-      { sessionId: "400", sourceMessageId: "9002" },
-    ]);
+    repository.listSessionOptions.mockResolvedValueOnce([{
+      endedAt: null,
+      nextCloseAt: 1_785_168_000_000,
+      sessionId: "401",
+      startedAt: 1_785_167_000_000,
+      status: "open",
+      summary: null,
+      title: null,
+    }]);
+    const service = new TicketsService(repository);
+
+    await service.createTicket(createActor("operator"), createPayload());
+
+    expect(repository.createManualTicket).toHaveBeenCalledWith(expect.objectContaining({
+      anchorMessageId: null,
+      sessionId: 401,
+    }));
+    expect(repository.listSessionOptions).toHaveBeenCalledWith({
+      conversationId: 301,
+      limit: 1,
+      uid: 9001,
+    });
+  });
+
+  it("links current context to the latest closed session that covers the last message", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository, { lastMessageAt: 200 });
+    repository.listSessionOptions.mockResolvedValueOnce([{
+      endedAt: 300,
+      nextCloseAt: null,
+      sessionId: "401",
+      startedAt: 100,
+      status: "ended",
+      summary: null,
+      title: null,
+    }]);
     const service = new TicketsService(repository);
 
     await service.createTicket(createActor("operator"), createPayload());
@@ -366,16 +406,18 @@ describe("TicketsService", () => {
     }));
   });
 
-  it("anchors the latest message when only an older message has session ownership", async () => {
+  it("anchors the latest message when it falls after the latest session boundary", async () => {
     const repository = createRepository();
-    configureCreationConversation(repository);
-    repository.listRecentMessageCandidates.mockResolvedValueOnce([
-      messageRow(9003, "最新消息"),
-      messageRow(9002, "较早消息"),
-    ]);
-    repository.listOpenSessionAssignments.mockResolvedValueOnce([
-      { sessionId: "400", sourceMessageId: "9002" },
-    ]);
+    configureCreationConversation(repository, { lastMessageAt: 400 });
+    repository.listSessionOptions.mockResolvedValueOnce([{
+      endedAt: 300,
+      nextCloseAt: null,
+      sessionId: "401",
+      startedAt: 100,
+      status: "ended",
+      summary: null,
+      title: null,
+    }]);
     const service = new TicketsService(repository);
 
     await service.createTicket(createActor("operator"), createPayload());
@@ -386,12 +428,12 @@ describe("TicketsService", () => {
     }));
   });
 
-  it("allows current context with no meaningful messages and supports none or selected session", async () => {
+  it("allows current context without sessions and supports none or selected session", async () => {
     const repository = createRepository();
-    configureCreationConversation(repository);
-    repository.listRecentMessageCandidates.mockResolvedValueOnce([
-      { ...messageRow(9003, ""), content: "{}", msgtype: "image" },
-    ]);
+    configureCreationConversation(repository, {
+      lastAuditInfoId: null,
+      lastMessageAt: null,
+    });
     const service = new TicketsService(repository);
 
     await service.createTicket(createActor("operator"), createPayload());
@@ -470,12 +512,21 @@ describe("TicketsService", () => {
       { displayName: "客服甲", subUserId: "101" },
     ]);
     repository.listSessionOptions.mockResolvedValueOnce([{
-        endedAt: null,
-        sessionId: "401",
-        startedAt: 1_785_168_000_000,
-        status: "open",
-        summary: null,
-        title: null,
+      endedAt: null,
+      nextCloseAt: 1_785_168_060_000,
+      sessionId: "401",
+      startedAt: 1_785_168_000_000,
+      status: "open",
+      summary: null,
+      title: null,
+    }, {
+      endedAt: 1_785_160_000_000,
+      nextCloseAt: null,
+      sessionId: "400",
+      startedAt: 1_785_159_000_000,
+      status: "ended",
+      summary: null,
+      title: null,
     }]);
     const service = new TicketsService(repository);
 
@@ -483,12 +534,33 @@ describe("TicketsService", () => {
       conversationId: "301",
     })).resolves.toMatchObject({
       defaultAssigneeSubUserId: "101",
-      sessions: [{ sessionId: "401" }],
+      sessions: [{ sessionId: "400" }],
     });
     expect(repository.listSessionOptions).toHaveBeenCalledWith({
       conversationId: 301,
       limit: 5,
       uid: 9001,
+    });
+  });
+
+  it("keeps the latest historical session selectable when it does not cover the last message", async () => {
+    const repository = createRepository();
+    configureCreationConversation(repository, { lastMessageAt: 400 });
+    repository.listSessionOptions.mockResolvedValueOnce([{
+      endedAt: 300,
+      nextCloseAt: null,
+      sessionId: "401",
+      startedAt: 100,
+      status: "ended",
+      summary: null,
+      title: null,
+    }]);
+    const service = new TicketsService(repository);
+
+    await expect(service.getContextOptions(createActor("operator"), {
+      conversationId: "301",
+    })).resolves.toMatchObject({
+      sessions: [{ sessionId: "401" }],
     });
   });
 
@@ -918,8 +990,6 @@ function createRepository(page?: { items: TicketRecord[] }) {
     isValidAssignee: vi.fn(async () => true),
     listAssigneeOptions: vi.fn(async () => []),
     listCustomerConversationIds: vi.fn(async () => []),
-    listOpenSessionAssignments: vi.fn(async () => []),
-    listRecentMessageCandidates: vi.fn(async () => []),
     listSessionOptions: vi.fn(async () => []),
     listTicketActivities: vi.fn(async () => ({
       hasMore: false,
@@ -946,8 +1016,6 @@ function createRepository(page?: { items: TicketRecord[] }) {
     isValidAssignee: ReturnType<typeof vi.fn>;
     listAssigneeOptions: ReturnType<typeof vi.fn>;
     listCustomerConversationIds: ReturnType<typeof vi.fn>;
-    listOpenSessionAssignments: ReturnType<typeof vi.fn>;
-    listRecentMessageCandidates: ReturnType<typeof vi.fn>;
     listSessionOptions: ReturnType<typeof vi.fn>;
     listTickets: ReturnType<typeof vi.fn>;
   };
@@ -967,13 +1035,22 @@ function createContextReader() {
   };
 }
 
-function configureCreationConversation(repository: ReturnType<typeof createRepository>) {
+function configureCreationConversation(
+  repository: ReturnType<typeof createRepository>,
+  overrides: Partial<{
+    lastAuditInfoId: number | null;
+    lastMessageAt: number | null;
+  }> = {},
+) {
   repository.getConversationIdentity.mockResolvedValueOnce({
     chatType: 1,
     conversationId: 301,
+    lastAuditInfoId: 9003,
+    lastMessageAt: 1_785_168_000_000,
     platform: 5,
     thirdExternalUserId: "customer-1",
     thirdUserId: "account-1",
+    ...overrides,
   });
 }
 
@@ -985,18 +1062,4 @@ function createPayload(overrides: Record<string, unknown> = {}) {
     title: "跟进退款",
     ...overrides,
   } as never;
-}
-
-function messageRow(id: number, content: string) {
-  return {
-    chat_type: 1,
-    content: JSON.stringify({ content }),
-    conversation_id: 301,
-    from_type: 2,
-    id,
-    msgtime: 1_785_168_000_000 + id,
-    msgtype: "text",
-    third_from_id: "customer-1",
-    third_user_id: "account-1",
-  };
 }

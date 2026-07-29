@@ -257,6 +257,17 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("conversation.chat_type = ?");
   });
 
+  it("loads the conversation's latest message boundary with its identity", async () => {
+    const { db, queries } = createRecordingDatabase();
+
+    await new TicketsRepository(db).getConversationIdentity(9001, 301);
+
+    const sql = queries.map(normalizeSql).join("\n");
+    expect(sql).toContain("conversation.last_audit_info_id as last_audit_info_id");
+    expect(sql).toContain("conversation.last_msgtime as last_msgtime");
+    expect(sql).toContain("conversation.biz_status = ?");
+  });
+
   it("loads context sessions without requiring a summary and orders them newest first", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
@@ -271,6 +282,7 @@ describe("TicketsRepository", () => {
     expect(queries).toHaveLength(1);
     expect(sql).not.toContain("count(");
     expect(sql).toContain("left join xy_wap_embed_session_summary as summary");
+    expect(sql).toContain("session.next_close_at as next_close_at");
     expect(sql).toContain("session.conversation_id = ?");
     expect(sql).toContain("coalesce(session.ended_at, session.last_message_at, session.started_at) desc");
     expect(sql).toContain("limit ?");
@@ -289,34 +301,6 @@ describe("TicketsRepository", () => {
     expect(sql).toContain("sub_user.status = ?");
     expect(sql).toContain("sub_user.role != ?");
     expect(sql).toContain("sub_user.type = ?");
-  });
-
-  it("reads raw recent messages and resolves open ownership through the existing source key", async () => {
-    const { db, queries } = createRecordingDatabase();
-    const repository = new TicketsRepository(db);
-
-    await repository.listRecentMessageCandidates({
-      conversation: {
-        chatType: 1,
-        conversationId: 301,
-        platform: 5,
-        thirdExternalUserId: "customer-1",
-        thirdUserId: "account-1",
-      },
-      limit: 50,
-      uid: 9001,
-    });
-    await repository.listOpenSessionAssignments({
-      conversationId: 301,
-      sourceMessageIds: [9001, 9002],
-      uid: 9001,
-    });
-
-    const sql = queries.map(normalizeSql).join("\n");
-    expect(sql).toContain("from xy_wap_embed_msg_audit_info as message");
-    expect(sql).not.toContain("message.msgtype in");
-    expect(sql).toContain("session_message.source_message_id in");
-    expect(sql).toContain("session.status = ?");
   });
 
   it("creates the manual ticket and first activity in one transaction", async () => {

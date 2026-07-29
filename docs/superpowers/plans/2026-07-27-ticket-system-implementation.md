@@ -61,7 +61,7 @@
 
 - 不引入消息队列、事件总线、搜索引擎或新缓存层。
 - 不为理论竞态增加工单版本状态机；普通字段后写覆盖，状态字段使用 `expectedStatus` 条件更新。
-- 不复制一套“有效消息”规则；必须复用 `buildInsightMessageInput()` 的 `meaningfulForBoundary` 语义。
+- “当前会话”只使用聊天窗口最新消息时间和最近逻辑会话覆盖边界判断，不扫描原始消息或消息归属表。
 - 不把 Tickets Service 反向接入 UID Worker 调度。
 - 不在工单表冗余会随接管关系变化的所属账号或客户名称。
 - 默认排序在数据库分页前完成；不得只对单页数据做应用层重排。
@@ -171,7 +171,7 @@ docs/db/change-log.md                                         修改
 - 最终 schema 不再包含 `dismissed_at`。
 - 新增 `xy_wap_embed_ticket_activity` 及 `uid + ticket_id + id` 时间线索引。
 - `xy_wap_embed_ticket_activity` 进入 Node 可写白名单。
-- 最近消息反查逻辑会话归属复用现有 `xy_wap_embed_logical_session_message.uk_session_message_source_uid (uid, source_message_id)`；本任务不为该查询新增索引。
+- “当前会话”解析不查询 `xy_wap_embed_logical_session_message`，本任务不为该路径新增索引。
 
 - [x] **Step 2：更新最终 schema snapshot**
 
@@ -377,7 +377,6 @@ cd apps/backend
 - Modify: `apps/backend/src/modules/tickets/tickets.service.ts`
 - Modify: `apps/backend/test/modules/tickets/tickets-repository.test.ts`
 - Modify: `apps/backend/test/modules/tickets/tickets-service.test.ts`
-- Reuse: `apps/backend/src/modules/insights/insight-message-input-builder.ts`
 
 - [x] **Step 1：先写创建准入和上下文失败测试**
 
@@ -385,10 +384,10 @@ cd apps/backend
 
 - 群聊返回 `TICKET_SINGLE_CHAT_ONLY`。
 - 无聊天访问权返回 `TICKET_FORBIDDEN`。
-- `current`：最新有效消息已关联 `open` 接待会话时写 `session_id`。
-- `current`：未覆盖最新有效消息时写最新消息 `anchor_message_id`。
-- 只有较早消息关联 open 会话时仍锚定最新消息，不错误复用旧归属。
-- 没有有效消息时允许两个上下文字段都为空。
+- `current`：最新逻辑会话的 `next_close_at ?? ended_at` 覆盖聊天窗口 `last_msgtime` 时写 `session_id`。
+- `current`：已关闭逻辑会话仍覆盖聊天窗口最新消息时继续写该 `session_id`。
+- `current`：聊天窗口最新消息超过最近逻辑会话覆盖边界时写 `last_audit_info_id` 为 `anchor_message_id`。
+- 没有逻辑会话或消息锚点时允许两个上下文字段都为空。
 - `session`：校验 `uid + conversation_id + session_id`。
 - `none`：两个上下文字段均为空。
 - 人工创建默认负责人是创建人；显式未分配合法；无账号访问权或 `viewer` 不能成为负责人。
@@ -400,18 +399,19 @@ cd apps/backend
 - 按 `conversation_id` 和 `uid` 查询。
 - 按结束时间/ID 倒序。
 - 固定 `LIMIT 5`，不执行总数查询，不接收分页参数。
+- 若第一条逻辑会话覆盖聊天窗口 `last_msgtime`，将其作为固定“当前会话”解析，并从历史选项中移除。
 - 返回时间范围和可用摘要，不因摘要为空排除会话。
 - 同一响应返回当前聊天的合法负责人候选；排除无账号访问权、已失效和 `viewer` 子账号。
 
 - [x] **Step 3：实现“当前会话”解析**
 
-1. 先读取当前有效单聊的 `uid/platform/third_userid/third_external_userid`。
-2. 复用工作台或 Insights 现有的单聊消息查询路径，按聊天窗口对应的账号、客户和平台事实反向分页读取最近消息；不在 Tickets 中另写一套未经验证的消息扫描逻辑。
-3. 对消息调用纯函数 `buildInsightMessageInput()`，只保留 `meaningfulForBoundary = true`，取得最近 5 条。
-4. 使用现有唯一键 `uk_session_message_source_uid (uid, source_message_id)` 一次查询这 5 条消息的关联，以 `conversation_id` 校验所属聊天，并 join `logical_session.status = open`。
-5. 只有最新有效消息被 open 会话覆盖时写 `session_id`，否则写最新消息 ID 为锚点。
+1. 读取当前有效单聊的 `last_msgtime` 和 `last_audit_info_id`。
+2. 按现有接待会话排序查询该聊天窗口最近 1 个逻辑会话。
+3. 取 `coverageEndedAt = next_close_at ?? ended_at`；当 `last_msgtime <= coverageEndedAt` 时写该 `session_id`，不要求会话仍为 `open`。
+4. 未被覆盖时写 `last_audit_info_id` 为消息锚点；没有锚点时允许上下文为空。
+5. 保存时重新执行该查询和判断，不依赖弹窗打开时返回的历史会话快照。
 
-这里复用纯消息构建逻辑不代表 Tickets 依赖会话洞察开关，也不得调用 Worker。若后续需要移动该纯函数，只做无行为变化的机械提取并保留原测试。
+该路径不得扫描原始消息、查询 `logical_session_message` 归属或调用 Worker。`last_msgtime` 与覆盖边界相等时沿用旧会话，与切片侧“超过边界才开启新会话”的规则一致。
 
 - [x] **Step 4：实现创建事务和首条活动**
 
@@ -900,8 +900,7 @@ corepack pnpm --filter @chatai/web build
 - 五个视图的列表和 count。
 - 默认 `CASE WHEN` 排序。
 - 负责人/状态/来源/截止时间组合筛选。
-- 当前聊天最近消息和锚点前后消息复用路径的真实 SQL；记录平台消息表实际选中的索引，不把仓库外索引名写成实现前提。
-- 最近 5 条消息关联确认使用现有 `uk_session_message_source_uid (uid, source_message_id)`。
+- 当前聊天窗口最新消息字段、最近逻辑会话和锚点前后消息路径的真实 SQL；仅锚点上下文读取访问平台消息表。
 - 当前客户全部工单的 conversation scope 查询。
 
 验收标准：不出现无租户边界的消息表/工单表全扫；表达式排序可接受 filesort，但必须先用权限和筛选显著缩小结果集。若真实执行计划未使用可接受索引，再基于实际 SQL 单独评估索引，不提前增加猜测性索引。
@@ -911,7 +910,7 @@ corepack pnpm --filter @chatai/web build
 - 使用现有只读开发库连接执行，不使用 Docker。共享库尚未应用本期工单 expand SQL，且当前账号无 `CREATE TEMPORARY TABLE` 权限，因此无法对最终工单主表的五个视图、count 和组合筛选执行运行时 `EXPLAIN`；这些查询已按最终 schema 的租户前缀索引逐项静态核对，限制需在 PR 中保留。
 - 客户聊天范围查询由原先可能全扫 `conversation` 调整为先从当前子账号可访问席位关联，`conversation` 使用 `uk_thirdUserid_exUserid_groupId_uid_platform`，执行计划为 `eq_ref`。
 - 锚点消息按主键定位使用 `PRIMARY`，执行计划为 `const`；锚点前后消息按 `(msgtime, id)` 范围读取使用平台现有 `idx_single`，执行计划为 `range`，前序读取为反向索引扫描。
-- 当前聊天最近消息使用 `idx_single` 缩小聊天范围后做有界 filesort；最近 5 条消息反查接待会话继续使用 `uk_session_message_source_uid (uid, source_message_id)`，未新增重复索引。
+- “当前会话”解析直接读取聊天窗口的 `last_msgtime/last_audit_info_id`，并按 `conversation_id` 有界查询最近逻辑会话，不再扫描平台消息表或反查 `logical_session_message`，未新增索引。
 
 - [x] **Step 2：执行 Backend 完整测试与构建**
 
@@ -935,7 +934,7 @@ corepack pnpm --filter @chatai/web build
 
 - [x] **Step 4：关键路径验收**
 
-1. 单聊分别以当前会话已追平、切片延迟、无消息、不关联、历史接待会话创建。
+1. 单聊分别以 open 会话覆盖、已关闭会话覆盖、最新消息超过覆盖边界、无消息锚点、不关联、历史接待会话创建。
 2. 群聊确认无入口，直接 API 创建被拒绝。
 3. 普通客服逐项验证负责人、创建人、仅因所属账号访问权可见时的只读和领取权限。
 4. 管理员同时验证“接待工单”和“全部工单”范围不同。

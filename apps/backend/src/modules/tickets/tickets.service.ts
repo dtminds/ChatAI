@@ -30,7 +30,6 @@ import type {
 } from "@chatai/contracts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import { parseMySqlId } from "../../shared/id-utils.js";
-import { buildInsightMessageInput } from "../insights/insight-message-input-builder.js";
 import type {
   TicketConversationIdentity,
   TicketAccessRecord,
@@ -41,8 +40,7 @@ import type {
   TicketMutationActivity,
   TicketRecord,
   TicketRecordPage,
-  TicketSessionOptions,
-  TicketMessageCandidate,
+  TicketSessionOptionRecord,
 } from "./tickets.types.js";
 
 export type TicketsActorScope = {
@@ -140,22 +138,11 @@ export interface TicketsRepositoryPort {
     thirdExternalUserId: string;
     uid: number;
   }): Promise<number[]>;
-  listOpenSessionAssignments(input: {
-    conversationId: number;
-    sourceMessageIds: number[];
-    uid: number;
-  }): Promise<Array<{ sessionId: string; sourceMessageId: string }>>;
-  listRecentMessageCandidates(input: {
-    beforeMessageId?: number;
-    conversation: TicketConversationIdentity;
-    limit: number;
-    uid: number;
-  }): Promise<TicketMessageCandidate[]>;
   listSessionOptions(input: {
     conversationId: number;
     limit: number;
     uid: number;
-  }): Promise<TicketSessionOptions>;
+  }): Promise<TicketSessionOptionRecord[]>;
   listTickets(input: TicketListRepositoryInput): Promise<TicketRecordPage>;
   updateTicket(input: {
     activities: TicketMutationActivity[];
@@ -210,11 +197,11 @@ export class TicketsService {
     actor: TicketsActorScope,
     query: TicketContextOptionsQuery,
   ): Promise<TicketContextOptionsResponse> {
-    const { conversationId, subUserId } = await this.getCreationConversation(
+    const { conversationId, identity, subUserId } = await this.getCreationConversation(
       actor,
       query.conversationId,
     );
-    const [sessions, assignees] = await Promise.all([
+    const [sessionRecords, assignees] = await Promise.all([
       this.repository.listSessionOptions({
         conversationId,
         limit: 5,
@@ -232,7 +219,8 @@ export class TicketsService {
       )
         ? String(subUserId)
         : null,
-      sessions,
+      sessions: removeCurrentSessionOption(identity, sessionRecords)
+        .map(toTicketSessionOption),
     };
   }
 
@@ -933,77 +921,49 @@ export class TicketsService {
       return { anchorMessageId: null, sessionId };
     }
 
-    const messages = await this.listRecentMeaningfulMessages(uid, identity, 5);
-    const latestMessage = messages[0];
-
-    if (!latestMessage) {
-      return { anchorMessageId: null, sessionId: null };
-    }
-
-    const sourceMessageIds = messages
-      .map((message) => parseMySqlId(message.sourceMessageId))
-      .filter((messageId): messageId is number => messageId != null);
-    const assignments = await this.repository.listOpenSessionAssignments({
+    const [latestSession] = await this.repository.listSessionOptions({
       conversationId,
-      sourceMessageIds,
+      limit: 1,
       uid,
     });
-    const latestAssignment = assignments.find(
-      (assignment) => assignment.sourceMessageId === latestMessage.sourceMessageId,
-    );
 
-    const assignedSessionId = latestAssignment
-      ? parseMySqlId(latestAssignment.sessionId)
-      : null;
-
-    return assignedSessionId != null
-      ? { anchorMessageId: null, sessionId: assignedSessionId }
-      : {
-          anchorMessageId: parseMySqlId(latestMessage.sourceMessageId),
-          sessionId: null,
-        };
-  }
-
-  private async listRecentMeaningfulMessages(
-    uid: number,
-    identity: TicketConversationIdentity,
-    limit: number,
-  ) {
-    const meaningful = [] as ReturnType<typeof buildInsightMessageInput>[];
-    const batchSize = 50;
-    let beforeMessageId: number | undefined;
-
-    while (meaningful.length < limit) {
-      const rows = await this.repository.listRecentMessageCandidates({
-        beforeMessageId,
-        conversation: identity,
-        limit: batchSize,
-        uid,
-      });
-
-      for (const row of rows) {
-        const message = buildInsightMessageInput(row);
-
-        if (message.meaningfulForBoundary) {
-          meaningful.push(message);
-        }
-
-        if (meaningful.length >= limit) {
-          break;
-        }
-      }
-
-      const nextBeforeMessageId = parseMySqlId(String(rows.at(-1)?.id ?? ""));
-
-      if (rows.length < batchSize || nextBeforeMessageId == null) {
-        break;
-      }
-
-      beforeMessageId = nextBeforeMessageId;
+    if (isCurrentSessionOption(identity, latestSession)) {
+      return {
+        anchorMessageId: null,
+        sessionId: parseMySqlId(latestSession.sessionId),
+      };
     }
 
-    return meaningful.slice(0, limit);
+    return {
+      anchorMessageId: identity.lastAuditInfoId,
+      sessionId: null,
+    };
   }
+}
+
+function removeCurrentSessionOption(
+  identity: TicketConversationIdentity,
+  sessions: TicketSessionOptionRecord[],
+) {
+  return isCurrentSessionOption(identity, sessions[0])
+    ? sessions.slice(1)
+    : sessions;
+}
+
+function isCurrentSessionOption(
+  identity: TicketConversationIdentity,
+  session: TicketSessionOptionRecord | undefined,
+): session is TicketSessionOptionRecord {
+  if (!session || identity.lastMessageAt == null) {
+    return false;
+  }
+
+  const coverageEndedAt = session.nextCloseAt ?? session.endedAt;
+  return coverageEndedAt != null && identity.lastMessageAt <= coverageEndedAt;
+}
+
+function toTicketSessionOption({ nextCloseAt: _nextCloseAt, ...session }: TicketSessionOptionRecord) {
+  return session;
 }
 
 function encodeTicketContextCursor(cursor: { messageId: number; messageTime: number }) {

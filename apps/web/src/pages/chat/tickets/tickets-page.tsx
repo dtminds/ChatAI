@@ -186,7 +186,7 @@ export function TicketsPage() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-[1180px] space-y-5 px-8 py-6">
-        <header className="space-y-4">
+        <header className="space-y-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-[22px] font-semibold">工单</h1>

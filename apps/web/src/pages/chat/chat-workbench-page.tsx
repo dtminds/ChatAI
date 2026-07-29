@@ -2131,7 +2131,7 @@ function ChatWorkbenchContent({
           return;
         }
 
-        if (label === "聊天" || label === "工作台") {
+        if (label === "聊天") {
           setMobilePane("list");
           onNavigateChat?.();
         }

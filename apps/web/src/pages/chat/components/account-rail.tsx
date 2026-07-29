@@ -8,7 +8,6 @@ import {
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
-  DashboardCircleIcon,
   PanelLeftIcon,
   StickyNote02Icon,
   UserSquareIcon,
@@ -36,14 +35,18 @@ import {
 } from "@/pages/chat/tickets/ticket-count-store";
 
 const railItems = [
-  { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
+  {
+    label: "工单",
+    icon: StickyNote02Icon,
+    to: "/chat/tickets",
+    ticketCount: true,
+  },
   { label: "客户", icon: UserSquareIcon },
   {
     label: "洞察",
     icon: AiIdeaIcon,
     to: "/chat/insights",
-    badge: "Beta",
     moduleEntry: true,
   },
   {
@@ -52,17 +55,9 @@ const railItems = [
     to: "/chat/ai-hosting",
     moduleEntry: true,
   },
-  {
-    label: "工单",
-    icon: StickyNote02Icon,
-    to: "/chat/tickets",
-    ticketCount: true,
-  },
 ];
 
-const visibleRailItems = import.meta.env.DEV
-  ? railItems
-  : railItems.filter((item) => !item.devOnly);
+const visibleRailItems = railItems;
 
 const collapsedNavItemClassName =
   "inline-flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 [&_svg]:shrink-0";
@@ -305,14 +300,6 @@ export function AccountRail({
                 strokeWidth={1.6}
               />
               <span className="min-w-0 truncate">{item.label}</span>
-              {item.badge ? (
-                <Badge
-                  aria-hidden="true"
-                  className="ml-auto h-5 shrink-0 rounded-[5px] px-1.5 py-0 text-[10px] leading-none"
-                >
-                  {item.badge}
-                </Badge>
-              ) : null}
               {"ticketCount" in item ? (
                 <TicketReminderIndicator
                   count={ticketCount ?? 0}
@@ -322,10 +309,7 @@ export function AccountRail({
               {item.moduleEntry ? (
                 <HugeiconsIcon
                   aria-hidden="true"
-                  className={cn(
-                    "shrink-0 opacity-30",
-                    !item.badge && !("ticketCount" in item && (ticketCount ?? 0) > 0) && "ml-auto",
-                  )}
+                  className="ml-auto shrink-0 opacity-30"
                   color="currentColor"
                   icon={ArrowRight01Icon}
                   size={16}

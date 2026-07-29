@@ -366,6 +366,23 @@ describe("AccountRail", () => {
     expect(handleNavItemSelect).toHaveBeenCalledWith("客户");
   });
 
+  it("places tickets directly below chat in the main navigation", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const chatItem = screen.getByRole("button", { name: "聊天" });
+    const ticketItem = screen.getByRole("link", { name: /^工单/ });
+
+    expect(chatItem.nextElementSibling).toBe(ticketItem);
+    expect(screen.queryByRole("button", { name: "工作台" })).not.toBeInTheDocument();
+  });
+
   it("links the insight nav item to the insights overview", () => {
     render(
       <AccountRail
@@ -379,7 +396,7 @@ describe("AccountRail", () => {
     const insightLink = screen.getByRole("link", { name: "洞察" });
 
     expect(insightLink).toHaveAttribute("href", "/chat/insights");
-    expect(within(insightLink).getByText("Beta")).toBeInTheDocument();
+    expect(within(insightLink).queryByText("Beta")).not.toBeInTheDocument();
   });
 
   it("links the AI hosting nav item to the agent management entry", () => {

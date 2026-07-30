@@ -1,4 +1,4 @@
-import { createRef } from "react";
+import { createRef, useState } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,9 +47,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -127,9 +126,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -186,9 +184,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -243,9 +240,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -317,10 +313,9 @@ describe("ChatPanel", () => {
           activeHistory: { hasNext: false, hasPrev: false, messages: [] },
           activeHistoryFilters: { scope: "all" },
           activeHistoryLoading: false,
-          isOpen: true,
         }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen
+        activeAuxiliaryPanel="history"
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -363,6 +358,112 @@ describe("ChatPanel", () => {
     expect(shell).toContainElement(historyPanel);
   });
 
+  it("switches tickets and history in the shared auxiliary panel slot", async () => {
+    const user = userEvent.setup();
+
+    function TestPanel() {
+      const [activeAuxiliaryPanel, setActiveAuxiliaryPanel] = useState<
+        "history" | "tickets" | null
+      >(null);
+
+      return (
+        <ChatPanel
+          activeAuxiliaryPanel={activeAuxiliaryPanel}
+          activeConversation={createConversation()}
+          activeHistoryStatus="idle"
+          canSendMessage
+          composerPlaceholder="输入消息"
+          customerPanelWidth={375}
+          fileUploadQueue={[]}
+          groupMembers={[]}
+          hasMoreHistory={false}
+          historyPanel={{
+            activeHistory: { hasNext: false, hasPrev: false, messages: [] },
+            activeHistoryFilters: { scope: "all" },
+            activeHistoryLoading: false,
+          }}
+          inputEnterBehavior="send"
+          isConversationLoading={false}
+          isEmojiPickerOpen={false}
+          isGroupMembersLoading={false}
+          isResizingCustomerPanel={false}
+          isSendingDraft={false}
+          messages={[]}
+          quotedMessage={null}
+          sidebarItems={[]}
+          ticketPanel={<div>工单列表内容</div>}
+          composerRef={createRef()}
+          messageViewportRef={createRef()}
+          workbenchBodyRef={createRef()}
+          onAuxiliaryPanelClose={() => setActiveAuxiliaryPanel(null)}
+          onCancelFileUpload={vi.fn()}
+          onClearQuotedMessage={vi.fn()}
+          onComposerSegmentsChange={vi.fn()}
+          onCustomerPanelResizeStart={vi.fn()}
+          onDismissScopeTransitionError={vi.fn()}
+          onDraftChange={vi.fn()}
+          onEmojiPickerOpenChange={vi.fn()}
+          onEnterBehaviorChange={vi.fn()}
+          onFileSelect={vi.fn()}
+          onHistoryClose={vi.fn()}
+          onHistoryLoadMoreNext={vi.fn()}
+          onHistoryLoadMorePrev={vi.fn()}
+          onHistoryRefresh={vi.fn()}
+          onHistorySetDay={vi.fn()}
+          onHistorySetScope={vi.fn()}
+          onHistorySetSenderId={vi.fn()}
+          onLoadOlderMessages={vi.fn()}
+          onMessageViewportScroll={vi.fn()}
+          onOpenHistory={() =>
+            setActiveAuxiliaryPanel((current) =>
+              current === "history" ? null : "history",
+            )
+          }
+          onRefreshGroupMembers={vi.fn()}
+          onRetryMessage={vi.fn()}
+          onSendDraft={vi.fn()}
+          onToggleTickets={() =>
+            setActiveAuxiliaryPanel((current) =>
+              current === "tickets" ? null : "tickets",
+            )
+          }
+        />
+      );
+    }
+
+    render(<TestPanel />);
+
+    expect(screen.queryByRole("tab", { name: "工单" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "折叠侧边栏" }));
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "工单" }));
+    expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    expect(
+      window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("complementary", { name: "工单" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("工单列表内容")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "历史记录" }));
+    expect(
+      screen.queryByRole("complementary", { name: "工单" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "聊天记录" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭聊天记录" }));
+    expect(
+      screen.queryByRole("complementary", { name: "聊天记录" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "客户信息栏" }),
+    ).toBeInTheDocument();
+  });
+
   it("renders mobile history as a chat-detail overlay without the customer side shell", () => {
     render(
       <ChatPanel
@@ -378,10 +479,9 @@ describe("ChatPanel", () => {
           activeHistory: { hasNext: false, hasPrev: false, messages: [] },
           activeHistoryFilters: { scope: "all" },
           activeHistoryLoading: false,
-          isOpen: true,
         }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen
+        activeAuxiliaryPanel="history"
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -423,6 +523,87 @@ describe("ChatPanel", () => {
     expect(screen.getByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
   });
 
+  it("opens mobile tickets over the chat without opening the customer sidebar sheet", async () => {
+    const user = userEvent.setup();
+
+    function TestPanel() {
+      const [activeAuxiliaryPanel, setActiveAuxiliaryPanel] = useState<
+        "tickets" | null
+      >(null);
+
+      return (
+        <ChatPanel
+          activeAuxiliaryPanel={activeAuxiliaryPanel}
+          activeConversation={createConversation()}
+          activeHistoryStatus="idle"
+          canSendMessage
+          composerPlaceholder="输入消息"
+          customerPanelWidth={375}
+          fileUploadQueue={[]}
+          groupMembers={[]}
+          hasMoreHistory={false}
+          historyPanel={{
+            activeHistoryFilters: { scope: "all" },
+            activeHistoryLoading: false,
+          }}
+          inputEnterBehavior="send"
+          isConversationLoading={false}
+          isEmojiPickerOpen={false}
+          isGroupMembersLoading={false}
+          isMobileLayout
+          isResizingCustomerPanel={false}
+          isSendingDraft={false}
+          messages={[]}
+          quotedMessage={null}
+          sidebarItems={[]}
+          ticketPanel={<div>工单列表内容</div>}
+          composerRef={createRef()}
+          messageViewportRef={createRef()}
+          workbenchBodyRef={createRef()}
+          onBackToConversationList={vi.fn()}
+          onCancelFileUpload={vi.fn()}
+          onClearQuotedMessage={vi.fn()}
+          onComposerSegmentsChange={vi.fn()}
+          onCustomerPanelResizeStart={vi.fn()}
+          onDismissScopeTransitionError={vi.fn()}
+          onDraftChange={vi.fn()}
+          onEmojiPickerOpenChange={vi.fn()}
+          onEnterBehaviorChange={vi.fn()}
+          onFileSelect={vi.fn()}
+          onHistoryClose={vi.fn()}
+          onHistoryLoadMoreNext={vi.fn()}
+          onHistoryLoadMorePrev={vi.fn()}
+          onHistoryRefresh={vi.fn()}
+          onHistorySetDay={vi.fn()}
+          onHistorySetScope={vi.fn()}
+          onHistorySetSenderId={vi.fn()}
+          onLoadOlderMessages={vi.fn()}
+          onMessageViewportScroll={vi.fn()}
+          onOpenHistory={vi.fn()}
+          onRefreshGroupMembers={vi.fn()}
+          onRetryMessage={vi.fn()}
+          onSendDraft={vi.fn()}
+          onToggleTickets={() =>
+            setActiveAuxiliaryPanel((current) =>
+              current === "tickets" ? null : "tickets",
+            )
+          }
+        />
+      );
+    }
+
+    render(<TestPanel />);
+    await user.click(screen.getByRole("button", { name: "工单" }));
+
+    expect(
+      screen.getByRole("complementary", { name: "工单" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("工单列表内容")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "客户信息栏" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows a blank work area when no conversation is active", () => {
     render(
       <ChatPanel
@@ -436,7 +617,6 @@ describe("ChatPanel", () => {
         hasMoreHistory={false}
         historyPanel={undefined}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -499,9 +679,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -576,9 +755,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -644,9 +822,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -734,9 +911,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -805,9 +981,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -886,9 +1061,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -955,9 +1129,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1003,10 +1176,11 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("group-ai-dialog-content")).not.toBeInTheDocument();
   });
 
-  it("hides the AI dialog button in application-message conversations", () => {
+  it("hides AI and ticket actions in application-message conversations", () => {
     render(
       <ChatPanel
         activeAccount={account}
+        activeAuxiliaryPanel="tickets"
         activeConversation={{
           ...createConversation(),
           customerBindType: 2,
@@ -1022,9 +1196,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1033,6 +1206,8 @@ describe("ChatPanel", () => {
         messages={[]}
         quotedMessage={null}
         sidebarItems={[]}
+        ticketPanel={<div>工单列表内容</div>}
+        ticketReminderCount={3}
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
@@ -1059,10 +1234,13 @@ describe("ChatPanel", () => {
         onRefreshGroupMembers={vi.fn()}
         onRetryMessage={vi.fn()}
         onSendDraft={vi.fn()}
+        onToggleTickets={vi.fn()}
       />,
     );
 
     expect(screen.queryByRole("button", { name: "AI 对话" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "工单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "工单" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "历史记录" })).toBeInTheDocument();
   });
 
@@ -1092,9 +1270,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1167,9 +1344,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1244,9 +1420,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1311,9 +1486,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1378,9 +1552,8 @@ describe("ChatPanel", () => {
         fullAutoActionPending
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1455,9 +1628,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -1518,9 +1690,8 @@ describe("ChatPanel", () => {
         fileUploadQueue={[]}
         groupMembers={[]}
         hasMoreHistory={false}
-        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
         inputEnterBehavior="send"
-        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}

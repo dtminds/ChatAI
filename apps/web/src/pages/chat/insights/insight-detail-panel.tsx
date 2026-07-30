@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type {
   InsightDetailResponse,
   InsightMessageContextResponse,
+  TicketStatus,
 } from "@chatai/contracts";
 import {
   AiIdeaIcon,
@@ -58,8 +59,14 @@ import { formatInsightTime } from "./insights-utils";
 
 type DetailActionStatus = Extract<
   InsightDetailResponse["actionItems"][number]["status"],
-  "done" | "dismissed" | "open"
+  "canceled" | "done" | "open"
 >;
+
+type ActionStatusChange = (
+  ticketId: string,
+  expectedStatus: TicketStatus,
+  status: DetailActionStatus,
+) => Promise<void>;
 
 export function InsightDetailPanel({
   detail,
@@ -79,7 +86,7 @@ export function InsightDetailPanel({
   isMessagesLoading?: boolean;
   messages?: InsightMessageContextResponse["messages"];
   messagesError?: Error;
-  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
+  onActionStatusChange?: ActionStatusChange;
   onOpenChange: (open: boolean) => void;
 }) {
   const evidenceRecordMessages = messages
@@ -259,7 +266,7 @@ function DetailSummarySection({
   onActionStatusChange,
 }: {
   detail: InsightDetailResponse;
-  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
+  onActionStatusChange?: ActionStatusChange;
 }) {
   const summaryTitle = detail.summary.sessionTitle || "未命名会话";
   const isAnalyzing = detail.analysisStatus === "analyzing";
@@ -746,7 +753,7 @@ function ActionItemsSection({
   onActionStatusChange,
 }: {
   items: InsightDetailResponse["actionItems"];
-  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
+  onActionStatusChange?: ActionStatusChange;
 }) {
   const [pendingActionId, setPendingActionId] = useState<string>();
 
@@ -754,16 +761,20 @@ function ActionItemsSection({
     return null;
   }
 
-  async function handleActionStatusChange(actionItemId: string, status: DetailActionStatus) {
+  async function handleActionStatusChange(
+    ticketId: string,
+    expectedStatus: TicketStatus,
+    status: DetailActionStatus,
+  ) {
     if (!onActionStatusChange) {
       return;
     }
 
-    setPendingActionId(actionItemId);
+    setPendingActionId(ticketId);
     try {
-      await onActionStatusChange(actionItemId, status);
+      await onActionStatusChange(ticketId, expectedStatus, status);
     } finally {
-      setPendingActionId((current) => (current === actionItemId ? undefined : current));
+      setPendingActionId((current) => (current === ticketId ? undefined : current));
     }
   }
 
@@ -772,24 +783,26 @@ function ActionItemsSection({
       <>
         <ul className="space-y-2">
           {items.map((item) => {
-            const isPending = pendingActionId === item.actionItemId;
-            const canReopen = item.status === "done" || item.status === "dismissed";
+            const isPending = pendingActionId === item.ticketId;
+            const isActive = item.status === "open" || item.status === "in_progress";
+            const canReopen = item.status === "done" || item.status === "canceled";
+            const canEdit = item.canEdit && onActionStatusChange != null;
 
             return (
               <li
                 className={cn(
                   "flex items-start gap-2.5 rounded-[8px] border border-transparent px-3 py-2",
                   getActionItemSurfaceClassName(item.status),
-                  item.status === "dismissed" || item.status === "expired" ? "opacity-65" : null,
+                  item.status === "canceled" ? "opacity-65" : null,
                 )}
-                key={item.actionItemId}
+                key={item.ticketId}
               >
-                {item.status === "open" && onActionStatusChange ? (
+                {isActive && canEdit ? (
                   <Button
                     aria-label={`标记完成：${item.title}`}
                     className="mt-[3px] size-4 shrink-0 rounded-[4px] border border-muted-foreground/70 bg-background p-0 hover:border-foreground hover:bg-background"
                     disabled={isPending}
-                    onClick={() => void handleActionStatusChange(item.actionItemId, "done")}
+                    onClick={() => void handleActionStatusChange(item.ticketId, item.status, "done")}
                     size="icon"
                     type="button"
                     variant="ghost"
@@ -797,23 +810,26 @@ function ActionItemsSection({
                 ) : (
                   <TodoStatusIcon status={item.status} />
                 )}
-                <p
+                <a
                   className={cn(
                     "min-w-0 flex-1 text-sm font-medium leading-6 text-foreground",
                     item.status === "done" ? "text-success/85 line-through decoration-success/55" : null,
-                    item.status === "dismissed" || item.status === "expired" ? "text-muted-foreground" : null,
+                    item.status === "canceled" ? "text-muted-foreground" : null,
                   )}
+                  href={`/chat/tickets/${encodeURIComponent(item.ticketId)}`}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   {item.title}
-                </p>
-                {(item.status === "open" || canReopen) && onActionStatusChange ? (
+                </a>
+                {(isActive || canReopen) && canEdit ? (
                   <div className="ml-auto flex shrink-0 items-center gap-1">
-                    {item.status === "open" ? (
+                    {isActive ? (
                       <Button
                         aria-label={`忽略：${item.title}`}
                         className="h-6 rounded-[6px] px-2 text-xs text-muted-foreground"
                         disabled={isPending}
-                        onClick={() => void handleActionStatusChange(item.actionItemId, "dismissed")}
+                        onClick={() => void handleActionStatusChange(item.ticketId, item.status, "canceled")}
                         size="sm"
                         type="button"
                         variant="ghost"
@@ -825,7 +841,7 @@ function ActionItemsSection({
                         aria-label={`重新打开：${item.title}`}
                         className="h-6 rounded-[6px] px-2 text-xs text-muted-foreground"
                         disabled={isPending}
-                        onClick={() => void handleActionStatusChange(item.actionItemId, "open")}
+                        onClick={() => void handleActionStatusChange(item.ticketId, item.status, "open")}
                         size="sm"
                         type="button"
                         variant="ghost"
@@ -851,7 +867,7 @@ function getActionItemSurfaceClassName(
     return "[background:linear-gradient(to_right,var(--color-success-muted)_0%,var(--color-background)_45%)_padding-box,linear-gradient(to_right,color-mix(in_oklch,var(--color-success)_42%,transparent)_0%,color-mix(in_oklch,var(--color-success)_12%,transparent)_48%,color-mix(in_oklch,var(--color-success)_12%,transparent)_100%)_border-box]";
   }
 
-  if (status === "dismissed" || status === "expired") {
+  if (status === "canceled") {
     return "[background:linear-gradient(to_right,var(--color-muted)_0%,var(--color-background)_45%)_padding-box,linear-gradient(to_right,color-mix(in_oklch,var(--color-muted-foreground)_34%,transparent)_0%,color-mix(in_oklch,var(--color-muted-foreground)_11%,transparent)_48%,color-mix(in_oklch,var(--color-muted-foreground)_11%,transparent)_100%)_border-box]";
   }
 

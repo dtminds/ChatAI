@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { WorkbenchMessageDto } from "../chat/dto.js";
+import { TicketStatusSchema } from "../tickets/dto.js";
 
 export const InsightAnalysisStatusSchema = Type.Union([
   Type.Literal("ready"),
@@ -13,13 +14,6 @@ export const InsightAnalysisStatusSchema = Type.Union([
 export const InsightModeSchema = Type.Union([
   Type.Literal("basic"),
   Type.Literal("insight"),
-]);
-
-export const InsightActionStatusSchema = Type.Union([
-  Type.Literal("open"),
-  Type.Literal("done"),
-  Type.Literal("dismissed"),
-  Type.Literal("expired"),
 ]);
 
 export const InsightRescanAnalysisScopeSchema = Type.Union([
@@ -476,26 +470,6 @@ export const InsightsQualityResultsResponseSchema = Type.Object({
   qualityResults: Type.Array(InsightsQualityResultSchema),
 });
 
-export const InsightFollowUpItemSchema = Type.Object({
-  actionItemId: Type.String(),
-  conversationId: Type.String(),
-  createdAt: Type.Number(),
-  customerAvatarUrl: Type.Optional(Type.String()),
-  customerName: Type.String(),
-  priority: InsightPrioritySchema,
-  sessionId: Type.String(),
-  status: InsightActionStatusSchema,
-  title: Type.String(),
-}, { additionalProperties: false });
-
-export const InsightsFollowUpsResponseSchema = Type.Object({
-  items: Type.Array(InsightFollowUpItemSchema),
-  page: Type.Number(),
-  pageSize: Type.Number(),
-  total: Type.Number(),
-  totalPages: Type.Number(),
-});
-
 export const InsightSessionMetaSchema = Type.Object({
   agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.Optional(Type.String()),
@@ -573,28 +547,11 @@ export const InsightFaqCandidateSchema = Type.Object({
 });
 
 export const InsightDetailActionItemSchema = Type.Object({
-  actionItemId: Type.String(),
-  conversationId: Type.String(),
-  customerAvatarUrl: Type.Optional(Type.String()),
-  customerName: Type.String(),
-  evidenceMessageIds: Type.Array(Type.String()),
-  priority: InsightPrioritySchema,
-  sessionId: Type.String(),
-  status: InsightActionStatusSchema,
+  canEdit: Type.Boolean(),
+  status: TicketStatusSchema,
+  ticketId: Type.String(),
   title: Type.String(),
 }, { additionalProperties: false });
-
-export const InsightCreateActionItemRequestSchema = Type.Object({
-  conversationId: Type.String({ minLength: 1 }),
-  dueHint: Type.Optional(Type.String()),
-  priority: InsightPrioritySchema,
-  sessionId: Type.String({ minLength: 1 }),
-  title: Type.String({ maxLength: 255, minLength: 1 }),
-}, { additionalProperties: false });
-
-export const InsightCreateActionItemResponseSchema = Type.Object({
-  actionItemId: Type.String(),
-});
 
 export const InsightDetailResponseSchema = Type.Object({
   actionItems: Type.Array(InsightDetailActionItemSchema),
@@ -854,7 +811,6 @@ export const InsightConfigDeletedResponseSchema = Type.Object({
   deleted: Type.Boolean(),
 });
 
-export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
 export type InsightMode = Static<typeof InsightModeSchema>;
 export type InsightCapabilitiesResponse = Static<typeof InsightCapabilitiesResponseSchema>;
@@ -875,8 +831,6 @@ export type InsightsWorkerUidListResponse = Static<typeof InsightsWorkerUidListR
 export type InsightsWorkerUidState = Static<typeof InsightsWorkerUidStateSchema>;
 export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScopeSchema>;
 export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
-export type InsightCreateActionItemRequest = Static<typeof InsightCreateActionItemRequestSchema>;
-export type InsightCreateActionItemResponse = Static<typeof InsightCreateActionItemResponseSchema>;
 export type InsightDetailResponse = Static<typeof InsightDetailResponseSchema>;
 export type InsightSessionMessagesResponse = Omit<
   Static<typeof InsightSessionMessagesResponseSchema>,
@@ -925,7 +879,6 @@ export type InsightSessionizationSettings = Static<typeof InsightSessionizationS
 export type InsightSessionizationSettingsUpdateRequest = Static<
   typeof InsightSessionizationSettingsUpdateRequestSchema
 >;
-export type InsightsFollowUpsResponse = Static<typeof InsightsFollowUpsResponseSchema>;
 export type InsightBusinessRelatedSessionsResponse = Static<
   typeof InsightBusinessRelatedSessionsResponseSchema
 >;

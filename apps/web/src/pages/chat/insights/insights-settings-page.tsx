@@ -1003,10 +1003,10 @@ function InsightRunConfigDialog({
             <div className="overflow-hidden rounded-[8px] border bg-background">
               <RunSettingRow
                 checked={form.todoEnabled}
-                description="识别到需要人工跟进的事项后，自动生成待办"
+                description="识别到需要人工跟进的事项后，自动创建工单"
                 disabled={disabled}
                 icon={AiContentGenerator01Icon}
-                label="智能创建待办"
+                label="智能创建工单"
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, todoEnabled: checked }))}
               />
               <RunSettingRow
@@ -1114,7 +1114,7 @@ function SettingsSummary({ summary }: { summary: InsightSettingsSummaryResponse 
   const statusText = (enabled: boolean) => enabled ? "已开启" : "未开启";
   const stats = [
     { enabled: summary.insightEnabled, icon: AiIdeaIcon, label: "总开关" },
-    { enabled: summary.todoEnabled, icon: AiContentGenerator01Icon, label: "智能创建待办" },
+    { enabled: summary.todoEnabled, icon: AiContentGenerator01Icon, label: "智能创建工单" },
     { count: `${summary.enabledIntentCount} / ${summary.intentLimit}`, enabled: summary.intentEnabled, icon: UserAiIcon, label: "智能意图识别" },
     { count: `${summary.enabledQaCount} / ${summary.qaLimit}`, enabled: summary.qaEnabled, icon: AiSecurity02Icon, label: "智能质检" },
     { count: `${summary.enabledLabelCount} / ${summary.labelLimit}`, enabled: summary.labelEnabled, icon: AiGenerativeIcon, label: "智能标签" },
@@ -1305,7 +1305,7 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           value={analysisForm.minAnalysisMessages}
         />
         <SliderSettingRow
-          description="低于该阈值时，问题解决判断会标记为未知，且不会自动生成待办"
+          description="低于该阈值时，问题解决判断会标记为未知，且不会自动创建工单"
           label="AI 置信度阈值"
           onChange={(lowConfidenceThreshold) => setAnalysisForm((current) => ({ ...current, lowConfidenceThreshold }))}
           value={analysisForm.lowConfidenceThreshold}

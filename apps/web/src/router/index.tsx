@@ -97,13 +97,6 @@ const InsightsQualityPage = lazy(() =>
     }),
   ),
 );
-const InsightsFollowUpsPage = lazy(() =>
-  import("@/pages/chat/insights/insights-follow-ups-page").then(
-    ({ InsightsFollowUpsPage }) => ({
-      default: InsightsFollowUpsPage,
-    }),
-  ),
-);
 const InsightsBusinessPage = lazy(() =>
   import("@/pages/chat/insights/insights-business-page").then(
     ({ InsightsBusinessPage }) => ({
@@ -219,10 +212,6 @@ export const routerConfig = [
             element: withRouteSuspense(<InsightsQualityPage />),
           },
           {
-            path: "follow-ups",
-            element: withRouteSuspense(<InsightsFollowUpsPage />),
-          },
-          {
             path: "business",
             element: withRouteSuspense(<InsightsBusinessPage />),
           },
@@ -239,6 +228,14 @@ export const routerConfig = [
             element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
           },
         ],
+      },
+      {
+        path: "chat/tickets",
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
+      },
+      {
+        path: "chat/tickets/:ticketId",
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/ai-hosting",

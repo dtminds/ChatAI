@@ -110,6 +110,7 @@ describe("insight prompt builder", () => {
       reason: "<string: 情绪判定理由>",
     });
     expect(Array.isArray(summaryContract.sentiment)).toBe(false);
+    expect(summaryPrompt[0]?.content).toContain("actionItems 只输出明确需要人工后续处理的事项，最多 10 条");
     expect(JSON.stringify(summaryPrompt)).not.toContain("faqCandidates");
     expect(summaryPayload.tenantContext).toEqual({
       intentConfigs: [

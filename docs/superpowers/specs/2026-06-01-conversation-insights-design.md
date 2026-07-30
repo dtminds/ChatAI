@@ -875,7 +875,6 @@ xy_wap_embed_session_action_item
 - action_type: follow_up / supervisor_intervention / refund_progress_check / logistics_check / faq_candidate_review / custom
 - title
 - priority: low / medium / high
-- due_hint
 - status: open / dismissed / done
 - evidence_message_ids
 ```

@@ -17,6 +17,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,7 +92,7 @@ import type { KbDocViewItem, KbListViewItem } from "./kb-types";
 import { useAuthStore } from "@/store/auth-store";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 
 type SuggestionStatus = AiHostingLearningCandidateItem["status"];
 type IngestMode = "batch" | "single";
@@ -100,17 +101,6 @@ const KNOWLEDGE_PICKER_PAGE_SIZE = 10;
 const VERY_HIGH_CONFIDENCE_THRESHOLD = 0.9;
 const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 const AI_EVALUATION_ICON_URL = "https://b5.bokr.com.cn/dist/ui/shield-lightning.svg";
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "待处理", value: "pending" },

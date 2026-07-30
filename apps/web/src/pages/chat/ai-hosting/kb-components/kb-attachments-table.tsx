@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";

@@ -39,6 +39,7 @@ const groupMemberNameSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
     ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
     : undefined;
+const groupMemberNameCollator = new Intl.Collator("zh-Hans-CN");
 
 export function GroupMembersSidePanel({
   accounts = [],
@@ -68,25 +69,32 @@ export function GroupMembersSidePanel({
     [groupMembers, normalizedSearchKeyword],
   );
   const groups = useMemo(
-    () =>
-      [
+    () => {
+      const administrators: GroupMember[] = [];
+      const regularMembers: GroupMember[] = [];
+
+      for (const member of filteredGroupMembers) {
+        if (member.type === GROUP_MEMBER_TYPE.NORMAL) {
+          regularMembers.push(member);
+        } else if (
+          member.type === GROUP_MEMBER_TYPE.OWNER ||
+          member.type === GROUP_MEMBER_TYPE.ADMIN
+        ) {
+          administrators.push(member);
+        }
+      }
+
+      return [
         {
-          items: filteredGroupMembers
-            .filter(
-              (member) =>
-                member.type === GROUP_MEMBER_TYPE.OWNER ||
-                member.type === GROUP_MEMBER_TYPE.ADMIN,
-            )
-            .sort(sortGroupMembers),
+          items: administrators.sort(sortGroupMembers),
           label: "管理员",
         },
         {
-          items: filteredGroupMembers
-            .filter((member) => member.type === GROUP_MEMBER_TYPE.NORMAL)
-            .sort(sortGroupMembers),
+          items: regularMembers.sort(sortGroupMembers),
           label: "普通成员",
         },
-      ].filter((group) => group.items.length > 0),
+      ].filter((group) => group.items.length > 0);
+    },
     [filteredGroupMembers],
   );
 
@@ -459,11 +467,14 @@ function sortGroupMembers(left: GroupMember, right: GroupMember) {
     return leftRank - rightRank;
   }
 
-  const nameOrder = left.displayName.localeCompare(right.displayName, "zh-Hans-CN");
+  const nameOrder = groupMemberNameCollator.compare(
+    left.displayName,
+    right.displayName,
+  );
 
   if (nameOrder !== 0) {
     return nameOrder;
   }
 
-  return left.id.localeCompare(right.id, "zh-Hans-CN");
+  return groupMemberNameCollator.compare(left.id, right.id);
 }

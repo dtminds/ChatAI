@@ -1,3 +1,12 @@
+const TIME_PART_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const WEEKDAY_PART_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+  weekday: "short",
+});
+
 export function formatTextMessageSentAt(value: string, now = new Date()) {
   if (!value || typeof value !== "string") {
     return "";
@@ -37,11 +46,7 @@ export function formatConversationTimestamp(value: string) {
       return diffMinutes === 0 ? "刚刚" : `${diffMinutes}分钟前`;
     }
 
-    return formatDatePart(date, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
+    return TIME_PART_FORMATTER.format(date);
   }
 
   if (date.getFullYear() === now.getFullYear()) {
@@ -77,9 +82,60 @@ export function isSameCalendarDay(a: Date, b: Date) {
   );
 }
 
-function formatDatePart(
-  date: Date,
-  options: Intl.DateTimeFormatOptions,
-) {
-  return new Intl.DateTimeFormat("zh-CN", options).format(date);
+export function formatMessageDividerLabel(value: string, now = new Date()) {
+  const date = parseWorkbenchDate(value);
+
+  if (!date) {
+    return value;
+  }
+
+  return formatMessageDividerDate(date, now);
+}
+
+export function formatMessageDividerDate(date: Date, now = new Date()) {
+  const time = TIME_PART_FORMATTER.format(date);
+
+  if (isSameCalendarDay(date, now)) {
+    return time;
+  }
+
+  if (isSameCalendarDay(date, addDays(now, -1))) {
+    return `昨天 ${time}`;
+  }
+
+  if (isSameWeekMondayToSunday(date, now)) {
+    return `${WEEKDAY_PART_FORMATTER.format(date)} ${time}`;
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  }
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+}
+
+function isSameWeekMondayToSunday(a: Date, b: Date) {
+  const weekStart = getMondayStartOfDay(b);
+  const nextWeekStart = addDays(weekStart, 7);
+
+  return a.getTime() >= weekStart.getTime() && a.getTime() < nextWeekStart.getTime();
+}
+
+function getMondayStartOfDay(value: Date) {
+  const date = startOfDay(value);
+  const day = date.getDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+
+  return addDays(date, -daysSinceMonday);
+}
+
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function addDays(value: Date, days: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+
+  return date;
 }

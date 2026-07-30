@@ -16,6 +16,7 @@ import type {
 } from "@chatai/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 import {
   AlertDialog,
@@ -71,7 +72,6 @@ import {
   updateSidebarItemsSort,
   updateSidebarItemStatus,
 } from "@/pages/chat/settings/settings-service";
-import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
@@ -140,7 +140,7 @@ export function SidebarSettingsPage() {
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(getErrorMessage(error));
+          setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
         }
       } finally {
         if (!ignore) {
@@ -212,7 +212,7 @@ export function SidebarSettingsPage() {
       toast.success(state.mode === "create" ? "侧边栏页面已新增" : "侧边栏页面已更新");
     } catch (error) {
       if (isMountedRef.current) {
-        toast.error(getErrorMessage(error));
+        toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
       }
     } finally {
       if (isMountedRef.current) {
@@ -242,7 +242,7 @@ export function SidebarSettingsPage() {
       toast.success(nextItem.status === "active" ? "侧边栏页面已启用" : "侧边栏页面已停用");
     } catch (error) {
       if (isMountedRef.current) {
-        toast.error(getErrorMessage(error));
+        toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
       }
     } finally {
       if (isMountedRef.current) {
@@ -280,7 +280,7 @@ export function SidebarSettingsPage() {
     } catch (error) {
       if (isMountedRef.current) {
         applySidebarItems(items);
-        toast.error(getErrorMessage(error));
+        toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
       }
     } finally {
       if (isMountedRef.current) {
@@ -310,7 +310,7 @@ export function SidebarSettingsPage() {
       toast.success("侧边栏页面已删除");
     } catch (error) {
       if (isMountedRef.current) {
-        toast.error(getErrorMessage(error));
+        toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
       }
     } finally {
       if (isMountedRef.current) {
@@ -932,16 +932,4 @@ function getSidebarItemNameWeight(name: string) {
 
 function isCjkChar(char: string) {
   return /[^\x00-\xff]/.test(char);
-}
-
-function getErrorMessage(error: unknown) {
-  if (isRequestError(error) && error.message.trim()) {
-    return error.message;
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return "操作失败，请稍后重试";
 }

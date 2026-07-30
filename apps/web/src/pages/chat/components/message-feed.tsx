@@ -67,14 +67,15 @@ import {
 import {
   SmartReplyInlineProcessingHint,
   SmartReplyMessageAnchor,
-  type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import {
   INITIALIZING_MESSAGE_DISPLAY_TEXT,
   MESSAGE_REVOKE_WINDOW_MS,
 } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
+  formatMessageDividerDate,
   isSameCalendarDay,
   formatTextMessageSentAt,
   parseWorkbenchDate,
@@ -1427,19 +1428,19 @@ export function MessageAvatar({
 
 function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedItem[] {
   const items: FeedItem[] = [];
-  let previousTimestampedMessage: Message | undefined;
+  let previousTimestampedDate: Date | undefined;
 
   messages.forEach((message) => {
-    const hasValidTimestamp = parseWorkbenchDate(message.sentAt) !== null;
+    const currentDate = parseWorkbenchDate(message.sentAt);
 
     if (
       showTimeDividers &&
-      hasValidTimestamp &&
-      shouldInsertDivider(previousTimestampedMessage, message)
+      currentDate &&
+      shouldInsertDivider(previousTimestampedDate, currentDate)
     ) {
       items.push({
         id: `divider-${message.uiMessageKey}`,
-        label: formatMessageDividerLabel(message.sentAt),
+        label: formatMessageDividerDate(currentDate),
         type: "divider",
       });
     }
@@ -1449,97 +1450,21 @@ function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedIte
       type: "message",
     });
 
-    if (hasValidTimestamp) {
-      previousTimestampedMessage = message;
+    if (currentDate) {
+      previousTimestampedDate = currentDate;
     }
   });
 
   return items;
 }
 
-function shouldInsertDivider(previous: Message | undefined, current: Message) {
-  if (!previous) {
+function shouldInsertDivider(previousDate: Date | undefined, currentDate: Date) {
+  if (!previousDate) {
     return true;
-  }
-
-  const previousDate = parseWorkbenchDate(previous.sentAt);
-  const currentDate = parseWorkbenchDate(current.sentAt);
-
-  if (!previousDate || !currentDate) {
-    return previous.sentAt !== current.sentAt;
   }
 
   return (
     !isSameCalendarDay(previousDate, currentDate) ||
     currentDate.getTime() - previousDate.getTime() >= TIMESTAMP_BREAK_MS
   );
-}
-
-export function formatMessageDividerLabel(value: string) {
-  const date = parseWorkbenchDate(value);
-
-  if (!date) {
-    return value;
-  }
-
-  const now = new Date();
-  const time = formatTimePart(date);
-
-  if (isSameCalendarDay(date, now)) {
-    return time;
-  }
-
-  if (isSameCalendarDay(date, addDays(now, -1))) {
-    return `昨天 ${time}`;
-  }
-
-  if (isSameWeekMondayToSunday(date, now)) {
-    return `${formatWeekdayPart(date)} ${time}`;
-  }
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-  }
-
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-}
-
-function isSameWeekMondayToSunday(a: Date, b: Date) {
-  const weekStart = getMondayStartOfDay(b);
-  const nextWeekStart = addDays(weekStart, 7);
-
-  return a.getTime() >= weekStart.getTime() && a.getTime() < nextWeekStart.getTime();
-}
-
-function getMondayStartOfDay(value: Date) {
-  const date = startOfDay(value);
-  const day = date.getDay();
-  const daysSinceMonday = day === 0 ? 6 : day - 1;
-
-  return addDays(date, -daysSinceMonday);
-}
-
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-}
-
-function addDays(value: Date, days: number) {
-  const date = new Date(value);
-  date.setDate(date.getDate() + days);
-
-  return date;
-}
-
-function formatTimePart(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-function formatWeekdayPart(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    weekday: "short",
-  }).format(date);
 }

@@ -14,7 +14,7 @@ import type {
   Account,
   CustomerChatStartInput,
 } from "@/pages/chat/chat-types";
-import { formatMessageDividerLabel } from "@/pages/chat/components/message-feed";
+import { formatMessageDividerLabel } from "@/pages/chat/lib/chat-time";
 
 type CustomerSeatRelationTarget = {
   avatar: string;

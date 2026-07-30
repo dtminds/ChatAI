@@ -11,6 +11,7 @@ import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,17 +114,6 @@ const kbIntroSteps = [
     title: "Agent 集成",
   },
 ] as const;
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 export function KbListPage() {
   const [items, setItems] = useState<KbListViewItem[]>([]);

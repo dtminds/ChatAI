@@ -500,7 +500,7 @@ export function TicketsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {ticket.assignee?.displayName ?? <span className="text-muted-foreground">未分配</span>}
+                    {ticket.assignee?.displayName ?? <span className="text-muted-foreground/60">未分配</span>}
                   </TableCell>
                   <TableCell>{ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatInsightTime(ticket.updatedAt)}</TableCell>

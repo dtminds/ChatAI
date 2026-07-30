@@ -3474,6 +3474,8 @@ function normalizeBackendStatus(status: Message["status"]): WorkbenchMessageStat
       return "queued";
     case "sending":
       return "sending";
+    case "initializing":
+      return "initializing";
     case "failed":
       return "failed";
     case "sent":

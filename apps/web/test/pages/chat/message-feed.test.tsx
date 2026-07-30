@@ -83,6 +83,31 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 
+  it("renders initializing messages as refreshable read-only placeholders", async () => {
+    const user = userEvent.setup();
+    const onRefreshInitializingMessage = vi.fn().mockResolvedValue(undefined);
+    const message = {
+      ...createTextMessage(""),
+      status: "initializing" as const,
+    };
+
+    render(
+      <ChatMessageList
+        conversationId={message.conversationId}
+        messages={[message]}
+        onQuoteMessage={vi.fn()}
+        onRefreshInitializingMessage={onRefreshInitializingMessage}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("消息内容处理中");
+    expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "刷新消息" }));
+
+    expect(onRefreshInitializingMessage).toHaveBeenCalledWith(message);
+  });
+
   it("copies the message seq from the action menu", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

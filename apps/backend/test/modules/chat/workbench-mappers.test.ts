@@ -1,6 +1,7 @@
 import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildQuotedMessagePreview,
   getGroupMemberHydrationKey,
   hydrateMessageRows,
   mapConversationRow,
@@ -583,6 +584,20 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps initializing audit rows without treating them as sent", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: "",
+        status: -1,
+      })),
+    ).toMatchObject({
+      content: {
+        text: "",
+      },
+      status: "initializing",
+    });
+  });
+
   it("maps audit message source for Agent-sent messages", () => {
     expect(
       mapMessageRow(messageRow({
@@ -842,6 +857,25 @@ describe("workbench MySQL mappers", () => {
         text: "正式引用消息",
       },
       contentType: "quote",
+    });
+  });
+
+  it("uses a quoted reply's own text when building its quote preview", () => {
+    expect(
+      buildQuotedMessagePreview(messageRow({
+        content: JSON.stringify({
+          content: "@缪勇飞 测试引用",
+          quoteMsgId: 5694,
+          quoteOriginMsgId: "1033513",
+        }),
+        msgtype: "quote",
+        sender_name: "护肤小助理-饭饭",
+      })),
+    ).toEqual({
+      contentType: "quote",
+      fallbackText: "[引用消息]",
+      senderName: "护肤小助理-饭饭",
+      title: "@缪勇飞 测试引用",
     });
   });
 

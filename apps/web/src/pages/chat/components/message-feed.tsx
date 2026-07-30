@@ -10,6 +10,7 @@ import {
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
+  Refresh03Icon,
   UserIdVerificationIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -69,6 +70,7 @@ import {
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import {
+  INITIALIZING_MESSAGE_DISPLAY_TEXT,
   MESSAGE_REVOKE_WINDOW_MS,
 } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -102,6 +104,7 @@ type ChatMessageListProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
@@ -153,6 +156,7 @@ export function ChatMessageList({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
@@ -302,6 +306,7 @@ export function ChatMessageList({
                   onMentionMessage={onMentionMessage}
                   onOpenQuotedMessage={onOpenQuotedMessage}
                   onQuoteMessage={onQuoteMessage}
+                  onRefreshInitializingMessage={onRefreshInitializingMessage}
                   onRevokeMessage={onRevokeMessage}
                   onRetryMessage={onRetryMessage}
                   onSendSmartReply={onSendSmartReply}
@@ -401,6 +406,7 @@ export function MessageRow({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
@@ -435,6 +441,7 @@ export function MessageRow({
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
@@ -483,10 +490,23 @@ export function MessageRow({
     };
   }, []);
 
+  if (message.role === "system" && message.status === "initializing") {
+    return (
+      <div className="flex justify-center">
+        <InitializingMessageBubble
+          isAgent={false}
+          message={message}
+          onRefresh={onRefreshInitializingMessage}
+        />
+      </div>
+    );
+  }
+
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
   }
 
+  const isInitializing = message.status === "initializing";
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
   const formattedSentAt = showTimestamp ? "" : formatTextMessageSentAt(message.sentAt);
@@ -495,12 +515,14 @@ export function MessageRow({
     !isAgent && showSenderName && Boolean(formattedSentAt);
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
-  const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
+  const showSmartReplyCard =
+    !isInitializing && shouldShowSmartReplyCard(smartReply);
   const smartReplyInlineState =
     !showSmartReplyCard && smartReply
       ? getSmartReplyInlineState(smartReply)
       : undefined;
   const showSmartReplyInlineProcessing =
+    !isInitializing &&
     !showSmartReplyCard &&
     (isSmartReplyAutoPending || isSmartReplyPending || smartReplyInlineState != null);
   const showSmartReplyTriggerIcon =
@@ -512,23 +534,27 @@ export function MessageRow({
   );
   const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
   const canSelectForwardMessage = canUseMessageForward && canForwardMessage(message);
-  const messageActions = multiSelectMode ? null : (
-    <MessageActionAvatar
-      message={message}
-      canCollectMaterialActions={canCollectMaterialActions}
-      canUseMessageActions={canUseMessageActions}
-      canUseMessageForward={canUseMessageForward}
-      triggerRef={dismissTargetRef}
-      onCollectMaterial={onCollectMaterial}
-      onEnterMultiSelectMode={onEnterMultiSelectMode}
-      onForwardMessage={onForwardMessage}
-      onMentionMessage={onMentionMessage}
-      onQuoteMessage={onQuoteMessage}
-      onRevokeMessage={onRevokeMessage}
-      onTriggerSmartReply={onTriggerSmartReply}
-      showSmartReplyRecommendation={showSmartReplyTriggerIcon}
-    />
-  );
+  const messageActions = multiSelectMode
+    ? null
+    : isInitializing
+      ? <MessageAvatar message={message} />
+      : (
+          <MessageActionAvatar
+            message={message}
+            canCollectMaterialActions={canCollectMaterialActions}
+            canUseMessageActions={canUseMessageActions}
+            canUseMessageForward={canUseMessageForward}
+            triggerRef={dismissTargetRef}
+            onCollectMaterial={onCollectMaterial}
+            onEnterMultiSelectMode={onEnterMultiSelectMode}
+            onForwardMessage={onForwardMessage}
+            onMentionMessage={onMentionMessage}
+            onQuoteMessage={onQuoteMessage}
+            onRevokeMessage={onRevokeMessage}
+            onTriggerSmartReply={onTriggerSmartReply}
+            showSmartReplyRecommendation={showSmartReplyTriggerIcon}
+          />
+        );
   const checkboxControl = (
     <Checkbox
       aria-label="选择消息"
@@ -658,7 +684,13 @@ export function MessageRow({
                     ) : null}
                   </div>
                 ) : null}
-                {message.content.type === "quote" ? (
+                {isInitializing ? (
+                  <InitializingMessageBubble
+                    isAgent={isAgent}
+                    message={message}
+                    onRefresh={onRefreshInitializingMessage}
+                  />
+                ) : message.content.type === "quote" ? (
                   <QuoteMessageContentWithDelivery
                     canRetryMessage={canUseMessageActions}
                     content={message.content}
@@ -721,7 +753,7 @@ export function MessageRow({
                 ) : null}
               </div>
             </div>
-            {isAgent && !inlineDeliveryState && !multiSelectMode ? (
+            {isAgent && !isInitializing && !inlineDeliveryState && !multiSelectMode ? (
               <MessageDeliveryState message={message}/>
             ) : null}
           </div>
@@ -1232,6 +1264,81 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
     >
       {label}
     </p>
+  );
+}
+
+function InitializingMessageBubble({
+  isAgent,
+  message,
+  onRefresh,
+}: {
+  isAgent: boolean;
+  message: Message;
+  onRefresh?: (message: Message) => void | Promise<void>;
+}) {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const canRefresh =
+    Boolean(onRefresh) &&
+    isValidMessageSeq(message.seq) &&
+    !isRefreshing;
+  const isRightAligned =
+    isAgent ||
+    ("isOwnMessage" in message && Boolean(message.isOwnMessage));
+
+  const handleRefresh = async () => {
+    if (!canRefresh) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh?.(message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex w-fit max-w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-[14px] leading-6 text-muted-foreground",
+        isRightAligned ? "bg-primary/15" : "bg-secondary",
+      )}
+      data-testid="initializing-message-bubble"
+      role="status"
+    >
+      <span>{INITIALIZING_MESSAGE_DISPLAY_TEXT}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-busy={isRefreshing}
+            aria-label={isRefreshing ? "正在刷新消息" : "刷新消息"}
+            className="size-6 shrink-0"
+            disabled={!canRefresh}
+            onClick={() => {
+              void handleRefresh();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            {isRefreshing ? (
+              <Spinner className="text-current" size={13} strokeWidth={2.2} />
+            ) : (
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Refresh03Icon}
+                size={14}
+                strokeWidth={2}
+              />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          刷新消息
+        </TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
 

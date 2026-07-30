@@ -131,6 +131,14 @@ describe("ticket DTOs", () => {
       ...base,
       context: { type: "session" },
     })).toBe(false);
+    expect(Value.Check(TicketCreateRequestSchema, {
+      ...base,
+      context: { sessionId: "4001", type: "current" },
+    })).toBe(false);
+    expect(Value.Check(TicketCreateRequestSchema, {
+      ...base,
+      context: { sessionId: "4001", type: "none" },
+    })).toBe(false);
   });
 
   it("enforces title description and comment bounds", () => {

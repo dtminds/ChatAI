@@ -6,6 +6,7 @@ import { WRITABLE_TABLES } from "../../src/db/writable-tables.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(resolve(__dirname, "../../../../docs/db/schema.sql"), "utf8");
+const changeLogMarkdown = readFileSync(resolve(__dirname, "../../../../docs/db/change-log.md"), "utf8");
 
 describe("database schema document", () => {
   it("defines the final ticket fields on session action items", () => {
@@ -61,6 +62,21 @@ describe("database schema document", () => {
     expect(ticketIndexes).not.toContain("update_time");
   });
 
+  it("documents one main-baseline ticket migration that clears test data without backfill", () => {
+    const migration = extractChangeLogEntry(changeLogMarkdown, "2026-07-30");
+
+    expect(migration).toContain("DELETE FROM xy_wap_embed_insight_evidence");
+    expect(migration).toContain("DELETE FROM xy_wap_embed_session_action_item");
+    expect(migration).toContain("DROP COLUMN updated_by_sub_user_id");
+    expect(migration).toContain("RENAME INDEX idx_action_uid_conversation_status");
+    expect(migration).toContain("COMMENT = '工单主表'");
+    expect(migration).toContain("idx_ticket_uid_status_due_at                 (uid, status, due_at)");
+    expect(migration).toContain("'updated_by_sub_user_id',");
+    expect(migration).toContain("'anchor_message_id',");
+    expect(migration).not.toContain("SET canceled_at");
+    expect(migration).not.toContain("idx_ticket_uid_assignee_status_updated");
+  });
+
   it("keeps current_snapshot_id as the only logical session snapshot pointer", () => {
     const logicalSessionTable = extractCreateTable(schemaSql, "xy_wap_embed_logical_session");
 
@@ -80,6 +96,16 @@ function extractCreateTable(sql: string, tableName: string) {
 
   if (!match) {
     throw new Error(`Missing CREATE TABLE for ${tableName}`);
+  }
+
+  return match[0];
+}
+
+function extractChangeLogEntry(markdown: string, date: string) {
+  const match = new RegExp(`## ${date}\\n[\\s\\S]*?(?=\\n## |$)`).exec(markdown);
+
+  if (!match) {
+    throw new Error(`Missing change-log entry for ${date}`);
   }
 
   return match[0];

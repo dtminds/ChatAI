@@ -4,94 +4,104 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-30
 
-- Added a tenant-and-conversation index for recent-ticket lookups ordered by descending ticket ID. The `status <> 'deleted'` condition remains a residual filter, while the index narrows the scan to one tenant conversation and supports the requested ID order.
-- Changed ticket list ordering from last-updated time to descending ticket ID, and removed `update_time` from ticket-list secondary indexes so ordinary ticket edits no longer rewrite every list index.
-- Split the former status/due-time/priority index into one index for status-filtered ID scans and one for due-time range filtering. Priority remains a residual predicate because of its low cardinality and its unusable position after a due-time range.
+- Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.
+- Run this only when production has not executed any ticket-system DDL from this branch. The expected starting table still contains `updated_by_sub_user_id`, `dismissed_at`, and `due_hint`, plus `idx_action_uid_conversation_status` and `idx_action_uid_status_id`.
+- Production currently contains only disposable test tickets. This migration deletes all existing action-item rows and their `action_item` evidence instead of backfilling legacy ticket data.
+- This is a maintenance-window migration. Stop every old backend and Insights Worker writer before deleting data or changing the table.
+- Ticket lists now sort by descending ID. The final ticket-list indexes intentionally exclude high-frequency `update_time`.
+
+### 1. Backup and preflight
+
+Take a database backup before starting. Confirm that the production definition matches the expected `main` baseline:
 
 ```sql
-ALTER TABLE xy_wap_embed_session_action_item
-  DROP INDEX idx_ticket_uid_assignee_status_updated,
-  DROP INDEX idx_ticket_uid_conversation_status_updated,
-  DROP INDEX idx_ticket_uid_status_due_priority_updated,
-  DROP INDEX idx_ticket_uid_creator_updated,
-  DROP INDEX idx_ticket_uid_source_status_updated,
-  ADD KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
-  ADD KEY idx_ticket_uid_conversation_status_id (uid, conversation_id, status, id),
-  ADD KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
-  ADD KEY idx_ticket_uid_status_id (uid, status, id),
-  ADD KEY idx_ticket_uid_status_due_at (uid, status, due_at),
-  ADD KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
-  ADD KEY idx_ticket_uid_source_status_id (uid, source_type, status, id);
-
-ANALYZE TABLE xy_wap_embed_session_action_item;
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW INDEX FROM xy_wap_embed_session_action_item;
 ```
 
-## 2026-07-29
-
-- Removed the unused `due_hint` free-text field from tickets. AI ticket generation no longer requests or stores an unstructured time hint; explicit deadlines continue to use `due_at`.
-- Deploy the application version that no longer reads or writes `due_hint` before running this migration.
-- Added a tenant-and-creation-time index for the bounded 30-day default queries used by the reception and global ticket views. Custom ranges are limited to 60 days by the application.
+Inventory the rows that will be deleted:
 
 ```sql
-ALTER TABLE xy_wap_embed_session_action_item
-  DROP COLUMN due_hint;
-```
-
-```sql
-ALTER TABLE xy_wap_embed_session_action_item
-  ADD KEY idx_ticket_uid_created_id (uid, create_time, id);
-
-ANALYZE TABLE xy_wap_embed_session_action_item;
-```
-
-## 2026-07-27
-
-- Expanded `xy_wap_embed_session_action_item` into the ticket-system main table while preserving the physical table name for compatibility.
-- Added optional reception-session/message context, description, assignee, explicit due time, and cancellation audit fields.
-- Added `xy_wap_embed_ticket_activity` for ticket lifecycle events and comments.
-- Replaced the legacy `dismissed/expired` terminal states with `canceled`; `expired` is now derived from `due_at` and active status.
-- The migration is expand/contract so old instances can finish before `dismissed_at` and legacy status values are removed.
-
-Preflight checks. Stop if unknown status/action values or invalid AI context rows are returned:
-
-```sql
-SELECT status, COUNT(*) AS row_count
+SELECT
+  uid,
+  source_type,
+  status,
+  COUNT(*) AS row_count,
+  MIN(create_time) AS first_create_time,
+  MAX(create_time) AS last_create_time
 FROM xy_wap_embed_session_action_item
-GROUP BY status;
+GROUP BY uid, source_type, status
+ORDER BY uid, source_type, status;
 
-SELECT action_type, COUNT(*) AS row_count
-FROM xy_wap_embed_session_action_item
-GROUP BY action_type;
-
-SELECT id, uid, source_type, session_id, snapshot_id
-FROM xy_wap_embed_session_action_item
-WHERE source_type = 'ai'
-  AND (session_id IS NULL OR snapshot_id IS NULL)
-LIMIT 100;
+SELECT COUNT(*) AS action_item_evidence_rows
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
 ```
 
-Expand migration. This phase is backward compatible with the old application:
+Proceed only after confirming that every returned action item and every `action_item` evidence row is disposable test data.
+
+### 2. Enter the maintenance window
+
+1. Pause or drain the old Insights Worker and backend instances.
+2. Confirm no old process can insert or update `xy_wap_embed_session_action_item`.
+3. Keep the backend unavailable until the cleanup and schema migration have completed.
+
+### 3. Delete the existing test tickets
+
+Delete the polymorphic evidence first so no orphaned `action_item` evidence remains:
+
+```sql
+START TRANSACTION;
+
+DELETE FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+
+DELETE FROM xy_wap_embed_session_action_item;
+
+COMMIT;
+```
+
+Both counts must be zero before altering the table:
+
+```sql
+SELECT COUNT(*) AS remaining_action_items
+FROM xy_wap_embed_session_action_item;
+
+SELECT COUNT(*) AS remaining_action_item_evidence
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+```
+
+### 4. Apply the final schema directly
+
+Because the old rows have been deleted and all old writers are stopped, no legacy status or cancellation-time backfill is required. The two existing indexes whose columns already match the final design are renamed instead of rebuilt.
 
 ```sql
 ALTER TABLE xy_wap_embed_session_action_item
   MODIFY COLUMN session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
   ADD COLUMN anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID' AFTER session_id,
   ADD COLUMN assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID' AFTER created_by_sub_user_id,
+  DROP COLUMN updated_by_sub_user_id,
   ADD COLUMN canceled_at DATETIME NULL COMMENT '取消时间' AFTER completed_at,
   ADD COLUMN canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID' AFTER canceled_at,
+  DROP COLUMN dismissed_at,
+  MODIFY COLUMN action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
+  MODIFY COLUMN title VARCHAR(255) NOT NULL COMMENT '工单标题',
   ADD COLUMN description TEXT NULL COMMENT '工单描述' AFTER title,
-  ADD COLUMN due_at DATETIME NULL COMMENT '明确截止时间' AFTER due_hint,
-  ADD KEY idx_ticket_uid_assignee_status_updated (uid, assignee_sub_user_id, status, update_time, id),
-  ADD KEY idx_ticket_uid_conversation_status_updated (uid, conversation_id, status, update_time, id),
-  ADD KEY idx_ticket_uid_status_due_priority_updated (uid, status, due_at, priority, update_time, id),
-  ADD KEY idx_ticket_uid_creator_updated (uid, created_by_sub_user_id, update_time, id),
-  ADD KEY idx_ticket_uid_source_status_updated (uid, source_type, status, update_time, id);
+  ADD COLUMN due_at DATETIME NULL COMMENT '明确截止时间' AFTER priority,
+  DROP COLUMN due_hint,
+  MODIFY COLUMN status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消，deleted：内部逻辑删除墓碑',
+  RENAME INDEX idx_action_uid_conversation_status TO idx_ticket_uid_conversation_status_id,
+  RENAME INDEX idx_action_uid_status_id TO idx_ticket_uid_status_id,
+  ADD KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
+  ADD KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
+  ADD KEY idx_ticket_uid_created_id (uid, create_time, id),
+  ADD KEY idx_ticket_uid_status_due_at (uid, status, due_at),
+  ADD KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
+  ADD KEY idx_ticket_uid_source_status_id (uid, source_type, status, id),
+  COMMENT = '工单主表';
 
-UPDATE xy_wap_embed_session_action_item
-SET canceled_at = COALESCE(canceled_at, dismissed_at, update_time)
-WHERE status IN ('dismissed', 'expired');
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_ticket_activity (
+CREATE TABLE xy_wap_embed_ticket_activity (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   ticket_id BIGINT UNSIGNED NOT NULL COMMENT '工单ID',
@@ -104,82 +114,99 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_ticket_activity (
   PRIMARY KEY (id),
   KEY idx_ticket_activity_uid_ticket_id (uid, ticket_id, id)
 ) COMMENT='工单活动记录表';
-```
-
-Deploy the application version that reads legacy `dismissed/expired` rows as `canceled`, writes only `open/in_progress/done/canceled`, and writes `canceled_at`. Wait until every old application and Worker instance has exited before contract.
-
-Contract preflight. Stop if either query returns rows:
-
-```sql
-SELECT id, uid, status
-FROM xy_wap_embed_session_action_item
-WHERE status NOT IN ('open', 'in_progress', 'done', 'dismissed', 'expired', 'canceled')
-LIMIT 100;
-
-SELECT id, uid
-FROM xy_wap_embed_session_action_item
-WHERE session_id IS NOT NULL
-  AND anchor_message_id IS NOT NULL
-LIMIT 100;
-```
-
-Contract migration:
-
-```sql
-UPDATE xy_wap_embed_session_action_item
-SET canceled_at = COALESCE(canceled_at, dismissed_at, update_time),
-    canceled_by_sub_user_id = NULL,
-    status = 'canceled'
-WHERE status IN ('dismissed', 'expired');
-
-ALTER TABLE xy_wap_embed_session_action_item
-  MODIFY COLUMN action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
-  MODIFY COLUMN title VARCHAR(255) NOT NULL COMMENT '工单标题',
-  MODIFY COLUMN status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消',
-  DROP COLUMN dismissed_at,
-  DROP KEY idx_action_uid_conversation_status,
-  DROP KEY idx_action_uid_status_id;
 
 ANALYZE TABLE xy_wap_embed_session_action_item, xy_wap_embed_ticket_activity;
 ```
 
-Post-migration checks. Every count must be zero:
+### 5. Verify the schema and deploy
 
 ```sql
-SELECT COUNT(*) AS invalid_status_rows
-FROM xy_wap_embed_session_action_item
-WHERE status NOT IN ('open', 'in_progress', 'done', 'canceled');
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW CREATE TABLE xy_wap_embed_ticket_activity;
 
-SELECT COUNT(*) AS conflicting_context_rows
-FROM xy_wap_embed_session_action_item
-WHERE session_id IS NOT NULL
-  AND anchor_message_id IS NOT NULL;
+SELECT
+  index_name,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index) AS index_columns
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+GROUP BY index_name
+ORDER BY index_name;
 
-SELECT COUNT(*) AS unassigned_in_progress_rows
-FROM xy_wap_embed_session_action_item
-WHERE status = 'in_progress'
-  AND assignee_sub_user_id IS NULL;
+SELECT
+  column_name,
+  column_type,
+  is_nullable,
+  column_comment
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'session_id',
+    'anchor_message_id',
+    'assignee_sub_user_id',
+    'canceled_at',
+    'canceled_by_sub_user_id',
+    'description',
+    'due_at'
+  )
+ORDER BY ordinal_position;
 
-SELECT COUNT(*) AS invalid_ai_context_rows
-FROM xy_wap_embed_session_action_item
-WHERE source_type = 'ai'
-  AND (session_id IS NULL OR snapshot_id IS NULL);
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'updated_by_sub_user_id',
+    'dismissed_at',
+    'due_hint'
+  );
 
-SELECT COUNT(*) AS invalid_manual_snapshot_rows
-FROM xy_wap_embed_session_action_item
-WHERE source_type = 'manual'
-  AND snapshot_id IS NOT NULL;
-
-SELECT COUNT(*) AS invalid_action_type_rows
-FROM xy_wap_embed_session_action_item
-WHERE action_type <> 'follow_up';
+SELECT table_comment
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item';
 ```
+
+Expected indexes and column order:
+
+```text
+PRIMARY                                      (id)
+idx_action_snapshot                          (snapshot_id)
+idx_action_uid_session_status                (uid, session_id, status)
+idx_ticket_uid_assignee_status_id            (uid, assignee_sub_user_id, status, id)
+idx_ticket_uid_conversation_status_id        (uid, conversation_id, status, id)
+idx_ticket_uid_conversation_id               (uid, conversation_id, id)
+idx_ticket_uid_created_id                    (uid, create_time, id)
+idx_ticket_uid_status_id                     (uid, status, id)
+idx_ticket_uid_status_due_at                 (uid, status, due_at)
+idx_ticket_uid_creator_id                    (uid, created_by_sub_user_id, id)
+idx_ticket_uid_source_status_id              (uid, source_type, status, id)
+```
+
+Expected new or modified columns:
+
+```text
+session_id                 BIGINT UNSIGNED NULL
+anchor_message_id          BIGINT UNSIGNED NULL
+assignee_sub_user_id       BIGINT UNSIGNED NULL
+canceled_at                DATETIME NULL
+canceled_by_sub_user_id    BIGINT UNSIGNED NULL
+description                TEXT NULL
+due_at                     DATETIME NULL
+```
+
+The legacy-column query must return no rows: `updated_by_sub_user_id`, `dismissed_at`, and `due_hint` must not exist. The expected table comment is `工单主表`.
+
+Confirm that the action-item table is still empty, then deploy every backend and Insights Worker instance from this release. Deploy the web application after the backend is healthy, and complete ticket create/list/update/cancel smoke tests.
 
 Rollback boundary:
 
-- Before deploying new writers, expand can be rolled back by dropping the five new indexes, new columns, and activity table after confirming they contain no data.
-- After new writers are deployed, do not drop expanded columns or the activity table. Roll back application binaries only to a version verified to tolerate the expanded schema.
-- Contract is destructive: legacy `expired` versus `dismissed` provenance and `dismissed_at` cannot be reconstructed after migration. Take a database backup before contract; restoration requires restoring that backup, not application-side compensation.
+- The cleanup and schema migration are destructive. The deleted test tickets, their evidence, and the dropped legacy columns cannot be reconstructed from the new schema.
+- If cleanup or migration must be reversed, restore the pre-migration backup before restarting the old `main` application.
+- After the new version writes tickets or activities, the old `main` application is not a safe rollback target.
+
+## 2026-07-27
 
 - Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.
 - `token_usage` stores the accumulated Volcengine Ark `usage` shape for every model response observed during one analysis run, including retries and responses whose business payload later fails validation.

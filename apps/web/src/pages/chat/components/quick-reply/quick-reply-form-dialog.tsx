@@ -18,13 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { uploadWorkbenchImageFile } from "@/pages/chat/api/media-upload-service";
-import {
-  QuickReplyAttachmentPicker,
-  type QuickReplyDraftAttachment,
-  type QuickReplyLocalImageAttachment,
-} from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
+import { QuickReplyAttachmentPicker } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
 import { quickReplyTitlePalette } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
+import type {
+  QuickReplyDraftAttachment,
+  QuickReplyLocalImageAttachment,
+} from "@/pages/chat/lib/quick-reply-attachment-types";
 
 type QuickReplyFormDialogProps = {
   categories: WorkbenchQuickReplyCategoryDto[];

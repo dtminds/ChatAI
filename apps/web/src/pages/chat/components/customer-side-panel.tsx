@@ -110,13 +110,14 @@ export function CustomerSidePanel({
     [conversationMode, sidebarItems],
   );
 
-  const hasActiveCustomSidebar = useMemo(
+  const activeSidebarItems = useMemo(
     () =>
-      sortSidebarItems(scopedSidebarItems).some(
+      sortSidebarItems(scopedSidebarItems).filter(
         (item) => item.status === "active",
       ),
     [scopedSidebarItems],
   );
+  const hasActiveCustomSidebar = activeSidebarItems.length > 0;
 
   const needsSidebarIframeParams = Boolean(
     hasActiveCustomSidebar &&
@@ -133,35 +134,35 @@ export function CustomerSidePanel({
     [sidebarIframeConversationId, sidebarIframeSeatId],
   );
 
-  const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
-    (item) => item.status === "active",
-  );
   const defaultSidebarValue = isGroupConversation ? "system" : "quick-reply";
-  const sidebarEntries = [
-    ...(isGroupConversation
-      ? [
-          {
-            id: "system",
-            kind: "system" as const,
-            name: "基础信息",
-            value: "system",
-          },
-        ]
-      : []),
-    {
-      id: "quick-reply",
-      kind: "quick-reply" as const,
-      name: "快捷话术",
-      value: "quick-reply",
-    },
-    ...activeSidebarItems.map((item) => ({
-      id: item.id,
-      item,
-      kind: "custom" as const,
-      name: item.name,
-      value: getSidebarTabValue(item),
-    })),
-  ];
+  const sidebarEntries = useMemo(
+    () => [
+      ...(isGroupConversation
+        ? [
+            {
+              id: "system",
+              kind: "system" as const,
+              name: "基础信息",
+              value: "system",
+            },
+          ]
+        : []),
+      {
+        id: "quick-reply",
+        kind: "quick-reply" as const,
+        name: "快捷话术",
+        value: "quick-reply",
+      },
+      ...activeSidebarItems.map((item) => ({
+        id: item.id,
+        item,
+        kind: "custom" as const,
+        name: item.name,
+        value: getSidebarTabValue(item),
+      })),
+    ],
+    [activeSidebarItems, isGroupConversation],
+  );
   const [activeSidebarValue, setActiveSidebarValue] =
     useState(defaultSidebarValue);
   const previousDefaultSidebarValueRef = useRef(defaultSidebarValue);

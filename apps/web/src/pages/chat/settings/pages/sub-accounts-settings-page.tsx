@@ -28,6 +28,7 @@ import {
   type FormEvent,
 } from "react";
 import { toast } from "sonner";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 import {
   AlertDialog,
@@ -178,7 +179,7 @@ export function SubAccountsSettingsPage() {
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(getErrorMessage(error));
+          setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
         }
       } finally {
         if (!ignore) {
@@ -264,7 +265,7 @@ export function SubAccountsSettingsPage() {
 
       setDialogState(null);
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setPendingAction(null);
     }
@@ -289,7 +290,7 @@ export function SubAccountsSettingsPage() {
       }));
       toast.success(nextStatus === "active" ? "子账号已启用" : "子账号已停用");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setPendingAction(null);
     }
@@ -313,7 +314,7 @@ export function SubAccountsSettingsPage() {
       setDeleteTarget(null);
       toast.success("子账号已删除");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setPendingAction(null);
     }
@@ -1174,18 +1175,6 @@ function SubAccountDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function getErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  return "操作失败，请稍后重试";
 }
 
 function generatePassword() {

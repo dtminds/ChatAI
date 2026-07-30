@@ -46,8 +46,10 @@ import {
   adaptSmartReplyAttachments,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
-import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type {
+  SmartReplyRecommendedAttachment,
+  SmartReplySuggestion,
+} from "@/pages/chat/lib/smart-reply-types";
 import type {
   Account,
   ChatMessage,

@@ -635,6 +635,91 @@ describe("useWorkbenchStore", () => {
     }
   });
 
+  it("keeps the current session profile retry when a stale session request finishes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const unverifiedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "",
+      customerName: "未知客户",
+      verified: false,
+    };
+    const verifiedConversation = {
+      ...unverifiedConversation,
+      customerAvatar: "https://example.com/refreshed-after-reset.png",
+      customerName: "重登后补齐的客户",
+      verified: true,
+    };
+    const staleProfileRefresh = createDeferred<typeof unverifiedConversation>();
+    const currentProfileRefresh = createDeferred<typeof unverifiedConversation>();
+    const getConversation = vi
+      .fn()
+      .mockImplementationOnce(() => staleProfileRefresh.promise)
+      .mockImplementationOnce(() => currentProfileRefresh.promise)
+      .mockResolvedValueOnce(verifiedConversation);
+    const markConversationUnverified = () => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-002"
+              ? {
+                  ...conversation,
+                  customerAvatarUrl: "",
+                  customerName: "未知客户",
+                  isVerified: false,
+                }
+              : conversation,
+          ),
+        },
+      }));
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    vi.useFakeTimers();
+
+    try {
+      markConversationUnverified();
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+      expect(getConversation).toHaveBeenCalledTimes(1);
+
+      useWorkbenchStore.getState().resetWorkbenchSession();
+      await useWorkbenchStore.getState().initializeWorkbench();
+      markConversationUnverified();
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+      expect(getConversation).toHaveBeenCalledTimes(2);
+
+      currentProfileRefresh.resolve(unverifiedConversation);
+      await vi.advanceTimersByTimeAsync(0);
+
+      staleProfileRefresh.resolve(unverifiedConversation);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(getConversation).toHaveBeenCalledTimes(3);
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-after-reset.png",
+        customerName: "重登后补齐的客户",
+        isVerified: true,
+      });
+    } finally {
+      useWorkbenchStore.getState().resetWorkbenchRuntime();
+      vi.useRealTimers();
+    }
+  });
+
   it("stops scheduled profile retries after leaving the conversation", async () => {
     const baseService = createMockWorkbenchService();
     const unverifiedConversation = {
@@ -11036,6 +11121,59 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-002");
     expect(observedMessageConversationIds).toEqual(["conv-002"]);
     expect(state.messagesByConversationId["conv-002"]?.length).toBeGreaterThan(0);
+  });
+
+  it("refreshes an unverified next conversation after deleting the active conversation", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const refreshedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "https://example.com/refreshed-after-delete.png",
+      customerName: "删除后补齐的客户",
+      verified: true,
+    };
+    const getConversation = vi.fn().mockResolvedValue(refreshedConversation);
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? {
+                ...conversation,
+                customerAvatarUrl: "",
+                customerName: "未知客户",
+                isVerified: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().deleteConversation("conv-001");
+
+    await waitForStoreAssertion(() => {
+      expect(getConversation).toHaveBeenCalledTimes(1);
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-after-delete.png",
+        customerName: "删除后补齐的客户",
+        isVerified: true,
+      });
+    });
   });
 
   it("resets active message sequence immediately when deleting the active conversation", async () => {

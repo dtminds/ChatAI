@@ -4156,8 +4156,11 @@ export function createWorkbenchStore() {
       try {
         const conversation = await request;
 
+        if (refreshGeneration !== latestConversationProfileRefreshGeneration) {
+          return;
+        }
+
         if (
-          refreshGeneration !== latestConversationProfileRefreshGeneration ||
           conversation.accountId !== input.accountId ||
           conversation.id !== input.conversationId
         ) {
@@ -4268,6 +4271,14 @@ export function createWorkbenchStore() {
       });
 
       const state = get();
+      const conversation = getConversationById(state, conversationId);
+
+      if (conversation?.isVerified === false) {
+        startUnverifiedConversationProfileRefresh({
+          accountId: conversation.accountId,
+          conversationId,
+        });
+      }
 
       try {
         const page = await loadConversationMessagesPage(

@@ -130,8 +130,11 @@ export const TicketCountsResponseSchema = Type.Object({
   assignedToMeActive: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
+// Fastify's Ajv removes branch-local additional properties while evaluating anyOf.
+// Declare sessionId on every branch so it survives until the session branch is checked.
 export const TicketCreateContextSchema = Type.Union([
   Type.Object({
+    sessionId: Type.Optional(Type.Never()),
     type: Type.Literal("current"),
   }, { additionalProperties: false }),
   Type.Object({
@@ -139,6 +142,7 @@ export const TicketCreateContextSchema = Type.Union([
     type: Type.Literal("session"),
   }, { additionalProperties: false }),
   Type.Object({
+    sessionId: Type.Optional(Type.Never()),
     type: Type.Literal("none"),
   }, { additionalProperties: false }),
 ]);

@@ -209,6 +209,37 @@ describe("tickets routes", () => {
     await app.close();
   });
 
+  it("accepts an explicitly selected session when creating a ticket", async () => {
+    const app = await createTicketsApp();
+    const payload = {
+      assigneeSubUserId: "18",
+      context: {
+        sessionId: "154",
+        type: "session" as const,
+      },
+      conversationId: "146",
+      description: "客户就商品问题使用过敏，需要安抚客户情绪，妥善处理",
+      dueAt: 1_785_469_380_000,
+      priority: "medium" as const,
+      title: "客户要投诉，请及时跟进问题",
+    };
+    service.createTicket.mockResolvedValueOnce({ ticket });
+
+    const response = await app.inject({
+      headers: { authorization: "Bearer test-token" },
+      method: "POST",
+      payload,
+      url: "/api/server/tickets",
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(service.createTicket).toHaveBeenLastCalledWith(
+      expect.objectContaining({ role: "operator", subUserId: "101", uid: 9001 }),
+      payload,
+    );
+    await app.close();
+  });
+
   it("rejects status updates without the expected current status", async () => {
     const app = await createTicketsApp();
     const response = await app.inject({

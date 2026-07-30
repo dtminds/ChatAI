@@ -120,6 +120,11 @@ export function MessageHistorySidePanel({
     return null;
   }
 
+  const historyTabMessages = getHistoryTabMessages(
+    activeHistory?.messages ?? [],
+    activeHistoryFilters.scope,
+  );
+
   return (
     <aside
       aria-label="聊天记录"
@@ -243,10 +248,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryFileList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                   onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
@@ -266,10 +268,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryMediaWall
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                   onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
@@ -289,10 +288,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryLinkList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -311,10 +307,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryMiniProgramList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                 />
               </HistoryMessageViewport>
             </TabsContent>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,8 @@ export function KbAttachmentsTable({
   const primaryColumnLabel = getKbAttachmentPrimaryColumnLabel(activeType);
   const deleteActionLabel = getKbAttachmentDeleteActionLabel(activeType);
   const columnCount = 5;
-  const allSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allSelected = items.length > 0 && items.every((item) => selectedIdSet.has(item.id));
 
   return (
     <TooltipProvider>
@@ -110,7 +111,7 @@ export function KbAttachmentsTable({
               <TableCell className="px-4 py-4 align-middle">
                 <Checkbox
                   aria-label={`选择附件 ${item.title}`}
-                  checked={selectedIds.includes(item.id)}
+                  checked={selectedIdSet.has(item.id)}
                   onCheckedChange={(checked) =>
                     onToggleSelectItem(item.id, checked === true)
                   }

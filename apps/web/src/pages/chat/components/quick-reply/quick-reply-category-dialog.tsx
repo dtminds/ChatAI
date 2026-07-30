@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
 
@@ -60,7 +61,7 @@ export function QuickReplyCategoryDialog({
       await onSubmit(normalizedTitle);
       onOpenChange(false);
     } catch (submitError) {
-      setError(getSubmitErrorMessage(submitError));
+      setError(resolveErrorMessage(submitError, "保存失败，请稍后重试").trim());
     } finally {
       setIsSubmitting(false);
     }
@@ -124,18 +125,4 @@ function getQuickReplyCategoryDialogCopy(
     placeholder: "请输入分类名称，10字以内",
     title: isEditing ? "编辑分类" : "新建分类",
   };
-}
-
-function getSubmitErrorMessage(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string" &&
-    error.message.trim()
-  ) {
-    return error.message.trim();
-  }
-
-  return "保存失败，请稍后重试";
 }

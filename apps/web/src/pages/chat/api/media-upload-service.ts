@@ -9,6 +9,11 @@ import {
   createCosClient,
   uploadCosFile,
 } from "@/pages/chat/lib/cos-upload-runtime";
+import {
+  buildCosUploadObjectKey,
+  normalizeCosUploadPrefix,
+  resolveImageUploadExtension,
+} from "@/pages/chat/lib/cos-upload-key";
 import type {
   ComposerImageSegment,
   ComposerFileSegment,
@@ -47,7 +52,7 @@ export async function resolveImageSegmentsForSend(
     const blob = await dataUrlToBlob(segment.localUrl);
     const key = buildObjectKey({
       credential,
-      extension: getImageExtension(blob.type),
+      extension: resolveImageUploadExtension(blob.type),
     });
     await cos.uploadFile({
       Body: blob,
@@ -125,7 +130,7 @@ export async function uploadWorkbenchImageFile(
   const cos = await createCosClient(credential);
   const key = buildObjectKey({
     credential,
-    extension: getImageExtension(file.type),
+    extension: resolveImageUploadExtension(file.type),
   });
 
   await cos.uploadFile({
@@ -177,9 +182,8 @@ function buildObjectKey({
   const prefix = normalizeUploadPrefix(
     getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_IMAGE_UPLOAD_PREFIX,
   );
-  const randomPart = Math.random().toString(36).slice(2, 10);
 
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+  return buildCosUploadObjectKey(prefix, extension);
 }
 
 function buildFileObjectKey({
@@ -193,46 +197,15 @@ function buildFileObjectKey({
     getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_FILE_UPLOAD_PREFIX,
     DEFAULT_FILE_UPLOAD_PREFIX,
   );
-  const randomPart = Math.random().toString(36).slice(2, 10);
 
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+  return buildCosUploadObjectKey(prefix, extension);
 }
 
 function normalizeUploadPrefix(
   prefix: string,
   fallbackPrefix = DEFAULT_IMAGE_UPLOAD_PREFIX,
 ) {
-  const normalizedPrefix = prefix
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/\*+$/, "")
-    .replace(/\/+$/, "")
-    .replace(/\/+/g, "/");
-
-  if (!normalizedPrefix) {
-    return fallbackPrefix;
-  }
-
-  return `${normalizedPrefix}/`;
-}
-
-function getImageExtension(contentType: string) {
-  const [, rawSubtype] = contentType.split("/");
-  const subtype = rawSubtype?.split(";")[0]?.trim().toLowerCase();
-
-  if (!subtype) {
-    return DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  if (subtype === "jpeg") {
-    return "jpg";
-  }
-
-  if (subtype.includes("+")) {
-    return subtype.split("+")[0] || DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_FALLBACK_EXTENSION;
+  return normalizeCosUploadPrefix(prefix, fallbackPrefix);
 }
 
 function buildObjectUrl(key: string) {

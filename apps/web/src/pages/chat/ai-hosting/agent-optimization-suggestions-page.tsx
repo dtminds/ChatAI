@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingLearningCandidateItem,
@@ -175,6 +175,7 @@ export function AgentOptimizationSuggestionsPage() {
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState("");
   const [selectedKnowledge, setSelectedKnowledge] = useState<KbDocViewItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [searchDetailCandidateId, setSearchDetailCandidateId] = useState<string | null>(null);
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
@@ -519,7 +520,7 @@ export function AgentOptimizationSuggestionsPage() {
               >
                 {candidates.map((suggestion, index) => (
                   <SuggestionCard
-                    checked={selectedIds.includes(suggestion.id)}
+                    checked={selectedIdSet.has(suggestion.id)}
                     displayIndex={(activePage - 1) * PAGE_SIZE + index + 1}
                     key={suggestion.id}
                     onAdopt={() => openIngestDialog("single", [suggestion.id])}

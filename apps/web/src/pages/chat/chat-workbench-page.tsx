@@ -1,5 +1,7 @@
 import {
+  lazy,
   startTransition,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -54,9 +56,7 @@ import { ConversationListPanel } from "@/pages/chat/components/conversation-list
 import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-forward/message-forward-recipient-dialog";
 import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
-import { CustomerPage } from "@/pages/chat/customer-page";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
-import { TicketsPage } from "@/pages/chat/tickets/tickets-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -150,6 +150,17 @@ import {
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
 const CONVERSATION_VIEW_STORAGE_KEY = "chatai.conversationView";
 const EMPTY_CONVERSATIONS: Conversation[] = [];
+
+const CustomerPage = lazy(() =>
+  import("@/pages/chat/customer-page").then(({ CustomerPage }) => ({
+    default: CustomerPage,
+  })),
+);
+const TicketsPage = lazy(() =>
+  import("@/pages/chat/tickets/tickets-page").then(({ TicketsPage }) => ({
+    default: TicketsPage,
+  })),
+);
 
 type ConversationViewState = Record<ChatMode, ConversationView>;
 type ConversationViewRetainedState = {
@@ -2861,11 +2872,13 @@ function ChatWorkbenchContent({
           >
             {accountRailNode}
             <main className="h-full min-h-0 overflow-hidden bg-surface">
-              <CustomerPage
-                accounts={accounts}
-                currentEmployeeId={me?.id}
-                onStartChat={handleStartCustomerChat}
-              />
+              <Suspense fallback={<WorkbenchSectionLoading />}>
+                <CustomerPage
+                  accounts={accounts}
+                  currentEmployeeId={me?.id}
+                  onStartChat={handleStartCustomerChat}
+                />
+              </Suspense>
             </main>
           </div>
         ) : activeView === "tickets" ? (
@@ -2873,7 +2886,13 @@ function ChatWorkbenchContent({
             className="h-full min-h-0 overflow-hidden bg-surface"
             data-testid="chat-tickets-layout"
           >
-            {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
+            {activeTicketId ? (
+              <TicketDetailPage />
+            ) : (
+              <Suspense fallback={<WorkbenchSectionLoading />}>
+                <TicketsPage />
+              </Suspense>
+            )}
           </div>
         ) : mobilePane === "chat" ? (
           <div
@@ -2932,17 +2951,25 @@ function ChatWorkbenchContent({
                 : { minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
             >
               {activeView === "customers" ? (
-                <CustomerPage
-                  accounts={accounts}
-                  currentEmployeeId={me?.id}
-                  onStartChat={handleStartCustomerChat}
-                />
+                <Suspense fallback={<WorkbenchSectionLoading />}>
+                  <CustomerPage
+                    accounts={accounts}
+                    currentEmployeeId={me?.id}
+                    onStartChat={handleStartCustomerChat}
+                  />
+                </Suspense>
               ) : activeView === "tickets" ? (
                 <div
                   className="h-full min-h-0 overflow-hidden rounded-[inherit]"
                   data-testid="chat-tickets-layout"
                 >
-                  {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
+                  {activeTicketId ? (
+                    <TicketDetailPage />
+                  ) : (
+                    <Suspense fallback={<WorkbenchSectionLoading />}>
+                      <TicketsPage />
+                    </Suspense>
+                  )}
                 </div>
               ) : (
                 <div
@@ -3240,6 +3267,19 @@ function ChatWorkbenchContent({
         open={activeMaterialLibraryBizType !== null}
         searchKeyword={materialLibrarySearchKeyword}
       />
+    </div>
+  );
+}
+
+function WorkbenchSectionLoading() {
+  return (
+    <div
+      aria-label="正在加载"
+      className="flex h-full min-h-0 items-center justify-center gap-2 text-sm text-muted-foreground"
+      role="status"
+    >
+      <DotMatrixLoader ariaLabel="正在加载" dotSize={3} size={22} />
+      <span>正在加载</span>
     </div>
   );
 }

@@ -136,6 +136,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   );
   const committedConversationIdRef = useRef(activeConversationId);
   const selectRequestIdRef = useRef(0);
+  const selectTaskTimerRef = useRef<number | null>(null);
   const viewsByMode = useMemo(
     () => conversationViews ?? {
       group: activeView,
@@ -196,9 +197,23 @@ export const ConversationListPanel = memo(function ConversationListPanel({
     setHighlightedConversationId(activeConversationId);
   }, [activeConversationId]);
 
+  useEffect(() => {
+    return () => {
+      selectRequestIdRef.current += 1;
+
+      if (selectTaskTimerRef.current !== null) {
+        window.clearTimeout(selectTaskTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
       const requestId = ++selectRequestIdRef.current;
+
+      if (selectTaskTimerRef.current !== null) {
+        window.clearTimeout(selectTaskTimerRef.current);
+      }
 
       flushSync(() => {
         setHighlightedConversationId(conversationId);
@@ -206,7 +221,9 @@ export const ConversationListPanel = memo(function ConversationListPanel({
 
       // Defer store selection to the next task so the optimistic highlight can paint
       // before the workbench's broad Zustand subscription re-renders the shell.
-      window.setTimeout(() => {
+      selectTaskTimerRef.current = window.setTimeout(() => {
+        selectTaskTimerRef.current = null;
+
         if (selectRequestIdRef.current !== requestId) {
           return;
         }

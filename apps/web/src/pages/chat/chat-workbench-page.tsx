@@ -2400,7 +2400,7 @@ function ChatWorkbenchContent({
             conversationId={activeConversation.id}
             key={activeConversation.id}
             onCreateTicket={
-              subUser && subUser.role !== "viewer"
+              subUser
                 ? () => setTicketCreateConversationId(activeConversation.id)
                 : undefined
             }

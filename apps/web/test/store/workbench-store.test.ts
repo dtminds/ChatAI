@@ -311,6 +311,174 @@ describe("useWorkbenchStore", () => {
     ).toBe(9001);
   });
 
+  it("does not mark a conversation read when opening it without unread messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    markConversationRead.mockClear();
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-002",
+        )?.unread,
+    ).toBe(0);
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(markConversationRead).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates concurrent mark-read requests for the same conversation", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const readResult =
+      createDeferred<Awaited<ReturnType<typeof baseService.markConversationRead>>>();
+    const markConversationRead = vi.fn(() => readResult.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc" ? { ...account, unreadCount: 2 } : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? { ...conversation, unread: 2 }
+            : conversation,
+        ),
+      },
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .markConversationRead("conv-001");
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .markConversationRead("conv-001");
+
+    expect(markConversationRead).toHaveBeenCalledTimes(1);
+
+    readResult.resolve({
+      conversationId: "conv-001",
+      seatId: "drc",
+      unreadCount: 0,
+    });
+    await Promise.all([firstRequest, secondRequest]);
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-001",
+        )?.unread,
+    ).toBe(0);
+  });
+
+  it("refreshes profile fields when opening an unverified conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn(async (conversationId: string) => ({
+      ...(await baseService.getConversation(conversationId)),
+      customerAvatar: "https://example.com/refreshed-customer.png",
+      customerName: "补齐后的客户",
+      lastMessage: "不应覆盖当前预览",
+      unreadCount: 0,
+      verified: true,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? { ...account, takenOverEmployeeId: undefined }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? {
+                ...conversation,
+                customerAvatarUrl: "",
+                customerName: "未知客户",
+                isVerified: false,
+                preview: "保留当前预览",
+                unread: 7,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-customer.png",
+        customerName: "补齐后的客户",
+        isVerified: true,
+        preview: "保留当前预览",
+        unread: 7,
+      });
+    });
+    expect(getConversation).toHaveBeenCalledTimes(1);
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
+  });
+
+  it("keeps opening an unverified conversation when profile refresh fails", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation: vi.fn().mockRejectedValue(new Error("资料尚未同步")),
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? { ...conversation, isVerified: false }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeConversationId: "conv-002",
+      isConversationLoading: false,
+      scopeTransitionError: undefined,
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-002"],
+    ).toEqual(expect.any(Array));
+  });
+
   it("clears a handoff reminder after a send is accepted", async () => {
     const baseService = createMockWorkbenchService();
     const clearConversationHandoff = vi.fn().mockResolvedValue({
@@ -10252,6 +10420,16 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? { ...conversation, unread: 1 }
+            : conversation,
+        ),
+      },
+    }));
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     const state = useWorkbenchStore.getState();
@@ -10692,6 +10870,16 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? { ...conversation, unread: 1 }
+            : conversation,
+        ),
+      },
+    }));
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");

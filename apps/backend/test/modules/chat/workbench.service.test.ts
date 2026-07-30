@@ -247,6 +247,52 @@ describe("MysqlWorkbenchService", () => {
     expect(canAccessSeat).not.toHaveBeenCalled();
   });
 
+  it("hydrates an accessible conversation for profile refresh", async () => {
+    const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    const getHydratedConversation = vi.fn().mockResolvedValue({
+      conversationId: "88",
+      customerAvatar: "https://example.com/customer.png",
+      customerId: "external-001",
+      customerName: "补齐后的客户",
+      handoffMsgId: 0,
+      lastMessage: "",
+      mode: "single",
+      priority: "medium",
+      replied: false,
+      seatId: "12",
+      unreadCount: 0,
+      verified: true,
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup,
+        getHydratedConversation,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getConversation("101", "88")).resolves.toMatchObject({
+      conversationId: "88",
+      customerName: "补齐后的客户",
+      verified: true,
+    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
+    expect(getHydratedConversation).toHaveBeenCalledWith(
+      9001,
+      5,
+      "seat-user-001",
+      "88",
+    );
+  });
+
   it("delegates get-or-create conversation decisions to Java before hydrating", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.createConversation).mockResolvedValue({

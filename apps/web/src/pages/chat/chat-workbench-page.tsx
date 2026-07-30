@@ -71,7 +71,6 @@ import {
   getFirstUnreadCustomerMessageKey,
   useVisibleUnreadConversationRead,
 } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
-import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collection";
 import { useMessageForward } from "@/pages/chat/hooks/use-message-forward";
@@ -93,7 +92,6 @@ import {
   MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
 } from "@/pages/chat/api/media-upload-errors";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
-import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import {
   DEFAULT_CONVERSATION_VIEW,
@@ -587,11 +585,7 @@ function ChatWorkbenchContent({
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations =
     conversationListsByScope[activeAccountId] ?? EMPTY_CONVERSATIONS;
-  const conversationRevealTick = useConversationRevealTimer(allConversations);
-  const visibleSearchableConversations = useMemo(
-    () => getVisibleConversations(allConversations),
-    [allConversations, conversationRevealTick],
-  );
+  const visibleSearchableConversations = allConversations;
   const currentConversationView = conversationViewState[activeMode];
   const resolvedConversationView = resolveConversationView(
     currentConversationView,

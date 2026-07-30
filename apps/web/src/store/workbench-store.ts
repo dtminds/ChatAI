@@ -18,9 +18,9 @@ import {
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
-  getVisibleConversations,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
+  loadConversationSummary,
   loadUnreadAccountConversationsByMode,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
@@ -531,17 +531,16 @@ function getFirstConversationId(
   mode: ChatMode,
 ) {
   const conversations = conversationListsByScope[accountId] ?? [];
-  return getFirstVisibleConversationId(conversations, mode);
+  return getFirstConversationIdByMode(conversations, mode);
 }
 
-function getFirstVisibleConversationId(
+function getFirstConversationIdByMode(
   conversations: Conversation[],
   mode: ChatMode,
 ) {
-  const visibleConversations = getVisibleConversations(conversations);
   const firstMatch =
-    visibleConversations.find((conversation) => conversation.mode === mode) ??
-    visibleConversations[0];
+    conversations.find((conversation) => conversation.mode === mode) ??
+    conversations[0];
 
   return firstMatch?.id ?? "";
 }
@@ -559,7 +558,7 @@ function getOptimisticAccountSwitchState(
   accountId: string,
 ) {
   const cachedConversations = state.conversationListsByScope[accountId] ?? [];
-  const nextConversationId = getFirstVisibleConversationId(
+  const nextConversationId = getFirstConversationIdByMode(
     cachedConversations,
     state.activeMode,
   );
@@ -737,6 +736,26 @@ function mergePolledConversation(
           replied: true,
         }
       : conversation,
+  );
+}
+
+function mergeConversationProfile(
+  currentList: Conversation[],
+  conversation: Conversation,
+) {
+  return currentList.map((currentConversation) =>
+    currentConversation.id === conversation.id
+      ? {
+          ...currentConversation,
+          bizStatus: conversation.bizStatus,
+          contactOriginalName: conversation.contactOriginalName,
+          customerAvatarUrl: conversation.customerAvatarUrl,
+          customerBindType: conversation.customerBindType,
+          customerName: conversation.customerName,
+          groupOriginalName: conversation.groupOriginalName,
+          isVerified: conversation.isVerified,
+        }
+      : currentConversation,
   );
 }
 
@@ -3068,6 +3087,11 @@ export function createWorkbenchStore() {
   const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
+  const conversationProfileRefreshRequestsById = new Map<string, Promise<void>>();
+  const conversationReadRequestsById = new Map<
+    string,
+    ReturnType<typeof markConversationRead>
+  >();
 
   function issueScopeRequestId() {
     latestScopeRequestId += 1;
@@ -3335,6 +3359,8 @@ export function createWorkbenchStore() {
     }
     fullAutoResetTimersByConversationId.clear();
     fullAutoPollInFlightConversationIds.clear();
+    conversationProfileRefreshRequestsById.clear();
+    conversationReadRequestsById.clear();
     fullAutoFinishedMessageByConversationId.clear();
 
     for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
@@ -3851,8 +3877,34 @@ export function createWorkbenchStore() {
       conversationId: string,
       requestId: number,
     ) {
+      const conversation = getConversationById(get(), conversationId);
+
+      if (!conversation || conversation.unread <= 0) {
+        return;
+      }
+
       try {
-        const readResult = await markConversationRead(conversationId);
+        let readRequest = conversationReadRequestsById.get(conversationId);
+
+        if (!readRequest) {
+          readRequest = markConversationRead(conversationId);
+          conversationReadRequestsById.set(conversationId, readRequest);
+
+          void readRequest.then(
+            () => {
+              if (conversationReadRequestsById.get(conversationId) === readRequest) {
+                conversationReadRequestsById.delete(conversationId);
+              }
+            },
+            () => {
+              if (conversationReadRequestsById.get(conversationId) === readRequest) {
+                conversationReadRequestsById.delete(conversationId);
+              }
+            },
+          );
+        }
+
+        const readResult = await readRequest;
 
         if (!isCurrentScopeRequest(requestId)) {
           return;
@@ -3960,6 +4012,67 @@ export function createWorkbenchStore() {
               : currentState.sinceVersion,
         };
       });
+    }
+
+    function refreshUnverifiedConversationProfile(input: {
+      accountId: string;
+      conversationId: string;
+      requestId: number;
+    }) {
+      const existingRequest = conversationProfileRefreshRequestsById.get(
+        input.conversationId,
+      );
+
+      if (existingRequest) {
+        return existingRequest;
+      }
+
+      const request = loadConversationSummary(input.conversationId)
+        .then((conversation) => {
+          if (
+            !isCurrentScopeRequest(input.requestId) ||
+            conversation.accountId !== input.accountId ||
+            conversation.id !== input.conversationId
+          ) {
+            return;
+          }
+
+          set((currentState) => {
+            const currentList =
+              currentState.conversationListsByScope[input.accountId] ?? [];
+
+            if (
+              currentState.activeAccountId !== input.accountId ||
+              !currentList.some((item) => item.id === input.conversationId)
+            ) {
+              return currentState;
+            }
+
+            return {
+              conversationListsByScope: {
+                ...currentState.conversationListsByScope,
+                [input.accountId]: mergeConversationProfile(
+                  currentList,
+                  conversation,
+                ),
+              },
+            };
+          });
+        })
+        .catch(() => {
+          // Profile refresh is best-effort and must not block opening the conversation.
+        })
+        .finally(() => {
+          if (
+            conversationProfileRefreshRequestsById.get(input.conversationId) ===
+            request
+          ) {
+            conversationProfileRefreshRequestsById.delete(input.conversationId);
+          }
+        });
+
+      conversationProfileRefreshRequestsById.set(input.conversationId, request);
+      return request;
     }
 
     async function setConversationPinned(
@@ -5081,6 +5194,14 @@ export function createWorkbenchStore() {
         ]?.find(
           (conversation) => conversation.id === bootstrapResult.activeConversationId,
         );
+
+        if (bootstrapActiveConversation?.isVerified === false) {
+          void refreshUnverifiedConversationProfile({
+            accountId: bootstrapResult.activeAccountId,
+            conversationId: bootstrapActiveConversation.id,
+            requestId,
+          });
+        }
 
         await syncFullAutoAgentStatusForCurrentState();
 
@@ -6684,13 +6805,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const visibleConversations = getVisibleConversations(
-          scopeLoadResult.conversations,
-        );
         const nextConversation =
-          visibleConversations.find(
+          scopeLoadResult.conversations.find(
             (conversation) => conversation.mode === state.activeMode,
-          ) ?? visibleConversations[0];
+          ) ?? scopeLoadResult.conversations[0];
         const nextConversationId = nextConversation?.id ?? "";
         const nextMode = nextConversation?.mode ?? state.activeMode;
         const loadedAt = Date.now();
@@ -6766,6 +6884,14 @@ export function createWorkbenchStore() {
             sinceVersion: scopeLoadResult.pollBaseline,
           };
         });
+
+        if (nextConversation?.isVerified === false) {
+          void refreshUnverifiedConversationProfile({
+            accountId,
+            conversationId: nextConversation.id,
+            requestId,
+          });
+        }
 
         if (!nextConversationId) {
           return;
@@ -6920,6 +7046,14 @@ export function createWorkbenchStore() {
       const currentConversation = getConversationById(state, conversationId);
 
       if (state.activeConversationId === conversationId) {
+        if (currentConversation?.isVerified === false) {
+          void refreshUnverifiedConversationProfile({
+            accountId: currentConversation.accountId,
+            conversationId,
+            requestId: getScopeRequestId(),
+          });
+        }
+
         return;
       }
 
@@ -6936,6 +7070,14 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
         messageUpdateCursor: undefined,
       });
+
+      if (currentConversation?.isVerified === false) {
+        void refreshUnverifiedConversationProfile({
+          accountId: currentConversation.accountId,
+          conversationId,
+          requestId,
+        });
+      }
 
       if (currentConversation?.mode === "group") {
         set((currentState) => ({

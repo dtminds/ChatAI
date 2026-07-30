@@ -506,6 +506,181 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("applies a completed profile refresh after leaving the conversation", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const refreshedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "https://example.com/refreshed-after-leaving.png",
+      customerName: "切走后补齐的客户",
+      verified: true,
+    };
+    const profileRefresh = createDeferred<typeof refreshedConversation>();
+    const getConversation = vi.fn(() => profileRefresh.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? {
+                ...conversation,
+                customerAvatarUrl: "",
+                customerName: "未知客户",
+                isVerified: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    profileRefresh.resolve(refreshedConversation);
+
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-after-leaving.png",
+        customerName: "切走后补齐的客户",
+        isVerified: true,
+      });
+    });
+  });
+
+  it("retries profile refresh while the active conversation remains unverified", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const unverifiedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "",
+      customerName: "未知客户",
+      verified: false,
+    };
+    const verifiedConversation = {
+      ...unverifiedConversation,
+      customerAvatar: "https://example.com/refreshed-by-retry.png",
+      customerName: "重试后补齐的客户",
+      verified: true,
+    };
+    const getConversation = vi
+      .fn()
+      .mockResolvedValueOnce(unverifiedConversation)
+      .mockResolvedValueOnce(verifiedConversation);
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? {
+                ...conversation,
+                customerAvatarUrl: "",
+                customerName: "未知客户",
+                isVerified: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+    vi.useFakeTimers();
+
+    try {
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+      await Promise.resolve();
+
+      expect(getConversation).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(getConversation).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(getConversation).toHaveBeenCalledTimes(2);
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-by-retry.png",
+        customerName: "重试后补齐的客户",
+        isVerified: true,
+      });
+    } finally {
+      useWorkbenchStore.getState().resetWorkbenchRuntime();
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops scheduled profile retries after leaving the conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const unverifiedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "",
+      customerName: "未知客户",
+      verified: false,
+    };
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const getConversation = vi.fn().mockResolvedValue(unverifiedConversation);
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? { ...conversation, isVerified: false }
+            : conversation,
+        ),
+      },
+    }));
+    vi.useFakeTimers();
+
+    try {
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+      await Promise.resolve();
+
+      expect(getConversation).toHaveBeenCalledTimes(1);
+
+      await useWorkbenchStore.getState().setActiveConversation("conv-001");
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(getConversation).toHaveBeenCalledTimes(1);
+    } finally {
+      useWorkbenchStore.getState().resetWorkbenchRuntime();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps opening an unverified conversation when profile refresh fails", async () => {
     const baseService = createMockWorkbenchService();
 

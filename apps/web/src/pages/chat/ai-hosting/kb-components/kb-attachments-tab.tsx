@@ -893,7 +893,7 @@ function KbAttachmentsInitState({
       <img
         alt=""
         aria-hidden="true"
-        className="mb-6 size-[200px] object-contain"
+        className="mb-6 h-auto w-[200px]"
         src={kbAttachmentInitIllustrationUrl}
       />
       <p className="max-w-md text-sm leading-6 text-muted-foreground">

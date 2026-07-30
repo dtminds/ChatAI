@@ -159,6 +159,53 @@ function createMessagesDb(
   };
 }
 
+function createMessageContextDb(rows: {
+  after: MessageRow[];
+  anchor: MessageRow;
+  before: MessageRow[];
+}) {
+  const selectedTables: string[] = [];
+  const messageQueries: ReturnType<typeof createQueryBuilder>[] = [];
+
+  return {
+    messageQueries,
+    selectedTables,
+    selectFrom(table: string) {
+      selectedTables.push(table);
+
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          chat_type: 1,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const result = [rows.anchor, rows.before, rows.after][messageQueries.length] ?? [];
+        const query = createQueryBuilder(result);
+        messageQueries.push(query);
+        return query;
+      }
+
+      if (
+        table === "xy_wap_embed_group_member as member"
+        || table === "xy_wap_embed_user_seat"
+        || table === "xy_wap_embed_contact"
+      ) {
+        return createQueryBuilder([]);
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
 function createMessagesBySeqsDb(
   rows: MessageRow[],
   quoteRows: MessageRow[] = [],
@@ -7001,6 +7048,40 @@ describe("WorkbenchRepository", () => {
     expect(sources.contactsByThirdExternalId.size).toBe(0);
     expect(sources.groupMembersByGroupAndThirdUserId.size).toBe(0);
     expect(sources.seatsByThirdUserId.size).toBe(0);
+  });
+
+  it("loads an anchor context directly from the conversation without a logical session", async () => {
+    const anchor = messageRow({ id: 102, msgid: "remote-msg-102", msgtime: 2_000 });
+    const before = messageRow({ id: 101, msgid: "remote-msg-101", msgtime: 1_000 });
+    const after = messageRow({ id: 103, msgid: "remote-msg-103", msgtime: 3_000 });
+    const db = createMessageContextDb({ after: [after], anchor, before: [before] });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessageContext({
+      after: 10,
+      before: 10,
+      conversationId: "88",
+      messageId: "102",
+      uid: 9001,
+    })).resolves.toMatchObject({
+      messages: [
+        { msgid: "remote-msg-101" },
+        { msgid: "remote-msg-102" },
+        { msgid: "remote-msg-103" },
+      ],
+      targetMessageId: "102",
+    });
+
+    expect(db.selectedTables).not.toContain("xy_wap_embed_logical_session_message as session_message");
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 102]);
+    expect(db.messageQueries[1]?.orderBys).toEqual([
+      ["message.msgtime", "desc"],
+      ["message.id", "desc"],
+    ]);
+    expect(db.messageQueries[2]?.orderBys).toEqual([
+      ["message.msgtime", "asc"],
+      ["message.id", "asc"],
+    ]);
   });
 
   it("keeps revoke event rows visible in historical message pages", async () => {

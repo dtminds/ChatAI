@@ -9,6 +9,7 @@ import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { resetTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 export const workbenchHttpMock = new MockAdapter(requestInstance);
@@ -96,6 +97,16 @@ export function installChatWorkbenchTestEnvironment() {
 
 export function resetChatWorkbenchTestState() {
   workbenchHttpMock.reset();
+  workbenchHttpMock.onGet("/server/tickets/counts").reply(200, {
+    data: { assignedToMeActive: 0 },
+    success: true,
+  });
+  workbenchHttpMock
+    .onGet(/\/server\/tickets\/by-conversation\/[^/]+\/active-count$/)
+    .reply(200, {
+      data: { activeCount: 0 },
+      success: true,
+    });
   resetWorkbenchService();
   vi.mocked(mediaUploadMocks.resolveImageSegmentsForSend).mockImplementation(
     async (_conversationId, segments) =>
@@ -142,6 +153,7 @@ export function resetChatWorkbenchTestState() {
     subUserId: "sub-user-001",
     uid: 1,
   });
+  resetTicketCountStore();
   useWorkbenchStore.getState().resetWorkbenchRuntime();
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {

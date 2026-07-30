@@ -8,9 +8,8 @@ import {
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
-  DashboardCircleIcon,
   PanelLeftIcon,
-  Notification01Icon,
+  StickyNote02Icon,
   UserSquareIcon,
   AiChat02Icon,
 } from "@hugeicons/core-free-icons";
@@ -28,17 +27,26 @@ import {
 import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
+import { formatUnreadCount } from "@/pages/chat/components/unread-count-badge";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+import {
+  type TicketReminderDisplayMode,
+  useTicketCountStore,
+} from "@/pages/chat/tickets/ticket-count-store";
 
 const railItems = [
-  { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
+  {
+    label: "工单",
+    icon: StickyNote02Icon,
+    to: "/chat/tickets",
+    ticketCount: true,
+  },
   { label: "客户", icon: UserSquareIcon },
   {
     label: "洞察",
     icon: AiIdeaIcon,
     to: "/chat/insights",
-    badge: "Beta",
     moduleEntry: true,
   },
   {
@@ -47,12 +55,9 @@ const railItems = [
     to: "/chat/ai-hosting",
     moduleEntry: true,
   },
-  { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 
-const visibleRailItems = import.meta.env.DEV
-  ? railItems
-  : railItems.filter((item) => !item.devOnly);
+const visibleRailItems = railItems;
 
 const collapsedNavItemClassName =
   "inline-flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 [&_svg]:shrink-0";
@@ -101,6 +106,10 @@ export function AccountRail({
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const location = useLocation();
+  const ticketCount = useTicketCountStore((state) => state.counts?.assignedToMeActive);
+  const ticketReminderDisplayMode = useTicketCountStore(
+    (state) => state.reminderDisplayMode,
+  );
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
 
@@ -147,12 +156,21 @@ export function AccountRail({
               const isActive = item.label === activeNavItem;
               const isRouteActive = isRouteItemActive(location.pathname, item.to);
               const itemContent = (
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={item.icon}
-                  size={18}
-                  strokeWidth={1.6}
-                />
+                <span className="relative flex size-5 items-center justify-center">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={item.icon}
+                    size={18}
+                    strokeWidth={1.6}
+                  />
+                  {"ticketCount" in item ? (
+                    <TicketReminderIndicator
+                      compact
+                      count={ticketCount ?? 0}
+                      mode={ticketReminderDisplayMode}
+                    />
+                  ) : null}
+                </span>
               );
 
               return (
@@ -282,18 +300,16 @@ export function AccountRail({
                 strokeWidth={1.6}
               />
               <span className="min-w-0 truncate">{item.label}</span>
-              {item.badge ? (
-                <Badge
-                  aria-hidden="true"
-                  className="ml-auto h-5 shrink-0 rounded-[5px] px-1.5 py-0 text-[10px] leading-none"
-                >
-                  {item.badge}
-                </Badge>
+              {"ticketCount" in item ? (
+                <TicketReminderIndicator
+                  count={ticketCount ?? 0}
+                  mode={ticketReminderDisplayMode}
+                />
               ) : null}
               {item.moduleEntry ? (
                 <HugeiconsIcon
                   aria-hidden="true"
-                  className={cn("shrink-0 opacity-30", !item.badge && "ml-auto")}
+                  className="ml-auto shrink-0 opacity-30"
                   color="currentColor"
                   icon={ArrowRight01Icon}
                   size={16}
@@ -378,5 +394,43 @@ export function AccountRail({
         type="button"
       />
     </section>
+  );
+}
+
+function TicketReminderIndicator({
+  compact = false,
+  count,
+  mode,
+}: {
+  compact?: boolean;
+  count: number;
+  mode: TicketReminderDisplayMode;
+}) {
+  if (count <= 0 || mode === "hidden") {
+    return null;
+  }
+
+  if (mode === "dot") {
+    return (
+      <span
+        aria-label="有待处理工单"
+        className={cn(
+          "block size-2 rounded-full bg-destructive",
+          compact ? "absolute -right-1 -top-0.5 border border-sidebar" : "ml-auto",
+        )}
+      />
+    );
+  }
+
+  return (
+    <Badge
+      aria-label={`${count} 个待处理工单`}
+      className={cn(
+        "h-4 min-w-4 justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums",
+        compact ? "absolute -right-2.5 -top-1.5" : "ml-auto",
+      )}
+    >
+      {formatUnreadCount(count)}
+    </Badge>
   );
 }

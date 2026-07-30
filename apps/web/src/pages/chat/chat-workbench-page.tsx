@@ -41,12 +41,17 @@ import {
 } from "@chatai/contracts";
 import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import { ChatPanel } from "@/pages/chat/components/chat-panel";
+import {
+  ChatPanel,
+  type ChatAuxiliaryPanel,
+} from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-forward/message-forward-recipient-dialog";
 import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { CustomerPage } from "@/pages/chat/customer-page";
+import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
+import { TicketsPage } from "@/pages/chat/tickets/tickets-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -111,6 +116,12 @@ import {
 } from "@/pages/chat/lib/conversation-composer-draft";
 import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/quick-reply-category-dialog";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
+import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
+import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
+import { useTicketCountPolling } from "@/pages/chat/tickets/use-ticket-count-polling";
+import { useConversationTicketReminder } from "@/pages/chat/tickets/use-conversation-ticket-reminder";
+import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
+import { useTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
@@ -241,10 +252,17 @@ export function ChatWorkbenchRoutePage() {
   const activeView =
     location.pathname === "/chat/customers"
       ? "customers"
+      : location.pathname.startsWith("/chat/tickets")
+        ? "tickets"
       : "chat";
+  const activeTicketId =
+    activeView === "tickets" && location.pathname.startsWith("/chat/tickets/")
+      ? decodeURIComponent(location.pathname.slice("/chat/tickets/".length))
+      : undefined;
 
   return (
     <ChatWorkbenchContent
+      activeTicketId={activeTicketId}
       activeView={activeView}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
@@ -257,14 +275,17 @@ export function ChatWorkbenchRoutePage() {
 }
 
 function ChatWorkbenchContent({
+  activeTicketId,
   activeView = "chat",
   onNavigateChat,
   onNavigateCustomerPage,
 }: {
-  activeView?: "chat" | "customers";
+  activeTicketId?: string;
+  activeView?: "chat" | "customers" | "tickets";
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
 }) {
+  useTicketCountPolling();
   const {
     accounts,
     activeAccountId,
@@ -288,7 +309,6 @@ function ChatWorkbenchContent({
     historyPanelFiltersByConversationId,
     historyPanelLoadingByConversationId,
     historyPanelScrollModeByConversationId,
-    historyPanelOpenConversationId,
     fullAutoActionError,
     initializeWorkbench,
     isConversationLoading,
@@ -379,7 +399,6 @@ function ChatWorkbenchContent({
         state.historyPanelFiltersByConversationId,
       historyPanelLoadingByConversationId:
         state.historyPanelLoadingByConversationId,
-      historyPanelOpenConversationId: state.historyPanelOpenConversationId,
       historyPanelScrollModeByConversationId:
         state.historyPanelScrollModeByConversationId,
       historyStatusByConversationId: state.historyStatusByConversationId,
@@ -457,6 +476,11 @@ function ChatWorkbenchContent({
       | null
     >(null);
   const [isQuickReplyPanelActive, setIsQuickReplyPanelActive] = useState(false);
+  const [ticketCreateConversationId, setTicketCreateConversationId] =
+    useState<string | null>(null);
+  const [ticketRefreshKey, setTicketRefreshKey] = useState(0);
+  const [activeAuxiliaryPanel, setActiveAuxiliaryPanel] =
+    useState<ChatAuxiliaryPanel>(null);
   const quickReplyInitialValues = useMemo(
     () => getQuickReplyInitialValues(quickReplyFormState),
     [quickReplyFormState],
@@ -681,8 +705,32 @@ function ChatWorkbenchContent({
     activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
     );
-  const isHistoryPanelOpen =
-    historyPanelOpenConversationId === activeConversation?.id;
+  const isActiveConversationTicketSupported =
+    isConversationTicketSupported(activeConversation);
+  const ticketReminderDisplayMode = useTicketCountStore(
+    (state) => state.reminderDisplayMode,
+  );
+  const conversationTicketReminderCount = useConversationTicketReminder({
+    conversationId: isActiveConversationTicketSupported
+      ? activeConversation?.id
+      : undefined,
+    enabled:
+      isActiveConversationTicketSupported &&
+      ticketReminderDisplayMode !== "hidden",
+    isPanelOpen: activeAuxiliaryPanel === "tickets",
+  });
+  useEffect(() => {
+    if (
+      ticketCreateConversationId &&
+      ticketCreateConversationId !== activeConversation?.id
+    ) {
+      setTicketCreateConversationId(null);
+    }
+  }, [activeConversation?.id, ticketCreateConversationId]);
+  useEffect(() => {
+    setActiveAuxiliaryPanel(null);
+    closeHistoryPanel();
+  }, [activeConversation?.id, closeHistoryPanel]);
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
@@ -811,7 +859,7 @@ function ChatWorkbenchContent({
   const requestActiveConversationRead = useVisibleUnreadConversationRead({
     activeConversationId: activeConversation?.id,
     activeMessages,
-    activeView,
+    activeView: activeView === "tickets" ? "customers" : activeView,
     canUseConversationActions,
     firstUnreadMessageKey,
     isConversationLoading,
@@ -2084,7 +2132,13 @@ function ChatWorkbenchContent({
     <AccountRail
       accounts={accounts}
       activeAccountId={activeView === "chat" ? activeAccountId : undefined}
-      activeNavItem={activeView === "customers" ? "客户" : "聊天"}
+      activeNavItem={
+        activeView === "customers"
+          ? "客户"
+          : activeView === "tickets"
+            ? "工单"
+            : "聊天"
+      }
       canTakeOverAccount={canTakeOverAccount}
       currentEmployee={me}
       currentEmployeeId={me?.id}
@@ -2099,7 +2153,7 @@ function ChatWorkbenchContent({
           return;
         }
 
-        if (label === "聊天" || label === "工作台") {
+        if (label === "聊天") {
           setMobilePane("list");
           onNavigateChat?.();
         }
@@ -2249,12 +2303,18 @@ function ChatWorkbenchContent({
       onBackToConversationList={handleMobileBackToConversationList}
       onOpenMaterialLibrary={handleOpenMaterialLibrary}
       onOpenHistory={() => {
-        if (isHistoryPanelOpen) {
+        if (activeAuxiliaryPanel === "history") {
+          setActiveAuxiliaryPanel(null);
           closeHistoryPanel();
           return;
         }
 
+        setActiveAuxiliaryPanel("history");
         void openHistoryPanel(activeConversation?.id);
+      }}
+      onAuxiliaryPanelClose={() => {
+        setActiveAuxiliaryPanel(null);
+        closeHistoryPanel();
       }}
       onHistoryClose={() => closeHistoryPanel()}
       onHistoryLoadMoreNext={() => {
@@ -2310,6 +2370,19 @@ function ChatWorkbenchContent({
       onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
+      onToggleTickets={
+        isActiveConversationTicketSupported
+          ? () => {
+              if (activeAuxiliaryPanel === "tickets") {
+                setActiveAuxiliaryPanel(null);
+                return;
+              }
+
+              closeHistoryPanel();
+              setActiveAuxiliaryPanel("tickets");
+            }
+          : undefined
+      }
       onRevokeMessage={
         activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
       }
@@ -2321,6 +2394,22 @@ function ChatWorkbenchContent({
       onUnpinConversation={unpinConversation}
       onQuickReplyActiveChange={setIsQuickReplyPanelActive}
       quickReplyPanel={quickReplyPanel}
+      ticketPanel={
+        isActiveConversationTicketSupported && activeConversation ? (
+          <ConversationTicketsPanel
+            conversationId={activeConversation.id}
+            key={activeConversation.id}
+            onCreateTicket={
+              subUser && subUser.role !== "viewer"
+                ? () => setTicketCreateConversationId(activeConversation.id)
+                : undefined
+            }
+            refreshKey={ticketRefreshKey}
+          />
+        ) : undefined
+      }
+      ticketReminderCount={conversationTicketReminderCount}
+      ticketReminderDisplayMode={ticketReminderDisplayMode}
       onDismissScopeTransitionError={() => {
         setFileUploadTransitionError(undefined);
         dismissScopeTransitionError();
@@ -2341,11 +2430,10 @@ function ChatWorkbenchContent({
                 false,
               scrollMode:
                 historyPanelScrollModeByConversationId[activeConversation.id],
-              isOpen: isHistoryPanelOpen,
             }
           : undefined
       }
-      isHistoryPanelOpen={isHistoryPanelOpen}
+      activeAuxiliaryPanel={activeAuxiliaryPanel}
       composerRef={composerRef}
       workbenchBodyRef={workbenchBodyRef}
     />
@@ -2396,7 +2484,7 @@ function ChatWorkbenchContent({
     <div
       className={cn(
         "h-svh overflow-hidden bg-sidebar",
-        isMobileWorkbenchLayout ? "min-h-0" : "min-h-[720px]",
+        isMobileWorkbenchLayout || activeView === "tickets" ? "min-h-0" : "min-h-[720px]",
       )}
     >
       {isMobileWorkbenchLayout ? (
@@ -2414,6 +2502,13 @@ function ChatWorkbenchContent({
                 onStartChat={handleStartCustomerChat}
               />
             </main>
+          </div>
+        ) : activeView === "tickets" ? (
+          <div
+            className="h-full min-h-0 overflow-hidden bg-surface"
+            data-testid="chat-tickets-layout"
+          >
+            {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
           </div>
         ) : mobilePane === "chat" ? (
           <div
@@ -2454,7 +2549,10 @@ function ChatWorkbenchContent({
           {accountRailNode}
 
           <div
-            className="relative z-10 h-full min-h-0 overflow-x-auto rounded-[14px_0_0_14px] bg-surface pl-0 shadow"
+            className={cn(
+              "relative z-10 h-full min-h-0 rounded-[14px_0_0_14px] bg-surface pl-0 shadow",
+              activeView === "tickets" ? "overflow-hidden" : "overflow-x-auto overflow-y-hidden",
+            )}
             data-testid="chat-workbench-scroll-container"
           >
             <div
@@ -2464,7 +2562,9 @@ function ChatWorkbenchContent({
                   "select-none",
               )}
               data-testid="chat-workbench-content"
-              style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
+              style={activeView === "tickets"
+                ? undefined
+                : { minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
             >
               {activeView === "customers" ? (
                 <CustomerPage
@@ -2472,6 +2572,13 @@ function ChatWorkbenchContent({
                   currentEmployeeId={me?.id}
                   onStartChat={handleStartCustomerChat}
                 />
+              ) : activeView === "tickets" ? (
+                <div
+                  className="h-full min-h-0 overflow-hidden rounded-[inherit]"
+                  data-testid="chat-tickets-layout"
+                >
+                  {activeTicketId ? <TicketDetailPage /> : <TicketsPage />}
+                </div>
               ) : (
                 <div
                   className="grid h-full min-h-0 overflow-hidden rounded-[inherit]"
@@ -2502,6 +2609,20 @@ function ChatWorkbenchContent({
         recentConversations={visibleSearchableConversations}
         seatId={activeAccountId}
       />
+      {ticketCreateConversationId ? (
+        <TicketCreateDialog
+          conversationId={ticketCreateConversationId}
+          onCreated={() => {
+            setTicketRefreshKey((current) => current + 1);
+          }}
+          onOpenChange={(open) => {
+            if (!open) {
+              setTicketCreateConversationId(null);
+            }
+          }}
+          open={ticketCreateConversationId === activeConversation?.id}
+        />
+      ) : null}
       <MessageForwardSelectedMessagesDialog
         messages={messageForward.pendingMessages}
         onOpenChange={messageForward.setSelectedMessagesDialogOpen}

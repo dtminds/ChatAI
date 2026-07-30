@@ -27,7 +27,7 @@ export function KbEmptyStatePanel({
       <img
         alt=""
         aria-hidden="true"
-        className="size-[200px] object-contain opacity-40"
+        className="h-auto w-[200px] opacity-40"
         src={illustrationUrl}
       />
       <p

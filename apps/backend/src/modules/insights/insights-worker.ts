@@ -240,7 +240,6 @@ export type InsightTokenUsage = {
 
 export type InsightAnalysisOutput = {
   actionItems: Array<{
-    dueHint?: string;
     evidenceMessageIds: string[];
     priority: "high" | "low" | "medium";
     title: string;
@@ -449,6 +448,11 @@ export type InsightWorkerRepositoryPort = {
     lookbackHours: number;
     uid: number;
   }): Promise<InsightPreviousSessionContext[]>;
+  hasTicketCreatedAfterSessionStart(input: {
+    conversationId: string;
+    sessionId: string;
+    uid: number;
+  }): Promise<boolean>;
   listRecentActionItemsForPrompt(input: {
     conversationId: string;
     limit: number;
@@ -2230,12 +2234,27 @@ export class InsightsWorkerService {
       };
     }
 
+    if (
+      await this.repository.hasTicketCreatedAfterSessionStart({
+        conversationId,
+        sessionId: input.job.sessionId,
+        uid: input.job.uid,
+      })
+    ) {
+      return {
+        existingActionItems: [],
+        suppressActionItems: true,
+      };
+    }
+
     const recentActionItems = await this.repository.listRecentActionItemsForPrompt({
       conversationId,
       limit: 10,
       uid: input.job.uid,
     });
-    const openCount = recentActionItems.filter((item) => item.status === "open").length;
+    const openCount = recentActionItems.filter(
+      (item) => item.status === "open" || item.status === "in_progress",
+    ).length;
 
     return {
       existingActionItems: openCount > 5 ? [] : recentActionItems,

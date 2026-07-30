@@ -13,6 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appearanceThemes } from "@/lib/appearance-theme";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+import {
+  resetTicketCountStore,
+  setTicketReminderDisplayMode,
+  useTicketCountStore,
+} from "@/pages/chat/tickets/ticket-count-store";
 
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children, ...props }: ComponentProps<"span">) => (
@@ -77,6 +82,13 @@ describe("AccountRail", () => {
     document.documentElement.classList.remove("dark");
     delete document.documentElement.dataset.appearanceTheme;
     window.localStorage.clear();
+    resetTicketCountStore();
+    useTicketCountStore.setState({
+      counts: { assignedToMeActive: 3 },
+      initialStatus: "ready",
+      isRefreshing: false,
+      lastSucceededAt: Date.now(),
+    });
   });
 
   afterEach(() => {
@@ -112,6 +124,50 @@ describe("AccountRail", () => {
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("shows the assigned ticket count on the ticket module entry", async () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const ticketLink = screen.getByRole("link", { name: /工单/ });
+    await waitFor(() => expect(ticketLink).toHaveTextContent("3"));
+    expect(ticketLink).toHaveAttribute("href", "/chat/tickets");
+  });
+
+  it("supports dot-only and hidden ticket menu reminders", () => {
+    setTicketReminderDisplayMode("dot");
+    const dotView = render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const ticketLink = screen.getByRole("link", { name: /工单/ });
+    expect(within(ticketLink).getByLabelText("有待处理工单")).toBeInTheDocument();
+    expect(ticketLink).not.toHaveTextContent("3");
+    dotView.unmount();
+
+    setTicketReminderDisplayMode("hidden");
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /工单/ })).not.toHaveTextContent("3");
+    expect(screen.queryByLabelText("有待处理工单")).not.toBeInTheDocument();
   });
 
   it("keeps nested menus open while previewing theme colors and appearance modes", async () => {
@@ -310,6 +366,23 @@ describe("AccountRail", () => {
     expect(handleNavItemSelect).toHaveBeenCalledWith("客户");
   });
 
+  it("places tickets directly below chat in the main navigation", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const chatItem = screen.getByRole("button", { name: "聊天" });
+    const ticketItem = screen.getByRole("link", { name: /^工单/ });
+
+    expect(chatItem.nextElementSibling).toBe(ticketItem);
+    expect(screen.queryByRole("button", { name: "工作台" })).not.toBeInTheDocument();
+  });
+
   it("links the insight nav item to the insights overview", () => {
     render(
       <AccountRail
@@ -323,7 +396,7 @@ describe("AccountRail", () => {
     const insightLink = screen.getByRole("link", { name: "洞察" });
 
     expect(insightLink).toHaveAttribute("href", "/chat/insights");
-    expect(within(insightLink).getByText("Beta")).toBeInTheDocument();
+    expect(within(insightLink).queryByText("Beta")).not.toBeInTheDocument();
   });
 
   it("links the AI hosting nav item to the agent management entry", () => {

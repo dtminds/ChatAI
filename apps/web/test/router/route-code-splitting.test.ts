@@ -19,7 +19,6 @@ const routePageModules = [
   "@/pages/chat/ai-hosting/kb-detail-page",
   "@/pages/chat/insights/insights-overview-page",
   "@/pages/chat/insights/insights-quality-page",
-  "@/pages/chat/insights/insights-follow-ups-page",
   "@/pages/chat/insights/insights-business-page",
   "@/pages/chat/insights/insights-settings-page",
   "@/pages/chat/insights/insights-worker-observability-page",

@@ -868,7 +868,6 @@ describe("LLM provider config", () => {
             ? {
                 actionItems: [
                   {
-                    dueHint: "今天",
                     evidenceMessageIds: ["9001"],
                     priority: "high",
                     title: "跟进物流",

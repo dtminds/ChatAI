@@ -7,7 +7,6 @@ import {
   ClipboardCheckIcon,
   DashboardSquare01Icon,
   Setting07Icon,
-  Task01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
@@ -27,11 +26,6 @@ const insightNavItems = [
     icon: ClipboardCheckIcon,
     label: "服务质检",
     to: "/chat/insights/quality",
-  },
-  {
-    icon: Task01Icon,
-    label: "待处理",
-    to: "/chat/insights/follow-ups",
   },
   {
     icon: Analytics02Icon,

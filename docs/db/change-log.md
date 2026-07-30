@@ -2,6 +2,210 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-30
+
+- Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.
+- Run this only when production has not executed any ticket-system DDL from this branch. The expected starting table still contains `updated_by_sub_user_id`, `dismissed_at`, and `due_hint`, plus `idx_action_uid_conversation_status` and `idx_action_uid_status_id`.
+- Production currently contains only disposable test tickets. This migration deletes all existing action-item rows and their `action_item` evidence instead of backfilling legacy ticket data.
+- This is a maintenance-window migration. Stop every old backend and Insights Worker writer before deleting data or changing the table.
+- Ticket lists now sort by descending ID. The final ticket-list indexes intentionally exclude high-frequency `update_time`.
+
+### 1. Backup and preflight
+
+Take a database backup before starting. Confirm that the production definition matches the expected `main` baseline:
+
+```sql
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW INDEX FROM xy_wap_embed_session_action_item;
+```
+
+Inventory the rows that will be deleted:
+
+```sql
+SELECT
+  uid,
+  source_type,
+  status,
+  COUNT(*) AS row_count,
+  MIN(create_time) AS first_create_time,
+  MAX(create_time) AS last_create_time
+FROM xy_wap_embed_session_action_item
+GROUP BY uid, source_type, status
+ORDER BY uid, source_type, status;
+
+SELECT COUNT(*) AS action_item_evidence_rows
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+```
+
+Proceed only after confirming that every returned action item and every `action_item` evidence row is disposable test data.
+
+### 2. Enter the maintenance window
+
+1. Pause or drain the old Insights Worker and backend instances.
+2. Confirm no old process can insert or update `xy_wap_embed_session_action_item`.
+3. Keep the backend unavailable until the cleanup and schema migration have completed.
+
+### 3. Delete the existing test tickets
+
+Delete the polymorphic evidence first so no orphaned `action_item` evidence remains:
+
+```sql
+START TRANSACTION;
+
+DELETE FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+
+DELETE FROM xy_wap_embed_session_action_item;
+
+COMMIT;
+```
+
+Both counts must be zero before altering the table:
+
+```sql
+SELECT COUNT(*) AS remaining_action_items
+FROM xy_wap_embed_session_action_item;
+
+SELECT COUNT(*) AS remaining_action_item_evidence
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+```
+
+### 4. Apply the final schema directly
+
+Because the old rows have been deleted and all old writers are stopped, no legacy status or cancellation-time backfill is required. The two existing indexes whose columns already match the final design are renamed instead of rebuilt.
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  MODIFY COLUMN session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
+  ADD COLUMN anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID' AFTER session_id,
+  ADD COLUMN assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID' AFTER created_by_sub_user_id,
+  DROP COLUMN updated_by_sub_user_id,
+  ADD COLUMN canceled_at DATETIME NULL COMMENT '取消时间' AFTER completed_at,
+  ADD COLUMN canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID' AFTER canceled_at,
+  DROP COLUMN dismissed_at,
+  MODIFY COLUMN action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
+  MODIFY COLUMN title VARCHAR(255) NOT NULL COMMENT '工单标题',
+  ADD COLUMN description TEXT NULL COMMENT '工单描述' AFTER title,
+  ADD COLUMN due_at DATETIME NULL COMMENT '明确截止时间' AFTER priority,
+  DROP COLUMN due_hint,
+  MODIFY COLUMN status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消，deleted：内部逻辑删除墓碑',
+  RENAME INDEX idx_action_uid_conversation_status TO idx_ticket_uid_conversation_status_id,
+  RENAME INDEX idx_action_uid_status_id TO idx_ticket_uid_status_id,
+  ADD KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
+  ADD KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
+  ADD KEY idx_ticket_uid_created_id (uid, create_time, id),
+  ADD KEY idx_ticket_uid_status_due_at (uid, status, due_at),
+  ADD KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
+  ADD KEY idx_ticket_uid_source_status_id (uid, source_type, status, id),
+  COMMENT = '工单主表';
+
+CREATE TABLE xy_wap_embed_ticket_activity (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
+  ticket_id BIGINT UNSIGNED NOT NULL COMMENT '工单ID',
+  activity_type VARCHAR(32) NOT NULL COMMENT '活动类型',
+  operator_type VARCHAR(32) NOT NULL COMMENT '操作者类型，sub_user：子账号，ai：AI，system：系统',
+  operator_sub_user_id BIGINT UNSIGNED NULL COMMENT '操作者子账号ID',
+  content TEXT NULL COMMENT '处理备注内容',
+  detail_json JSON NULL COMMENT '结构化变更详情',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ticket_activity_uid_ticket_id (uid, ticket_id, id)
+) COMMENT='工单活动记录表';
+
+ANALYZE TABLE xy_wap_embed_session_action_item, xy_wap_embed_ticket_activity;
+```
+
+### 5. Verify the schema and deploy
+
+```sql
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW CREATE TABLE xy_wap_embed_ticket_activity;
+
+SELECT
+  index_name,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index) AS index_columns
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+GROUP BY index_name
+ORDER BY index_name;
+
+SELECT
+  column_name,
+  column_type,
+  is_nullable,
+  column_comment
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'session_id',
+    'anchor_message_id',
+    'assignee_sub_user_id',
+    'canceled_at',
+    'canceled_by_sub_user_id',
+    'description',
+    'due_at'
+  )
+ORDER BY ordinal_position;
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'updated_by_sub_user_id',
+    'dismissed_at',
+    'due_hint'
+  );
+
+SELECT table_comment
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item';
+```
+
+Expected indexes and column order:
+
+```text
+PRIMARY                                      (id)
+idx_action_snapshot                          (snapshot_id)
+idx_action_uid_session_status                (uid, session_id, status)
+idx_ticket_uid_assignee_status_id            (uid, assignee_sub_user_id, status, id)
+idx_ticket_uid_conversation_status_id        (uid, conversation_id, status, id)
+idx_ticket_uid_conversation_id               (uid, conversation_id, id)
+idx_ticket_uid_created_id                    (uid, create_time, id)
+idx_ticket_uid_status_id                     (uid, status, id)
+idx_ticket_uid_status_due_at                 (uid, status, due_at)
+idx_ticket_uid_creator_id                    (uid, created_by_sub_user_id, id)
+idx_ticket_uid_source_status_id              (uid, source_type, status, id)
+```
+
+Expected new or modified columns:
+
+```text
+session_id                 BIGINT UNSIGNED NULL
+anchor_message_id          BIGINT UNSIGNED NULL
+assignee_sub_user_id       BIGINT UNSIGNED NULL
+canceled_at                DATETIME NULL
+canceled_by_sub_user_id    BIGINT UNSIGNED NULL
+description                TEXT NULL
+due_at                     DATETIME NULL
+```
+
+The legacy-column query must return no rows: `updated_by_sub_user_id`, `dismissed_at`, and `due_hint` must not exist. The expected table comment is `工单主表`.
+
+Confirm that the action-item table is still empty, then deploy every backend and Insights Worker instance from this release. Deploy the web application after the backend is healthy, and complete ticket create/list/update/cancel smoke tests.
+
+Rollback boundary:
+
+- The cleanup and schema migration are destructive. The deleted test tickets, their evidence, and the dropped legacy columns cannot be reconstructed from the new schema.
+- If cleanup or migration must be reversed, restore the pre-migration backup before restarting the old `main` application.
+- After the new version writes tickets or activities, the old `main` application is not a safe rollback target.
+
 ## 2026-07-28
 
 - Added `xy_wap_embed_agent_skill` for ChatAI-owned Agent skill CRUD (list / create / update / enable-disable / soft delete).

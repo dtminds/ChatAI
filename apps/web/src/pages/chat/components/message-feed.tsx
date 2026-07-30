@@ -92,6 +92,7 @@ type ChatMessageListProps = {
   canUseMessageActions?: boolean;
   canUseMessageForward?: boolean;
   conversationId: string;
+  customerAvatarFallbackUrl?: string;
   messages: Message[];
   multiSelectMode?: boolean;
   selectedMessageKeys?: ReadonlySet<string>;
@@ -144,6 +145,7 @@ export function ChatMessageList({
   canUseMessageActions = true,
   canUseMessageForward = false,
   conversationId,
+  customerAvatarFallbackUrl,
   messages,
   multiSelectMode = false,
   selectedMessageKeys,
@@ -287,6 +289,7 @@ export function ChatMessageList({
               >
                 <MessageRow
                   conversationId={conversationId}
+                  customerAvatarFallbackUrl={customerAvatarFallbackUrl}
                   message={item.message}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canUseMessageActions}
@@ -391,6 +394,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 
 export function MessageRow({
   conversationId,
+  customerAvatarFallbackUrl,
   message,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
@@ -423,6 +427,7 @@ export function MessageRow({
   smartReply,
 }: {
   conversationId?: string;
+  customerAvatarFallbackUrl?: string;
   message: Message;
   canUseMessageActions?: boolean;
   canCollectMaterialActions?: boolean;
@@ -537,9 +542,15 @@ export function MessageRow({
   const messageActions = multiSelectMode
     ? null
     : isInitializing
-      ? <MessageAvatar message={message} />
+      ? (
+          <MessageAvatar
+            customerAvatarFallbackUrl={customerAvatarFallbackUrl}
+            message={message}
+          />
+        )
       : (
           <MessageActionAvatar
+            customerAvatarFallbackUrl={customerAvatarFallbackUrl}
             message={message}
             canCollectMaterialActions={canCollectMaterialActions}
             canUseMessageActions={canUseMessageActions}
@@ -828,6 +839,7 @@ function QuoteMessageContentWithDelivery({
 }
 
 function MessageActionAvatar({
+  customerAvatarFallbackUrl,
   message,
   canCollectMaterialActions,
   canUseMessageActions,
@@ -842,6 +854,7 @@ function MessageActionAvatar({
   onTriggerSmartReply,
   showSmartReplyRecommendation,
 }: {
+  customerAvatarFallbackUrl?: string;
   message: ChatMessage;
   canCollectMaterialActions: boolean;
   canUseMessageActions: boolean;
@@ -891,7 +904,10 @@ function MessageActionAvatar({
   return (
     <>
       <div className="relative shrink-0">
-        <MessageAvatar message={message} />
+        <MessageAvatar
+          customerAvatarFallbackUrl={customerAvatarFallbackUrl}
+          message={message}
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -1369,12 +1385,30 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
 
 export { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 
-export function MessageAvatar({ message }: { message: ChatMessage }) {
+export function resolveMessageAvatarUrl(
+  message: ChatMessage,
+  customerAvatarFallbackUrl?: string,
+) {
+  return (
+    message.sender.avatarUrl ||
+    (message.role === "customer" ? customerAvatarFallbackUrl : undefined)
+  );
+}
+
+export function MessageAvatar({
+  customerAvatarFallbackUrl,
+  message,
+}: {
+  customerAvatarFallbackUrl?: string;
+  message: ChatMessage;
+}) {
+  const avatarUrl = resolveMessageAvatarUrl(message, customerAvatarFallbackUrl);
+
   return (
     <div className="relative">
       <Avatar className="size-8 rounded-[6px] bg-surface">
-        {message.sender.avatarUrl ? (
-          <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
+        {avatarUrl ? (
+          <AvatarImage alt={message.sender.name} src={avatarUrl} />
         ) : null}
         <AvatarFallback className="rounded-[6px] text-sm">
           <HugeiconsIcon

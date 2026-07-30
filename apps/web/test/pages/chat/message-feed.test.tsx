@@ -6,6 +6,7 @@ import {
   ChatMessageList,
   MessageRow,
   MESSAGE_SENT_AT_HOVER_DELAY_MS,
+  resolveMessageAvatarUrl,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
@@ -81,6 +82,21 @@ describe("message feed row actions", () => {
 
     expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
+  });
+
+  it("uses the application-message conversation avatar when the customer sender has none", () => {
+    const message = createTextMessage("应用消息");
+
+    expect(
+      resolveMessageAvatarUrl(
+        {
+          ...message,
+          role: "customer",
+          sender: { ...message.sender, avatarUrl: undefined },
+        },
+        "https://b5.bokr.com.cn/dist/app-avatar.png",
+      ),
+    ).toBe("https://b5.bokr.com.cn/dist/app-avatar.png");
   });
 
   it("renders initializing messages as refreshable read-only placeholders", async () => {

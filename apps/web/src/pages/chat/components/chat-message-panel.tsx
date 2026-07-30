@@ -36,6 +36,7 @@ type ChatMessagePanelProps = {
   isConversationLoading: boolean;
   conversationId: string;
   conversationMode: ChatMode;
+  customerAvatarFallbackUrl?: string;
   messages: Message[];
   multiSelectMode?: boolean;
   selectedMessageKeys?: ReadonlySet<string>;
@@ -80,6 +81,7 @@ export function ChatMessagePanel({
   isConversationLoading,
   conversationId,
   conversationMode,
+  customerAvatarFallbackUrl,
   messages,
   multiSelectMode = false,
   selectedMessageKeys,
@@ -230,6 +232,7 @@ export function ChatMessagePanel({
                 canUseMessageActions={canUseMessageActions}
                 canUseMessageForward={canUseMessageForward}
                 conversationId={conversationId}
+                customerAvatarFallbackUrl={customerAvatarFallbackUrl}
                 messages={messages}
                 multiSelectMode={multiSelectMode}
                 selectedMessageKeys={selectedMessageKeys}

@@ -17,7 +17,7 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
-import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   buildSidebarIframeSrc,
   type SidebarIframeSendStatus,
@@ -223,7 +223,7 @@ export function CustomerSidePanel({
 
     void (async () => {
       try {
-        const dto = await fetchWorkbenchSidebarIframeParams({
+        const dto = await getWorkbenchService().getSidebarIframeParams({
           conversationId: sidebarIframeConversationId!,
           seatId: sidebarIframeSeatId!,
         });

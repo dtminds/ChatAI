@@ -138,6 +138,7 @@ type FeedItem =
     }
   | {
       message: Message;
+      messageIndex: number;
       type: "message";
     };
 
@@ -175,13 +176,9 @@ export function ChatMessageList({
   smartReplyByMessageId,
   smartReplyPendingByMessageId,
 }: ChatMessageListProps) {
-  const renderableMessages = useMemo(
-    () => messages.filter((message): message is Message => Boolean(message)),
-    [messages],
-  );
   const items = useMemo(
-    () => buildFeedItems(renderableMessages, showTimeDividers),
-    [renderableMessages, showTimeDividers],
+    () => buildFeedItems(messages, showTimeDividers),
+    [messages, showTimeDividers],
   );
   const previousConversationIdRef = useRef<string | null>(null);
   const previousTailMessageKeyRef = useRef<string | null>(null);
@@ -194,29 +191,14 @@ export function ChatMessageList({
   const previousTailMessageKey = previousTailMessageKeyRef.current;
   const isSameConversation = previousConversationId === conversationId;
   const appendStartIndex = getAppendStartIndex(
-    renderableMessages,
+    messages,
     isSameConversation ? previousTailMessageKey : null,
   );
   const hasAppendedMessages =
     isSameConversation &&
     appendStartIndex >= 0 &&
-    appendStartIndex < renderableMessages.length;
+    appendStartIndex < messages.length;
   const activeAppendAnimation = activeAppendAnimationRef.current;
-  const shouldAnimateMessageByKey = new Map<string, boolean>();
-
-  renderableMessages.forEach((message, index) => {
-    shouldAnimateMessageByKey.set(
-      getMessageFeedItemKey(message),
-      Boolean(message.isNew) &&
-        (
-          (hasAppendedMessages && index >= appendStartIndex) ||
-          (
-            activeAppendAnimation?.conversationId === conversationId &&
-            index >= activeAppendAnimation.startIndex
-          )
-        ),
-    );
-  });
 
   useLayoutEffect(() => {
     if (hasAppendedMessages) {
@@ -251,15 +233,15 @@ export function ChatMessageList({
 
     previousConversationIdRef.current = conversationId;
     previousTailMessageKeyRef.current =
-      renderableMessages.length > 0
-        ? getMessageFeedItemKey(renderableMessages[renderableMessages.length - 1])
+      messages.length > 0
+        ? getMessageFeedItemKey(messages[messages.length - 1])
         : null;
   }, [
     appendStartIndex,
     conversationId,
     hasAppendedMessages,
     isSameConversation,
-    renderableMessages,
+    messages,
   ]);
 
   useEffect(() => {
@@ -300,7 +282,14 @@ export function ChatMessageList({
                   }
                   multiSelectMode={multiSelectMode}
                   shouldAnimate={
-                    shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
+                    Boolean(item.message.isNew) &&
+                    (
+                      (hasAppendedMessages && item.messageIndex >= appendStartIndex) ||
+                      (
+                        activeAppendAnimation?.conversationId === conversationId &&
+                        item.messageIndex >= activeAppendAnimation.startIndex
+                      )
+                    )
                   }
                   showTimestamp={showTimestamps}
                   onDownloadMessageFile={onDownloadMessageFile}
@@ -1430,7 +1419,7 @@ function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedIte
   const items: FeedItem[] = [];
   let previousTimestampedDate: Date | undefined;
 
-  messages.forEach((message) => {
+  messages.forEach((message, messageIndex) => {
     const currentDate = parseWorkbenchDate(message.sentAt);
 
     if (
@@ -1447,6 +1436,7 @@ function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedIte
 
     items.push({
       message,
+      messageIndex,
       type: "message",
     });
 

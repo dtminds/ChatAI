@@ -9,6 +9,11 @@ import {
   createCosClient,
   uploadCosFile,
 } from "@/pages/chat/lib/cos-upload-runtime";
+import {
+  buildCosUploadObjectKey,
+  normalizeCosUploadPrefix,
+  resolveImageUploadExtension,
+} from "@/pages/chat/lib/cos-upload-key";
 
 const DEFAULT_FALLBACK_EXTENSION = "bin";
 export type KbCosUploadResult = {
@@ -30,7 +35,7 @@ export async function uploadKbImageToCos(
   file: File,
   options: KbCosUploadOptions = {},
 ): Promise<KbCosUploadResult> {
-  const extension = getImageExtension(file.type) || DEFAULT_FALLBACK_EXTENSION;
+  const extension = resolveImageUploadExtension(file.type);
 
   return uploadFileToCos(file, extension, options);
 }
@@ -84,9 +89,8 @@ function buildObjectKey({
   extension: string;
 }) {
   const prefix = resolveUploadPrefix(credential);
-  const randomPart = Math.random().toString(36).slice(2, 10);
 
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+  return buildCosUploadObjectKey(prefix, extension);
 }
 
 function resolveUploadPrefix(credential: KbDocUploadCredentialResponse) {
@@ -100,14 +104,7 @@ function resolveUploadPrefix(credential: KbDocUploadCredentialResponse) {
 }
 
 function normalizeUploadPrefix(prefix: string) {
-  const normalizedPrefix = prefix
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/\*+$/, "")
-    .replace(/\/+$/, "")
-    .replace(/\/+/g, "/");
-
-  return `${normalizedPrefix}/`;
+  return normalizeCosUploadPrefix(prefix);
 }
 
 function getKbQaUploadExtension(fileName: string) {
@@ -118,25 +115,6 @@ function getKbQaUploadExtension(fileName: string) {
   }
 
   return getFileExtension(fileName).toLowerCase() || DEFAULT_FALLBACK_EXTENSION;
-}
-
-function getImageExtension(contentType: string) {
-  const [, rawSubtype] = contentType.split("/");
-  const subtype = rawSubtype?.split(";")[0]?.trim().toLowerCase();
-
-  if (!subtype) {
-    return DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  if (subtype === "jpeg") {
-    return "jpg";
-  }
-
-  if (subtype.includes("+")) {
-    return subtype.split("+")[0] || DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_FALLBACK_EXTENSION;
 }
 
 function buildObjectUrl(key: string) {

@@ -597,3 +597,30 @@ CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
   PRIMARY KEY (`id`),
   KEY `idx_uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
+  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
+  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';

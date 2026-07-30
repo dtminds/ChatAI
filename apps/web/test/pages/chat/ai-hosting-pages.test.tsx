@@ -22,6 +22,7 @@ import * as agentLearningService from "@/pages/chat/ai-hosting/api/agent-learnin
 import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
 import * as customFieldService from "@/pages/chat/ai-hosting/api/custom-field-service";
 import * as agentSkillService from "@/pages/chat/ai-hosting/api/agent-skill-service";
+import * as skillTemplateService from "@/pages/chat/ai-hosting/api/skill-template-service";
 import * as systemVariableService from "@/pages/chat/ai-hosting/api/system-variable-service";
 import * as workTagService from "@/pages/chat/ai-hosting/api/work-tag-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -107,6 +108,9 @@ const agentSkillServiceMock = vi.hoisted(() => ({
   updateAgentSkill: vi.fn(),
   updateAgentSkillStatus: vi.fn(),
 }));
+const skillTemplateServiceMock = vi.hoisted(() => ({
+  listSkillTemplates: vi.fn(),
+}));
 const workTagServiceMock = vi.hoisted(() => ({
   listWorkTagGroups: vi.fn(),
   listWorkTags: vi.fn(),
@@ -118,6 +122,7 @@ vi.mock("read-excel-file/browser", () => ({
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/agent-learning-service", () => agentLearningServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/agent-skill-service", () => agentSkillServiceMock);
+vi.mock("@/pages/chat/ai-hosting/api/skill-template-service", () => skillTemplateServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/custom-field-service", () => customFieldServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/system-variable-service", () => systemVariableServiceMock);
 vi.mock("@/pages/chat/ai-hosting/api/work-tag-service", () => workTagServiceMock);
@@ -644,6 +649,74 @@ describe("AI hosting pages", () => {
           name: "退换货",
           status: "disabled",
           updatedAt: "2026-06-19 23:22:22",
+        },
+      ],
+    });
+    vi.mocked(skillTemplateService.listSkillTemplates).mockResolvedValue({
+      groups: [
+        {
+          id: "1",
+          name: "私域通用技能",
+          templates: [
+            {
+              id: "101",
+              name: "订单信息查询",
+              icon: "",
+              description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
+              tip: "这个订单发货了吗？",
+              applyScene: "当客户询问订单是否发货、物流进度时使用",
+              content: "根据订单号查询并回复订单状态",
+              recommendResources: [
+                {
+                  type: "variable",
+                  title: "客户标签查询",
+                  description: "建议选择包含客户订单相关信息的标签分组",
+                },
+                {
+                  type: "tool",
+                  title: "订单查询",
+                  description: "根据订单号查询订单信息",
+                },
+                {
+                  type: "knowledge_base",
+                  title: "订单履约",
+                  description: "订单与售后相关知识",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "2",
+          name: "「美妆个护」行业严选技能",
+          templates: [
+            {
+              id: "201",
+              name: "肤质适配推荐",
+              icon: "",
+              description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
+              tip: "这个烟酰胺有什么作用？敏感肌能用吗？",
+              applyScene: "当客户咨询商品是否适合自己的肤质时使用",
+              content: '结合肤质标签给出推荐说明，可调用 <resource type="tool" toolId="order_query" name="订单查询" />',
+              recommendResources: [
+                {
+                  type: "variable",
+                  title: "客户标签查询",
+                  description: "建议选择包含客户肤质等信息的标签分组",
+                },
+                {
+                  type: "tool",
+                  title: "订单查询",
+                  description: "根据客户聊天消息中给到的订单号查询订单信息",
+                },
+                {
+                  type: "knowledge_base",
+                  title: "美妆护肤",
+                  description: "这是描述",
+                },
+              ],
+            },
+          ],
         },
       ],
     });
@@ -1786,7 +1859,7 @@ describe("AI hosting pages", () => {
       "aria-selected",
       "false",
     );
-    expect(screen.getByRole("heading", { level: 2, name: "私域通用技能" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "私域通用技能" })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 2, name: "「美妆个护」行业严选技能" }),
     ).toBeInTheDocument();
@@ -1794,6 +1867,7 @@ describe("AI hosting pages", () => {
     expect(
       screen.getByRole("list", { name: "「美妆个护」行业严选技能" }),
     ).toBeInTheDocument();
+    expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
 
     const collapseTrigger = screen.getAllByRole("button", { name: "收起" })[0];
     expect(collapseTrigger).toHaveAttribute("aria-expanded", "true");
@@ -1931,7 +2005,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
 
-    await user.click(screen.getByRole("button", { name: /肤质适配推荐/ }));
+    await user.click(await screen.findByRole("button", { name: /肤质适配推荐/ }));
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
@@ -1950,6 +2024,11 @@ describe("AI hosting pages", () => {
       "aria-selected",
       "true",
     );
+    expect(
+      within(dialog).getByText("订单查询", {
+        selector: "[data-skill-resource-chip='true']",
+      }),
+    ).toHaveAttribute("data-skill-resource-kind", "tool");
 
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

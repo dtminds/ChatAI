@@ -246,6 +246,205 @@ function readResourceAttribute(tag: string, attributeName: string) {
     .replaceAll("&amp;", "&");
 }
 
+export function getSkillResourceAttribute(
+  placeholder: string,
+  attributeName: string,
+) {
+  return readResourceAttribute(placeholder, attributeName);
+}
+
+/** 模版里未绑定具体资源的蓝色区块（如 toolId=""） */
+export function isIncompleteSkillResource(
+  segment: SkillContentResourceSegment,
+): boolean {
+  if (segment.kind === "tool") {
+    return !readResourceAttribute(segment.placeholder, "toolId").trim();
+  }
+
+  if (segment.kind === "knowledge_base") {
+    // type=knowledge_base：kbId 为空则需弹窗让用户选择并替换
+    return !readResourceAttribute(segment.placeholder, "kbId").trim();
+  }
+
+  const variableType = readResourceAttribute(
+    segment.placeholder,
+    "variableType",
+  ).trim();
+  // 系统变量模版自带绑定，预览时不要求用户再选
+  if (variableType === "system_variable") {
+    return false;
+  }
+
+  const variableId = readResourceAttribute(segment.placeholder, "variableId").trim();
+  return !variableType || !variableId;
+}
+
+export function listIncompleteSkillResources(
+  content: string,
+): SkillContentResourceSegment[] {
+  return parseSkillContentSegments(content).flatMap((segment) =>
+    segment.type === "resource" && isIncompleteSkillResource(segment)
+      ? [segment]
+      : [],
+  );
+}
+
+export function resolveTemplateVariableType(
+  segment: SkillContentResourceSegment,
+): SkillVariableType | null {
+  if (segment.kind !== "variable") {
+    return null;
+  }
+
+  const variableType = readResourceAttribute(segment.placeholder, "variableType");
+  if (
+    variableType === "custom_field"
+    || variableType === "work_tag"
+    || variableType === "mall_tag"
+    || variableType === "auto_tag"
+    || variableType === "system_variable"
+  ) {
+    return variableType;
+  }
+
+  const name = segment.name;
+  if (name.includes("小店")) {
+    return "mall_tag";
+  }
+  if (name.includes("自动化") || name.includes("CDP")) {
+    return "auto_tag";
+  }
+  if (name.includes("系统")) {
+    return "system_variable";
+  }
+  if (name.includes("自定义")) {
+    return "custom_field";
+  }
+  if (name.includes("企微") || name.includes("客户标签") || name.includes("标签")) {
+    return "work_tag";
+  }
+
+  return null;
+}
+
+export function replaceSkillContentResource(
+  content: string,
+  targetPlaceholder: string,
+  nextPlaceholder: string,
+) {
+  if (!targetPlaceholder || targetPlaceholder === nextPlaceholder) {
+    return content;
+  }
+
+  return content.split(targetPlaceholder).join(nextPlaceholder);
+}
+
+/** 从已绑定 ID 的资源块还原资源池条目（标签类缺 select_sub_ids 时用空数组） */
+export function collectCompleteSkillResourcesFromContent(content: string): {
+  "knowledge-bases": SkillResourceItem[];
+  tools: SkillResourceItem[];
+  variables: SkillResourceItem[];
+} {
+  const resources = {
+    variables: [] as SkillResourceItem[],
+    tools: [] as SkillResourceItem[],
+    "knowledge-bases": [] as SkillResourceItem[],
+  };
+
+  for (const segment of parseSkillContentSegments(content)) {
+    if (segment.type !== "resource" || isIncompleteSkillResource(segment)) {
+      continue;
+    }
+
+    const item = buildSkillResourceFromCompleteSegment(segment);
+    if (!item) {
+      continue;
+    }
+
+    if (segment.kind === "variable") {
+      resources.variables.push(item);
+    } else if (segment.kind === "tool") {
+      resources.tools.push(item);
+    } else {
+      resources["knowledge-bases"].push(item);
+    }
+  }
+
+  return resources;
+}
+
+function buildSkillResourceFromCompleteSegment(
+  segment: SkillContentResourceSegment,
+): SkillResourceItem | null {
+  if (segment.kind === "tool") {
+    const toolId = readResourceAttribute(segment.placeholder, "toolId").trim();
+    if (!toolId) {
+      return null;
+    }
+
+    return {
+      description: "",
+      id: toolId,
+      placeholder: segment.placeholder,
+      title: segment.name,
+      toolKey: toolId,
+    };
+  }
+
+  if (segment.kind === "knowledge_base") {
+    const kbId = Number(readResourceAttribute(segment.placeholder, "kbId"));
+    if (!Number.isFinite(kbId)) {
+      return null;
+    }
+
+    return {
+      description: "",
+      id: `kb:${kbId}`,
+      kbId,
+      placeholder: segment.placeholder,
+      title: segment.name,
+    };
+  }
+
+  const variableType = resolveTemplateVariableType(segment);
+  if (!variableType) {
+    return null;
+  }
+
+  if (variableType === "system_variable" || variableType === "auto_tag") {
+    const selectKey = readResourceAttribute(segment.placeholder, "variableKey").trim();
+    if (!selectKey) {
+      return null;
+    }
+
+    return buildSkillVariableResourceItem({
+      name: segment.name,
+      select_key: selectKey,
+      type: variableType,
+    });
+  }
+
+  const selectId = Number(readResourceAttribute(segment.placeholder, "variableId"));
+  if (!Number.isFinite(selectId)) {
+    return null;
+  }
+
+  if (variableType === "custom_field") {
+    return buildSkillVariableResourceItem({
+      name: segment.name,
+      select_id: selectId,
+      type: "custom_field",
+    });
+  }
+
+  return buildSkillVariableResourceItem({
+    name: segment.name,
+    select_id: selectId,
+    select_sub_ids: [],
+    type: variableType,
+  });
+}
+
 export function parseSkillContentSegments(content: string): SkillContentSegment[] {
   const source = content ?? "";
   if (!source.trim()) {

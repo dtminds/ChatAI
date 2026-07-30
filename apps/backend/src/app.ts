@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAgentLearningRoutes } from "./modules/ai-hosting/agent-learning.routes.js";
 import { registerAgentSkillRoutes } from "./modules/ai-hosting/agent-skill.routes.js";
+import { registerAgentSkillTemplateRoutes } from "./modules/ai-hosting/agent-skill-template.routes.js";
 import { registerCdpTagRoutes } from "./modules/ai-hosting/cdp-tag.routes.js";
 import { registerCustomFieldRoutes } from "./modules/ai-hosting/custom-field.routes.js";
 import { registerSystemVariableRoutes } from "./modules/ai-hosting/system-variable.routes.js";
@@ -53,6 +54,7 @@ export async function buildApp() {
   await registerAiHostingRoutes(app);
   await registerAgentLearningRoutes(app);
   await registerAgentSkillRoutes(app);
+  await registerAgentSkillTemplateRoutes(app);
   await registerCustomFieldRoutes(app);
   await registerWorkTagRoutes(app);
   await registerCdpTagRoutes(app);

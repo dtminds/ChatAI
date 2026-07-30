@@ -133,6 +133,88 @@ export interface XyWapEmbedAgentSkill {
   variables: string | null;
 }
 
+export interface XyWapEmbedAgentSkillTemplate {
+  /**
+   * 技能应用场景
+   */
+  apply_scene: string | null;
+  /**
+   * 技能内容描述
+   */
+  content: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 模版描述
+   */
+  desc: Generated<string>;
+  /**
+   * 分组id
+   */
+  group_id: Generated<number>;
+  /**
+   * 模版图标
+   */
+  icon: Generated<string>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 技能名称
+   */
+  name: string;
+  /**
+   * 推荐资源（复杂json数组，不同推荐类型有不同格式）
+   */
+  recommend_resources: string | null;
+  /**
+   * 排序（值越大越靠前）
+   */
+  sort: Generated<number>;
+  /**
+   * 状态 0：未上线 1：已上线
+   */
+  status: Generated<number>;
+  /**
+   * 模版使用提示
+   */
+  tip: Generated<string>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentSkillTemplateGroup {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 分组名称
+   */
+  name: string;
+  /**
+   * 排序（值越大越靠前）
+   */
+  sort: Generated<number>;
+  /**
+   * 状态 0：无效 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
 export interface XyWapEmbedAgentKbLearningCandidate {
   /**
    * 客服/AI回答原文
@@ -3286,6 +3368,8 @@ export interface DB {
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
   xy_wap_embed_agent_kb_learning_candidate: XyWapEmbedAgentKbLearningCandidate;
   xy_wap_embed_agent_skill: XyWapEmbedAgentSkill;
+  xy_wap_embed_agent_skill_template: XyWapEmbedAgentSkillTemplate;
+  xy_wap_embed_agent_skill_template_group: XyWapEmbedAgentSkillTemplateGroup;
   xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;

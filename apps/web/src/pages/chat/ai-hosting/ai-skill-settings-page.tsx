@@ -13,7 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,10 @@ import {
   updateAgentSkill,
 } from "./api/agent-skill-service";
 import { listKbs, toKbListViewItem } from "./api/kb-service";
+import {
+  SKILL_CREATE_DRAFT_STATE_KEY,
+  type SkillCreateDraft,
+} from "./ai-skill-create-draft";
 import { AiSkillDescriptionField } from "./ai-skill-description-field";
 import { INSERT_SKILL_CONTENT_RESOURCE_COMMAND } from "./ai-skill-description-lexical-commands";
 import { InsertVariableDialog } from "./ai-skill-insert-variable-dialog";
@@ -157,26 +161,55 @@ const staticInsertItems: Partial<
   ],
 };
 
+function readSkillCreateDraft(state: unknown): SkillCreateDraft | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const draft = (state as Record<string, unknown>)[SKILL_CREATE_DRAFT_STATE_KEY];
+  if (!draft || typeof draft !== "object") {
+    return null;
+  }
+
+  const content = (draft as SkillCreateDraft).content;
+  if (typeof content !== "string" || content.length === 0) {
+    return null;
+  }
+
+  return draft as SkillCreateDraft;
+}
+
 export function AiSkillSettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { skillId } = useParams<{ skillId?: string }>();
   const isEditMode = Boolean(skillId);
   const descriptionEditorRef = useRef<LexicalEditor | null>(null);
+  const [createDraft] = useState(() =>
+    isEditMode ? null : readSkillCreateDraft(location.state),
+  );
+  const createDraftClearedRef = useRef(false);
   const [pageLoading, setPageLoading] = useState(isEditMode);
   const [pageError, setPageError] = useState(false);
-  const [name, setName] = useState("");
-  const [applicationScenario, setApplicationScenario] = useState("");
+  const [name, setName] = useState(createDraft?.name?.trim() ?? "");
+  const [applicationScenario, setApplicationScenario] = useState(
+    createDraft?.applyScene ?? "",
+  );
   const [skillContentSegments, setSkillContentSegments] = useState<
     SkillContentSegment[]
-  >([{ type: "text", value: "" }]);
+  >(() =>
+    createDraft?.content
+      ? parseSkillContentSegments(createDraft.content)
+      : [{ type: "text", value: "" }],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [selectedResources, setSelectedResources] = useState<
     Record<ResourceSectionId, SkillResourceItem[]>
-  >({
-    variables: [],
-    tools: [],
-    "knowledge-bases": [],
-  });
+  >(() => ({
+    variables: createDraft?.resources?.variables ?? [],
+    tools: createDraft?.resources?.tools ?? [],
+    "knowledge-bases": createDraft?.resources?.["knowledge-bases"] ?? [],
+  }));
   const [activeInsertSection, setActiveInsertSection] =
     useState<ResourceSectionId | null>(null);
   const [variableDialogOpen, setVariableDialogOpen] = useState(false);
@@ -187,6 +220,15 @@ export function AiSkillSettingsPage() {
   } | null>(null);
 
   const canSubmit = name.trim().length > 0 && !pageLoading && !pageError;
+
+  useEffect(() => {
+    if (isEditMode || !createDraft || createDraftClearedRef.current) {
+      return;
+    }
+
+    createDraftClearedRef.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [createDraft, isEditMode, location.pathname, navigate]);
 
   useEffect(() => {
     if (!skillId) {

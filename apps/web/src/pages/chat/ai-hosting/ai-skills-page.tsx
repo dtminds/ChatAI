@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Add01Icon,
   AiBookIcon,
@@ -57,11 +57,25 @@ import {
   listAgentSkills,
   updateAgentSkillStatus,
 } from "./api/agent-skill-service";
+import { listSkillTemplates } from "./api/skill-template-service";
+import {
+  SKILL_CREATE_DRAFT_STATE_KEY,
+  type SkillCreateDraft,
+} from "./ai-skill-create-draft";
+import { SkillContentView } from "./ai-skill-content-view";
+import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
+import {
+  collectCompleteSkillResourcesFromContent,
+  listIncompleteSkillResources,
+} from "./ai-skill-resource";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
-import type { AgentSkillListItem } from "@chatai/contracts";
-
-type SkillAccent = "amber" | "slate";
+import { Spinner } from "@/components/ui/spinner";
+import type {
+  AgentSkillListItem,
+  AgentSkillTemplateItem,
+  AgentSkillTemplateRecommendItem,
+} from "@chatai/contracts";
 
 type SkillRecommendation = {
   description: string;
@@ -69,10 +83,10 @@ type SkillRecommendation = {
 };
 
 type SkillItem = {
-  accent?: SkillAccent;
   applicationScenario: string;
   description: string;
   exampleQuestion: string;
+  icon: string;
   id: string;
   recommendedKnowledgeBases: readonly SkillRecommendation[];
   recommendedTools: readonly SkillRecommendation[];
@@ -87,212 +101,6 @@ type SkillCategory = {
   skills: SkillItem[];
   title: string;
 };
-
-const defaultBeautyRecommendations = {
-  recommendedKnowledgeBases: [
-    {
-      description: "这是描述",
-      title: "美妆护肤",
-    },
-  ],
-  recommendedTools: [
-    {
-      description: "根据客户聊天消息中给到的订单号查询订单信息",
-      title: "订单查询",
-    },
-  ],
-  recommendedVariables: [
-    {
-      description: "建议选择包含客户肤质等信息的标签分组",
-      title: "客户标签查询",
-    },
-  ],
-} as const;
-
-const marketplaceCategories: SkillCategory[] = [
-  {
-    defaultOpen: true,
-    id: "private-domain-general",
-    title: "私域通用技能",
-    skills: [
-      {
-        accent: "amber",
-        applicationScenario:
-          "当客户询问订单是否发货、物流进度或希望客服帮忙核对订单信息时使用",
-        description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
-        exampleQuestion: "这个订单发货了吗？",
-        id: "order-query",
-        recommendedKnowledgeBases: [
-          {
-            description: "订单与售后相关知识",
-            title: "订单履约",
-          },
-        ],
-        recommendedTools: [
-          {
-            description: "根据客户聊天消息中给到的订单号查询订单信息",
-            title: "订单查询",
-          },
-        ],
-        recommendedVariables: [
-          {
-            description: "建议选择包含客户订单相关信息的标签分组",
-            title: "客户标签查询",
-          },
-        ],
-        skillDescription:
-          "根据客户提供的订单号或上下文，查询并回复订单状态，避免夸大与不确定承诺",
-        title: "订单信息查询",
-      },
-      {
-        applicationScenario:
-          "当客户询问快递到哪了、预计送达时间或物流异常时使用",
-        description: "客户的物流信息查询技能，可在特定场景下自动查询并回复",
-        exampleQuestion: "快递到哪了？",
-        id: "logistics-query",
-        recommendedKnowledgeBases: [
-          {
-            description: "物流与配送相关知识",
-            title: "物流配送",
-          },
-        ],
-        recommendedTools: [
-          {
-            description: "根据运单号查询物流轨迹",
-            title: "物流查询",
-          },
-        ],
-        recommendedVariables: [
-          {
-            description: "建议选择包含收货地址等信息的标签分组",
-            title: "客户标签查询",
-          },
-        ],
-        skillDescription: "根据订单或运单信息查询物流进度，并用客服话术清晰回复",
-        title: "物流信息查询",
-      },
-      {
-        applicationScenario:
-          "当客户询问订单是否发货、物流进度或希望客服帮忙核对订单信息时使用",
-        description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
-        exampleQuestion: "这个订单发货了吗？",
-        id: "order-query-2",
-        recommendedKnowledgeBases: [
-          {
-            description: "订单与售后相关知识",
-            title: "订单履约",
-          },
-        ],
-        recommendedTools: [
-          {
-            description: "根据客户聊天消息中给到的订单号查询订单信息",
-            title: "订单查询",
-          },
-        ],
-        recommendedVariables: [
-          {
-            description: "建议选择包含客户订单相关信息的标签分组",
-            title: "客户标签查询",
-          },
-        ],
-        skillDescription:
-          "根据客户提供的订单号或上下文，查询并回复订单状态，避免夸大与不确定承诺",
-        title: "订单信息查询",
-      },
-      {
-        applicationScenario:
-          "当客户询问订单是否发货、物流进度或希望客服帮忙核对订单信息时使用",
-        description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
-        exampleQuestion: "这个订单发货了吗？",
-        id: "order-query-3",
-        recommendedKnowledgeBases: [
-          {
-            description: "订单与售后相关知识",
-            title: "订单履约",
-          },
-        ],
-        recommendedTools: [
-          {
-            description: "根据客户聊天消息中给到的订单号查询订单信息",
-            title: "订单查询",
-          },
-        ],
-        recommendedVariables: [
-          {
-            description: "建议选择包含客户订单相关信息的标签分组",
-            title: "客户标签查询",
-          },
-        ],
-        skillDescription:
-          "根据客户提供的订单号或上下文，查询并回复订单状态，避免夸大与不确定承诺",
-        title: "订单信息查询",
-      },
-    ],
-  },
-  {
-    defaultOpen: true,
-    id: "beauty-industry",
-    title: "「美妆个护」行业严选技能",
-    skills: [
-      {
-        applicationScenario:
-          "当客户咨询某款商品是否适合自己的肤质、皮肤状态、护肤诉求，或希望客服根据油皮、干皮、敏感肌、痘肌、混油皮等条件推荐商品时使用",
-        description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
-        exampleQuestion: "这个烟酰胺有什么作用？敏感肌能用吗？",
-        id: "ingredient-explain",
-        ...defaultBeautyRecommendations,
-        skillDescription:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达",
-        title: "成分功效解读",
-      },
-      {
-        applicationScenario:
-          "当客户咨询某款商品是否适合自己的肤质、皮肤状态、护肤诉求，或希望客服根据油皮、干皮、敏感肌、痘肌、混油皮等条件推荐商品时使用",
-        description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
-        exampleQuestion: "这个烟酰胺有什么作用？敏感肌能用吗？",
-        id: "skincare-steps",
-        ...defaultBeautyRecommendations,
-        skillDescription:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达",
-        title: "护肤步骤指导",
-      },
-      {
-        applicationScenario:
-          "当客户咨询某款商品是否适合自己的肤质、皮肤状态、护肤诉求，或希望客服根据油皮、干皮、敏感肌、痘肌、混油皮等条件推荐商品时使用",
-        description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
-        exampleQuestion: "这个烟酰胺有什么作用？敏感肌能用吗？",
-        id: "sensitive-skin-guard",
-        ...defaultBeautyRecommendations,
-        skillDescription:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达",
-        title: "敏感肌风险兜底",
-      },
-      {
-        applicationScenario:
-          "当客户咨询某款商品是否适合自己的肤质、皮肤状态、护肤诉求，或希望客服根据油皮、干皮、敏感肌、痘肌、混油皮等条件推荐商品时使用",
-        description:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达",
-        exampleQuestion: "这个烟酰胺有什么作用？敏感肌能用吗？",
-        id: "skin-type-recommend",
-        ...defaultBeautyRecommendations,
-        skillDescription:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达。\n\n回复时先确认客户的肤质与诉求，再给出可执行的护肤建议；不确定的成分功效不要绝对化表述，也不要给出医疗诊断或疗效保证。\n\n若客户提到敏感、红肿、破皮等异常情况，优先建议停用并寻求专业医疗意见，同时可推荐更温和的基础护理方向。",
-        title: "肤质适配推荐",
-      },
-      {
-        applicationScenario:
-          "当客户咨询某款商品是否适合自己的肤质、皮肤状态、护肤诉求，或希望客服根据油皮、干皮、敏感肌、痘肌、混油皮等条件推荐商品时使用",
-        description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
-        exampleQuestion: "这个烟酰胺有什么作用？敏感肌能用吗？",
-        id: "product-compare",
-        ...defaultBeautyRecommendations,
-        skillDescription:
-          "针对客户咨询的成分、功效、适用场景进行客服化解释，避免夸大和医疗化表达",
-        title: "美妆商品对比推荐",
-      },
-    ],
-  },
-];
 
 const skillTabs = [
   { label: "技能广场", value: "marketplace" },
@@ -353,13 +161,7 @@ export function AiSkillsPage() {
           </TabsList>
 
           <TabsContent className="space-y-8" value="marketplace">
-            {marketplaceCategories.map((category) => (
-              <SkillCategorySection
-                category={category}
-                key={category.id}
-                onSelectSkill={setSelectedSkill}
-              />
-            ))}
+            <SkillMarketplacePanel onSelectSkill={setSelectedSkill} />
           </TabsContent>
 
           <TabsContent value="mine">
@@ -379,6 +181,127 @@ export function AiSkillsPage() {
       />
     </AiHostingLayout>
   );
+}
+
+function SkillMarketplacePanel({
+  onSelectSkill,
+}: {
+  onSelectSkill: (skill: SkillItem) => void;
+}) {
+  const [categories, setCategories] = useState<SkillCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMarketplace() {
+      setLoading(true);
+      setLoadError(false);
+
+      try {
+        const response = await listSkillTemplates();
+        if (cancelled) {
+          return;
+        }
+
+        setCategories(
+          response.groups.map((group) => ({
+            defaultOpen: true,
+            id: group.id,
+            title: group.name,
+            skills: group.templates.map(mapTemplateToSkillItem),
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setCategories([]);
+          setLoadError(true);
+          toast.error("技能广场加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadMarketplace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div
+        className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"
+        role="status"
+      >
+        <Spinner size={16} />
+        <span>正在加载</span>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-destructive">
+        <span role="alert">加载失败</span>
+      </div>
+    );
+  }
+
+  if (categories.length === 0) {
+    return (
+      <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-muted-foreground">
+        暂无数据
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {categories.map((category) => (
+        <SkillCategorySection
+          category={category}
+          key={category.id}
+          onSelectSkill={onSelectSkill}
+        />
+      ))}
+    </>
+  );
+}
+
+function mapTemplateToSkillItem(template: AgentSkillTemplateItem): SkillItem {
+  return {
+    id: template.id,
+    title: template.name,
+    description: template.description,
+    exampleQuestion: template.tip,
+    applicationScenario: template.applyScene,
+    skillDescription: template.content,
+    icon: template.icon,
+    recommendedVariables: filterRecommendations(template.recommendResources, "variable"),
+    recommendedTools: filterRecommendations(template.recommendResources, "tool"),
+    recommendedKnowledgeBases: filterRecommendations(
+      template.recommendResources,
+      "knowledge_base",
+    ),
+  };
+}
+
+function filterRecommendations(
+  items: readonly AgentSkillTemplateRecommendItem[],
+  type: AgentSkillTemplateRecommendItem["type"],
+): SkillRecommendation[] {
+  return items
+    .filter((item) => item.type === type)
+    .map((item) => ({
+      title: item.title,
+      description: item.description,
+    }));
 }
 
 function MySkillsPanel() {
@@ -793,7 +716,7 @@ function SkillCard({
       type="button"
     >
       <div className="flex min-w-0 items-start gap-3">
-        <SkillIcon accent={skill.accent} title={skill.title} />
+        <SkillIcon icon={skill.icon} title={skill.title} />
         <div className="min-w-0 space-y-1.5">
           <h3 className="truncate text-sm font-semibold text-foreground">
             {skill.title}
@@ -804,18 +727,20 @@ function SkillCard({
         </div>
       </div>
 
-      <div className="mt-4 flex items-start gap-2 border-t border-border/70 pt-3">
-        <HugeiconsIcon
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 text-muted-foreground"
-          icon={Message01Icon}
-          size={14}
-          strokeWidth={1.8}
-        />
-        <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-          {skill.exampleQuestion}
-        </p>
-      </div>
+      {skill.exampleQuestion ? (
+        <div className="mt-4 flex items-start gap-2 border-t border-border/70 pt-3">
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="mt-0.5 shrink-0 text-muted-foreground"
+            icon={Message01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {skill.exampleQuestion}
+          </p>
+        </div>
+      ) : null}
     </button>
   );
 }
@@ -829,95 +754,170 @@ function SkillDetailDialog({
   open: boolean;
   skill: SkillItem | null;
 }) {
+  const navigate = useNavigate();
+  const [editResourcesOpen, setEditResourcesOpen] = useState(false);
+
+  const incompleteResources = useMemo(
+    () =>
+      skill ? listIncompleteSkillResources(skill.skillDescription) : [],
+    [skill],
+  );
+
+  function goToCreateSkill(draft: SkillCreateDraft) {
+    setEditResourcesOpen(false);
+    onOpenChange(false);
+    navigate("/chat/ai-hosting/skills/new", {
+      state: {
+        [SKILL_CREATE_DRAFT_STATE_KEY]: draft,
+      },
+    });
+  }
+
+  function handlePreviewSkill() {
+    if (!skill) {
+      return;
+    }
+
+    if (incompleteResources.length > 0) {
+      setEditResourcesOpen(true);
+      return;
+    }
+
+    goToCreateSkill({
+      name: skill.title,
+      applyScene: skill.applicationScenario,
+      content: skill.skillDescription,
+      resources: collectCompleteSkillResourcesFromContent(skill.skillDescription),
+    });
+  }
+
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="flex h-[min(40.5rem,calc(100vh-3rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
-        closeButtonClassName="right-5 top-5"
+    <>
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setEditResourcesOpen(false);
+          }
+          onOpenChange(nextOpen);
+        }}
+        open={open}
       >
-        {skill ? (
-          <>
-            <div className="shrink-0 space-y-3 px-6 pb-5 pt-6 pr-14">
-              <SkillIcon accent={skill.accent} className="size-10" title={skill.title} />
-              <div className="min-w-0 space-y-2">
-                <DialogTitle className="text-[22px] font-semibold leading-tight text-foreground">
-                  {skill.title}
-                </DialogTitle>
-                <DialogDescription className="text-sm leading-6 text-muted-foreground">
-                  {skill.description}
-                </DialogDescription>
+        <DialogContent
+          className="flex h-[min(40.5rem,calc(100vh-3rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
+          closeButtonClassName="right-5 top-5"
+        >
+          {skill ? (
+            <>
+              <div className="shrink-0 space-y-3 px-6 pb-5 pt-6 pr-14">
+                <SkillIcon className="size-10" icon={skill.icon} title={skill.title} />
+                <div className="min-w-0 space-y-2">
+                  <DialogTitle className="text-[22px] font-semibold leading-tight text-foreground">
+                    {skill.title}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                    {skill.description}
+                  </DialogDescription>
+                </div>
               </div>
-            </div>
 
-            <Tabs className="flex min-h-0 flex-1 flex-col gap-0" defaultValue="scenario">
-              <div className="shrink-0 px-6">
-                <TabsList
-                  aria-label="技能详情"
-                  className="h-auto w-full justify-start gap-6"
-                  variant="underline"
+              <Tabs className="flex min-h-0 flex-1 flex-col gap-0" defaultValue="scenario">
+                <div className="shrink-0 px-6">
+                  <TabsList
+                    aria-label="技能详情"
+                    className="h-auto w-full justify-start gap-6"
+                    variant="underline"
+                  >
+                    {detailTabs.map((tab) => (
+                      <TabsTrigger
+                        className="px-0 py-2.5 text-sm"
+                        key={tab.value}
+                        value={tab.value}
+                        variant="underline"
+                      >
+                        {tab.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                  <TabsContent className="mt-0 space-y-0" value="scenario">
+                    <p className="pb-5 text-sm leading-6 text-muted-foreground">
+                      {skill.applicationScenario || "暂无数据"}
+                    </p>
+                    <SkillRecommendationSection
+                      icon={BracketsIcon}
+                      items={skill.recommendedVariables}
+                      title="推荐变量"
+                    />
+                    <SkillRecommendationSection
+                      icon={FilterIcon}
+                      items={skill.recommendedTools}
+                      title="推荐工具"
+                    />
+                    <SkillRecommendationSection
+                      icon={AiBookIcon}
+                      items={skill.recommendedKnowledgeBases}
+                      title="推荐知识库"
+                    />
+                  </TabsContent>
+
+                  <TabsContent className="mt-0 space-y-0" value="description">
+                    <SkillContentView className="pb-5" content={skill.skillDescription} />
+                    <SkillRecommendationSection
+                      icon={BracketsIcon}
+                      items={skill.recommendedVariables}
+                      title="推荐变量"
+                    />
+                  </TabsContent>
+                </div>
+              </Tabs>
+
+              <div className="shrink-0 px-6 pb-6 pt-2">
+                <Button
+                  className="h-11 w-full rounded-full border-primary/70 text-primary hover:bg-primary/5 hover:text-primary"
+                  onClick={handlePreviewSkill}
+                  type="button"
+                  variant="outline"
                 >
-                  {detailTabs.map((tab) => (
-                    <TabsTrigger
-                      className="px-0 py-2.5 text-sm"
-                      key={tab.value}
-                      value={tab.value}
-                      variant="underline"
-                    >
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                  <HugeiconsIcon icon={ViewIcon} size={16} strokeWidth={1.8} />
+                  预览技能
+                </Button>
               </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                <TabsContent className="mt-0 space-y-0" value="scenario">
-                  <p className="pb-5 text-sm leading-6 text-muted-foreground">
-                    {skill.applicationScenario}
-                  </p>
-                  <SkillRecommendationSection
-                    icon={BracketsIcon}
-                    items={skill.recommendedVariables}
-                    title="推荐变量"
-                  />
-                  <SkillRecommendationSection
-                    icon={FilterIcon}
-                    items={skill.recommendedTools}
-                    title="推荐工具"
-                  />
-                  <SkillRecommendationSection
-                    icon={AiBookIcon}
-                    items={skill.recommendedKnowledgeBases}
-                    title="推荐知识库"
-                  />
-                </TabsContent>
-
-                <TabsContent className="mt-0 space-y-0" value="description">
-                  <p className="whitespace-pre-wrap pb-5 text-sm leading-6 text-muted-foreground">
-                    {skill.skillDescription}
-                  </p>
-                  <SkillRecommendationSection
-                    icon={BracketsIcon}
-                    items={skill.recommendedVariables}
-                    title="推荐变量"
-                  />
-                </TabsContent>
-              </div>
-            </Tabs>
-
-            <div className="shrink-0 px-6 pb-6 pt-2">
-              <Button
-                className="h-11 w-full rounded-full border-primary/70 text-primary hover:bg-primary/5 hover:text-primary"
-                type="button"
-                variant="outline"
-              >
-                <HugeiconsIcon icon={ViewIcon} size={16} strokeWidth={1.8} />
-                预览技能
-              </Button>
-            </div>
-          </>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+      {skill ? (
+        <SkillPreviewEditResourcesDialog
+          content={skill.skillDescription}
+          incompleteResources={incompleteResources}
+          onCancel={() => {
+            setEditResourcesOpen(false);
+          }}
+          onConfirm={({ content, resources }) => {
+            const existing = collectCompleteSkillResourcesFromContent(
+              skill.skillDescription,
+            );
+            goToCreateSkill({
+              name: skill.title,
+              applyScene: skill.applicationScenario,
+              content,
+              resources: {
+                variables: [...existing.variables, ...resources.variables],
+                tools: [...existing.tools, ...resources.tools],
+                "knowledge-bases": [
+                  ...existing["knowledge-bases"],
+                  ...resources["knowledge-bases"],
+                ],
+              },
+            });
+          }}
+          open={editResourcesOpen}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -936,42 +936,60 @@ function SkillRecommendationSection({
       className="space-y-3 border-t border-border py-5"
     >
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <ul className="space-y-3">
-        {items.map((item) => (
-          <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
-            <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-              <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={1.8} />
-            </span>
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm font-medium text-foreground">{item.title}</p>
-              <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                {item.description}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {items.length > 0 ? (
+        <ul className="space-y-3">
+          {items.map((item) => (
+            <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
+              <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
+                <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium text-foreground">{item.title}</p>
+                {item.description ? (
+                  <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                    {item.description}
+                  </p>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">暂无数据</p>
+      )}
     </section>
   );
 }
 
 function SkillIcon({
-  accent = "slate",
   className,
+  icon,
   title,
 }: {
-  accent?: SkillAccent;
   className?: string;
+  icon?: string;
   title: string;
 }) {
+  if (icon) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className={cn(
+          "size-9 shrink-0 rounded-[8px] object-cover",
+          className,
+        )}
+        src={icon}
+        title={title}
+      />
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex size-9 shrink-0 items-center justify-center rounded-[8px]",
-        accent === "amber"
-          ? "bg-amber-50 text-amber-500"
-          : "bg-muted text-muted-foreground",
+        "inline-flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground",
         className,
       )}
       title={title}

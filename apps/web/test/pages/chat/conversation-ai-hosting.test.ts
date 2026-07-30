@@ -41,7 +41,7 @@ describe("resolveConversationAIHostingPolicy", () => {
     ).toBe(true);
   });
 
-  it("keeps configured conversations disableable after capability is revoked", () => {
+  it("keeps configured normal conversations disableable after capability is revoked", () => {
     expect(
       resolveConversationAIHostingPolicy({
         account: {
@@ -51,7 +51,7 @@ describe("resolveConversationAIHostingPolicy", () => {
         canUseConversationActions: true,
         conversation: {
           conversationAIHostingSwitch: true,
-          customerBindType: 2,
+          customerBindType: 1,
           mode: "single",
         },
       }),
@@ -63,6 +63,31 @@ describe("resolveConversationAIHostingPolicy", () => {
       isConfiguredOn: true,
       isEffective: false,
       shouldShowControl: true,
+    });
+  });
+
+  it("hides and blocks AI hosting controls for application-message conversations", () => {
+    expect(
+      resolveConversationAIHostingPolicy({
+        account: {
+          seatAIHostingEnabled: true,
+          seatGroupAIHostingEnabled: false,
+        },
+        canUseConversationActions: true,
+        conversation: {
+          conversationAIHostingSwitch: true,
+          customerBindType: 2,
+          mode: "single",
+        },
+      }),
+    ).toEqual({
+      canDisable: false,
+      canEnable: false,
+      canToggle: false,
+      hasCapability: false,
+      isConfiguredOn: true,
+      isEffective: false,
+      shouldShowControl: false,
     });
   });
 

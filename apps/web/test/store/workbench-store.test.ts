@@ -1043,7 +1043,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                conversationAIHostingSwitch: false,
+                conversationAIHostingSwitch: true,
                 customerBindType: 2,
                 mode: "single",
               }
@@ -1052,7 +1052,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
 
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });

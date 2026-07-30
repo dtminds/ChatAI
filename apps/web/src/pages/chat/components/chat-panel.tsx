@@ -538,6 +538,11 @@ export function ChatPanel({
                 isConversationLoading={isConversationLoading}
                 conversationId={activeConversation.id}
                 conversationMode={activeConversation.mode}
+                customerAvatarFallbackUrl={
+                  activeConversation.customerBindType === 2
+                    ? activeConversation.customerAvatarUrl
+                    : undefined
+                }
                 messages={messages}
                 multiSelectMode={multiSelectMode}
                 selectedMessageKeys={selectedMessageKeys}

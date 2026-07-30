@@ -7236,6 +7236,22 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("limits poll message reads to rows after the active message sequence", async () => {
+    const db = createMessagesDb([
+      messageRow({ id: 102, msgid: "remote-msg-102" }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessages("88", { afterSeq: 101, limit: 50 });
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.id",
+      ">",
+      101,
+    ]);
+    expect(db.messageQueries[0]?.limits).toEqual([51]);
+  });
+
   it("loads shadow group messages with the opening seat third user id", async () => {
     const db = createMessagesDb(
       [

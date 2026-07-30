@@ -3968,7 +3968,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId, scope);
 
     const page = await this.repository.listMessages(conversationId, {
-      beforeSeq: undefined,
+      afterSeq: activeMessageSeq,
       includeHiddenConversation: true,
       limit: 50,
     });

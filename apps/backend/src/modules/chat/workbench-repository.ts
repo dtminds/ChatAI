@@ -4212,6 +4212,7 @@ export class WorkbenchRepository {
   async listMessages(
     conversationId: string,
     options: {
+      afterSeq?: number;
       beforeSeq?: number;
       includeHiddenConversation?: boolean;
       limit: number;
@@ -4331,6 +4332,10 @@ export class WorkbenchRepository {
 
     if (options.beforeSeq != null) {
       query = query.where("message.id", "<", options.beforeSeq);
+    }
+
+    if (options.afterSeq != null) {
+      query = query.where("message.id", ">", options.afterSeq);
     }
 
     const rows = await query

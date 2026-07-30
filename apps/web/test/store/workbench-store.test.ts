@@ -19,6 +19,7 @@ import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
   WorkbenchPollResponse,
+  WorkbenchSeatDto,
   WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
@@ -6086,6 +6087,166 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
+  });
+
+  it("preserves accounts reference when poll repeats an unchanged loaded account", async () => {
+    const baseService = createMockWorkbenchService();
+    let repeatedSeat: WorkbenchSeatDto | undefined;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: repeatedSeat ? [repeatedSeat] : [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const activeAccount = useWorkbenchStore.getState().accounts.find(
+      (account) => account.id === useWorkbenchStore.getState().activeAccountId,
+    );
+    expect(activeAccount).toBeDefined();
+    repeatedSeat = {
+      avatar: activeAccount!.avatarUrl,
+      bizStatus: activeAccount!.bizStatus,
+      description: activeAccount!.description,
+      expireTime: activeAccount!.expireTime,
+      fullAutoSwitch: activeAccount!.fullAutoSwitch,
+      groupUnreadCount: activeAccount!.groupUnreadCount,
+      hostSubUserId: activeAccount!.takenOverEmployeeId,
+      lastMessageTime: activeAccount!.lastMessageTime,
+      loginStatus: activeAccount!.loginStatus ?? "offline",
+      name: activeAccount!.name,
+      operatorName: activeAccount!.operator,
+      phone: activeAccount!.phone,
+      seatAIAssistantEnabled: activeAccount!.seatAIAssistantEnabled,
+      seatAIHostingAuth: activeAccount!.seatAIHostingAuth,
+      seatAIHostingEnabled: activeAccount!.seatAIHostingEnabled,
+      seatGroupAIAssistantEnabled: activeAccount!.seatGroupAIAssistantEnabled,
+      seatGroupAIHostingEnabled: activeAccount!.seatGroupAIHostingEnabled,
+      seatId: activeAccount!.id,
+      semiAutoAuth: activeAccount!.semiAutoAuth,
+      semiAutoSwitch: activeAccount!.semiAutoSwitch,
+      singleUnreadCount: activeAccount!.singleUnreadCount,
+      unreadCount: activeAccount!.unreadCount ?? 0,
+    };
+    useWorkbenchStore.getState().clearActiveConversation();
+    const accountsBeforePoll = useWorkbenchStore.getState().accounts;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
+  });
+
+  it("preserves the conversation list when poll repeats an unchanged conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    let repeatedConversation: WorkbenchConversationSummaryDto | undefined;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: repeatedConversation
+            ? [{ ...repeatedConversation, type: "upsert" as const }]
+            : [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    repeatedConversation = (
+      await baseService.getConversations("drc", {
+        limit: 1000,
+        mode: "single",
+      })
+    ).items.find((conversation) => conversation.conversationId === "conv-001");
+    const listsBeforePoll = useWorkbenchStore.getState().conversationListsByScope;
+    const activeListBeforePoll = listsBeforePoll.drc;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().conversationListsByScope).toBe(
+      listsBeforePoll,
+    );
+    expect(useWorkbenchStore.getState().conversationListsByScope.drc).toBe(
+      activeListBeforePoll,
+    );
+  });
+
+  it("applies a batch of poll conversation updates in final display order", async () => {
+    const baseService = createMockWorkbenchService();
+    let conversationChanges: WorkbenchPollResponse["conversationChanges"] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const snapshots = (
+      await baseService.getConversations("drc", {
+        limit: 1000,
+        mode: "single",
+      })
+    ).items;
+    const first = snapshots.find(
+      (conversation) => conversation.conversationId === "conv-001",
+    );
+    const second = snapshots.find(
+      (conversation) => conversation.conversationId === "conv-002",
+    );
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    const untouchedBeforePoll = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc?.find(
+        (conversation) => conversation.id === "conv-003",
+      );
+    const latestTime = Math.max(
+      first?.lastMessageTime ?? 0,
+      second?.lastMessageTime ?? 0,
+    ) + 10_000;
+    conversationChanges = [
+      {
+        ...first!,
+        isPinned: false,
+        lastMessage: "第一条批量更新",
+        lastMessageTime: latestTime,
+        type: "upsert",
+      },
+      {
+        ...second!,
+        isPinned: false,
+        lastMessage: "第二条批量更新",
+        lastMessageTime: latestTime + 1,
+        type: "upsert",
+      },
+    ];
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const conversations = useWorkbenchStore.getState().conversationListsByScope.drc ?? [];
+    expect(conversations.slice(0, 2).map((conversation) => conversation.id)).toEqual([
+      "conv-002",
+      "conv-001",
+    ]);
+    expect(conversations.find((conversation) => conversation.id === "conv-003")).toBe(
+      untouchedBeforePoll,
+    );
   });
 
   it("refreshes full account metadata from poll account changes", async () => {

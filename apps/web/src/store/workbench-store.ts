@@ -45,7 +45,10 @@ import {
   unpinConversation,
   updateSeatAgentMode,
 } from "@/pages/chat/api/workbench-gateway";
-import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
+import type {
+  WorkbenchConversationChange,
+  WorkbenchConversationPage,
+} from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
   JAVA_MENTION_PLACEHOLDER,
@@ -719,13 +722,21 @@ function mergeConversationList(
   ]);
 }
 
-function mergePolledConversation(
-  currentList: Conversation[],
+function haveSameShallowValues(left: object, right: object) {
+  const leftEntries = Object.entries(left);
+
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) =>
+      Object.is(value, (right as Record<string, unknown>)[key]),
+    )
+  );
+}
+
+function resolvePolledConversation(
+  currentConversation: Conversation | undefined,
   conversation: Conversation,
 ) {
-  const currentConversation = currentList.find(
-    (item) => item.id === conversation.id,
-  );
   const shouldPreserveOptimisticReply =
     currentConversation?.replied === true &&
     conversation.replied === false &&
@@ -733,15 +744,58 @@ function mergePolledConversation(
     conversation.updatedAtMs != null &&
     currentConversation.updatedAtMs > conversation.updatedAtMs;
 
-  return mergeConversationList(
-    currentList,
-    shouldPreserveOptimisticReply
-      ? {
-          ...conversation,
-          replied: true,
-        }
-      : conversation,
+  return shouldPreserveOptimisticReply
+    ? {
+        ...conversation,
+        replied: true,
+      }
+    : conversation;
+}
+
+function applyPolledConversationChanges(
+  currentList: Conversation[],
+  changes: WorkbenchConversationChange[],
+) {
+  const conversationsById = new Map(
+    currentList.map((conversation) => [conversation.id, conversation]),
   );
+  const removedConversationIds: string[] = [];
+  let didChange = false;
+  let hasUnreadIncrease = false;
+
+  for (const change of changes) {
+    if (change.type === "remove") {
+      removedConversationIds.push(change.conversationId);
+      didChange = conversationsById.delete(change.conversationId) || didChange;
+      continue;
+    }
+
+    const currentConversation = conversationsById.get(change.conversation.id);
+    hasUnreadIncrease ||=
+      change.conversation.unread > (currentConversation?.unread ?? 0);
+    const nextConversation = resolvePolledConversation(
+      currentConversation,
+      change.conversation,
+    );
+
+    if (
+      currentConversation &&
+      haveSameShallowValues(currentConversation, nextConversation)
+    ) {
+      continue;
+    }
+
+    conversationsById.set(nextConversation.id, nextConversation);
+    didChange = true;
+  }
+
+  return {
+    conversations: didChange
+      ? sortConversations([...conversationsById.values()])
+      : currentList,
+    hasUnreadIncrease,
+    removedConversationIds,
+  };
 }
 
 function mergeConversationProfile(
@@ -1124,17 +1178,6 @@ function hasNewCustomerMessage(
         isSameMessage(currentMessage, nextMessage),
       ),
   );
-}
-
-function hasConversationUnreadIncrease(
-  conversations: Conversation[],
-  nextConversation: Conversation,
-) {
-  const currentConversation = conversations.find(
-    (conversation) => conversation.id === nextConversation.id,
-  );
-
-  return nextConversation.unread > (currentConversation?.unread ?? 0);
 }
 
 function omitPendingSmartReplyKey(
@@ -5555,7 +5598,8 @@ export function createWorkbenchStore() {
             currentState.accounts.some((account) =>
               accountChangesById.has(account.id),
             );
-          const nextAccounts = hasAccountChanges
+          let didAccountsChange = false;
+          const mappedAccounts = hasAccountChanges
             ? currentState.accounts.map((account) => {
                 const change = accountChangesById.get(account.id);
 
@@ -5567,40 +5611,54 @@ export function createWorkbenchStore() {
                 void accountId;
                 void seatId;
 
-                return {
+                const nextAccount = {
                   ...account,
                   ...accountChange,
                   id: account.id,
                   metrics: account.metrics,
                   tone: account.tone,
                 };
+
+                if (haveSameShallowValues(account, nextAccount)) {
+                  return account;
+                }
+
+                didAccountsChange = true;
+                return nextAccount;
               })
             : currentState.accounts;
-          const hasConversationChanges = response.conversationChanges.length > 0;
-          const nextConversationLists = hasConversationChanges
-            ? { ...currentState.conversationListsByScope }
-            : currentState.conversationListsByScope;
+          const nextAccounts = didAccountsChange
+            ? mappedAccounts
+            : currentState.accounts;
+          let nextConversationLists = currentState.conversationListsByScope;
           const removedConversationIds: string[] = [];
+          const conversationChangesByAccountId = new Map<
+            string,
+            WorkbenchConversationChange[]
+          >();
 
           for (const change of response.conversationChanges) {
-            const currentList = nextConversationLists[change.accountId] ?? [];
+            const accountChanges =
+              conversationChangesByAccountId.get(change.accountId) ?? [];
+            accountChanges.push(change);
+            conversationChangesByAccountId.set(change.accountId, accountChanges);
+          }
 
-            if (change.type === "remove") {
-              nextConversationLists[change.accountId] = currentList.filter(
-                (conversation) => conversation.id !== change.conversationId,
-              );
-              removedConversationIds.push(change.conversationId);
+          for (const [accountId, changes] of conversationChangesByAccountId) {
+            const currentList = currentState.conversationListsByScope[accountId] ?? [];
+            const result = applyPolledConversationChanges(currentList, changes);
+
+            removedConversationIds.push(...result.removedConversationIds);
+            shouldNotifyPulledCustomerMessage ||= result.hasUnreadIncrease;
+
+            if (result.conversations === currentList) {
               continue;
             }
 
-            nextConversationLists[change.accountId] = mergePolledConversation(
-              currentList,
-              change.conversation,
-            );
-            shouldNotifyPulledCustomerMessage ||= hasConversationUnreadIncrease(
-              currentList,
-              change.conversation,
-            );
+            if (nextConversationLists === currentState.conversationListsByScope) {
+              nextConversationLists = { ...currentState.conversationListsByScope };
+            }
+            nextConversationLists[accountId] = result.conversations;
           }
 
           const clearedResourceState = removedConversationIds.length

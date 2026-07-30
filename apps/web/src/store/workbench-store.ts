@@ -3087,7 +3087,10 @@ export function createWorkbenchStore() {
   const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
-  const conversationProfileRefreshRequestsById = new Map<string, Promise<void>>();
+  const conversationProfileRefreshRequestsById = new Map<
+    string,
+    Promise<Conversation>
+  >();
   const conversationReadRequestsById = new Map<
     string,
     ReturnType<typeof markConversationRead>
@@ -4014,65 +4017,74 @@ export function createWorkbenchStore() {
       });
     }
 
-    function refreshUnverifiedConversationProfile(input: {
+    async function refreshUnverifiedConversationProfile(input: {
       accountId: string;
       conversationId: string;
       requestId: number;
     }) {
-      const existingRequest = conversationProfileRefreshRequestsById.get(
+      let request = conversationProfileRefreshRequestsById.get(
         input.conversationId,
       );
 
-      if (existingRequest) {
-        return existingRequest;
+      if (!request) {
+        request = loadConversationSummary(input.conversationId);
+        conversationProfileRefreshRequestsById.set(input.conversationId, request);
+
+        void request.then(
+          () => {
+            if (
+              conversationProfileRefreshRequestsById.get(input.conversationId) ===
+              request
+            ) {
+              conversationProfileRefreshRequestsById.delete(input.conversationId);
+            }
+          },
+          () => {
+            if (
+              conversationProfileRefreshRequestsById.get(input.conversationId) ===
+              request
+            ) {
+              conversationProfileRefreshRequestsById.delete(input.conversationId);
+            }
+          },
+        );
       }
 
-      const request = loadConversationSummary(input.conversationId)
-        .then((conversation) => {
+      try {
+        const conversation = await request;
+
+        if (
+          !isCurrentScopeRequest(input.requestId) ||
+          conversation.accountId !== input.accountId ||
+          conversation.id !== input.conversationId
+        ) {
+          return;
+        }
+
+        set((currentState) => {
+          const currentList =
+            currentState.conversationListsByScope[input.accountId] ?? [];
+
           if (
-            !isCurrentScopeRequest(input.requestId) ||
-            conversation.accountId !== input.accountId ||
-            conversation.id !== input.conversationId
+            currentState.activeAccountId !== input.accountId ||
+            !currentList.some((item) => item.id === input.conversationId)
           ) {
-            return;
+            return currentState;
           }
 
-          set((currentState) => {
-            const currentList =
-              currentState.conversationListsByScope[input.accountId] ?? [];
-
-            if (
-              currentState.activeAccountId !== input.accountId ||
-              !currentList.some((item) => item.id === input.conversationId)
-            ) {
-              return currentState;
-            }
-
-            return {
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [input.accountId]: mergeConversationProfile(
-                  currentList,
-                  conversation,
-                ),
-              },
-            };
-          });
-        })
-        .catch(() => {
-          // Profile refresh is best-effort and must not block opening the conversation.
-        })
-        .finally(() => {
-          if (
-            conversationProfileRefreshRequestsById.get(input.conversationId) ===
-            request
-          ) {
-            conversationProfileRefreshRequestsById.delete(input.conversationId);
-          }
+          return {
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [input.accountId]: mergeConversationProfile(
+                currentList,
+                conversation,
+              ),
+            },
+          };
         });
-
-      conversationProfileRefreshRequestsById.set(input.conversationId, request);
-      return request;
+      } catch {
+        // Profile refresh is best-effort and must not block opening the conversation.
+      }
     }
 
     async function setConversationPinned(

@@ -448,6 +448,64 @@ describe("useWorkbenchStore", () => {
     expect(getConversation).toHaveBeenCalledWith("conv-002");
   });
 
+  it("applies a shared profile refresh after leaving and reopening the conversation", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const refreshedConversation = {
+      ...(await baseService.getConversation("conv-002")),
+      customerAvatar: "https://example.com/refreshed-after-return.png",
+      customerName: "重新进入后补齐的客户",
+      verified: true,
+    };
+    const profileRefresh = createDeferred<typeof refreshedConversation>();
+    const getConversation = vi.fn(() => profileRefresh.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? {
+                ...conversation,
+                customerAvatarUrl: "",
+                customerName: "未知客户",
+                isVerified: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(getConversation).toHaveBeenCalledTimes(1);
+
+    profileRefresh.resolve(refreshedConversation);
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc.find(
+            (conversation) => conversation.id === "conv-002",
+          ),
+      ).toMatchObject({
+        customerAvatarUrl: "https://example.com/refreshed-after-return.png",
+        customerName: "重新进入后补齐的客户",
+        isVerified: true,
+      });
+    });
+  });
+
   it("keeps opening an unverified conversation when profile refresh fails", async () => {
     const baseService = createMockWorkbenchService();
 

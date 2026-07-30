@@ -82,6 +82,8 @@ import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resourc
 import {
   collectCompleteSkillResourcesFromContent,
   listIncompleteSkillResources,
+  matchIncompleteResourcesToRecommendations,
+  type SkillRecommendBinding,
 } from "./ai-skill-resource";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
@@ -98,6 +100,7 @@ type SkillItem = {
   exampleQuestion: string;
   icon: string;
   id: string;
+  recommendBindings: readonly SkillRecommendBinding[];
   recommendedKnowledgeBases: readonly SkillRecommendation[];
   recommendedTools: readonly SkillRecommendation[];
   recommendedVariables: readonly SkillRecommendation[];
@@ -293,12 +296,24 @@ function mapTemplateToSkillItem(template: AgentSkillTemplateItem): SkillItem {
     applicationScenario: template.applyScene,
     skillDescription: template.content,
     icon: template.icon,
+    recommendBindings: template.recommendResources.map(toRecommendBinding),
     recommendedVariables: filterRecommendations(template.recommendResources, "variable"),
     recommendedTools: filterRecommendations(template.recommendResources, "tool"),
     recommendedKnowledgeBases: filterRecommendations(
       template.recommendResources,
       "knowledge_base",
     ),
+  };
+}
+
+function toRecommendBinding(
+  item: AgentSkillTemplateRecommendItem,
+): SkillRecommendBinding {
+  return {
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    ...(item.variableType ? { variableType: item.variableType } : {}),
   };
 }
 
@@ -788,6 +803,17 @@ function SkillDetailDialog({
     [skill],
   );
 
+  const editableResources = useMemo(
+    () =>
+      skill
+        ? matchIncompleteResourcesToRecommendations(
+            incompleteResources,
+            skill.recommendBindings,
+          )
+        : [],
+    [incompleteResources, skill],
+  );
+
   function goToCreateSkill(draft: SkillCreateDraft) {
     setEditResourcesOpen(false);
     onOpenChange(false);
@@ -803,7 +829,8 @@ function SkillDetailDialog({
       return;
     }
 
-    if (incompleteResources.length > 0) {
+    // 有未绑定蓝色块时先补齐：有对应推荐的按推荐类型选，没有的按区块自身类型正常选
+    if (editableResources.length > 0) {
       setEditResourcesOpen(true);
       return;
     }
@@ -917,7 +944,7 @@ function SkillDetailDialog({
       {skill ? (
         <SkillPreviewEditResourcesDialog
           content={skill.skillDescription}
-          incompleteResources={incompleteResources}
+          editableResources={editableResources}
           onCancel={() => {
             setEditResourcesOpen(false);
           }}
@@ -955,33 +982,36 @@ function SkillRecommendationSection({
   items: readonly SkillRecommendation[];
   title: string;
 }) {
+  if (items.length === 0) {
+    return null;
+  }
+
   return (
-    <section
-      aria-label={title}
-      className="space-y-3 border-t border-border py-5"
-    >
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      {items.length > 0 ? (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
-              <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-                <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={1.8} />
-              </span>
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-medium text-foreground">{item.title}</p>
-                {item.description ? (
-                  <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {item.description}
-                  </p>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">暂无数据</p>
-      )}
+    <section aria-label={title} className="space-y-4 py-5">
+      <h3 className="border-b border-border pb-3 text-sm font-semibold text-foreground">
+        {title}
+      </h3>
+      <ul className="space-y-3">
+        {items.map((item) => (
+          <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-foreground"
+              icon={icon}
+              size={18}
+              strokeWidth={1.8}
+            />
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium text-foreground">{item.title}</p>
+              {item.description ? (
+                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                  {item.description}
+                </p>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

@@ -6,11 +6,21 @@ export const AgentSkillTemplateRecommendTypeSchema = Type.Union([
   Type.Literal("knowledge_base"),
 ]);
 
+export const AgentSkillTemplateRecommendVariableTypeSchema = Type.Union([
+  Type.Literal("custom_field"),
+  Type.Literal("work_tag"),
+  Type.Literal("mall_tag"),
+  Type.Literal("auto_tag"),
+  Type.Literal("system_variable"),
+]);
+
 export const AgentSkillTemplateRecommendItemSchema = Type.Object(
   {
     description: Type.String(),
     title: Type.String(),
     type: AgentSkillTemplateRecommendTypeSchema,
+    /** 仅 variable 推荐项可能带；无 title 时用于映射展示名 */
+    variableType: Type.Optional(AgentSkillTemplateRecommendVariableTypeSchema),
   },
   { additionalProperties: false },
 );
@@ -55,4 +65,7 @@ export type AgentSkillTemplateRecommendItem = Static<
 >;
 export type AgentSkillTemplateRecommendType = Static<
   typeof AgentSkillTemplateRecommendTypeSchema
+>;
+export type AgentSkillTemplateRecommendVariableType = Static<
+  typeof AgentSkillTemplateRecommendVariableTypeSchema
 >;

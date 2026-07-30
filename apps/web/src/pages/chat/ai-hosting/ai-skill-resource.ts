@@ -253,16 +253,16 @@ export function getSkillResourceAttribute(
   return readResourceAttribute(placeholder, attributeName);
 }
 
-/** 模版里未绑定具体资源的蓝色区块（如 toolId=""） */
+/** 模版里未绑定具体资源的蓝色区块（如 kbId=""） */
 export function isIncompleteSkillResource(
   segment: SkillContentResourceSegment,
 ): boolean {
+  // 工具模版预览时不要求用户再选
   if (segment.kind === "tool") {
-    return !readResourceAttribute(segment.placeholder, "toolId").trim();
+    return false;
   }
 
   if (segment.kind === "knowledge_base") {
-    // type=knowledge_base：kbId 为空则需弹窗让用户选择并替换
     return !readResourceAttribute(segment.placeholder, "kbId").trim();
   }
 
@@ -276,7 +276,24 @@ export function isIncompleteSkillResource(
   }
 
   const variableId = readResourceAttribute(segment.placeholder, "variableId").trim();
-  return !variableType || !variableId;
+  const variableKey = readResourceAttribute(segment.placeholder, "variableKey").trim();
+
+  // work_tag / mall_tag / custom_field：校验 variableId
+  if (
+    variableType === "work_tag"
+    || variableType === "mall_tag"
+    || variableType === "custom_field"
+  ) {
+    return !variableId;
+  }
+
+  // auto_tag：校验 variableKey
+  if (variableType === "auto_tag") {
+    return !variableKey;
+  }
+
+  // variableType 缺失或未知：仍视为未绑定，进入编辑资源弹窗
+  return true;
 }
 
 export function listIncompleteSkillResources(
@@ -287,6 +304,88 @@ export function listIncompleteSkillResources(
       ? [segment]
       : [],
   );
+}
+
+export type SkillRecommendBinding = {
+  description: string;
+  title: string;
+  type: SkillContentResourceKind;
+  variableType?: SkillVariableType;
+};
+
+/** 未绑定蓝色块优先配对同类型推荐；无对应推荐时仍可按区块自身类型正常选择 */
+export function matchIncompleteResourcesToRecommendations(
+  incompleteResources: readonly SkillContentResourceSegment[],
+  recommendations: readonly SkillRecommendBinding[],
+): Array<{
+  fieldLabel: string;
+  recommend: SkillRecommendBinding | null;
+  segment: SkillContentResourceSegment;
+  variableType: SkillVariableType | null;
+}> {
+  const usedRecommendIndexes = new Set<number>();
+  const matched: Array<{
+    fieldLabel: string;
+    recommend: SkillRecommendBinding | null;
+    segment: SkillContentResourceSegment;
+    variableType: SkillVariableType | null;
+  }> = [];
+
+  for (const segment of incompleteResources) {
+    const segmentVariableType =
+      segment.kind === "variable" ? resolveTemplateVariableType(segment) : null;
+
+    const recommendIndex = recommendations.findIndex((recommend, index) => {
+      if (usedRecommendIndexes.has(index)) {
+        return false;
+      }
+
+      if (recommend.type !== segment.kind) {
+        return false;
+      }
+
+      if (segment.kind !== "variable") {
+        return true;
+      }
+
+      if (!recommend.variableType) {
+        return true;
+      }
+
+      if (!segmentVariableType) {
+        return true;
+      }
+
+      return recommend.variableType === segmentVariableType;
+    });
+
+    if (recommendIndex < 0) {
+      matched.push({
+        fieldLabel: segment.name,
+        recommend: null,
+        segment,
+        variableType: segmentVariableType,
+      });
+      continue;
+    }
+
+    const recommend = recommendations[recommendIndex]!;
+    usedRecommendIndexes.add(recommendIndex);
+
+    const variableType =
+      segment.kind === "variable"
+        ? (recommend.variableType ?? segmentVariableType)
+        : null;
+
+    matched.push({
+      fieldLabel: recommend.title || segment.name,
+      recommend,
+      segment,
+      variableType,
+    });
+  }
+
+  return matched;
 }
 
 export function resolveTemplateVariableType(

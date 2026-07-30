@@ -9,15 +9,67 @@ describe("parseRecommendResources", () => {
     expect(
       parseRecommendResources(
         JSON.stringify([
-          { type: "variable", title: "客户标签", description: "按肤质筛选" },
+          { type: "variable", title: "客户标签查询", description: "按肤质筛选" },
           { type: "tool", title: "订单查询", description: "查物流" },
-          { type: "kb", title: "护肤知识库", description: "成分说明" },
+          { type: "kb", title: "美妆护肤", description: "这是描述" },
         ]),
       ),
     ).toEqual([
-      { type: "variable", title: "客户标签", description: "按肤质筛选" },
+      { type: "variable", title: "客户标签查询", description: "按肤质筛选" },
       { type: "tool", title: "订单查询", description: "查物流" },
-      { type: "knowledge_base", title: "护肤知识库", description: "成分说明" },
+      { type: "knowledge_base", title: "美妆护肤", description: "这是描述" },
+    ]);
+  });
+
+  it("parses resourceType + variableType recommend arrays", () => {
+    expect(
+      parseRecommendResources(
+        JSON.stringify([
+          {
+            resourceType: "variable",
+            variableType: "work_tag",
+            description: "建议选择包含客户基础信息的标签",
+          },
+          {
+            resourceType: "variable",
+            variableType: "custom_field",
+            description: "建议选择包含客户基础信息的自定义信息字段",
+          },
+          {
+            resourceType: "tool",
+            title: "订单查询",
+            description: "根据客户聊天消息中给到的订单号查询订单信息",
+          },
+          {
+            resourceType: "knowledge_base",
+            title: "美妆护肤",
+            description: "这是描述",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        type: "variable",
+        variableType: "work_tag",
+        title: "企微标签",
+        description: "建议选择包含客户基础信息的标签",
+      },
+      {
+        type: "variable",
+        variableType: "custom_field",
+        title: "自定义属性",
+        description: "建议选择包含客户基础信息的自定义信息字段",
+      },
+      {
+        type: "tool",
+        title: "订单查询",
+        description: "根据客户聊天消息中给到的订单号查询订单信息",
+      },
+      {
+        type: "knowledge_base",
+        title: "美妆护肤",
+        description: "这是描述",
+      },
     ]);
   });
 

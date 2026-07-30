@@ -3,30 +3,90 @@ import {
   collectCompleteSkillResourcesFromContent,
   isIncompleteSkillResource,
   listIncompleteSkillResources,
+  matchIncompleteResourcesToRecommendations,
   parseSkillContentSegments,
   replaceSkillContentResource,
   resolveTemplateVariableType,
 } from "@/pages/chat/ai-hosting/ai-skill-resource";
 
 describe("ai skill incomplete resources", () => {
-  it("detects empty toolId / kbId / variableId / variableType as incomplete", () => {
+  it("checks kbId and variable bindings by variableType, skips tools", () => {
     const content = [
-      '查询 <resource type="tool" toolId="" name="订单查询" />',
+      '<resource type="tool" toolId="" name="订单查询" />',
       '<resource type="knowledge_base" kbId="" name="售后知识" />',
       '<resource type="variable" variableType="work_tag" variableId="" name="企微标签" />',
-      '<resource type="variable" variableType="" variableId="" name="未定类型" />',
+      '<resource type="variable" variableType="mall_tag" variableId="" name="小店标签" />',
+      '<resource type="variable" variableType="custom_field" variableId="" name="自定义属性" />',
+      '<resource type="variable" variableType="auto_tag" variableKey="" name="自动化标签" />',
+      '<resource type="variable" variableType="" name="未定类型" />',
       '<resource type="tool" toolId="search_order" name="订单查询" />',
+      '<resource type="variable" variableType="work_tag" variableId="12" name="已绑企微" />',
+      '<resource type="variable" variableType="auto_tag" variableKey="g1" name="已绑自动化" />',
     ].join("");
 
     const incomplete = listIncompleteSkillResources(content);
-    expect(incomplete).toHaveLength(4);
-    expect(incomplete.map((item) => item.kind)).toEqual([
-      "tool",
-      "knowledge_base",
-      "variable",
-      "variable",
+    expect(incomplete.map((item) => item.name)).toEqual([
+      "售后知识",
+      "企微标签",
+      "小店标签",
+      "自定义属性",
+      "自动化标签",
+      "未定类型",
     ]);
-    expect(incomplete[2]?.name).toBe("企微标签");
+  });
+
+  it("pairs incomplete blue blocks with recommendations when available", () => {
+    const incomplete = listIncompleteSkillResources(
+      [
+        '<resource type="variable" variableType="work_tag" variableId="" name="企微标签" />',
+        '<resource type="variable" variableType="custom_field" variableId="" name="自定义属性" />',
+        '<resource type="variable" variableType="mall_tag" variableId="" name="小店标签" />',
+        '<resource type="knowledge_base" kbId="" name="售后知识" />',
+      ].join(""),
+    );
+
+    const matched = matchIncompleteResourcesToRecommendations(incomplete, [
+      {
+        type: "variable",
+        variableType: "work_tag",
+        title: "企微标签",
+        description: "建议选择包含客户基础信息的标签",
+      },
+      {
+        type: "variable",
+        variableType: "custom_field",
+        title: "自定义属性",
+        description: "建议选择包含客户基础信息的自定义信息字段",
+      },
+    ]);
+
+    expect(matched.map((item) => item.fieldLabel)).toEqual([
+      "企微标签",
+      "自定义属性",
+      "小店标签",
+      "售后知识",
+    ]);
+    expect(matched.map((item) => item.variableType)).toEqual([
+      "work_tag",
+      "custom_field",
+      "mall_tag",
+      null,
+    ]);
+    expect(matched.map((item) => item.recommend?.title ?? null)).toEqual([
+      "企微标签",
+      "自定义属性",
+      null,
+      null,
+    ]);
+    expect(matched).toHaveLength(4);
+  });
+
+  it("ignores tool resources even when toolId is empty", () => {
+    expect(
+      listIncompleteSkillResources(
+        '<resource type="tool" toolId="" name="订单查询" />',
+      ),
+    ).toHaveLength(0);
   });
 
   it("treats empty knowledge_base kbId as incomplete and keeps filled kb complete", () => {
@@ -81,20 +141,20 @@ describe("ai skill incomplete resources", () => {
 
   it("replaces incomplete placeholders and collects complete resources", () => {
     const source =
-      '请调用 <resource type="tool" toolId="" name="订单查询" /> 查询';
+      '请参考 <resource type="knowledge_base" kbId="" name="售后知识" />';
     const next =
-      '<resource type="tool" toolId="search_order" name="订单查询" />';
+      '<resource type="knowledge_base" kbId="21" name="真实售后库" />';
     const updated = replaceSkillContentResource(
       source,
-      '<resource type="tool" toolId="" name="订单查询" />',
+      '<resource type="knowledge_base" kbId="" name="售后知识" />',
       next,
     );
 
-    expect(updated).toContain('toolId="search_order"');
+    expect(updated).toContain('kbId="21"');
     expect(listIncompleteSkillResources(updated)).toHaveLength(0);
 
     const resources = collectCompleteSkillResourcesFromContent(updated);
-    expect(resources.tools).toHaveLength(1);
-    expect(resources.tools[0]?.toolKey).toBe("search_order");
+    expect(resources["knowledge-bases"]).toHaveLength(1);
+    expect(resources["knowledge-bases"][0]?.kbId).toBe(21);
   });
 });

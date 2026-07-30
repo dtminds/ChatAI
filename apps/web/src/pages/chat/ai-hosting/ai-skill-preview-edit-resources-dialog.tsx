@@ -26,7 +26,6 @@ import {
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
   replaceSkillContentResource,
-  resolveTemplateVariableType,
   type SkillContentResourceSegment,
   type SkillResourceItem,
   type SkillVariableConfig,
@@ -37,17 +36,24 @@ const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
 const MALL_TAG_TYPE = 12 as const;
 const KB_PAGE_SIZE = 100;
 
+export type SkillPreviewEditableResource = {
+  fieldLabel: string;
+  segment: SkillContentResourceSegment;
+  variableType: SkillVariableType | null;
+};
+
 type OptionItem = {
   label: string;
-  /** 选项附带元数据，确认时用于组装资源 */
   meta?: Record<string, string>;
   value: string;
 };
 
 type FieldDraft = {
+  fieldLabel: string;
   options: OptionItem[];
   segment: SkillContentResourceSegment;
   selectedValue: string;
+  variableType: SkillVariableType | null;
 };
 
 const previewToolCatalog: ReadonlyArray<{
@@ -84,13 +90,13 @@ const previewToolCatalog: ReadonlyArray<{
 
 export function SkillPreviewEditResourcesDialog({
   content,
-  incompleteResources,
+  editableResources,
   onCancel,
   onConfirm,
   open,
 }: {
   content: string;
-  incompleteResources: readonly SkillContentResourceSegment[];
+  editableResources: readonly SkillPreviewEditableResource[];
   onCancel: () => void;
   onConfirm: (result: {
     content: string;
@@ -134,10 +140,12 @@ export function SkillPreviewEditResourcesDialog({
       setLoading(true);
       try {
         const nextFields = await Promise.all(
-          incompleteResources.map(async (segment) => ({
-            segment,
+          editableResources.map(async (item) => ({
+            fieldLabel: item.fieldLabel,
+            segment: item.segment,
             selectedValue: "",
-            options: await loadOptionsForSegment(segment),
+            variableType: item.variableType,
+            options: await loadOptionsForEditable(item),
           })),
         );
         if (!cancelled) {
@@ -160,7 +168,7 @@ export function SkillPreviewEditResourcesDialog({
     return () => {
       cancelled = true;
     };
-  }, [incompleteResources, open]);
+  }, [editableResources, open]);
 
   function setFieldValue(placeholder: string, value: string) {
     setFields((current) =>
@@ -189,7 +197,7 @@ export function SkillPreviewEditResourcesDialog({
       for (const field of fields) {
         const built = await buildSelection(field);
         if (!built) {
-          toast.error(`请选择${field.segment.name}`);
+          toast.error(`请选择${field.fieldLabel}`);
           return;
         }
 
@@ -243,6 +251,10 @@ export function SkillPreviewEditResourcesDialog({
             >
               <Spinner size={16} />
               <span>正在加载</span>
+            </div>
+          ) : fields.length === 0 ? (
+            <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+              暂无数据
             </div>
           ) : (
             <div className="space-y-6">
@@ -311,7 +323,7 @@ function ResourceFieldSection({
         {fields.map((field) => (
           <div className="space-y-2" key={field.segment.placeholder}>
             <Label className="text-sm font-medium text-foreground">
-              <span className="text-destructive">*</span> {field.segment.name}
+              <span className="text-destructive">*</span> {field.fieldLabel}
             </Label>
             <Select
               onValueChange={(value) => {
@@ -343,10 +355,10 @@ function ResourceFieldSection({
   );
 }
 
-async function loadOptionsForSegment(
-  segment: SkillContentResourceSegment,
+async function loadOptionsForEditable(
+  item: SkillPreviewEditableResource,
 ): Promise<OptionItem[]> {
-  if (segment.kind === "tool") {
+  if (item.segment.kind === "tool") {
     return previewToolCatalog.map((tool) => ({
       label: tool.title,
       value: tool.id,
@@ -354,10 +366,10 @@ async function loadOptionsForSegment(
     }));
   }
 
-  if (segment.kind === "knowledge_base") {
+  if (item.segment.kind === "knowledge_base") {
     const response = await listKbs({ page: 1, pageSize: KB_PAGE_SIZE });
-    return response.kbs.map((item) => {
-      const view = toKbListViewItem(item);
+    return response.kbs.map((kb) => {
+      const view = toKbListViewItem(kb);
       return {
         label: view.name,
         value: String(view.id),
@@ -366,12 +378,11 @@ async function loadOptionsForSegment(
     });
   }
 
-  const variableType = resolveTemplateVariableType(segment);
-  if (!variableType) {
+  if (!item.variableType) {
     return [];
   }
 
-  return loadVariableOptions(variableType);
+  return loadVariableOptions(item.variableType);
 }
 
 async function loadVariableOptions(
@@ -416,7 +427,6 @@ async function loadVariableOptions(
     }));
   }
 
-  // mall_tag：按标签聚合出分组
   const response = await listWorkTags({
     page: 1,
     pageSize: 100,
@@ -481,12 +491,11 @@ async function buildSelection(field: FieldDraft): Promise<{
     };
   }
 
-  const variableType = resolveTemplateVariableType(field.segment);
-  if (!variableType) {
+  if (!field.variableType) {
     return null;
   }
 
-  const variable = await buildVariableConfig(variableType, option);
+  const variable = await buildVariableConfig(field.variableType, option);
   if (!variable) {
     return null;
   }

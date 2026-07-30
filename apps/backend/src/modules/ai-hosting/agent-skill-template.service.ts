@@ -159,18 +159,8 @@ function mapRecommendBucket(
       return [];
     }
 
-    const title = readString(item.title) || readString(item.name);
-    if (!title) {
-      return [];
-    }
-
-    return [
-      {
-        type,
-        title,
-        description: readString(item.description) || readString(item.desc) || "",
-      },
-    ];
+    const mapped = mapRecommendItem({ ...item, type: item.type ?? item.resourceType ?? type });
+    return mapped ? [mapped] : [];
   });
 }
 
@@ -179,9 +169,19 @@ function mapRecommendItem(value: unknown): AgentSkillTemplateRecommendItem | nul
     return null;
   }
 
-  const type = normalizeRecommendType(value.type);
-  const title = readString(value.title) || readString(value.name);
-  if (!type || !title) {
+  const type = normalizeRecommendType(value.type ?? value.resourceType);
+  if (!type) {
+    return null;
+  }
+
+  const variableType = normalizeRecommendVariableType(value.variableType);
+  const title =
+    readString(value.title)
+    || readString(value.name)
+    || (type === "variable" ? recommendVariableTypeTitle(variableType) : "")
+    || (type === "tool" ? "工具" : "")
+    || (type === "knowledge_base" ? "知识库" : "");
+  if (!title) {
     return null;
   }
 
@@ -189,6 +189,7 @@ function mapRecommendItem(value: unknown): AgentSkillTemplateRecommendItem | nul
     type,
     title,
     description: readString(value.description) || readString(value.desc) || "",
+    ...(variableType ? { variableType } : {}),
   };
 }
 
@@ -202,6 +203,43 @@ function normalizeRecommendType(value: unknown): AgentSkillTemplateRecommendType
   }
 
   return null;
+}
+
+function normalizeRecommendVariableType(
+  value: unknown,
+): AgentSkillTemplateRecommendItem["variableType"] | undefined {
+  if (
+    value === "custom_field"
+    || value === "work_tag"
+    || value === "mall_tag"
+    || value === "auto_tag"
+    || value === "system_variable"
+  ) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function recommendVariableTypeTitle(
+  variableType: AgentSkillTemplateRecommendItem["variableType"] | undefined,
+) {
+  if (variableType === "work_tag") {
+    return "企微标签";
+  }
+  if (variableType === "mall_tag") {
+    return "小店标签";
+  }
+  if (variableType === "custom_field") {
+    return "自定义属性";
+  }
+  if (variableType === "auto_tag") {
+    return "自动化标签";
+  }
+  if (variableType === "system_variable") {
+    return "系统变量";
+  }
+  return "";
 }
 
 function readString(value: unknown) {

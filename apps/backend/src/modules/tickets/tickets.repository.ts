@@ -336,12 +336,6 @@ export class TicketsRepository {
       .where("conversation.biz_status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .where("sub_user.status", "=", 1)
-      .where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder("sub_user.type", "=", 1),
-          expressionBuilder("sub_user.role", "!=", "viewer"),
-        ]),
-      )
       .orderBy("sub_user.id", "asc")
       .execute();
 
@@ -568,12 +562,6 @@ export class TicketsRepository {
       .where("conversation.biz_status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .where("sub_user.status", "=", 1)
-      .where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder("sub_user.type", "=", 1),
-          expressionBuilder("sub_user.role", "!=", "viewer"),
-        ]),
-      )
       .executeTakeFirst();
     const assigneeSubUserId = assignee?.assignee_sub_user_id == null
       ? null

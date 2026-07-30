@@ -1544,7 +1544,7 @@ describe("InsightsService", () => {
     [{ role: "owner", subUserId: "88" }, true],
     [{ role: "operator", subUserId: "77" }, true],
     [{ role: "operator", subUserId: "88" }, false],
-    [{ role: "viewer", subUserId: "77" }, false],
+    [{ role: "viewer", subUserId: "77" }, true],
     [{ role: undefined, subUserId: "77" }, false],
   ] as const)("derives detail ticket write access from the current actor", async (actor, canEdit) => {
     const service = new InsightsService(createRepository());

@@ -200,7 +200,7 @@ describe("TicketsService", () => {
       view: "assigned_to_me",
     });
     expect(viewerPage.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ canDelete: false, canEdit: false }),
+      expect.objectContaining({ canDelete: true, canEdit: true }),
     ]));
     expect(viewerPage.items[0]).not.toHaveProperty("canClaim");
   });
@@ -223,6 +223,14 @@ describe("TicketsService", () => {
         uid: 9001,
       });
     }
+
+    repository.getTicketDeleteRecordById.mockResolvedValueOnce({
+      createdBySubUserId: "101",
+      sourceType: "manual",
+      status: "open",
+    });
+    await expect(service.deleteTicket(createActor("viewer"), "501"))
+      .resolves.toEqual({ deleted: true });
   });
 
   it("rejects ticket deletion by non-creators, elevated roles, and AI sources", async () => {
@@ -371,7 +379,7 @@ describe("TicketsService", () => {
     expect(repository.countActiveConversationTickets).not.toHaveBeenCalled();
   });
 
-  it("rejects group chats viewers and actors without chat access", async () => {
+  it("rejects group chats and actors without chat access while allowing viewers to create", async () => {
     const repository = createRepository();
     const service = new TicketsService(repository);
 
@@ -384,8 +392,9 @@ describe("TicketsService", () => {
     await expect(service.createTicket(createActor("operator"), createPayload()))
       .rejects.toMatchObject({ code: "TICKET_SINGLE_CHAT_ONLY" });
 
+    configureCreationConversation(repository);
     await expect(service.createTicket(createActor("viewer"), createPayload()))
-      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+      .resolves.toHaveProperty("ticket");
 
     configureCreationConversation(repository);
     repository.canAccessConversation.mockResolvedValueOnce(false);
@@ -600,7 +609,7 @@ describe("TicketsService", () => {
     });
   });
 
-  it("enforces the write matrix for assignees creators account-only viewers and admins", async () => {
+  it("enforces the write matrix for assignees creators account-only users and admins", async () => {
     const repository = createRepository();
     const service = new TicketsService(repository);
 
@@ -624,7 +633,7 @@ describe("TicketsService", () => {
       .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
 
     await expect(service.updateTicket(createActor("viewer"), "501", { priority: "high" }))
-      .rejects.toMatchObject({ code: "TICKET_FORBIDDEN" });
+      .resolves.toHaveProperty("ticket");
 
     repository.getTicketRecordById.mockResolvedValueOnce({
       ...baseRecord,
@@ -757,7 +766,7 @@ describe("TicketsService", () => {
     });
     const service = new TicketsService(repository);
 
-    await service.claimTicket(createActor("operator"), "501");
+    await service.claimTicket(createActor("viewer"), "501");
     expect(repository.claimTicket).toHaveBeenCalledWith({
       assigneeSubUserId: 101,
       ticketId: 501,
@@ -779,7 +788,7 @@ describe("TicketsService", () => {
     const repository = createRepository();
     const service = new TicketsService(repository);
 
-    await service.addComment(createActor("operator"), "501", { content: "  已电话确认  " });
+    await service.addComment(createActor("viewer"), "501", { content: "  已电话确认  " });
     expect(repository.addTicketComment).toHaveBeenCalledWith(expect.objectContaining({
       content: "已电话确认",
       enforceWriteAccess: true,

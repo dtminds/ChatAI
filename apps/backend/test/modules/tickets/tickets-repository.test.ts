@@ -355,7 +355,7 @@ describe("TicketsRepository", () => {
     expect(sql).not.toContain("summary.snapshot_id is not null");
   });
 
-  it("limits assignee candidates to active account members and excludes viewers", async () => {
+  it("limits assignee candidates to active account members regardless of role", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -364,8 +364,8 @@ describe("TicketsRepository", () => {
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("relation.sub_id");
     expect(sql).toContain("sub_user.status = ?");
-    expect(sql).toContain("sub_user.role != ?");
-    expect(sql).toContain("sub_user.type = ?");
+    expect(sql).not.toContain("sub_user.role");
+    expect(sql).not.toContain("sub_user.type");
   });
 
   it("creates the manual ticket and first activity in one transaction", async () => {

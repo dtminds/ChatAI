@@ -1486,7 +1486,7 @@ function mapDetailTicketProjection(
   actor: InsightDetailActor,
 ): InsightDetailResponse["actionItems"][number] {
   const canEdit = actor.role === "owner" || actor.role === "admin" || (
-    actor.role === "operator"
+    actor.role != null
     && actor.subUserId != null
     && row.assigneeSubUserId === actor.subUserId
   );

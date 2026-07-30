@@ -978,48 +978,6 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("does not request page smart replies for initializing messages", async () => {
-    const javaClient = createJavaClient();
-    const service = createWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          chatType: 1,
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [
-            {
-              ...createMessageDto({ senderType: "customer", seq: 7 }),
-              status: "initializing",
-            },
-          ],
-          scannedCount: 1,
-          smartReplyScope: {
-            chatType: 1,
-            thirdExternalId: "external-001",
-            thirdUserId: "seat-user-001",
-            uid: 9001,
-          },
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      messages: [{ seq: 7, status: "initializing" }],
-    });
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
-  });
-
   it("allows smart reply auxiliary actions for group conversations", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.getAiHelperTemplate).mockResolvedValue(11);

@@ -1096,7 +1096,6 @@ function hasNewCustomerMessage(
   return nextMessages.some(
     (nextMessage) =>
       nextMessage.role === "customer" &&
-      nextMessage.status !== "initializing" &&
       !currentMessages.some((currentMessage) =>
         isSameMessage(currentMessage, nextMessage),
       ),
@@ -2822,7 +2821,7 @@ function getLatestCustomerMessage(messages: Message[]) {
     const message = messages[index];
 
     if (message?.role === "customer") {
-      return message.status === "initializing" ? undefined : message;
+      return message;
     }
 
     if (message?.role === "agent") {

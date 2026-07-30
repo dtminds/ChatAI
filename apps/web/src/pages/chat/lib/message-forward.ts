@@ -78,11 +78,7 @@ export function getMessageForwardPreview(message: ChatMessage) {
 }
 
 export function canForwardMessage(message: ChatMessage) {
-  if (
-    message.isRevoked ||
-    message.status === "failed" ||
-    message.status === "initializing"
-  ) {
+  if (message.isRevoked || message.status === "failed") {
     return false;
   }
 

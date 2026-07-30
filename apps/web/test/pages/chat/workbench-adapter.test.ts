@@ -289,6 +289,27 @@ describe("adaptMessage", () => {
     },
   };
 
+  it("adapts initializing messages into a visible placeholder", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {},
+          status: "initializing",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        text: "消息内容处理中",
+        type: "text",
+      },
+      status: "initializing",
+    });
+  });
+
   it("marks messages sent by Agent source", () => {
     expect(
       adaptMessage(

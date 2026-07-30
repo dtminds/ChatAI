@@ -164,7 +164,7 @@ export type RevokeMessageLookup = {
   isRevoked: boolean;
   senderType: "agent" | "customer" | "system";
   seq: number;
-  status: "failed" | "sent";
+  status: "failed" | "initializing" | "sent";
 };
 
 export type RetryMessageLookup = {
@@ -2165,7 +2165,12 @@ export class WorkbenchRepository {
         thirdUserId: input.receptionThirdUserId,
       }),
       seq,
-      status: toNumber(row.status) === 0 ? "failed" : "sent",
+      status:
+        toNumber(row.status) === -1
+          ? "initializing"
+          : toNumber(row.status) === 0
+            ? "failed"
+            : "sent",
     };
   }
 

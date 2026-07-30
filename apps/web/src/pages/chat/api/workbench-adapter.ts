@@ -16,6 +16,7 @@ import type {
   MessageStatus,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import { INITIALIZING_MESSAGE_DISPLAY_TEXT } from "@/pages/chat/chat-constants";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 type ChatMessageContent = ChatMessage["content"];
@@ -129,6 +130,8 @@ export function adaptMessage(
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const updatedAtMs = normalizeOptionalTimestamp(dto.updatedAt);
   const status = adaptMessageStatus(dto.status);
+  const initializingText =
+    status === "initializing" ? INITIALIZING_MESSAGE_DISPLAY_TEXT : undefined;
   const isGroupConversation = Boolean(dto.thirdGroupId);
   const uiMessageKey = getMessageUiKey(dto);
 
@@ -137,7 +140,7 @@ export function adaptMessage(
       content: {
         revokeMsgId: asOptionalString(dto.content.revokeMsgId),
         revokeOriginMsgId: asOptionalString(dto.content.revokeOriginMsgId),
-        text: readSystemMessageText(dto.content),
+        text: initializingText ?? readSystemMessageText(dto.content),
         type: "revoke",
       },
       conversationId: dto.conversationId,
@@ -161,7 +164,7 @@ export function adaptMessage(
   if (dto.contentType === "system" || dto.senderType === "system") {
     return {
       content: {
-        text: readSystemMessageText(dto.content),
+        text: initializingText ?? readSystemMessageText(dto.content),
         type: "system",
       },
       conversationId: dto.conversationId,
@@ -185,10 +188,15 @@ export function adaptMessage(
   const isAgent = dto.senderType === "agent";
   const customer = customerProfilesById[dto.customerId];
   const account = accountsById[dto.seatId];
-  const content = adaptChatMessageContent(
-    dto.contentType,
-    mergeTopLevelDownloadMetadata(dto),
-  );
+  const content = initializingText
+    ? {
+        text: initializingText,
+        type: "text" as const,
+      }
+    : adaptChatMessageContent(
+        dto.contentType,
+        mergeTopLevelDownloadMetadata(dto),
+      );
   // 群聊己方消息由后端按「接待号」判定 senderType；勿再用 message.thirdUserId（影子群可能是开通号分区）
   const isOwnMessage = isAgent;
   const senderName = isAgent
@@ -547,6 +555,8 @@ function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatu
     case "queued":
     case "sending":
       return "sending";
+    case "initializing":
+      return "initializing";
     case "failed":
       return "failed";
     case "sent":

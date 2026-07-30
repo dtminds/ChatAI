@@ -252,7 +252,10 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
 
-    if (message?.senderType !== "customer") {
+    if (
+      message?.senderType !== "customer" ||
+      message.status !== "sent"
+    ) {
       continue;
     }
 

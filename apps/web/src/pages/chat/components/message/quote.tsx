@@ -93,7 +93,14 @@ export function QuoteMessagePreview({
     );
   }
 
-  if (quotedMessage.contentType === "text") {
+  if (
+    quotedMessage.contentType === "text" ||
+    quotedMessage.contentType === "quote"
+  ) {
+    const previewText = quotedMessage.contentType === "quote"
+      ? quotedMessage.title || quotedMessage.text
+      : quotedMessage.text;
+
     return (
       <div
         className="max-w-[min(20rem,calc(100vw-7rem))] border-l-2 border-divider py-1 pl-3 text-[12px] leading-5 text-muted-foreground"
@@ -102,7 +109,7 @@ export function QuoteMessagePreview({
       >
         <span className="whitespace-pre-wrap break-words">
           {formatSenderPrefix(quotedMessage.senderName)}
-          {quotedMessage.text || quotedMessage.fallbackText || "引用消息不可用"}
+          {previewText || quotedMessage.fallbackText || "引用消息不可用"}
         </span>
       </div>
     );

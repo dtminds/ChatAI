@@ -7531,6 +7531,33 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
   });
 
+  it("keeps initializing messages out of the sent revoke state", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        from_type: 1,
+        id: 321,
+        msgid: "321",
+        status: -1,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
+        messageSeq: 321,
+        platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
+        thirdExternalUserId: "external-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      seq: 321,
+      status: "initializing",
+    });
+  });
+
   it("keeps ordinary group revoke lookup and ownership on the current seat", async () => {
     const db = createMessagesDb([
       messageRow({

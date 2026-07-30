@@ -153,6 +153,8 @@ type SendMessageResult =
 
 type RetryFailedMessageResult = SendMessageResult;
 
+type RefreshInitializingMessageResult = "initializing" | "missing" | "updated";
+
 type MarkConversationHandoffHandledResult =
   | { ok: true }
   | { errorMessage: string; ok: false };
@@ -321,6 +323,10 @@ type WorkbenchState = {
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (uiMessageKey: string) => Promise<RetryFailedMessageResult>;
+  refreshInitializingMessage: (
+    conversationId: string,
+    messageSeq: number,
+  ) => Promise<RefreshInitializingMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -424,6 +430,7 @@ function createInitialState(): Omit<
   | "takeOverAccount"
   | "unpinConversation"
   | "retryFailedMessage"
+  | "refreshInitializingMessage"
   | "revokeMessage"
   | "loadOlderMessages"
   | "openHistoryPanel"
@@ -1089,6 +1096,7 @@ function hasNewCustomerMessage(
   return nextMessages.some(
     (nextMessage) =>
       nextMessage.role === "customer" &&
+      nextMessage.status !== "initializing" &&
       !currentMessages.some((currentMessage) =>
         isSameMessage(currentMessage, nextMessage),
       ),
@@ -2814,7 +2822,7 @@ function getLatestCustomerMessage(messages: Message[]) {
     const message = messages[index];
 
     if (message?.role === "customer") {
-      return message;
+      return message.status === "initializing" ? undefined : message;
     }
 
     if (message?.role === "agent") {
@@ -5843,6 +5851,56 @@ export function createWorkbenchStore() {
           type: "text",
         },
       ]);
+    },
+    async refreshInitializingMessage(conversationId, messageSeq) {
+      if (!conversationId || !isValidMessageSeq(messageSeq)) {
+        return "missing";
+      }
+
+      const state = get();
+      const refreshedMessages = await loadMessagesBySeqs(
+        {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        },
+        conversationId,
+        [messageSeq],
+      );
+      const refreshedMessage = refreshedMessages.find(
+        (message) => message.seq === messageSeq,
+      );
+
+      if (!refreshedMessage) {
+        return "missing";
+      }
+
+      const latestMessages =
+        get().messagesByConversationId[conversationId] ?? [];
+      const currentMessage = latestMessages.find(
+        (message) => message.seq === messageSeq,
+      );
+
+      if (
+        currentMessage?.status !== "initializing" &&
+        refreshedMessage.status === "initializing"
+      ) {
+        return "updated";
+      }
+
+      set((currentState) => ({
+        messagesByConversationId: {
+          ...currentState.messagesByConversationId,
+          [conversationId]: patchExistingMessageList(
+            currentState.messagesByConversationId[conversationId] ?? [],
+            [refreshedMessage],
+          ),
+        },
+      }));
+
+      return refreshedMessage.status === "initializing"
+        ? "initializing"
+        : "updated";
     },
     async retryFailedMessage(uiMessageKey) {
       const state = get();

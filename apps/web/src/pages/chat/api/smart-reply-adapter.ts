@@ -169,7 +169,8 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
   if (
     message.role !== "customer" ||
     message.isOwnMessage ||
-    message.isRevoked
+    message.isRevoked ||
+    message.status === "initializing"
   ) {
     return false;
   }

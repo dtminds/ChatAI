@@ -233,7 +233,7 @@ describe("TicketsRepository", () => {
     expect(listSql).not.toContain("ticket.title like ?");
   });
 
-  it("searches titles before pagination and orders by recent updates", async () => {
+  it("searches titles before pagination and orders by descending ticket ID", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
 
@@ -255,7 +255,8 @@ describe("TicketsRepository", () => {
     expect(listSql).not.toContain("left join xy_wap_embed_contact");
     expect(listSql).not.toContain("left join xy_wap_embed_sub_user as assignee");
     expect(listSql).not.toContain("order by case when");
-    expect(listSql).toContain("order by ticket.update_time desc, ticket.id desc");
+    expect(listSql).toContain("order by ticket.id desc");
+    expect(listSql).not.toContain("order by ticket.update_time");
     expect(listSql).toContain("ticket.created_by_sub_user_id = ?");
     expect(listSql).not.toContain("user_seat_sub_relation");
     expect(queries.map(normalizeSql).join("\n")).toContain("relation.sub_id = ?");

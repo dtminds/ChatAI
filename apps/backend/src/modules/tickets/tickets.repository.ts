@@ -188,9 +188,7 @@ export class TicketsRepository {
       );
     }
     if (options.ordered) {
-      query = query
-        .orderBy("ticket.update_time", "desc")
-        .orderBy("ticket.id", "desc");
+      query = query.orderBy("ticket.id", "desc");
     }
     const pageRows = await query
       .limit(options.limit)

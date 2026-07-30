@@ -44,6 +44,23 @@ describe("database schema document", () => {
     expect(actionItemTable).not.toContain("idx_action_status_priority");
   });
 
+  it("keeps ID-ordered ticket list indexes free of update_time", () => {
+    const actionItemTable = extractCreateTable(schemaSql, "xy_wap_embed_session_action_item");
+    const ticketIndexes = actionItemTable
+      .split("\n")
+      .filter((line) => line.includes("KEY idx_ticket_"))
+      .join("\n");
+
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_conversation_status_id (uid, conversation_id, status, id)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_conversation_id (uid, conversation_id, id)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_status_id (uid, status, id)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_status_due_at (uid, status, due_at)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id)");
+    expect(ticketIndexes).toContain("KEY idx_ticket_uid_source_status_id (uid, source_type, status, id)");
+    expect(ticketIndexes).not.toContain("update_time");
+  });
+
   it("keeps current_snapshot_id as the only logical session snapshot pointer", () => {
     const logicalSessionTable = extractCreateTable(schemaSql, "xy_wap_embed_logical_session");
 

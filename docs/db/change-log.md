@@ -2,6 +2,30 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-30
+
+- Added a tenant-and-conversation index for recent-ticket lookups ordered by descending ticket ID. The `status <> 'deleted'` condition remains a residual filter, while the index narrows the scan to one tenant conversation and supports the requested ID order.
+- Changed ticket list ordering from last-updated time to descending ticket ID, and removed `update_time` from ticket-list secondary indexes so ordinary ticket edits no longer rewrite every list index.
+- Split the former status/due-time/priority index into one index for status-filtered ID scans and one for due-time range filtering. Priority remains a residual predicate because of its low cardinality and its unusable position after a due-time range.
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  DROP INDEX idx_ticket_uid_assignee_status_updated,
+  DROP INDEX idx_ticket_uid_conversation_status_updated,
+  DROP INDEX idx_ticket_uid_status_due_priority_updated,
+  DROP INDEX idx_ticket_uid_creator_updated,
+  DROP INDEX idx_ticket_uid_source_status_updated,
+  ADD KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
+  ADD KEY idx_ticket_uid_conversation_status_id (uid, conversation_id, status, id),
+  ADD KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
+  ADD KEY idx_ticket_uid_status_id (uid, status, id),
+  ADD KEY idx_ticket_uid_status_due_at (uid, status, due_at),
+  ADD KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
+  ADD KEY idx_ticket_uid_source_status_id (uid, source_type, status, id);
+
+ANALYZE TABLE xy_wap_embed_session_action_item;
+```
+
 ## 2026-07-29
 
 - Removed the unused `due_hint` free-text field from tickets. AI ticket generation no longer requests or stores an unstructured time hint; explicit deadlines continue to use `due_at`.

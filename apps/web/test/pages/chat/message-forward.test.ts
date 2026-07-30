@@ -49,6 +49,15 @@ describe("message-forward", () => {
     expect(getMessageForwardPreview(message)).toBe("你好");
   });
 
+  it("does not forward initializing messages with empty content", () => {
+    expect(
+      canForwardMessage({
+        ...createTextMessage(""),
+        status: "initializing",
+      }),
+    ).toBe(false);
+  });
+
   it("uses msgInfoId for mini-program forward segments", () => {
     const message: ChatMessage = {
       ...createTextMessage(""),

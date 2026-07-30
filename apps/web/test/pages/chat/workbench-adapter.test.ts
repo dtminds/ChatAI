@@ -289,7 +289,7 @@ describe("adaptMessage", () => {
     },
   };
 
-  it("adapts initializing messages into a visible placeholder", () => {
+  it("preserves initializing message content for status-based presentation", () => {
     expect(
       adaptMessage(
         {
@@ -303,7 +303,7 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       content: {
-        text: "消息内容处理中",
+        text: "",
         type: "text",
       },
       status: "initializing",

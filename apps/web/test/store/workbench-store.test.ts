@@ -1043,7 +1043,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                conversationAIHostingSwitch: false,
+                conversationAIHostingSwitch: true,
                 customerBindType: 2,
                 mode: "single",
               }
@@ -1052,7 +1052,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
 
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
@@ -8499,6 +8499,81 @@ describe("useWorkbenchStore", () => {
         (message) => message.uiMessageKey === "829",
       ),
     ).toBe(false);
+  });
+
+  it("refreshes an initializing message by seq and patches the existing placeholder", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessagesBySeqs(input) {
+        expect(input).toEqual({
+          conversationId: "conv-001",
+          messageSeqs: [829],
+        });
+
+        return {
+          messages: [
+            {
+              content: { text: "刷新后的消息内容" },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: 1_778_840_010_000,
+              customerId: "cust-001",
+              msgid: "829",
+              rawMsgtype: "text",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 829,
+              status: "sent",
+            },
+          ],
+        };
+      },
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客户",
+            content: {
+              text: "消息内容处理中",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-15 10:00:00",
+            seq: 829,
+            status: "initializing",
+            uiMessageKey: "829",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore
+        .getState()
+        .refreshInitializingMessage("conv-001", 829),
+    ).resolves.toBe("updated");
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"],
+    ).toEqual([
+      expect.objectContaining({
+        content: {
+          text: "刷新后的消息内容",
+          type: "text",
+        },
+        seq: 829,
+        status: "sent",
+      }),
+    ]);
   });
 
   it("patches refreshed message details into optimistic messages by optNo", async () => {

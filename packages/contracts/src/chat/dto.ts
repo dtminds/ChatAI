@@ -170,7 +170,12 @@ export type WorkbenchQuotedMessagePreviewDto = {
   title?: string;
 };
 
-export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
+export type WorkbenchMessageStatus =
+  | "queued"
+  | "sending"
+  | "initializing"
+  | "sent"
+  | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {

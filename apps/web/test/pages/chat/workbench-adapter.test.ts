@@ -289,6 +289,27 @@ describe("adaptMessage", () => {
     },
   };
 
+  it("preserves initializing message content for status-based presentation", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {},
+          status: "initializing",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        text: "",
+        type: "text",
+      },
+      status: "initializing",
+    });
+  });
+
   it("marks messages sent by Agent source", () => {
     expect(
       adaptMessage(

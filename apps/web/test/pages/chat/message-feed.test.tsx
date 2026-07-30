@@ -6,6 +6,7 @@ import {
   ChatMessageList,
   MessageRow,
   MESSAGE_SENT_AT_HOVER_DELAY_MS,
+  resolveMessageAvatarUrl,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
@@ -81,6 +82,46 @@ describe("message feed row actions", () => {
 
     expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
+  });
+
+  it("uses the application-message conversation avatar when the customer sender has none", () => {
+    const message = createTextMessage("应用消息");
+
+    expect(
+      resolveMessageAvatarUrl(
+        {
+          ...message,
+          role: "customer",
+          sender: { ...message.sender, avatarUrl: undefined },
+        },
+        "https://b5.bokr.com.cn/dist/app-avatar.png",
+      ),
+    ).toBe("https://b5.bokr.com.cn/dist/app-avatar.png");
+  });
+
+  it("renders initializing messages as refreshable read-only placeholders", async () => {
+    const user = userEvent.setup();
+    const onRefreshInitializingMessage = vi.fn().mockResolvedValue(undefined);
+    const message = {
+      ...createTextMessage(""),
+      status: "initializing" as const,
+    };
+
+    render(
+      <ChatMessageList
+        conversationId={message.conversationId}
+        messages={[message]}
+        onQuoteMessage={vi.fn()}
+        onRefreshInitializingMessage={onRefreshInitializingMessage}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("消息内容处理中");
+    expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "刷新消息" }));
+
+    expect(onRefreshInitializingMessage).toHaveBeenCalledWith(message);
   });
 
   it("copies the message seq from the action menu", async () => {

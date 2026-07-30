@@ -7,7 +7,13 @@ export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
 
-export type MessageStatus = "pending" | "sending" | "accepted" | "sent" | "failed";
+export type MessageStatus =
+  | "pending"
+  | "sending"
+  | "accepted"
+  | "initializing"
+  | "sent"
+  | "failed";
 
 export type FileUploadQueueItem = {
   fileName: string;

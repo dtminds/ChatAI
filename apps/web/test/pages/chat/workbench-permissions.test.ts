@@ -212,8 +212,9 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }),
     ).toMatchObject({
-      canToggleConversationAIHosting: true,
+      canToggleConversationAIHosting: false,
       conversationAIHostingEnabled: false,
+      shouldShowConversationAIHostingControl: false,
     });
   });
 

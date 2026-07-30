@@ -732,7 +732,13 @@ function readSystemMessageText(parsed: unknown, rawContent: string | null) {
 }
 
 function mapMessageStatus(status: number | string | null | undefined) {
-  return toNumber(status ?? 1) === 0 ? "failed" : "sent";
+  const normalizedStatus = toNumber(status ?? 1);
+
+  if (normalizedStatus === -1) {
+    return "initializing";
+  }
+
+  return normalizedStatus === 0 ? "failed" : "sent";
 }
 
 function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {
@@ -839,6 +845,13 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
         contentType: mapped.contentType,
         imageUrl: readRecordString(mapped.content, "fileUrl"),
         senderName,
+      };
+    case "quote":
+      return {
+        contentType: "quote",
+        fallbackText: "[引用消息]",
+        senderName,
+        title: String(mapped.content.text ?? ""),
       };
     default: {
       const imageUrl = getPreviewImageUrl(mapped.content);

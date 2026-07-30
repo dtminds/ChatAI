@@ -37,21 +37,25 @@ export function resolveConversationAIHostingPolicy({
   > | undefined;
 }): ConversationAIHostingPolicy {
   const isConfiguredOn = conversation?.conversationAIHostingSwitch === true;
+  const isSingleConversationSupported =
+    isConversationAIFeatureSupported(conversation);
   const hasCapability =
     conversation?.mode === "group"
       ? account?.seatGroupAIHostingEnabled === true
-      : isConversationAIFeatureSupported(conversation) &&
+      : isSingleConversationSupported &&
         account?.seatAIHostingEnabled === true;
   const canEnable = canUseConversationActions && hasCapability;
   // 群聊总开关关闭后，不再保留单群 AI 对话入口（即使会话里曾开启过）。
   const canDisable =
     canUseConversationActions &&
     isConfiguredOn &&
-    (conversation?.mode === "group" ? hasCapability : true);
+    (conversation?.mode === "group"
+      ? hasCapability
+      : isSingleConversationSupported);
   const shouldShowControl =
     conversation?.mode === "group"
       ? hasCapability
-      : isConfiguredOn || isConversationAIFeatureSupported(conversation);
+      : isSingleConversationSupported;
 
   return {
     canDisable,

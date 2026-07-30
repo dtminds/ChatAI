@@ -541,7 +541,7 @@ export class TicketsService {
   ): Promise<TicketClaimResponse> {
     const { record, subUserId, ticketId } = await this.getVisibleTicket(actor, ticketIdValue);
 
-    if (actor.role === "viewer" || !record.hasAccountAccess) {
+    if (!record.hasAccountAccess) {
       throw new ForbiddenError("TICKET_FORBIDDEN", "无权领取该工单");
     }
     if (record.assigneeSubUserId != null) {
@@ -844,10 +844,6 @@ export class TicketsService {
     actor: TicketsActorScope,
     conversationIdValue: string,
   ) {
-    if (actor.role === "viewer") {
-      throw new ForbiddenError("TICKET_FORBIDDEN", "当前账号无工单创建权限");
-    }
-
     const subUserId = getActorSubUserId(actor);
     const conversationId = parseMySqlId(conversationIdValue);
 
@@ -966,10 +962,6 @@ export function canModifyTicket(
   actor: TicketsActorScope,
   record: Pick<TicketRecord, "assigneeSubUserId" | "createdBySubUserId" | "sourceType">,
 ) {
-  if (actor.role === "viewer") {
-    return false;
-  }
-
   if (hasGlobalTicketAccess(actor)) {
     return true;
   }
@@ -982,8 +974,7 @@ export function canDeleteTicket(
   actor: TicketsActorScope,
   record: Pick<TicketRecord, "createdBySubUserId" | "sourceType">,
 ) {
-  return actor.role !== "viewer"
-    && record.sourceType === "manual"
+  return record.sourceType === "manual"
     && record.createdBySubUserId === actor.subUserId;
 }
 
@@ -1041,8 +1032,7 @@ function mapTicketListItem(
 export function mapTicket(record: TicketRecord, actor: TicketsActorScope): Ticket {
   return {
     ...mapTicketListItem(record, actor),
-    canClaim: actor.role !== "viewer"
-      && record.assigneeSubUserId == null
+    canClaim: record.assigneeSubUserId == null
       && record.hasAccountAccess,
   };
 }

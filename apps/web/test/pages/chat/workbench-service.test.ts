@@ -202,6 +202,42 @@ describe("createWorkbenchService", () => {
     });
   });
 
+  it("fetches visible customer seat relations on demand", async () => {
+    const service = createHttpWorkbenchService();
+    mock
+      .onGet("/server/customers/external-a/seat-relations")
+      .reply(200, {
+        items: [
+          {
+            bindId: "301",
+            bindStatus: 1,
+            bindType: 1,
+            seatAvatar: "",
+            seatId: "12",
+            seatName: "销售一号",
+            thirdUserId: "seat-user-12",
+          },
+        ],
+      });
+
+    await expect(service.getCustomerSeatRelations("external-a")).resolves.toEqual({
+      items: [
+        {
+          bindId: "301",
+          bindStatus: 1,
+          bindType: 1,
+          seatAvatar: "",
+          seatId: "12",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-12",
+        },
+      ],
+    });
+    expect(mock.history.get[0]?.url).toBe(
+      "/server/customers/external-a/seat-relations",
+    );
+  });
+
   it("lists material groups and paginated collections with explicit params", async () => {
     const service = createHttpWorkbenchService();
     mock.onGet("/server/material-collections/groups").reply((config) => [

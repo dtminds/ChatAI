@@ -2254,6 +2254,90 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("opens a visible-seat customer conversation from a group member", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const target: WorkbenchConversationSummaryDto = {
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-group-member-customer",
+      customerAvatar: "",
+      customerId: "member-003",
+      customerName: "丹阳草莓",
+      handoffMsgId: 0,
+      lastMessage: "最近单聊消息",
+      lastMessageTime: 1_779_600_000_000,
+      mode: "single",
+      priority: "medium",
+      replied: true,
+      seatId: "drc",
+      thirdExternalUserId: "member-003",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+    const getCustomerSeatRelations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          bindId: "bind-member-003",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: target.lastMessageTime,
+          seatAvatar: "",
+          seatId: "drc",
+          seatName: "德瑞可",
+          thirdUserId: "third-user-drc",
+        },
+      ],
+    });
+    const getOrCreateConversation = vi.fn().mockResolvedValue(target);
+
+    setWorkbenchService({
+      ...baseService,
+      getCustomerSeatRelations,
+      getOrCreateConversation,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const { router } = renderChatWorkbenchRoutePage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+    await user.hover(
+      await screen.findByRole("button", {
+        name: "查看 丹阳草莓 的好友关系",
+      }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "向 德瑞可 继续会话" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        "/chat/conversations/conv-group-member-customer",
+      );
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        "conv-group-member-customer",
+      );
+    });
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith("member-003");
+    expect(getOrCreateConversation).toHaveBeenCalledWith({
+      chatType: 1,
+      seatId: "drc",
+      thirdExternalUserId: "member-003",
+      thirdGroupId: undefined,
+    });
+  });
+
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

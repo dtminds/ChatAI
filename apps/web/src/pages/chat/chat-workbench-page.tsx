@@ -87,6 +87,7 @@ import type {
   ChatMessage,
   ChatMode,
   Conversation,
+  CustomerChatStartInput,
   FileUploadQueueItem,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
@@ -1319,14 +1320,7 @@ function ChatWorkbenchContent({
   );
 
   const handleStartCustomerChat = useCallback(
-    async (input: {
-      conversationId?: string;
-      seatId: string;
-      thirdExternalUserId: string;
-      customerName: string;
-      customerAvatar: string;
-      realName: string;
-    }) => {
+    async (input: CustomerChatStartInput) => {
       if (input.conversationId) {
         navigateToConversation(input.conversationId);
       }
@@ -2449,6 +2443,7 @@ function ChatWorkbenchContent({
 
   const chatPanelNode = (
     <ChatPanel
+      accounts={accounts}
       accountName={activeAccount?.name}
       accountAvatarUrl={activeAccount?.avatarUrl}
       activeAccount={activeAccount}
@@ -2463,6 +2458,7 @@ function ChatWorkbenchContent({
       canUseMessageForward={canUseMessageForward}
       composerPlaceholder={composerPlaceholder}
       customer={activeCustomer}
+      currentEmployeeId={me?.id}
       sidebarIframeTos={sidebarIframeTos}
       sidebarIframeSendStatus={sidebarIframeSendStatus}
       customerPanelWidth={customerPanelWidth}
@@ -2594,6 +2590,7 @@ function ChatWorkbenchContent({
       onRefreshGroupMembers={() => {
         void loadActiveGroupMembers({ force: true });
       }}
+      onStartCustomerChat={handleStartCustomerChat}
       onLoadOlderMessages={handleLoadOlderMessages}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}

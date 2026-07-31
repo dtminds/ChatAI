@@ -12,7 +12,9 @@ import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
 import { GroupMembersSidePanel } from "@/pages/chat/components/group-members-side-panel";
 import type {
+  Account,
   ChatMode,
+  CustomerChatStartInput,
   CustomerProfile,
   GroupMember,
 } from "@/pages/chat/chat-types";
@@ -59,9 +61,11 @@ function buildSidebarIframeParamsRefreshKey(
 }
 
 type CustomerSidePanelProps = {
+  accounts?: Account[];
   accountName?: string;
   className?: string;
   conversationMode?: ChatMode;
+  currentEmployeeId?: string;
   /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
   /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
@@ -81,12 +85,17 @@ type CustomerSidePanelProps = {
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onStartCustomerChat?: (
+    input: CustomerChatStartInput,
+  ) => void | Promise<void>;
 };
 
 export function CustomerSidePanel({
+  accounts = [],
   accountName,
   className,
   conversationMode,
+  currentEmployeeId,
   customer,
   sidebarIframeConversationId,
   sidebarIframeSeatId,
@@ -102,6 +111,7 @@ export function CustomerSidePanel({
   onQuickReplyActiveChange,
   onRefreshGroupMembers,
   onResizeStart,
+  onStartCustomerChat,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
 
@@ -376,10 +386,13 @@ export function CustomerSidePanel({
             <TabsContent className="mt-0 min-h-0 flex-1" value="system">
               {isGroupConversation ? (
                 <GroupMembersSidePanel
+                  accounts={accounts}
+                  currentEmployeeId={currentEmployeeId}
                   groupMembers={groupMembers}
                   isLoading={isGroupMembersLoading}
                   key={sidebarIframeConversationId}
                   onRefresh={onRefreshGroupMembers}
+                  onStartChat={onStartCustomerChat}
                 />
               ) : (
                 <CustomerBasicInfoPanel

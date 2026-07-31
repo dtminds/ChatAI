@@ -1,4 +1,5 @@
 import {
+  CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
   GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
@@ -74,6 +75,7 @@ import {
 import { readBooleanFlag } from "./workbench-flags.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
+const CUSTOMER_BIND_TYPE_NORMAL = 1;
 const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
 /** 群资料/群消息归属席位：影子群用开通号，否则用当前会话席位 */
@@ -365,6 +367,18 @@ type CustomerLastConversationHydratedRow = CustomerLastMessageRow & {
 type CustomerRelationConversationRow = {
   last_message_time: Date | number | string | null;
   third_userid: string;
+};
+
+type AccessibleCustomerSeatRelationRow = {
+  add_time: Date | number | string | null;
+  bind_id: number | string;
+  bind_status: number | null;
+  bind_type: number | null;
+  description: string | null;
+  seat_avatar: string | null;
+  seat_id: number | string;
+  seat_name: string | null;
+  third_user_id: string;
 };
 
 type CustomerListCursor = {
@@ -3224,6 +3238,85 @@ export class WorkbenchRepository {
       .execute()) as CustomerBindPageRow[];
 
     return this.hydrateCustomerBindRows(rows, { hydrateContacts: false });
+  }
+
+  async listAccessibleCustomerSeatRelations(input: {
+    limit: number;
+    platform: number;
+    subUserId: string;
+    thirdExternalUserId: string;
+    uid: number;
+  }): Promise<WorkbenchCustomerSeatRelationDto[]> {
+    const subUserNumericId = parseMySqlId(input.subUserId);
+
+    if (subUserNumericId == null) {
+      return [];
+    }
+
+    const limit = Math.min(
+      Math.max(Math.trunc(input.limit), 1),
+      CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
+    );
+    const rows = (await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "bind.third_userid")
+          .onRef("seat.uid", "=", "bind.uid")
+          .onRef("seat.platform", "=", "bind.platform"),
+      )
+      .innerJoin("xy_wap_embed_user_seat_sub_relation as access", (join) =>
+        join
+          .onRef("access.user_seat_id", "=", "seat.id")
+          .onRef("access.uid", "=", "seat.uid")
+          .onRef("access.platform", "=", "seat.platform"),
+      )
+      .select([
+        "bind.add_time as add_time",
+        "bind.id as bind_id",
+        "bind.biz_status as bind_status",
+        "bind.bind_type as bind_type",
+        "bind.description as description",
+        "seat.third_avatar as seat_avatar",
+        "seat.id as seat_id",
+        "seat.third_user_name as seat_name",
+        "seat.third_userid as third_user_id",
+      ])
+      .where("access.sub_id", "=", subUserNumericId)
+      .where("bind.uid", "=", input.uid)
+      .where("bind.platform", "=", input.platform)
+      .where("bind.third_external_userid", "=", input.thirdExternalUserId)
+      .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("bind.bind_type", "=", CUSTOMER_BIND_TYPE_NORMAL)
+      .orderBy(
+        sql<number>`case
+          when seat.host_sub_id = ${subUserNumericId} and seat.is_online = 1 then 0
+          when seat.host_sub_id = ${subUserNumericId} then 1
+          else 2
+        end`,
+        "asc",
+      )
+      .orderBy("bind.add_time", "desc")
+      .orderBy("bind.id", "desc")
+      .limit(limit)
+      .execute()) as AccessibleCustomerSeatRelationRow[];
+
+    return rows.map((row) => {
+      const addTime =
+        row.add_time == null ? undefined : normalizeCursorTime(row.add_time);
+
+      return {
+        ...(addTime == null ? {} : { addTime }),
+        bindId: String(row.bind_id),
+        bindStatus: row.bind_status ?? 0,
+        bindType: row.bind_type ?? 0,
+        ...(row.description == null ? {} : { description: row.description }),
+        seatAvatar: row.seat_avatar ?? "",
+        seatId: String(row.seat_id),
+        seatName: row.seat_name ?? "",
+        thirdUserId: row.third_user_id,
+      };
+    });
   }
 
   async getCustomerLastConversation(input: {

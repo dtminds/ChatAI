@@ -754,6 +754,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Params: CustomerParams }>(
+    "/api/server/customers/:thirdExternalUserId/seat-relations",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CustomerParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomerSeatRelations(
+        getSubUserId(request),
+        request.params.thirdExternalUserId,
+      ),
+  );
+
+  app.get<{ Params: CustomerParams }>(
     "/api/server/customers/:thirdExternalUserId/last-conversation",
     {
       preHandler: app.authenticate,

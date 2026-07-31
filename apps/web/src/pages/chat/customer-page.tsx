@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertCircleIcon,
-  Chat01Icon,
   Male02Icon,
+  MessageSquareShareIcon,
   Refresh03Icon,
   Search01Icon,
   UserMultiple02Icon,
@@ -13,7 +13,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
 import type {
   WorkbenchCustomerLastConversationDto,
-  WorkbenchCustomerSeatRelationDto,
   WorkbenchCustomerSummaryDto,
 } from "@chatai/contracts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -44,9 +43,18 @@ import {
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
-import { formatMessageDividerLabel } from "@/pages/chat/components/message-feed";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
-import type { Account, Message } from "@/pages/chat/chat-types";
+import {
+  CustomerSeatRelationList,
+  SeatRelationAvatar,
+  canStartSeatChat,
+  formatCustomerTimestamp,
+} from "@/pages/chat/components/customer-seat-relation-list";
+import type {
+  Account,
+  CustomerChatStartInput,
+  Message,
+} from "@/pages/chat/chat-types";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 
 const ALL_VISIBLE_SEATS = "__all_visible_seats__";
@@ -58,14 +66,7 @@ type CustomerScope = "mine" | "all";
 type CustomerPageProps = {
   accounts: Account[];
   currentEmployeeId?: string;
-  onStartChat?: (input: {
-    conversationId?: string;
-    seatId: string;
-    thirdExternalUserId: string;
-    customerName: string;
-    customerAvatar: string;
-    realName: string;
-  }) => void | Promise<void>;
+  onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
 };
 
 export function CustomerPage({
@@ -704,7 +705,11 @@ function CustomerLastConversationPopover({
             }}
             type="button"
           >
-            <HugeiconsIcon color="currentColor" icon={Chat01Icon} size={14} />
+            <HugeiconsIcon
+              color="currentColor"
+              icon={MessageSquareShareIcon}
+              size={14}
+            />
             继续聊天
           </Button>
         </div>
@@ -850,107 +855,21 @@ function CustomerSeatRelationsPopover({
             好友关系 · {relations.length}
           </p>
           <ScrollArea className="max-h-[16rem]">
-            <div className="space-y-1 pr-2">
-              {relations.map((relation) => {
-                const account = accounts.find((item) => item.id === relation.seatId);
-                const seatName = getSeatRelationName(relation);
-                const canStartChat = canStartSeatChat(account, currentEmployeeId);
-                const relationConversationTime =
-                  conversationTimes[relation.thirdUserId] ?? relation.lastMessageTime;
-                const hasRecentConversation = relationConversationTime != null;
-                const actionText = hasRecentConversation ? "继续会话" : "发起会话";
-
-                return (
-                  <div
-                    className="flex min-h-12 items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-sm text-foreground"
-                    key={relation.bindId}
-                  >
-                    <SeatRelationAvatar account={account} relation={relation} />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate">{seatName}</div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {conversationStatus === "loading"
-                          ? "加载中"
-                          : conversationStatus === "error"
-                            ? "加载失败"
-                            : hasRecentConversation
-                              ? formatCustomerTimestamp(relationConversationTime)
-                              : "暂无会话"}
-                      </div>
-                    </div>
-                    <Button
-                      aria-label={
-                        canStartChat
-                          ? `向 ${seatName} ${actionText}`
-                          : `${seatName} 不可${actionText}`
-                      }
-                      disabled={!canStartChat}
-                      onClick={() => {
-                        void onStartChat?.({
-                          conversationId:
-                            customer.lastConversation?.seatId === relation.seatId
-                              ? customer.lastConversation.conversationId
-                              : undefined,
-                          customerAvatar: customer.avatar,
-                          customerName: customer.name,
-                          realName: customer.realName,
-                          seatId: relation.seatId,
-                          thirdExternalUserId: customer.thirdExternalUserId,
-                        });
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <HugeiconsIcon color="currentColor" icon={Chat01Icon} size={14} />
-                      {actionText}
-                    </Button>
-                  </div>
-                );
-              })}
+            <div className="pr-2">
+              <CustomerSeatRelationList
+                accounts={accounts}
+                conversationStatus={conversationStatus}
+                conversationTimes={conversationTimes}
+                currentEmployeeId={currentEmployeeId}
+                customer={customer}
+                onStartChat={onStartChat}
+                relations={relations}
+              />
             </div>
           </ScrollArea>
         </div>
       </HoverCardContent>
     </HoverCard>
-  );
-}
-
-function SeatRelationAvatar({
-  account,
-  className,
-  relation,
-}: {
-  account?: Account;
-  className?: string;
-  relation: WorkbenchCustomerSeatRelationDto;
-}) {
-  const seatName = getSeatRelationName(relation);
-  const avatarUrl = relation.seatAvatar || account?.avatarUrl || "";
-
-  return (
-    <Avatar
-      aria-label={`关联托管账号 ${seatName}`}
-      className={cn("size-8 rounded-full border-2 border-surface", className)}
-      title={seatName}
-    >
-      {avatarUrl ? <AvatarImage alt={`${seatName}头像`} src={avatarUrl} /> : null}
-      <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        <HugeiconsIcon color="currentColor" icon={Male02Icon} size={16} />
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
-function getSeatRelationName(relation: WorkbenchCustomerSeatRelationDto) {
-  return relation.seatName || relation.thirdUserId || relation.seatId;
-}
-
-function canStartSeatChat(account: Account | undefined, currentEmployeeId: string | undefined) {
-  return (
-    account?.loginStatus === "online" &&
-    !!account?.takenOverEmployeeId &&
-    account?.takenOverEmployeeId === currentEmployeeId
   );
 }
 
@@ -1001,16 +920,4 @@ function getCustomerDisplayName(customer: WorkbenchCustomerSummaryDto) {
   }
 
   return name;
-}
-
-function formatCustomerTimestamp(value?: number) {
-  if (!value || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  try {
-    return formatMessageDividerLabel(new Date(value).toISOString()) || "-";
-  } catch {
-    return "-";
-  }
 }

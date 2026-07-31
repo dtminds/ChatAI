@@ -4,6 +4,39 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-07-30
 
+- Documented Boss-managed skill marketplace tables `xy_wap_embed_agent_skill_template` and `xy_wap_embed_agent_skill_template_group`.
+- ChatAI Node reads these tables for the skills marketplace only; they are **not** on the writable allowlist. Template CRUD remains Boss-owned.
+
+Manual migration for existing databases:
+
+```sql
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
+  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
+  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';
+```
 - Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.
 - Run this only when production has not executed any ticket-system DDL from this branch. The expected starting table still contains `updated_by_sub_user_id`, `dismissed_at`, and `due_hint`, plus `idx_action_uid_conversation_status` and `idx_action_uid_status_id`.
 - Production currently contains only disposable test tickets. This migration deletes all existing action-item rows and their `action_item` evidence instead of backfilling legacy ticket data.
@@ -206,40 +239,6 @@ Rollback boundary:
 - If cleanup or migration must be reversed, restore the pre-migration backup before restarting the old `main` application.
 - After the new version writes tickets or activities, the old `main` application is not a safe rollback target.
 
-- Documented Boss-managed skill marketplace tables `xy_wap_embed_agent_skill_template` and `xy_wap_embed_agent_skill_template_group`.
-- ChatAI Node reads these tables for the skills marketplace only; they are **not** on the writable allowlist. Template CRUD remains Boss-owned.
-
-Manual migration for existing databases:
-
-```sql
-CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
-  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
-  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
-  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
-  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
-  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
-  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
-  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
-  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
-  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
-  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
-
-CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
-  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
-  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
-  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
-  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';
-```
-
 ## 2026-07-28
 
 - Added `xy_wap_embed_agent_skill` for ChatAI-owned Agent skill CRUD (list / create / update / enable-disable / soft delete).
@@ -267,7 +266,6 @@ CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
   KEY `idx_uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';
 ```
-
 ## 2026-07-27
 
 - Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.

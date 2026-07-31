@@ -818,6 +818,26 @@ function mergeConversationProfile(
   );
 }
 
+function mergeConversationProfile(
+  currentList: Conversation[],
+  conversation: Conversation,
+) {
+  return currentList.map((currentConversation) =>
+    currentConversation.id === conversation.id
+      ? {
+          ...currentConversation,
+          bizStatus: conversation.bizStatus,
+          contactOriginalName: conversation.contactOriginalName,
+          customerAvatarUrl: conversation.customerAvatarUrl,
+          customerBindType: conversation.customerBindType,
+          customerName: conversation.customerName,
+          groupOriginalName: conversation.groupOriginalName,
+          isVerified: conversation.isVerified,
+        }
+      : currentConversation,
+  );
+}
+
 function supplementConversationList(
   currentList: Conversation[],
   conversations: Conversation[],

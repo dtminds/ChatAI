@@ -11463,6 +11463,60 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationOpenError).toBe("开启失败");
   });
 
+  it("keeps search input and results when resolved conversation messages fail to load", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-search-message-failed");
+    const searchResults = {
+      contacts: [
+        {
+          avatar: "",
+          conversationId: target.conversationId,
+          name: "搜索客户",
+          realName: "搜索客户",
+          thirdExternalUserId: target.thirdExternalUserId!,
+        },
+      ],
+      groups: [],
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          throw new Error("消息加载失败");
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState({
+      isSearchLoading: false,
+      searchKeyword: "搜索客户",
+      searchResults,
+    });
+
+    const opened = await useWorkbenchStore.getState().openConversation(
+      {
+        mode: "single",
+        seatId: "drc",
+        thirdExternalUserId: target.thirdExternalUserId!,
+      },
+      { clearSearchOnSuccess: true },
+    );
+
+    const state = useWorkbenchStore.getState();
+    expect(opened).toBe(false);
+    expect(state.activeConversationId).toBe(target.conversationId);
+    expect(state.searchKeyword).toBe("搜索客户");
+    expect(state.searchResults).toBe(searchResults);
+    expect(state.scopeTransitionError).toBe("消息加载失败");
+  });
+
   it("does not show stale search open errors after switching accounts", async () => {
     const baseService = createMockWorkbenchService();
     const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();
@@ -11706,6 +11760,280 @@ describe("useWorkbenchStore", () => {
       conversationId: target.conversationId,
       mode: "single",
     });
+  });
+
+  it("activates a resolved same-seat conversation before messages load without refreshing lists", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-same-seat");
+    const messageLoadStarted = createDeferred();
+    const messageLoadGate = createDeferred();
+    const getConversations = vi.fn((accountId, options) =>
+      baseService.getConversations(accountId, options),
+    );
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          messageLoadStarted.resolve();
+          await messageLoadGate.promise;
+
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+
+    const openPromise = useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+    await messageLoadStarted.promise;
+
+    const loadingState = useWorkbenchStore.getState();
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(loadingState.activeAccountId).toBe("drc");
+    expect(loadingState.activeConversationId).toBe(target.conversationId);
+    expect(loadingState.activeMode).toBe("single");
+    expect(loadingState.isConversationLoading).toBe(true);
+    expect(loadingState.conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
+
+    messageLoadGate.resolve();
+    await expect(openPromise).resolves.toBe(true);
+    expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+  });
+
+  it("loads cross-seat messages without waiting for the target seat lists", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-cross-seat", {
+      seatId: "ndt",
+      thirdUserId: "third-user-ndt",
+    });
+    const conversationListGate = createDeferred();
+    const messageLoadStarted = createDeferred();
+    const messageLoadGate = createDeferred();
+    const requestedTargetModes: string[] = [];
+    const poll = vi.fn((request) => baseService.poll(request));
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        if (accountId === "ndt") {
+          requestedTargetModes.push(options?.mode ?? "");
+          await conversationListGate.promise;
+        }
+
+        return baseService.getConversations(accountId, options);
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          messageLoadStarted.resolve();
+          await messageLoadGate.promise;
+
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+      poll,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const openPromise = useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "ndt",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+    await messageLoadStarted.promise;
+
+    const loadingState = useWorkbenchStore.getState();
+    expect(requestedTargetModes).toEqual(expect.arrayContaining(["single", "group"]));
+    expect(loadingState.activeAccountId).toBe("ndt");
+    expect(loadingState.activeConversationId).toBe(target.conversationId);
+    expect(loadingState.isConversationLoading).toBe(true);
+
+    messageLoadGate.resolve();
+    await expect(openPromise).resolves.toBe(true);
+    expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+    await expect(useWorkbenchStore.getState().pollWorkbench()).resolves.toBe(false);
+    expect(poll).not.toHaveBeenCalled();
+
+    conversationListGate.resolve();
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().conversationListsByScope.ndt.some(
+          (conversation) => conversation.id === target.conversationId,
+        ),
+      ).toBe(true);
+      expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(true);
+    });
+  });
+
+  it("ignores an older background list refresh for the same seat", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstNdtTarget = createConversationSummaryDto("conv-open-ndt-first", {
+      seatId: "ndt",
+      thirdUserId: "third-user-ndt",
+    });
+    const drcTarget = createConversationSummaryDto("conv-open-drc-middle");
+    const secondNdtTarget = createConversationSummaryDto("conv-open-ndt-second", {
+      seatId: "ndt",
+      thirdUserId: "third-user-ndt",
+    });
+    const staleListConversation = createConversationSummaryDto(
+      "conv-ndt-stale-list",
+      { seatId: "ndt", thirdUserId: "third-user-ndt" },
+    );
+    const freshListConversation = createConversationSummaryDto(
+      "conv-ndt-fresh-list",
+      { seatId: "ndt", thirdUserId: "third-user-ndt" },
+    );
+    const staleGate = createDeferred();
+    const freshGate = createDeferred();
+    const firstRefreshStarted = createDeferred();
+    const secondRefreshStarted = createDeferred();
+    const staleResponsesReturned = createDeferred();
+    let ndtListRequestCount = 0;
+    let staleResponseCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        if (accountId !== "ndt") {
+          return baseService.getConversations(accountId, options);
+        }
+
+        const refreshIndex = Math.floor(ndtListRequestCount / 2);
+        ndtListRequestCount += 1;
+
+        if (ndtListRequestCount === 2) {
+          firstRefreshStarted.resolve();
+        } else if (ndtListRequestCount === 4) {
+          secondRefreshStarted.resolve();
+        }
+
+        if (refreshIndex === 0) {
+          await staleGate.promise;
+          staleResponseCount += 1;
+          if (staleResponseCount === 2) {
+            staleResponsesReturned.resolve();
+          }
+
+          return {
+            hasMore: false,
+            items: options?.mode === "single" ? [staleListConversation] : [],
+            snapshotAt: 1_778_840_010_000,
+          };
+        }
+
+        await freshGate.promise;
+        return {
+          hasMore: false,
+          items: options?.mode === "single" ? [freshListConversation] : [],
+          snapshotAt: 1_778_840_020_000,
+        };
+      },
+      async getMessages(conversationId, options) {
+        if (
+          conversationId === firstNdtTarget.conversationId ||
+          conversationId === drcTarget.conversationId ||
+          conversationId === secondNdtTarget.conversationId
+        ) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation(payload) {
+        if (payload.thirdExternalUserId === firstNdtTarget.thirdExternalUserId) {
+          return firstNdtTarget;
+        }
+        if (payload.thirdExternalUserId === secondNdtTarget.thirdExternalUserId) {
+          return secondNdtTarget;
+        }
+
+        return drcTarget;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "ndt",
+      thirdExternalUserId: firstNdtTarget.thirdExternalUserId!,
+    });
+    await firstRefreshStarted.promise;
+
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: drcTarget.thirdExternalUserId!,
+    });
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "ndt",
+      thirdExternalUserId: secondNdtTarget.thirdExternalUserId!,
+    });
+    await secondRefreshStarted.promise;
+
+    freshGate.resolve();
+    await waitForStoreAssertion(() => {
+      const state = useWorkbenchStore.getState();
+      expect(state.sinceVersion).toBe(1_778_840_020_000);
+      expect(
+        state.conversationListsByScope.ndt.some(
+          (conversation) => conversation.id === freshListConversation.conversationId,
+        ),
+      ).toBe(true);
+    });
+
+    staleGate.resolve();
+    await staleResponsesReturned.promise;
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    const state = useWorkbenchStore.getState();
+    expect(state.sinceVersion).toBe(1_778_840_020_000);
+    expect(
+      state.conversationListsByScope.ndt.some(
+        (conversation) => conversation.id === freshListConversation.conversationId,
+      ),
+    ).toBe(true);
+    expect(
+      state.conversationListsByScope.ndt.some(
+        (conversation) => conversation.id === staleListConversation.conversationId,
+      ),
+    ).toBe(false);
   });
 
   it("keeps the promotion through polling and same-scope conversation selection", async () => {

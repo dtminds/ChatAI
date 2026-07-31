@@ -1335,9 +1335,12 @@ function ChatWorkbenchContent({
             },
         {
           beforeActivate: prepareConversationActivation,
-          onResolved: input.conversationId
-            ? undefined
-            : navigateResolvedConversation,
+          onResolved: (conversation) => {
+            if (!input.conversationId) {
+              navigateResolvedConversation(conversation);
+            }
+            setMobilePane("chat");
+          },
         },
       );
 

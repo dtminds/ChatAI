@@ -2289,6 +2289,8 @@ describe("ChatWorkbenchPage", () => {
       ],
     });
     const getOrCreateConversation = vi.fn().mockResolvedValue(target);
+    const targetMessagePage =
+      createDeferred<Awaited<ReturnType<typeof baseService.getMessages>>>();
 
     setWorkbenchService({
       ...baseService,
@@ -2296,12 +2298,7 @@ describe("ChatWorkbenchPage", () => {
       getOrCreateConversation,
       async getMessages(conversationId, options) {
         if (conversationId === target.conversationId) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [],
-            scannedCount: 0,
-          };
+          return targetMessagePage.promise;
         }
 
         return baseService.getMessages(conversationId, options);
@@ -2328,13 +2325,25 @@ describe("ChatWorkbenchPage", () => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe(
         "conv-group-member-customer",
       );
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
     });
+    expect(screen.getByTestId("message-loading-overlay")).toBeInTheDocument();
     expect(getCustomerSeatRelations).toHaveBeenCalledWith("member-003");
     expect(getOrCreateConversation).toHaveBeenCalledWith({
       chatType: 1,
       seatId: "drc",
       thirdExternalUserId: "member-003",
       thirdGroupId: undefined,
+    });
+
+    targetMessagePage.resolve({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
     });
   });
 

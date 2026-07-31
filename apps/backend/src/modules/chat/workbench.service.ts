@@ -374,6 +374,10 @@ export type WorkbenchService = {
       unreadOnly?: boolean;
     },
   ): Promise<WorkbenchConversationListResponse> | WorkbenchConversationListResponse;
+  getConversation(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationSummaryDto> | WorkbenchConversationSummaryDto;
   getMe(subUserId: string): Promise<WorkbenchSubUserDto> | WorkbenchSubUserDto;
   getMessages(
     subUserId: string,
@@ -919,6 +923,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
       mode: options?.mode,
       unreadOnly: options?.unreadOnly,
     });
+  }
+
+  async getConversation(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationSummaryDto> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
+    const hydrated = await this.repository.getHydratedConversation(
+      conversation.uid,
+      conversation.platform,
+      conversation.thirdUserId,
+      conversationId,
+    );
+
+    if (!hydrated) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    return hydrated;
   }
 
   async getMessages(
@@ -3940,7 +3968,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId, scope);
 
     const page = await this.repository.listMessages(conversationId, {
-      beforeSeq: undefined,
+      afterSeq: activeMessageSeq,
       includeHiddenConversation: true,
       limit: 50,
     });

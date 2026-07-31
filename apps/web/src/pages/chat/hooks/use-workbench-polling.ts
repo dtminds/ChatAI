@@ -364,7 +364,11 @@ export function useWorkbenchPolling({
     };
 
     const scheduleNextSeatSummaryRefresh = () => {
-      if (pauseReasonRef.current != null) {
+      if (
+        pauseReasonRef.current != null ||
+        document.visibilityState !== "visible"
+      ) {
+        clearScheduledRefresh();
         return;
       }
 
@@ -408,7 +412,7 @@ export function useWorkbenchPolling({
         return;
       }
 
-      scheduleNextSeatSummaryRefresh();
+      clearScheduledRefresh();
     };
 
     scheduleNextSeatSummaryRefresh();

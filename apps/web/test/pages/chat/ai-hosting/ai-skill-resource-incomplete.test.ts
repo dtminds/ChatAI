@@ -140,7 +140,7 @@ describe("ai skill incomplete resources", () => {
     expect(resolveTemplateVariableType(variable)).toBe("work_tag");
   });
 
-  it("normalizes legacy variable names to two segments when parsing and rebuilding", () => {
+  it("normalizes legacy variable names when parsing and rebuilding", () => {
     const content =
       '使用 <resource type="variable" variableType="work_tag" variableId="11" name="客户标签 · 企微标签 · 意向标签组 · 高意向" /> 回复';
     const segments = parseSkillContentSegments(content);
@@ -151,14 +151,14 @@ describe("ai skill incomplete resources", () => {
       return;
     }
 
-    expect(variable.name).toBe("企微标签 · 意向标签组");
-    expect(variable.placeholder).toContain('name="企微标签 · 意向标签组"');
+    expect(variable.name).toBe("企微标签-意向标签组 | 高意向");
+    expect(variable.placeholder).toContain('name="企微标签-意向标签组 | 高意向"');
     expect(segments.at(-1)).toEqual({ type: "text", value: " 回复" });
 
     const resources = collectCompleteSkillResourcesFromContent(content);
     expect(resources.variables).toHaveLength(1);
-    expect(resources.variables[0]?.title).toBe("企微标签 · 意向标签组");
-    expect(resources.variables[0]?.variable?.name).toBe("意向标签组");
+    expect(resources.variables[0]?.title).toBe("企微标签-意向标签组 | 高意向");
+    expect(resources.variables[0]?.variable?.name).toBe("意向标签组 | 高意向");
   });
 
   it("removes repeated system variable prefixes from loaded resources", () => {

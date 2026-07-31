@@ -14,7 +14,7 @@ export const CdpTagItemSchema = Type.Object(
 export const CdpTagGroupItemSchema = Type.Object(
   {
     groupName: Type.String(),
-    /** 分组标识（字符串）；技能变量用 select_key 保存 */
+    /** 分组标识（字符串） */
     groupTag: Type.String(),
     tags: Type.Array(CdpTagItemSchema),
   },

@@ -76,7 +76,10 @@ import {
 } from "./ai-skill-create-draft";
 import { AiSkillDescriptionField } from "./ai-skill-description-field";
 import { INSERT_SKILL_CONTENT_RESOURCE_COMMAND } from "./ai-skill-description-lexical-commands";
-import { InsertVariableDialog } from "./ai-skill-insert-variable-dialog";
+import {
+  InsertVariableDialog,
+  type InsertVariableInitialConfigure,
+} from "./ai-skill-insert-variable-dialog";
 import { AiSkillReferenceMenu } from "./ai-skill-reference-menu";
 import {
   buildKnowledgeBasePlaceholder,
@@ -84,6 +87,7 @@ import {
   buildToolPlaceholder,
   parseSkillContentSegments,
   removeResourceFromSkillContent,
+  replaceResourceInSkillContent,
   serializeSkillContentSegments,
   toSkillContentResourceSegment,
   type SkillContentSegment,
@@ -261,11 +265,26 @@ export function AiSkillSettingsPage() {
   const [activeInsertSection, setActiveInsertSection] =
     useState<ResourceSectionId | null>(null);
   const [variableDialogOpen, setVariableDialogOpen] = useState(false);
+  const [editingVariable, setEditingVariable] = useState<SkillResourceItem | null>(
+    null,
+  );
   const [removeTarget, setRemoveTarget] = useState<{
     item: SkillResourceItem;
     sectionId: ResourceSectionId;
     singular: string;
   } | null>(null);
+
+  const variableInitialConfigure = useMemo<InsertVariableInitialConfigure | null>(
+    () =>
+      editingVariable?.variable
+        ? {
+            kind: editingVariable.variable.type,
+            lockKind: true,
+            initialVariable: editingVariable.variable,
+          }
+        : null,
+    [editingVariable],
+  );
 
   const canSubmit = name.trim().length > 0 && !pageLoading && !pageError;
 
@@ -422,6 +441,44 @@ export function AiSkillSettingsPage() {
     });
 
     toast.success("已添加");
+  }
+
+  function handleReplaceVariable(
+    previous: SkillResourceItem,
+    next: SkillResourceItem,
+  ) {
+    setSelectedResources((current) => {
+      const previousIndex = current.variables.findIndex(
+        (item) => item.id === previous.id,
+      );
+      const withoutPrevious = current.variables.filter(
+        (item) => item.id !== previous.id,
+      );
+      const withoutDuplicate = withoutPrevious.filter((item) => item.id !== next.id);
+      const insertAt =
+        previousIndex < 0
+          ? withoutDuplicate.length
+          : Math.min(previousIndex, withoutDuplicate.length);
+
+      return {
+        ...current,
+        variables: [
+          ...withoutDuplicate.slice(0, insertAt),
+          next,
+          ...withoutDuplicate.slice(insertAt),
+        ],
+      };
+    });
+
+    setSkillContentSegments((current) =>
+      replaceResourceInSkillContent(
+        current,
+        { id: previous.id, placeholder: previous.placeholder },
+        toSkillContentResourceSegment(next),
+      ),
+    );
+
+    toast.success("已更新");
   }
 
   function handleChangeKnowledgeBases(items: readonly SkillResourceItem[]) {
@@ -681,10 +738,23 @@ export function AiSkillSettingsPage() {
                   key={section.id}
                   onAdd={() => {
                     if (section.id === "variables") {
+                      setEditingVariable(null);
                       setVariableDialogOpen(true);
+                      return;
                     }
                     setActiveInsertSection(section.id);
                   }}
+                  onEdit={
+                    section.id === "variables"
+                      ? (item) => {
+                          if (!item.variable) {
+                            return;
+                          }
+                          setEditingVariable(item);
+                          setVariableDialogOpen(true);
+                        }
+                      : undefined
+                  }
                   onRemove={(itemId) => handleRemoveResource(section.id, itemId)}
                   title={section.title}
                 />
@@ -696,8 +766,14 @@ export function AiSkillSettingsPage() {
       </div>
 
       <InsertVariableDialog
+        initialConfigure={variableInitialConfigure}
         onConfirm={(item) => {
-          handleAddResource("variables", item);
+          if (editingVariable) {
+            handleReplaceVariable(editingVariable, item);
+            setEditingVariable(null);
+          } else {
+            handleAddResource("variables", item);
+          }
           setVariableDialogOpen(false);
           if (activeInsertSection === "variables") {
             setActiveInsertSection(null);
@@ -705,8 +781,11 @@ export function AiSkillSettingsPage() {
         }}
         onOpenChange={(open) => {
           setVariableDialogOpen(open);
-          if (!open && activeInsertSection === "variables") {
-            setActiveInsertSection(null);
+          if (!open) {
+            setEditingVariable(null);
+            if (activeInsertSection === "variables") {
+              setActiveInsertSection(null);
+            }
           }
         }}
         open={variableDialogOpen || activeInsertSection === "variables"}
@@ -777,12 +856,14 @@ function SkillResourceSection({
   icon,
   items,
   onAdd,
+  onEdit,
   onRemove,
   title,
 }: {
   icon: typeof AbsoluteIcon;
   items: readonly SkillResourceItem[];
   onAdd: () => void;
+  onEdit?: (item: SkillResourceItem) => void;
   onRemove: (itemId: string) => void;
   title: string;
 }) {
@@ -848,9 +929,20 @@ function SkillResourceSection({
                     size={15}
                     strokeWidth={1.8}
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {item.title}
-                  </span>
+                  {onEdit ? (
+                    <button
+                      aria-label={`编辑${item.title}`}
+                      className="min-w-0 flex-1 truncate text-left text-sm text-foreground hover:text-primary"
+                      onClick={() => onEdit(item)}
+                      type="button"
+                    >
+                      {item.title}
+                    </button>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {item.title}
+                    </span>
+                  )}
                   <Button
                     aria-label={`删除${item.title}`}
                     className="size-6 shrink-0 rounded-[6px] p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   AbsoluteIcon,
-  ArrowDown01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -16,19 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -37,14 +23,118 @@ import { listCustomFields } from "./api/custom-field-service";
 import { listSystemVariables } from "./api/system-variable-service";
 import { listWorkTagGroups, listWorkTags } from "./api/work-tag-service";
 import {
+  buildSkillTagVariableStoredName,
   buildSkillVariableResourceItem,
+  parseSkillTagVariableStoredName,
   type SkillResourceItem,
   type SkillVariableConfig,
 } from "./ai-skill-resource";
 
-type VariableKind = "custom_field" | "customer_tags" | "system_variable";
 type TagKind = "work_tag" | "mall_tag" | "auto_tag";
+type VariableKind = "custom_field" | TagKind | "system_variable";
 type WecomTagMode = "normal" | "exclusive";
+
+function isTagKind(kind: VariableKind | null): kind is TagKind {
+  return kind === "work_tag" || kind === "mall_tag" || kind === "auto_tag";
+}
+
+function getVariableKindTitle(kind: VariableKind): string {
+  switch (kind) {
+    case "custom_field":
+      return "客户自定义属性";
+    case "work_tag":
+      return "企微标签";
+    case "mall_tag":
+      return "小店标签";
+    case "auto_tag":
+      return "自动化标签";
+    case "system_variable":
+      return "系统变量";
+  }
+}
+
+function FlatOptionList({
+  ariaLabel,
+  items,
+  onSelect,
+  searchAriaLabel,
+  searchable = false,
+  selectedValue,
+}: {
+  ariaLabel: string;
+  items: ReadonlyArray<{ label: string; value: string }>;
+  onSelect: (value: string) => void;
+  searchAriaLabel?: string;
+  searchable?: boolean;
+  selectedValue: string;
+}) {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = useMemo(() => {
+    if (!searchable || !normalizedQuery) {
+      return items;
+    }
+
+    return items.filter((item) => item.label.toLowerCase().includes(normalizedQuery));
+  }, [items, normalizedQuery, searchable]);
+
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-border">
+      {searchable ? (
+        <div className="border-b border-border p-3">
+          <div className="relative">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              icon={Search01Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label={searchAriaLabel ?? `搜索${ariaLabel}`}
+              className="h-9 pl-9"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索"
+              value={query}
+            />
+          </div>
+        </div>
+      ) : null}
+      <ul
+        aria-label={ariaLabel}
+        className="max-h-72 space-y-0.5 overflow-y-auto p-2"
+      >
+        {filteredItems.length === 0 ? (
+          <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+            暂无数据
+          </li>
+        ) : (
+          filteredItems.map((item) => {
+            const selected = item.value === selectedValue;
+
+            return (
+              <li key={item.value}>
+                <button
+                  aria-pressed={selected}
+                  className={cn(
+                    "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
+                    selected
+                      ? "bg-accent text-foreground"
+                      : "text-foreground hover:bg-muted/60",
+                  )}
+                  onClick={() => onSelect(item.value)}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              </li>
+            );
+          })
+        )}
+      </ul>
+    </div>
+  );
+}
 
 /** 企微客户标签对应 Java type=0 外部联系人 */
 const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
@@ -66,7 +156,9 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 
 export type InsertVariableInitialConfigure = {
   kind: VariableKind;
-  tagKind?: TagKind;
+  /** 编辑已有变量：锁定大类，直接进入配置且不回选类列表 */
+  lockKind?: boolean;
+  initialVariable?: SkillVariableConfig;
 };
 
 type TagItem = {
@@ -92,9 +184,15 @@ type WorkTagGroupOption = {
   sort?: number;
 };
 
+type AutoTagItemOption = {
+  name: string;
+  tag: string;
+};
+
 type AutoTagGroupOption = {
   groupName: string;
   groupTag: string;
+  tags: readonly AutoTagItemOption[];
 };
 
 const variableOptions: ReadonlyArray<{
@@ -108,9 +206,19 @@ const variableOptions: ReadonlyArray<{
     title: "客户自定义属性",
   },
   {
-    description: "查询您指定的客户标签，然后插入到指定位置",
-    kind: "customer_tags",
-    title: "客户标签",
+    description: "查询您指定的企微客户标签，然后插入到指定位置",
+    kind: "work_tag",
+    title: "企微标签",
+  },
+  {
+    description: "查询您指定的小店标签，然后插入到指定位置",
+    kind: "mall_tag",
+    title: "小店标签",
+  },
+  {
+    description: "查询您指定的自动化标签，然后插入到指定位置",
+    kind: "auto_tag",
+    title: "自动化标签",
   },
   {
     description: "查询系统运行时变量，然后插入到指定位置",
@@ -124,26 +232,8 @@ type SystemVariableOption = {
   name: string;
 };
 
-const tagKindOptions: ReadonlyArray<{ label: string; value: TagKind }> = [
-  { label: "企微标签", value: "work_tag" },
-  { label: "小店标签", value: "mall_tag" },
-  { label: "自动化标签", value: "auto_tag" },
-];
-
-function usesComponentTagApi(kind: TagKind) {
+function usesComponentTagApi(kind: TagKind | null) {
   return kind === "work_tag" || kind === "mall_tag";
-}
-
-function getComponentTagType(kind: TagKind) {
-  if (kind === "mall_tag") {
-    return MALL_TAG_TYPE;
-  }
-
-  if (kind === "work_tag") {
-    return WECOM_CUSTOMER_TAG_TYPE;
-  }
-
-  return null;
 }
 
 type InsertVariableDialogProps = {
@@ -173,7 +263,6 @@ export function InsertVariableDialog({
   );
   const [systemVariablesLoading, setSystemVariablesLoading] = useState(false);
   const [systemVariablesError, setSystemVariablesError] = useState(false);
-  const [tagKind, setTagKind] = useState<TagKind>("work_tag");
   const [wecomMode, setWecomMode] = useState<WecomTagMode>("normal");
   const [workTagGroups, setWorkTagGroups] = useState<WorkTagGroupOption[]>([]);
   const [workTagGroupsLoading, setWorkTagGroupsLoading] = useState(false);
@@ -195,6 +284,7 @@ export function InsertVariableDialog({
   const [autoTagGroupsLoading, setAutoTagGroupsLoading] = useState(false);
   const [autoTagGroupsError, setAutoTagGroupsError] = useState(false);
   const [selectedAutoGroupTag, setSelectedAutoGroupTag] = useState("");
+  const [selectedAutoTagKey, setSelectedAutoTagKey] = useState("");
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [groupQuery, setGroupQuery] = useState("");
   const [tagQuery, setTagQuery] = useState("");
@@ -208,15 +298,15 @@ export function InsertVariableDialog({
     TAG_SEARCH_DEBOUNCE_MS,
   );
   const isTagQueryDebouncing = normalizedTagQuery !== debouncedTagQuery;
-  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const tagKind = isTagKind(variableKind) ? variableKind : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) {
       return;
     }
 
     if (initialConfigure) {
-      startConfigure(initialConfigure.kind, initialConfigure.tagKind);
+      startConfigure(initialConfigure.kind, initialConfigure.initialVariable);
       return;
     }
 
@@ -317,12 +407,7 @@ export function InsertVariableDialog({
   }, [open, step, variableKind]);
 
   useEffect(() => {
-    if (
-      !open ||
-      step !== "configure" ||
-      variableKind !== "customer_tags" ||
-      tagKind !== "auto_tag"
-    ) {
+    if (!open || step !== "configure" || variableKind !== "auto_tag") {
       return;
     }
 
@@ -341,6 +426,10 @@ export function InsertVariableDialog({
         const groups = response.groups.map((group) => ({
           groupName: group.groupName,
           groupTag: group.groupTag,
+          tags: group.tags.map((tag) => ({
+            name: tag.name,
+            tag: tag.tag,
+          })),
         }));
         setAutoTagGroups(groups);
         setSelectedAutoGroupTag((current) => {
@@ -354,6 +443,7 @@ export function InsertVariableDialog({
         if (!cancelled) {
           setAutoTagGroups([]);
           setSelectedAutoGroupTag("");
+          setSelectedAutoTagKey("");
           setAutoTagGroupsError(true);
           toast.error("自动化标签加载失败，请稍后重试");
         }
@@ -369,7 +459,30 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, tagKind, variableKind]);
+  }, [open, step, variableKind]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      step !== "configure" ||
+      variableKind !== "auto_tag" ||
+      autoTagGroups.length === 0 ||
+      !selectedAutoTagKey
+    ) {
+      return;
+    }
+
+    const owner = autoTagGroups.find((group) =>
+      group.tags.some((tag) => tag.tag === selectedAutoTagKey),
+    );
+    if (!owner) {
+      return;
+    }
+
+    setSelectedAutoGroupTag((current) =>
+      current === owner.groupTag ? current : owner.groupTag,
+    );
+  }, [autoTagGroups, open, selectedAutoTagKey, step, variableKind]);
 
   const wecomAttr = wecomMode === "normal" ? 1 : 2;
 
@@ -377,8 +490,8 @@ export function InsertVariableDialog({
     if (
       !open ||
       step !== "configure" ||
-      variableKind !== "customer_tags" ||
-      !usesComponentTagApi(tagKind)
+      !isTagKind(variableKind) ||
+      !usesComponentTagApi(variableKind)
     ) {
       return;
     }
@@ -390,7 +503,7 @@ export function InsertVariableDialog({
       setWorkTagGroupsError(false);
 
       try {
-        if (tagKind === "mall_tag") {
+        if (variableKind === "mall_tag") {
           // 小店标签：type=12 一次拉全量；上游常无 groupId，且不支持按合成 groupId 回查
           const response = await listWorkTags({
             page: 1,
@@ -461,7 +574,7 @@ export function InsertVariableDialog({
           setWorkTagLimit(null);
           setWorkTagGroupsError(true);
           toast.error(
-            tagKind === "mall_tag"
+            variableKind === "mall_tag"
               ? "小店标签加载失败，请稍后重试"
               : "企微标签组加载失败，请稍后重试",
           );
@@ -478,7 +591,36 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, tagKind, variableKind, wecomAttr]);
+  }, [open, step, variableKind, wecomAttr]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      step !== "configure" ||
+      variableKind !== "work_tag" ||
+      workTagGroupsLoading ||
+      workTagGroupsError ||
+      activeGroupId == null ||
+      wecomMode !== "normal"
+    ) {
+      return;
+    }
+
+    if (workTagGroups.some((group) => group.id === activeGroupId)) {
+      return;
+    }
+
+    setWecomMode("exclusive");
+  }, [
+    activeGroupId,
+    open,
+    step,
+    variableKind,
+    wecomMode,
+    workTagGroups,
+    workTagGroupsError,
+    workTagGroupsLoading,
+  ]);
 
   const tagGroups = useMemo((): readonly TagGroup[] => {
     if (tagKind === "work_tag" || tagKind === "mall_tag") {
@@ -513,19 +655,17 @@ export function InsertVariableDialog({
   );
 
   useEffect(() => {
-    const componentType = getComponentTagType(tagKind);
-
     // 小店标签已在分组加载时拉全量，这里只处理企微等需按组回查的场景
     if (
       !open ||
       step !== "configure" ||
-      variableKind !== "customer_tags" ||
-      tagKind === "mall_tag" ||
-      componentType == null ||
+      variableKind !== "work_tag" ||
       resolvedActiveGroupId == null
     ) {
       return;
     }
+
+    const componentType = WECOM_CUSTOMER_TAG_TYPE;
 
     // 输入中跳过请求；清空搜索（切组 / 清关键字）立即拉取
     if (isTagQueryDebouncing && normalizedTagQuery !== "") {
@@ -547,7 +687,7 @@ export function InsertVariableDialog({
           keyword: keyword || undefined,
           page: 1,
           pageSize: 100,
-          type: componentType!,
+          type: componentType,
         });
         if (cancelled) {
           return;
@@ -584,7 +724,6 @@ export function InsertVariableDialog({
     open,
     resolvedActiveGroupId,
     step,
-    tagKind,
     variableKind,
   ]);
 
@@ -644,11 +783,43 @@ export function InsertVariableDialog({
     workTags,
   ]);
 
+  const filteredAutoGroups = useMemo(() => {
+    if (!debouncedGroupQuery) {
+      return autoTagGroups;
+    }
+
+    return autoTagGroups.filter((group) =>
+      group.groupName.toLowerCase().includes(debouncedGroupQuery),
+    );
+  }, [autoTagGroups, debouncedGroupQuery]);
+
+  const resolvedAutoGroupTag =
+    selectedAutoGroupTag &&
+    filteredAutoGroups.some((group) => group.groupTag === selectedAutoGroupTag)
+      ? selectedAutoGroupTag
+      : (filteredAutoGroups[0]?.groupTag ?? "");
+
   const selectedAutoGroup = useMemo(
     () =>
-      autoTagGroups.find((group) => group.groupTag === selectedAutoGroupTag) ??
+      filteredAutoGroups.find((group) => group.groupTag === resolvedAutoGroupTag) ??
       null,
-    [autoTagGroups, selectedAutoGroupTag],
+    [filteredAutoGroups, resolvedAutoGroupTag],
+  );
+
+  const filteredAutoTags = useMemo(() => {
+    const tags = selectedAutoGroup?.tags ?? [];
+    const query = debouncedTagQuery.toLowerCase();
+    if (!query) {
+      return tags;
+    }
+
+    return tags.filter((tag) => tag.name.toLowerCase().includes(query));
+  }, [debouncedTagQuery, selectedAutoGroup]);
+
+  const selectedAutoTag = useMemo(
+    () =>
+      selectedAutoGroup?.tags.find((tag) => tag.tag === selectedAutoTagKey) ?? null,
+    [selectedAutoGroup, selectedAutoTagKey],
   );
 
   const workTagSelectionLimit =
@@ -663,11 +834,13 @@ export function InsertVariableDialog({
       ? customFieldId.length > 0
       : variableKind === "system_variable"
         ? systemVariableKey.length > 0
-        : variableKind === "customer_tags"
-          ? tagKind === "auto_tag"
-            ? selectedAutoGroupTag.length > 0
-            : selectedTagIds.length > 0 && resolvedActiveGroupId !== null
-          : false;
+        : variableKind === "auto_tag"
+          ? selectedAutoTag != null
+          : isTagKind(variableKind)
+            ? selectedTagIds.length > 0 && resolvedActiveGroupId !== null
+            : false;
+
+  const isEditingVariable = Boolean(initialConfigure?.lockKind);
 
   function resetToPick() {
     setStep("pick");
@@ -676,30 +849,32 @@ export function InsertVariableDialog({
     setSystemVariableKey("");
     setSystemVariables([]);
     setSystemVariablesError(false);
-    setTagKind("work_tag");
     setWecomMode("normal");
     setSelectedTagIds([]);
     setSelectedTagNameById({});
     setSelectedAutoGroupTag("");
+    setSelectedAutoTagKey("");
     setAutoTagGroups([]);
     setActiveGroupId(null);
     setMallAllTags([]);
     setGroupQuery("");
     setTagQuery("");
-    setTagPickerOpen(false);
   }
 
-  function startConfigure(kind: VariableKind, nextTagKind: TagKind = "work_tag") {
+  function startConfigure(
+    kind: VariableKind,
+    initialVariable?: SkillVariableConfig,
+  ) {
     setVariableKind(kind);
     setCustomFieldId("");
     setSystemVariableKey("");
     setSystemVariables([]);
     setSystemVariablesError(false);
-    setTagKind(nextTagKind);
     setWecomMode("normal");
     setSelectedTagIds([]);
     setSelectedTagNameById({});
     setSelectedAutoGroupTag("");
+    setSelectedAutoTagKey("");
     setAutoTagGroups([]);
     setWorkTags([]);
     setWorkTagGroups([]);
@@ -707,11 +882,51 @@ export function InsertVariableDialog({
     setActiveGroupId(null);
     setGroupQuery("");
     setTagQuery("");
-    setTagPickerOpen(false);
     setStep("configure");
+
+    if (!initialVariable || initialVariable.type !== kind) {
+      return;
+    }
+
+    if (initialVariable.type === "custom_field") {
+      setCustomFieldId(String(initialVariable.select_id));
+      return;
+    }
+
+    if (initialVariable.type === "system_variable") {
+      setSystemVariableKey(initialVariable.select_key);
+      return;
+    }
+
+    if (initialVariable.type === "auto_tag") {
+      setSelectedAutoTagKey(initialVariable.select_key);
+      return;
+    }
+
+    if (
+      initialVariable.type === "work_tag" ||
+      initialVariable.type === "mall_tag"
+    ) {
+      const { tagNames } = parseSkillTagVariableStoredName(initialVariable.name);
+      const nameById: Record<number, string> = {};
+      initialVariable.select_sub_ids.forEach((tagId, index) => {
+        const tagName = tagNames[index];
+        if (tagName) {
+          nameById[tagId] = tagName;
+        }
+      });
+      setActiveGroupId(initialVariable.select_id);
+      setSelectedTagIds([...initialVariable.select_sub_ids]);
+      setSelectedTagNameById(nameById);
+    }
   }
 
   function handleBack() {
+    if (initialConfigure?.lockKind) {
+      onOpenChange(false);
+      return;
+    }
+
     resetToPick();
     setStep("pick");
   }
@@ -754,28 +969,35 @@ export function InsertVariableDialog({
       return;
     }
 
-    if (tagKind === "auto_tag") {
-      if (!selectedAutoGroup) {
+    if (variableKind === "auto_tag") {
+      if (!selectedAutoGroup || !selectedAutoTag) {
         return;
       }
 
-      emitVariable({
-        name: selectedAutoGroup.groupName,
-        select_key: selectedAutoGroup.groupTag,
-        type: "auto_tag",
-      });
+      emitVariable(
+        {
+          name: selectedAutoTag.name,
+          select_key: selectedAutoTag.tag,
+          type: "auto_tag",
+        },
+        `${selectedAutoGroup.groupName} · ${selectedAutoTag.name}`,
+      );
       return;
     }
 
-    if (!activeGroup || selectedTagIds.length === 0) {
+    if (
+      (variableKind !== "work_tag" && variableKind !== "mall_tag") ||
+      !activeGroup ||
+      selectedTagIds.length === 0
+    ) {
       return;
     }
 
     emitVariable({
-      name: activeGroup.name,
+      name: buildSkillTagVariableStoredName(activeGroup.name, selectedTagNames),
       select_id: activeGroup.id,
       select_sub_ids: [...selectedTagIds],
-      type: tagKind,
+      type: variableKind,
     });
   }
 
@@ -817,14 +1039,16 @@ export function InsertVariableDialog({
       <DialogContent className="flex h-[639px] max-h-[calc(100vh-2rem)] w-[min(792px,calc(100vw-2rem))] max-w-[792px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
         <div className="flex shrink-0 items-center px-6 pb-2 pt-6 pr-14">
           <DialogTitle className="text-lg font-semibold text-foreground">
-            插入变量
+            {initialConfigure?.lockKind ? "编辑变量" : "插入变量"}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            选择并配置要插入的变量
+            {initialConfigure?.lockKind
+              ? "编辑已添加的变量"
+              : "选择并配置要插入的变量"}
           </DialogDescription>
         </div>
 
-        {step === "pick" ? (
+        {step === "pick" && !initialConfigure?.lockKind ? (
           <ul aria-label="插入变量" className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 pb-6 pt-3">
             {variableOptions.map((option) => (
               <li className="flex items-start gap-3" key={option.kind}>
@@ -865,18 +1089,12 @@ export function InsertVariableDialog({
                   size={16}
                   strokeWidth={1.8}
                 />
-                <span>
-                  {variableKind === "custom_field"
-                    ? "客户自定义属性"
-                    : variableKind === "system_variable"
-                      ? "系统变量"
-                      : "客户标签"}
-                </span>
+                <span>{variableKind ? getVariableKindTitle(variableKind) : ""}</span>
               </div>
 
               {variableKind === "custom_field" ? (
                 <div className="space-y-2">
-                  <Label htmlFor="skill-variable-custom-field">
+                  <Label>
                     <span className="text-destructive">*</span> 字段
                   </Label>
                   {customInfoFieldsLoading ? (
@@ -902,21 +1120,17 @@ export function InsertVariableDialog({
                       暂无数据
                     </div>
                   ) : (
-                    <Select onValueChange={setCustomFieldId} value={customFieldId || undefined}>
-                      <SelectTrigger
-                        className="h-10 w-full"
-                        id="skill-variable-custom-field"
-                      >
-                        <SelectValue placeholder="请选择" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customInfoFields.map((field) => (
-                          <SelectItem key={field.id} value={String(field.id)}>
-                            {field.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FlatOptionList
+                      ariaLabel="字段"
+                      items={customInfoFields.map((field) => ({
+                        label: field.name,
+                        value: String(field.id),
+                      }))}
+                      onSelect={setCustomFieldId}
+                      searchAriaLabel="搜索字段"
+                      searchable
+                      selectedValue={customFieldId}
+                    />
                   )}
                   <p className="text-sm leading-5 text-muted-foreground">
                     <span className="font-medium text-foreground">温馨提示：</span>
@@ -927,7 +1141,7 @@ export function InsertVariableDialog({
 
               {variableKind === "system_variable" ? (
                 <div className="space-y-2">
-                  <Label htmlFor="skill-variable-system-key">
+                  <Label>
                     <span className="text-destructive">*</span> 变量
                   </Label>
                   {systemVariablesLoading ? (
@@ -953,24 +1167,17 @@ export function InsertVariableDialog({
                       暂无数据
                     </div>
                   ) : (
-                    <Select
-                      onValueChange={setSystemVariableKey}
-                      value={systemVariableKey || undefined}
-                    >
-                      <SelectTrigger
-                        className="h-10 w-full"
-                        id="skill-variable-system-key"
-                      >
-                        <SelectValue placeholder="请选择" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {systemVariables.map((item) => (
-                          <SelectItem key={item.key} value={item.key}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FlatOptionList
+                      ariaLabel="变量"
+                      items={systemVariables.map((item) => ({
+                        label: item.name,
+                        value: item.key,
+                      }))}
+                      onSelect={setSystemVariableKey}
+                      searchAriaLabel="搜索变量"
+                      searchable
+                      selectedValue={systemVariableKey}
+                    />
                   )}
                   <p className="text-sm leading-5 text-muted-foreground">
                     <span className="font-medium text-foreground">温馨提示：</span>
@@ -979,50 +1186,11 @@ export function InsertVariableDialog({
                 </div>
               ) : null}
 
-              {variableKind === "customer_tags" ? (
+              {isTagKind(variableKind) ? (
                 <div className="space-y-5">
-                  <div className="space-y-3">
-                    <Label>
-                      <span className="text-destructive">*</span> 标签类型
-                    </Label>
-                    <RadioGroup
-                      className="flex flex-wrap gap-5"
-                      onValueChange={(value) => {
-                        const nextKind = value as TagKind;
-                        setTagKind(nextKind);
-                        setSelectedTagIds([]);
-                        setSelectedTagNameById({});
-                        setSelectedAutoGroupTag("");
-                        setAutoTagGroups([]);
-                        setWecomMode("normal");
-                        setGroupQuery("");
-                        setTagQuery("");
-                        setWorkTags([]);
-                        setWorkTagGroups([]);
-                        setMallAllTags([]);
-                        setActiveGroupId(null);
-                      }}
-                      value={tagKind}
-                    >
-                      {tagKindOptions.map((option) => (
-                        <label
-                          className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
-                          key={option.value}
-                        >
-                          <RadioGroupItem
-                            aria-label={option.label}
-                            value={option.value}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      ))}
-                    </RadioGroup>
-                  </div>
-
                   <div className="space-y-2">
                     <Label>
-                      <span className="text-destructive">*</span>{" "}
-                      {tagKind === "auto_tag" ? "标签分组" : "标签"}
+                      <span className="text-destructive">*</span> 标签
                     </Label>
 
                     {tagKind === "auto_tag" ? (
@@ -1049,106 +1217,202 @@ export function InsertVariableDialog({
                           暂无数据
                         </div>
                       ) : (
-                        <Select
-                          onValueChange={setSelectedAutoGroupTag}
-                          value={selectedAutoGroupTag || undefined}
+                        <div
+                          aria-label="选择自动化标签"
+                          className="overflow-hidden rounded-[10px] border border-border"
                         >
-                          <SelectTrigger
-                            aria-label="选择自动化标签分组"
-                            className="h-10 w-full"
-                          >
-                            <SelectValue placeholder="请选择" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {autoTagGroups.map((group) => (
-                              <SelectItem
-                                key={group.groupTag}
-                                value={group.groupTag}
-                              >
-                                {group.groupName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )
-                    ) : (
-                      <Popover modal={false} onOpenChange={setTagPickerOpen} open={tagPickerOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            aria-expanded={tagPickerOpen}
-                            aria-label="选择标签"
-                            className="h-10 w-full justify-between px-3.5 font-normal"
-                            type="button"
-                            variant="outline"
-                          >
-                            <span
-                              className={cn(
-                                "truncate",
-                                selectedTagNames.length === 0 && "text-muted-foreground",
-                              )}
-                            >
-                              {selectedTagNames.length === 0
-                                ? "请选择"
-                                : activeGroup
-                                  ? `${activeGroup.name} · ${
-                                      selectedTagNames.length <= 2
-                                        ? selectedTagNames.join("、")
-                                        : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`
-                                    }`
-                                  : selectedTagNames.length <= 3
-                                    ? selectedTagNames.join("、")
-                                    : `已选 ${selectedTagNames.length} 个标签`}
-                            </span>
-                            <HugeiconsIcon
-                              aria-hidden="true"
-                              className="opacity-50"
-                              icon={ArrowDown01Icon}
-                              size={16}
-                              strokeWidth={1.8}
-                            />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          align="start"
-                          className="w-[min(44rem,calc(100vw-4rem))] p-0"
-                          sideOffset={8}
-                        >
-                          {tagKind === "work_tag" ? (
-                            <div className="border-b border-border px-3 pt-2">
-                              <Tabs
-                                onValueChange={(value) => {
-                                  const nextMode = value as WecomTagMode;
-                                  setWecomMode(nextMode);
-                                  setGroupQuery("");
-                                  setTagQuery("");
-                                  setWorkTags([]);
-                                  setActiveGroupId(null);
-                                  setSelectedTagIds([]);
-                                  setSelectedTagNameById({});
-                                }}
-                                value={wecomMode}
-                              >
-                                <TabsList aria-label="企微标签分类" variant="underline">
-                                  <TabsTrigger
-                                    className="px-3 py-2.5"
-                                    value="normal"
-                                    variant="underline"
-                                  >
-                                    普通标签
-                                  </TabsTrigger>
-                                  <TabsTrigger
-                                    className="px-3 py-2.5"
-                                    value="exclusive"
-                                    variant="underline"
-                                  >
-                                    互斥标签
-                                  </TabsTrigger>
-                                </TabsList>
-                              </Tabs>
+                          {selectedAutoTag && selectedAutoGroup ? (
+                            <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                              已选 {selectedAutoGroup.groupName} · {selectedAutoTag.name}
+                            </div>
+                          ) : selectedAutoGroup && isEditingVariable ? (
+                            <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                              {selectedAutoGroup.groupName}
                             </div>
                           ) : null}
 
-                          <div className="grid h-72 grid-cols-2">
+                          <div
+                            className={cn(
+                              "grid h-72",
+                              isEditingVariable ? "grid-cols-1" : "grid-cols-2",
+                            )}
+                          >
+                            {!isEditingVariable ? (
+                              <div className="flex min-h-0 flex-col border-r border-border">
+                                <div className="shrink-0 p-3">
+                                  <div className="relative">
+                                    <HugeiconsIcon
+                                      aria-hidden="true"
+                                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                      icon={Search01Icon}
+                                      size={15}
+                                      strokeWidth={1.8}
+                                    />
+                                    <Input
+                                      aria-label="搜索标签组"
+                                      className="h-9 pl-9"
+                                      onChange={(event) => setGroupQuery(event.target.value)}
+                                      placeholder="搜索"
+                                      value={groupQuery}
+                                    />
+                                  </div>
+                                </div>
+                                <ul
+                                  aria-label="标签组"
+                                  className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3"
+                                >
+                                  {filteredAutoGroups.length === 0 ? (
+                                    <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                      暂无数据
+                                    </li>
+                                  ) : (
+                                    filteredAutoGroups.map((group) => (
+                                      <li key={group.groupTag}>
+                                        <button
+                                          className={cn(
+                                            "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
+                                            group.groupTag === resolvedAutoGroupTag
+                                              ? "bg-accent text-foreground"
+                                              : "text-foreground hover:bg-muted/60",
+                                          )}
+                                          onClick={() => {
+                                            if (group.groupTag !== resolvedAutoGroupTag) {
+                                              setSelectedAutoTagKey("");
+                                            }
+                                            setSelectedAutoGroupTag(group.groupTag);
+                                            setTagQuery("");
+                                          }}
+                                          type="button"
+                                        >
+                                          {group.groupName}
+                                        </button>
+                                      </li>
+                                    ))
+                                  )}
+                                </ul>
+                              </div>
+                            ) : null}
+
+                            <div className="flex min-h-0 flex-col">
+                              <div className="shrink-0 p-3">
+                                <div className="relative">
+                                  <HugeiconsIcon
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                    icon={Search01Icon}
+                                    size={15}
+                                    strokeWidth={1.8}
+                                  />
+                                  <Input
+                                    aria-label="搜索标签"
+                                    className="h-9 pl-9"
+                                    onChange={(event) => setTagQuery(event.target.value)}
+                                    placeholder="搜索"
+                                    value={tagQuery}
+                                  />
+                                </div>
+                              </div>
+                              <ul
+                                aria-label="标签列表"
+                                className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3"
+                              >
+                                {filteredAutoTags.length === 0 ? (
+                                  <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                    暂无数据
+                                  </li>
+                                ) : (
+                                  filteredAutoTags.map((tag) => {
+                                    const selected = tag.tag === selectedAutoTagKey;
+
+                                    return (
+                                      <li key={tag.tag}>
+                                        <button
+                                          aria-pressed={selected}
+                                          className={cn(
+                                            "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
+                                            selected
+                                              ? "bg-accent text-foreground"
+                                              : "text-foreground hover:bg-muted/60",
+                                          )}
+                                          onClick={() => setSelectedAutoTagKey(tag.tag)}
+                                          type="button"
+                                        >
+                                          {tag.name}
+                                        </button>
+                                      </li>
+                                    );
+                                  })
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <div
+                        aria-label="选择标签"
+                        className="overflow-hidden rounded-[10px] border border-border"
+                      >
+                        {selectedTagNames.length > 0 ? (
+                          <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                            {activeGroup
+                              ? `已选 ${activeGroup.name} · ${
+                                  selectedTagNames.length <= 2
+                                    ? selectedTagNames.join("、")
+                                    : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`
+                                }`
+                              : selectedTagNames.length <= 3
+                                ? `已选 ${selectedTagNames.join("、")}`
+                                : `已选 ${selectedTagNames.length} 个标签`}
+                          </div>
+                        ) : activeGroup && isEditingVariable ? (
+                          <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                            {activeGroup.name}
+                          </div>
+                        ) : null}
+
+                        {tagKind === "work_tag" && !isEditingVariable ? (
+                          <div className="border-b border-border px-3 pt-2">
+                            <Tabs
+                              onValueChange={(value) => {
+                                const nextMode = value as WecomTagMode;
+                                setWecomMode(nextMode);
+                                setGroupQuery("");
+                                setTagQuery("");
+                                setWorkTags([]);
+                                setActiveGroupId(null);
+                                setSelectedTagIds([]);
+                                setSelectedTagNameById({});
+                              }}
+                              value={wecomMode}
+                            >
+                              <TabsList aria-label="企微标签分类" variant="underline">
+                                <TabsTrigger
+                                  className="px-3 py-2.5"
+                                  value="normal"
+                                  variant="underline"
+                                >
+                                  普通标签
+                                </TabsTrigger>
+                                <TabsTrigger
+                                  className="px-3 py-2.5"
+                                  value="exclusive"
+                                  variant="underline"
+                                >
+                                  互斥标签
+                                </TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                          </div>
+                        ) : null}
+
+                        <div
+                          className={cn(
+                            "grid h-72",
+                            isEditingVariable ? "grid-cols-1" : "grid-cols-2",
+                          )}
+                        >
+                          {!isEditingVariable ? (
                             <div className="flex min-h-0 flex-col border-r border-border">
                               <div className="shrink-0 p-3">
                                 <div className="relative">
@@ -1221,83 +1485,83 @@ export function InsertVariableDialog({
                                 )}
                               </ul>
                             </div>
+                          ) : null}
 
-                            <div className="flex min-h-0 flex-col">
-                              <div className="shrink-0 p-3">
-                                <div className="relative">
-                                  <HugeiconsIcon
-                                    aria-hidden="true"
-                                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                    icon={Search01Icon}
-                                    size={15}
-                                    strokeWidth={1.8}
-                                  />
-                                  <Input
-                                    aria-label="搜索标签"
-                                    className="h-9 pl-9"
-                                    onChange={(event) => setTagQuery(event.target.value)}
-                                    placeholder="搜索"
-                                    value={tagQuery}
-                                  />
-                                </div>
+                          <div className="flex min-h-0 flex-col">
+                            <div className="shrink-0 p-3">
+                              <div className="relative">
+                                <HugeiconsIcon
+                                  aria-hidden="true"
+                                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                  icon={Search01Icon}
+                                  size={15}
+                                  strokeWidth={1.8}
+                                />
+                                <Input
+                                  aria-label="搜索标签"
+                                  className="h-9 pl-9"
+                                  onChange={(event) => setTagQuery(event.target.value)}
+                                  placeholder="搜索"
+                                  value={tagQuery}
+                                />
                               </div>
-                              <ul
-                                aria-label="标签列表"
-                                className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
-                              >
-                                {(tagKind === "mall_tag"
-                                  ? workTagGroupsLoading
-                                  : workTagsLoading) ? (
-                                  <li
-                                    className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
-                                    role="status"
-                                  >
-                                    <Spinner size={14} />
-                                    <span>正在加载</span>
-                                  </li>
-                                ) : (tagKind === "mall_tag"
-                                    ? workTagGroupsError
-                                    : workTagsError) ? (
-                                  <li
-                                    className="px-2 py-8 text-center text-sm text-destructive"
-                                    role="alert"
-                                  >
-                                    加载失败
-                                  </li>
-                                ) : filteredTags.length === 0 ? (
-                                  <li className="px-2 py-8 text-center text-sm text-muted-foreground">
-                                    暂无数据
-                                  </li>
-                                ) : (
-                                  filteredTags.map((tag) => {
-                                    const checked = selectedTagIds.includes(tag.id);
-
-                                    return (
-                                      <li key={tag.id}>
-                                        <label className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm hover:bg-muted/60">
-                                          <Checkbox
-                                            checked={checked}
-                                            onCheckedChange={() =>
-                                              toggleTag(tag.id, tag.name)
-                                            }
-                                          />
-                                          <span>{tag.name}</span>
-                                        </label>
-                                      </li>
-                                    );
-                                  })
-                                )}
-                              </ul>
                             </div>
+                            <ul
+                              aria-label="标签列表"
+                              className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
+                            >
+                              {(tagKind === "mall_tag"
+                                ? workTagGroupsLoading
+                                : workTagsLoading) ? (
+                                <li
+                                  className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
+                                  role="status"
+                                >
+                                  <Spinner size={14} />
+                                  <span>正在加载</span>
+                                </li>
+                              ) : (tagKind === "mall_tag"
+                                  ? workTagGroupsError
+                                  : workTagsError) ? (
+                                <li
+                                  className="px-2 py-8 text-center text-sm text-destructive"
+                                  role="alert"
+                                >
+                                  加载失败
+                                </li>
+                              ) : filteredTags.length === 0 ? (
+                                <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                  暂无数据
+                                </li>
+                              ) : (
+                                filteredTags.map((tag) => {
+                                  const checked = selectedTagIds.includes(tag.id);
+
+                                  return (
+                                    <li key={tag.id}>
+                                      <label className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm hover:bg-muted/60">
+                                        <Checkbox
+                                          checked={checked}
+                                          onCheckedChange={() =>
+                                            toggleTag(tag.id, tag.name)
+                                          }
+                                        />
+                                        <span>{tag.name}</span>
+                                      </label>
+                                    </li>
+                                  );
+                                })
+                              )}
+                            </ul>
                           </div>
-                        </PopoverContent>
-                      </Popover>
+                        </div>
+                      </div>
                     )}
 
                     <p className="text-sm leading-5 text-muted-foreground">
                       <span className="font-medium text-foreground">温馨提示：</span>
                       {tagKind === "auto_tag"
-                        ? "工具会查询指定的自动化标签分组，然后告诉智能体该客户命中了该分组下的哪些标签。"
+                        ? "工具会查询指定的自动化标签，然后告诉智能体该客户是否命中该标签。"
                         : "工具会查询指定的标签，然后告诉智能体该客户命中了所选标签中的哪些标签。"}
                     </p>
                   </div>
@@ -1307,10 +1571,10 @@ export function InsertVariableDialog({
 
             <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-6 py-4">
               <Button onClick={handleBack} type="button" variant="outline">
-                上一步
+                {initialConfigure?.lockKind ? "取消" : "上一步"}
               </Button>
               <Button disabled={!canConfirm} onClick={handleConfirm} type="button">
-                确认插入
+                {initialConfigure?.lockKind ? "确认" : "确认插入"}
               </Button>
             </div>
           </div>

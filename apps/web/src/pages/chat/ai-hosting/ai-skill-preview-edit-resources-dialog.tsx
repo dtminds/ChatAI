@@ -23,6 +23,7 @@ import { listSystemVariables } from "./api/system-variable-service";
 import { listWorkTagGroups, listWorkTags } from "./api/work-tag-service";
 import {
   buildKnowledgeBasePlaceholder,
+  buildSkillTagVariableStoredName,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
   replaceSkillContentResource,
@@ -408,11 +409,13 @@ async function loadVariableOptions(
 
   if (variableType === "auto_tag") {
     const response = await listCdpTagGroups();
-    return response.groups.map((group) => ({
-      label: group.groupName,
-      value: group.groupTag,
-      meta: { name: group.groupName },
-    }));
+    return response.groups.flatMap((group) =>
+      group.tags.map((tag) => ({
+        label: `${group.groupName} · ${tag.name}`,
+        value: tag.tag,
+        meta: { name: `${group.groupName} · ${tag.name}` },
+      })),
+    );
   }
 
   if (variableType === "work_tag") {
@@ -545,7 +548,10 @@ async function buildVariableConfig(
   const selectSubIds = tagsResponse.tags.map((tag) => tag.id);
 
   return {
-    name,
+    name: buildSkillTagVariableStoredName(
+      name,
+      tagsResponse.tags.map((tag) => tag.name),
+    ),
     select_id: groupId,
     select_sub_ids: selectSubIds,
     type: variableType,

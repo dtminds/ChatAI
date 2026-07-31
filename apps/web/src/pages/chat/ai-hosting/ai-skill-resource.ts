@@ -22,7 +22,7 @@ export type SkillTagGroupVariable = {
 
 export type SkillAutoTagVariable = {
   name: string;
-  /** CDP 分组标识 groupTag */
+  /** CDP 标签标识 tag（单选） */
   select_key: string;
   type: "auto_tag";
 };
@@ -107,10 +107,77 @@ function normalizeSkillVariableDisplayName(
   displayName: string,
   variableType: SkillVariableType,
 ) {
+  if (variableType === "work_tag" || variableType === "mall_tag") {
+    return formatSkillTagVariableDisplayName(variableType, displayName);
+  }
+
   const typeLabel = getSkillVariableTypeLabel(variableType);
   const valueName = getSkillVariableValueName(displayName, variableType);
 
   return valueName === typeLabel ? typeLabel : `${typeLabel} · ${valueName}`;
+}
+
+/** 企微 / 小店：`企微标签-渠道 | 淘宝、抖音、快手` */
+function formatSkillTagVariableDisplayName(
+  variableType: "work_tag" | "mall_tag",
+  storedName: string,
+) {
+  const typeLabel = getSkillVariableTypeLabel(variableType);
+  const rest = normalizeSkillTagVariableStoredName(
+    stripSkillTagVariableNamePrefixes(storedName, typeLabel),
+  );
+  // 未绑定/仅类型名时不要拼成「企微标签-企微标签」
+  if (!rest || rest === typeLabel) {
+    return typeLabel;
+  }
+
+  const pipeIndex = rest.indexOf(" | ");
+  if (pipeIndex === -1) {
+    return `${typeLabel}-${rest}`;
+  }
+
+  const groupName = rest.slice(0, pipeIndex).trim();
+  const tagsPart = rest.slice(pipeIndex + 3).trim();
+  if (!groupName) {
+    return tagsPart ? `${typeLabel} | ${tagsPart}` : typeLabel;
+  }
+
+  return tagsPart ? `${typeLabel}-${groupName} | ${tagsPart}` : `${typeLabel}-${groupName}`;
+}
+
+function stripSkillTagVariableNamePrefixes(displayName: string, typeLabel: string) {
+  let rest = displayName.trim();
+  let changed = true;
+
+  while (changed && rest) {
+    changed = false;
+    for (const prefix of [`客户标签 · `, `${typeLabel} · `, `${typeLabel}-`]) {
+      if (rest.startsWith(prefix)) {
+        rest = rest.slice(prefix.length).trim();
+        changed = true;
+      }
+    }
+  }
+
+  return rest;
+}
+
+/** 旧数据 `分组 · 标签` 归一成 `分组 | 标签` */
+function normalizeSkillTagVariableStoredName(storedName: string) {
+  const rest = storedName.trim();
+  if (!rest || rest.includes(" | ") || !rest.includes(" · ")) {
+    return rest;
+  }
+
+  const parts = rest
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) {
+    return rest;
+  }
+
+  return `${parts[0]} | ${parts.slice(1).join("、")}`;
 }
 
 function getSkillVariableValueName(
@@ -118,6 +185,13 @@ function getSkillVariableValueName(
   variableType: SkillVariableType,
 ) {
   const typeLabel = getSkillVariableTypeLabel(variableType);
+
+  if (variableType === "work_tag" || variableType === "mall_tag") {
+    return normalizeSkillTagVariableStoredName(
+      stripSkillTagVariableNamePrefixes(displayName, typeLabel),
+    );
+  }
+
   const parts = displayName
     .split(" · ")
     .map((part) => part.trim())
@@ -126,7 +200,42 @@ function getSkillVariableValueName(
     parts.shift();
   }
 
-  return parts[0] ?? displayName.trim();
+  return parts.length > 0 ? parts.join(" · ") : displayName.trim();
+}
+
+/** 组装企微 / 小店变量存储名：分组 | 标签1、标签2 */
+export function buildSkillTagVariableStoredName(
+  groupName: string,
+  tagNames: readonly string[],
+) {
+  const normalizedGroup = groupName.trim();
+  const normalizedTags = tagNames.map((name) => name.trim()).filter(Boolean);
+  if (normalizedTags.length === 0) {
+    return normalizedGroup;
+  }
+
+  return `${normalizedGroup} | ${normalizedTags.join("、")}`;
+}
+
+/** 解析企微 / 小店变量存储名 */
+export function parseSkillTagVariableStoredName(storedName: string): {
+  groupName: string;
+  tagNames: string[];
+} {
+  const rest = storedName.trim();
+  const pipeIndex = rest.indexOf(" | ");
+  if (pipeIndex === -1) {
+    return { groupName: rest, tagNames: [] };
+  }
+
+  return {
+    groupName: rest.slice(0, pipeIndex).trim(),
+    tagNames: rest
+      .slice(pipeIndex + 3)
+      .split("、")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  };
 }
 
 export function getSkillResourceChipName(item: SkillResourceItem) {
@@ -197,6 +306,30 @@ export function removeResourceFromSkillContent(
           (segment.id === resource.id || segment.placeholder === resource.placeholder)
         ),
     ),
+  );
+}
+
+/** 用新资源块替换技能描述里已引用的旧资源 */
+export function replaceResourceInSkillContent(
+  segments: SkillContentSegment[],
+  previous: Pick<SkillContentResourceSegment, "id" | "placeholder">,
+  next: SkillContentResourceSegment,
+): SkillContentSegment[] {
+  return normalizeSkillContentSegments(
+    segments.map((segment) => {
+      if (segment.type !== "resource") {
+        return segment;
+      }
+
+      if (
+        segment.id === previous.id ||
+        segment.placeholder === previous.placeholder
+      ) {
+        return next;
+      }
+
+      return segment;
+    }),
   );
 }
 

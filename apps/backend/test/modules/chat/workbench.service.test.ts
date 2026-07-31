@@ -291,6 +291,53 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("keeps visible seat relations available when conversation time lookup fails", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    const relation = {
+      bindId: "301",
+      bindStatus: 1,
+      bindType: 1,
+      seatAvatar: "",
+      seatId: "12",
+      seatName: "销售一号",
+      thirdUserId: "seat-user-12",
+    };
+    const listCustomerRelationConversations = vi
+      .fn()
+      .mockRejectedValue(new Error("conversation query unavailable"));
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+        listAccessibleCustomerSeatRelations: vi.fn().mockResolvedValue([relation]),
+        listCustomerRelationConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getCustomerSeatRelations("101", "external-b"),
+    ).resolves.toEqual({ items: [relation] });
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        error: expect.any(Error),
+        operation: "load-customer-seat-relation-conversation-times",
+        subUserId: "101",
+        thirdExternalUserId: "external-b",
+        uid: 9001,
+      },
+      "Failed to load customer seat relation conversation times",
+    );
+  });
+
   it("rejects seat-scoped access when the service has no authenticated request uid", async () => {
     const javaClient = createJavaClient();
     const canAccessSeat = vi.fn().mockResolvedValue(true);

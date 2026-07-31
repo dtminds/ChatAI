@@ -922,12 +922,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return { items };
     }
 
-    const conversationTimes = await this.repository.listCustomerRelationConversations({
-      platform: scope.platform,
-      thirdExternalUserId,
-      thirdUserIds: items.map((item) => item.thirdUserId),
-      uid: scope.uid,
-    });
+    let conversationTimes: WorkbenchCustomerRelationConversationsResponse["items"];
+
+    try {
+      conversationTimes = await this.repository.listCustomerRelationConversations({
+        platform: scope.platform,
+        thirdExternalUserId,
+        thirdUserIds: items.map((item) => item.thirdUserId),
+        uid: scope.uid,
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          operation: "load-customer-seat-relation-conversation-times",
+          subUserId,
+          thirdExternalUserId,
+          uid: scope.uid,
+        },
+        "Failed to load customer seat relation conversation times",
+      );
+
+      return { items };
+    }
+
     const conversationTimeByThirdUserId = new Map(
       conversationTimes.map((item) => [item.thirdUserId, item.lastMessageTime]),
     );

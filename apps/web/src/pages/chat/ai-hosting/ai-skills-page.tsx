@@ -125,8 +125,8 @@ type SkillCategory = {
 };
 
 const skillTabs = [
-  { label: "技能广场", value: "marketplace" },
   { label: "我的技能", value: "mine" },
+  { label: "技能广场", value: "marketplace" },
 ] as const;
 
 const detailTabs = [

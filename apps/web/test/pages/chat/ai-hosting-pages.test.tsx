@@ -1893,6 +1893,11 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/skills",
     );
+    expect(
+      within(screen.getByRole("tablist", { name: "AI技能视图" }))
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["我的技能", "技能广场"]);
     expect(screen.getByRole("tab", { name: "技能广场" })).toHaveAttribute(
       "aria-selected",
       "true",

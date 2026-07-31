@@ -75,6 +75,7 @@ type ConversationListPanelProps = {
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
+  onOpenSearchResult?: (item: SearchResultItem) => void | Promise<void>;
   onRefreshUnreadConversations?: (mode: ChatMode) => void | Promise<void>;
   onSelectConversation: (
     conversationId: string,
@@ -103,6 +104,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   onMarkConversationUnread,
   onDeleteConversation,
   onPinConversation,
+  onOpenSearchResult,
   onRefreshUnreadConversations,
   onSelectConversation,
   onSelectMode,
@@ -275,7 +277,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
 
   const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
-    void selectOrCreateAndSelectConversation(item);
+    void (onOpenSearchResult ?? selectOrCreateAndSelectConversation)(item);
   };
 
   return (

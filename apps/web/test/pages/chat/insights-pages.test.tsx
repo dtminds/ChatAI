@@ -1628,6 +1628,9 @@ describe("conversation insights pages", () => {
     expect(insightRegion).toBeInTheDocument();
     expect(conversationRegion).toBeInTheDocument();
     expect(
+      within(conversationRegion).getByRole("link", { name: "打开会话" }),
+    ).toHaveAttribute("href", "/chat/conversations/301");
+    expect(
       within(detailDialog).getAllByRole("img", { name: "张三" }).length,
     ).toBeGreaterThan(0);
     expect(

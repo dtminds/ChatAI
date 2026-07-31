@@ -5,7 +5,6 @@ import {
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
 import {
-  adaptConversation,
   formatConversationPreview,
   formatWorkbenchTimestamp,
   isInvalidMessageUiKey,
@@ -18,6 +17,7 @@ import {
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
+  loadAccountScope,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
   loadConversationSummary,
@@ -35,6 +35,7 @@ import {
   requestSmartReplyAutoGeneralAnswer,
   requestSmartReplyGeneralAnswer,
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
+  resolveWorkbenchConversation,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   retryMessage as retryMessageRequest,
@@ -45,7 +46,10 @@ import {
   unpinConversation,
   updateSeatAgentMode,
 } from "@/pages/chat/api/workbench-gateway";
-import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
+import type {
+  WorkbenchConversationPage,
+  WorkbenchOpenConversationRequest,
+} from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
   JAVA_MENTION_PLACEHOLDER,
@@ -53,7 +57,10 @@ import {
   type ComposerSegment,
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
-import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import {
+  sortConversations,
+  type ConversationPromotion,
+} from "@/pages/chat/lib/conversation-order";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
@@ -74,7 +81,6 @@ import {
 } from "@/pages/chat/lib/conversation-ai-assistant";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
-  CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
   WORKBENCH_MESSAGE_SOURCE,
   type WorkbenchFullAutoAnswerStatusResponse,
@@ -210,6 +216,16 @@ type HistoryPanelState = {
 
 type HistoryPanelScrollMode = "end";
 
+type ConversationActivationOptions = {
+  beforeActivate?: (conversation: Conversation) => void;
+  clearSearchOnSuccess?: boolean;
+};
+
+type InitializeWorkbenchOptions = {
+  beforeActivate?: (conversation: Conversation) => void;
+  preferredConversationId?: string;
+};
+
 const emptyHistoryPanelState: HistoryPanelState = {
   hasNext: false,
   hasPrev: false,
@@ -249,6 +265,7 @@ type WorkbenchState = {
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
+  conversationPromotion?: ConversationPromotion;
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   fullAutoActionError?: string;
@@ -291,7 +308,7 @@ type WorkbenchState = {
   dismissFullAutoActionError: () => void;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
-  initializeWorkbench: () => Promise<void>;
+  initializeWorkbench: (options?: InitializeWorkbenchOptions) => Promise<void>;
   markActiveConversationHandoffHandled: () => Promise<MarkConversationHandoffHandledResult>;
   markConversationRead: (conversationId: string) => Promise<void>;
   pinConversation: (conversationId: string) => Promise<void>;
@@ -301,6 +318,11 @@ type WorkbenchState = {
     mode: ChatMode,
     options?: { preserveConversation?: Conversation },
   ) => Promise<void>;
+  clearConversationPromotion: () => void;
+  openConversation: (
+    request: WorkbenchOpenConversationRequest,
+    options?: ConversationActivationOptions,
+  ) => Promise<boolean>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   loadUnreadConversations: (mode?: ChatMode) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
@@ -425,6 +447,8 @@ function createInitialState(): Omit<
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
+  | "clearConversationPromotion"
+  | "openConversation"
   | "loadActiveGroupMembers"
   | "loadUnreadConversations"
   | "markConversationUnread"
@@ -473,6 +497,7 @@ function createInitialState(): Omit<
     activeConversationId: "",
     activeMessageSeq: 0,
     activeMode: "single",
+    conversationPromotion: undefined,
     bootstrapError: undefined,
     bootstrapStatus: "idle",
     hasChatSendPermission: false,
@@ -717,6 +742,24 @@ function mergeConversationList(
     conversation,
     ...currentList.filter((item) => item.id !== conversation.id),
   ]);
+}
+
+function createConversationPromotion(
+  conversation: Conversation,
+  conversations: Conversation[],
+): ConversationPromotion {
+  return {
+    accountId: conversation.accountId,
+    baselineUpdatedAtMs: conversations.reduce(
+      (latestUpdatedAtMs, currentConversation) =>
+        currentConversation.mode === conversation.mode
+          ? Math.max(latestUpdatedAtMs, currentConversation.updatedAtMs ?? 0)
+          : latestUpdatedAtMs,
+      0,
+    ),
+    conversationId: conversation.id,
+    mode: conversation.mode,
+  };
 }
 
 function mergePolledConversation(
@@ -3072,6 +3115,8 @@ export function createWorkbenchStore() {
   let latestGroupMembersRequestId = 0;
   let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
+  let latestConversationOpenRequestId = 0;
+  let loadingConversationOpenRequestId: number | undefined;
   let latestConversationProfileRefreshGeneration = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
@@ -3126,6 +3171,23 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function issueConversationOpenRequestId() {
+    latestConversationOpenRequestId += 1;
+    return latestConversationOpenRequestId;
+  }
+
+  function cancelConversationOpenRequest() {
+    latestConversationOpenRequestId += 1;
+    const didCancelLoadingRequest =
+      loadingConversationOpenRequestId !== undefined;
+    loadingConversationOpenRequestId = undefined;
+    return didCancelLoadingRequest;
+  }
+
+  function isCurrentConversationOpenRequest(requestId: number) {
+    return requestId === latestConversationOpenRequestId;
   }
 
   function buildAcceptedOptimisticMessageState(
@@ -3348,6 +3410,7 @@ export function createWorkbenchStore() {
 
   function clearAllRuntimeState() {
     bumpScopeRequestId();
+    cancelConversationOpenRequest();
     latestTakeoverRequestId += 1;
     latestGroupMembersRequestId += 1;
     latestConversationProfileRefreshGeneration += 1;
@@ -4397,6 +4460,294 @@ export function createWorkbenchStore() {
       }
     }
 
+    async function activateResolvedConversation(
+      conversation: Conversation,
+      openRequestId: number,
+      beforeActivate?: (conversation: Conversation) => void,
+    ) {
+      const state = get();
+      let requestId: number | undefined;
+      let didActivate = false;
+
+      try {
+        const scopeLoadResult = await loadAccountScope(
+          conversation.accountId,
+          conversation.mode,
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          MESSAGE_PAGE_SIZE,
+          conversation.id,
+          conversation,
+        );
+
+        if (!isCurrentConversationOpenRequest(openRequestId)) {
+          return false;
+        }
+
+        const conversationPage = scopeLoadResult.conversationPage;
+
+        if (
+          scopeLoadResult.nextConversationId !== conversation.id ||
+          !conversationPage
+        ) {
+          throw new Error("未找到目标会话");
+        }
+
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          {
+            ...get(),
+            conversationListsByScope: {
+              ...get().conversationListsByScope,
+              [conversation.accountId]: scopeLoadResult.conversations,
+            },
+          },
+          conversationPage,
+        );
+        const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
+          conversationPage.messages,
+          pageSmartReplyByMessageId,
+        );
+        const pageSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          pageSmartReplyByMessageId,
+          { hidden: pageSmartReplyHidden },
+        );
+
+        beforeActivate?.(conversation);
+        requestId = issueScopeRequestId();
+
+        const previousConversationId = get().activeConversationId;
+
+        if (previousConversationId) {
+          clearUnverifiedConversationProfileRetry(previousConversationId);
+          clearSmartReplyRuntimeTimers(previousConversationId);
+          clearFullAutoRuntime(previousConversationId);
+        }
+
+        clearSmartReplyRuntimeTimers(conversation.id);
+        clearFullAutoRuntime(conversation.id);
+        loadingConversationOpenRequestId = undefined;
+
+        set((currentState) => {
+          const conversationListCacheSeatOrder = getConversationListCacheSeatOrder(
+            currentState.conversationListCacheSeatOrder,
+            conversation.accountId,
+          );
+          const prunedConversationListCache = pruneConversationListCache({
+            activeAccountId: conversation.accountId,
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [conversation.accountId]: scopeLoadResult.conversations,
+            },
+            conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+              currentState.conversationModeLoadedAtByScope,
+              conversation.accountId,
+              Date.now(),
+            ),
+            seatOrder: conversationListCacheSeatOrder,
+          });
+          const evictedConversationIds =
+            prunedConversationListCache.evictedSeatIds.flatMap(
+              (seatId) =>
+                currentState.conversationListsByScope[seatId]?.map(
+                  (currentConversation) => currentConversation.id,
+                ) ?? [],
+            );
+          const clearedMessageState = clearConversationMessageState(
+            currentState,
+            getMessageStateConversationIds(currentState),
+            { preservePending: true },
+          );
+          const nextMessagesByConversationId = {
+            ...clearedMessageState.messagesByConversationId,
+            [conversation.id]: upsertMessageList(
+              [],
+              conversationPage.messages,
+            ),
+          };
+
+          return {
+            ...clearedMessageState,
+            accounts: currentState.accounts,
+            activeAccountId: conversation.accountId,
+            activeConversationId: conversation.id,
+            activeMessageSeq: getActiveMessageSeq(
+              nextMessagesByConversationId,
+              conversation.id,
+            ),
+            activeMode: conversation.mode,
+            conversationListCacheSeatOrder:
+              prunedConversationListCache.conversationListCacheSeatOrder,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            conversationModeLoadedAtByScope:
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            conversationOpenError: undefined,
+            conversationPromotion: createConversationPromotion(
+              conversation,
+              scopeLoadResult.conversations,
+            ),
+            groupMembersLoadedAtByConversationId: omitByKeys(
+              currentState.groupMembersLoadedAtByConversationId,
+              evictedConversationIds,
+            ),
+            groupMembersByConversationId: omitByKeys(
+              currentState.groupMembersByConversationId,
+              evictedConversationIds,
+            ),
+            groupMembersLoadingByConversationId:
+              conversation.mode === "group"
+                ? {
+                    ...omitByKeys(
+                      currentState.groupMembersLoadingByConversationId,
+                      evictedConversationIds,
+                    ),
+                    [conversation.id]: true,
+                  }
+                : omitByKeys(
+                    currentState.groupMembersLoadingByConversationId,
+                    evictedConversationIds,
+                  ),
+            hasMoreHistoryByConversationId: {
+              ...clearedMessageState.hasMoreHistoryByConversationId,
+              [conversation.id]: conversationPage.hasMoreHistory,
+            },
+            historyPanelOpenConversationId: undefined,
+            isConversationLoading: false,
+            isPollBaselineFresh: true,
+            messagePaginationByConversationId: {
+              ...clearedMessageState.messagePaginationByConversationId,
+              [conversation.id]:
+                buildMessagePaginationState(conversationPage),
+            },
+            messagesByConversationId: nextMessagesByConversationId,
+            messageUpdateCursor: undefined,
+            scopeTransitionError: undefined,
+            sinceVersion: scopeLoadResult.pollBaseline,
+            smartReplyByMessageIdByConversationId: {
+              ...clearedMessageState.smartReplyByMessageIdByConversationId,
+              [conversation.id]: pageSmartReplyByMessageId,
+            },
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...clearedMessageState.smartReplyHiddenMessageKeysByConversationId,
+              [conversation.id]: pageSmartReplyHidden,
+            },
+            smartReplyPendingMessageKeysByConversationId: {
+              ...clearedMessageState.smartReplyPendingMessageKeysByConversationId,
+              [conversation.id]: pageSmartReplyPending,
+            },
+          };
+        });
+        didActivate = true;
+
+        if (conversation.isVerified === false) {
+          startUnverifiedConversationProfileRefresh({
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+          });
+        }
+
+        await syncFullAutoAgentStatusForCurrentState();
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        await loadGroupMembersForConversation(conversation.id, requestId);
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        if (
+          canUseConversationActions(
+            get(),
+            get().accounts.find(
+              (account) => account.id === conversation.accountId,
+            ),
+          )
+        ) {
+          await markActiveConversationRead(conversation.id, requestId);
+        }
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        scheduleSmartReplyPollForConversation(conversation.id, {
+          force: Object.keys(pageSmartReplyPending).length > 0,
+        });
+
+        const autoGenerateMessage = shouldAutoGenerateSmartReply({
+          autoPending:
+            get().smartReplyAutoPendingMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          autoSkipped:
+            get().smartReplyAutoSkippedMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          message: getLatestNonSystemMessage(conversationPage.messages),
+          pending:
+            get().smartReplyPendingMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          suggestions:
+            get().smartReplyByMessageIdByConversationId[conversation.id] ?? {},
+        });
+
+        if (
+          autoGenerateMessage &&
+          canUseSmartReplyForConversation(get(), conversation.id)
+        ) {
+          triggerSmartReplyAutoGeneration(
+            get,
+            set,
+            conversation.id,
+            autoGenerateMessage,
+            {
+              clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
+              scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
+              schedulePoll: scheduleSmartReplyPollForConversation,
+              syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+            },
+          );
+        }
+
+        return true;
+      } catch (error) {
+        if (didActivate) {
+          return true;
+        }
+
+        if (
+          isCurrentConversationOpenRequest(openRequestId) &&
+          (requestId === undefined || isCurrentScopeRequest(requestId))
+        ) {
+          loadingConversationOpenRequestId = undefined;
+          set({
+            conversationOpenError:
+              getRequestApiErrorMessage(error) ??
+              "获取/开启会话失败，请稍后重试",
+            isConversationLoading: false,
+          });
+        }
+
+        return false;
+      }
+    }
+
     return {
       ...createInitialState(),
       setChatSendPermission(hasChatSendPermission) {
@@ -4480,52 +4831,88 @@ export function createWorkbenchStore() {
           }
         }
       },
+      clearConversationPromotion() {
+        const didCancelLoadingRequest = cancelConversationOpenRequest();
+        set({
+          conversationPromotion: undefined,
+          ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+        });
+      },
+      async openConversation(request, options) {
+        const openRequestId = issueConversationOpenRequestId();
+        loadingConversationOpenRequestId = openRequestId;
+
+        set({
+          conversationOpenError: undefined,
+          isConversationLoading: true,
+        });
+
+        try {
+          const conversation = await resolveWorkbenchConversation(request);
+
+          if (!isCurrentConversationOpenRequest(openRequestId)) {
+            return false;
+          }
+
+          if (
+            !get().accounts.some(
+              (account) => account.id === conversation.accountId,
+            )
+          ) {
+            throw new Error("当前账号无法访问该会话");
+          }
+
+          const opened = await activateResolvedConversation(
+            conversation,
+            openRequestId,
+            options?.beforeActivate,
+          );
+
+          if (
+            opened &&
+            options?.clearSearchOnSuccess &&
+            isCurrentConversationOpenRequest(openRequestId)
+          ) {
+            set({
+              isSearchLoading: false,
+              searchKeyword: "",
+              searchResults: null,
+            });
+          }
+
+          return opened;
+        } catch (error) {
+          if (isCurrentConversationOpenRequest(openRequestId)) {
+            loadingConversationOpenRequestId = undefined;
+            set({
+              conversationOpenError:
+                getRequestApiErrorMessage(error) ??
+                "获取/开启会话失败，请稍后重试",
+              isConversationLoading: false,
+            });
+          }
+
+          return false;
+        }
+      },
       async selectOrCreateAndSelectConversation(item) {
         const seatId = get().activeAccountId;
         const isGroup = "thirdGroupId" in item;
-        const nextMode: ChatMode = isGroup ? "group" : "single";
 
-        try {
-          set({ isConversationLoading: true });
-          const service = getWorkbenchService();
-          const payload = {
-            seatId,
-            chatType: isGroup ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
-            thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
-            thirdGroupId: isGroup ? item.thirdGroupId : undefined,
-          };
-          const summaryDto = await service.getOrCreateConversation(payload);
-
-          if (get().activeAccountId !== seatId) {
-            return;
-          }
-
-          const hydratedConversation = adaptConversation(summaryDto);
-
-          await get().setActiveMode(nextMode, {
-            preserveConversation: hydratedConversation,
-          });
-
-          if (get().activeAccountId !== seatId) {
-            return;
-          }
-          await get().setActiveConversation(hydratedConversation.id);
-
-          if (get().activeAccountId === seatId) {
-            set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
-          }
-        } catch (error) {
-          if (get().activeAccountId === seatId) {
-            set({
-              conversationOpenError:
-                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
-            });
-          }
-        } finally {
-          if (get().activeAccountId === seatId) {
-            set({ isConversationLoading: false });
-          }
-        }
+        await get().openConversation(
+          isGroup
+            ? {
+                mode: "group",
+                seatId,
+                thirdGroupId: item.thirdGroupId,
+              }
+            : {
+                mode: "single",
+                seatId,
+                thirdExternalUserId: item.thirdExternalUserId,
+              },
+          { clearSearchOnSuccess: true },
+        );
       },
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });
@@ -5034,6 +5421,11 @@ export function createWorkbenchStore() {
             activeMessageSeq: shouldSwitchActive ? 0 : latestState.activeMessageSeq,
             activeMode: nextActiveMode,
             composerDraftsByConversationId,
+            conversationPromotion:
+              latestState.conversationPromotion?.conversationId ===
+              conversationId
+                ? undefined
+                : latestState.conversationPromotion,
             conversationListsByScope: {
               ...latestState.conversationListsByScope,
               [account.id]: (latestState.conversationListsByScope[account.id] ?? []).filter(
@@ -5197,7 +5589,7 @@ export function createWorkbenchStore() {
     async unpinConversation(conversationId) {
       await setConversationPinned(conversationId, false);
     },
-    async initializeWorkbench() {
+    async initializeWorkbench(options) {
       const state = get();
 
       if (state.bootstrapStatus === "loading") {
@@ -5215,11 +5607,17 @@ export function createWorkbenchStore() {
           state.activeMode,
           defaultCustomerProfiles,
           MESSAGE_PAGE_SIZE,
+          Date.now(),
+          options?.preferredConversationId,
         );
         const conversationPage = bootstrapResult.conversationPage;
 
         if (!isCurrentScopeRequest(requestId)) {
           return;
+        }
+
+        if (bootstrapResult.openedConversation) {
+          options?.beforeActivate?.(bootstrapResult.openedConversation);
         }
 
         const loadedAt = Date.now();
@@ -5280,6 +5678,15 @@ export function createWorkbenchStore() {
             ),
             activeMode: bootstrapResult.activeMode,
             bootstrapStatus: "ready",
+            conversationOpenError: bootstrapResult.conversationOpenError,
+            conversationPromotion: bootstrapResult.openedConversation
+              ? createConversationPromotion(
+                  bootstrapResult.openedConversation,
+                  bootstrapResult.conversationListsByScope[
+                    bootstrapResult.activeAccountId
+                  ] ?? [],
+                )
+              : undefined,
             conversationListCacheSeatOrder:
               prunedConversationListCache.conversationListCacheSeatOrder,
             conversationListsByScope:
@@ -6924,6 +7331,12 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const didCancelLoadingRequest = cancelConversationOpenRequest();
+      set({
+        conversationPromotion: undefined,
+        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+      });
+
       if (state.activeConversationId) {
         clearSmartReplyRuntimeTimers(state.activeConversationId);
       }
@@ -7200,6 +7613,12 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const didCancelLoadingRequest = cancelConversationOpenRequest();
+      set({
+        conversationPromotion: undefined,
+        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+      });
+
       const requestId = issueScopeRequestId();
       clearUnverifiedConversationProfileRetry(state.activeConversationId);
       clearSmartReplyRuntimeTimers(state.activeConversationId);
@@ -7436,6 +7855,12 @@ export function createWorkbenchStore() {
 
         return;
       }
+
+      const didCancelLoadingRequest = cancelConversationOpenRequest();
+      set({
+        conversationPromotion: undefined,
+        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+      });
 
       if (state.activeConversationId) {
         clearSmartReplyRuntimeTimers(state.activeConversationId);

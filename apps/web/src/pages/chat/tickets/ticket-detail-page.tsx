@@ -47,6 +47,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
+import { OpenConversationLink } from "@/pages/chat/components/open-conversation-link";
 import { adaptInsightMessages } from "@/pages/chat/insights/insight-detail-panel";
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { addTicketComment, claimTicket, deleteTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
@@ -563,7 +564,10 @@ export function TicketDetailContent({
         </div>
         </ScrollArea>
         <aside className="flex min-h-0 flex-col gap-3 px-8 pb-6 max-xl:border-t max-xl:pt-6 xl:h-full xl:border-l xl:px-6 xl:py-6">
-          <h2 className="text-base font-semibold">关联上下文</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">关联上下文</h2>
+            <OpenConversationLink conversationId={ticket.conversationId} />
+          </div>
           {isLoadingContext ? <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><Spinner size={16} variant="classic" />正在加载</div> : <TicketContext context={context} isLoadingOlder={isLoadingOlderContext} messages={messages} onLoadOlder={() => void loadOlderContext()} />}
         </aside>
         </div>

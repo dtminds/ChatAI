@@ -7,6 +7,7 @@ import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchConversationSummaryDto,
   type WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
@@ -366,6 +367,165 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("tab", { name: "单聊视图" })).toBeInTheDocument();
     expect(screen.queryByText("单聊 · AI托管")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("chatai.conversationView")).toContain('"single":"all"');
+  });
+
+  it("resets only the opened chat type to all and temporarily shows the target first", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const target: WorkbenchConversationSummaryDto = {
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-search-opened",
+      customerAvatar: "",
+      customerId: "customer-search-opened",
+      customerName: "搜索打开客户",
+      handoffMsgId: 0,
+      lastMessage: "较早消息",
+      lastMessageTime: 1,
+      mode: "single",
+      priority: "medium",
+      replied: true,
+      seatId: "drc",
+      thirdExternalUserId: "external-search-opened",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "unread", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    renderChatWorkbenchPage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    act(() => {
+      useWorkbenchStore.setState({
+        isSearchLoading: false,
+        searchKeyword: "搜索打开客户",
+        searchResults: {
+          contacts: [
+            {
+              avatar: "",
+              conversationId: target.conversationId,
+              name: target.customerName,
+              realName: target.customerName,
+              thirdExternalUserId: target.thirdExternalUserId!,
+            },
+          ],
+          groups: [],
+        },
+      });
+    });
+
+    const searchDialog = await screen.findByRole("dialog", {
+      name: "搜索结果",
+    });
+    await user.click(
+      within(searchDialog).getByRole("button", {
+        name: /搜索打开客户/,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        target.conversationId,
+      );
+    });
+    await waitFor(() => {
+      expect(window.localStorage.getItem("chatai.conversationView")).toBe(
+        JSON.stringify({ group: "unread", single: "all" }),
+      );
+    });
+
+    const targetCard = screen.getByTestId(
+      `conversation-card-${target.conversationId}`,
+    );
+    const previousFirstCard = screen.getByTestId("conversation-card-conv-001");
+
+    expect(
+      targetCard.compareDocumentPosition(previousFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
+  });
+
+  it("keeps the current conversation and filter when opening a search result fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      async getOrCreateConversation() {
+        throw new Error("开启失败");
+      },
+    });
+
+    renderChatWorkbenchPage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const activeConversationId =
+      useWorkbenchStore.getState().activeConversationId;
+
+    act(() => {
+      useWorkbenchStore.setState({
+        isSearchLoading: false,
+        searchKeyword: "失败客户",
+        searchResults: {
+          contacts: [
+            {
+              avatar: "",
+              conversationId: "conv-search-failed",
+              name: "失败客户",
+              realName: "失败客户",
+              thirdExternalUserId: "external-search-failed",
+            },
+          ],
+          groups: [],
+        },
+      });
+    });
+
+    const searchDialog = await screen.findByRole("dialog", {
+      name: "搜索结果",
+    });
+    await user.click(
+      within(searchDialog).getByRole("button", { name: /失败客户/ }),
+    );
+
+    expect(
+      await screen.findByRole("alertdialog", { name: "开启会话失败" }),
+    ).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe(
+      activeConversationId,
+    );
+    expect(useWorkbenchStore.getState().searchKeyword).toBe("失败客户");
+    expect(window.localStorage.getItem("chatai.conversationView")).toBe(
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
   });
 
   it("selects the first visible conversation after changing the active view", async () => {

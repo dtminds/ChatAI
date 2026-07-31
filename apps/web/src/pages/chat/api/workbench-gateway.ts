@@ -5,6 +5,7 @@ import {
   adaptGroupMember,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
+import { CHAT_TYPE } from "@chatai/contracts";
 import type {
   SettingsSidebarItem,
   WorkbenchHistoryMessagePageDto,
@@ -67,6 +68,21 @@ type GatewayContext = {
   me?: EmployeeProfile;
 };
 
+export type WorkbenchOpenConversationRequest =
+  | {
+      conversationId: string;
+    }
+  | {
+      mode: "group";
+      seatId: string;
+      thirdGroupId: string;
+    }
+  | {
+      mode: "single";
+      seatId: string;
+      thirdExternalUserId: string;
+    };
+
 export type WorkbenchScopeRequest = {
   activeConversationId?: string;
   activeMessageSeq?: number;
@@ -99,9 +115,11 @@ export type WorkbenchBootstrapResult = {
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
+  conversationOpenError?: string;
   conversationListsByScope: Record<string, Conversation[]>;
   conversationPage?: WorkbenchConversationPage;
   me: EmployeeProfile;
+  openedConversation?: Conversation;
   pollBaseline: number;
   sidebarItems: SettingsSidebarItem[];
 };
@@ -161,6 +179,7 @@ export async function bootstrapWorkbench(
   customerProfilesById: Record<string, CustomerProfile>,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   now = Date.now(),
+  preferredConversationId?: string,
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
   const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
@@ -171,12 +190,38 @@ export async function bootstrapWorkbench(
 
   const me = adaptEmployee(meDto);
   const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
-  const activeAccountId = accounts[0]?.id ?? "";
+  let conversationOpenError: string | undefined;
+  let openedConversation: Conversation | undefined;
+
+  if (preferredConversationId) {
+    try {
+      const resolvedConversation = await resolveWorkbenchConversation({
+        conversationId: preferredConversationId,
+      });
+
+      if (accounts.some((account) => account.id === resolvedConversation.accountId)) {
+        openedConversation = resolvedConversation;
+      } else {
+        conversationOpenError = "当前账号无法访问该会话";
+      }
+    } catch (error) {
+      conversationOpenError =
+        error instanceof Error ? error.message : "获取/开启会话失败，请稍后重试";
+    }
+  }
+
+  const activeAccountId = openedConversation?.accountId ?? accounts[0]?.id ?? "";
   const conversationLoadResult = activeAccountId
     ? await loadAccountConversationsWithBaseline(activeAccountId)
     : { conversations: [], pollBaseline: now };
-  const conversations = conversationLoadResult.conversations;
-  const nextConversation = getFirstConversation(conversations, preferredMode);
+  const conversations = openedConversation
+    ? mergeConversations([
+        [openedConversation],
+        conversationLoadResult.conversations,
+      ])
+    : conversationLoadResult.conversations;
+  const nextConversation =
+    openedConversation ?? getFirstConversation(conversations, preferredMode);
   const activeConversationId = nextConversation?.id ?? "";
   const activeMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = activeConversationId
@@ -196,11 +241,13 @@ export async function bootstrapWorkbench(
     activeAccountId,
     activeConversationId,
     activeMode,
+    conversationOpenError,
     conversationListsByScope: {
       [activeAccountId]: conversations,
     },
     conversationPage,
     me,
+    openedConversation,
     pollBaseline: conversationLoadResult.pollBaseline,
     sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
@@ -268,9 +315,15 @@ export async function loadAccountScope(
   context: GatewayContext,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   preferredConversationId?: string,
+  preferredConversation?: Conversation,
 ): Promise<WorkbenchAccountScopeResult> {
   const conversationLoadResult = await loadAccountConversationsWithBaseline(accountId);
-  const conversations = conversationLoadResult.conversations;
+  const conversations = preferredConversation
+    ? mergeConversations([
+        [preferredConversation],
+        conversationLoadResult.conversations,
+      ])
+    : conversationLoadResult.conversations;
   const nextConversation =
     conversations.find((conversation) => conversation.id === preferredConversationId) ??
     getFirstConversation(conversations, preferredMode);
@@ -300,6 +353,50 @@ export async function loadConversationSummary(conversationId: string): Promise<C
   const conversation = await getWorkbenchService().getConversation(conversationId);
 
   return adaptConversation(conversation);
+}
+
+export async function resolveWorkbenchConversation(
+  request: WorkbenchOpenConversationRequest,
+): Promise<Conversation> {
+  const service = getWorkbenchService();
+
+  if ("conversationId" in request) {
+    const summary = await loadConversationSummary(request.conversationId);
+    const restoreRequest =
+      summary.mode === "group" && summary.thirdGroupId
+        ? {
+            chatType: CHAT_TYPE.GROUP,
+            seatId: summary.accountId,
+            thirdGroupId: summary.thirdGroupId,
+          }
+        : summary.mode === "single" && summary.thirdExternalUserId
+          ? {
+              chatType: CHAT_TYPE.SINGLE,
+              seatId: summary.accountId,
+              thirdExternalUserId: summary.thirdExternalUserId,
+            }
+          : undefined;
+
+    if (!restoreRequest) {
+      return summary;
+    }
+
+    return adaptConversation(
+      await service.getOrCreateConversation(restoreRequest),
+    );
+  }
+
+  return adaptConversation(
+    await service.getOrCreateConversation({
+      chatType:
+        request.mode === "group" ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      seatId: request.seatId,
+      thirdExternalUserId:
+        request.mode === "single" ? request.thirdExternalUserId : undefined,
+      thirdGroupId:
+        request.mode === "group" ? request.thirdGroupId : undefined,
+    }),
+  );
 }
 
 export async function loadAccountConversationsWithBaseline(

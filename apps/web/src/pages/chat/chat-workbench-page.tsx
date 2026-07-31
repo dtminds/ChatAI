@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { flushSync } from "react-dom";
 import type { LexicalEditor } from "lexical";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -35,6 +36,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchSearchContactResultDto,
+  type WorkbenchSearchGroupResultDto,
   type WorkbenchSeatAgentMode,
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
@@ -100,6 +103,7 @@ import {
   resolveConversationView,
   type ConversationView,
 } from "@/pages/chat/lib/conversation-view";
+import { sortConversationsForDisplay } from "@/pages/chat/lib/conversation-order";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -247,6 +251,13 @@ export function ChatWorkbenchPage() {
 export function ChatWorkbenchRoutePage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const requestedConversationId = location.pathname.startsWith(
+    "/chat/conversations/",
+  )
+    ? decodeURIComponent(
+        location.pathname.slice("/chat/conversations/".length),
+      )
+    : undefined;
   const activeView =
     location.pathname === "/chat/customers"
       ? "customers"
@@ -262,6 +273,7 @@ export function ChatWorkbenchRoutePage() {
     <ChatWorkbenchContent
       activeTicketId={activeTicketId}
       activeView={activeView}
+      requestedConversationId={requestedConversationId}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
       }}
@@ -277,11 +289,13 @@ function ChatWorkbenchContent({
   activeView = "chat",
   onNavigateChat,
   onNavigateCustomerPage,
+  requestedConversationId,
 }: {
   activeTicketId?: string;
   activeView?: "chat" | "customers" | "tickets";
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
+  requestedConversationId?: string;
 }) {
   useTicketCountPolling();
   const {
@@ -292,6 +306,8 @@ function ChatWorkbenchContent({
     bootstrapError,
     bootstrapStatus,
     conversationListsByScope,
+    conversationPromotion,
+    clearConversationPromotion,
     customerProfilesById,
     deleteConversation,
     dismissFullAutoActionError,
@@ -341,6 +357,7 @@ function ChatWorkbenchContent({
     composerDraftsByConversationId,
     loadHistoryMessages,
     openHistoryPanel,
+    openConversation,
     setHistoryPanelDay,
     setHistoryPanelScope,
     setHistoryPanelSenderId,
@@ -351,7 +368,6 @@ function ChatWorkbenchContent({
     setActiveConversation,
     setActiveMode,
     sidebarItems,
-    selectOrCreateAndSelectConversation,
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
@@ -379,6 +395,8 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId: state.composerDraftsByConversationId,
       confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
       conversationListsByScope: state.conversationListsByScope,
+      conversationPromotion: state.conversationPromotion,
+      clearConversationPromotion: state.clearConversationPromotion,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
       dismissFullAutoActionError: state.dismissFullAutoActionError,
@@ -421,6 +439,7 @@ function ChatWorkbenchContent({
         state.messagePaginationByConversationId,
       messagesByConversationId: state.messagesByConversationId,
       openHistoryPanel: state.openHistoryPanel,
+      openConversation: state.openConversation,
       pinConversation: state.pinConversation,
       pollIntervalMs: state.pollState.intervalMs,
       pollJitterMs: state.pollState.jitterMs,
@@ -435,8 +454,6 @@ function ChatWorkbenchContent({
       revokeMessage: state.revokeMessage,
       saveComposerDraft: state.saveComposerDraft,
       scopeTransitionError: state.scopeTransitionError,
-      selectOrCreateAndSelectConversation:
-        state.selectOrCreateAndSelectConversation,
       sendAgentMessageSegments: state.sendAgentMessageSegments,
       sendSmartReply: state.sendSmartReply,
       setActiveAccount: state.setActiveAccount,
@@ -533,6 +550,7 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
+  const requestedConversationOpenRef = useRef("");
   const draftRef = useRef("");
   const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
@@ -580,12 +598,34 @@ function ChatWorkbenchContent({
     });
     setShouldPersistConversationViewState(true);
   }, []);
+  const prepareConversationActivation = useCallback(
+    (conversation: Conversation) => {
+      flushSync(() => {
+        setConversationViewState((currentViewState) => ({
+          ...currentViewState,
+          [conversation.mode]: DEFAULT_CONVERSATION_VIEW,
+        }));
+        setConversationViewRetainedState(null);
+        setShouldPersistConversationViewState(true);
+      });
+    },
+    [],
+  );
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations =
     conversationListsByScope[activeAccountId] ?? EMPTY_CONVERSATIONS;
-  const visibleSearchableConversations = allConversations;
+  const visibleSearchableConversations = useMemo(
+    () =>
+      sortConversationsForDisplay(
+        allConversations,
+        conversationPromotion?.accountId === activeAccountId
+          ? conversationPromotion
+          : undefined,
+      ),
+    [activeAccountId, allConversations, conversationPromotion],
+  );
   const currentConversationView = conversationViewState[activeMode];
   const resolvedConversationView = resolveConversationView(
     currentConversationView,
@@ -631,6 +671,9 @@ function ChatWorkbenchContent({
   );
   const handleSelectConversationView = useCallback(
     (view: ConversationView) => {
+      onNavigateChat?.();
+      clearConversationPromotion();
+
       const resolvedView = resolveConversationView(
         view,
         activeMode,
@@ -688,8 +731,10 @@ function ChatWorkbenchContent({
       activeConversationId,
       activeMode,
       activeModeConversations,
+      clearConversationPromotion,
       clearActiveConversation,
       isActiveSeatAIHostingEnabled,
+      onNavigateChat,
       setConversationView,
       setActiveConversation,
       visibleSearchableConversations,
@@ -923,8 +968,42 @@ function ChatWorkbenchContent({
       return;
     }
 
-    void initializeWorkbench();
-  }, [bootstrapStatus, initializeWorkbench]);
+    requestedConversationOpenRef.current = requestedConversationId ?? "";
+    void initializeWorkbench({
+      beforeActivate: prepareConversationActivation,
+      preferredConversationId: requestedConversationId,
+    });
+  }, [
+    bootstrapStatus,
+    initializeWorkbench,
+    prepareConversationActivation,
+    requestedConversationId,
+  ]);
+
+  useEffect(() => {
+    if (!requestedConversationId) {
+      requestedConversationOpenRef.current = "";
+      return;
+    }
+
+    if (
+      bootstrapStatus !== "ready" ||
+      requestedConversationOpenRef.current === requestedConversationId
+    ) {
+      return;
+    }
+
+    requestedConversationOpenRef.current = requestedConversationId;
+    void openConversation(
+      { conversationId: requestedConversationId },
+      { beforeActivate: prepareConversationActivation },
+    );
+  }, [
+    bootstrapStatus,
+    openConversation,
+    prepareConversationActivation,
+    requestedConversationId,
+  ]);
 
   useEffect(
     () => {
@@ -1149,16 +1228,65 @@ function ChatWorkbenchContent({
       realName: string;
     }) => {
       onNavigateChat?.();
-      await setActiveAccount(input.seatId);
-      await selectOrCreateAndSelectConversation({
-        avatar: input.customerAvatar,
-        name: input.customerName,
-        realName: input.realName,
-        thirdExternalUserId: input.thirdExternalUserId,
-      });
-      setMobilePane("chat");
+      const opened = await openConversation(
+        {
+          mode: "single",
+          seatId: input.seatId,
+          thirdExternalUserId: input.thirdExternalUserId,
+        },
+        { beforeActivate: prepareConversationActivation },
+      );
+
+      if (opened) {
+        setMobilePane("chat");
+      }
     },
-    [onNavigateChat, selectOrCreateAndSelectConversation, setActiveAccount],
+    [onNavigateChat, openConversation, prepareConversationActivation],
+  );
+
+  const handleOpenSearchResult = useCallback(
+    async (
+      item:
+        | WorkbenchSearchContactResultDto
+        | WorkbenchSearchGroupResultDto,
+    ) => {
+      onNavigateChat?.();
+
+      const opened =
+        "thirdGroupId" in item
+          ? await openConversation(
+              {
+                mode: "group",
+                seatId: activeAccountId,
+                thirdGroupId: item.thirdGroupId,
+              },
+              {
+                beforeActivate: prepareConversationActivation,
+                clearSearchOnSuccess: true,
+              },
+            )
+          : await openConversation(
+              {
+                mode: "single",
+                seatId: activeAccountId,
+                thirdExternalUserId: item.thirdExternalUserId,
+              },
+              {
+                beforeActivate: prepareConversationActivation,
+                clearSearchOnSuccess: true,
+              },
+            );
+
+      if (opened) {
+        setMobilePane("chat");
+      }
+    },
+    [
+      activeAccountId,
+      onNavigateChat,
+      openConversation,
+      prepareConversationActivation,
+    ],
   );
 
   const handleRetryFailedMessage = useCallback(
@@ -1931,13 +2059,14 @@ function ChatWorkbenchContent({
         return false;
       }
 
+      onNavigateChat?.();
       await setActiveConversation(conversationId);
       if (isMobileWorkbenchLayout) {
         setMobilePane("chat");
       }
       return true;
     },
-    [isMobileWorkbenchLayout, setActiveConversation],
+    [isMobileWorkbenchLayout, onNavigateChat, setActiveConversation],
   );
 
   const handleSelectMode = useCallback(
@@ -1951,9 +2080,10 @@ function ChatWorkbenchContent({
         return;
       }
 
+      onNavigateChat?.();
       await setActiveMode(mode);
     },
-    [activeMode, setActiveMode],
+    [activeMode, onNavigateChat, setActiveMode],
   );
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
@@ -2190,6 +2320,7 @@ function ChatWorkbenchContent({
       onDeleteConversation={deleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
+      onOpenSearchResult={handleOpenSearchResult}
       onPinConversation={pinConversation}
       onRefreshUnreadConversations={loadUnreadConversations}
       onSelectConversation={handleSelectConversation}
@@ -2463,7 +2594,10 @@ function ChatWorkbenchContent({
             className="mt-4 h-9 rounded-lg px-4 text-[13px] shadow-none"
             onClick={() => {
               startTransition(() => {
-                void initializeWorkbench();
+                void initializeWorkbench({
+                  beforeActivate: prepareConversationActivation,
+                  preferredConversationId: requestedConversationId,
+                });
               });
             }}
           >

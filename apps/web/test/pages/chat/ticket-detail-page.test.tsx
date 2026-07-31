@@ -109,6 +109,10 @@ describe("TicketDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "跟进退款" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回工单列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "打开会话" })).toHaveAttribute(
+      "href",
+      "/chat/conversations/301",
+    );
   });
 
   it("loads direct routes and sends expectedStatus with status changes", async () => {

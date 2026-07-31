@@ -87,6 +87,30 @@ function createCachedConversation(accountId: string): Conversation {
   };
 }
 
+function createConversationSummaryDto(
+  conversationId: string,
+  overrides: Partial<WorkbenchConversationSummaryDto> = {},
+): WorkbenchConversationSummaryDto {
+  return {
+    conversationAIHostingSwitch: false,
+    conversationId,
+    customerAvatar: "",
+    customerId: `customer-${conversationId}`,
+    customerName: conversationId,
+    handoffMsgId: 0,
+    lastMessage: conversationId,
+    lastMessageTime: 1_778_999_000_000,
+    mode: "single",
+    priority: "medium",
+    replied: true,
+    seatId: "drc",
+    thirdExternalUserId: `external-${conversationId}`,
+    thirdUserId: "third-user-drc",
+    unreadCount: 0,
+    ...overrides,
+  };
+}
+
 function isChatMessage(message: Message | undefined): message is ChatMessage {
   return Boolean(message && message.role !== "system");
 }
@@ -11609,6 +11633,278 @@ describe("useWorkbenchStore", () => {
       mode: "group",
     });
     expect(state.activeConversationId).toBe("conv-004");
+  });
+
+  it("opens a hidden conversation without selecting another conversation first", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-hidden", {
+      customerName: "目标客户",
+      lastMessageTime: 1_700_000_000_000,
+      seatId: "ndt",
+      thirdExternalUserId: "external-open-hidden",
+      thirdUserId: "third-user-ndt",
+    });
+    const getMessages = vi.fn(async (conversationId: string, options) => {
+      if (conversationId === target.conversationId) {
+        return {
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        };
+      }
+
+      return baseService.getMessages(conversationId, options);
+    });
+    const beforeActivate = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      getMessages,
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getMessages.mockClear();
+
+    const opened = await useWorkbenchStore.getState().openConversation(
+      {
+        mode: "single",
+        seatId: "ndt",
+        thirdExternalUserId: target.thirdExternalUserId!,
+      },
+      { beforeActivate },
+    );
+
+    const state = useWorkbenchStore.getState();
+    const openedConversation = state.conversationListsByScope.ndt.find(
+      (conversation) => conversation.id === target.conversationId,
+    );
+
+    expect(opened).toBe(true);
+    expect(beforeActivate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "ndt",
+        id: target.conversationId,
+        mode: "single",
+      }),
+    );
+    expect(getMessages.mock.calls.map(([conversationId]) => conversationId)).toEqual([
+      target.conversationId,
+    ]);
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe(target.conversationId);
+    expect(state.activeMode).toBe("single");
+    expect(openedConversation).toMatchObject({
+      id: target.conversationId,
+      updatedAtMs: target.lastMessageTime,
+    });
+    expect(state.conversationPromotion).toMatchObject({
+      accountId: "ndt",
+      conversationId: target.conversationId,
+      mode: "single",
+    });
+  });
+
+  it("keeps the promotion through polling and clears it on manual navigation", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-promotion");
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+
+    const promotion = useWorkbenchStore.getState().conversationPromotion;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().conversationPromotion).toEqual(promotion);
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+  });
+
+  it("clears the promotion when the operator switches chat type or seat", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-navigation");
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+
+    await useWorkbenchStore.getState().setActiveMode("group");
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+
+    await useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+  });
+
+  it("lets the latest open request win when an older resolve finishes later", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstTarget = createConversationSummaryDto("conv-open-first");
+    const secondTarget = createConversationSummaryDto("conv-open-second");
+    const firstDeferred = createDeferred<WorkbenchConversationSummaryDto>();
+    const secondDeferred = createDeferred<WorkbenchConversationSummaryDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (
+          conversationId === firstTarget.conversationId ||
+          conversationId === secondTarget.conversationId
+        ) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      getOrCreateConversation(payload) {
+        return payload.thirdExternalUserId === firstTarget.thirdExternalUserId
+          ? firstDeferred.promise
+          : secondDeferred.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const firstOpen = useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: firstTarget.thirdExternalUserId!,
+    });
+    const secondOpen = useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "drc",
+      thirdExternalUserId: secondTarget.thirdExternalUserId!,
+    });
+
+    secondDeferred.resolve(secondTarget);
+    expect(await secondOpen).toBe(true);
+
+    firstDeferred.resolve(firstTarget);
+    expect(await firstOpen).toBe(false);
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe(
+      secondTarget.conversationId,
+    );
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      secondTarget.conversationId,
+    );
+  });
+
+  it("uses get-or-create and the target conversation during deep-link bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-deep-link", {
+      seatId: "ndt",
+      thirdExternalUserId: "external-deep-link",
+      thirdUserId: "third-user-ndt",
+    });
+    const getConversation = vi.fn(async () => target);
+    const getOrCreateConversation = vi.fn(async () => target);
+    const getMessages = vi.fn(async (conversationId: string, options) => {
+      if (conversationId === target.conversationId) {
+        return {
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        };
+      }
+
+      return baseService.getMessages(conversationId, options);
+    });
+    const beforeActivate = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+      getMessages,
+      getOrCreateConversation,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench({
+      beforeActivate,
+      preferredConversationId: target.conversationId,
+    });
+
+    const state = useWorkbenchStore.getState();
+
+    expect(getConversation).toHaveBeenCalledWith(target.conversationId);
+    expect(getOrCreateConversation).toHaveBeenCalledWith({
+      chatType: 1,
+      seatId: "ndt",
+      thirdExternalUserId: "external-deep-link",
+    });
+    expect(getMessages.mock.calls.map(([conversationId]) => conversationId)).toEqual([
+      target.conversationId,
+    ]);
+    expect(beforeActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: target.conversationId }),
+    );
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe(target.conversationId);
+    expect(state.conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
   });
 
 });

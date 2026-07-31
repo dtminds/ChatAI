@@ -188,6 +188,10 @@ export const routerConfig = [
         element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
+        path: "chat/conversations/:conversationId",
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
+      },
+      {
         path: "chat/customers",
         element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },

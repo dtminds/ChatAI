@@ -381,9 +381,15 @@ export async function resolveWorkbenchConversation(
       return summary;
     }
 
-    return adaptConversation(
-      await service.getOrCreateConversation(restoreRequest),
-    );
+    try {
+      return adaptConversation(
+        await service.getOrCreateConversation(restoreRequest),
+      );
+    } catch {
+      // The summary already passed the read-access check. Restoring visibility
+      // is best-effort and must not block an otherwise readable deep link.
+      return summary;
+    }
   }
 
   return adaptConversation(

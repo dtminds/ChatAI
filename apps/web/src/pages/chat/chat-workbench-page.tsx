@@ -244,6 +244,10 @@ function isElementVisibleInsideViewport(
   );
 }
 
+type WorkbenchRouteNavigationOptions = {
+  replace?: boolean;
+};
+
 export function ChatWorkbenchPage() {
   return <ChatWorkbenchContent />;
 }
@@ -274,16 +278,17 @@ export function ChatWorkbenchRoutePage() {
       activeTicketId={activeTicketId}
       activeView={activeView}
       requestedConversationId={requestedConversationId}
-      onNavigateConversation={(conversationId) => {
+      onNavigateConversation={(conversationId, options) => {
         navigate(`/chat/conversations/${encodeURIComponent(conversationId)}`, {
           flushSync: true,
+          replace: options?.replace,
         });
       }}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
       }}
-      onNavigateChat={() => {
-        navigate("/chat");
+      onNavigateChat={(options) => {
+        navigate("/chat", { replace: options?.replace });
       }}
     />
   );
@@ -299,8 +304,11 @@ function ChatWorkbenchContent({
 }: {
   activeTicketId?: string;
   activeView?: "chat" | "customers" | "tickets";
-  onNavigateChat?: () => void;
-  onNavigateConversation?: (conversationId: string) => void;
+  onNavigateChat?: (options?: WorkbenchRouteNavigationOptions) => void;
+  onNavigateConversation?: (
+    conversationId: string,
+    options?: WorkbenchRouteNavigationOptions,
+  ) => void;
   onNavigateCustomerPage?: () => void;
   requestedConversationId?: string;
 }) {
@@ -313,11 +321,13 @@ function ChatWorkbenchContent({
     bootstrapError,
     bootstrapStatus,
     conversationListsByScope,
+    conversationOpenError,
     conversationPromotion,
     clearConversationPromotion,
     customerProfilesById,
     deleteConversation,
     dismissFullAutoActionError,
+    dismissConversationOpenError,
     groupMembersLoadingByConversationId,
     hasMoreUnreadByScope,
     groupMembersByConversationId,
@@ -402,10 +412,12 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId: state.composerDraftsByConversationId,
       confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
       conversationListsByScope: state.conversationListsByScope,
+      conversationOpenError: state.conversationOpenError,
       conversationPromotion: state.conversationPromotion,
       clearConversationPromotion: state.clearConversationPromotion,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
+      dismissConversationOpenError: state.dismissConversationOpenError,
       dismissFullAutoActionError: state.dismissFullAutoActionError,
       dismissReadReceiptError: state.dismissReadReceiptError,
       dismissScopeTransitionError: state.dismissScopeTransitionError,
@@ -619,9 +631,12 @@ function ChatWorkbenchContent({
     [],
   );
   const navigateToConversation = useCallback(
-    (conversationId: string) => {
+    (
+      conversationId: string,
+      options?: WorkbenchRouteNavigationOptions,
+    ) => {
       requestedConversationOpenRef.current = conversationId;
-      onNavigateConversation?.(conversationId);
+      onNavigateConversation?.(conversationId, options);
     },
     [onNavigateConversation],
   );
@@ -903,6 +918,57 @@ function ChatWorkbenchContent({
       await markConversationRead(conversationId);
     },
     [markConversationRead],
+  );
+  const handleDeleteConversation = useCallback(
+    async (conversationId: string) => {
+      const stateBeforeDelete = useWorkbenchStore.getState();
+      const deletedConversation = (
+        stateBeforeDelete.conversationListsByScope[
+          stateBeforeDelete.activeAccountId
+        ] ?? []
+      ).find((conversation) => conversation.id === conversationId);
+      const shouldReplaceRoute =
+        requestedConversationId === conversationId &&
+        stateBeforeDelete.activeConversationId === conversationId;
+
+      await deleteConversation(conversationId);
+
+      if (
+        !deletedConversation ||
+        !shouldReplaceRoute ||
+        requestedConversationOpenRef.current !== conversationId
+      ) {
+        return;
+      }
+
+      const latestState = useWorkbenchStore.getState();
+      const wasDeleted = !(
+        latestState.conversationListsByScope[deletedConversation.accountId] ?? []
+      ).some((conversation) => conversation.id === conversationId);
+
+      if (
+        !wasDeleted ||
+        latestState.activeAccountId !== deletedConversation.accountId
+      ) {
+        return;
+      }
+
+      if (latestState.activeConversationId) {
+        navigateToConversation(latestState.activeConversationId, {
+          replace: true,
+        });
+        return;
+      }
+
+      requestedConversationOpenRef.current = "";
+      onNavigateChat?.({ replace: true });
+    },
+    [
+      deleteConversation,
+      navigateToConversation,
+      onNavigateChat,
+      requestedConversationId,
+    ],
   );
   const shouldSuppressAutoRead = useCallback(
     (conversationId: string, unreadCount: number) => {
@@ -2364,7 +2430,7 @@ function ChatWorkbenchContent({
       seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
       isEmptyStateLoading={isConversationListEmptyLoading}
-      onDeleteConversation={deleteConversation}
+      onDeleteConversation={handleDeleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
       onOpenSearchResult={handleOpenSearchResult}
@@ -2803,6 +2869,28 @@ function ChatWorkbenchContent({
         onOpenChange={messageForward.setSelectedMessagesDialogOpen}
         open={messageForward.selectedMessagesDialogOpen}
       />
+      <AlertDialog
+        open={Boolean(conversationOpenError)}
+        onOpenChange={(open) => {
+          if (!open) {
+            dismissConversationOpenError();
+          }
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>开启会话失败</AlertDialogTitle>
+            <AlertDialogDescription>
+              {conversationOpenError}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={dismissConversationOpenError}>
+              我知道了
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={pollingPauseReason !== null}>
         <AlertDialogContent
           className="overflow-hidden p-0"

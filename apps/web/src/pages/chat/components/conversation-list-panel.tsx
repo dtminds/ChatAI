@@ -10,15 +10,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useShallow } from "zustand/react/shallow";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
@@ -121,12 +112,8 @@ export const ConversationListPanel = memo(function ConversationListPanel({
     isSearchLoading,
     setSearchKeyword,
     selectOrCreateAndSelectConversation,
-    conversationOpenError,
-    dismissConversationOpenError,
   } = useWorkbenchStore(
     useShallow((state) => ({
-      conversationOpenError: state.conversationOpenError,
-      dismissConversationOpenError: state.dismissConversationOpenError,
       isSearchLoading: state.isSearchLoading,
       searchKeyword: state.searchKeyword,
       searchResults: state.searchResults,
@@ -282,27 +269,6 @@ export const ConversationListPanel = memo(function ConversationListPanel({
 
   return (
     <>
-      <AlertDialog
-        open={!!conversationOpenError}
-        onOpenChange={(open) => {
-          if (!open) dismissConversationOpenError();
-        }}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>开启会话失败</AlertDialogTitle>
-            <AlertDialogDescription>
-              {conversationOpenError}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={dismissConversationOpenError}>
-              我知道了
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <section className="flex min-h-0 min-w-0 flex-col border-r border-divider bg-surface">
       <div className="border-b border-divider px-4 py-4">
         <Popover

@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { toast } from "sonner";
@@ -514,6 +514,45 @@ describe("CustomerPage", () => {
       "mock-conversation-1",
     );
     expect(getConversation).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when starting a managed-account conversation fails", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    const getOrCreateConversation = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("暂时无法开启会话"));
+    setWorkbenchService({
+      ...service,
+      getOrCreateConversation,
+    });
+
+    const router = renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.hover(
+      await screen.findByRole("button", { name: "查看 客户A（张三） 的好友关系" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "向 销售一号 继续会话" }),
+    );
+
+    const errorDialog = await screen.findByRole("alertdialog", {
+      name: "开启会话失败",
+    });
+    expect(errorDialog).toHaveTextContent("暂时无法开启会话");
+    expect(router.state.location.pathname).toBe("/chat/customers");
+
+    await user.click(
+      within(errorDialog).getByRole("button", { name: "我知道了" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("alertdialog", { name: "开启会话失败" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("retries relation conversation timestamps after a transient failure", async () => {

@@ -11908,4 +11908,43 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it.each([
+    {
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+        status: 403,
+      },
+      scenario: "a read-only restore is forbidden",
+    },
+    {
+      error: new Error("恢复会话失败"),
+      scenario: "restore fails transiently",
+    },
+  ])("uses the authorized summary when $scenario", async ({ error }) => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-002");
+    const getConversation = vi.fn(async () => target);
+    const getOrCreateConversation = vi.fn(async () => {
+      throw error;
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+      getOrCreateConversation,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench({
+      preferredConversationId: target.conversationId,
+    });
+
+    const state = useWorkbenchStore.getState();
+
+    expect(getConversation).toHaveBeenCalledWith(target.conversationId);
+    expect(getOrCreateConversation).toHaveBeenCalledOnce();
+    expect(state.activeConversationId).toBe(target.conversationId);
+    expect(state.conversationOpenError).toBeUndefined();
+  });
+
 });

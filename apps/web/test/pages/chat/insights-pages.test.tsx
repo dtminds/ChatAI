@@ -1625,6 +1625,9 @@ describe("conversation insights pages", () => {
     const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
     const insightRegion = screen.getByRole("region", { name: "洞察结论" });
     const conversationRegion = screen.getByRole("region", { name: "本轮对话" });
+    expect(
+      within(detailDialog).getByRole("button", { name: "关闭" }),
+    ).not.toHaveFocus();
     expect(insightRegion).toBeInTheDocument();
     expect(conversationRegion).toBeInTheDocument();
     expect(

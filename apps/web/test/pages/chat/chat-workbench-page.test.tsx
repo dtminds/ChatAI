@@ -193,6 +193,41 @@ describe("ChatWorkbenchPage", () => {
     expect(getConversation).toHaveBeenCalledWith("conv-002");
   });
 
+  it("replaces a deleted routed conversation with the next active conversation", async () => {
+    const user = userEvent.setup();
+    const { router } = renderChatWorkbenchRoutePage(
+      "/chat/conversations/conv-001",
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+
+    const activeConversationCard = screen.getByTestId(
+      "conversation-card-conv-001",
+    );
+    await user.click(
+      within(activeConversationCard).getByRole("button", {
+        name: "会话操作",
+      }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "不显示" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+      expect(router.state.location.pathname).toBe(
+        "/chat/conversations/conv-002",
+      );
+    });
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+  });
+
   it("locates the loaded handoff trigger message by its existing message seq", async () => {
     const user = userEvent.setup();
 

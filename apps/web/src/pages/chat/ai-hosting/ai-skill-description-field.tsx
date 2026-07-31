@@ -12,7 +12,7 @@ import {
 } from "./ai-skill-resource";
 import { SkillResourceChipNode } from "./ai-skill-description-lexical-nodes";
 import { SkillDescriptionRuntimePlugin } from "./ai-skill-description-lexical-plugins";
-import "./ai-skill-description.css";
+import "./agent-module.css";
 
 export function AiSkillDescriptionField({
   editorRef,

@@ -102,7 +102,7 @@ import {
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
-import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
+import "./agent-module.css";
 
 type PreviewMessage = {
   content: string;
@@ -123,11 +123,8 @@ type OperationErrorDialogState = {
   title: string;
 } | null;
 
-const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
-
-const agentSettingsModuleSurfaceStyle = {
-  background: aiHostingSettingsModuleSurface.background,
-} as const;
+const agentSettingsModuleSurfaceClassName =
+  "agent-module-surface rounded-[12px] border border-border bg-card shadow-xs";
 
 export function AgentSettingsPage() {
   const navigate = useNavigate();
@@ -909,10 +906,7 @@ function AgentSettingsSection({
   title: string;
 }) {
   return (
-    <section
-      className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
-      style={agentSettingsModuleSurfaceStyle}
-    >
+    <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1">
           <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -941,10 +935,7 @@ function CollapsibleAgentSettingsSection({
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <section
-        className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
-        style={agentSettingsModuleSurfaceStyle}
-      >
+      <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-1">
             <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -1106,7 +1097,6 @@ function AgentPreviewPanel({
           agentSettingsModuleSurfaceClassName,
           "flex h-[640px] flex-col overflow-hidden",
         )}
-        style={agentSettingsModuleSurfaceStyle}
       >
         <header className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">

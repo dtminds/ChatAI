@@ -185,4 +185,47 @@ describe("AgentSkillService", () => {
     await service.deleteSkill({ operatorSubUserId: "101", uid: 9001 }, "1");
     expect((await service.listSkills(9001)).skills).toEqual([]);
   });
+
+  it("rejects skill fields that exceed save limits", async () => {
+    const service = createService();
+    const context = { operatorSubUserId: "101", uid: 9001 };
+    const payload = {
+      applyScene: "查物流",
+      content: "查询订单物流",
+      kbs: [],
+      name: "物流技能",
+      tools: [],
+      variables: [],
+    };
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        name: "技".repeat(31),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_NAME",
+      message: "技能名称不能超过30个字",
+    });
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        applyScene: "场".repeat(501),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_APPLY_SCENE",
+      message: "技能应用场景不能超过500个字",
+    });
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        kbs: Array.from({ length: 11 }, (_, index) => index + 1),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_KBS",
+      message: "一个技能最多可添加10个知识库",
+    });
+  });
 });

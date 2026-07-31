@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Add01Icon,
+  AbsoluteIcon,
   AiBookIcon,
+  ApiIcon,
   ArrowDown01Icon,
   ArrowUp01Icon,
-  BracketsIcon,
   ClipboardIcon,
-  FilterIcon,
   Message01Icon,
+  MoreHorizontalIcon,
   Search01Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import type {
+  AgentSkillListItem,
+  AgentSkillTemplateItem,
+  AgentSkillTemplateRecommendItem,
+} from "@chatai/contracts";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -37,6 +43,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -44,6 +57,8 @@ import {
   TableCellContent,
   TableHead,
   TableHeader,
+  TablePinnedCell,
+  TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -70,12 +85,7 @@ import {
 } from "./ai-skill-resource";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
-import { Spinner } from "@/components/ui/spinner";
-import type {
-  AgentSkillListItem,
-  AgentSkillTemplateItem,
-  AgentSkillTemplateRecommendItem,
-} from "@chatai/contracts";
+import { TableOverflowTooltip } from "./kb-components/shared";
 
 type SkillRecommendation = {
   description: string;
@@ -135,11 +145,11 @@ export function AiSkillsPage() {
     searchParams.get("tab") === "mine" ? "mine" : "marketplace";
 
   return (
-    <AiHostingLayout title="AI技能">
+    <AiHostingLayout title="技能">
       <div className="space-y-6">
         <AiHostingPageHeader
-          description="为Agent提供场景化的技能，定义在什么情况下执行什么样的任务或操作"
-          title="AI技能"
+          description="管理和配置场景化专家技能，让 Agent 从通用走向专用"
+          title="技能"
         />
 
         <Tabs
@@ -469,7 +479,9 @@ function MySkillsPanel() {
               <TableHead className="h-11 whitespace-nowrap px-4">状态</TableHead>
               <TableHead className="h-11 whitespace-nowrap px-4">更新时间</TableHead>
               <TableHead className="h-11 whitespace-nowrap px-4">创建时间</TableHead>
-              <TableHead className="h-11 whitespace-nowrap px-4 text-right">操作</TableHead>
+              <TablePinnedHead className="h-11 whitespace-nowrap px-4 text-right">
+                操作
+              </TablePinnedHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -488,7 +500,17 @@ function MySkillsPanel() {
               skills.map((skill) => (
                 <TableRow key={skill.id}>
                   <TableCell className="px-4 py-4 font-medium text-foreground">
-                    <TableCellContent>{skill.name}</TableCellContent>
+                    <Link
+                      className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                      to={`/chat/ai-hosting/skills/${skill.id}/edit`}
+                    >
+                      <TableOverflowTooltip
+                        className="font-medium text-foreground"
+                        tooltip={skill.name}
+                      >
+                        {skill.name}
+                      </TableOverflowTooltip>
+                    </Link>
                   </TableCell>
                   <TableCell
                     className="px-4 py-4 text-muted-foreground"
@@ -516,50 +538,53 @@ function MySkillsPanel() {
                   <TableCell className="px-4 py-4 text-muted-foreground">
                     <TableCellContent>{skill.createdAt}</TableCellContent>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap px-4 py-4 text-right">
-                    <div className="inline-flex items-center justify-end gap-3">
-                      <Button
-                        className="h-auto p-0 text-primary"
-                        onClick={() =>
-                          navigate(`/chat/ai-hosting/skills/${skill.id}/edit`)
-                        }
-                        type="button"
-                        variant="link"
-                      >
-                        编辑
-                      </Button>
-                      {skill.status === "enabled" ? (
+                  <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
-                          className="h-auto p-0 text-primary"
+                          aria-label={`打开 ${skill.name} 操作菜单`}
+                          className="size-8 p-0 text-muted-foreground"
                           disabled={actionSubmitting}
-                          onClick={() => void handleDisable(skill.id)}
+                          size="icon"
                           type="button"
-                          variant="link"
+                          variant="ghost"
                         >
-                          停用
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={MoreHorizontalIcon}
+                            size={18}
+                            strokeWidth={1.8}
+                          />
                         </Button>
-                      ) : (
-                        <Button
-                          className="h-auto p-0 text-primary"
-                          disabled={actionSubmitting}
-                          onClick={() => setEnableTargetId(skill.id)}
-                          type="button"
-                          variant="link"
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link to={`/chat/ai-hosting/skills/${skill.id}/edit`}>
+                            编辑
+                          </Link>
+                        </DropdownMenuItem>
+                        {skill.status === "enabled" ? (
+                          <DropdownMenuItem
+                            onSelect={() => void handleDisable(skill.id)}
+                          >
+                            停用
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onSelect={() => setEnableTargetId(skill.id)}
+                          >
+                            启用
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onSelect={() => setDeleteTargetId(skill.id)}
                         >
-                          启用
-                        </Button>
-                      )}
-                      <Button
-                        className="h-auto p-0 text-primary"
-                        disabled={actionSubmitting}
-                        onClick={() => setDeleteTargetId(skill.id)}
-                        type="button"
-                        variant="link"
-                      >
-                        删除
-                      </Button>
-                    </div>
-                  </TableCell>
+                          删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TablePinnedCell>
                 </TableRow>
               ))
             ) : (
@@ -846,12 +871,12 @@ function SkillDetailDialog({
                       {skill.applicationScenario || "暂无数据"}
                     </p>
                     <SkillRecommendationSection
-                      icon={BracketsIcon}
+                      icon={AbsoluteIcon}
                       items={skill.recommendedVariables}
                       title="推荐变量"
                     />
                     <SkillRecommendationSection
-                      icon={FilterIcon}
+                      icon={ApiIcon}
                       items={skill.recommendedTools}
                       title="推荐工具"
                     />
@@ -865,7 +890,7 @@ function SkillDetailDialog({
                   <TabsContent className="mt-0 space-y-0" value="description">
                     <SkillContentView className="pb-5" content={skill.skillDescription} />
                     <SkillRecommendationSection
-                      icon={BracketsIcon}
+                      icon={AbsoluteIcon}
                       items={skill.recommendedVariables}
                       title="推荐变量"
                     />
@@ -926,7 +951,7 @@ function SkillRecommendationSection({
   items,
   title,
 }: {
-  icon: typeof BracketsIcon;
+  icon: typeof AbsoluteIcon;
   items: readonly SkillRecommendation[];
   title: string;
 }) {

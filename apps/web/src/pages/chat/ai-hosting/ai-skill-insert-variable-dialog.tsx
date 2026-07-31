@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AbsoluteIcon,
   ArrowDown01Icon,
-  BracketsIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -841,7 +841,7 @@ export function InsertVariableDialog({
                 <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <HugeiconsIcon
                     aria-hidden="true"
-                    icon={BracketsIcon}
+                    icon={AbsoluteIcon}
                     size={16}
                     strokeWidth={1.8}
                   />
@@ -871,7 +871,7 @@ export function InsertVariableDialog({
                 <HugeiconsIcon
                   aria-hidden="true"
                   className="text-muted-foreground"
-                  icon={BracketsIcon}
+                  icon={AbsoluteIcon}
                   size={16}
                   strokeWidth={1.8}
                 />

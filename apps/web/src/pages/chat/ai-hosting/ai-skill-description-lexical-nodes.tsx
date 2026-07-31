@@ -146,4 +146,4 @@ function applyChipDomAttributes(dom: HTMLElement, kind: SkillContentResourceKind
 }
 
 const skillResourceChipClassName =
-  "ai-skill-resource-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] bg-primary/10 px-1.5 align-baseline text-[13px] font-normal leading-[22px] text-primary";
+  "ai-skill-resource-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] px-1.5 align-baseline text-[13px] font-normal leading-[22px]";

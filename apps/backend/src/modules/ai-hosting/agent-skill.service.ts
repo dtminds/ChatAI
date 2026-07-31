@@ -1,3 +1,8 @@
+import {
+  AGENT_SKILL_APPLY_SCENE_MAX_LENGTH,
+  AGENT_SKILL_KB_MAX_COUNT,
+  AGENT_SKILL_NAME_MAX_LENGTH,
+} from "@chatai/contracts";
 import type {
   AgentSkillDetail,
   AgentSkillListItem,
@@ -295,18 +300,37 @@ function requireOperatorId(operatorSubUserId: string) {
 
 function normalizeSavePayload(payload: AgentSkillSaveRequest) {
   const name = payload.name.trim();
+  const applyScene = payload.applyScene.trim();
+  const kbs = dedupePositiveNumbers(payload.kbs);
   if (!name) {
     throw new BadRequestError("INVALID_SKILL_NAME", "请填写技能名称");
   }
 
-  if (name.length > 50) {
-    throw new BadRequestError("INVALID_SKILL_NAME", "技能名称不能超过50个字");
+  if (name.length > AGENT_SKILL_NAME_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_SKILL_NAME",
+      `技能名称不能超过${AGENT_SKILL_NAME_MAX_LENGTH}个字`,
+    );
+  }
+
+  if (applyScene.length > AGENT_SKILL_APPLY_SCENE_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_SKILL_APPLY_SCENE",
+      `技能应用场景不能超过${AGENT_SKILL_APPLY_SCENE_MAX_LENGTH}个字`,
+    );
+  }
+
+  if (kbs.length > AGENT_SKILL_KB_MAX_COUNT) {
+    throw new BadRequestError(
+      "INVALID_SKILL_KBS",
+      `一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`,
+    );
   }
 
   return {
-    applyScene: payload.applyScene.trim(),
+    applyScene,
     content: payload.content.trim(),
-    kbs: dedupePositiveNumbers(payload.kbs),
+    kbs,
     name,
     tools: dedupeNonEmptyStrings(payload.tools),
     variables: payload.variables,

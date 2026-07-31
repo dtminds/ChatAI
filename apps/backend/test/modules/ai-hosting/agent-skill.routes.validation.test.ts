@@ -71,4 +71,37 @@ describe("agent skill save body schema", () => {
       },
     ]);
   });
+
+  it.each([
+    ["技能名称", { name: "技".repeat(31) }],
+    ["技能应用场景", { applyScene: "场".repeat(501) }],
+    ["知识库数量", { kbs: Array.from({ length: 11 }, (_, index) => index + 1) }],
+  ])("rejects %s exceeding the save limit", async (_field, overrides) => {
+    app = Fastify();
+    app.post<{ Body: AgentSkillSaveRequest }>(
+      "/skills",
+      {
+        schema: {
+          body: AgentSkillSaveRequestSchema,
+        },
+      },
+      async (request) => request.body,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        applyScene: "",
+        content: "查询订单物流",
+        kbs: [],
+        name: "物流技能",
+        tools: [],
+        variables: [],
+        ...overrides,
+      },
+      url: "/skills",
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
 });

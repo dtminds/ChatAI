@@ -1,17 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Add01Icon,
+  AbsoluteIcon,
   AiBookIcon,
+  ApiIcon,
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  ArrowUp01Icon,
-  BracketsIcon,
-  Database01Icon,
   Delete02Icon,
   File01Icon,
+  File02Icon,
+  Search01Icon,
+  SlidersHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AGENT_SKILL_APPLY_SCENE_MAX_LENGTH,
+  AGENT_SKILL_KB_MAX_COUNT,
+  AGENT_SKILL_NAME_MAX_LENGTH,
+  KB_SEARCH_QUERY_MAX_LENGTH,
+} from "@chatai/contracts";
 import type { LexicalEditor } from "lexical";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -31,15 +39,30 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableCellContent,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createAgentSkill,
@@ -67,21 +90,22 @@ import {
   type SkillResourceItem,
 } from "./ai-skill-resource";
 import { AiHostingLayout } from "./ai-hosting-layout";
+import type { KbListViewItem } from "./kb-types";
+import "./agent-module.css";
 
-/** 与表 xy_wap_embed_agent_skill.name varchar(50) 对齐 */
-const SKILL_NAME_MAX_LENGTH = 50;
-const KB_PICKER_PAGE_SIZE = 100;
+const KB_NAME_LOOKUP_PAGE_SIZE = 100;
+const KB_PICKER_PAGE_SIZE = 10;
 const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
 type ResourceSectionId = "variables" | "tools" | "knowledge-bases";
 
 type ResourceCatalogItem = SkillResourceItem & {
-  icon: typeof Database01Icon | typeof File01Icon;
+  icon: typeof ApiIcon | typeof File01Icon;
 };
 
 const resourceSections = [
-  { icon: BracketsIcon, id: "variables", singular: "变量", title: "变量" },
-  { icon: Database01Icon, id: "tools", singular: "工具", title: "工具" },
+  { icon: AbsoluteIcon, id: "variables", singular: "变量", title: "变量" },
+  { icon: ApiIcon, id: "tools", singular: "工具", title: "工具" },
   {
     icon: AiBookIcon,
     id: "knowledge-bases",
@@ -89,7 +113,7 @@ const resourceSections = [
     title: "知识库",
   },
 ] as const satisfies ReadonlyArray<{
-  icon: typeof BracketsIcon;
+  icon: typeof AbsoluteIcon;
   id: ResourceSectionId;
   singular: string;
   title: string;
@@ -107,7 +131,7 @@ const insertDialogMeta: Record<
     title: "插入工具",
   },
   "knowledge-bases": {
-    title: "插入知识库",
+    title: "选择知识库",
     manageHref: "/chat/ai-hosting/kb",
     manageLabel: "前往知识库管理",
   },
@@ -120,7 +144,7 @@ const staticInsertItems: Partial<
   tools: [
     {
       description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
-      icon: Database01Icon,
+      icon: ApiIcon,
       id: "search_mall_order_logistics",
       placeholder: buildToolPlaceholder("search_mall_order_logistics", "小店订单物流查询"),
       title: "小店订单物流查询",
@@ -128,7 +152,7 @@ const staticInsertItems: Partial<
     },
     {
       description: "代客户将提供的订单号转换为积分",
-      icon: Database01Icon,
+      icon: ApiIcon,
       id: "transfer_mall_point",
       placeholder: buildToolPlaceholder("transfer_mall_point", "代客转积分"),
       title: "代客转积分",
@@ -136,7 +160,7 @@ const staticInsertItems: Partial<
     },
     {
       description: "为客户的小店订单添加或更新备注",
-      icon: Database01Icon,
+      icon: ApiIcon,
       id: "remark_mall_order",
       placeholder: buildToolPlaceholder("remark_mall_order", "小店订单备注"),
       title: "小店订单备注",
@@ -144,7 +168,7 @@ const staticInsertItems: Partial<
     },
     {
       description: "根据客户提供的订单号查询订单信息",
-      icon: Database01Icon,
+      icon: ApiIcon,
       id: "search_order",
       placeholder: buildToolPlaceholder("search_order", "订单查询"),
       title: "订单查询",
@@ -152,7 +176,7 @@ const staticInsertItems: Partial<
     },
     {
       description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
-      icon: Database01Icon,
+      icon: ApiIcon,
       id: "bind_order",
       placeholder: buildToolPlaceholder("bind_order", "绑定订单"),
       title: "绑定订单",
@@ -160,6 +184,30 @@ const staticInsertItems: Partial<
     },
   ],
 };
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
+function buildKnowledgeBaseResourceItem(item: KbListViewItem): ResourceCatalogItem {
+  const kbId = Number(item.id);
+
+  return {
+    description: item.description,
+    icon: File01Icon,
+    id: `kb:${item.id}`,
+    kbId: Number.isFinite(kbId) ? kbId : undefined,
+    placeholder: buildKnowledgeBasePlaceholder(item.id, item.name),
+    title: item.name,
+  };
+}
 
 function readSkillCreateDraft(state: unknown): SkillCreateDraft | null {
   if (!state || typeof state !== "object") {
@@ -246,7 +294,7 @@ export function AiSkillSettingsPage() {
       try {
         const [detail, kbResponse] = await Promise.all([
           getAgentSkill(skillId!),
-          listKbs({ page: 1, pageSize: KB_PICKER_PAGE_SIZE }),
+          listKbs({ page: 1, pageSize: KB_NAME_LOOKUP_PAGE_SIZE }),
         ]);
         if (cancelled) {
           return;
@@ -376,6 +424,37 @@ export function AiSkillSettingsPage() {
     toast.success("已添加");
   }
 
+  function handleChangeKnowledgeBases(items: readonly SkillResourceItem[]) {
+    if (items.length > AGENT_SKILL_KB_MAX_COUNT) {
+      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      return;
+    }
+
+    const nextIds = new Set(items.map((item) => item.id));
+    const removedItems = selectedResources["knowledge-bases"].filter(
+      (item) => !nextIds.has(item.id),
+    );
+
+    setSelectedResources((current) => ({
+      ...current,
+      "knowledge-bases": [...items],
+    }));
+
+    if (removedItems.length > 0) {
+      setSkillContentSegments((current) =>
+        removedItems.reduce(
+          (segments, item) =>
+            removeResourceFromSkillContent(segments, {
+              id: item.id,
+              placeholder: item.placeholder,
+            }),
+          current,
+        ),
+      );
+    }
+
+  }
+
   function handleRemoveResource(sectionId: ResourceSectionId, itemId: string) {
     const section = resourceSections.find((item) => item.id === sectionId);
     const item = selectedResources[sectionId].find(
@@ -427,7 +506,7 @@ export function AiSkillSettingsPage() {
   }
 
   return (
-    <AiHostingLayout title="AI技能设置">
+    <AiHostingLayout title="技能设置">
       <div className="space-y-6">
         <header className="space-y-3">
           <Button
@@ -443,7 +522,7 @@ export function AiSkillSettingsPage() {
           </Button>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <h1 className="text-[22px] font-semibold leading-tight text-foreground">
-              AI技能设置
+              技能设置
             </h1>
             <div className="flex shrink-0 items-center gap-3">
               <Button onClick={handleCancel} type="button" variant="outline">
@@ -482,63 +561,93 @@ export function AiSkillSettingsPage() {
               aria-labelledby="skill-basic-settings-title"
               className="rounded-[14px] border border-border bg-card p-5"
             >
-              <h2
-                className="mb-4 text-base font-semibold text-foreground"
-                id="skill-basic-settings-title"
-              >
-                基本设置
-              </h2>
-              <div className="space-y-2">
-                <Label htmlFor="skill-name">
-                  <span className="text-destructive">*</span> 技能名称
-                </Label>
-                <div className="relative">
-                  <Input
-                    aria-required="true"
-                    className="h-10 pr-14"
-                    id="skill-name"
-                    maxLength={SKILL_NAME_MAX_LENGTH}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="请输入"
-                    value={name}
+              <div className="mb-5 flex items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className="agent-module-section-icon agent-module-section-icon--settings inline-flex size-10 shrink-0 items-center justify-center rounded-[8px]"
+                >
+                  <HugeiconsIcon
+                    icon={SlidersHorizontalIcon}
+                    size={20}
+                    strokeWidth={1.8}
                   />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                    {name.length}/{SKILL_NAME_MAX_LENGTH}
-                  </span>
+                </span>
+                <div className="min-w-0 space-y-1">
+                  <h2
+                    className="text-base font-semibold text-foreground"
+                    id="skill-basic-settings-title"
+                  >
+                    基本设置
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    告诉 Agent 应该何时使用这个技能
+                  </p>
                 </div>
               </div>
-            </section>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="skill-name">
+                    技能名称 <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      aria-required="true"
+                      className="h-10 pr-14"
+                      id="skill-name"
+                      maxLength={AGENT_SKILL_NAME_MAX_LENGTH}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="请输入"
+                      value={name}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      {name.length}/{AGENT_SKILL_NAME_MAX_LENGTH}
+                    </span>
+                  </div>
+                </div>
 
-            <section
-              aria-labelledby="skill-scenario-title"
-              className="rounded-[14px] border border-border bg-card p-5"
-            >
-              <h2
-                className="mb-4 text-base font-semibold text-foreground"
-                id="skill-scenario-title"
-              >
-                技能应用场景
-              </h2>
-              <Textarea
-                aria-labelledby="skill-scenario-title"
-                className="min-h-36"
-                onChange={(event) => setApplicationScenario(event.target.value)}
-                placeholder="描述在什么情形下，AI可以调用这个技能"
-                value={applicationScenario}
-              />
+                <div className="space-y-3">
+                  <Label htmlFor="skill-application-scenario">技能应用场景</Label>
+                  <div className="relative">
+                    <Textarea
+                      className="min-h-36 bg-background"
+                      id="skill-application-scenario"
+                      maxLength={AGENT_SKILL_APPLY_SCENE_MAX_LENGTH}
+                      onChange={(event) => setApplicationScenario(event.target.value)}
+                      placeholder="描述在什么情形下，Agent 可以调用这个技能"
+                      value={applicationScenario}
+                    />
+                    <div className="mt-1 text-right text-xs text-muted-foreground">
+                      {applicationScenario.length}/{AGENT_SKILL_APPLY_SCENE_MAX_LENGTH}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section
               aria-labelledby="skill-description-title"
               className="rounded-[14px] border border-border bg-card p-5"
             >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2
-                  className="text-base font-semibold text-foreground"
-                  id="skill-description-title"
-                >
-                  技能描述
-                </h2>
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="agent-module-section-icon agent-module-section-icon--description inline-flex size-10 shrink-0 items-center justify-center rounded-[8px]"
+                  >
+                    <HugeiconsIcon icon={File02Icon} size={20} strokeWidth={1.8} />
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <h2
+                      className="text-base font-semibold text-foreground"
+                      id="skill-description-title"
+                    >
+                      技能描述
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      详细描述技能的功能、使用方式和注意事项
+                    </p>
+                  </div>
+                </div>
                 <AiSkillReferenceMenu
                   knowledgeBases={selectedResources["knowledge-bases"]}
                   onSelectResource={handleInsertReferencedResource}
@@ -559,17 +668,10 @@ export function AiSkillSettingsPage() {
             className="h-fit rounded-[14px] border border-border bg-card p-5"
           >
             <h2
-              className="mb-4 flex items-center gap-2 text-base font-semibold text-foreground"
+              className="mb-4 text-base font-semibold text-foreground"
               id="skill-insert-resources-title"
             >
-              <HugeiconsIcon
-                aria-hidden="true"
-                className="text-muted-foreground"
-                icon={File01Icon}
-                size={16}
-                strokeWidth={1.8}
-              />
-              插入资源
+              资源管理
             </h2>
             <div className="space-y-5">
               {resourceSections.map((section) => (
@@ -639,9 +741,9 @@ export function AiSkillSettingsPage() {
       </AlertDialog>
 
       <InsertResourceDialog
-        addedIds={
+        addedItems={
           activeInsertSection && activeInsertSection !== "variables"
-            ? selectedResources[activeInsertSection].map((item) => item.id)
+            ? selectedResources[activeInsertSection]
             : []
         }
         onAdd={(item) => {
@@ -650,6 +752,7 @@ export function AiSkillSettingsPage() {
           }
           handleAddResource(activeInsertSection, item);
         }}
+        onChangeKnowledgeBases={handleChangeKnowledgeBases}
         onOpenChange={(open) => {
           if (!open && activeInsertSection !== "variables") {
             setActiveInsertSection(null);
@@ -677,7 +780,7 @@ function SkillResourceSection({
   onRemove,
   title,
 }: {
-  icon: typeof BracketsIcon;
+  icon: typeof AbsoluteIcon;
   items: readonly SkillResourceItem[];
   onAdd: () => void;
   onRemove: (itemId: string) => void;
@@ -688,31 +791,32 @@ function SkillResourceSection({
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <div className="flex items-center gap-2 py-0.5">
+      <div className="flex items-center gap-1 py-0.5">
         <CollapsibleTrigger asChild>
           <Button
             aria-controls={contentId}
             aria-expanded={open}
             aria-label={`${open ? "收起" : "展开"}${title}`}
-            className="size-7 shrink-0 p-0 text-muted-foreground"
+            className="size-6 shrink-0 p-0 text-muted-foreground"
             size="icon"
             type="button"
             variant="ghost"
           >
             <HugeiconsIcon
-              icon={open ? ArrowDown01Icon : ArrowUp01Icon}
+              icon={open ? ArrowDown01Icon : ArrowRight01Icon}
               size={14}
-              strokeWidth={1.8}
+              strokeWidth={2.2}
             />
           </Button>
         </CollapsibleTrigger>
-        <p className="min-w-0 flex-1 text-sm font-medium text-foreground">{title}</p>
+        <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">{title}</p>
         <Button
           aria-label={`添加${title}`}
           className="size-6 shrink-0 rounded-[6px] p-0"
           onClick={onAdd}
           size="icon"
           type="button"
+          variant="ghost"
         >
           <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
         </Button>
@@ -727,16 +831,16 @@ function SkillResourceSection({
             <img
               alt=""
               aria-hidden="true"
-              className="size-20 object-contain opacity-50"
+              className="h-auto w-20 opacity-50"
               src={emptyStateIllustrationUrl}
             />
-            <p className="text-sm text-muted-foreground">暂未配置技能</p>
+            <p className="text-sm text-muted-foreground">暂未配置</p>
           </div>
         ) : (
           <ul aria-label={`已添加${title}`} className="space-y-1 px-0.5 py-2">
             {items.map((item) => (
               <li key={item.id}>
-                <div className="group flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors hover:bg-muted/70">
+                <div className="group flex min-w-0 items-center gap-2 rounded-[8px] bg-muted/40 px-2 py-1.5 transition-colors hover:bg-muted/70">
                   <HugeiconsIcon
                     aria-hidden="true"
                     className="shrink-0 text-muted-foreground"
@@ -773,100 +877,44 @@ function SkillResourceSection({
 }
 
 function InsertResourceDialog({
-  addedIds,
+  addedItems,
   onAdd,
+  onChangeKnowledgeBases,
   onOpenChange,
   open,
   sectionId,
 }: {
-  addedIds: readonly string[];
+  addedItems: readonly SkillResourceItem[];
   onAdd: (item: SkillResourceItem) => void;
+  onChangeKnowledgeBases: (items: readonly SkillResourceItem[]) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   sectionId: Exclude<ResourceSectionId, "variables"> | null;
 }) {
   const meta = sectionId ? insertDialogMeta[sectionId] : null;
-  const addedIdSet = useMemo(() => new Set(addedIds), [addedIds]);
-  const [knowledgeBases, setKnowledgeBases] = useState<ResourceCatalogItem[]>([]);
-  const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(false);
-  const [knowledgeBasesError, setKnowledgeBasesError] = useState(false);
-
-  useEffect(() => {
-    if (!open || sectionId !== "knowledge-bases") {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadKnowledgeBases() {
-      setKnowledgeBasesLoading(true);
-      setKnowledgeBasesError(false);
-
-      try {
-        const response = await listKbs({
-          page: 1,
-          pageSize: KB_PICKER_PAGE_SIZE,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setKnowledgeBases(
-          response.kbs.map((item) => {
-            const viewItem = toKbListViewItem(item);
-            const kbId = Number(viewItem.id);
-
-            return {
-              description: viewItem.description,
-              icon: File01Icon,
-              id: viewItem.id,
-              kbId: Number.isFinite(kbId) ? kbId : undefined,
-              placeholder: buildKnowledgeBasePlaceholder(viewItem.id, viewItem.name),
-              title: viewItem.name,
-            };
-          }),
-        );
-      } catch {
-        if (cancelled) {
-          return;
-        }
-
-        setKnowledgeBases([]);
-        setKnowledgeBasesError(true);
-        toast.error("知识库列表加载失败，请稍后重试");
-      } finally {
-        if (!cancelled) {
-          setKnowledgeBasesLoading(false);
-        }
-      }
-    }
-
-    void loadKnowledgeBases();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, sectionId]);
-
-  const items =
-    sectionId === "knowledge-bases"
-      ? knowledgeBases
-      : sectionId
-        ? (staticInsertItems[sectionId] ?? [])
-        : [];
+  const addedIdSet = useMemo(
+    () => new Set(addedItems.map((item) => item.id)),
+    [addedItems],
+  );
+  const items = sectionId ? (staticInsertItems[sectionId] ?? []) : [];
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[760px] gap-0 p-0 sm:rounded-[14px]">
+      <DialogContent
+        className={
+          sectionId === "knowledge-bases"
+            ? "max-h-[calc(100vh-2rem)] max-w-[1040px] grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] gap-0 overflow-hidden p-0 sm:rounded-[14px]"
+            : "max-w-[760px] gap-0 p-0 sm:rounded-[14px]"
+        }
+      >
         {meta ? (
           <>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-2 pt-6 pr-14">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-4 pt-6 pr-14">
               <DialogTitle className="text-lg font-semibold text-foreground">
                 {meta.title}
               </DialogTitle>
               <DialogDescription className="sr-only">
-                选择要插入的{meta.title.replace("插入", "")}
+                选择要添加的{meta.title.replace(/^(插入|选择)/u, "")}
               </DialogDescription>
               {meta.manageHref && meta.manageLabel ? (
                 <Button
@@ -888,18 +936,16 @@ function InsertResourceDialog({
               ) : null}
             </div>
 
-            {sectionId === "knowledge-bases" && knowledgeBasesLoading ? (
-              <div
-                className="flex items-center justify-center gap-2 px-6 py-16 text-sm text-muted-foreground"
-                role="status"
-              >
-                <Spinner />
-                <span>正在加载</span>
-              </div>
-            ) : sectionId === "knowledge-bases" && knowledgeBasesError ? (
-              <div className="px-6 py-16 text-center text-sm text-destructive" role="alert">
-                加载失败
-              </div>
+            {sectionId === "knowledge-bases" ? (
+              <KnowledgeBasePicker
+                addedItems={addedItems}
+                onConfirm={(selectedItems) => {
+                  onChangeKnowledgeBases(selectedItems);
+                  onOpenChange(false);
+                }}
+                onOpenChange={onOpenChange}
+                open={open}
+              />
             ) : items.length === 0 ? (
               <div
                 className="px-6 py-16 text-center text-sm text-muted-foreground"
@@ -952,5 +998,294 @@ function InsertResourceDialog({
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function KnowledgeBasePicker({
+  addedItems,
+  onConfirm,
+  onOpenChange,
+  open,
+}: {
+  addedItems: readonly SkillResourceItem[];
+  onConfirm: (items: readonly SkillResourceItem[]) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const [items, setItems] = useState<KbListViewItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedItems, setSelectedItems] = useState<
+    Map<string, SkillResourceItem>
+  >(() => new Map());
+  const addedKbIdSet = useMemo(
+    () =>
+      new Set(
+        addedItems.map((item) =>
+          String(item.kbId ?? item.id.replace(/^kb:/u, "")),
+        ),
+      ),
+    [addedItems],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setSearchQuery("");
+    setCurrentPage(1);
+    setSelectedItems(
+      new Map(
+        addedItems.map((item) => [
+          String(item.kbId ?? item.id.replace(/^kb:/u, "")),
+          item,
+        ]),
+      ),
+    );
+  }, [addedItems, open]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadKnowledgeBases() {
+      setLoading(true);
+      setError(false);
+
+      try {
+        const response = await listKbs({
+          page: currentPage,
+          pageSize: KB_PICKER_PAGE_SIZE,
+          query: debouncedSearchQuery.trim(),
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setItems(response.kbs.map(toKbListViewItem));
+        setTotal(response.pagination.total);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setItems([]);
+        setTotal(0);
+        setError(true);
+        toast.error("知识库列表加载失败，请稍后重试");
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadKnowledgeBases();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, debouncedSearchQuery, open]);
+
+  const { activePage, totalPages } = resolveTablePagination({
+    page: currentPage,
+    pageSize: KB_PICKER_PAGE_SIZE,
+    total,
+  });
+  const selectedCount = selectedItems.size;
+  const selectionChanged =
+    selectedItems.size !== addedKbIdSet.size ||
+    [...addedKbIdSet].some((itemId) => !selectedItems.has(itemId));
+
+  function handleCheckedChange(item: KbListViewItem, checked: boolean) {
+    if (
+      checked &&
+      !selectedItems.has(item.id) &&
+      selectedCount >= AGENT_SKILL_KB_MAX_COUNT
+    ) {
+      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      return;
+    }
+
+    setSelectedItems((current) => {
+      const next = new Map(current);
+      if (checked) {
+        next.set(item.id, buildKnowledgeBaseResourceItem(item));
+      } else {
+        next.delete(item.id);
+      }
+      return next;
+    });
+  }
+
+  return (
+    <>
+      <div className="px-6 pb-5">
+        <div className="relative w-[280px] max-w-full">
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            icon={Search01Icon}
+            size={17}
+            strokeWidth={1.8}
+          />
+          <Input
+            aria-label="搜索知识库"
+            className="h-10 rounded-[8px] pl-9"
+            maxLength={KB_SEARCH_QUERY_MAX_LENGTH}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="搜索知识库"
+            value={searchQuery}
+          />
+        </div>
+      </div>
+
+      <div className="min-h-0 overflow-auto px-6">
+        <Table className="min-w-[920px] table-fixed">
+          <colgroup>
+            <col className="w-[56px]" />
+            <col className="w-[220px]" />
+            <col className="w-[310px]" />
+            <col className="w-[165px]" />
+            <col className="w-[165px]" />
+          </colgroup>
+          <TableHeader className="[&_tr]:border-border/70">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="h-11 px-4">
+                <span className="sr-only">选择</span>
+              </TableHead>
+              <TableHead className="h-11 px-4">知识库名称</TableHead>
+              <TableHead className="h-11 px-4">描述</TableHead>
+              <TableHead className="h-11 whitespace-nowrap px-4">
+                最近更新时间
+              </TableHead>
+              <TableHead className="h-11 whitespace-nowrap px-4">
+                创建时间
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="[&_tr]:border-border/70">
+            {loading ? (
+              <TableRow>
+                <TableCell className="h-52 text-center" colSpan={5}>
+                  <div
+                    className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+                    role="status"
+                  >
+                    <Spinner />
+                    <span>正在加载</span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow>
+                <TableCell
+                  className="h-52 text-center text-sm text-destructive"
+                  colSpan={5}
+                  role="alert"
+                >
+                  加载失败
+                </TableCell>
+              </TableRow>
+            ) : items.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  className="h-52 text-center text-sm text-muted-foreground"
+                  colSpan={5}
+                >
+                  暂无数据
+                </TableCell>
+              </TableRow>
+            ) : (
+              items.map((item) => {
+                const checked = selectedItems.has(item.id);
+                const disabled =
+                  !checked && selectedCount >= AGENT_SKILL_KB_MAX_COUNT;
+
+                return (
+                  <TableRow className="hover:bg-muted/30" key={item.id}>
+                    <TableCell className="px-4 py-4">
+                      <Checkbox
+                        aria-label={`选择${item.name}`}
+                        checked={checked}
+                        disabled={disabled}
+                        onCheckedChange={(nextChecked) =>
+                          handleCheckedChange(item, nextChecked === true)
+                        }
+                      />
+                    </TableCell>
+                    <TableCell
+                      className="px-4 py-4 font-medium text-foreground"
+                      title={item.name}
+                    >
+                      <TableCellContent>{item.name}</TableCellContent>
+                    </TableCell>
+                    <TableCell
+                      className="px-4 py-4 text-muted-foreground"
+                      title={item.description}
+                    >
+                      <TableCellContent>{item.description || "-"}</TableCellContent>
+                    </TableCell>
+                    <TableCell
+                      className="px-4 py-4 text-muted-foreground"
+                      title={item.lastUpdatedAt}
+                    >
+                      <TableCellContent>{item.lastUpdatedAt}</TableCellContent>
+                    </TableCell>
+                    <TableCell
+                      className="px-4 py-4 text-muted-foreground"
+                      title={item.createdAt}
+                    >
+                      <TableCellContent>{item.createdAt}</TableCellContent>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="px-6">
+        <TablePagination
+          className="border-t-0 py-4"
+          onPageChange={setCurrentPage}
+          page={activePage}
+          total={total}
+          totalPages={totalPages}
+        />
+      </div>
+
+      <DialogFooter className="flex-row items-center justify-between border-t border-border px-6 py-4 sm:justify-between">
+        <span className="text-sm text-muted-foreground">
+          已选择 {selectedCount}/{AGENT_SKILL_KB_MAX_COUNT}
+        </span>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+            取消
+          </Button>
+          <Button
+            disabled={!selectionChanged}
+            onClick={() => onConfirm([...selectedItems.values()])}
+            type="button"
+          >
+            确认
+          </Button>
+        </div>
+      </DialogFooter>
+    </>
   );
 }

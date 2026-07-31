@@ -1,5 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const AGENT_SKILL_NAME_MAX_LENGTH = 30;
+export const AGENT_SKILL_APPLY_SCENE_MAX_LENGTH = 500;
+export const AGENT_SKILL_KB_MAX_COUNT = 10;
+
 export const AgentSkillStatusSchema = Type.Union([
   Type.Literal("enabled"),
   Type.Literal("disabled"),
@@ -66,10 +70,10 @@ export const AgentSkillVariableSchema = Type.Union([
 
 export const AgentSkillSaveRequestSchema = Type.Object(
   {
-    applyScene: Type.String(),
+    applyScene: Type.String({ maxLength: AGENT_SKILL_APPLY_SCENE_MAX_LENGTH }),
     content: Type.String(),
-    kbs: Type.Array(Type.Number()),
-    name: Type.String({ minLength: 1, maxLength: 50 }),
+    kbs: Type.Array(Type.Number(), { maxItems: AGENT_SKILL_KB_MAX_COUNT }),
+    name: Type.String({ minLength: 1, maxLength: AGENT_SKILL_NAME_MAX_LENGTH }),
     tools: Type.Array(Type.String()),
     variables: Type.Array(AgentSkillVariableSchema),
   },

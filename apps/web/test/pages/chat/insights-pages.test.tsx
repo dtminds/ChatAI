@@ -23,7 +23,6 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightBusinessTopics: vi.fn(),
   getInsightCapabilities: vi.fn(),
   getInsightDetail: vi.fn(),
-  getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
   getInsightSessionMessages: vi.fn(),
   getInsightFilterOptions: vi.fn(),
@@ -63,7 +62,14 @@ const serviceMocks = vi.hoisted(() => ({
   deleteInsightIntentConfig: vi.fn(),
   deleteInsightLabelConfig: vi.fn(),
   deleteInsightQaRuleConfig: vi.fn(),
-  updateInsightActionStatus: vi.fn(),
+}));
+
+const ticketServiceMocks = vi.hoisted(() => ({
+  updateTicket: vi.fn(),
+}));
+const toast = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
 }));
 
 const mockInsightSettings = {
@@ -199,6 +205,8 @@ async function openSettingsDialog(
 }
 
 vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
+vi.mock("@/pages/chat/tickets/api/tickets-service", () => ticketServiceMocks);
+vi.mock("sonner", () => ({ Toaster: () => null, toast }));
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -289,25 +297,15 @@ function createMockInsightDetail() {
   return {
     actionItems: [
       {
-        actionItemId: "801",
-        conversationId: "301",
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerName: "张三",
-        evidenceMessageIds: ["9001", "9002"],
-        priority: "high",
-        sessionId: "501",
+        canEdit: true,
         status: "open",
+        ticketId: "801",
         title: "跟进物流是否已更新",
       },
       {
-        actionItemId: "802",
-        conversationId: "301",
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerName: "张三",
-        evidenceMessageIds: ["9001"],
-        priority: "low",
-        sessionId: "501",
+        canEdit: true,
         status: "done",
+        ticketId: "802",
         title: "发送补偿说明",
       },
     ],
@@ -973,22 +971,6 @@ function installInsightMocks() {
       },
     };
   });
-  serviceMocks.getInsightFollowUps.mockResolvedValue({
-    items: [
-      {
-        actionItemId: "801",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerName: "张三",
-        priority: "high",
-        sessionId: "501",
-        status: "open",
-        title: "确认快递状态",
-      },
-    ],
-    total: 1,
-  });
   serviceMocks.getInsightDetail.mockResolvedValue(createMockInsightDetail());
   serviceMocks.getInsightSessionMessages.mockResolvedValue(
     createMockInsightSessionMessages(),
@@ -1092,12 +1074,7 @@ function installInsightMocks() {
   serviceMocks.listInsightEntityDictionary.mockResolvedValue(
     mockInsightSettings.entityDictionary,
   );
-  serviceMocks.updateInsightActionStatus.mockImplementation(
-    async (actionItemId: string, status: string) => ({
-      actionItemId,
-      status,
-    }),
-  );
+  ticketServiceMocks.updateTicket.mockResolvedValue({ ticket: {} });
   serviceMocks.createInsightRescanJob.mockResolvedValue({
     jobId: "8801",
     status: "accepted",
@@ -1371,7 +1348,6 @@ describe("conversation insights pages", () => {
     await Promise.all([
       import("@/pages/chat/insights/insights-overview-page"),
       import("@/pages/chat/insights/insights-quality-page"),
-      import("@/pages/chat/insights/insights-follow-ups-page"),
       import("@/pages/chat/insights/insights-business-page"),
       import("@/pages/chat/insights/insights-settings-page"),
       import("@/pages/chat/insights/insights-worker-observability-page"),
@@ -1763,6 +1739,9 @@ describe("conversation insights pages", () => {
       within(insightRegion).getByText("跟进物流是否已更新"),
     ).toBeInTheDocument();
     expect(
+      within(insightRegion).getByRole("link", { name: "跟进物流是否已更新" }),
+    ).toHaveAttribute("href", "/chat/tickets/801");
+    expect(
       within(insightRegion).queryByText("标记完成"),
     ).not.toBeInTheDocument();
     const completeActionItemButton = within(insightRegion).getByRole("button", {
@@ -1778,9 +1757,9 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
     await userEvent.click(completeActionItemButton);
     await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
+      expect(ticketServiceMocks.updateTicket).toHaveBeenCalledWith(
         "801",
-        "done",
+        { expectedStatus: "open", status: "done" },
       );
     });
     expect(
@@ -1794,9 +1773,9 @@ describe("conversation insights pages", () => {
       }),
     );
     await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
+      expect(ticketServiceMocks.updateTicket).toHaveBeenCalledWith(
         "801",
-        "open",
+        { expectedStatus: "done", status: "open" },
       );
     });
     expect(
@@ -1808,9 +1787,9 @@ describe("conversation insights pages", () => {
       }),
     );
     await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenLastCalledWith(
+      expect(ticketServiceMocks.updateTicket).toHaveBeenLastCalledWith(
         "801",
-        "dismissed",
+        { expectedStatus: "open", status: "canceled" },
       );
     });
     expect(
@@ -1824,9 +1803,9 @@ describe("conversation insights pages", () => {
       }),
     );
     await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenLastCalledWith(
+      expect(ticketServiceMocks.updateTicket).toHaveBeenLastCalledWith(
         "801",
-        "open",
+        { expectedStatus: "canceled", status: "open" },
       );
     });
     expect(within(insightRegion).getByText("发送补偿说明")).toBeInTheDocument();
@@ -1897,6 +1876,117 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("正在加载会话")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
     expect(await screen.findByText("洞察详情加载失败")).toBeInTheDocument();
+  });
+
+  it("keeps in-progress ticket actions while hiding actions for read-only tickets", async () => {
+    serviceMocks.getInsightDetail.mockResolvedValueOnce({
+      ...createMockInsightDetail(),
+      actionItems: [
+        {
+          canEdit: true,
+          status: "in_progress",
+          ticketId: "801",
+          title: "处理中工单",
+        },
+        {
+          canEdit: false,
+          status: "open",
+          ticketId: "803",
+          title: "只读工单",
+        },
+      ],
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    expect(
+      within(insightRegion).getByRole("button", { name: "标记完成：处理中工单" }),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "忽略：处理中工单" }),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).queryByRole("button", { name: "标记完成：只读工单" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(insightRegion).queryByRole("button", { name: "忽略：只读工单" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(insightRegion).getByRole("button", { name: "忽略：处理中工单" }),
+    );
+    await waitFor(() => {
+      expect(ticketServiceMocks.updateTicket).toHaveBeenCalledWith("801", {
+        expectedStatus: "in_progress",
+        status: "canceled",
+      });
+    });
+  });
+
+  it("reloads insight detail after a ticket state conflict", async () => {
+    const conflict = Object.assign(new Error("工单状态已变化，请刷新后重试"), {
+      code: "TICKET_STATE_CONFLICT",
+    });
+    serviceMocks.getInsightDetail
+      .mockResolvedValueOnce(createMockInsightDetail())
+      .mockResolvedValueOnce({
+        ...createMockInsightDetail(),
+        actionItems: [
+          {
+            canEdit: true,
+            status: "done",
+            ticketId: "801",
+            title: "跟进物流是否已更新",
+          },
+          {
+            canEdit: true,
+            status: "done",
+            ticketId: "802",
+            title: "发送补偿说明",
+          },
+        ],
+      });
+    ticketServiceMocks.updateTicket.mockRejectedValueOnce(conflict);
+
+    renderRoute("/chat/insights");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    await userEvent.click(
+      within(insightRegion).getByRole("button", {
+        name: "标记完成：跟进物流是否已更新",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(ticketServiceMocks.updateTicket).toHaveBeenCalledWith("801", {
+        expectedStatus: "open",
+        status: "done",
+      });
+    });
+    await waitFor(() => {
+      expect(serviceMocks.getInsightDetail).toHaveBeenCalledTimes(2);
+      expect(
+        within(insightRegion).getByRole("button", {
+          name: "重新打开：跟进物流是否已更新",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(toast.error).toHaveBeenCalledWith("工单状态已变化，请刷新后重试");
   });
 
   it("opens analyzing physical session detail without a generated snapshot", async () => {
@@ -2717,395 +2807,6 @@ describe("conversation insights pages", () => {
     await expect(qualityGate.promise).resolves.toBeDefined();
   });
 
-  it("updates follow-up status manually", async () => {
-    renderRoute("/chat/insights/follow-ups");
-
-    expect(
-      await screen.findByRole("heading", { name: "待处理" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "由 AI 智能识别未解决的问题、或待跟进的事项，自动为你生成待办",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "集中处理风险、跟进和异常事项，状态只在洞察模块内生效",
-      ),
-    ).not.toBeInTheDocument();
-    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      {
-        page: 1,
-        pageSize: 10,
-        status: "open",
-      },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(
-      screen.getByRole("table", { name: "待处理列表" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("columnheader").map((item) => item.textContent),
-    ).toEqual(["客户", "概要", "优先级", "时间", "操作"]);
-    expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
-    expect(screen.getByText("确认快递状态")).toBeInTheDocument();
-    expect(screen.queryByText("物流进度未确认")).not.toBeInTheDocument();
-    expect(screen.queryByText("logistics_check")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "标记完成" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "忽略" }),
-    ).not.toBeInTheDocument();
-
-    const actionTrigger = screen.getByRole("button", { name: "处理" });
-    expect(
-      actionTrigger.querySelector('[data-icon-name="arrow-down-01"]'),
-    ).toBeInTheDocument();
-    await userEvent.click(actionTrigger);
-    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
-    expect(
-      within(actionMenu).getByRole("menuitem", { name: "标记完成" }),
-    ).toBeInTheDocument();
-    expect(
-      within(actionMenu).getByRole("menuitem", { name: "忽略" }),
-    ).toBeInTheDocument();
-    expect(
-      within(actionMenu).queryByRole("menuitem", { name: "重新打开" }),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(
-      within(actionMenu).getByRole("menuitem", { name: "标记完成" }),
-    );
-
-    await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
-        "801",
-        "done",
-      );
-    });
-  });
-
-  it("shows a completed follow-up after switching to processed", async () => {
-    renderRoute("/chat/insights/follow-ups");
-
-    expect(
-      await screen.findByRole("heading", { name: "待处理" }),
-    ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "处理" }));
-    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
-    await userEvent.click(
-      within(actionMenu).getByRole("menuitem", { name: "标记完成" }),
-    );
-
-    await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
-        "801",
-        "done",
-      );
-    });
-
-    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
-      items: [
-        {
-          actionItemId: "801",
-          conversationId: "301",
-          createdAt: 1_780_244_000_000,
-          customerAvatarUrl: "https://example.com/customer-1.png",
-          customerName: "张三",
-          priority: "high",
-          sessionId: "501",
-          status: "done",
-          title: "确认快递状态",
-        },
-      ],
-      page: 1,
-      pageSize: 10,
-      total: 1,
-      totalPages: 1,
-    });
-
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        {
-          page: 1,
-          pageSize: 10,
-          status: "processed",
-        },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-    });
-    expect(await screen.findByText("确认快递状态")).toBeInTheDocument();
-    expect(screen.getByText("已完成")).toBeInTheDocument();
-  });
-
-  it("styles follow-up status badges by action state", async () => {
-    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
-      items: [
-        {
-          actionItemId: "801",
-          conversationId: "301",
-          createdAt: 1_780_244_000_000,
-          customerAvatarUrl: "https://example.com/customer-1.png",
-          customerName: "张三",
-          priority: "high",
-          sessionId: "501",
-          status: "open",
-          title: "待处理事项",
-        },
-        {
-          actionItemId: "802",
-          conversationId: "302",
-          createdAt: 1_780_244_000_000,
-          customerAvatarUrl: "https://example.com/customer-2.png",
-          customerName: "李四",
-          priority: "medium",
-          sessionId: "502",
-          status: "done",
-          title: "已完成事项",
-        },
-        {
-          actionItemId: "803",
-          conversationId: "303",
-          createdAt: 1_780_244_000_000,
-          customerAvatarUrl: "https://example.com/customer-3.png",
-          customerName: "王五",
-          priority: "low",
-          sessionId: "503",
-          status: "dismissed",
-          title: "已忽略事项",
-        },
-      ],
-      page: 1,
-      pageSize: 10,
-      total: 3,
-      totalPages: 1,
-    });
-
-    renderRoute("/chat/insights/follow-ups");
-
-    const openRow = (await screen.findByText("待处理事项")).closest("tr");
-    const doneRow = screen.getByText("已完成事项").closest("tr");
-    const dismissedRow = screen.getByText("已忽略事项").closest("tr");
-    expect(openRow).not.toBeNull();
-    expect(doneRow).not.toBeNull();
-    expect(dismissedRow).not.toBeNull();
-
-    const openCells = within(openRow as HTMLElement).getAllByRole("cell");
-    const openSummaryCell = openCells[1];
-    expect(within(openSummaryCell).getByText("待处理")).toBeInTheDocument();
-    expect(within(openSummaryCell).getByText("待处理事项")).toBeInTheDocument();
-    expect(
-      within(openSummaryCell)
-        .getByText("待处理")
-        .compareDocumentPosition(
-          within(openSummaryCell).getByText("待处理事项"),
-        ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(openCells[3]).not.toHaveTextContent("暂无");
-    const highPriority = within(openRow as HTMLElement).getByText("高");
-    const mediumPriority = within(doneRow as HTMLElement).getByText("中");
-    const lowPriority = within(dismissedRow as HTMLElement).getByText("低");
-    const doneStatus = within(doneRow as HTMLElement).getByText("已完成");
-    const dismissedStatus = within(dismissedRow as HTMLElement).getByText(
-      "已忽略",
-    );
-    expect(doneStatus).toBeInTheDocument();
-    expect(dismissedStatus).toBeInTheDocument();
-    expect(highPriority).toBeInTheDocument();
-    expect(mediumPriority).toBeInTheDocument();
-    expect(lowPriority).toBeInTheDocument();
-  });
-
-  it("reopens processed follow-ups from the action menu", async () => {
-    renderRoute("/chat/insights/follow-ups");
-
-    expect(
-      await screen.findByRole("heading", { name: "待处理" }),
-    ).toBeInTheDocument();
-    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
-      items: [
-        {
-          actionItemId: "801",
-          conversationId: "301",
-          createdAt: 1_780_244_000_000,
-          customerAvatarUrl: "https://example.com/customer-1.png",
-          customerName: "张三",
-          priority: "high",
-          sessionId: "501",
-          status: "done",
-          title: "确认快递状态",
-        },
-      ],
-      page: 1,
-      pageSize: 10,
-      total: 1,
-      totalPages: 1,
-    });
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: "processed" }),
-        expect.any(Object),
-      );
-    });
-
-    await userEvent.click(await screen.findByRole("button", { name: "处理" }));
-    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
-    expect(
-      within(actionMenu).getByRole("menuitem", { name: "重新打开" }),
-    ).toBeInTheDocument();
-    expect(
-      within(actionMenu).queryByRole("menuitem", { name: "标记完成" }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(actionMenu).queryByRole("menuitem", { name: "忽略" }),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(
-      within(actionMenu).getByRole("menuitem", { name: "重新打开" }),
-    );
-
-    await waitFor(() => {
-      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
-        "801",
-        "open",
-      );
-    });
-  });
-
-  it("applies follow-up filters to pending insight queries", async () => {
-    renderRoute("/chat/insights/follow-ups");
-
-    expect(
-      await screen.findByRole("heading", { name: "待处理" }),
-    ).toBeInTheDocument();
-    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      {
-        page: 1,
-        pageSize: 10,
-        status: "open",
-      },
-      expect.any(Object),
-    );
-    expect(
-      screen.getByRole("button", { name: "日期范围 选择时间" }),
-    ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
-    expect(
-      await screen.findByRole("option", { name: "全部优先级" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "选择优先级" }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("option", { name: "高" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          page: 1,
-          priority: "high",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
-    await userEvent.click(
-      await screen.findByRole("option", { name: "全部优先级" }),
-    );
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        {
-          page: 1,
-          pageSize: 10,
-          status: "open",
-        },
-        expect.any(Object),
-      );
-    });
-
-    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
-    await userEvent.click(await screen.findByRole("option", { name: "高" }));
-
-    expect(screen.getByRole("tab", { name: "待处理" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "已处理" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "全部" })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", { name: "状态" }),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          page: 1,
-          priority: "high",
-          status: "processed",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "日期范围 选择时间" }),
-    );
-    await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          from: "2026-06-02T00:00:00.000+08:00",
-          page: 1,
-          priority: "high",
-          status: "processed",
-          to: "2026-06-02T23:59:59.999+08:00",
-        }),
-        expect.any(Object),
-      );
-    });
-  });
-
-  it("aborts follow-up loading when the page unmounts", async () => {
-    const followUpsGate =
-      createDeferred<
-        Awaited<ReturnType<typeof serviceMocks.getInsightFollowUps>>
-      >();
-    serviceMocks.getInsightFollowUps.mockReturnValueOnce(followUpsGate.promise);
-
-    renderRoute("/chat/insights/follow-ups");
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightFollowUps).toHaveBeenCalled();
-    });
-    const requestOptions = serviceMocks.getInsightFollowUps.mock.calls[0]?.[1];
-    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      {
-        page: 1,
-        pageSize: 10,
-        status: "open",
-      },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(requestOptions?.signal?.aborted).toBe(false);
-
-    cleanup();
-
-    expect(requestOptions?.signal?.aborted).toBe(true);
-    followUpsGate.resolve({ items: [], total: 0 });
-    await expect(followUpsGate.promise).resolves.toBeDefined();
-  });
-
   it("renders admin settings and P1 placeholders", async () => {
     serviceMocks.getInsightSettingsSummary.mockResolvedValue(
       createMockInsightSettingsSummary(true),
@@ -3146,7 +2847,7 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("AI 置信度阈值")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "低于该阈值时，问题解决判断会标记为未知，且不会自动生成待办",
+        "低于该阈值时，问题解决判断会标记为未知，且不会自动创建工单",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("低可信提示阈值")).not.toBeInTheDocument();
@@ -3684,7 +3385,7 @@ describe("conversation insights pages", () => {
 
     expect(cards.map((card) => card.textContent)).toEqual([
       "总开关未开启",
-      "智能创建待办已开启",
+      "智能创建工单已开启",
       "智能意图识别已开启（2 / 15）",
       "智能质检已开启（1 / 10）",
       "智能标签已开启（3 / 20）",
@@ -3709,7 +3410,7 @@ describe("conversation insights pages", () => {
       "历史重刷",
     ]);
     expect(
-      screen.queryByRole("tab", { name: "智能创建待办" }),
+      screen.queryByRole("tab", { name: "智能创建工单" }),
     ).not.toBeInTheDocument();
   });
 
@@ -4350,7 +4051,7 @@ describe("conversation insights pages", () => {
         .map((item) => item.getAttribute("aria-label")),
     ).toEqual([
       "启用会话洞察",
-      "智能创建待办",
+      "智能创建工单",
       "智能意图识别",
       "智能质检",
       "智能标签",
@@ -4533,20 +4234,12 @@ describe("conversation insights pages", () => {
       screen.getByRole("status", { name: "正在加载会话" }),
     ).toBeInTheDocument();
 
-    cleanup();
-    mockSession("admin");
-    installInsightMocks();
-    serviceMocks.getInsightFollowUps.mockImplementation(
-      () => new Promise(() => undefined),
-    );
+  });
+
+  it("does not retain the removed insights follow-ups route", async () => {
     renderRoute("/chat/insights/follow-ups");
 
-    expect(
-      await screen.findByRole("heading", { name: "待处理" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("status", { name: "正在加载会话" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("页面不存在")).toBeInTheDocument();
   });
 
   it("renders the basic overview with the normal AI structure", async () => {

@@ -875,6 +875,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getConversation(
+        getSubUserId(request),
+        request.params.conversationId,
+      ),
+  );
+
   app.get<{
     Params: ConversationParams;
     Querystring: ConversationMessagesQuery;

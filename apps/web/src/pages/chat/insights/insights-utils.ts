@@ -1,8 +1,4 @@
-import type {
-  InsightActionStatus,
-  InsightAnalysisStatus,
-  InsightDetailResponse,
-} from "@chatai/contracts";
+import type { InsightAnalysisStatus, InsightDetailResponse } from "@chatai/contracts";
 
 export function formatInsightTime(value?: number) {
   if (!value) {
@@ -85,17 +81,6 @@ export function formatAnalysisStatus(status: InsightAnalysisStatus) {
     ready: "已完成",
     skipped: "未运行",
     stale: "已过期",
-  } as const;
-
-  return labels[status];
-}
-
-export function formatActionStatus(status: InsightActionStatus) {
-  const labels = {
-    dismissed: "已忽略",
-    done: "已完成",
-    expired: "已过期",
-    open: "待处理",
   } as const;
 
   return labels[status];

@@ -1,7 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
-  InsightActionStatusSchema,
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightBusinessTopicSchema,
   InsightBusinessTrendPointSchema,
@@ -19,7 +18,6 @@ import {
   InsightSettingsSummaryResponseSchema,
   InsightSessionMessagesResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
-  InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityAgentStatsResponseSchema,
   InsightsQualityOverviewSchema,
@@ -369,122 +367,17 @@ describe("insights DTOs", () => {
     expect(Value.Check(InsightsQualityResultsResponseSchema, { qualityResultsPage, qualityResults })).toBe(true);
   });
 
-  it("accepts follow-up action statuses and rejects unknown status", () => {
-    expect(Value.Check(InsightActionStatusSchema, "open")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "done")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "dismissed")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "closed")).toBe(false);
-
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(true);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            actionType: "follow_up",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            reason: "客户仍在追问退款进度",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            evidenceMessageIds: ["9001"],
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            lastCustomerMessageAt: 1780243200000,
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-  });
-
   it("accepts detail responses without embedded conversation messages", () => {
     expect(
       Value.Check(InsightDetailResponseSchema, {
-        actionItems: [],
+        actionItems: [
+          {
+            canEdit: true,
+            status: "in_progress",
+            ticketId: "801",
+            title: "确认退款进度并回复客户",
+          },
+        ],
         analysisStatus: "ready",
         currentSnapshotId: "snapshot-1",
         entities: [],
@@ -531,6 +424,40 @@ describe("insights DTOs", () => {
         tags: [],
       }),
     ).toBe(true);
+    expect(
+      Value.Check(InsightDetailResponseSchema, {
+        actionItems: [
+          {
+            actionItemId: "801",
+            canEdit: true,
+            status: "open",
+            ticketId: "801",
+            title: "旧字段不得继续出现在投影中",
+          },
+        ],
+        entities: [],
+        evidenceItems: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        sentiment: [],
+        session: {
+          conversationId: "301",
+          customerName: "张三",
+          sessionId: "session-1",
+          startedAt: 1780240000000,
+        },
+        summary: { sessionTitle: "", text: "" },
+        tags: [],
+      }),
+    ).toBe(false);
     expect(
       Value.Check(InsightDetailResponseSchema, {
         actionItems: [],

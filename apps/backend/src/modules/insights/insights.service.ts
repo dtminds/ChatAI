@@ -1,7 +1,6 @@
 import type {
   AccountRole,
   InsightCapabilitiesResponse,
-  InsightActionStatus,
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
@@ -13,8 +12,6 @@ import type {
   InsightConfigDeletedResponse,
   InsightConfigStatus,
   InsightConfigStatusUpdateRequest,
-  InsightCreateActionItemRequest,
-  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -35,13 +32,13 @@ import type {
   InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
-  InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityAgentStatsResponse,
   InsightsQualityOverviewResponse,
   InsightsQualityResultsResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
+  TicketPriority,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
@@ -121,13 +118,18 @@ export type InsightCurrentSessionRow = {
   unresolvedReason: string | null;
 };
 
-export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & {
-  thirdExternalUserId?: string;
+export type InsightDetailActionItemRow = Omit<
+  InsightDetailResponse["actionItems"][number],
+  "canEdit"
+> & {
+  assigneeSubUserId?: string;
+  evidenceMessageIds: string[];
+  priority: TicketPriority;
 };
 
-export type InsightDetailActionItemRow = InsightDetailResponse["actionItems"][number] & {
-  resolutionStatus?: InsightResolutionStatus;
-  thirdExternalUserId?: string;
+export type InsightDetailActor = {
+  role?: AccountRole | string;
+  subUserId?: string;
 };
 
 export type InsightDetailRow = {
@@ -145,15 +147,6 @@ export type InsightDetailRow = {
   qaFindings: InsightDetailResponse["qaFindings"];
   sentiment: InsightDetailResponse["sentiment"];
   tags: InsightDetailResponse["tags"];
-};
-
-export type InsightsFollowUpFilters = {
-  from?: string;
-  page?: number;
-  pageSize?: number;
-  priority?: InsightActionItemRow["priority"];
-  status?: InsightActionStatus | "processed";
-  to?: string;
 };
 
 export type InsightsQualityFilters = {
@@ -247,11 +240,6 @@ export type InsightQualityResultPage = {
   total: number;
 };
 
-export type InsightActionItemPage = {
-  items: InsightActionItemRow[];
-  total: number;
-};
-
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
@@ -265,10 +253,6 @@ export type InsightsRepositoryPort = {
   ): Promise<{ jobId: string; taskId: string }>;
   findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
   hasSession(scope: InsightsUidScope, sessionId: string): Promise<boolean>;
-  listActionItemsPage(
-    scope: InsightsUidScope,
-    filters?: InsightsFollowUpFilters,
-  ): Promise<InsightActionItemPage>;
   listCurrentSessions(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -323,19 +307,6 @@ export type InsightsRepositoryPort = {
     messageId: string,
     options: { after: number; before: number },
   ): Promise<InsightMessageContextResponse>;
-  updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
-  ): Promise<boolean>;
-  createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
-  ): Promise<InsightCreateActionItemResponse>;
-  validateActionItemTarget(
-    scope: InsightsUidScope,
-    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
-  ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
   getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse>;
   getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
@@ -675,29 +646,11 @@ export class InsightsService {
     };
   }
 
-  async getFollowUps(
+  async getDetail(
     scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters = {},
-  ): Promise<InsightsFollowUpsResponse> {
-    const normalizedPage = normalizeOverviewPage(filters.page);
-    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const pageResult = await this.repository.listActionItemsPage(scope, {
-      ...filters,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    });
-
-    return {
-      items: pageResult.items
-        .map(stripActionItemInternalFields),
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-      total: pageResult.total,
-      totalPages: Math.max(1, Math.ceil(pageResult.total / normalizedPageSize)),
-    };
-  }
-
-  async getDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailResponse> {
+    sessionId: string,
+    actor: InsightDetailActor = {},
+  ): Promise<InsightDetailResponse> {
     const detail = await this.repository.findDetail(scope, sessionId);
 
     if (!detail) {
@@ -705,7 +658,9 @@ export class InsightsService {
     }
 
     return {
-      actionItems: detail.actionItems.map(stripDetailActionItemInternalFields),
+      actionItems: detail.actionItems.map((item) =>
+        mapDetailTicketProjection(item, actor)
+      ),
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
@@ -1255,61 +1210,6 @@ export class InsightsService {
     return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteEntityDictionaryItem(scope, id)) };
   }
 
-  async updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: InsightActionStatus,
-  ) {
-    if (status !== "done" && status !== "dismissed" && status !== "open") {
-      throw new BadRequestError("INVALID_ACTION_STATUS", "不支持的处理状态");
-    }
-
-    const updated = await this.repository.updateActionStatus(scope, actionItemId, status);
-
-    if (!updated) {
-      throw new BusinessError("INSIGHT_ACTION_ITEM_NOT_FOUND", "待处理事项不存在");
-    }
-
-    return {
-      actionItemId,
-      status,
-    };
-  }
-
-  async createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest,
-    createdBySubUserId?: string,
-  ): Promise<InsightCreateActionItemResponse> {
-    const title = input.title.trim();
-
-    if (!title) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TITLE", "待办标题不能为空");
-    }
-
-    const sessionId = input.sessionId?.trim();
-
-    if (!sessionId) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    const targetValid = await this.repository.validateActionItemTarget(scope, {
-      conversationId: input.conversationId,
-      sessionId,
-    });
-
-    if (!targetValid) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    return await this.repository.createActionItem(scope, {
-      ...input,
-      createdBySubUserId,
-      sessionId,
-      title,
-    });
-  }
-
   async createRescanJob(
     scope: InsightsUidScope,
     role: AccountRole | string | undefined,
@@ -1581,16 +1481,22 @@ function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityA
   };
 }
 
-function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
-  const { thirdExternalUserId: _thirdExternalUserId, ...item } = row;
+function mapDetailTicketProjection(
+  row: InsightDetailActionItemRow,
+  actor: InsightDetailActor,
+): InsightDetailResponse["actionItems"][number] {
+  const canEdit = actor.role === "owner" || actor.role === "admin" || (
+    actor.role != null
+    && actor.subUserId != null
+    && row.assigneeSubUserId === actor.subUserId
+  );
 
-  return item;
-}
-
-function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): InsightDetailResponse["actionItems"][number] {
-  const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
-
-  return item;
+  return {
+    canEdit,
+    status: row.status,
+    ticketId: row.ticketId,
+    title: row.title,
+  };
 }
 
 function formatDateKey(value: number) {

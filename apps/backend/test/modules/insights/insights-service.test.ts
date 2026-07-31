@@ -378,42 +378,6 @@ function createBusinessTopicAnalytics(
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
-  const actionItems: InsightActionItemRow[] = [
-    {
-      actionItemId: "801",
-      conversationId: "301",
-      customerAvatarUrl: "https://example.com/customer-1.png",
-      customerName: "张三",
-      createdAt: 1_780_244_800_000,
-      priority: "high",
-      sessionId: "501",
-      status: "open",
-      title: "确认快递状态",
-    },
-    {
-      actionItemId: "802",
-      conversationId: "302",
-      customerAvatarUrl: "https://example.com/customer-2.png",
-      customerName: "李四",
-      createdAt: 1_780_243_800_000,
-      priority: "medium",
-      sessionId: "502",
-      status: "done",
-      title: "沉淀退款到账 FAQ",
-    },
-    {
-      actionItemId: "803",
-      conversationId: "304",
-      customerAvatarUrl: "https://example.com/customer-4.png",
-      customerName: "赵六",
-      createdAt: 1_780_241_300_000,
-      priority: "high",
-      sessionId: "504",
-      status: "open",
-      title: "复核消息不足会话",
-    },
-  ];
-
   return {
     countEnabledConfigs: vi.fn(async () => 0),
     countActiveConfigs: vi.fn(async () => 0),
@@ -431,14 +395,11 @@ function createRepository(
     findDetail: vi.fn(async () => ({
       actionItems: [
         {
-          actionItemId: "801",
-          conversationId: "301",
-          customerAvatarUrl: "https://example.com/customer-1.png",
-          customerName: "张三",
+          assigneeSubUserId: "77",
           evidenceMessageIds: ["9002"],
           priority: "high",
-          sessionId: "501",
           status: "open",
+          ticketId: "801",
           title: "确认快递状态",
         },
       ],
@@ -539,23 +500,6 @@ function createRepository(
         status: 1,
       },
     ]),
-    listActionItemsPage: vi.fn(async (_scope, filters) => {
-      const page = filters?.page ?? 1;
-      const pageSize = filters?.pageSize ?? 20;
-      const rows = actionItems.filter((item) => {
-        const statusMatches = filters?.status === "processed"
-          ? item.status === "done" || item.status === "dismissed"
-          : !filters?.status || item.status === filters.status;
-        const priorityMatches = !filters?.priority || item.priority === filters.priority;
-
-        return statusMatches && priorityMatches;
-      });
-
-      return {
-        items: rows.slice((page - 1) * pageSize, page * pageSize),
-        total: rows.length,
-      };
-    }),
     getBusinessTopicAnalytics: vi.fn(async (_scope, filters) =>
       createBusinessTopicAnalytics(filters.dimension),
     ),
@@ -834,9 +778,6 @@ function createRepository(
       id,
     })),
     deleteEntityDictionaryItem: vi.fn(async () => true),
-    updateActionStatus: vi.fn(async () => true),
-    createActionItem: vi.fn(async () => ({ actionItemId: "8101" })),
-    validateActionItemTarget: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -1530,200 +1471,6 @@ describe("InsightsService", () => {
     expect(listCurrentSessions).not.toHaveBeenCalled();
   });
 
-  it("filters follow-up action items by status", async () => {
-    const service = new InsightsService(createRepository());
-
-    await expect(
-      service.getFollowUps(scope, { status: "open" }),
-    ).resolves.toMatchObject({
-      items: [
-        {
-          actionItemId: "801",
-          conversationId: "301",
-          createdAt: 1_780_244_800_000,
-          status: "open",
-        },
-        {
-          actionItemId: "803",
-          conversationId: "304",
-          createdAt: 1_780_241_300_000,
-          status: "open",
-        },
-      ],
-      total: 2,
-    });
-  });
-
-  it("paginates follow-up action items", async () => {
-    const repository = createRepository({
-      listActionItemsPage: vi.fn(async () => ({
-        items: [
-          {
-            actionItemId: "801",
-            conversationId: "301",
-            customerAvatarUrl: "https://example.com/customer-1.png",
-            customerName: "张三",
-            createdAt: 1_780_244_800_000,
-            priority: "high",
-            sessionId: "501",
-            status: "open",
-            title: "确认快递状态",
-          },
-        ],
-        total: 2,
-      })),
-    });
-    const service = new InsightsService(repository);
-
-    const result = await service.getFollowUps(scope, {
-      page: 2,
-      pageSize: 1,
-      status: "open",
-    });
-
-    expect(result).toMatchObject({
-      items: [
-        expect.objectContaining({
-          actionItemId: "801",
-        }),
-      ],
-      page: 2,
-      pageSize: 1,
-      total: 2,
-      totalPages: 2,
-    });
-    expect(repository.listActionItemsPage).toHaveBeenCalledWith(scope, {
-      page: 2,
-      pageSize: 1,
-      status: "open",
-    });
-  });
-
-  it("keeps repository-expanded processed follow-up action items", async () => {
-    const repository = createRepository({
-      listActionItemsPage: vi.fn(async () => ({
-        items: [
-          {
-            actionItemId: "802",
-            conversationId: "302",
-            customerName: "李四",
-            createdAt: 1_780_243_800_000,
-            priority: "medium",
-            sessionId: "502",
-            status: "done",
-            title: "已完成事项",
-          },
-          {
-            actionItemId: "803",
-            conversationId: "303",
-            customerName: "王五",
-            createdAt: 1_780_243_700_000,
-            priority: "low",
-            sessionId: "503",
-            status: "dismissed",
-            title: "已忽略事项",
-          },
-        ],
-        total: 2,
-      })),
-    });
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.getFollowUps(scope, {
-        page: 1,
-        pageSize: 10,
-        status: "processed",
-      }),
-    ).resolves.toMatchObject({
-      items: [
-        { actionItemId: "802", status: "done" },
-        { actionItemId: "803", status: "dismissed" },
-      ],
-      total: 2,
-    });
-  });
-
-  it("keeps paginated follow-up action items without resolution status", async () => {
-    const repository = createRepository({
-      listActionItemsPage: vi.fn(async () => ({
-        items: [
-          {
-            actionItemId: "801",
-            conversationId: "301",
-            customerName: "张三",
-            createdAt: 1_780_244_800_000,
-            priority: "high",
-            sessionId: "501",
-            status: "open",
-            title: "确认快递状态",
-          },
-        ],
-        total: 1,
-      })),
-    });
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.getFollowUps(scope, {
-        page: 1,
-        pageSize: 10,
-        status: "open",
-      }),
-    ).resolves.toMatchObject({
-      items: [
-        { actionItemId: "801", status: "open" },
-      ],
-      total: 1,
-    });
-  });
-
-  it("does not re-filter repository-paginated follow-up action items", async () => {
-    const repository = createRepository({
-      listActionItemsPage: vi.fn(async () => ({
-        items: [
-          {
-            actionItemId: "801",
-            conversationId: "301",
-            customerName: "张三",
-            createdAt: 1_780_244_800_000,
-            priority: "high",
-            sessionId: "501",
-            status: "open",
-            title: "确认快递状态",
-          },
-          {
-            actionItemId: "802",
-            conversationId: "302",
-            customerName: "李四",
-            createdAt: 1_780_243_800_000,
-            priority: "medium",
-            sessionId: "502",
-            status: "done",
-            title: "已完成事项",
-          },
-        ],
-        total: 2,
-      })),
-    });
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.getFollowUps(scope, {
-        page: 1,
-        pageSize: 10,
-        priority: "high",
-        status: "open",
-      }),
-    ).resolves.toMatchObject({
-      items: [
-        { actionItemId: "801", status: "open" },
-        { actionItemId: "802", status: "done" },
-      ],
-      total: 2,
-    });
-  });
-
   it("returns detail analysis without loading conversation messages", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
@@ -1741,6 +1488,12 @@ describe("InsightsService", () => {
     expect(result).not.toHaveProperty("evidenceMessages");
     expect(result).not.toHaveProperty("evidenceMessageRecords");
     expect(result).not.toHaveProperty("sessionMessageRecords");
+    expect(result.actionItems).toEqual([{
+      canEdit: false,
+      status: "open",
+      ticketId: "801",
+      title: "确认快递状态",
+    }]);
     expect(repository.listSessionMessageRecords).not.toHaveBeenCalled();
     expect(result.evidenceItems).toEqual([
       expect.objectContaining({
@@ -1784,6 +1537,21 @@ describe("InsightsService", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
+  });
+
+  it.each([
+    [{ role: "admin", subUserId: "88" }, true],
+    [{ role: "owner", subUserId: "88" }, true],
+    [{ role: "operator", subUserId: "77" }, true],
+    [{ role: "operator", subUserId: "88" }, false],
+    [{ role: "viewer", subUserId: "77" }, true],
+    [{ role: undefined, subUserId: "77" }, false],
+  ] as const)("derives detail ticket write access from the current actor", async (actor, canEdit) => {
+    const service = new InsightsService(createRepository());
+
+    await expect(service.getDetail(scope, "501", actor)).resolves.toMatchObject({
+      actionItems: [{ canEdit, ticketId: "801" }],
+    });
   });
 
   it("returns analyzing physical session detail without snapshot fields", async () => {
@@ -1844,7 +1612,7 @@ describe("InsightsService", () => {
     expect(repository.findDetail).not.toHaveBeenCalled();
   });
 
-  it("keeps historical AI data and actions available in basic mode", async () => {
+  it("keeps historical AI data available in basic mode", async () => {
     const repository = createRepository({
       getFeatureConfig: vi.fn(async () => ({
         entityEnabled: true,
@@ -1869,18 +1637,6 @@ describe("InsightsService", () => {
     await expect(service.getMessageContext(scope, "301", "9002")).resolves.toMatchObject({
       messages: expect.any(Array),
     });
-    await expect(service.updateActionStatus(scope, "801", "done")).resolves.toMatchObject({
-      actionItemId: "801",
-      status: "done",
-    });
-    await expect(service.createActionItem(scope, {
-      conversationId: "301",
-      priority: "high",
-      sessionId: "501",
-      title: "回访物流状态",
-    })).resolves.toMatchObject({
-      actionItemId: expect.any(String),
-    });
     await expect(service.getSessionMessages(scope, "501")).resolves.toMatchObject({
       messages: expect.any(Array),
     });
@@ -1894,8 +1650,6 @@ describe("InsightsService", () => {
     expect(repository.findDetail).toHaveBeenCalledWith(scope, "501");
     expect(repository.getFilterOptions).toHaveBeenCalledWith(scope);
     expect(repository.listMessageContext).toHaveBeenCalled();
-    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
-    expect(repository.createActionItem).toHaveBeenCalled();
     expect(repository.createRescanJob).not.toHaveBeenCalled();
   });
 
@@ -2394,142 +2148,6 @@ describe("InsightsService", () => {
     await expect(
       service.deleteQaRuleConfig(scope, "admin", "999"),
     ).rejects.toBeInstanceOf(NotFoundError);
-  });
-
-  it("updates action item status only for supported manual statuses", async () => {
-    const repository = createRepository();
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.updateActionStatus(scope, "801", "done"),
-    ).resolves.toMatchObject({
-      actionItemId: "801",
-      status: "done",
-    });
-    expect(repository.updateActionStatus).toHaveBeenCalledWith(
-      scope,
-      "801",
-      "done",
-    );
-
-    await expect(
-      service.updateActionStatus(scope, "801", "open"),
-    ).resolves.toMatchObject({
-      actionItemId: "801",
-      status: "open",
-    });
-    expect(repository.updateActionStatus).toHaveBeenCalledWith(
-      scope,
-      "801",
-      "open",
-    );
-  });
-
-  it("returns a business error when an action item cannot be updated", async () => {
-    const repository = createRepository({
-      updateActionStatus: vi.fn(async () => false),
-    });
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.updateActionStatus(scope, "21", "done"),
-    ).rejects.toBeInstanceOf(BusinessError);
-    await expect(
-      service.updateActionStatus(scope, "21", "done"),
-    ).rejects.toMatchObject({
-      code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
-      statusCode: 200,
-    });
-  });
-
-  it("creates a manual conversation action item with trimmed title", async () => {
-    const repository = createRepository();
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.createActionItem(
-        scope,
-        {
-          conversationId: "301",
-          dueHint: "今天内",
-          priority: "high",
-          sessionId: "501",
-          title: "  回访物流状态  ",
-        },
-        "77",
-      ),
-    ).resolves.toEqual({ actionItemId: "8101" });
-
-    expect(repository.createActionItem).toHaveBeenCalledWith(scope, {
-      conversationId: "301",
-      createdBySubUserId: "77",
-      dueHint: "今天内",
-      priority: "high",
-      sessionId: "501",
-      title: "回访物流状态",
-    });
-  });
-
-  it("rejects manual action items when the target conversation or session is outside scope", async () => {
-    const repository = createRepository({
-      validateActionItemTarget: vi.fn(async () => false),
-    });
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.createActionItem(
-        scope,
-        {
-          conversationId: "301",
-          priority: "medium",
-          sessionId: "501",
-          title: "回访物流状态",
-        },
-        "77",
-      ),
-    ).rejects.toMatchObject({
-      code: "INVALID_ACTION_ITEM_TARGET",
-    });
-
-    expect(repository.validateActionItemTarget).toHaveBeenCalledWith(scope, {
-      conversationId: "301",
-      sessionId: "501",
-    });
-    expect(repository.createActionItem).not.toHaveBeenCalled();
-  });
-
-  it("rejects manual action items without a session id", async () => {
-    const repository = createRepository();
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.createActionItem(scope, {
-        conversationId: "301",
-        priority: "medium",
-        title: "回访物流状态",
-      }),
-    ).rejects.toMatchObject({
-      code: "INVALID_ACTION_ITEM_TARGET",
-    });
-
-    expect(repository.validateActionItemTarget).not.toHaveBeenCalled();
-    expect(repository.createActionItem).not.toHaveBeenCalled();
-  });
-
-  it("rejects blank manual action item titles", async () => {
-    const repository = createRepository();
-    const service = new InsightsService(repository);
-
-    await expect(
-      service.createActionItem(scope, {
-        conversationId: "301",
-        priority: "medium",
-        title: "   ",
-      }),
-    ).rejects.toMatchObject({
-      code: "INVALID_ACTION_ITEM_TITLE",
-    });
-    expect(repository.createActionItem).not.toHaveBeenCalled();
   });
 
   it("creates a scoped historical rescan task on each manual trigger", async () => {

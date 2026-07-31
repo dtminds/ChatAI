@@ -201,6 +201,18 @@ export function createMemoryWorkbenchService() {
           : undefined,
       };
     },
+    getConversation(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationSummaryDto {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return clone(conversation);
+    },
     getMe(_subUserId: string) {
       return clone(state.subUser);
     },

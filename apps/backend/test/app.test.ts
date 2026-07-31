@@ -1141,6 +1141,11 @@ describe("backend app", () => {
       method: "GET",
       url: "/api/server/conversations?seatId=drc&mode=single&limit=1000",
     });
+    const conversation = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001",
+    });
     const messages = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -1168,6 +1173,13 @@ describe("backend app", () => {
       conversationId: "conv-001",
       seatId: "drc",
       unreadCount: 2,
+    });
+    expect(conversation.statusCode).toBe(200);
+    expect(conversation.json()).toMatchObject({
+      conversationId: "conv-001",
+      customerAvatar: expect.any(String),
+      customerName: expect.any(String),
+      seatId: "drc",
     });
     expect(messages.statusCode).toBe(200);
     expect(messages.json()).toMatchObject({

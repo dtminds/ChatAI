@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
@@ -16,6 +17,7 @@ import {
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import {
   canDisplaySmartReplyForConversation,
   useWorkbenchStore,
@@ -34,6 +36,7 @@ type ChatMessagePanelProps = {
   isConversationLoading: boolean;
   conversationId: string;
   conversationMode: ChatMode;
+  customerAvatarFallbackUrl?: string;
   messages: Message[];
   multiSelectMode?: boolean;
   selectedMessageKeys?: ReadonlySet<string>;
@@ -78,6 +81,7 @@ export function ChatMessagePanel({
   isConversationLoading,
   conversationId,
   conversationMode,
+  customerAvatarFallbackUrl,
   messages,
   multiSelectMode = false,
   selectedMessageKeys,
@@ -109,6 +113,7 @@ export function ChatMessagePanel({
     smartReplyHiddenMessageKeys,
     smartReplyPendingByMessageId,
     smartReplySuggestionsByMessageId,
+    refreshInitializingMessage,
   } = useWorkbenchStore(
     useShallow((state) => ({
       smartReplyAutoPendingByMessageId:
@@ -123,8 +128,28 @@ export function ChatMessagePanel({
         state.smartReplyPendingMessageKeysByConversationId[conversationId],
       smartReplySuggestionsByMessageId:
         state.smartReplyByMessageIdByConversationId[conversationId],
+      refreshInitializingMessage: state.refreshInitializingMessage,
     })),
   );
+  const handleRefreshInitializingMessage = async (message: Message) => {
+    if (!isValidMessageSeq(message.seq)) {
+      toast.error("消息刷新失败");
+      return;
+    }
+
+    try {
+      const result = await refreshInitializingMessage(
+        message.conversationId,
+        message.seq,
+      );
+
+      if (result === "missing") {
+        toast.error("消息刷新失败");
+      }
+    } catch {
+      toast.error("消息刷新失败");
+    }
+  };
   const supportsSmartReplyUi =
     (conversationMode === "single" || conversationMode === "group") &&
     smartReplyCanDisplay;
@@ -207,6 +232,7 @@ export function ChatMessagePanel({
                 canUseMessageActions={canUseMessageActions}
                 canUseMessageForward={canUseMessageForward}
                 conversationId={conversationId}
+                customerAvatarFallbackUrl={customerAvatarFallbackUrl}
                 messages={messages}
                 multiSelectMode={multiSelectMode}
                 selectedMessageKeys={selectedMessageKeys}
@@ -217,6 +243,7 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onRefreshInitializingMessage={handleRefreshInitializingMessage}
                 onSendSmartReply={onSendSmartReply}
                 onFillSmartReplyComposer={onFillSmartReplyComposer}
                 onDismissSmartReply={onDismissSmartReply}

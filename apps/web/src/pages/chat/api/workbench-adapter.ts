@@ -547,6 +547,8 @@ function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatu
     case "queued":
     case "sending":
       return "sending";
+    case "initializing":
+      return "initializing";
     case "failed":
       return "failed";
     case "sent":

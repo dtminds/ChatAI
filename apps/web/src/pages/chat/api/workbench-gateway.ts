@@ -146,7 +146,6 @@ export type WorkbenchPollResult = {
 };
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
-export const UNVERIFIED_CONVERSATION_HIDE_DELAY_MS = 3 * 60 * 1000;
 export const CONVERSATION_MODE_CACHE_TTL_MS = 60 * 1000;
 export const CONVERSATION_MODE_LIMITS = {
   group: 100,
@@ -177,10 +176,7 @@ export async function bootstrapWorkbench(
     ? await loadAccountConversationsWithBaseline(activeAccountId)
     : { conversations: [], pollBaseline: now };
   const conversations = conversationLoadResult.conversations;
-  const nextConversation = getFirstConversation(
-    getVisibleConversations(conversations, now),
-    preferredMode,
-  );
+  const nextConversation = getFirstConversation(conversations, preferredMode);
   const activeConversationId = nextConversation?.id ?? "";
   const activeMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = activeConversationId
@@ -272,14 +268,12 @@ export async function loadAccountScope(
   context: GatewayContext,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   preferredConversationId?: string,
-  now = Date.now(),
 ): Promise<WorkbenchAccountScopeResult> {
   const conversationLoadResult = await loadAccountConversationsWithBaseline(accountId);
   const conversations = conversationLoadResult.conversations;
-  const visibleConversations = getVisibleConversations(conversations, now);
   const nextConversation =
-    visibleConversations.find((conversation) => conversation.id === preferredConversationId) ??
-    getFirstConversation(visibleConversations, preferredMode);
+    conversations.find((conversation) => conversation.id === preferredConversationId) ??
+    getFirstConversation(conversations, preferredMode);
   const nextConversationId = nextConversation?.id ?? "";
   const nextMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = nextConversationId
@@ -300,6 +294,12 @@ export async function loadAccountScope(
 
 export async function loadAccountConversations(accountId: string): Promise<Conversation[]> {
   return (await loadAccountConversationsWithBaseline(accountId)).conversations;
+}
+
+export async function loadConversationSummary(conversationId: string): Promise<Conversation> {
+  const conversation = await getWorkbenchService().getConversation(conversationId);
+
+  return adaptConversation(conversation);
 }
 
 export async function loadAccountConversationsWithBaseline(
@@ -759,27 +759,4 @@ function getFirstConversation(
   mode: ChatMode,
 ) {
   return conversations.find((conversation) => conversation.mode === mode) ?? conversations[0];
-}
-
-export function getVisibleConversations(
-  conversations: Conversation[],
-  now = Date.now(),
-) {
-  return conversations.filter((conversation) =>
-    isConversationVisible(conversation, now),
-  );
-}
-
-export function isConversationVisible(conversation: Conversation, now = Date.now()) {
-  if (conversation.isVerified !== false) {
-    return true;
-  }
-
-  const createdAt = conversation.createdAtMs;
-
-  if (!createdAt || createdAt <= 0) {
-    return true;
-  }
-
-  return now - createdAt >= UNVERIFIED_CONVERSATION_HIDE_DELAY_MS;
 }

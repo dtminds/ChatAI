@@ -32,6 +32,11 @@ import type {
 } from "./insights-worker.js";
 import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js";
 import { InsightsRepository } from "./insights.repository.js";
+import { TicketsRepository } from "../tickets/tickets.repository.js";
+
+type AiTicketWriter = Pick<TicketsRepository, "createAiTickets">;
+
+const MAX_AI_TICKETS_PER_ANALYSIS = 10;
 
 type InsertResult = {
   id?: bigint | number | string | null;
@@ -186,7 +191,10 @@ const SESSIONIZATION_JOB_LEASE_MS = 5 * 60_000;
 const RESCAN_SESSION_LOOKUP_BATCH_SIZE = 500;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly ticketWriter: AiTicketWriter = new TicketsRepository(db),
+  ) {}
 
   async withSessionizationClaim<T>(
     input: ClaimedSessionizationUidJob,
@@ -2287,6 +2295,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       ])
       .where("uid", "=", input.uid)
       .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .where("status", "!=", "deleted")
       .orderBy("id", "desc")
       .limit(Math.max(0, Math.min(input.limit, 10)))
       .execute() as Array<{
@@ -2302,6 +2311,36 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       status: normalizeActionStatus(row.status),
       title: row.title,
     }));
+  }
+
+  async hasTicketCreatedAfterSessionStart(input: {
+    conversationId: string;
+    sessionId: string;
+    uid: number;
+  }) {
+    const latestTicket = await this.db
+      .selectFrom("xy_wap_embed_session_action_item")
+      .select("create_time")
+      .where("uid", "=", input.uid)
+      .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .where("status", "!=", "deleted")
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst() as { create_time: Date | string } | undefined;
+
+    if (!latestTicket) {
+      return false;
+    }
+
+    const session = await this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select("started_at")
+      .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("uid", "=", input.uid)
+      .executeTakeFirst() as { started_at: number | string } | undefined;
+
+    return session != null
+      && new Date(latestTicket.create_time).getTime() > parseNumber(session.started_at);
   }
 
   async startAnalysisRun(input: {
@@ -2571,29 +2610,45 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       uid: input.job.uid,
     });
 
-    for (const item of output.actionItems) {
+    const aiTicketItems = input.job.mode === "final" && input.job.analysisScope === "all"
+      ? output.actionItems
+      : [];
+    const newAiTicketItems: typeof aiTicketItems = [];
+
+    for (const item of aiTicketItems) {
       const normalizedTitle = normalizeActionTitle(item.title);
 
       if (!normalizedTitle || recentActionItemTitles.has(normalizedTitle)) {
         continue;
       }
 
-      const id = await this.insertAndGetId("xy_wap_embed_session_action_item", {
-        action_type: "follow_up",
-        conversation_id: conversationId,
-        created_by_sub_user_id: null,
-        due_hint: item.dueHint ?? null,
-        priority: item.priority,
-        session_id: sessionId,
-        snapshot_id: snapshotId,
-        source_type: "ai",
-        status: "open",
-        title: item.title,
-        updated_by_sub_user_id: null,
-        uid: input.job.uid,
-      });
       recentActionItemTitles.add(normalizedTitle);
-      await this.collectEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
+      newAiTicketItems.push(item);
+
+      if (newAiTicketItems.length === MAX_AI_TICKETS_PER_ANALYSIS) {
+        break;
+      }
+    }
+
+    const aiTicketIds = await this.ticketWriter.createAiTickets({
+      conversationId,
+      items: newAiTicketItems.map((item) => ({
+        priority: item.priority,
+        title: item.title,
+      })),
+      sessionId,
+      snapshotId,
+      uid: input.job.uid,
+    });
+
+    for (const [index, item] of newAiTicketItems.entries()) {
+      const ticketId = aiTicketIds[index];
+
+      if (ticketId == null) {
+        throw new Error("AI_TICKET_INSERT_ID_MISSING");
+      }
+
+      await this.collectEvidenceRows(input, snapshotId, "action_item", ticketId, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
     for (const item of output.faqCandidates) {
@@ -2914,6 +2969,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .select(["title"])
       .where("uid", "=", input.uid)
       .where("conversation_id", "=", input.conversationId)
+      .where("status", "!=", "deleted")
       .orderBy("id", "desc")
       .limit(Math.max(0, Math.min(input.limit, 10)))
       .execute() as Array<{ title: string }>;
@@ -3097,10 +3153,12 @@ function normalizeResolutionStatus(
     : "unknown";
 }
 
-function normalizeActionStatus(value: string): "dismissed" | "done" | "expired" | "open" {
-  return value === "done" || value === "dismissed" || value === "expired" || value === "open"
-    ? value
-    : "open";
+function normalizeActionStatus(value: string): "canceled" | "done" | "in_progress" | "open" {
+  if (value === "dismissed" || value === "expired" || value === "canceled") {
+    return "canceled";
+  }
+
+  return value === "done" || value === "in_progress" || value === "open" ? value : "open";
 }
 
 function normalizePriority(value: string): "high" | "low" | "medium" {

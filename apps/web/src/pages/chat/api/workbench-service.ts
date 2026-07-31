@@ -169,6 +169,7 @@ export type WorkbenchService = {
     seatId: string,
     options?: WorkbenchConversationListOptions,
   ) => Promise<WorkbenchConversationListResponse>;
+  getConversation: (conversationId: string) => Promise<WorkbenchConversationSummaryDto>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   getCustomers: (options: {
     cursor?: string;
@@ -509,6 +510,15 @@ export function createMockWorkbenchService(): WorkbenchService {
           ? getAccountUnreadSummary(state, seatId)
           : undefined,
       };
+    },
+    async getConversation(conversationId) {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new Error("Conversation not found");
+      }
+
+      return clone(conversation);
     },
     async getMe() {
       return clone(state.subUser);
@@ -2073,6 +2083,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       });
     },
+    getConversation(conversationId) {
+      return http.get<WorkbenchConversationSummaryDto>(
+        `/server/conversations/${conversationId}`,
+      );
+    },
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
     },
@@ -3474,6 +3489,8 @@ function normalizeBackendStatus(status: Message["status"]): WorkbenchMessageStat
       return "queued";
     case "sending":
       return "sending";
+    case "initializing":
+      return "initializing";
     case "failed":
       return "failed";
     case "sent":

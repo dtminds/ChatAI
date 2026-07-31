@@ -274,6 +274,11 @@ export function ChatWorkbenchRoutePage() {
       activeTicketId={activeTicketId}
       activeView={activeView}
       requestedConversationId={requestedConversationId}
+      onNavigateConversation={(conversationId) => {
+        navigate(`/chat/conversations/${encodeURIComponent(conversationId)}`, {
+          flushSync: true,
+        });
+      }}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
       }}
@@ -288,12 +293,14 @@ function ChatWorkbenchContent({
   activeTicketId,
   activeView = "chat",
   onNavigateChat,
+  onNavigateConversation,
   onNavigateCustomerPage,
   requestedConversationId,
 }: {
   activeTicketId?: string;
   activeView?: "chat" | "customers" | "tickets";
   onNavigateChat?: () => void;
+  onNavigateConversation?: (conversationId: string) => void;
   onNavigateCustomerPage?: () => void;
   requestedConversationId?: string;
 }) {
@@ -610,6 +617,26 @@ function ChatWorkbenchContent({
       });
     },
     [],
+  );
+  const navigateToConversation = useCallback(
+    (conversationId: string) => {
+      requestedConversationOpenRef.current = conversationId;
+      onNavigateConversation?.(conversationId);
+    },
+    [onNavigateConversation],
+  );
+  const navigateResolvedConversation = useCallback(
+    (conversation: Conversation) => {
+      navigateToConversation(conversation.id);
+    },
+    [navigateToConversation],
+  );
+  const prepareRoutedConversationActivation = useCallback(
+    (conversation: Conversation) => {
+      prepareConversationActivation(conversation);
+      navigateResolvedConversation(conversation);
+    },
+    [navigateResolvedConversation, prepareConversationActivation],
   );
 
   const activeAccount =
@@ -1133,7 +1160,11 @@ function ChatWorkbenchContent({
   ]);
 
   useEffect(() => {
-    if (activeView !== "chat") {
+    if (
+      activeView !== "chat" ||
+      requestedConversationId ||
+      isConversationLoading
+    ) {
       return;
     }
 
@@ -1161,8 +1192,10 @@ function ChatWorkbenchContent({
     clearActiveConversation,
     firstActiveViewConversationId,
     hasActiveConversationInView,
+    isConversationLoading,
     isMobileWorkbenchLayout,
     mobilePane,
+    requestedConversationId,
     setActiveConversation,
   ]);
 
@@ -1221,27 +1254,43 @@ function ChatWorkbenchContent({
 
   const handleStartCustomerChat = useCallback(
     async (input: {
+      conversationId?: string;
       seatId: string;
       thirdExternalUserId: string;
       customerName: string;
       customerAvatar: string;
       realName: string;
     }) => {
-      onNavigateChat?.();
+      if (input.conversationId) {
+        navigateToConversation(input.conversationId);
+      }
+
       const opened = await openConversation(
+        input.conversationId
+          ? { conversationId: input.conversationId }
+          : {
+              mode: "single",
+              seatId: input.seatId,
+              thirdExternalUserId: input.thirdExternalUserId,
+            },
         {
-          mode: "single",
-          seatId: input.seatId,
-          thirdExternalUserId: input.thirdExternalUserId,
+          beforeActivate: prepareConversationActivation,
+          onResolved: input.conversationId
+            ? undefined
+            : navigateResolvedConversation,
         },
-        { beforeActivate: prepareConversationActivation },
       );
 
       if (opened) {
         setMobilePane("chat");
       }
     },
-    [onNavigateChat, openConversation, prepareConversationActivation],
+    [
+      navigateResolvedConversation,
+      navigateToConversation,
+      openConversation,
+      prepareConversationActivation,
+    ],
   );
 
   const handleOpenSearchResult = useCallback(
@@ -1250,8 +1299,6 @@ function ChatWorkbenchContent({
         | WorkbenchSearchContactResultDto
         | WorkbenchSearchGroupResultDto,
     ) => {
-      onNavigateChat?.();
-
       const opened =
         "thirdGroupId" in item
           ? await openConversation(
@@ -1261,7 +1308,7 @@ function ChatWorkbenchContent({
                 thirdGroupId: item.thirdGroupId,
               },
               {
-                beforeActivate: prepareConversationActivation,
+                beforeActivate: prepareRoutedConversationActivation,
                 clearSearchOnSuccess: true,
               },
             )
@@ -1272,7 +1319,7 @@ function ChatWorkbenchContent({
                 thirdExternalUserId: item.thirdExternalUserId,
               },
               {
-                beforeActivate: prepareConversationActivation,
+                beforeActivate: prepareRoutedConversationActivation,
                 clearSearchOnSuccess: true,
               },
             );
@@ -1283,9 +1330,8 @@ function ChatWorkbenchContent({
     },
     [
       activeAccountId,
-      onNavigateChat,
       openConversation,
-      prepareConversationActivation,
+      prepareRoutedConversationActivation,
     ],
   );
 
@@ -2048,6 +2094,7 @@ function ChatWorkbenchContent({
       if (
         conversationId === useWorkbenchStore.getState().activeConversationId
       ) {
+        navigateToConversation(conversationId);
         if (isMobileWorkbenchLayout) {
           setMobilePane("chat");
         }
@@ -2059,14 +2106,14 @@ function ChatWorkbenchContent({
         return false;
       }
 
-      onNavigateChat?.();
+      navigateToConversation(conversationId);
       await setActiveConversation(conversationId);
       if (isMobileWorkbenchLayout) {
         setMobilePane("chat");
       }
       return true;
     },
-    [isMobileWorkbenchLayout, onNavigateChat, setActiveConversation],
+    [isMobileWorkbenchLayout, navigateToConversation, setActiveConversation],
   );
 
   const handleSelectMode = useCallback(

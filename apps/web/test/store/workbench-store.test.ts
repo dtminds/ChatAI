@@ -11708,7 +11708,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("keeps the promotion through polling and clears it on manual navigation", async () => {
+  it("keeps the promotion through polling and same-scope conversation selection", async () => {
     const baseService = createMockWorkbenchService();
     const target = createConversationSummaryDto("conv-open-promotion");
 
@@ -11746,7 +11746,8 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().setActiveConversation("conv-001");
 
-    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    expect(useWorkbenchStore.getState().conversationPromotion).toEqual(promotion);
   });
 
   it("clears the promotion when the operator switches chat type or seat", async () => {

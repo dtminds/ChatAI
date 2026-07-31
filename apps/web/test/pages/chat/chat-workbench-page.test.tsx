@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { getFirstUnreadCustomerMessageKey } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
@@ -13,6 +19,7 @@ import {
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
+  renderChatWorkbenchRoutePage,
   resetChatWorkbenchTestState,
   workbenchToastSuccessMock,
   workbenchToastWarningMock,
@@ -158,6 +165,32 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("opens a routed conversation when navigating from the ticket view", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn(baseService.getConversation);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002");
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
   });
 
   it("locates the loaded handoff trigger message by its existing message seq", async () => {
@@ -413,7 +446,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    renderChatWorkbenchPage();
+    const { router } = renderChatWorkbenchRoutePage();
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
     act(() => {
@@ -450,6 +483,11 @@ describe("ChatWorkbenchPage", () => {
       );
     });
     await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `/chat/conversations/${target.conversationId}`,
+      );
+    });
+    await waitFor(() => {
       expect(window.localStorage.getItem("chatai.conversationView")).toBe(
         JSON.stringify({ group: "unread", single: "all" }),
       );
@@ -460,6 +498,24 @@ describe("ChatWorkbenchPage", () => {
     );
     const previousFirstCard = screen.getByTestId("conversation-card-conv-001");
 
+    expect(
+      targetCard.compareDocumentPosition(previousFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
+
+    await user.click(
+      within(previousFirstCard).getByRole("button", { name: /丹阳草莓/ }),
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-001",
+    );
     expect(
       targetCard.compareDocumentPosition(previousFirstCard) &
         Node.DOCUMENT_POSITION_FOLLOWING,

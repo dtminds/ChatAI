@@ -44,11 +44,14 @@ describe("route code splitting", () => {
   it("routes conversation deep links through the workbench page", async () => {
     const { routerConfig } = await import("@/router");
     const rootRoute = routerConfig[0];
+    const workbenchRoute = rootRoute.children?.find(
+      (route) => route.path === "chat",
+    );
 
-    expect(rootRoute.children).toEqual(
+    expect(workbenchRoute?.children).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: "chat/conversations/:conversationId",
+          path: "conversations/:conversationId",
         }),
       ]),
     );

@@ -1,11 +1,18 @@
 import MockAdapter from "axios-mock-adapter";
 import { toast } from "sonner";
 import { render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  RouterProvider,
+} from "react-router-dom";
 import { vi } from "vitest";
 import type { ReactElement } from "react";
 import { requestInstance } from "@/lib/request";
-import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
+import {
+  ChatWorkbenchPage,
+  ChatWorkbenchRoutePage,
+} from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -89,6 +96,25 @@ export function renderWithChatWorkbenchRouter(ui: ReactElement) {
 
 export function renderChatWorkbenchPage() {
   return renderWithChatWorkbenchRouter(<ChatWorkbenchPage />);
+}
+
+export function renderChatWorkbenchRoutePage(initialEntry = "/chat") {
+  const router = createMemoryRouter(
+    [
+      {
+        element: <ChatWorkbenchRoutePage />,
+        path: "/chat/*",
+      },
+    ],
+    {
+      initialEntries: [initialEntry],
+    },
+  );
+
+  return {
+    ...render(<RouterProvider router={router} />),
+    router,
+  };
 }
 
 export function installChatWorkbenchTestEnvironment() {

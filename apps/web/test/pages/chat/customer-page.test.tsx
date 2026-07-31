@@ -461,7 +461,26 @@ describe("CustomerPage", () => {
   it("starts a chat from a managed account relation", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
-    setWorkbenchService(service);
+    const baseGetMessages = service.getMessages;
+    let releaseConversationMessages!: () => void;
+    const conversationMessagesGate = new Promise<void>((resolve) => {
+      releaseConversationMessages = resolve;
+    });
+    const getConversation = vi.fn(service.getConversation);
+    const getOrCreateConversation = vi.fn(service.getOrCreateConversation);
+    const getMessages = vi.fn(async (...args: Parameters<typeof baseGetMessages>) => {
+      if (args[0] === "mock-conversation-1") {
+        await conversationMessagesGate;
+      }
+
+      return baseGetMessages(...args);
+    });
+    setWorkbenchService({
+      ...service,
+      getConversation,
+      getOrCreateConversation,
+      getMessages,
+    });
 
     const router = renderRoute("/chat/customers");
 
@@ -474,8 +493,27 @@ describe("CustomerPage", () => {
     await user.click(await screen.findByRole("button", { name: "向 销售一号 继续会话" }));
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
+      expect(router.state.location.pathname).toBe(
+        "/chat/conversations/mock-conversation-1",
+      );
     });
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    releaseConversationMessages();
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        "mock-conversation-1",
+      );
+    });
+    expect(getOrCreateConversation).toHaveBeenCalledWith({
+      chatType: 1,
+      seatId: "drc",
+      thirdExternalUserId: "external-a",
+      thirdGroupId: undefined,
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "mock-conversation-1",
+    );
+    expect(getConversation).not.toHaveBeenCalled();
   });
 
   it("retries relation conversation timestamps after a transient failure", async () => {

@@ -219,6 +219,7 @@ type HistoryPanelScrollMode = "end";
 type ConversationActivationOptions = {
   beforeActivate?: (conversation: Conversation) => void;
   clearSearchOnSuccess?: boolean;
+  onResolved?: (conversation: Conversation) => void;
 };
 
 type InitializeWorkbenchOptions = {
@@ -4862,6 +4863,8 @@ export function createWorkbenchStore() {
             throw new Error("当前账号无法访问该会话");
           }
 
+          options?.onResolved?.(conversation);
+
           const opened = await activateResolvedConversation(
             conversation,
             openRequestId,
@@ -7613,11 +7616,7 @@ export function createWorkbenchStore() {
         return;
       }
 
-      const didCancelLoadingRequest = cancelConversationOpenRequest();
-      set({
-        conversationPromotion: undefined,
-        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
-      });
+      cancelConversationOpenRequest();
 
       const requestId = issueScopeRequestId();
       clearUnverifiedConversationProfileRetry(state.activeConversationId);

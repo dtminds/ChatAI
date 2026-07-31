@@ -59,6 +59,7 @@ type CustomerPageProps = {
   accounts: Account[];
   currentEmployeeId?: string;
   onStartChat?: (input: {
+    conversationId?: string;
     seatId: string;
     thirdExternalUserId: string;
     customerName: string;
@@ -693,6 +694,7 @@ function CustomerLastConversationPopover({
               }
 
               void onStartChat?.({
+                conversationId: lastConversation.conversationId,
                 customerAvatar: customer.avatar,
                 customerName: customer.name,
                 realName: customer.realName,
@@ -885,6 +887,10 @@ function CustomerSeatRelationsPopover({
                       disabled={!canStartChat}
                       onClick={() => {
                         void onStartChat?.({
+                          conversationId:
+                            customer.lastConversation?.seatId === relation.seatId
+                              ? customer.lastConversation.conversationId
+                              : undefined,
                           customerAvatar: customer.avatar,
                           customerName: customer.name,
                           realName: customer.realName,

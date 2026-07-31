@@ -13,6 +13,7 @@ import {
   AiHostingLearningCandidateSearchDetailResponseSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
+  AgentSkillTemplateDetailSchema,
   AgentSkillTemplateMarketplaceResponseSchema,
   KbDocCreateRequestSchema,
   KbDocDetailSchema,
@@ -519,17 +520,29 @@ describe("AI hosting DTOs", () => {
                 icon: "",
                 description: "标签说明",
                 tip: "我适合什么产品？",
-                applyScene: "咨询肤质时",
-                content: "根据标签推荐",
-                recommendResources: [
-                  {
-                    type: "variable",
-                    title: "客户标签",
-                    description: "建议选肤质标签组",
-                  },
-                ],
               },
             ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts skill template detail responses", () => {
+    expect(
+      Value.Check(AgentSkillTemplateDetailSchema, {
+        id: "11",
+        name: "客户标签查询",
+        icon: "",
+        description: "标签说明",
+        tip: "我适合什么产品？",
+        applyScene: "咨询肤质时",
+        content: "根据标签推荐",
+        recommendResources: [
+          {
+            type: "variable",
+            title: "客户标签",
+            description: "建议选肤质标签组",
           },
         ],
       }),

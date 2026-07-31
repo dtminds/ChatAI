@@ -25,7 +25,18 @@ export const AgentSkillTemplateRecommendItemSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const AgentSkillTemplateItemSchema = Type.Object(
+export const AgentSkillTemplateListItemSchema = Type.Object(
+  {
+    description: Type.String(),
+    icon: Type.String(),
+    id: Type.String(),
+    name: Type.String(),
+    tip: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
+export const AgentSkillTemplateDetailSchema = Type.Object(
   {
     applyScene: Type.String(),
     content: Type.String(),
@@ -43,7 +54,7 @@ export const AgentSkillTemplateGroupSchema = Type.Object(
   {
     id: Type.String(),
     name: Type.String(),
-    templates: Type.Array(AgentSkillTemplateItemSchema),
+    templates: Type.Array(AgentSkillTemplateListItemSchema),
   },
   { additionalProperties: false },
 );
@@ -56,7 +67,10 @@ export const AgentSkillTemplateMarketplaceResponseSchema = Type.Object(
 );
 
 export type AgentSkillTemplateGroup = Static<typeof AgentSkillTemplateGroupSchema>;
-export type AgentSkillTemplateItem = Static<typeof AgentSkillTemplateItemSchema>;
+export type AgentSkillTemplateDetail = Static<typeof AgentSkillTemplateDetailSchema>;
+export type AgentSkillTemplateListItem = Static<
+  typeof AgentSkillTemplateListItemSchema
+>;
 export type AgentSkillTemplateMarketplaceResponse = Static<
   typeof AgentSkillTemplateMarketplaceResponseSchema
 >;

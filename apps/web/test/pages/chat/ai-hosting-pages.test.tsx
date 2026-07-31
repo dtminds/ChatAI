@@ -109,6 +109,7 @@ const agentSkillServiceMock = vi.hoisted(() => ({
   updateAgentSkillStatus: vi.fn(),
 }));
 const skillTemplateServiceMock = vi.hoisted(() => ({
+  getSkillTemplate: vi.fn(),
   listSkillTemplates: vi.fn(),
 }));
 const workTagServiceMock = vi.hoisted(() => ({
@@ -664,6 +665,60 @@ describe("AI hosting pages", () => {
               icon: "",
               description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
               tip: "这个订单发货了吗？",
+            },
+          ],
+        },
+        {
+          id: "2",
+          name: "「美妆个护」行业严选技能",
+          templates: [
+            {
+              id: "201",
+              name: "肤质适配推荐",
+              icon: "",
+              description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
+              tip: "这个烟酰胺有什么作用？敏感肌能用吗？",
+            },
+          ],
+        },
+      ],
+    });
+    vi.mocked(skillTemplateService.getSkillTemplate).mockImplementation(
+      async (templateId) =>
+        templateId === "201"
+          ? {
+              id: "201",
+              name: "肤质适配推荐",
+              icon: "",
+              description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
+              tip: "这个烟酰胺有什么作用？敏感肌能用吗？",
+              applyScene: "当客户咨询商品是否适合自己的肤质时使用",
+              content:
+                '结合肤质标签给出推荐说明，可调用 <resource type="tool" toolId="order_query" name="订单查询" />',
+              recommendResources: [
+                {
+                  type: "variable",
+                  title: "客户标签查询",
+                  description: "建议选择包含客户肤质等信息的标签分组",
+                },
+                {
+                  type: "tool",
+                  title: "订单查询",
+                  description: "根据客户聊天消息中给到的订单号查询订单信息",
+                },
+                {
+                  type: "knowledge_base",
+                  title: "美妆护肤",
+                  description: "这是描述",
+                },
+              ],
+            }
+          : {
+              id: "101",
+              name: "订单信息查询",
+              icon: "",
+              description: "客户的订单信息查询技能，可在特定场景下自动查询并回复",
+              tip: "这个订单发货了吗？",
               applyScene: "当客户询问订单是否发货、物流进度时使用",
               content: "根据订单号查询并回复订单状态",
               recommendResources: [
@@ -684,42 +739,7 @@ describe("AI hosting pages", () => {
                 },
               ],
             },
-          ],
-        },
-        {
-          id: "2",
-          name: "「美妆个护」行业严选技能",
-          templates: [
-            {
-              id: "201",
-              name: "肤质适配推荐",
-              icon: "",
-              description: "针对客户咨询的成分、功效、适用场景进行解读与说明",
-              tip: "这个烟酰胺有什么作用？敏感肌能用吗？",
-              applyScene: "当客户咨询商品是否适合自己的肤质时使用",
-              content: '结合肤质标签给出推荐说明，可调用 <resource type="tool" toolId="order_query" name="订单查询" />',
-              recommendResources: [
-                {
-                  type: "variable",
-                  title: "客户标签查询",
-                  description: "建议选择包含客户肤质等信息的标签分组",
-                },
-                {
-                  type: "tool",
-                  title: "订单查询",
-                  description: "根据客户聊天消息中给到的订单号查询订单信息",
-                },
-                {
-                  type: "knowledge_base",
-                  title: "美妆护肤",
-                  description: "这是描述",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
+    );
     vi.mocked(agentSkillService.createAgentSkill).mockResolvedValue({ id: "3" });
     vi.mocked(agentSkillService.updateAgentSkill).mockResolvedValue({ id: "1" });
     vi.mocked(agentSkillService.getAgentSkill).mockResolvedValue({
@@ -1868,6 +1888,7 @@ describe("AI hosting pages", () => {
       screen.getByRole("list", { name: "「美妆个护」行业严选技能" }),
     ).toBeInTheDocument();
     expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
+    expect(skillTemplateService.getSkillTemplate).not.toHaveBeenCalled();
 
     const collapseTrigger = screen.getAllByRole("button", { name: "收起" })[0];
     expect(collapseTrigger).toHaveAttribute("aria-expanded", "true");
@@ -2030,7 +2051,8 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "肤质适配推荐" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("tab", { name: "技能应用场景" })).toHaveAttribute(
+    expect(skillTemplateService.getSkillTemplate).toHaveBeenCalledWith("201");
+    expect(await within(dialog).findByRole("tab", { name: "技能应用场景" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -2097,14 +2119,14 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("heading", { name: "技能描述" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "资源管理" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "引用变量" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
     await user.type(applicationScenario, "查询订单");
     expect(within(basicSettings).getByText("4/500")).toBeInTheDocument();
     await user.type(skillName, "测试技能");
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "确认提交" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
       expect(agentSkillService.createAgentSkill).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -2171,7 +2193,7 @@ describe("AI hosting pages", () => {
 
     await user.clear(screen.getByLabelText(/技能名称/));
     await user.type(screen.getByLabelText(/技能名称/), "订单物流查询改");
-    await user.click(screen.getByRole("button", { name: "确认提交" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(agentSkillService.updateAgentSkill).toHaveBeenCalledWith(

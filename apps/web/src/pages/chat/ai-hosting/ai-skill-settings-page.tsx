@@ -534,7 +534,7 @@ export function AiSkillSettingsPage() {
               onClick={() => void handleSubmit()}
               type="button"
             >
-              确认提交
+              保存
             </Button>
           </div>
         </header>

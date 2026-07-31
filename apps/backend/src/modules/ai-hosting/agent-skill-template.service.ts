@@ -1,32 +1,35 @@
 import type {
+  AgentSkillTemplateDetail,
   AgentSkillTemplateGroup,
-  AgentSkillTemplateItem,
+  AgentSkillTemplateListItem,
   AgentSkillTemplateMarketplaceResponse,
   AgentSkillTemplateRecommendItem,
   AgentSkillTemplateRecommendType,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import { NotFoundError } from "../../shared/errors.js";
 
 const dbActiveStatus = 1;
 
 type TemplateGroupRow = {
   id: number;
   name: string;
-  sort: number;
 };
 
-type TemplateRow = {
-  apply_scene: string | null;
-  content: string | null;
+type TemplateListRow = {
   desc: string;
   group_id: number;
   icon: string;
   id: number;
   name: string;
-  recommend_resources: string | null;
-  sort: number;
   tip: string;
+};
+
+type TemplateDetailRow = TemplateListRow & {
+  apply_scene: string | null;
+  content: string | null;
+  recommend_resources: string | null;
 };
 
 export class AgentSkillTemplateService {
@@ -38,9 +41,9 @@ export class AgentSkillTemplateService {
       this.listOnlineTemplates(),
     ]);
 
-    const templatesByGroupId = new Map<number, AgentSkillTemplateItem[]>();
+    const templatesByGroupId = new Map<number, AgentSkillTemplateListItem[]>();
     for (const template of templates) {
-      const mapped = mapTemplateItem(template);
+      const mapped = mapTemplateListItem(template);
       const current = templatesByGroupId.get(template.group_id) ?? [];
       current.push(mapped);
       templatesByGroupId.set(template.group_id, current);
@@ -63,18 +66,9 @@ export class AgentSkillTemplateService {
     return { groups: marketplaceGroups };
   }
 
-  private async listActiveGroups(): Promise<TemplateGroupRow[]> {
-    return this.db
-      .selectFrom("xy_wap_embed_agent_skill_template_group")
-      .select(["id", "name", "sort"])
-      .where("status", "=", dbActiveStatus)
-      .orderBy("sort", "desc")
-      .orderBy("id", "desc")
-      .execute();
-  }
-
-  private async listOnlineTemplates(): Promise<TemplateRow[]> {
-    return this.db
+  async getTemplate(templateId: string): Promise<AgentSkillTemplateDetail> {
+    const numericTemplateId = Number(templateId);
+    const template = await this.db
       .selectFrom("xy_wap_embed_agent_skill_template")
       .select([
         "id",
@@ -86,7 +80,49 @@ export class AgentSkillTemplateService {
         "apply_scene",
         "content",
         "recommend_resources",
-        "sort",
+      ])
+      .where("id", "=", numericTemplateId)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst() as TemplateDetailRow | undefined;
+
+    if (!template) {
+      throw new NotFoundError("SKILL_TEMPLATE_NOT_FOUND", "技能模板不存在");
+    }
+
+    const group = await this.db
+      .selectFrom("xy_wap_embed_agent_skill_template_group")
+      .select("id")
+      .where("id", "=", template.group_id)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+
+    if (!group) {
+      throw new NotFoundError("SKILL_TEMPLATE_NOT_FOUND", "技能模板不存在");
+    }
+
+    return mapTemplateDetail(template);
+  }
+
+  private async listActiveGroups(): Promise<TemplateGroupRow[]> {
+    return this.db
+      .selectFrom("xy_wap_embed_agent_skill_template_group")
+      .select(["id", "name"])
+      .where("status", "=", dbActiveStatus)
+      .orderBy("sort", "desc")
+      .orderBy("id", "desc")
+      .execute();
+  }
+
+  private async listOnlineTemplates(): Promise<TemplateListRow[]> {
+    return this.db
+      .selectFrom("xy_wap_embed_agent_skill_template")
+      .select([
+        "id",
+        "group_id",
+        "name",
+        "icon",
+        "desc",
+        "tip",
       ])
       .where("status", "=", dbActiveStatus)
       .orderBy("sort", "desc")
@@ -99,13 +135,19 @@ export function createAgentSkillTemplateService(db: Kysely<Database>) {
   return new AgentSkillTemplateService(db);
 }
 
-function mapTemplateItem(row: TemplateRow): AgentSkillTemplateItem {
+function mapTemplateListItem(row: TemplateListRow): AgentSkillTemplateListItem {
   return {
     id: String(row.id),
     name: row.name,
     icon: row.icon?.trim() ?? "",
     description: row.desc?.trim() ?? "",
     tip: row.tip?.trim() ?? "",
+  };
+}
+
+function mapTemplateDetail(row: TemplateDetailRow): AgentSkillTemplateDetail {
+  return {
+    ...mapTemplateListItem(row),
     applyScene: row.apply_scene?.trim() ?? "",
     content: row.content?.trim() ?? "",
     recommendResources: parseRecommendResources(row.recommend_resources),

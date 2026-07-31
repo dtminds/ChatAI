@@ -6,6 +6,7 @@ import {
   ApiIcon,
   ArrowDown01Icon,
   ArrowUp01Icon,
+  Cancel01Icon,
   ClipboardIcon,
   Message01Icon,
   MoreHorizontalIcon,
@@ -15,7 +16,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   AgentSkillListItem,
-  AgentSkillTemplateItem,
+  AgentSkillTemplateDetail,
+  AgentSkillTemplateListItem,
   AgentSkillTemplateRecommendItem,
 } from "@chatai/contracts";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -38,6 +40,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
@@ -72,7 +75,10 @@ import {
   listAgentSkills,
   updateAgentSkillStatus,
 } from "./api/agent-skill-service";
-import { listSkillTemplates } from "./api/skill-template-service";
+import {
+  getSkillTemplate,
+  listSkillTemplates,
+} from "./api/skill-template-service";
 import {
   SKILL_CREATE_DRAFT_STATE_KEY,
   type SkillCreateDraft,
@@ -95,17 +101,20 @@ type SkillRecommendation = {
 };
 
 type SkillItem = {
-  applicationScenario: string;
   description: string;
   exampleQuestion: string;
   icon: string;
   id: string;
+  title: string;
+};
+
+type SkillDetailItem = SkillItem & {
+  applicationScenario: string;
   recommendBindings: readonly SkillRecommendBinding[];
   recommendedKnowledgeBases: readonly SkillRecommendation[];
   recommendedTools: readonly SkillRecommendation[];
   recommendedVariables: readonly SkillRecommendation[];
   skillDescription: string;
-  title: string;
 };
 
 type SkillCategory = {
@@ -287,15 +296,23 @@ function SkillMarketplacePanel({
   );
 }
 
-function mapTemplateToSkillItem(template: AgentSkillTemplateItem): SkillItem {
+function mapTemplateToSkillItem(template: AgentSkillTemplateListItem): SkillItem {
   return {
     id: template.id,
     title: template.name,
     description: template.description,
     exampleQuestion: template.tip,
+    icon: template.icon,
+  };
+}
+
+function mapTemplateDetailToSkillItem(
+  template: AgentSkillTemplateDetail,
+): SkillDetailItem {
+  return {
+    ...mapTemplateToSkillItem(template),
     applicationScenario: template.applyScene,
     skillDescription: template.content,
-    icon: template.icon,
     recommendBindings: template.recommendResources.map(toRecommendBinding),
     recommendedVariables: filterRecommendations(template.recommendResources, "variable"),
     recommendedTools: filterRecommendations(template.recommendResources, "tool"),
@@ -796,22 +813,65 @@ function SkillDetailDialog({
 }) {
   const navigate = useNavigate();
   const [editResourcesOpen, setEditResourcesOpen] = useState(false);
+  const [detail, setDetail] = useState<SkillDetailItem | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+
+  useEffect(() => {
+    if (!open || !skill) {
+      setDetail(null);
+      setDetailLoading(false);
+      setDetailError(false);
+      return;
+    }
+
+    let cancelled = false;
+    const templateId = skill.id;
+    setEditResourcesOpen(false);
+    setDetail(null);
+    setDetailLoading(true);
+    setDetailError(false);
+
+    async function loadDetail() {
+      try {
+        const response = await getSkillTemplate(templateId);
+        if (!cancelled) {
+          setDetail(mapTemplateDetailToSkillItem(response));
+        }
+      } catch {
+        if (!cancelled) {
+          setDetailError(true);
+          toast.error("技能详情加载失败，请稍后重试");
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      }
+    }
+
+    void loadDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, skill]);
 
   const incompleteResources = useMemo(
     () =>
-      skill ? listIncompleteSkillResources(skill.skillDescription) : [],
-    [skill],
+      detail ? listIncompleteSkillResources(detail.skillDescription) : [],
+    [detail],
   );
 
   const editableResources = useMemo(
     () =>
-      skill
+      detail
         ? matchIncompleteResourcesToRecommendations(
             incompleteResources,
-            skill.recommendBindings,
+            detail.recommendBindings,
           )
         : [],
-    [incompleteResources, skill],
+    [detail, incompleteResources],
   );
 
   function goToCreateSkill(draft: SkillCreateDraft) {
@@ -825,7 +885,7 @@ function SkillDetailDialog({
   }
 
   function handlePreviewSkill() {
-    if (!skill) {
+    if (!detail) {
       return;
     }
 
@@ -836,10 +896,10 @@ function SkillDetailDialog({
     }
 
     goToCreateSkill({
-      name: skill.title,
-      applyScene: skill.applicationScenario,
-      content: skill.skillDescription,
-      resources: collectCompleteSkillResourcesFromContent(skill.skillDescription),
+      name: detail.title,
+      applyScene: detail.applicationScenario,
+      content: detail.skillDescription,
+      resources: collectCompleteSkillResourcesFromContent(detail.skillDescription),
     });
   }
 
@@ -856,12 +916,40 @@ function SkillDetailDialog({
       >
         <DialogContent
           className="flex h-[min(40.5rem,calc(100vh-3rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
-          closeButtonClassName="right-5 top-5"
+          closeButtonVisible={false}
         >
           {skill ? (
             <>
-              <div className="shrink-0 space-y-3 px-6 pb-5 pt-6 pr-14">
-                <SkillIcon className="size-10" icon={skill.icon} title={skill.title} />
+              <div className="shrink-0 space-y-3 px-6 pb-5 pt-6">
+                <div className="flex items-center justify-between gap-4">
+                  <SkillIcon className="size-10" icon={skill.icon} title={skill.title} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      className="bg-neutral-950 text-white hover:bg-neutral-800"
+                      disabled={!detail}
+                      onClick={handlePreviewSkill}
+                      type="button"
+                    >
+                      <HugeiconsIcon icon={ViewIcon} size={16} strokeWidth={1.8} />
+                      预览技能
+                    </Button>
+                    <DialogClose asChild>
+                      <Button
+                        aria-label="关闭"
+                        size="icon"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={Cancel01Icon}
+                          size={18}
+                          strokeWidth={1.8}
+                        />
+                      </Button>
+                    </DialogClose>
+                  </div>
+                </div>
                 <div className="min-w-0 space-y-2">
                   <DialogTitle className="text-[22px] font-semibold leading-tight text-foreground">
                     {skill.title}
@@ -872,89 +960,99 @@ function SkillDetailDialog({
                 </div>
               </div>
 
-              <Tabs className="flex min-h-0 flex-1 flex-col gap-0" defaultValue="scenario">
-                <div className="shrink-0 px-6">
-                  <TabsList
-                    aria-label="技能详情"
-                    className="h-auto w-full justify-start gap-6"
-                    variant="underline"
+              {detailLoading ? (
+                <div
+                  className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner size={16} />
+                  <span>正在加载</span>
+                </div>
+              ) : detailError ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-destructive">
+                  <span role="alert">加载失败</span>
+                </div>
+              ) : detail ? (
+                <>
+                  <Tabs
+                    className="flex min-h-0 flex-1 flex-col gap-0"
+                    defaultValue="scenario"
                   >
-                    {detailTabs.map((tab) => (
-                      <TabsTrigger
-                        className="px-0 py-2.5 text-sm"
-                        key={tab.value}
-                        value={tab.value}
+                    <div className="shrink-0 px-6">
+                      <TabsList
+                        aria-label="技能详情"
+                        className="h-auto w-full justify-start gap-6"
                         variant="underline"
                       >
-                        {tab.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </div>
+                        {detailTabs.map((tab) => (
+                          <TabsTrigger
+                            className="px-0 py-2.5 text-sm"
+                            key={tab.value}
+                            value={tab.value}
+                            variant="underline"
+                          >
+                            {tab.label}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                  <TabsContent className="mt-0 space-y-0" value="scenario">
-                    <p className="pb-5 text-sm leading-6 text-muted-foreground">
-                      {skill.applicationScenario || "暂无数据"}
-                    </p>
-                    <SkillRecommendationSection
-                      icon={AbsoluteIcon}
-                      items={skill.recommendedVariables}
-                      title="推荐变量"
-                    />
-                    <SkillRecommendationSection
-                      icon={ApiIcon}
-                      items={skill.recommendedTools}
-                      title="推荐工具"
-                    />
-                    <SkillRecommendationSection
-                      icon={AiBookIcon}
-                      items={skill.recommendedKnowledgeBases}
-                      title="推荐知识库"
-                    />
-                  </TabsContent>
+                    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                      <TabsContent className="mt-0 space-y-0" value="scenario">
+                        <p className="min-h-28 pb-5 text-sm leading-6 text-muted-foreground">
+                          {detail.applicationScenario || "暂无数据"}
+                        </p>
+                        <SkillRecommendationSection
+                          icon={AbsoluteIcon}
+                          items={detail.recommendedVariables}
+                          title="推荐变量"
+                        />
+                        <SkillRecommendationSection
+                          icon={ApiIcon}
+                          items={detail.recommendedTools}
+                          title="推荐工具"
+                        />
+                        <SkillRecommendationSection
+                          icon={AiBookIcon}
+                          items={detail.recommendedKnowledgeBases}
+                          title="推荐知识库"
+                        />
+                      </TabsContent>
 
-                  <TabsContent className="mt-0 space-y-0" value="description">
-                    <SkillContentView className="pb-5" content={skill.skillDescription} />
-                    <SkillRecommendationSection
-                      icon={AbsoluteIcon}
-                      items={skill.recommendedVariables}
-                      title="推荐变量"
-                    />
-                  </TabsContent>
-                </div>
-              </Tabs>
-
-              <div className="shrink-0 px-6 pb-6 pt-2">
-                <Button
-                  className="h-11 w-full rounded-full border-primary/70 text-primary hover:bg-primary/5 hover:text-primary"
-                  onClick={handlePreviewSkill}
-                  type="button"
-                  variant="outline"
-                >
-                  <HugeiconsIcon icon={ViewIcon} size={16} strokeWidth={1.8} />
-                  预览技能
-                </Button>
-              </div>
+                      <TabsContent className="mt-0 space-y-0" value="description">
+                        <SkillContentView
+                          className="min-h-28 pb-5"
+                          content={detail.skillDescription}
+                        />
+                        <SkillRecommendationSection
+                          icon={AbsoluteIcon}
+                          items={detail.recommendedVariables}
+                          title="推荐变量"
+                        />
+                      </TabsContent>
+                    </div>
+                  </Tabs>
+                </>
+              ) : null}
             </>
           ) : null}
         </DialogContent>
       </Dialog>
 
-      {skill ? (
+      {detail ? (
         <SkillPreviewEditResourcesDialog
-          content={skill.skillDescription}
+          content={detail.skillDescription}
           editableResources={editableResources}
           onCancel={() => {
             setEditResourcesOpen(false);
           }}
           onConfirm={({ content, resources }) => {
             const existing = collectCompleteSkillResourcesFromContent(
-              skill.skillDescription,
+              detail.skillDescription,
             );
             goToCreateSkill({
-              name: skill.title,
-              applyScene: skill.applicationScenario,
+              name: detail.title,
+              applyScene: detail.applicationScenario,
               content,
               resources: {
                 variables: [...existing.variables, ...resources.variables],

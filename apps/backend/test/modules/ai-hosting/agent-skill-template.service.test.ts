@@ -92,6 +92,7 @@ describe("parseRecommendResources", () => {
 
 describe("AgentSkillTemplateService", () => {
   const groups: Array<{ id: number; name: string; sort: number; status: number }> = [];
+  const selectedColumns = new Map<string, unknown[]>();
   const templates: Array<{
     apply_scene: string | null;
     content: string | null;
@@ -108,6 +109,7 @@ describe("AgentSkillTemplateService", () => {
 
   beforeEach(() => {
     groups.length = 0;
+    selectedColumns.clear();
     templates.length = 0;
 
     groups.push(
@@ -181,7 +183,11 @@ describe("AgentSkillTemplateService", () => {
         const orderBys: Array<[string, "asc" | "desc"]> = [];
 
         const builder = {
-          select(_columns: unknown) {
+          select(columns: unknown) {
+            selectedColumns.set(
+              table,
+              Array.isArray(columns) ? columns : [columns],
+            );
             return builder;
           },
           where(column: string, operator: string, value: unknown) {
@@ -217,6 +223,9 @@ describe("AgentSkillTemplateService", () => {
 
             return rows;
           },
+          async executeTakeFirst() {
+            return (await builder.execute())[0];
+          },
         };
 
         return builder;
@@ -240,9 +249,6 @@ describe("AgentSkillTemplateService", () => {
             icon: "https://example.com/icon.png",
             description: "适配说明",
             tip: "敏感肌能用吗？",
-            applyScene: "咨询适配时",
-            content: "结合肤质回答",
-            recommendResources: [],
           },
         ],
       },
@@ -256,18 +262,44 @@ describe("AgentSkillTemplateService", () => {
             icon: "",
             description: "标签说明",
             tip: "我适合什么产品？",
-            applyScene: "咨询肤质时",
-            content: "根据标签推荐",
-            recommendResources: [
-              {
-                type: "variable",
-                title: "客户标签",
-                description: "建议选肤质标签组",
-              },
-            ],
           },
         ],
       },
     ]);
+    expect(
+      selectedColumns.get("xy_wap_embed_agent_skill_template"),
+    ).toEqual([
+      "id",
+      "group_id",
+      "name",
+      "icon",
+      "desc",
+      "tip",
+    ]);
+  });
+
+  it("loads full detail only for an online template in an active group", async () => {
+    await expect(createService().getTemplate("11")).resolves.toEqual({
+      id: "11",
+      name: "客户标签查询",
+      icon: "",
+      description: "标签说明",
+      tip: "我适合什么产品？",
+      applyScene: "咨询肤质时",
+      content: "根据标签推荐",
+      recommendResources: [
+        {
+          type: "variable",
+          title: "客户标签",
+          description: "建议选肤质标签组",
+        },
+      ],
+    });
+  });
+
+  it("hides online templates whose group is not active", async () => {
+    await expect(createService().getTemplate("14")).rejects.toMatchObject({
+      code: "SKILL_TEMPLATE_NOT_FOUND",
+    });
   });
 });

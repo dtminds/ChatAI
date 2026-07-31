@@ -68,25 +68,65 @@ export type SkillContentSegment =
   | SkillContentTextSegment
   | SkillContentResourceSegment;
 
+function isSkillVariableType(value: string): value is SkillVariableType {
+  return (
+    value === "custom_field" ||
+    value === "work_tag" ||
+    value === "mall_tag" ||
+    value === "auto_tag" ||
+    value === "system_variable"
+  );
+}
+
+function getSkillVariableTypeLabel(variableType: SkillVariableType) {
+  if (variableType === "custom_field") {
+    return "客户自定义属性";
+  }
+
+  if (variableType === "system_variable") {
+    return "系统变量";
+  }
+
+  if (variableType === "work_tag") {
+    return "企微标签";
+  }
+
+  if (variableType === "mall_tag") {
+    return "小店标签";
+  }
+
+  return "自动化标签";
+}
+
 /** 变量在资源池 / 引用菜单 / 描述块中的完整展示名 */
 export function getSkillVariableDisplayName(variable: SkillVariableConfig) {
-  if (variable.type === "custom_field") {
-    return `客户自定义属性 · ${variable.name}`;
+  return normalizeSkillVariableDisplayName(variable.name, variable.type);
+}
+
+function normalizeSkillVariableDisplayName(
+  displayName: string,
+  variableType: SkillVariableType,
+) {
+  const typeLabel = getSkillVariableTypeLabel(variableType);
+  const valueName = getSkillVariableValueName(displayName, variableType);
+
+  return valueName === typeLabel ? typeLabel : `${typeLabel} · ${valueName}`;
+}
+
+function getSkillVariableValueName(
+  displayName: string,
+  variableType: SkillVariableType,
+) {
+  const typeLabel = getSkillVariableTypeLabel(variableType);
+  const parts = displayName
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  while (parts[0] === "客户标签" || parts[0] === typeLabel) {
+    parts.shift();
   }
 
-  if (variable.type === "system_variable") {
-    return `系统变量 · ${variable.name}`;
-  }
-
-  if (variable.type === "work_tag") {
-    return `客户标签 · 企微标签 · ${variable.name}`;
-  }
-
-  if (variable.type === "mall_tag") {
-    return `客户标签 · 小店标签 · ${variable.name}`;
-  }
-
-  return `客户标签 · 自动化标签 · ${variable.name}`;
+  return parts[0] ?? displayName.trim();
 }
 
 export function getSkillResourceChipName(item: SkillResourceItem) {
@@ -246,6 +286,13 @@ function readResourceAttribute(tag: string, attributeName: string) {
     .replaceAll("&amp;", "&");
 }
 
+function replaceResourceNameAttribute(tag: string, name: string) {
+  return tag.replace(
+    /(\bname\s*=\s*")[^"]*(")/i,
+    `$1${escapeResourceAttribute(name)}$2`,
+  );
+}
+
 export function getSkillResourceAttribute(
   placeholder: string,
   attributeName: string,
@@ -396,13 +443,7 @@ export function resolveTemplateVariableType(
   }
 
   const variableType = readResourceAttribute(segment.placeholder, "variableType");
-  if (
-    variableType === "custom_field"
-    || variableType === "work_tag"
-    || variableType === "mall_tag"
-    || variableType === "auto_tag"
-    || variableType === "system_variable"
-  ) {
+  if (isSkillVariableType(variableType)) {
     return variableType;
   }
 
@@ -517,7 +558,7 @@ function buildSkillResourceFromCompleteSegment(
     }
 
     return buildSkillVariableResourceItem({
-      name: segment.name,
+      name: getSkillVariableValueName(segment.name, variableType),
       select_key: selectKey,
       type: variableType,
     });
@@ -530,14 +571,14 @@ function buildSkillResourceFromCompleteSegment(
 
   if (variableType === "custom_field") {
     return buildSkillVariableResourceItem({
-      name: segment.name,
+      name: getSkillVariableValueName(segment.name, variableType),
       select_id: selectId,
       type: "custom_field",
     });
   }
 
   return buildSkillVariableResourceItem({
-    name: segment.name,
+    name: getSkillVariableValueName(segment.name, variableType),
     select_id: selectId,
     select_sub_ids: [],
     type: variableType,
@@ -555,7 +596,8 @@ export function parseSkillContentSegments(content: string): SkillContentSegment[
   skillResourceTagPattern.lastIndex = 0;
 
   for (const match of source.matchAll(skillResourceTagPattern)) {
-    const placeholder = match[0] ?? "";
+    const matchedPlaceholder = match[0] ?? "";
+    let placeholder = matchedPlaceholder;
     const matchIndex = match.index ?? 0;
 
     if (matchIndex > lastIndex) {
@@ -566,7 +608,7 @@ export function parseSkillContentSegments(content: string): SkillContentSegment[
     }
 
     const type = readResourceAttribute(placeholder, "type");
-    const name = readResourceAttribute(placeholder, "name") || "资源";
+    let name = readResourceAttribute(placeholder, "name") || "资源";
     let kind: SkillContentResourceKind = "variable";
     let id = placeholder;
 
@@ -580,6 +622,10 @@ export function parseSkillContentSegments(content: string): SkillContentSegment[
       const variableType = readResourceAttribute(placeholder, "variableType");
       const variableKey = readResourceAttribute(placeholder, "variableKey");
       const variableId = readResourceAttribute(placeholder, "variableId");
+      if (isSkillVariableType(variableType)) {
+        name = normalizeSkillVariableDisplayName(name, variableType);
+        placeholder = replaceResourceNameAttribute(placeholder, name);
+      }
       id = variableKey
         ? `${variableType}:${variableKey}`
         : `${variableType}:${variableId}`;
@@ -592,7 +638,7 @@ export function parseSkillContentSegments(content: string): SkillContentSegment[
       placeholder,
       type: "resource",
     });
-    lastIndex = matchIndex + placeholder.length;
+    lastIndex = matchIndex + matchedPlaceholder.length;
   }
 
   if (lastIndex < source.length) {
@@ -658,16 +704,28 @@ export function buildSkillVariableResourceItem(
   variable: SkillVariableConfig,
   displayName = getSkillVariableDisplayName(variable),
 ): SkillResourceItem {
+  const normalizedVariable = {
+    ...variable,
+    name: getSkillVariableValueName(variable.name, variable.type),
+  } as SkillVariableConfig;
+  const normalizedDisplayName = normalizeSkillVariableDisplayName(
+    displayName,
+    variable.type,
+  );
+
   return {
     description:
-      variable.type === "custom_field"
+      normalizedVariable.type === "custom_field"
         ? "查询聊天客户的自定义属性后，插入到指定位置"
-        : variable.type === "system_variable"
+        : normalizedVariable.type === "system_variable"
           ? "查询系统运行时变量，然后插入到指定位置"
           : "查询您指定的客户标签，然后插入到指定位置",
-    id: skillVariableStorageId(variable),
-    placeholder: buildVariablePlaceholder(variable, displayName),
-    title: displayName,
-    variable,
+    id: skillVariableStorageId(normalizedVariable),
+    placeholder: buildVariablePlaceholder(
+      normalizedVariable,
+      normalizedDisplayName,
+    ),
+    title: normalizedDisplayName,
+    variable: normalizedVariable,
   };
 }

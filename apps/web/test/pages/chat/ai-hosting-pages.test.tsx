@@ -2118,6 +2118,25 @@ describe("AI hosting pages", () => {
 
   it("navigates to skill edit settings from my skills table", async () => {
     const user = userEvent.setup();
+    vi.mocked(agentSkillService.getAgentSkill).mockResolvedValueOnce({
+      applyScene:
+        "根据订单号或手机号查询订单状态和物流进度，处理物流异常情况",
+      content: "查询订单物流",
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      kbs: [],
+      name: "订单与物流场景查询",
+      status: "enabled",
+      tools: [],
+      updatedAt: "2026-06-20 23:22:22",
+      variables: [
+        {
+          name: "系统变量 · 系统变量 · 会话类型",
+          select_key: "chat_type",
+          type: "system_variable",
+        },
+      ],
+    });
     const router = createMemoryRouter(
       [
         {
@@ -2143,6 +2162,12 @@ describe("AI hosting pages", () => {
       "订单与物流场景查询",
     );
     expect(agentSkillService.getAgentSkill).toHaveBeenCalledWith("1");
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "系统变量 · 会话类型",
+    );
+    expect(screen.getByRole("list", { name: "已添加变量" })).not.toHaveTextContent(
+      "系统变量 · 系统变量 · 会话类型",
+    );
 
     await user.clear(screen.getByLabelText(/技能名称/));
     await user.type(screen.getByLabelText(/技能名称/), "订单物流查询改");
@@ -2153,6 +2178,13 @@ describe("AI hosting pages", () => {
         "1",
         expect.objectContaining({
           name: "订单物流查询改",
+          variables: [
+            {
+              name: "会话类型",
+              select_key: "chat_type",
+              type: "system_variable",
+            },
+          ],
         }),
       );
     });
@@ -2231,7 +2263,7 @@ describe("AI hosting pages", () => {
     await user.click(await screen.findByRole("checkbox", { name: "高意向" }));
     await user.click(screen.getByRole("button", { name: "确认插入" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "客户标签 · 企微标签 · 意向标签组 · 高意向",
+      "企微标签 · 意向标签组",
     );
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
@@ -2247,7 +2279,7 @@ describe("AI hosting pages", () => {
     await user.click(await screen.findByRole("checkbox", { name: "银卡会员" }));
     await user.click(screen.getByRole("button", { name: "确认插入" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "客户标签 · 小店标签 · 基础会员标签 · 银卡会员",
+      "小店标签 · 基础会员标签",
     );
 
     await user.click(screen.getByRole("button", { name: "引用变量" }));

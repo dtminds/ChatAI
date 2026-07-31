@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSkillVariableResourceItem,
   collectCompleteSkillResourcesFromContent,
   isIncompleteSkillResource,
   listIncompleteSkillResources,
@@ -29,7 +30,7 @@ describe("ai skill incomplete resources", () => {
       "售后知识",
       "企微标签",
       "小店标签",
-      "自定义属性",
+      "客户自定义属性 · 自定义属性",
       "自动化标签",
       "未定类型",
     ]);
@@ -137,6 +138,39 @@ describe("ai skill incomplete resources", () => {
 
     expect(isIncompleteSkillResource(variable)).toBe(true);
     expect(resolveTemplateVariableType(variable)).toBe("work_tag");
+  });
+
+  it("normalizes legacy variable names to two segments when parsing and rebuilding", () => {
+    const content =
+      '使用 <resource type="variable" variableType="work_tag" variableId="11" name="客户标签 · 企微标签 · 意向标签组 · 高意向" /> 回复';
+    const segments = parseSkillContentSegments(content);
+    const variable = segments.find((segment) => segment.type === "resource");
+
+    expect(variable?.type).toBe("resource");
+    if (variable?.type !== "resource") {
+      return;
+    }
+
+    expect(variable.name).toBe("企微标签 · 意向标签组");
+    expect(variable.placeholder).toContain('name="企微标签 · 意向标签组"');
+    expect(segments.at(-1)).toEqual({ type: "text", value: " 回复" });
+
+    const resources = collectCompleteSkillResourcesFromContent(content);
+    expect(resources.variables).toHaveLength(1);
+    expect(resources.variables[0]?.title).toBe("企微标签 · 意向标签组");
+    expect(resources.variables[0]?.variable?.name).toBe("意向标签组");
+  });
+
+  it("removes repeated system variable prefixes from loaded resources", () => {
+    const resource = buildSkillVariableResourceItem({
+      name: "系统变量 · 系统变量 · 会话类型",
+      select_key: "chat_type",
+      type: "system_variable",
+    });
+
+    expect(resource.title).toBe("系统变量 · 会话类型");
+    expect(resource.placeholder).toContain('name="系统变量 · 会话类型"');
+    expect(resource.variable?.name).toBe("会话类型");
   });
 
   it("replaces incomplete placeholders and collects complete resources", () => {

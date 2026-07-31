@@ -771,22 +771,12 @@ export function InsertVariableDialog({
       return;
     }
 
-    const tagKindLabel =
-      tagKindOptions.find((option) => option.value === tagKind)?.label ?? "客户标签";
-    const tagSummary =
-      selectedTagNames.length <= 2
-        ? selectedTagNames.join("、")
-        : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`;
-
-    emitVariable(
-      {
-        name: activeGroup.name,
-        select_id: activeGroup.id,
-        select_sub_ids: [...selectedTagIds],
-        type: tagKind,
-      },
-      `客户标签 · ${tagKindLabel} · ${activeGroup.name} · ${tagSummary}`,
-    );
+    emitVariable({
+      name: activeGroup.name,
+      select_id: activeGroup.id,
+      select_sub_ids: [...selectedTagIds],
+      type: tagKind,
+    });
   }
 
   function toggleTag(tagId: number, tagName?: string) {

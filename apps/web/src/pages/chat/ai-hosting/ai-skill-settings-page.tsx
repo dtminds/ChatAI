@@ -5,7 +5,7 @@ import {
   AiBookIcon,
   ApiIcon,
   ArrowDown01Icon,
-  ArrowLeft01Icon,
+  ArrowLeft02Icon,
   ArrowRight01Icon,
   Delete02Icon,
   File01Icon,
@@ -508,34 +508,34 @@ export function AiSkillSettingsPage() {
   return (
     <AiHostingLayout title="技能设置">
       <div className="space-y-6">
-        <header className="space-y-3">
-          <Button
-            asChild
-            className="-ml-2 h-8 gap-1 px-2 text-sm text-muted-foreground"
-            type="button"
-            variant="ghost"
-          >
-            <Link to="/chat/ai-hosting/skills?tab=mine">
-              <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.8} />
-              返回我的技能
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h1 className="text-[22px] font-semibold leading-tight text-foreground">
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              aria-label="返回我的技能"
+              asChild
+              className="-ml-2 size-9 shrink-0 rounded-[8px]"
+              size="icon"
+              variant="ghost"
+            >
+              <Link to="/chat/ai-hosting/skills?tab=mine">
+                <HugeiconsIcon icon={ArrowLeft02Icon} size={18} strokeWidth={1.8} />
+              </Link>
+            </Button>
+            <h1 className="truncate text-xl font-semibold leading-tight text-foreground">
               技能设置
             </h1>
-            <div className="flex shrink-0 items-center gap-3">
-              <Button onClick={handleCancel} type="button" variant="outline">
-                取消
-              </Button>
-              <Button
-                disabled={!canSubmit || submitting}
-                onClick={() => void handleSubmit()}
-                type="button"
-              >
-                确认提交
-              </Button>
-            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button onClick={handleCancel} type="button" variant="outline">
+              取消
+            </Button>
+            <Button
+              disabled={!canSubmit || submitting}
+              onClick={() => void handleSubmit()}
+              type="button"
+            >
+              确认提交
+            </Button>
           </div>
         </header>
 

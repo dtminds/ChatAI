@@ -49,6 +49,8 @@ import {
   GroupChatReceptionSettingsDialog,
   type GroupChatReceptionDialogState,
 } from "@/pages/chat/settings/pages/group-chat-reception-settings-dialog";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
@@ -116,7 +118,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(getErrorMessage(error));
+          setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
         }
       } finally {
         if (!ignore) {
@@ -196,7 +198,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
           availableManagedAccounts: [],
           groupChats,
           isLoadingOptions: false,
-          optionsError: getErrorMessage(error),
+          optionsError: resolveErrorMessage(error, "操作失败，请稍后重试"),
         });
       }
     }
@@ -218,8 +220,8 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       } catch (error) {
         throw new Error(
           completed > 0
-            ? `已完成 ${completed}/${groupChatIds.length} 个群聊，${getErrorMessage(error)}，可重试`
-            : getErrorMessage(error),
+            ? `已完成 ${completed}/${groupChatIds.length} 个群聊，${resolveErrorMessage(error, "操作失败，请稍后重试")}，可重试`
+            : resolveErrorMessage(error, "操作失败，请稍后重试"),
         );
       }
 
@@ -239,7 +241,7 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       });
       setData(response);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
     }
     setSelectedGroupChats([]);
   }
@@ -397,18 +399,6 @@ export function GroupChatsSettingsTab({ toolbarStart }: { toolbarStart?: ReactNo
       />
     </>
   );
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
 }
 
 function GroupChatRow({
@@ -638,16 +628,4 @@ async function copyGroupChatId(groupChatId: string) {
   } catch {
     toast.warning("复制失败，请稍后重试");
   }
-}
-
-function getErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  return "操作失败，请稍后重试";
 }

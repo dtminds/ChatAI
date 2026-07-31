@@ -69,6 +69,7 @@ import {
   interpretWorkerLog,
   type WorkerLogInterpretation,
 } from "./insights-worker-log-interpreter";
+import { useVisiblePolling } from "./use-visible-polling";
 
 const pageSize = 50;
 const pipelineLabels = {
@@ -115,122 +116,101 @@ export function InsightsWorkerObservabilityPage() {
     setPage(1);
   }, [state, uid]);
 
-  useEffect(() => {
-    if (!canView) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let inFlight = false;
-    const load = async (showLoading: boolean) => {
-      if (inFlight || document.visibilityState !== "visible") {
-        return;
-      }
-      inFlight = true;
+  const loadSummary = useCallback(
+    async ({
+      showLoading,
+      signal,
+    }: {
+      showLoading: boolean;
+      signal: AbortSignal;
+    }) => {
       if (showLoading) {
         setLoading(true);
       }
+
       try {
         const [nextSummary, nextPage] = await Promise.all([
-          getInsightsWorkerSummary({ signal: controller.signal }),
+          getInsightsWorkerSummary({ signal }),
           getInsightsWorkerUids({
             page,
             pageSize,
             state: state === "all" ? undefined : state,
             uid,
-          }, { signal: controller.signal }),
+          }, { signal }),
         ]);
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setSummary(nextSummary);
           setUidPage(nextPage);
           setError(false);
         }
       } catch {
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setError(true);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setLoading(false);
         }
-        inFlight = false;
       }
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void load(false);
-      }
-    };
+    },
+    [page, state, uid],
+  );
 
-    void load(true);
-    const timer = window.setInterval(() => {
-      void load(false);
-    }, 30_000);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [canView, page, refreshVersion, state, uid]);
+  useVisiblePolling({
+    enabled: canView,
+    intervalMs: 30_000,
+    load: loadSummary,
+    refreshKey: refreshVersion,
+  });
 
   useEffect(() => {
-    if (!canView || selectedUid == null) {
-      setDetail(undefined);
-      setDetailError(false);
-      return;
-    }
-
     setDetail(undefined);
     setDetailError(false);
-    const controller = new AbortController();
-    let inFlight = false;
-    const load = async (showLoading: boolean) => {
-      if (inFlight || document.visibilityState !== "visible") {
+  }, [canView, selectedUid]);
+
+  const loadDetail = useCallback(
+    async ({
+      showLoading,
+      signal,
+    }: {
+      showLoading: boolean;
+      signal: AbortSignal;
+    }) => {
+      if (selectedUid == null) {
         return;
       }
-      inFlight = true;
+
       if (showLoading) {
         setDetailLoading(true);
       }
+
       try {
         const nextDetail = await getInsightsWorkerUidDetail(selectedUid, {
-          signal: controller.signal,
+          signal,
         });
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setDetail(nextDetail);
           setDetailError(false);
         }
       } catch {
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setDetailError(true);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setDetailLoading(false);
         }
-        inFlight = false;
       }
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void load(false);
-      }
-    };
+    },
+    [selectedUid],
+  );
 
-    void load(true);
-    const timer = window.setInterval(() => {
-      void load(false);
-    }, 15_000);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [canView, refreshVersion, selectedUid]);
+  useVisiblePolling({
+    enabled: canView && selectedUid != null,
+    intervalMs: 15_000,
+    load: loadDetail,
+    refreshKey: refreshVersion,
+  });
 
   if (!canView) {
     return (

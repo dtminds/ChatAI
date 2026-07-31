@@ -26,7 +26,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { LoadableMessageImage } from "@/pages/chat/components/message/media-fallback";
 import {
@@ -119,6 +119,11 @@ export function MessageHistorySidePanel({
   if (!isOpen) {
     return null;
   }
+
+  const historyTabMessages = getHistoryTabMessages(
+    activeHistory?.messages ?? [],
+    activeHistoryFilters.scope,
+  );
 
   return (
     <aside
@@ -243,10 +248,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryFileList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                   onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
@@ -266,10 +268,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryMediaWall
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                   onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
@@ -289,10 +288,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryLinkList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -311,10 +307,7 @@ export function MessageHistorySidePanel({
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryMiniProgramList
-                  messages={getHistoryTabMessages(
-                    activeHistory?.messages ?? [],
-                    activeHistoryFilters.scope,
-                  )}
+                  messages={historyTabMessages}
                 />
               </HistoryMessageViewport>
             </TabsContent>

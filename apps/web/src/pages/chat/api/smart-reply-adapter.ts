@@ -8,9 +8,11 @@ import {
 } from "@chatai/contracts";
 import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
-import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
-import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type {
+  SmartReplyRecommendedAttachment,
+  SmartReplySuggestion,
+  SmartReplyViolationResult,
+} from "@/pages/chat/lib/smart-reply-types";
 import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
 import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
 

@@ -9,21 +9,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { getFileExtension } from "@/pages/chat/lib/composer-file-files";
+import type { SmartReplyRecommendedAttachment } from "@/pages/chat/lib/smart-reply-types";
 
-export type SmartReplyRecommendedAttachment = {
-  id: string;
-  fileName: string;
-  fileType: string;
-  defaultSelected?: boolean;
-  localPath?: string;
-  slocalPath?: string;
-  content?: string;
-  coverUrl?: string;
-  jumpUrl?: string;
-  transMsgInfoId?: string;
-};
+export type { SmartReplyRecommendedAttachment } from "@/pages/chat/lib/smart-reply-types";
 
 type RecommendedAttachmentUiType = "image" | "video" | "link" | "file";
 

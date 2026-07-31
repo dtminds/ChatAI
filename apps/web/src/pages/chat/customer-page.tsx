@@ -44,9 +44,9 @@ import {
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
-import { formatMessageDividerLabel } from "@/pages/chat/components/message-feed";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
 import type { Account, Message } from "@/pages/chat/chat-types";
+import { formatMessageDividerLabel } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 
 const ALL_VISIBLE_SEATS = "__all_visible_seats__";

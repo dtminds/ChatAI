@@ -27,15 +27,16 @@ import {
 } from "@/pages/chat/components/smart-reply-add-to-faq-dialog";
 import {
   SmartReplyRecommendedAttachmentsSection,
-  type SmartReplyRecommendedAttachment,
 } from "@/pages/chat/components/smart-reply-recommended-attachments";
+import type {
+  SmartReplyRecommendedAttachment,
+  SmartReplyViolationResult,
+} from "@/pages/chat/lib/smart-reply-types";
 
-export type { SmartReplyRecommendedAttachment };
-
-export type SmartReplyViolationResult = {
-  categoryLabel: string;
-  words: string[];
-};
+export type {
+  SmartReplyRecommendedAttachment,
+  SmartReplyViolationResult,
+} from "@/pages/chat/lib/smart-reply-types";
 
 export type SmartReplyEditDialogProps = {
   open: boolean;

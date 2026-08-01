@@ -377,7 +377,11 @@ export function useWorkbenchPolling({
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
 
-        if (pauseReasonRef.current != null || pollingLease.isOwnedByAnotherTab()) {
+        if (
+          pauseReasonRef.current != null ||
+          document.visibilityState !== "visible" ||
+          pollingLease.isOwnedByAnotherTab()
+        ) {
           return;
         }
 

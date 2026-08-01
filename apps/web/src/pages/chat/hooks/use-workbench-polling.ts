@@ -364,7 +364,11 @@ export function useWorkbenchPolling({
     };
 
     const scheduleNextSeatSummaryRefresh = () => {
-      if (pauseReasonRef.current != null) {
+      if (
+        pauseReasonRef.current != null ||
+        document.visibilityState !== "visible"
+      ) {
+        clearScheduledRefresh();
         return;
       }
 
@@ -373,7 +377,11 @@ export function useWorkbenchPolling({
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
 
-        if (pauseReasonRef.current != null || pollingLease.isOwnedByAnotherTab()) {
+        if (
+          pauseReasonRef.current != null ||
+          document.visibilityState !== "visible" ||
+          pollingLease.isOwnedByAnotherTab()
+        ) {
           return;
         }
 
@@ -408,7 +416,7 @@ export function useWorkbenchPolling({
         return;
       }
 
-      scheduleNextSeatSummaryRefresh();
+      clearScheduledRefresh();
     };
 
     scheduleNextSeatSummaryRefresh();

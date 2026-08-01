@@ -21,6 +21,29 @@ const conversation: Conversation = {
 };
 
 describe("ConversationCard", () => {
+  it("defers offscreen avatar loading and falls back after an image error", () => {
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const avatar = screen.getByRole("img", {
+      name: conversation.customerName,
+    });
+    expect(avatar).toHaveAttribute("loading", "lazy");
+    expect(avatar).toHaveAttribute("decoding", "async");
+
+    fireEvent.error(avatar);
+
+    expect(
+      screen.queryByRole("img", { name: conversation.customerName }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("conversation-avatar-fallback")).toBeInTheDocument();
+  });
+
   it("shows draft preview for saved composer drafts", () => {
     render(
       <ConversationCard

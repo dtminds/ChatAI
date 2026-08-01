@@ -9,7 +9,11 @@ import {
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  LazyAvatarImage,
+} from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -133,7 +137,7 @@ export const ConversationCard = memo(function ConversationCard({
           >
             <div className="relative">
               <Avatar className="size-10">
-                <AvatarImage
+                <LazyAvatarImage
                   alt={conversation.customerName}
                   src={conversation.customerAvatarUrl}
                 />

@@ -3062,7 +3062,7 @@ describe("MysqlWorkbenchService", () => {
       sinceLastMsgTime: 1_778_839_999_999,
     });
     expect(listMessages).toHaveBeenCalledWith("88", {
-      beforeSeq: undefined,
+      afterSeq: 5,
       includeHiddenConversation: true,
       limit: 50,
     });
@@ -3368,7 +3368,7 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
-      beforeSeq: undefined,
+      afterSeq: 101,
       includeHiddenConversation: true,
       limit: 50,
     });

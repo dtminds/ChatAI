@@ -304,6 +304,7 @@ type WorkbenchState = {
   changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
   syncFullAutoAgentStatus: () => Promise<void>;
   resetWorkbenchRuntime: () => void;
+  cancelConversationOpen: () => void;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -440,6 +441,7 @@ export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 function createInitialState(): Omit<
   WorkbenchState,
   | "deleteConversation"
+  | "cancelConversationOpen"
   | "clearActiveConversation"
   | "resetWorkbenchSession"
   | "initializeWorkbench"
@@ -3119,6 +3121,8 @@ export function createWorkbenchStore() {
   let latestPollRunId = 0;
   let latestConversationOpenRequestId = 0;
   let loadingConversationOpenRequestId: number | undefined;
+  let currentConversationOpenRequestId: number | undefined;
+  let currentConversationOpenTargetId: string | undefined;
   let latestConversationProfileRefreshGeneration = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
@@ -3186,6 +3190,8 @@ export function createWorkbenchStore() {
     const didCancelLoadingRequest =
       loadingConversationOpenRequestId !== undefined;
     loadingConversationOpenRequestId = undefined;
+    currentConversationOpenRequestId = undefined;
+    currentConversationOpenTargetId = undefined;
     return didCancelLoadingRequest;
   }
 
@@ -4695,18 +4701,7 @@ export function createWorkbenchStore() {
                     prunedConversationListCache.conversationListsByScope,
                   conversationModeLoadedAtByScope:
                     prunedConversationListCache.conversationModeLoadedAtByScope,
-                  conversationPromotion:
-                    currentState.conversationPromotion?.accountId ===
-                    conversation.accountId
-                      ? createConversationPromotion(
-                          refreshedConversations.find(
-                            (currentConversation) =>
-                              currentConversation.id ===
-                              currentState.conversationPromotion?.conversationId,
-                          ) ?? resolvedConversation,
-                          refreshedConversations,
-                        )
-                      : currentState.conversationPromotion,
+                  conversationPromotion: currentState.conversationPromotion,
                   isPollBaselineFresh: true,
                   sinceVersion: conversationLoadResult.pollBaseline,
                 };
@@ -5016,9 +5011,68 @@ export function createWorkbenchStore() {
           ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
         });
       },
+      cancelConversationOpen() {
+        const state = get();
+        const cancelledOpenRequestId = currentConversationOpenRequestId;
+        const cancelledTargetId = currentConversationOpenTargetId;
+        const wasBootstrapLoading = state.bootstrapStatus === "loading";
+        const shouldClearActiveConversation =
+          wasBootstrapLoading ||
+          (cancelledTargetId != null &&
+            state.activeConversationId === cancelledTargetId);
+
+        bumpScopeRequestId();
+        cancelConversationOpenRequest();
+
+        for (const accountId of Object.keys(
+          latestConversationListRefreshIdByAccountId,
+        )) {
+          if (
+            latestConversationListRefreshIdByAccountId[accountId] ===
+            cancelledOpenRequestId
+          ) {
+            delete latestConversationListRefreshIdByAccountId[accountId];
+          }
+        }
+
+        const previousConversationId = shouldClearActiveConversation
+          ? state.activeConversationId
+          : undefined;
+
+        if (previousConversationId) {
+          clearFullAutoRuntime(previousConversationId);
+        }
+
+        set((currentState) => ({
+          ...(shouldClearActiveConversation
+            ? {
+                activeConversationId: "",
+                activeMessageSeq: 0,
+                historyPanelOpenConversationId: undefined,
+                messageUpdateCursor: undefined,
+              }
+            : {}),
+          bootstrapError:
+            wasBootstrapLoading ? undefined : currentState.bootstrapError,
+          bootstrapStatus:
+            wasBootstrapLoading ? "idle" : currentState.bootstrapStatus,
+          conversationOpenError: undefined,
+          conversationPromotion:
+            wasBootstrapLoading ||
+            (cancelledTargetId != null &&
+              currentState.conversationPromotion?.conversationId ===
+                cancelledTargetId)
+              ? undefined
+              : currentState.conversationPromotion,
+          isConversationLoading: false,
+          scopeTransitionError: undefined,
+        }));
+      },
       async openConversation(request, options) {
         const openRequestId = issueConversationOpenRequestId();
         loadingConversationOpenRequestId = openRequestId;
+        currentConversationOpenRequestId = openRequestId;
+        currentConversationOpenTargetId = undefined;
 
         set({
           conversationOpenError: undefined,
@@ -5031,6 +5085,8 @@ export function createWorkbenchStore() {
           if (!isCurrentConversationOpenRequest(openRequestId)) {
             return false;
           }
+
+          currentConversationOpenTargetId = conversation.id;
 
           if (
             !get().accounts.some(
@@ -5074,6 +5130,11 @@ export function createWorkbenchStore() {
           }
 
           return false;
+        } finally {
+          if (isCurrentConversationOpenRequest(openRequestId)) {
+            currentConversationOpenRequestId = undefined;
+            currentConversationOpenTargetId = undefined;
+          }
         }
       },
       async selectOrCreateAndSelectConversation(item) {

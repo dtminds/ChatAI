@@ -19,7 +19,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -50,6 +49,7 @@ import {
   canStartSeatChat,
   formatCustomerTimestamp,
 } from "@/pages/chat/components/customer-seat-relation-list";
+import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
   Account,
   CustomerChatStartInput,
@@ -749,7 +749,6 @@ function CustomerSeatRelationsPopover({
   onStartChat?: CustomerPageProps["onStartChat"];
 }) {
   const isMountedRef = useRef(true);
-  const [isOpen, setIsOpen] = useState(false);
   const [conversationTimes, setConversationTimes] = useState<Record<string, number>>({});
   const [conversationStatus, setConversationStatus] = useState<
     "idle" | "loading" | "loaded" | "error"
@@ -811,18 +810,19 @@ function CustomerSeatRelationsPopover({
   }
 
   return (
-    <HoverCard
-      closeDelay={120}
+    <DelayedHoverPopover
+      contentProps={{
+        align: "start",
+        className:
+          "w-[22rem] rounded-[12px] border-border p-3 shadow-[0_12px_30px_var(--shadow-medium)]",
+      }}
       onOpenChange={(open) => {
-        setIsOpen(open);
         if (open) {
           loadRelationConversations();
         }
       }}
-      open={isOpen}
       openDelay={300}
-    >
-      <HoverCardTrigger asChild>
+      trigger={
         <Button
           aria-label={`查看 ${customerName} 的好友关系`}
           className="h-8 justify-start rounded-full p-0 hover:bg-transparent"
@@ -845,31 +845,27 @@ function CustomerSeatRelationsPopover({
             ) : null}
           </span>
         </Button>
-      </HoverCardTrigger>
-      <HoverCardContent
-        align="start"
-        className="w-[22rem] rounded-[12px] border-border p-3 shadow-[0_12px_30px_var(--shadow-medium)]"
-      >
-        <div className="space-y-3">
-          <p className="px-2.5 text-sm font-medium text-foreground">
-            好友关系 · {relations.length}
-          </p>
-          <ScrollArea className="max-h-[16rem]">
-            <div className="pr-2">
-              <CustomerSeatRelationList
-                accounts={accounts}
-                conversationStatus={conversationStatus}
-                conversationTimes={conversationTimes}
-                currentEmployeeId={currentEmployeeId}
-                customer={customer}
-                onStartChat={onStartChat}
-                relations={relations}
-              />
-            </div>
-          </ScrollArea>
-        </div>
-      </HoverCardContent>
-    </HoverCard>
+      }
+    >
+      <div className="space-y-3">
+        <p className="px-2.5 text-sm font-medium text-foreground">
+          好友关系 · {relations.length}
+        </p>
+        <ScrollArea className="max-h-[16rem]">
+          <div className="pr-2">
+            <CustomerSeatRelationList
+              accounts={accounts}
+              conversationStatus={conversationStatus}
+              conversationTimes={conversationTimes}
+              currentEmployeeId={currentEmployeeId}
+              customer={customer}
+              onStartChat={onStartChat}
+              relations={relations}
+            />
+          </div>
+        </ScrollArea>
+      </div>
+    </DelayedHoverPopover>
   );
 }
 

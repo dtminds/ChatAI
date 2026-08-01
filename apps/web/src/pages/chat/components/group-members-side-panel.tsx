@@ -13,11 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -25,6 +20,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
+import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
   Account,
   CustomerChatStartInput,
@@ -37,6 +33,7 @@ const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.NORMAL]: 2,
 } as const;
 const CUSTOMER_SEAT_RELATIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CUSTOMER_SEAT_RELATIONS_REQUEST_DELAY_MS = 250;
 
 const groupMemberNameSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
@@ -213,7 +210,7 @@ function GroupMemberRow({
   }
 
   return (
-    <GroupMemberCustomerHoverCard
+    <GroupMemberCustomerPopover
       accounts={accounts}
       currentEmployeeId={currentEmployeeId}
       member={member}
@@ -222,7 +219,7 @@ function GroupMemberRow({
   );
 }
 
-function GroupMemberCustomerHoverCard({
+function GroupMemberCustomerPopover({
   accounts,
   currentEmployeeId,
   member,
@@ -234,7 +231,7 @@ function GroupMemberCustomerHoverCard({
   onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
 }) {
   const requestIdRef = useRef(0);
-  const [isOpen, setIsOpen] = useState(false);
+  const requestTimerRef = useRef<number | undefined>(undefined);
   const [relationState, setRelationState] = useState<{
     items: WorkbenchCustomerSeatRelationDto[];
     loadedAt?: number;
@@ -243,14 +240,33 @@ function GroupMemberCustomerHoverCard({
 
   useEffect(
     () => () => {
+      window.clearTimeout(requestTimerRef.current);
       requestIdRef.current += 1;
     },
     [],
   );
 
-  function loadRelations(force = false) {
+  function cancelScheduledRelationsLoad() {
+    if (requestTimerRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(requestTimerRef.current);
+    requestTimerRef.current = undefined;
+    requestIdRef.current += 1;
+    setRelationState((currentState) =>
+      currentState.status === "loading"
+        ? { items: [], status: "idle" }
+        : currentState,
+    );
+  }
+
+  function loadRelations(force = false, requestDelay = 0) {
     if (!force) {
-      if (relationState.status === "loading") {
+      if (
+        relationState.status === "loading" ||
+        requestTimerRef.current !== undefined
+      ) {
         return;
       }
       if (
@@ -263,43 +279,63 @@ function GroupMemberCustomerHoverCard({
       }
     }
 
+    window.clearTimeout(requestTimerRef.current);
+    requestTimerRef.current = undefined;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setRelationState({ items: [], status: "loading" });
 
-    void getWorkbenchService()
-      .getCustomerSeatRelations(member.id)
-      .then((response) => {
-        if (requestIdRef.current !== requestId) {
-          return;
-        }
+    const requestRelations = () => {
+      requestTimerRef.current = undefined;
 
-        setRelationState({
-          items: response.items,
-          loadedAt: Date.now(),
-          status: "loaded",
+      // 群成员表无法区分员工 ID 与客户 external ID。普通成员直接用这一个
+      // 原始 third_userid 探测好友关系；能匹配到可见席位关系时才视为客户。
+      void getWorkbenchService()
+        .getCustomerSeatRelations(member.id)
+        .then((response) => {
+          if (requestIdRef.current !== requestId) {
+            return;
+          }
+
+          setRelationState({
+            items: response.items,
+            loadedAt: Date.now(),
+            status: "loaded",
+          });
+        })
+        .catch(() => {
+          if (requestIdRef.current === requestId) {
+            setRelationState({ items: [], status: "error" });
+          }
         });
-      })
-      .catch(() => {
-        if (requestIdRef.current === requestId) {
-          setRelationState({ items: [], status: "error" });
-        }
-      });
+    };
+
+    if (requestDelay > 0) {
+      requestTimerRef.current = window.setTimeout(requestRelations, requestDelay);
+      return;
+    }
+
+    requestRelations();
   }
 
   return (
-    <HoverCard
-      closeDelay={120}
+    <DelayedHoverPopover
+      contentProps={{
+        align: "start",
+        className:
+          "w-[22rem] rounded-[12px] border-border p-3 shadow-[0_12px_30px_var(--shadow-medium)]",
+        side: "left",
+        sideOffset: 8,
+      }}
       onOpenChange={(open) => {
-        setIsOpen(open);
         if (open) {
-          loadRelations();
+          loadRelations(false, CUSTOMER_SEAT_RELATIONS_REQUEST_DELAY_MS);
+        } else {
+          cancelScheduledRelationsLoad();
         }
       }}
-      open={isOpen}
       openDelay={400}
-    >
-      <HoverCardTrigger asChild>
+      trigger={
         <Button
           aria-label={`查看 ${member.displayName} 的好友关系`}
           className="h-auto w-full justify-start gap-2 rounded-[6px] px-1 py-1.5 text-left"
@@ -309,65 +345,59 @@ function GroupMemberCustomerHoverCard({
         >
           <GroupMemberRowContent member={member} />
         </Button>
-      </HoverCardTrigger>
-      <HoverCardContent
-        align="start"
-        className="w-[22rem] rounded-[12px] border-border p-3 shadow-[0_12px_30px_var(--shadow-medium)]"
-        side="left"
-        sideOffset={8}
-      >
-        <div className="flex items-center gap-2 px-1 py-0.5">
-          <Avatar className="size-9 shrink-0">
-            <AvatarImage alt={member.displayName} src={member.avatarUrl} />
-            <AvatarFallback className="text-xs">
-              {getFirstGroupMemberNameGrapheme(member.displayName)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {member.displayName}
-          </div>
+      }
+    >
+      <div className="flex items-center gap-2 px-1 py-0.5">
+        <Avatar className="size-9 shrink-0">
+          <AvatarImage alt={member.displayName} src={member.avatarUrl} />
+          <AvatarFallback className="text-xs">
+            {getFirstGroupMemberNameGrapheme(member.displayName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {member.displayName}
         </div>
-        <Separator className="my-2.5 bg-divider" />
-        {relationState.status === "loading" || relationState.status === "idle" ? (
-          <div
-            className="flex min-h-20 items-center justify-center gap-2 text-sm text-muted-foreground"
-            role="status"
-          >
-            <Spinner className="text-current" size={16} variant="classic" />
-            <span>正在加载</span>
+      </div>
+      <Separator className="my-2.5 bg-divider" />
+      {relationState.status === "loading" || relationState.status === "idle" ? (
+        <div
+          className="flex min-h-20 items-center justify-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <Spinner className="text-current" size={16} variant="classic" />
+          <span>正在加载</span>
+        </div>
+      ) : relationState.status === "error" ? (
+        <div className="flex min-h-20 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <span>加载失败</span>
+          <Button onClick={() => loadRelations(true)} size="sm" variant="outline">
+            重试
+          </Button>
+        </div>
+      ) : relationState.items.length === 0 ? (
+        <div className="flex min-h-20 items-center justify-center text-sm text-muted-foreground">
+          暂未添加为好友
+        </div>
+      ) : (
+        <ScrollArea className="max-h-[16rem]">
+          <div className="pr-2">
+            <CustomerSeatRelationList
+              accounts={accounts}
+              compact
+              currentEmployeeId={currentEmployeeId}
+              customer={{
+                avatar: member.avatarUrl ?? "",
+                name: member.displayName,
+                realName: "",
+                thirdExternalUserId: member.id,
+              }}
+              onStartChat={onStartChat}
+              relations={relationState.items}
+            />
           </div>
-        ) : relationState.status === "error" ? (
-          <div className="flex min-h-20 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <span>加载失败</span>
-            <Button onClick={() => loadRelations(true)} size="sm" variant="outline">
-              重试
-            </Button>
-          </div>
-        ) : relationState.items.length === 0 ? (
-          <div className="flex min-h-20 items-center justify-center text-sm text-muted-foreground">
-            暂未添加为好友
-          </div>
-        ) : (
-          <ScrollArea className="max-h-[16rem]">
-            <div className="pr-2">
-              <CustomerSeatRelationList
-                accounts={accounts}
-                compact
-                currentEmployeeId={currentEmployeeId}
-                customer={{
-                  avatar: member.avatarUrl ?? "",
-                  name: member.displayName,
-                  realName: "",
-                  thirdExternalUserId: member.id,
-                }}
-                onStartChat={onStartChat}
-                relations={relationState.items}
-              />
-            </div>
-          </ScrollArea>
-        )}
-      </HoverCardContent>
-    </HoverCard>
+        </ScrollArea>
+      )}
+    </DelayedHoverPopover>
   );
 }
 

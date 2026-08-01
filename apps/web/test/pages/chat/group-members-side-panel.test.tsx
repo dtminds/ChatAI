@@ -235,7 +235,7 @@ describe("GroupMembersSidePanel", () => {
     });
   });
 
-  it("waits 400ms before loading a member's friend relations", async () => {
+  it("opens after 400ms and waits another 250ms before requesting relations", async () => {
     vi.useFakeTimers();
     const getCustomerSeatRelations = vi.fn().mockResolvedValue({ items: [] });
     setWorkbenchService({
@@ -271,7 +271,125 @@ describe("GroupMembersSidePanel", () => {
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(getCustomerSeatRelations).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(249);
+    });
+    expect(getCustomerSeatRelations).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
     expect(getCustomerSeatRelations).toHaveBeenCalledWith("external-customer-003");
+  });
+
+  it("opens member actions from the keyboard and activates the chat action", async () => {
+    const user = userEvent.setup();
+    const getCustomerSeatRelations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          bindId: "bind-keyboard",
+          bindStatus: 1,
+          bindType: 1,
+          seatAvatar: "",
+          seatId: "seat-001",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-001",
+        },
+      ],
+    });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomerSeatRelations,
+    });
+    const onStartChat = vi.fn();
+
+    render(
+      <GroupMembersSidePanel
+        accounts={[
+          {
+            id: "seat-001",
+            loginStatus: "online",
+            name: "销售一号",
+            takenOverEmployeeId: "employee-001",
+          } as Account,
+        ]}
+        currentEmployeeId="employee-001"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "键盘客户",
+            id: "external-keyboard-customer",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onStartChat={onStartChat}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "查看 键盘客户 的好友关系",
+    });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+
+    const startChatButton = await screen.findByRole("button", {
+      name: "向 销售一号 发起会话",
+    });
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith(
+      "external-keyboard-customer",
+    );
+
+    startChatButton.focus();
+    await user.keyboard("{Enter}");
+
+    expect(onStartChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        seatId: "seat-001",
+        thirdExternalUserId: "external-keyboard-customer",
+      }),
+    );
+  });
+
+  it("opens member actions from a touch pointer", async () => {
+    const user = userEvent.setup();
+    const getCustomerSeatRelations = vi.fn().mockResolvedValue({ items: [] });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomerSeatRelations,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "触屏客户",
+            id: "external-touch-customer",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "查看 触屏客户 的好友关系",
+    });
+    await user.pointer([
+      { keys: "[TouchA>]", target: trigger },
+      { keys: "[/TouchA]", target: trigger },
+    ]);
+
+    expect(await screen.findByText("暂未添加为好友")).toBeInTheDocument();
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith(
+      "external-touch-customer",
+    );
   });
 
   it("shows the same not-added state when no visible seat has a friend relation", async () => {

@@ -6,6 +6,7 @@ import {
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
+import { sortConversationsForDisplay } from "@/pages/chat/lib/conversation-order";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -11892,6 +11893,96 @@ describe("useWorkbenchStore", () => {
       ).toBe(true);
       expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(true);
     });
+  });
+
+  it("keeps the opening-time promotion snapshot during a cross-seat list refresh", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = createConversationSummaryDto("conv-open-snapshot", {
+      lastMessageTime: 1_778_999_000_000,
+      seatId: "ndt",
+      thirdUserId: "third-user-ndt",
+    });
+    const newlyActiveConversation = createConversationSummaryDto(
+      "conv-new-activity",
+      {
+        lastMessageTime: target.lastMessageTime! + 1_000,
+        seatId: "ndt",
+        thirdUserId: "third-user-ndt",
+      },
+    );
+    const conversationListGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        if (accountId !== "ndt") {
+          return baseService.getConversations(accountId, options);
+        }
+
+        await conversationListGate.promise;
+        return {
+          hasMore: false,
+          items:
+            options?.mode === "single" ? [newlyActiveConversation] : [],
+          snapshotAt: newlyActiveConversation.lastMessageTime!,
+        };
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const openPromise = useWorkbenchStore.getState().openConversation({
+      mode: "single",
+      seatId: "ndt",
+      thirdExternalUserId: target.thirdExternalUserId!,
+    });
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        target.conversationId,
+      );
+    });
+
+    const openingPromotion = useWorkbenchStore.getState().conversationPromotion;
+    expect(openingPromotion?.baselineUpdatedAtMs).toBe(target.lastMessageTime);
+
+    conversationListGate.resolve();
+    await expect(openPromise).resolves.toBe(true);
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().conversationListsByScope.ndt.some(
+          (conversation) =>
+            conversation.id === newlyActiveConversation.conversationId,
+        ),
+      ).toBe(true);
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(state.conversationPromotion).toEqual(openingPromotion);
+    expect(
+      sortConversationsForDisplay(
+        state.conversationListsByScope.ndt,
+        state.conversationPromotion,
+      )
+        .slice(0, 2)
+        .map((conversation) => conversation.id),
+    ).toEqual([
+      newlyActiveConversation.conversationId,
+      target.conversationId,
+    ]);
   });
 
   it("ignores an older background list refresh for the same seat", async () => {

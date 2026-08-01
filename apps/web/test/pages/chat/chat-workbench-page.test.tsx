@@ -216,6 +216,56 @@ describe("ChatWorkbenchPage", () => {
     expect(getConversation).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels a pending routed open after leaving the conversation route", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = await baseService.getConversation("conv-002");
+    const targetDeferred = createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn((conversationId: string) =>
+      conversationId === "conv-002"
+        ? targetDeferred.promise
+        : baseService.getConversation(conversationId),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/tickets");
+    });
+    targetDeferred.resolve(target);
+    await act(async () => {
+      await targetDeferred.promise;
+      await Promise.resolve();
+    });
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+    expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+
+    await act(async () => {
+      await router.navigate("/chat");
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+  });
+
   it("captures an in-place conversation route before automatic list selection", async () => {
     const baseService = createMockWorkbenchService();
     const targetConversation = await baseService.getConversation("conv-002");

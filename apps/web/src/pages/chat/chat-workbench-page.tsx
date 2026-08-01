@@ -395,6 +395,7 @@ function ChatWorkbenchContent({
     conversationListsByScope,
     conversationOpenError,
     conversationPromotion,
+    cancelConversationOpen,
     clearConversationPromotion,
     customerProfilesById,
     deleteConversation,
@@ -486,6 +487,7 @@ function ChatWorkbenchContent({
       conversationListsByScope: state.conversationListsByScope,
       conversationOpenError: state.conversationOpenError,
       conversationPromotion: state.conversationPromotion,
+      cancelConversationOpen: state.cancelConversationOpen,
       clearConversationPromotion: state.clearConversationPromotion,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
@@ -652,6 +654,9 @@ function ChatWorkbenchContent({
       }
     | undefined
   >(undefined);
+  const routedConversationOpenRef = useRef(routedConversationOpen);
+  routedConversationOpenRef.current = routedConversationOpen;
+  const completedRoutedConversationOpenRequestKeyRef = useRef("");
   const draftRef = useRef("");
   const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
@@ -664,6 +669,13 @@ function ChatWorkbenchContent({
       composerSegmentsRef.current = nextSegments;
     },
     [],
+  );
+  const consumeRoutedConversationOpen = useCallback(
+    (requestKey: string) => {
+      completedRoutedConversationOpenRequestKeyRef.current = requestKey;
+      onConsumeRoutedConversationOpen?.(requestKey);
+    },
+    [onConsumeRoutedConversationOpen],
   );
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
@@ -1093,7 +1105,6 @@ function ChatWorkbenchContent({
   }, [
     bootstrapStatus,
     initializeWorkbench,
-    onConsumeRoutedConversationOpen,
     prepareConversationActivation,
     routedConversationOpen,
   ]);
@@ -1109,7 +1120,7 @@ function ChatWorkbenchContent({
       activeConversationId === routedConversationOpen.conversationId &&
       !conversationOpenError
     ) {
-      onConsumeRoutedConversationOpen?.(routedConversationOpen.requestKey);
+      consumeRoutedConversationOpen(routedConversationOpen.requestKey);
       return;
     }
 
@@ -1130,10 +1141,9 @@ function ChatWorkbenchContent({
     }
 
     let cancelled = false;
-
     void openAttempt.promise.finally(() => {
       if (!cancelled) {
-        onConsumeRoutedConversationOpen?.(routedConversationOpen.requestKey);
+        consumeRoutedConversationOpen(routedConversationOpen.requestKey);
       }
     });
 
@@ -1143,12 +1153,45 @@ function ChatWorkbenchContent({
   }, [
     activeConversationId,
     bootstrapStatus,
+    consumeRoutedConversationOpen,
     conversationOpenError,
-    onConsumeRoutedConversationOpen,
     openConversation,
     prepareConversationActivation,
     routedConversationOpen,
   ]);
+
+  useEffect(() => {
+    const requestKey = routedConversationOpen?.requestKey;
+
+    if (!requestKey) {
+      return;
+    }
+
+    return () => {
+      // StrictMode 会重放 effect；延迟到微任务后，只有真正离开这次路由请求
+      // 才失效 Store 中尚未完成的打开操作。
+      queueMicrotask(() => {
+        if (
+          completedRoutedConversationOpenRequestKeyRef.current === requestKey ||
+          (isMountedRef.current &&
+            routedConversationOpenRef.current?.requestKey === requestKey)
+        ) {
+          return;
+        }
+
+        if (conversationOpenAttemptRef.current?.requestKey === requestKey) {
+          conversationOpenAttemptRef.current = undefined;
+        }
+        if (
+          bootstrapConversationOpenAttemptRequestKeyRef.current === requestKey
+        ) {
+          bootstrapConversationOpenAttemptRequestKeyRef.current = "";
+        }
+
+        cancelConversationOpen();
+      });
+    };
+  }, [cancelConversationOpen, routedConversationOpen?.requestKey]);
 
   useEffect(
     () => {

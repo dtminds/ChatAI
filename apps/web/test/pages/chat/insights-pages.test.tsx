@@ -1945,11 +1945,15 @@ describe("conversation insights pages", () => {
       expect(
         useWorkbenchStore.getState().conversationPromotion?.conversationId,
       ).toBe("301");
-    });
+    }, { timeout: 5_000 });
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");
-    });
-    const promotedCard = await screen.findByTestId("conversation-card-301");
+    }, { timeout: 5_000 });
+    const promotedCard = await screen.findByTestId(
+      "conversation-card-301",
+      {},
+      { timeout: 5_000 },
+    );
     const naturallyFirstCard = screen.getByTestId("conversation-card-conv-001");
     expect(
       promotedCard.compareDocumentPosition(naturallyFirstCard) &

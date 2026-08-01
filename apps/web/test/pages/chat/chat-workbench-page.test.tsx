@@ -346,6 +346,33 @@ describe("ChatWorkbenchPage", () => {
     );
   });
 
+  it("retries a routed conversation after bootstrap falls back from a partial open failure", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi
+      .fn(baseService.getConversation)
+      .mockRejectedValueOnce(new Error("会话摘要暂时不可用"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage({
+      pathname: "/chat/conversations/conv-002",
+      state: { openConversation: true },
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+      expect(
+        useWorkbenchStore.getState().conversationPromotion?.conversationId,
+      ).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getConversation).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+  });
+
   it("opens a state-free cold conversation route without promoting it", async () => {
     const baseService = createMockWorkbenchService();
     const getConversation = vi.fn(baseService.getConversation);

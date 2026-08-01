@@ -641,7 +641,7 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
-  const bootstrappedConversationOpenRequestKeyRef = useRef("");
+  const bootstrapConversationOpenAttemptRequestKeyRef = useRef("");
   // React StrictMode replays effects. Keep the in-flight Promise by route key
   // so the replay observes the same open attempt instead of consuming the URL
   // before the conversation and its temporary promotion reach the store.
@@ -1074,14 +1074,14 @@ function ChatWorkbenchContent({
 
     if (
       routedConversationOpen &&
-      bootstrappedConversationOpenRequestKeyRef.current ===
+      bootstrapConversationOpenAttemptRequestKeyRef.current ===
         routedConversationOpen.requestKey
     ) {
       return;
     }
 
     if (routedConversationOpen) {
-      bootstrappedConversationOpenRequestKeyRef.current =
+      bootstrapConversationOpenAttemptRequestKeyRef.current =
         routedConversationOpen.requestKey;
     }
 
@@ -1104,8 +1104,10 @@ function ChatWorkbenchContent({
     }
 
     if (
-      bootstrappedConversationOpenRequestKeyRef.current ===
-      routedConversationOpen.requestKey
+      bootstrapConversationOpenAttemptRequestKeyRef.current ===
+        routedConversationOpen.requestKey &&
+      activeConversationId === routedConversationOpen.conversationId &&
+      !conversationOpenError
     ) {
       onConsumeRoutedConversationOpen?.(routedConversationOpen.requestKey);
       return;
@@ -1139,7 +1141,9 @@ function ChatWorkbenchContent({
       cancelled = true;
     };
   }, [
+    activeConversationId,
     bootstrapStatus,
+    conversationOpenError,
     onConsumeRoutedConversationOpen,
     openConversation,
     prepareConversationActivation,

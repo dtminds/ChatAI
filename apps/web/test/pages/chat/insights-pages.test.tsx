@@ -4551,6 +4551,54 @@ describe("conversation insights pages", () => {
     });
   });
 
+  it("clears detail loading when an in-flight UID detail is closed", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+    const detailGate = createDeferred();
+    serviceMocks.getInsightsWorkerUidDetail.mockReturnValueOnce(detailGate.promise);
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+
+    try {
+      renderRoute("/chat/insights/worker-observability");
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: "2002" }),
+      );
+      const detailDialog = await screen.findByRole("dialog", { name: "UID 2002" });
+      const requestOptions = serviceMocks.getInsightsWorkerUidDetail.mock.calls[0]?.[1];
+
+      expect(requestOptions?.signal?.aborted).toBe(false);
+      expect(
+        within(detailDialog).getByRole("button", { name: "刷新 UID 详情" }),
+      ).toBeDisabled();
+
+      await userEvent.click(
+        within(detailDialog).getByRole("button", { name: "关闭" }),
+      );
+      await waitFor(() => {
+        expect(requestOptions?.signal?.aborted).toBe(true);
+        expect(screen.queryByRole("dialog", { name: "UID 2002" })).not.toBeInTheDocument();
+      });
+
+      visibility.mockReturnValue("hidden");
+      await userEvent.click(screen.getByRole("button", { name: "2002" }));
+
+      const reopenedDialog = await screen.findByRole("dialog", { name: "UID 2002" });
+      expect(
+        within(reopenedDialog).getByRole("button", { name: "刷新 UID 详情" }),
+      ).toBeEnabled();
+      expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledTimes(1);
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
   it("does not request cross-tenant worker data for a non-observer direct route", async () => {
     serviceMocks.getInsightCapabilities.mockResolvedValue({
       canManageInsights: true,

@@ -166,6 +166,7 @@ export function InsightsWorkerObservabilityPage() {
   useEffect(() => {
     setDetail(undefined);
     setDetailError(false);
+    setDetailLoading(false);
   }, [canView, selectedUid]);
 
   const loadDetail = useCallback(

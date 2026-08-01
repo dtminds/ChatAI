@@ -18,13 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { uploadWorkbenchImageFile } from "@/pages/chat/api/media-upload-service";
-import {
-  QuickReplyAttachmentPicker,
-  type QuickReplyDraftAttachment,
-  type QuickReplyLocalImageAttachment,
-} from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
+import { QuickReplyAttachmentPicker } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
 import { quickReplyTitlePalette } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
+import type {
+  QuickReplyDraftAttachment,
+  QuickReplyLocalImageAttachment,
+} from "@/pages/chat/lib/quick-reply-attachment-types";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 type QuickReplyFormDialogProps = {
   categories: WorkbenchQuickReplyCategoryDto[];
@@ -141,7 +142,7 @@ export function QuickReplyFormDialog({
       });
       onOpenChange(false);
     } catch (submitError) {
-      setError(getSubmitErrorMessage(submitError));
+      setError(resolveErrorMessage(submitError, "保存失败，请稍后重试").trim());
     } finally {
       setIsSubmitting(false);
     }
@@ -356,18 +357,4 @@ function stripLocalImageContent(
     ...attachment,
     content,
   };
-}
-
-function getSubmitErrorMessage(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string" &&
-    error.message.trim()
-  ) {
-    return error.message.trim();
-  }
-
-  return "保存失败，请稍后重试";
 }

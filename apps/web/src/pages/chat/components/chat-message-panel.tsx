@@ -14,7 +14,7 @@ import {
   isSmartReplySemanticWait,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";

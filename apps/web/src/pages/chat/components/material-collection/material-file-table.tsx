@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialLibraryFooter } from "@/pages/chat/components/material-collection/material-library-footer";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";

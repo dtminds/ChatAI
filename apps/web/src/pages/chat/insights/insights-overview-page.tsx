@@ -35,6 +35,7 @@ import {
   type TooltipProps,
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -845,22 +846,6 @@ type SessionFilterOptions = {
   intents: Array<{ label: string; value: string }>;
   tags: Array<{ label: string; value: string }>;
 };
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedValue(value);
-    }, delayMs);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 function normalizeAnalysisStatusFilter(value: string): InsightOverviewSessionsQuery["analysisStatus"] | undefined {
   return value === "analyzing" || value === "ready" || value === "partial" || value === "failed" || value === "stale"

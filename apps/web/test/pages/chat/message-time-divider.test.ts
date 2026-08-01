@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import {
-  ChatMessageList,
-  formatMessageDividerLabel,
-} from "@/pages/chat/components/message-feed";
+import { ChatMessageList } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { formatMessageDividerLabel } from "@/pages/chat/lib/chat-time";
 
 describe("formatMessageDividerLabel", () => {
   afterEach(() => {

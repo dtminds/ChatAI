@@ -496,14 +496,18 @@ describe("CustomerPage", () => {
       expect(router.state.location.pathname).toBe(
         "/chat/conversations/mock-conversation-1",
       );
-    });
-    expect(useWorkbenchStore.getState().activeConversationId).toBe("");
-    releaseConversationMessages();
-    await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe(
         "mock-conversation-1",
       );
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
     });
+    releaseConversationMessages();
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+    });
+    expect(useWorkbenchStore.getState().activeConversationId).toBe(
+      "mock-conversation-1",
+    );
     expect(getOrCreateConversation).toHaveBeenCalledWith({
       chatType: 1,
       seatId: "drc",

@@ -35,6 +35,7 @@ import type {
   FileUploadQueueItem,
   GroupMember,
   ChatMessage,
+  CustomerChatStartInput,
   Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
@@ -59,6 +60,7 @@ const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
 export type ChatAuxiliaryPanel = "history" | "tickets" | null;
 
 type ChatPanelProps = {
+  accounts?: Account[];
   accountName?: string;
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
@@ -80,6 +82,7 @@ type ChatPanelProps = {
   shouldShowConversationAIHostingControl?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
+  currentEmployeeId?: string;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
   sidebarIframeTos?: "0" | "1";
   /** 侧栏 iframe `sendStatus`：发送能力状态码 */
@@ -158,6 +161,9 @@ type ChatPanelProps = {
   onHistorySetScope: (scope: "all" | "file" | "media" | "h5" | "mini-program") => void;
   onHistorySetSenderId: (senderId?: string) => void;
   onRefreshGroupMembers: () => void;
+  onStartCustomerChat?: (
+    input: CustomerChatStartInput,
+  ) => void | Promise<void>;
   onLoadOlderMessages: () => void;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
@@ -202,6 +208,7 @@ type ChatPanelProps = {
 };
 
 export function ChatPanel({
+  accounts = [],
   accountName,
   accountAvatarUrl,
   activeConversation,
@@ -223,6 +230,7 @@ export function ChatPanel({
   shouldShowConversationAIHostingControl = false,
   composerPlaceholder,
   customer,
+  currentEmployeeId,
   sidebarIframeTos,
   sidebarIframeSendStatus,
   customerPanelWidth,
@@ -283,6 +291,7 @@ export function ChatPanel({
   onHistorySetScope,
   onHistorySetSenderId,
   onRefreshGroupMembers,
+  onStartCustomerChat,
   onLoadOlderMessages,
   onMarkConversationRead,
   onMarkConversationUnread,
@@ -397,8 +406,10 @@ export function ChatPanel({
       : ticketsPanelNode;
   const customerSidePanelNode = activeConversation ? (
     <CustomerSidePanel
+      accounts={accounts}
       accountName={accountName}
       conversationMode={activeConversation.mode}
+      currentEmployeeId={currentEmployeeId}
       customer={customer}
       groupMembers={groupMembers}
       isGroupMembersLoading={isGroupMembersLoading}
@@ -406,6 +417,7 @@ export function ChatPanel({
       onRefreshGroupMembers={onRefreshGroupMembers}
       onResizeStart={onCustomerPanelResizeStart}
       onQuickReplyActiveChange={onQuickReplyActiveChange}
+      onStartCustomerChat={onStartCustomerChat}
       panelWidth={isMobileLayout ? undefined : customerPanelWidth}
       quickReplyPanel={quickReplyPanel}
       showResizeHandle={!isMobileLayout}

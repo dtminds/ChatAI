@@ -52,6 +52,7 @@ import {
   filterHistoryChatMessages,
   HistoryCompactMessageList,
 } from "@/pages/chat/components/message-history-side-panel";
+import { OpenConversationLink } from "@/pages/chat/components/open-conversation-link";
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
 import { AnalysisPhaseBadge, AnalysisStatusBadge, ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
@@ -96,7 +97,10 @@ export function InsightDetailPanel({
 
   return (
     <Sheet onOpenChange={onOpenChange} open={isOpen}>
-      <SheetContent className="w-full overflow-hidden sm:max-w-[min(1180px,calc(100vw-48px))]">
+      <SheetContent
+        className="w-full overflow-hidden sm:max-w-[min(1180px,calc(100vw-48px))]"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
           <SheetTitle className="sr-only">洞察详情</SheetTitle>
           <SheetDescription className="sr-only">
             查看本轮咨询会话的分析结果和对话证据
@@ -136,7 +140,7 @@ export function InsightDetailPanel({
                   role="region"
                 >
                   <div className="flex h-full min-h-0 flex-col">
-                    <div className="border-b bg-background px-5 py-4">
+                    <div className="flex items-center justify-between gap-3 border-b bg-background px-5 py-4 pr-14">
                       <h3 className="inline-flex items-baseline gap-2 text-sm font-semibold text-foreground">
                         <span>本轮对话</span>
                         {!isMessagesLoading ? (
@@ -145,6 +149,9 @@ export function InsightDetailPanel({
                           </span>
                         ) : null}
                       </h3>
+                      <OpenConversationLink
+                        conversationId={detail.session.conversationId}
+                      />
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">

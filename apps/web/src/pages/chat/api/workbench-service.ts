@@ -24,6 +24,7 @@ import {
   type WorkbenchCustomerListResponse,
   type WorkbenchCustomerLastConversationResponse,
   type WorkbenchCustomerRelationConversationsResponse,
+  type WorkbenchCustomerSeatRelationsResponse,
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
@@ -185,6 +186,9 @@ export type WorkbenchService = {
     thirdExternalUserId: string,
     thirdUserIds: string[],
   ) => Promise<WorkbenchCustomerRelationConversationsResponse>;
+  getCustomerSeatRelations: (
+    thirdExternalUserId: string,
+  ) => Promise<WorkbenchCustomerSeatRelationsResponse>;
   /** 未配置或未接入数据库时可为 `null` */
   getSidebarIframeParams: (input: {
     conversationId: string;
@@ -534,6 +538,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       return {};
     },
     async getCustomerRelationConversations() {
+      return { items: [] };
+    },
+    async getCustomerSeatRelations() {
       return { items: [] };
     },
     async listMaterialCollections(request) {
@@ -2118,6 +2125,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
             third_userids: thirdUserIds.join(","),
           },
         },
+      );
+    },
+    getCustomerSeatRelations(thirdExternalUserId) {
+      return http.get<WorkbenchCustomerSeatRelationsResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/seat-relations`,
       );
     },
     listMaterialCollections(request) {

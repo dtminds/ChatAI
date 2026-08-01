@@ -36,6 +36,15 @@ export type GroupMember = {
   type: WorkbenchGroupMemberType;
 };
 
+export type CustomerChatStartInput = {
+  conversationId?: string;
+  seatId: string;
+  thirdExternalUserId: string;
+  customerName: string;
+  customerAvatar: string;
+  realName: string;
+};
+
 export type Account = {
   seatAIHostingEnabled?: boolean;
   seatAIHostingAuth?: boolean;

@@ -186,10 +186,24 @@ export const routerConfig = [
       {
         path: "chat",
         element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
-        path: "chat/customers",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
+        children: [
+          {
+            element: <></>,
+            path: "conversations/:conversationId",
+          },
+          {
+            element: <></>,
+            path: "customers",
+          },
+          {
+            element: <></>,
+            path: "tickets",
+          },
+          {
+            element: <></>,
+            path: "tickets/:ticketId",
+          },
+        ],
       },
       {
         path: "chat/settings",
@@ -228,14 +242,6 @@ export const routerConfig = [
             element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
           },
         ],
-      },
-      {
-        path: "chat/tickets",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
-        path: "chat/tickets/:ticketId",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/ai-hosting",

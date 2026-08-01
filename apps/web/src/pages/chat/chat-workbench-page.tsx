@@ -2,11 +2,13 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
+import { flushSync } from "react-dom";
 import type { LexicalEditor } from "lexical";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -26,6 +28,7 @@ import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -35,6 +38,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchSearchContactResultDto,
+  type WorkbenchSearchGroupResultDto,
   type WorkbenchSeatAgentMode,
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
@@ -84,6 +89,7 @@ import type {
   ChatMessage,
   ChatMode,
   Conversation,
+  CustomerChatStartInput,
   FileUploadQueueItem,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
@@ -100,6 +106,12 @@ import {
   resolveConversationView,
   type ConversationView,
 } from "@/pages/chat/lib/conversation-view";
+import { sortConversationsForDisplay } from "@/pages/chat/lib/conversation-order";
+import {
+  getRoutedConversationId,
+  isOpenConversationLocationState,
+  isConversationRoutePath,
+} from "@/pages/chat/lib/conversation-navigation";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -240,6 +252,12 @@ function isElementVisibleInsideViewport(
   );
 }
 
+type RoutedConversationOpen = {
+  conversationId: string;
+  promote: boolean;
+  requestKey: string;
+};
+
 export function ChatWorkbenchPage() {
   return <ChatWorkbenchContent />;
 }
@@ -247,6 +265,34 @@ export function ChatWorkbenchPage() {
 export function ChatWorkbenchRoutePage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const routedConversationId = getRoutedConversationId(location.pathname);
+  const isConversationRoute = isConversationRoutePath(location.pathname);
+  const hasConversationOpenIntent =
+    Boolean(routedConversationId) &&
+    isOpenConversationLocationState(location.state);
+  const initialConversationOpen =
+    routedConversationId
+      ? {
+          conversationId: routedConversationId,
+          promote: hasConversationOpenIntent,
+          requestKey: location.key,
+        }
+      : undefined;
+  const capturedConversationOpenRequestKeyRef = useRef(
+    initialConversationOpen?.requestKey ?? "",
+  );
+  const [pendingConversationOpen, setPendingConversationOpen] = useState<
+    RoutedConversationOpen | undefined
+  >(initialConversationOpen);
+  // Derive the current route request during render as well as storing it in
+  // state. The child workbench can run its own effects in the same commit, so
+  // waiting for the capture effect alone still leaves a window for automatic
+  // first-conversation selection.
+  const routedConversationOpen = isConversationRoute
+    ? pendingConversationOpen?.requestKey === location.key
+      ? pendingConversationOpen
+      : initialConversationOpen
+    : undefined;
   const activeView =
     location.pathname === "/chat/customers"
       ? "customers"
@@ -258,16 +304,68 @@ export function ChatWorkbenchRoutePage() {
       ? decodeURIComponent(location.pathname.slice("/chat/tickets/".length))
       : undefined;
 
+  // Capture the route instruction before ChatWorkbenchContent's passive
+  // effects run. This prevents the automatic first-conversation selector from
+  // briefly activating the list's first item during an in-place route change.
+  useLayoutEffect(() => {
+    if (!isConversationRoute) {
+      return;
+    }
+
+    if (
+      routedConversationId &&
+      capturedConversationOpenRequestKeyRef.current !== location.key
+    ) {
+      capturedConversationOpenRequestKeyRef.current = location.key;
+      setPendingConversationOpen({
+        conversationId: routedConversationId,
+        promote: hasConversationOpenIntent,
+        requestKey: location.key,
+      });
+    } else if (!routedConversationId) {
+      setPendingConversationOpen(undefined);
+      void navigate("/chat", {
+        replace: true,
+        state: null,
+      });
+    }
+  }, [
+    hasConversationOpenIntent,
+    isConversationRoute,
+    location.key,
+    navigate,
+    routedConversationId,
+  ]);
+
+  const handleConsumeConversationOpen = useCallback(
+    (requestKey: string) => {
+      if (capturedConversationOpenRequestKeyRef.current !== requestKey) {
+        return;
+      }
+
+      setPendingConversationOpen((currentOpen) =>
+        currentOpen?.requestKey === requestKey ? undefined : currentOpen,
+      );
+      void navigate("/chat", {
+        replace: true,
+        state: null,
+      });
+    },
+    [navigate],
+  );
+
   return (
     <ChatWorkbenchContent
       activeTicketId={activeTicketId}
       activeView={activeView}
+      onConsumeRoutedConversationOpen={handleConsumeConversationOpen}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
       }}
       onNavigateChat={() => {
         navigate("/chat");
       }}
+      routedConversationOpen={routedConversationOpen}
     />
   );
 }
@@ -275,13 +373,17 @@ export function ChatWorkbenchRoutePage() {
 function ChatWorkbenchContent({
   activeTicketId,
   activeView = "chat",
+  onConsumeRoutedConversationOpen,
   onNavigateChat,
   onNavigateCustomerPage,
+  routedConversationOpen,
 }: {
   activeTicketId?: string;
   activeView?: "chat" | "customers" | "tickets";
+  onConsumeRoutedConversationOpen?: (requestKey: string) => void;
   onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
+  routedConversationOpen?: RoutedConversationOpen;
 }) {
   useTicketCountPolling();
   const {
@@ -292,9 +394,14 @@ function ChatWorkbenchContent({
     bootstrapError,
     bootstrapStatus,
     conversationListsByScope,
+    conversationOpenError,
+    conversationPromotion,
+    cancelConversationOpen,
+    clearConversationPromotion,
     customerProfilesById,
     deleteConversation,
     dismissFullAutoActionError,
+    dismissConversationOpenError,
     groupMembersLoadingByConversationId,
     hasMoreUnreadByScope,
     groupMembersByConversationId,
@@ -341,6 +448,7 @@ function ChatWorkbenchContent({
     composerDraftsByConversationId,
     loadHistoryMessages,
     openHistoryPanel,
+    openConversation,
     setHistoryPanelDay,
     setHistoryPanelScope,
     setHistoryPanelSenderId,
@@ -351,7 +459,6 @@ function ChatWorkbenchContent({
     setActiveConversation,
     setActiveMode,
     sidebarItems,
-    selectOrCreateAndSelectConversation,
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
@@ -379,8 +486,13 @@ function ChatWorkbenchContent({
       composerDraftsByConversationId: state.composerDraftsByConversationId,
       confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
       conversationListsByScope: state.conversationListsByScope,
+      conversationOpenError: state.conversationOpenError,
+      conversationPromotion: state.conversationPromotion,
+      cancelConversationOpen: state.cancelConversationOpen,
+      clearConversationPromotion: state.clearConversationPromotion,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
+      dismissConversationOpenError: state.dismissConversationOpenError,
       dismissFullAutoActionError: state.dismissFullAutoActionError,
       dismissReadReceiptError: state.dismissReadReceiptError,
       dismissScopeTransitionError: state.dismissScopeTransitionError,
@@ -421,6 +533,7 @@ function ChatWorkbenchContent({
         state.messagePaginationByConversationId,
       messagesByConversationId: state.messagesByConversationId,
       openHistoryPanel: state.openHistoryPanel,
+      openConversation: state.openConversation,
       pinConversation: state.pinConversation,
       pollIntervalMs: state.pollState.intervalMs,
       pollJitterMs: state.pollState.jitterMs,
@@ -435,8 +548,6 @@ function ChatWorkbenchContent({
       revokeMessage: state.revokeMessage,
       saveComposerDraft: state.saveComposerDraft,
       scopeTransitionError: state.scopeTransitionError,
-      selectOrCreateAndSelectConversation:
-        state.selectOrCreateAndSelectConversation,
       sendAgentMessageSegments: state.sendAgentMessageSegments,
       sendSmartReply: state.sendSmartReply,
       setActiveAccount: state.setActiveAccount,
@@ -517,6 +628,8 @@ function ChatWorkbenchContent({
   const [mobilePane, setMobilePane] = useState<MobileWorkbenchPane>("list");
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
+  const [routedConversationOpenRetryVersion, setRoutedConversationOpenRetryVersion] =
+    useState(0);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
@@ -533,6 +646,20 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
+  const bootstrapConversationOpenAttemptRequestKeyRef = useRef("");
+  // React StrictMode replays effects. Keep the in-flight Promise by route key
+  // so the replay observes the same open attempt instead of consuming the URL
+  // before the conversation and its temporary promotion reach the store.
+  const conversationOpenAttemptRef = useRef<
+    | {
+        promise: Promise<boolean>;
+        requestKey: string;
+      }
+    | undefined
+  >(undefined);
+  const routedConversationOpenRef = useRef(routedConversationOpen);
+  routedConversationOpenRef.current = routedConversationOpen;
+  const completedRoutedConversationOpenRequestKeyRef = useRef("");
   const draftRef = useRef("");
   const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
@@ -546,6 +673,40 @@ function ChatWorkbenchContent({
     },
     [],
   );
+  const consumeRoutedConversationOpen = useCallback(
+    (requestKey: string) => {
+      completedRoutedConversationOpenRequestKeyRef.current = requestKey;
+      onConsumeRoutedConversationOpen?.(requestKey);
+    },
+    [onConsumeRoutedConversationOpen],
+  );
+  const retryRoutedConversationOpen = useCallback(() => {
+    if (!routedConversationOpen) {
+      return;
+    }
+
+    if (
+      conversationOpenAttemptRef.current?.requestKey ===
+      routedConversationOpen.requestKey
+    ) {
+      conversationOpenAttemptRef.current = undefined;
+    }
+
+    dismissConversationOpenError();
+    setRoutedConversationOpenRetryVersion((currentVersion) => currentVersion + 1);
+  }, [dismissConversationOpenError, routedConversationOpen]);
+  const cancelRoutedConversationOpen = useCallback(() => {
+    if (!routedConversationOpen) {
+      return;
+    }
+
+    dismissConversationOpenError();
+    consumeRoutedConversationOpen(routedConversationOpen.requestKey);
+  }, [
+    consumeRoutedConversationOpen,
+    dismissConversationOpenError,
+    routedConversationOpen,
+  ]);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -580,12 +741,33 @@ function ChatWorkbenchContent({
     });
     setShouldPersistConversationViewState(true);
   }, []);
-
+  const prepareConversationActivation = useCallback(
+    (conversation: Conversation) => {
+      flushSync(() => {
+        setConversationViewState((currentViewState) => ({
+          ...currentViewState,
+          [conversation.mode]: DEFAULT_CONVERSATION_VIEW,
+        }));
+        setConversationViewRetainedState(null);
+        setShouldPersistConversationViewState(true);
+      });
+    },
+    [],
+  );
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations =
     conversationListsByScope[activeAccountId] ?? EMPTY_CONVERSATIONS;
-  const visibleSearchableConversations = allConversations;
+  const visibleSearchableConversations = useMemo(
+    () =>
+      sortConversationsForDisplay(
+        allConversations,
+        conversationPromotion?.accountId === activeAccountId
+          ? conversationPromotion
+          : undefined,
+      ),
+    [activeAccountId, allConversations, conversationPromotion],
+  );
   const currentConversationView = conversationViewState[activeMode];
   const resolvedConversationView = resolveConversationView(
     currentConversationView,
@@ -631,6 +813,8 @@ function ChatWorkbenchContent({
   );
   const handleSelectConversationView = useCallback(
     (view: ConversationView) => {
+      clearConversationPromotion();
+
       const resolvedView = resolveConversationView(
         view,
         activeMode,
@@ -688,6 +872,7 @@ function ChatWorkbenchContent({
       activeConversationId,
       activeMode,
       activeModeConversations,
+      clearConversationPromotion,
       clearActiveConversation,
       isActiveSeatAIHostingEnabled,
       setConversationView,
@@ -832,6 +1017,12 @@ function ChatWorkbenchContent({
     },
     [markConversationRead],
   );
+  const handleDeleteConversation = useCallback(
+    async (conversationId: string) => {
+      await deleteConversation(conversationId);
+    },
+    [deleteConversation],
+  );
   const shouldSuppressAutoRead = useCallback(
     (conversationId: string, unreadCount: number) => {
       const manuallyMarkedUnreadCount =
@@ -923,8 +1114,115 @@ function ChatWorkbenchContent({
       return;
     }
 
-    void initializeWorkbench();
-  }, [bootstrapStatus, initializeWorkbench]);
+    if (
+      routedConversationOpen &&
+      bootstrapConversationOpenAttemptRequestKeyRef.current ===
+        routedConversationOpen.requestKey
+    ) {
+      return;
+    }
+
+    if (routedConversationOpen) {
+      bootstrapConversationOpenAttemptRequestKeyRef.current =
+        routedConversationOpen.requestKey;
+    }
+
+    void initializeWorkbench({
+      beforeActivate: prepareConversationActivation,
+      preferredConversationId: routedConversationOpen?.conversationId,
+      promotePreferredConversation: routedConversationOpen?.promote,
+    });
+  }, [
+    bootstrapStatus,
+    initializeWorkbench,
+    prepareConversationActivation,
+    routedConversationOpen,
+  ]);
+
+  useEffect(() => {
+    if (!routedConversationOpen || bootstrapStatus !== "ready") {
+      return;
+    }
+
+    if (
+      bootstrapConversationOpenAttemptRequestKeyRef.current ===
+        routedConversationOpen.requestKey &&
+      activeConversationId === routedConversationOpen.conversationId &&
+      !conversationOpenError
+    ) {
+      consumeRoutedConversationOpen(routedConversationOpen.requestKey);
+      return;
+    }
+
+    let openAttempt = conversationOpenAttemptRef.current;
+
+    if (openAttempt?.requestKey !== routedConversationOpen.requestKey) {
+      openAttempt = {
+        promise: openConversation(
+          { conversationId: routedConversationOpen.conversationId },
+          {
+            beforeActivate: prepareConversationActivation,
+            promote: routedConversationOpen.promote,
+          },
+        ),
+        requestKey: routedConversationOpen.requestKey,
+      };
+      conversationOpenAttemptRef.current = openAttempt;
+    }
+
+    let cancelled = false;
+    void openAttempt.promise.then((opened) => {
+      if (!cancelled && opened) {
+        consumeRoutedConversationOpen(routedConversationOpen.requestKey);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConversationId,
+    bootstrapStatus,
+    consumeRoutedConversationOpen,
+    conversationOpenError,
+    openConversation,
+    prepareConversationActivation,
+    routedConversationOpen,
+    routedConversationOpenRetryVersion,
+  ]);
+
+  useEffect(() => {
+    const requestKey = routedConversationOpen?.requestKey;
+
+    if (!requestKey) {
+      return;
+    }
+
+    return () => {
+      // StrictMode 会重放 effect；延迟到微任务后，只有真正离开这次路由请求
+      // 才失效 Store 中尚未完成的打开操作。若 A 已被会话路由 B 替换，
+      // B 的 latest-request-wins 会自然让 A 失效，不能再用全局取消误伤 B。
+      queueMicrotask(() => {
+        if (
+          completedRoutedConversationOpenRequestKeyRef.current === requestKey ||
+          (isMountedRef.current && routedConversationOpenRef.current)
+        ) {
+          return;
+        }
+
+        if (conversationOpenAttemptRef.current?.requestKey === requestKey) {
+          conversationOpenAttemptRef.current = undefined;
+        }
+        if (
+          bootstrapConversationOpenAttemptRequestKeyRef.current === requestKey
+        ) {
+          bootstrapConversationOpenAttemptRequestKeyRef.current = "";
+        }
+
+        cancelConversationOpen();
+      });
+    };
+  }, [cancelConversationOpen, routedConversationOpen?.requestKey]);
 
   useEffect(
     () => {
@@ -1054,7 +1352,11 @@ function ChatWorkbenchContent({
   ]);
 
   useEffect(() => {
-    if (activeView !== "chat") {
+    if (
+      activeView !== "chat" ||
+      routedConversationOpen ||
+      isConversationLoading
+    ) {
       return;
     }
 
@@ -1082,8 +1384,10 @@ function ChatWorkbenchContent({
     clearActiveConversation,
     firstActiveViewConversationId,
     hasActiveConversationInView,
+    isConversationLoading,
     isMobileWorkbenchLayout,
     mobilePane,
+    routedConversationOpen,
     setActiveConversation,
   ]);
 
@@ -1141,24 +1445,79 @@ function ChatWorkbenchContent({
   );
 
   const handleStartCustomerChat = useCallback(
-    async (input: {
-      seatId: string;
-      thirdExternalUserId: string;
-      customerName: string;
-      customerAvatar: string;
-      realName: string;
-    }) => {
-      onNavigateChat?.();
-      await setActiveAccount(input.seatId);
-      await selectOrCreateAndSelectConversation({
-        avatar: input.customerAvatar,
-        name: input.customerName,
-        realName: input.realName,
-        thirdExternalUserId: input.thirdExternalUserId,
-      });
-      setMobilePane("chat");
+    async (input: CustomerChatStartInput) => {
+      if (activeView !== "chat") {
+        onNavigateChat?.();
+      }
+
+      const opened = await openConversation(
+        input.conversationId
+          ? { conversationId: input.conversationId }
+          : {
+              mode: "single",
+              seatId: input.seatId,
+              thirdExternalUserId: input.thirdExternalUserId,
+            },
+        {
+          beforeActivate: prepareConversationActivation,
+          onResolved: () => {
+            setMobilePane("chat");
+          },
+        },
+      );
+
+      if (opened) {
+        setMobilePane("chat");
+      }
     },
-    [onNavigateChat, selectOrCreateAndSelectConversation, setActiveAccount],
+    [
+      activeView,
+      onNavigateChat,
+      openConversation,
+      prepareConversationActivation,
+    ],
+  );
+
+  const handleOpenSearchResult = useCallback(
+    async (
+      item:
+        | WorkbenchSearchContactResultDto
+        | WorkbenchSearchGroupResultDto,
+    ) => {
+      const opened =
+        "thirdGroupId" in item
+          ? await openConversation(
+              {
+                mode: "group",
+                seatId: activeAccountId,
+                thirdGroupId: item.thirdGroupId,
+              },
+              {
+                beforeActivate: prepareConversationActivation,
+                clearSearchOnSuccess: true,
+              },
+            )
+          : await openConversation(
+              {
+                mode: "single",
+                seatId: activeAccountId,
+                thirdExternalUserId: item.thirdExternalUserId,
+              },
+              {
+                beforeActivate: prepareConversationActivation,
+                clearSearchOnSuccess: true,
+              },
+            );
+
+      if (opened) {
+        setMobilePane("chat");
+      }
+    },
+    [
+      activeAccountId,
+      openConversation,
+      prepareConversationActivation,
+    ],
   );
 
   const handleRetryFailedMessage = useCallback(
@@ -2149,7 +2508,9 @@ function ChatWorkbenchContent({
 
         if (label === "聊天") {
           setMobilePane("list");
-          onNavigateChat?.();
+          if (activeView !== "chat") {
+            onNavigateChat?.();
+          }
         }
       }}
       onResizeStart={
@@ -2157,7 +2518,9 @@ function ChatWorkbenchContent({
       }
       onSelectAccount={async (accountId) => {
         setMobilePane("list");
-        onNavigateChat?.();
+        if (activeView !== "chat") {
+          onNavigateChat?.();
+        }
         await setActiveAccount(accountId);
       }}
       onTakeOverAccount={handleTakeOverAccount}
@@ -2187,9 +2550,10 @@ function ChatWorkbenchContent({
       seatGroupAIHostingEnabled={activeAccount?.seatGroupAIHostingEnabled === true}
       isConversationActionDisabled={isConversationActionDisabled}
       isEmptyStateLoading={isConversationListEmptyLoading}
-      onDeleteConversation={deleteConversation}
+      onDeleteConversation={handleDeleteConversation}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
+      onOpenSearchResult={handleOpenSearchResult}
       onPinConversation={pinConversation}
       onRefreshUnreadConversations={loadUnreadConversations}
       onSelectConversation={handleSelectConversation}
@@ -2205,6 +2569,7 @@ function ChatWorkbenchContent({
 
   const chatPanelNode = (
     <ChatPanel
+      accounts={accounts}
       accountName={activeAccount?.name}
       accountAvatarUrl={activeAccount?.avatarUrl}
       activeAccount={activeAccount}
@@ -2219,6 +2584,7 @@ function ChatWorkbenchContent({
       canUseMessageForward={canUseMessageForward}
       composerPlaceholder={composerPlaceholder}
       customer={activeCustomer}
+      currentEmployeeId={me?.id}
       sidebarIframeTos={sidebarIframeTos}
       sidebarIframeSendStatus={sidebarIframeSendStatus}
       customerPanelWidth={customerPanelWidth}
@@ -2350,6 +2716,7 @@ function ChatWorkbenchContent({
       onRefreshGroupMembers={() => {
         void loadActiveGroupMembers({ force: true });
       }}
+      onStartCustomerChat={handleStartCustomerChat}
       onLoadOlderMessages={handleLoadOlderMessages}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
@@ -2463,7 +2830,11 @@ function ChatWorkbenchContent({
             className="mt-4 h-9 rounded-lg px-4 text-[13px] shadow-none"
             onClick={() => {
               startTransition(() => {
-                void initializeWorkbench();
+                void initializeWorkbench({
+                  beforeActivate: prepareConversationActivation,
+                  preferredConversationId: routedConversationOpen?.conversationId,
+                  promotePreferredConversation: routedConversationOpen?.promote,
+                });
               });
             }}
           >
@@ -2622,6 +2993,39 @@ function ChatWorkbenchContent({
         onOpenChange={messageForward.setSelectedMessagesDialogOpen}
         open={messageForward.selectedMessagesDialogOpen}
       />
+      <AlertDialog
+        open={Boolean(conversationOpenError)}
+        onOpenChange={(open) => {
+          if (!open && !routedConversationOpen) {
+            dismissConversationOpenError();
+          }
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>开启会话失败</AlertDialogTitle>
+            <AlertDialogDescription>
+              {conversationOpenError}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {routedConversationOpen ? (
+              <>
+                <AlertDialogCancel onClick={cancelRoutedConversationOpen}>
+                  取消
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={retryRoutedConversationOpen}>
+                  重试
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction onClick={dismissConversationOpenError}>
+                我知道了
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={pollingPauseReason !== null}>
         <AlertDialogContent
           className="overflow-hidden p-0"

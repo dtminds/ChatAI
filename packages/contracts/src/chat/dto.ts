@@ -944,6 +944,14 @@ export const WorkbenchCustomerRelationConversationsResponseSchema = Type.Object(
   items: Type.Array(WorkbenchCustomerRelationConversationSchema),
 });
 
+export const CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT = 20;
+
+export const WorkbenchCustomerSeatRelationsResponseSchema = Type.Object({
+  items: Type.Array(WorkbenchCustomerSeatRelationSchema, {
+    maxItems: CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
+  }),
+});
+
 export const WorkbenchCustomerDetailResponseSchema = Type.Object({
   customer: WorkbenchCustomerSummarySchema,
 });
@@ -962,6 +970,10 @@ export type WorkbenchCustomerRelationConversationDto = Static<
 
 export type WorkbenchCustomerRelationConversationsResponse = Static<
   typeof WorkbenchCustomerRelationConversationsResponseSchema
+>;
+
+export type WorkbenchCustomerSeatRelationsResponse = Static<
+  typeof WorkbenchCustomerSeatRelationsResponseSchema
 >;
 
 export type WorkbenchCustomerSummaryDto = Static<typeof WorkbenchCustomerSummarySchema>;

@@ -41,6 +41,22 @@ describe("route code splitting", () => {
     }
   });
 
+  it("routes conversation deep links through the workbench page", async () => {
+    const { routerConfig } = await import("@/router");
+    const rootRoute = routerConfig[0];
+    const workbenchRoute = rootRoute.children?.find(
+      (route) => route.path === "chat",
+    );
+
+    expect(workbenchRoute?.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "conversations/:conversationId",
+        }),
+      ]),
+    );
+  });
+
   it("shows an accessible route loading state while a lazy page chunk is pending", async () => {
     vi.doMock("@/pages/auth/login-page", () => new Promise(() => undefined));
 

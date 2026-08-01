@@ -66,6 +66,7 @@ import type {
   WorkbenchCustomerListResponse,
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
+  WorkbenchCustomerSeatRelationsResponse,
   MaterialCollectionBizType,
   WorkbenchMaterialCollectionCreateRequest,
   WorkbenchMaterialCollectionCreateResponse,
@@ -105,6 +106,7 @@ import type {
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import {
+  CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
   CHAT_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
@@ -452,6 +454,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchCustomerRelationConversationsResponse>
     | WorkbenchCustomerRelationConversationsResponse;
+  getCustomerSeatRelations(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ):
+    | Promise<WorkbenchCustomerSeatRelationsResponse>
+    | WorkbenchCustomerSeatRelationsResponse;
   markConversationRead(
     subUserId: string,
     conversationId: string,
@@ -883,6 +891,60 @@ export class MysqlWorkbenchService implements WorkbenchService {
         thirdExternalUserId,
         thirdUserIds,
         uid: scope.uid,
+      }),
+    };
+  }
+
+  async getCustomerSeatRelations(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ): Promise<WorkbenchCustomerSeatRelationsResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const items = await this.repository.listAccessibleCustomerSeatRelations({
+      limit: CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
+      platform: scope.platform,
+      subUserId,
+      thirdExternalUserId,
+      uid: scope.uid,
+    });
+
+    if (items.length === 0) {
+      return { items };
+    }
+
+    let conversationTimes: WorkbenchCustomerRelationConversationsResponse["items"];
+
+    try {
+      conversationTimes = await this.repository.listCustomerRelationConversations({
+        platform: scope.platform,
+        thirdExternalUserId,
+        thirdUserIds: items.map((item) => item.thirdUserId),
+        uid: scope.uid,
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          operation: "load-customer-seat-relation-conversation-times",
+          subUserId,
+          thirdExternalUserId,
+          uid: scope.uid,
+        },
+        "Failed to load customer seat relation conversation times",
+      );
+
+      return { items };
+    }
+
+    const conversationTimeByThirdUserId = new Map(
+      conversationTimes.map((item) => [item.thirdUserId, item.lastMessageTime]),
+    );
+
+    return {
+      items: items.map((item) => {
+        const lastMessageTime = conversationTimeByThirdUserId.get(item.thirdUserId);
+
+        return lastMessageTime == null ? item : { ...item, lastMessageTime };
       }),
     };
   }

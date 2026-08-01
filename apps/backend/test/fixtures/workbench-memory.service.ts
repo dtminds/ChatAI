@@ -9,6 +9,7 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
+  WorkbenchCustomerSeatRelationsResponse,
   WorkbenchGroupMembersResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
@@ -215,6 +216,12 @@ export function createMemoryWorkbenchService() {
     },
     getMe(_subUserId: string) {
       return clone(state.subUser);
+    },
+    getCustomerSeatRelations(
+      _subUserId: string,
+      _thirdExternalUserId: string,
+    ): WorkbenchCustomerSeatRelationsResponse {
+      return { items: [] };
     },
     listMaterialCollections(
       _subUserId: string,

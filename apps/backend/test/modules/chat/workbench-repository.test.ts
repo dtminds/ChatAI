@@ -3547,6 +3547,107 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("limits customer friend relations to the current sub-user's visible seats", async () => {
+    let relationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            relationQuery = createQueryBuilder([
+              {
+                add_time: 100,
+                bind_status: 1,
+                bind_type: 1,
+                description: null,
+                bind_id: 301,
+                seat_avatar: "https://example.com/seat-12.png",
+                seat_id: 12,
+                seat_name: "销售一号",
+                third_user_id: "seat-user-12",
+              },
+            ]);
+            return relationQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listAccessibleCustomerSeatRelations({
+        limit: 200,
+        platform: 5,
+        subUserId: "101",
+        thirdExternalUserId: "external-a",
+        uid: 9001,
+      }),
+    ).resolves.toEqual([
+      {
+        addTime: 100,
+        bindId: "301",
+        bindStatus: 1,
+        bindType: 1,
+        seatAvatar: "https://example.com/seat-12.png",
+        seatId: "12",
+        seatName: "销售一号",
+        thirdUserId: "seat-user-12",
+      },
+    ]);
+    expect(relationQuery?.joins).toEqual(["innerJoin", "innerJoin"]);
+    expect(relationQuery?.joinConditions).toContainEqual({
+      conditions: [
+        ["seat.third_userid", "=", "bind.third_userid"],
+        ["seat.uid", "=", "bind.uid"],
+        ["seat.platform", "=", "bind.platform"],
+      ],
+      table: "xy_wap_embed_user_seat as seat",
+      type: "innerJoin",
+    });
+    expect(relationQuery?.joinConditions).toContainEqual({
+      conditions: [
+        ["access.user_seat_id", "=", "seat.id"],
+        ["access.uid", "=", "seat.uid"],
+        ["access.platform", "=", "seat.platform"],
+      ],
+      table: "xy_wap_embed_user_seat_sub_relation as access",
+      type: "innerJoin",
+    });
+    expect(relationQuery?.wheres).toContainEqual(["access.sub_id", "=", 101]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
+    expect(relationQuery?.wheres).toContainEqual([
+      "bind.third_external_userid",
+      "=",
+      "external-a",
+    ]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.biz_status", "=", 1]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.bind_type", "=", 1]);
+    const priorityOrder = relationQuery?.orderBys[0]?.[0] as unknown as {
+      toOperationNode: () => {
+        parameters: Array<{ kind: string; value: number }>;
+        sqlFragments: string[];
+      };
+    };
+    expect(priorityOrder.toOperationNode()).toEqual({
+      kind: "RawNode",
+      parameters: [
+        { kind: "ValueNode", value: 101 },
+        { kind: "ValueNode", value: 101 },
+      ],
+      sqlFragments: [
+        "case\n          when seat.host_sub_id = ",
+        " and seat.is_online = 1 then 0\n          when seat.host_sub_id = ",
+        " then 1\n          else 2\n        end",
+      ],
+    });
+    expect(relationQuery?.orderBys.slice(1)).toEqual([
+      ["bind.add_time", "desc"],
+      ["bind.id", "desc"],
+    ]);
+    expect(relationQuery?.limits).toEqual([20]);
+  });
+
   it("limits my customer visible seat contexts to the explicit workbench scope", async () => {
     const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
     const repository = new WorkbenchRepository(

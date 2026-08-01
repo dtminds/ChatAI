@@ -266,6 +266,63 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("lets a newer routed conversation replace a pending routed open", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstTarget = await baseService.getConversation("conv-002");
+    const firstTargetDeferred =
+      createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn((conversationId: string) =>
+      conversationId === "conv-002"
+        ? firstTargetDeferred.promise
+        : baseService.getConversation(conversationId),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-003", {
+        state: { openConversation: true },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-003");
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-003",
+    );
+
+    firstTargetDeferred.resolve(firstTarget);
+    await act(async () => {
+      await firstTargetDeferred.promise;
+      await Promise.resolve();
+    });
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-003");
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-003",
+    );
+    expect(getConversation).toHaveBeenCalledWith("conv-003");
+  });
+
   it("captures an in-place conversation route before automatic list selection", async () => {
     const baseService = createMockWorkbenchService();
     const targetConversation = await baseService.getConversation("conv-002");
@@ -421,6 +478,86 @@ describe("ChatWorkbenchPage", () => {
     });
     expect(getConversation).toHaveBeenCalledTimes(2);
     expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+  });
+
+  it("keeps a failed routed target and retries it before consuming the route", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi
+      .fn(baseService.getConversation)
+      .mockRejectedValueOnce(new Error("会话摘要暂时不可用"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    const errorDialog = await screen.findByRole("alertdialog", {
+      name: "开启会话失败",
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+    expect(router.state.location.state).toEqual({ openConversation: true });
+    expect(getConversation).toHaveBeenCalledTimes(1);
+
+    await user.click(within(errorDialog).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getConversation).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+  });
+
+  it("consumes a failed routed target only after the operator cancels", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn().mockRejectedValue(new Error("无权打开会话"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    const errorDialog = await screen.findByRole("alertdialog", {
+      name: "开启会话失败",
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+
+    await user.click(within(errorDialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(router.state.location.state).toBeNull();
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+    expect(getConversation).toHaveBeenCalledTimes(1);
   });
 
   it("opens a state-free cold conversation route without promoting it", async () => {
@@ -2557,7 +2694,7 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
-    await user.hover(
+    await user.click(
       await screen.findByRole("button", {
         name: "查看 丹阳草莓 的好友关系",
       }),

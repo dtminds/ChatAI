@@ -28,6 +28,7 @@ import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -627,6 +628,8 @@ function ChatWorkbenchContent({
   const [mobilePane, setMobilePane] = useState<MobileWorkbenchPane>("list");
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
+  const [routedConversationOpenRetryVersion, setRoutedConversationOpenRetryVersion] =
+    useState(0);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
@@ -677,6 +680,33 @@ function ChatWorkbenchContent({
     },
     [onConsumeRoutedConversationOpen],
   );
+  const retryRoutedConversationOpen = useCallback(() => {
+    if (!routedConversationOpen) {
+      return;
+    }
+
+    if (
+      conversationOpenAttemptRef.current?.requestKey ===
+      routedConversationOpen.requestKey
+    ) {
+      conversationOpenAttemptRef.current = undefined;
+    }
+
+    dismissConversationOpenError();
+    setRoutedConversationOpenRetryVersion((currentVersion) => currentVersion + 1);
+  }, [dismissConversationOpenError, routedConversationOpen]);
+  const cancelRoutedConversationOpen = useCallback(() => {
+    if (!routedConversationOpen) {
+      return;
+    }
+
+    dismissConversationOpenError();
+    consumeRoutedConversationOpen(routedConversationOpen.requestKey);
+  }, [
+    consumeRoutedConversationOpen,
+    dismissConversationOpenError,
+    routedConversationOpen,
+  ]);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -1141,8 +1171,8 @@ function ChatWorkbenchContent({
     }
 
     let cancelled = false;
-    void openAttempt.promise.finally(() => {
-      if (!cancelled) {
+    void openAttempt.promise.then((opened) => {
+      if (!cancelled && opened) {
         consumeRoutedConversationOpen(routedConversationOpen.requestKey);
       }
     });
@@ -1158,6 +1188,7 @@ function ChatWorkbenchContent({
     openConversation,
     prepareConversationActivation,
     routedConversationOpen,
+    routedConversationOpenRetryVersion,
   ]);
 
   useEffect(() => {
@@ -1169,12 +1200,12 @@ function ChatWorkbenchContent({
 
     return () => {
       // StrictMode 会重放 effect；延迟到微任务后，只有真正离开这次路由请求
-      // 才失效 Store 中尚未完成的打开操作。
+      // 才失效 Store 中尚未完成的打开操作。若 A 已被会话路由 B 替换，
+      // B 的 latest-request-wins 会自然让 A 失效，不能再用全局取消误伤 B。
       queueMicrotask(() => {
         if (
           completedRoutedConversationOpenRequestKeyRef.current === requestKey ||
-          (isMountedRef.current &&
-            routedConversationOpenRef.current?.requestKey === requestKey)
+          (isMountedRef.current && routedConversationOpenRef.current)
         ) {
           return;
         }
@@ -2965,7 +2996,7 @@ function ChatWorkbenchContent({
       <AlertDialog
         open={Boolean(conversationOpenError)}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !routedConversationOpen) {
             dismissConversationOpenError();
           }
         }}
@@ -2978,9 +3009,20 @@ function ChatWorkbenchContent({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={dismissConversationOpenError}>
-              我知道了
-            </AlertDialogAction>
+            {routedConversationOpen ? (
+              <>
+                <AlertDialogCancel onClick={cancelRoutedConversationOpen}>
+                  取消
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={retryRoutedConversationOpen}>
+                  重试
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction onClick={dismissConversationOpenError}>
+                我知道了
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

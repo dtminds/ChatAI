@@ -219,11 +219,13 @@ type ConversationActivationOptions = {
   beforeActivate?: (conversation: Conversation) => void;
   clearSearchOnSuccess?: boolean;
   onResolved?: (conversation: Conversation) => void;
+  promote?: boolean;
 };
 
 type InitializeWorkbenchOptions = {
   beforeActivate?: (conversation: Conversation) => void;
   preferredConversationId?: string;
+  promotePreferredConversation?: boolean;
 };
 
 const emptyHistoryPanelState: HistoryPanelState = {
@@ -4471,6 +4473,7 @@ export function createWorkbenchStore() {
       conversation: Conversation,
       openRequestId: number,
       beforeActivate?: (conversation: Conversation) => void,
+      promote = true,
     ) {
       const state = get();
       const didSwitchAccount = state.activeAccountId !== conversation.accountId;
@@ -4569,10 +4572,9 @@ export function createWorkbenchStore() {
             conversationModeLoadedAtByScope:
               prunedConversationListCache.conversationModeLoadedAtByScope,
             conversationOpenError: undefined,
-            conversationPromotion: createConversationPromotion(
-              conversation,
-              targetConversations,
-            ),
+            conversationPromotion: promote
+              ? createConversationPromotion(conversation, targetConversations)
+              : undefined,
             groupMembersLoadedAtByConversationId: omitByKeys(
               currentState.groupMembersLoadedAtByConversationId,
               evictedConversationIds,
@@ -5044,6 +5046,7 @@ export function createWorkbenchStore() {
             conversation,
             openRequestId,
             options?.beforeActivate,
+            options?.promote !== false,
           );
 
           if (
@@ -5857,7 +5860,9 @@ export function createWorkbenchStore() {
             activeMode: bootstrapResult.activeMode,
             bootstrapStatus: "ready",
             conversationOpenError: bootstrapResult.conversationOpenError,
-            conversationPromotion: bootstrapResult.openedConversation
+            conversationPromotion:
+              bootstrapResult.openedConversation &&
+              options?.promotePreferredConversation !== false
               ? createConversationPromotion(
                   bootstrapResult.openedConversation,
                   bootstrapResult.conversationListsByScope[

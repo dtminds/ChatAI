@@ -493,9 +493,7 @@ describe("CustomerPage", () => {
     await user.click(await screen.findByRole("button", { name: "向 销售一号 继续会话" }));
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe(
-        "/chat/conversations/mock-conversation-1",
-      );
+      expect(router.state.location.pathname).toBe("/chat");
       expect(useWorkbenchStore.getState().activeConversationId).toBe(
         "mock-conversation-1",
       );
@@ -547,7 +545,7 @@ describe("CustomerPage", () => {
       name: "开启会话失败",
     });
     expect(errorDialog).toHaveTextContent("暂时无法开启会话");
-    expect(router.state.location.pathname).toBe("/chat/customers");
+    expect(router.state.location.pathname).toBe("/chat");
 
     await user.click(
       within(errorDialog).getByRole("button", { name: "我知道了" }),

@@ -2,6 +2,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -105,6 +106,11 @@ import {
   type ConversationView,
 } from "@/pages/chat/lib/conversation-view";
 import { sortConversationsForDisplay } from "@/pages/chat/lib/conversation-order";
+import {
+  getRoutedConversationId,
+  isOpenConversationLocationState,
+  isConversationRoutePath,
+} from "@/pages/chat/lib/conversation-navigation";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -245,8 +251,10 @@ function isElementVisibleInsideViewport(
   );
 }
 
-type WorkbenchRouteNavigationOptions = {
-  replace?: boolean;
+type RoutedConversationOpen = {
+  conversationId: string;
+  promote: boolean;
+  requestKey: string;
 };
 
 export function ChatWorkbenchPage() {
@@ -256,12 +264,33 @@ export function ChatWorkbenchPage() {
 export function ChatWorkbenchRoutePage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const requestedConversationId = location.pathname.startsWith(
-    "/chat/conversations/",
-  )
-    ? decodeURIComponent(
-        location.pathname.slice("/chat/conversations/".length),
-      )
+  const routedConversationId = getRoutedConversationId(location.pathname);
+  const isConversationRoute = isConversationRoutePath(location.pathname);
+  const hasConversationOpenIntent =
+    Boolean(routedConversationId) &&
+    isOpenConversationLocationState(location.state);
+  const initialConversationOpen =
+    routedConversationId
+      ? {
+          conversationId: routedConversationId,
+          promote: hasConversationOpenIntent,
+          requestKey: location.key,
+        }
+      : undefined;
+  const capturedConversationOpenRequestKeyRef = useRef(
+    initialConversationOpen?.requestKey ?? "",
+  );
+  const [pendingConversationOpen, setPendingConversationOpen] = useState<
+    RoutedConversationOpen | undefined
+  >(initialConversationOpen);
+  // Derive the current route request during render as well as storing it in
+  // state. The child workbench can run its own effects in the same commit, so
+  // waiting for the capture effect alone still leaves a window for automatic
+  // first-conversation selection.
+  const routedConversationOpen = isConversationRoute
+    ? pendingConversationOpen?.requestKey === location.key
+      ? pendingConversationOpen
+      : initialConversationOpen
     : undefined;
   const activeView =
     location.pathname === "/chat/customers"
@@ -274,23 +303,68 @@ export function ChatWorkbenchRoutePage() {
       ? decodeURIComponent(location.pathname.slice("/chat/tickets/".length))
       : undefined;
 
+  // Capture the route instruction before ChatWorkbenchContent's passive
+  // effects run. This prevents the automatic first-conversation selector from
+  // briefly activating the list's first item during an in-place route change.
+  useLayoutEffect(() => {
+    if (!isConversationRoute) {
+      return;
+    }
+
+    if (
+      routedConversationId &&
+      capturedConversationOpenRequestKeyRef.current !== location.key
+    ) {
+      capturedConversationOpenRequestKeyRef.current = location.key;
+      setPendingConversationOpen({
+        conversationId: routedConversationId,
+        promote: hasConversationOpenIntent,
+        requestKey: location.key,
+      });
+    } else if (!routedConversationId) {
+      setPendingConversationOpen(undefined);
+      void navigate("/chat", {
+        replace: true,
+        state: null,
+      });
+    }
+  }, [
+    hasConversationOpenIntent,
+    isConversationRoute,
+    location.key,
+    navigate,
+    routedConversationId,
+  ]);
+
+  const handleConsumeConversationOpen = useCallback(
+    (requestKey: string) => {
+      if (capturedConversationOpenRequestKeyRef.current !== requestKey) {
+        return;
+      }
+
+      setPendingConversationOpen((currentOpen) =>
+        currentOpen?.requestKey === requestKey ? undefined : currentOpen,
+      );
+      void navigate("/chat", {
+        replace: true,
+        state: null,
+      });
+    },
+    [navigate],
+  );
+
   return (
     <ChatWorkbenchContent
       activeTicketId={activeTicketId}
       activeView={activeView}
-      requestedConversationId={requestedConversationId}
-      onNavigateConversation={(conversationId, options) => {
-        navigate(`/chat/conversations/${encodeURIComponent(conversationId)}`, {
-          flushSync: true,
-          replace: options?.replace,
-        });
-      }}
+      onConsumeRoutedConversationOpen={handleConsumeConversationOpen}
       onNavigateCustomerPage={() => {
         navigate("/chat/customers");
       }}
-      onNavigateChat={(options) => {
-        navigate("/chat", { replace: options?.replace });
+      onNavigateChat={() => {
+        navigate("/chat");
       }}
+      routedConversationOpen={routedConversationOpen}
     />
   );
 }
@@ -298,20 +372,17 @@ export function ChatWorkbenchRoutePage() {
 function ChatWorkbenchContent({
   activeTicketId,
   activeView = "chat",
+  onConsumeRoutedConversationOpen,
   onNavigateChat,
-  onNavigateConversation,
   onNavigateCustomerPage,
-  requestedConversationId,
+  routedConversationOpen,
 }: {
   activeTicketId?: string;
   activeView?: "chat" | "customers" | "tickets";
-  onNavigateChat?: (options?: WorkbenchRouteNavigationOptions) => void;
-  onNavigateConversation?: (
-    conversationId: string,
-    options?: WorkbenchRouteNavigationOptions,
-  ) => void;
+  onConsumeRoutedConversationOpen?: (requestKey: string) => void;
+  onNavigateChat?: () => void;
   onNavigateCustomerPage?: () => void;
-  requestedConversationId?: string;
+  routedConversationOpen?: RoutedConversationOpen;
 }) {
   useTicketCountPolling();
   const {
@@ -570,7 +641,17 @@ function ChatWorkbenchContent({
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
-  const requestedConversationOpenRef = useRef("");
+  const bootstrappedConversationOpenRequestKeyRef = useRef("");
+  // React StrictMode replays effects. Keep the in-flight Promise by route key
+  // so the replay observes the same open attempt instead of consuming the URL
+  // before the conversation and its temporary promotion reach the store.
+  const conversationOpenAttemptRef = useRef<
+    | {
+        promise: Promise<boolean>;
+        requestKey: string;
+      }
+    | undefined
+  >(undefined);
   const draftRef = useRef("");
   const composerSegmentsRef = useRef<ComposerSegment[]>([]);
   const quotedMessageRef = useRef(quotedMessage);
@@ -631,30 +712,6 @@ function ChatWorkbenchContent({
     },
     [],
   );
-  const navigateToConversation = useCallback(
-    (
-      conversationId: string,
-      options?: WorkbenchRouteNavigationOptions,
-    ) => {
-      requestedConversationOpenRef.current = conversationId;
-      onNavigateConversation?.(conversationId, options);
-    },
-    [onNavigateConversation],
-  );
-  const navigateResolvedConversation = useCallback(
-    (conversation: Conversation) => {
-      navigateToConversation(conversation.id);
-    },
-    [navigateToConversation],
-  );
-  const prepareRoutedConversationActivation = useCallback(
-    (conversation: Conversation) => {
-      prepareConversationActivation(conversation);
-      navigateResolvedConversation(conversation);
-    },
-    [navigateResolvedConversation, prepareConversationActivation],
-  );
-
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations =
@@ -714,7 +771,6 @@ function ChatWorkbenchContent({
   );
   const handleSelectConversationView = useCallback(
     (view: ConversationView) => {
-      onNavigateChat?.();
       clearConversationPromotion();
 
       const resolvedView = resolveConversationView(
@@ -777,7 +833,6 @@ function ChatWorkbenchContent({
       clearConversationPromotion,
       clearActiveConversation,
       isActiveSeatAIHostingEnabled,
-      onNavigateChat,
       setConversationView,
       setActiveConversation,
       visibleSearchableConversations,
@@ -922,54 +977,9 @@ function ChatWorkbenchContent({
   );
   const handleDeleteConversation = useCallback(
     async (conversationId: string) => {
-      const stateBeforeDelete = useWorkbenchStore.getState();
-      const deletedConversation = (
-        stateBeforeDelete.conversationListsByScope[
-          stateBeforeDelete.activeAccountId
-        ] ?? []
-      ).find((conversation) => conversation.id === conversationId);
-      const shouldReplaceRoute =
-        requestedConversationId === conversationId &&
-        stateBeforeDelete.activeConversationId === conversationId;
-
       await deleteConversation(conversationId);
-
-      if (
-        !deletedConversation ||
-        !shouldReplaceRoute ||
-        requestedConversationOpenRef.current !== conversationId
-      ) {
-        return;
-      }
-
-      const latestState = useWorkbenchStore.getState();
-      const wasDeleted = !(
-        latestState.conversationListsByScope[deletedConversation.accountId] ?? []
-      ).some((conversation) => conversation.id === conversationId);
-
-      if (
-        !wasDeleted ||
-        latestState.activeAccountId !== deletedConversation.accountId
-      ) {
-        return;
-      }
-
-      if (latestState.activeConversationId) {
-        navigateToConversation(latestState.activeConversationId, {
-          replace: true,
-        });
-        return;
-      }
-
-      requestedConversationOpenRef.current = "";
-      onNavigateChat?.({ replace: true });
     },
-    [
-      deleteConversation,
-      navigateToConversation,
-      onNavigateChat,
-      requestedConversationId,
-    ],
+    [deleteConversation],
   );
   const shouldSuppressAutoRead = useCallback(
     (conversationId: string, unreadCount: number) => {
@@ -1062,41 +1072,78 @@ function ChatWorkbenchContent({
       return;
     }
 
-    requestedConversationOpenRef.current = requestedConversationId ?? "";
-    void initializeWorkbench({
-      beforeActivate: prepareConversationActivation,
-      preferredConversationId: requestedConversationId,
-    });
-  }, [
-    bootstrapStatus,
-    initializeWorkbench,
-    prepareConversationActivation,
-    requestedConversationId,
-  ]);
-
-  useEffect(() => {
-    if (!requestedConversationId) {
-      requestedConversationOpenRef.current = "";
-      return;
-    }
-
     if (
-      bootstrapStatus !== "ready" ||
-      requestedConversationOpenRef.current === requestedConversationId
+      routedConversationOpen &&
+      bootstrappedConversationOpenRequestKeyRef.current ===
+        routedConversationOpen.requestKey
     ) {
       return;
     }
 
-    requestedConversationOpenRef.current = requestedConversationId;
-    void openConversation(
-      { conversationId: requestedConversationId },
-      { beforeActivate: prepareConversationActivation },
-    );
+    if (routedConversationOpen) {
+      bootstrappedConversationOpenRequestKeyRef.current =
+        routedConversationOpen.requestKey;
+    }
+
+    void initializeWorkbench({
+      beforeActivate: prepareConversationActivation,
+      preferredConversationId: routedConversationOpen?.conversationId,
+      promotePreferredConversation: routedConversationOpen?.promote,
+    });
   }, [
     bootstrapStatus,
+    initializeWorkbench,
+    onConsumeRoutedConversationOpen,
+    prepareConversationActivation,
+    routedConversationOpen,
+  ]);
+
+  useEffect(() => {
+    if (!routedConversationOpen || bootstrapStatus !== "ready") {
+      return;
+    }
+
+    if (
+      bootstrappedConversationOpenRequestKeyRef.current ===
+      routedConversationOpen.requestKey
+    ) {
+      onConsumeRoutedConversationOpen?.(routedConversationOpen.requestKey);
+      return;
+    }
+
+    let openAttempt = conversationOpenAttemptRef.current;
+
+    if (openAttempt?.requestKey !== routedConversationOpen.requestKey) {
+      openAttempt = {
+        promise: openConversation(
+          { conversationId: routedConversationOpen.conversationId },
+          {
+            beforeActivate: prepareConversationActivation,
+            promote: routedConversationOpen.promote,
+          },
+        ),
+        requestKey: routedConversationOpen.requestKey,
+      };
+      conversationOpenAttemptRef.current = openAttempt;
+    }
+
+    let cancelled = false;
+
+    void openAttempt.promise.finally(() => {
+      if (!cancelled) {
+        onConsumeRoutedConversationOpen?.(routedConversationOpen.requestKey);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bootstrapStatus,
+    onConsumeRoutedConversationOpen,
     openConversation,
     prepareConversationActivation,
-    requestedConversationId,
+    routedConversationOpen,
   ]);
 
   useEffect(
@@ -1229,7 +1276,7 @@ function ChatWorkbenchContent({
   useEffect(() => {
     if (
       activeView !== "chat" ||
-      requestedConversationId ||
+      routedConversationOpen ||
       isConversationLoading
     ) {
       return;
@@ -1262,7 +1309,7 @@ function ChatWorkbenchContent({
     isConversationLoading,
     isMobileWorkbenchLayout,
     mobilePane,
-    requestedConversationId,
+    routedConversationOpen,
     setActiveConversation,
   ]);
 
@@ -1321,8 +1368,8 @@ function ChatWorkbenchContent({
 
   const handleStartCustomerChat = useCallback(
     async (input: CustomerChatStartInput) => {
-      if (input.conversationId) {
-        navigateToConversation(input.conversationId);
+      if (activeView !== "chat") {
+        onNavigateChat?.();
       }
 
       const opened = await openConversation(
@@ -1335,10 +1382,7 @@ function ChatWorkbenchContent({
             },
         {
           beforeActivate: prepareConversationActivation,
-          onResolved: (conversation) => {
-            if (!input.conversationId) {
-              navigateResolvedConversation(conversation);
-            }
+          onResolved: () => {
             setMobilePane("chat");
           },
         },
@@ -1349,8 +1393,8 @@ function ChatWorkbenchContent({
       }
     },
     [
-      navigateResolvedConversation,
-      navigateToConversation,
+      activeView,
+      onNavigateChat,
       openConversation,
       prepareConversationActivation,
     ],
@@ -1371,7 +1415,7 @@ function ChatWorkbenchContent({
                 thirdGroupId: item.thirdGroupId,
               },
               {
-                beforeActivate: prepareRoutedConversationActivation,
+                beforeActivate: prepareConversationActivation,
                 clearSearchOnSuccess: true,
               },
             )
@@ -1382,7 +1426,7 @@ function ChatWorkbenchContent({
                 thirdExternalUserId: item.thirdExternalUserId,
               },
               {
-                beforeActivate: prepareRoutedConversationActivation,
+                beforeActivate: prepareConversationActivation,
                 clearSearchOnSuccess: true,
               },
             );
@@ -1394,7 +1438,7 @@ function ChatWorkbenchContent({
     [
       activeAccountId,
       openConversation,
-      prepareRoutedConversationActivation,
+      prepareConversationActivation,
     ],
   );
 
@@ -2157,7 +2201,6 @@ function ChatWorkbenchContent({
       if (
         conversationId === useWorkbenchStore.getState().activeConversationId
       ) {
-        navigateToConversation(conversationId);
         if (isMobileWorkbenchLayout) {
           setMobilePane("chat");
         }
@@ -2169,14 +2212,13 @@ function ChatWorkbenchContent({
         return false;
       }
 
-      navigateToConversation(conversationId);
       await setActiveConversation(conversationId);
       if (isMobileWorkbenchLayout) {
         setMobilePane("chat");
       }
       return true;
     },
-    [isMobileWorkbenchLayout, navigateToConversation, setActiveConversation],
+    [isMobileWorkbenchLayout, setActiveConversation],
   );
 
   const handleSelectMode = useCallback(
@@ -2190,10 +2232,9 @@ function ChatWorkbenchContent({
         return;
       }
 
-      onNavigateChat?.();
       await setActiveMode(mode);
     },
-    [activeMode, onNavigateChat, setActiveMode],
+    [activeMode, setActiveMode],
   );
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
@@ -2389,7 +2430,9 @@ function ChatWorkbenchContent({
 
         if (label === "聊天") {
           setMobilePane("list");
-          onNavigateChat?.();
+          if (activeView !== "chat") {
+            onNavigateChat?.();
+          }
         }
       }}
       onResizeStart={
@@ -2397,7 +2440,9 @@ function ChatWorkbenchContent({
       }
       onSelectAccount={async (accountId) => {
         setMobilePane("list");
-        onNavigateChat?.();
+        if (activeView !== "chat") {
+          onNavigateChat?.();
+        }
         await setActiveAccount(accountId);
       }}
       onTakeOverAccount={handleTakeOverAccount}
@@ -2709,7 +2754,8 @@ function ChatWorkbenchContent({
               startTransition(() => {
                 void initializeWorkbench({
                   beforeActivate: prepareConversationActivation,
-                  preferredConversationId: requestedConversationId,
+                  preferredConversationId: routedConversationOpen?.conversationId,
+                  promotePreferredConversation: routedConversationOpen?.promote,
                 });
               });
             }}

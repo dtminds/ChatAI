@@ -24,6 +24,20 @@ describe("user memory prompt", () => {
     expect(serialized).not.toContain("thirdExternalUserId");
     expect(serialized).not.toContain('"uid"');
   });
+  it("requires complete scope and durable value before creating or updating memory", () => {
+    const prompt = buildUserMemoryPrompt({
+      document: emptyUserMemoryDocument(),
+      now: 1,
+      messages: [{ sourceMessageId: 2, sessionId: 3, senderRole: "customer", occurredAt: 4, text: "这次预算 500" }],
+    });
+    const systemPrompt = prompt.find((message) => message.role === "system")?.content ?? "";
+
+    expect(systemPrompt).toContain("信息自身完整");
+    expect(systemPrompt).toContain("适用对象、品类、场景或时间范围明确");
+    expect(systemPrompt).toContain("不得把局部表达泛化为长期记忆");
+    expect(systemPrompt).toContain("单次购买计划只能连同品类、场景和有效期写入 recent_intent");
+    expect(systemPrompt).toContain("confirm 必须有新的、独立的客户直接证据");
+  });
   it("accepts strict operation JSON and reports provider usage", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({ operations: [{ type: "add", category: "preference", content: "偏好无糖", expiresAt: null, sourceSessionId: 3, evidenceMessageIds: [2] }] }) } }],

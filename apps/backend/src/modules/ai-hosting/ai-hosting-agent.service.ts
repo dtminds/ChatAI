@@ -76,9 +76,15 @@ type AgentKbRow = {
   name: string;
 };
 
-type AgentSkillRow = {
+type AgentKbResourceRow = AgentKbRow & {
+  status: number;
+};
+
+type AgentSkillResourceRow = {
   id: number;
+  is_del: number;
   name: string;
+  status: number;
 };
 
 const dbActiveStatus = 1;
@@ -306,6 +312,10 @@ export class AiHostingAgentService {
     }
 
     const agent = await this.getAgentRowOrThrow(scope, numericAgentId);
+    await this.assertAgentResourcesAvailable(
+      scope,
+      parsePromptConfig(agent.prompt_config),
+    );
     const latestHistory = await this.getLatestHistory(scope, numericAgentId);
 
     if (!hasPublishChanges(agent, latestHistory)) {
@@ -546,6 +556,8 @@ export class AiHostingAgentService {
       throw new BadRequestError("INVALID_AGENT_MODEL", "请选择有效的大模型");
     }
 
+    await this.assertAgentResourcesAvailable(scope, payload.promptConfig);
+
     return {
       modelId,
       promptConfig: serializePromptConfig(payload.promptConfig),
@@ -652,24 +664,25 @@ export class AiHostingAgentService {
   }> {
     const kbIds = uniquePositiveIds(promptConfig.availableKbIds);
     const skillIds = uniquePositiveIds(promptConfig.availableSkillIds);
+    const embeddedNames = parseConditionLogicResourceNames(
+      promptConfig.conditionLogic,
+    );
     const [kbRows, skillRows] = await Promise.all([
       kbIds.length > 0
         ? this.db
             .selectFrom("xy_wap_embed_agent_kb")
-            .select(["id", "name"])
+            .select(["id", "name", "status"])
             .where("uid", "=", scope.uid)
-            .where("status", "=", dbActiveStatus)
             .where("id", "in", kbIds)
-            .execute() as Promise<AgentKbRow[]>
+            .execute() as Promise<AgentKbResourceRow[]>
         : Promise.resolve([]),
       skillIds.length > 0
         ? this.db
             .selectFrom("xy_wap_embed_agent_skill")
-            .select(["id", "name"])
+            .select(["id", "is_del", "name", "status"])
             .where("uid", "=", scope.uid)
-            .where("is_del", "=", dbNotDeletedStatus)
             .where("id", "in", skillIds)
-            .execute() as Promise<AgentSkillRow[]>
+            .execute() as Promise<AgentSkillResourceRow[]>
         : Promise.resolve([]),
     ]);
     const kbMap = new Map(kbRows.map((row) => [row.id, row]));
@@ -677,14 +690,53 @@ export class AiHostingAgentService {
 
     return {
       knowledgeBases: kbIds
-        .map((id) => kbMap.get(id))
-        .filter((row): row is AgentKbRow => Boolean(row))
-        .map(mapAgentResourceSummary),
+        .map((id) =>
+          mapAgentResourceSummary({
+            available: kbMap.get(id)?.status === dbActiveStatus,
+            fallbackName:
+              embeddedNames.knowledgeBases.get(String(id)) ?? `知识库 ${id}`,
+            id,
+            invalidReason: resolveKnowledgeBaseInvalidReason(kbMap.get(id)),
+            row: kbMap.get(id),
+          }),
+        ),
       skills: skillIds
-        .map((id) => skillMap.get(id))
-        .filter((row): row is AgentSkillRow => Boolean(row))
-        .map(mapAgentResourceSummary),
+        .map((id) =>
+          mapAgentResourceSummary({
+            available:
+              skillMap.get(id)?.is_del === dbNotDeletedStatus &&
+              skillMap.get(id)?.status === dbActiveStatus,
+            fallbackName:
+              embeddedNames.skills.get(String(id)) ?? `技能 ${id}`,
+            id,
+            invalidReason: resolveSkillInvalidReason(skillMap.get(id)),
+            row: skillMap.get(id),
+          }),
+        ),
     };
+  }
+
+  private async assertAgentResourcesAvailable(
+    scope: AgentTenantScope,
+    promptConfig: AiHostingAgentPromptConfig,
+  ) {
+    const resources = await this.getAgentAvailableResources(scope, promptConfig);
+    const knowledgeBases = resources.knowledgeBases.filter(
+      (resource) => resource.status === "invalid",
+    );
+    const skills = resources.skills.filter(
+      (resource) => resource.status === "invalid",
+    );
+
+    if (knowledgeBases.length === 0 && skills.length === 0) {
+      return;
+    }
+
+    throw new BadRequestError(
+      "AGENT_RESOURCES_INVALID",
+      "Agent 依赖的资源已失效，请移除后重试",
+      { knowledgeBases, skills },
+    );
   }
 
   private mapAgentListItem(
@@ -841,13 +893,53 @@ function mapModelSummary(row: AiModelRow | undefined): AiHostingAgentModelSummar
   };
 }
 
-function mapAgentResourceSummary(
-  row: AgentKbRow | AgentSkillRow,
-): AiHostingAgentResourceSummary {
+function mapAgentResourceSummary({
+  available,
+  fallbackName,
+  id,
+  invalidReason,
+  row,
+}: {
+  available: boolean;
+  fallbackName: string;
+  id: number;
+  invalidReason?: AiHostingAgentResourceSummary["invalidReason"];
+  row?: { name: string };
+}): AiHostingAgentResourceSummary {
   return {
-    id: String(row.id),
-    name: row.name,
+    id: String(id),
+    ...(available || !invalidReason ? {} : { invalidReason }),
+    name: row?.name ?? fallbackName,
+    status: available ? "available" : "invalid",
   };
+}
+
+function resolveSkillInvalidReason(
+  row: AgentSkillResourceRow | undefined,
+): AiHostingAgentResourceSummary["invalidReason"] {
+  if (!row) {
+    return "unavailable";
+  }
+
+  if (row.is_del !== dbNotDeletedStatus) {
+    return "deleted";
+  }
+
+  if (row.status !== dbActiveStatus) {
+    return "disabled";
+  }
+
+  return undefined;
+}
+
+function resolveKnowledgeBaseInvalidReason(
+  row: AgentKbResourceRow | undefined,
+): AiHostingAgentResourceSummary["invalidReason"] {
+  if (!row) {
+    return "unavailable";
+  }
+
+  return row.status === dbActiveStatus ? undefined : "deleted";
 }
 
 function fallbackModelSummary(modelId: number): AiHostingAgentModelSummary {
@@ -1005,4 +1097,53 @@ function readNumberArray(value: unknown) {
 
 function uniquePositiveIds(values: number[]) {
   return Array.from(new Set(values.filter((value) => Number.isSafeInteger(value) && value > 0)));
+}
+
+function parseConditionLogicResourceNames(value: string) {
+  const knowledgeBases = new Map<string, string>();
+  const skills = new Map<string, string>();
+  const tokenPattern = /<resource\b[^>]*\/>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(value))) {
+    const token = match[0] ?? "";
+    const type = readConditionLogicResourceAttribute(token, "type");
+    const name = unescapeConditionLogicResourceAttribute(
+      readConditionLogicResourceAttribute(token, "name"),
+    );
+
+    if (!name) {
+      continue;
+    }
+
+    if (type === "knowledge_base") {
+      const id = unescapeConditionLogicResourceAttribute(
+        readConditionLogicResourceAttribute(token, "kbId"),
+      );
+      if (id) {
+        knowledgeBases.set(id, name);
+      }
+    } else if (type === "skill") {
+      const id = unescapeConditionLogicResourceAttribute(
+        readConditionLogicResourceAttribute(token, "skillId"),
+      );
+      if (id) {
+        skills.set(id, name);
+      }
+    }
+  }
+
+  return { knowledgeBases, skills };
+}
+
+function readConditionLogicResourceAttribute(token: string, attribute: string) {
+  return token.match(new RegExp(`${attribute}="([^"]*)"`))?.[1] ?? "";
+}
+
+function unescapeConditionLogicResourceAttribute(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
 }

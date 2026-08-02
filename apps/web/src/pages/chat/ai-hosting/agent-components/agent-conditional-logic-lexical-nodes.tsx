@@ -1,3 +1,4 @@
+import type { AiHostingAgentResourceInvalidReason } from "@chatai/contracts";
 import {
   $applyNodeReplacement,
   type EditorConfig,
@@ -7,10 +8,15 @@ import {
   type Spread,
   TextNode,
 } from "lexical";
-import { mockKnowledgeBaseOptions } from "./agent-settings.constants";
+import {
+  getAgentResourceInvalidReasonLabel,
+  mockKnowledgeBaseOptions,
+} from "./agent-settings.constants";
 
 export type SerializedKnowledgeBaseChipNode = Spread<
   {
+    invalid?: boolean;
+    invalidReason?: AiHostingAgentResourceInvalidReason;
     knowledgeBaseId: string;
     knowledgeBaseName?: string;
   },
@@ -20,6 +26,8 @@ export type SerializedKnowledgeBaseChipNode = Spread<
 export class KnowledgeBaseChipNode extends TextNode {
   __knowledgeBaseId: string;
   __knowledgeBaseName: string;
+  __invalid: boolean;
+  __invalidReason?: AiHostingAgentResourceInvalidReason;
 
   static getType() {
     return "agent-knowledge-base-chip";
@@ -29,6 +37,8 @@ export class KnowledgeBaseChipNode extends TextNode {
     return new KnowledgeBaseChipNode(
       node.__knowledgeBaseId,
       node.__knowledgeBaseName,
+      node.__invalid,
+      node.__invalidReason,
       node.__key,
     );
   }
@@ -36,22 +46,39 @@ export class KnowledgeBaseChipNode extends TextNode {
   static importJSON(serializedNode: SerializedKnowledgeBaseChipNode) {
     return $createKnowledgeBaseChipNode({
       id: serializedNode.knowledgeBaseId,
+      invalid: serializedNode.invalid,
+      invalidReason: serializedNode.invalidReason,
       name: serializedNode.knowledgeBaseName,
     });
   }
 
-  constructor(knowledgeBaseId: string, knowledgeBaseName?: string, key?: NodeKey) {
+  constructor(
+    knowledgeBaseId: string,
+    knowledgeBaseName?: string,
+    invalid = false,
+    invalidReason?: AiHostingAgentResourceInvalidReason,
+    key?: NodeKey,
+  ) {
     const displayName = resolveKnowledgeBaseDisplayName(knowledgeBaseId, knowledgeBaseName);
 
     super(displayName, key);
     this.__knowledgeBaseId = knowledgeBaseId;
     this.__knowledgeBaseName = displayName;
+    this.__invalid = invalid;
+    this.__invalidReason = invalidReason;
     this.__mode = 1;
   }
 
   createDOM(config: EditorConfig) {
     const dom = super.createDOM(config);
-    dom.className = knowledgeBaseChipClassName;
+    applyResourceChipState(
+      dom,
+      knowledgeBaseChipClassName,
+      this.__invalid,
+      this.__invalidReason,
+      "知识库",
+      this.__text,
+    );
     dom.dataset.knowledgeBaseChip = "true";
     return dom;
   }
@@ -60,7 +87,14 @@ export class KnowledgeBaseChipNode extends TextNode {
     const shouldReplace = super.updateDOM(prevNode, dom, config);
 
     if (!shouldReplace) {
-      dom.className = knowledgeBaseChipClassName;
+      applyResourceChipState(
+        dom,
+        knowledgeBaseChipClassName,
+        this.__invalid,
+        this.__invalidReason,
+        "知识库",
+        this.__text,
+      );
       dom.dataset.knowledgeBaseChip = "true";
     }
 
@@ -69,6 +103,8 @@ export class KnowledgeBaseChipNode extends TextNode {
 
   exportJSON(): SerializedKnowledgeBaseChipNode {
     return {
+      invalid: this.__invalid,
+      invalidReason: this.__invalidReason,
       knowledgeBaseId: this.__knowledgeBaseId,
       knowledgeBaseName: this.__knowledgeBaseName,
       ...super.exportJSON(),
@@ -83,6 +119,14 @@ export class KnowledgeBaseChipNode extends TextNode {
 
   getKnowledgeBaseName() {
     return this.__knowledgeBaseName;
+  }
+
+  isInvalid() {
+    return this.__invalid;
+  }
+
+  getInvalidReason() {
+    return this.__invalidReason;
   }
 
   canInsertTextBefore(): boolean {
@@ -100,10 +144,17 @@ export class KnowledgeBaseChipNode extends TextNode {
 
 export function $createKnowledgeBaseChipNode(knowledgeBase: {
   id: string;
+  invalid?: boolean;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   name?: string;
 }) {
   return $applyNodeReplacement(
-    new KnowledgeBaseChipNode(knowledgeBase.id, knowledgeBase.name),
+    new KnowledgeBaseChipNode(
+      knowledgeBase.id,
+      knowledgeBase.name,
+      knowledgeBase.invalid,
+      knowledgeBase.invalidReason,
+    ),
   );
 }
 
@@ -126,6 +177,8 @@ const knowledgeBaseChipClassName =
 
 export type SerializedSkillChipNode = Spread<
   {
+    invalid?: boolean;
+    invalidReason?: AiHostingAgentResourceInvalidReason;
     skillId: string;
     skillName?: string;
   },
@@ -135,34 +188,59 @@ export type SerializedSkillChipNode = Spread<
 export class SkillChipNode extends TextNode {
   __skillId: string;
   __skillName: string;
+  __invalid: boolean;
+  __invalidReason?: AiHostingAgentResourceInvalidReason;
 
   static getType() {
     return "agent-skill-chip";
   }
 
   static clone(node: SkillChipNode) {
-    return new SkillChipNode(node.__skillId, node.__skillName, node.__key);
+    return new SkillChipNode(
+      node.__skillId,
+      node.__skillName,
+      node.__invalid,
+      node.__invalidReason,
+      node.__key,
+    );
   }
 
   static importJSON(serializedNode: SerializedSkillChipNode) {
     return $createSkillChipNode({
       id: serializedNode.skillId,
+      invalid: serializedNode.invalid,
+      invalidReason: serializedNode.invalidReason,
       name: serializedNode.skillName,
     });
   }
 
-  constructor(skillId: string, skillName?: string, key?: NodeKey) {
+  constructor(
+    skillId: string,
+    skillName?: string,
+    invalid = false,
+    invalidReason?: AiHostingAgentResourceInvalidReason,
+    key?: NodeKey,
+  ) {
     const displayName = skillName || skillId;
 
     super(displayName, key);
     this.__skillId = skillId;
     this.__skillName = displayName;
+    this.__invalid = invalid;
+    this.__invalidReason = invalidReason;
     this.__mode = 1;
   }
 
   createDOM(config: EditorConfig) {
     const dom = super.createDOM(config);
-    dom.className = skillChipClassName;
+    applyResourceChipState(
+      dom,
+      skillChipClassName,
+      this.__invalid,
+      this.__invalidReason,
+      "技能",
+      this.__text,
+    );
     dom.dataset.skillChip = "true";
     return dom;
   }
@@ -171,7 +249,14 @@ export class SkillChipNode extends TextNode {
     const shouldReplace = super.updateDOM(prevNode, dom, config);
 
     if (!shouldReplace) {
-      dom.className = skillChipClassName;
+      applyResourceChipState(
+        dom,
+        skillChipClassName,
+        this.__invalid,
+        this.__invalidReason,
+        "技能",
+        this.__text,
+      );
       dom.dataset.skillChip = "true";
     }
 
@@ -180,6 +265,8 @@ export class SkillChipNode extends TextNode {
 
   exportJSON(): SerializedSkillChipNode {
     return {
+      invalid: this.__invalid,
+      invalidReason: this.__invalidReason,
       skillId: this.__skillId,
       skillName: this.__skillName,
       ...super.exportJSON(),
@@ -196,6 +283,14 @@ export class SkillChipNode extends TextNode {
     return this.__skillName;
   }
 
+  isInvalid() {
+    return this.__invalid;
+  }
+
+  getInvalidReason() {
+    return this.__invalidReason;
+  }
+
   canInsertTextBefore(): boolean {
     return false;
   }
@@ -209,8 +304,20 @@ export class SkillChipNode extends TextNode {
   }
 }
 
-export function $createSkillChipNode(skill: { id: string; name?: string }) {
-  return $applyNodeReplacement(new SkillChipNode(skill.id, skill.name));
+export function $createSkillChipNode(skill: {
+  id: string;
+  invalid?: boolean;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
+  name?: string;
+}) {
+  return $applyNodeReplacement(
+    new SkillChipNode(
+      skill.id,
+      skill.name,
+      skill.invalid,
+      skill.invalidReason,
+    ),
+  );
 }
 
 export function $isSkillChipNode(
@@ -221,3 +328,31 @@ export function $isSkillChipNode(
 
 const skillChipClassName =
   "ai-skill-resource-chip agent-skill-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] px-1.5 align-baseline text-[13px] font-normal leading-[22px]";
+
+function applyResourceChipState(
+  dom: HTMLElement,
+  className: string,
+  invalid: boolean,
+  invalidReason: AiHostingAgentResourceInvalidReason | undefined,
+  resourceType: "技能" | "知识库",
+  label: string,
+) {
+  dom.className = invalid
+    ? `${className} agent-resource-chip-invalid`
+    : className;
+  dom.dataset.resourceInvalid = String(invalid);
+
+  if (invalid) {
+    const reason = getAgentResourceInvalidReasonLabel(
+      invalidReason,
+      resourceType,
+    );
+    dom.setAttribute("aria-label", `${label}，${reason}`);
+    dom.dataset.resourceInvalidReason = reason;
+    dom.removeAttribute("title");
+  } else {
+    dom.removeAttribute("aria-label");
+    dom.removeAttribute("title");
+    delete dom.dataset.resourceInvalidReason;
+  }
+}

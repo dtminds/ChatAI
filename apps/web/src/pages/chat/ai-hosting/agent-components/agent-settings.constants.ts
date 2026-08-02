@@ -1,3 +1,8 @@
+import type {
+  AiHostingAgentResourceInvalidReason,
+  AiHostingAgentResourceStatus,
+} from "@chatai/contracts";
+
 export type AgentToneStyle =
   | "亲切自然"
   | "专业顾问"
@@ -10,8 +15,20 @@ export type AgentReplyLength = "简洁" | "标准" | "充分";
 
 export type ConditionalLogicSegment =
   | { type: "text"; value: string }
-  | { type: "knowledgeBase"; id: string; name?: string }
-  | { type: "skill"; id: string; name?: string };
+  | {
+      type: "knowledgeBase";
+      id: string;
+      invalid?: boolean;
+      invalidReason?: AiHostingAgentResourceInvalidReason;
+      name?: string;
+    }
+  | {
+      type: "skill";
+      id: string;
+      invalid?: boolean;
+      invalidReason?: AiHostingAgentResourceInvalidReason;
+      name?: string;
+    };
 
 export type AgentSettingsForm = {
   communicationStyle: string;
@@ -26,20 +43,40 @@ export type AgentSettingsForm = {
 
 export type KnowledgeBaseOption = {
   id: string;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   name: string;
+  status: AiHostingAgentResourceStatus;
 };
 
 export type SkillOption = {
   id: string;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   name: string;
+  status: AiHostingAgentResourceStatus;
 };
 
+export function getAgentResourceInvalidReasonLabel(
+  reason?: AiHostingAgentResourceInvalidReason,
+  resourceType = "资源",
+) {
+  switch (reason) {
+    case "deleted":
+      return `${resourceType}已被删除`;
+    case "disabled":
+      return "技能已停用";
+    case "unavailable":
+      return `${resourceType}当前不可用`;
+    default:
+      return "资源已失效";
+  }
+}
+
 export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
-  { id: "kb-skincare", name: "美妆知识大全" },
-  { id: "kb-makeup", name: "彩妆精选" },
-  { id: "kb-after-sales", name: "售后集合" },
-  { id: "kb-product", name: "商品咨询知识库" },
-  { id: "kb-policy", name: "活动政策知识库" },
+  { id: "kb-skincare", name: "美妆知识大全", status: "available" },
+  { id: "kb-makeup", name: "彩妆精选", status: "available" },
+  { id: "kb-after-sales", name: "售后集合", status: "available" },
+  { id: "kb-product", name: "商品咨询知识库", status: "available" },
+  { id: "kb-policy", name: "活动政策知识库", status: "available" },
 ];
 
 export const agentNameMaxLength = 50;
@@ -122,11 +159,11 @@ export const defaultAgentSettingsForm: AgentSettingsForm = {
 };
 
 export const agentSettingsFieldHints = {
+  roleDefinition: "定义 Agent 的身份、目标和表达方式",
   roleDescription: "定义 Agent 在对话中的身份和服务边界，例如品牌客服、专属导购、售后助手或专业顾问",
   communicationStyle: "配置 Agent 在不同沟通场景中的表达习惯，例如客户称呼、表情使用、营销积极度、安抚方式和禁用表达",
-  conditionalLogic:
-    "配置 Agent 在不同客户问题、业务场景或会话状态下的处理方式，例如商品咨询调用知识库",
-  transferToHumanConditions: "设置 Agent 必须转交人工客服的场景，例如知识未命中、AI 不确定、客户情绪负面、退款投诉、客户要求真人等",
+  conditionalLogic: "设置 Agent 的处理逻辑和行为边界",
+  transferToHumanConditions: "设置需要人工介入的场景",
 } as const;
 
 export type AgentPreviewMessage = {
@@ -181,6 +218,6 @@ export const agentGenerateProgressSteps = [
   { label: "分析业务场景", progress: 35 },
   { label: "生成角色设定", progress: 55 },
   { label: "生成沟通风格", progress: 75 },
-  { label: "生成条件逻辑", progress: 90 },
+  { label: "生成行为指引", progress: 90 },
   { label: "配置完成", progress: 100 },
 ] as const;

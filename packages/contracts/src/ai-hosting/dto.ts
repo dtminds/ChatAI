@@ -99,12 +99,28 @@ export const AiHostingAgentModelSummarySchema = Type.Object({
   name: Type.String(),
 });
 
+export const AiHostingAgentResourceStatusSchema = Type.Union([
+  Type.Literal("available"),
+  Type.Literal("invalid"),
+]);
+
+export const AiHostingAgentResourceInvalidReasonSchema = Type.Union([
+  Type.Literal("deleted"),
+  Type.Literal("disabled"),
+  Type.Literal("unavailable"),
+]);
+
 export const AiHostingAgentResourceSummarySchema = Type.Object({
+  id: Type.String(),
+  invalidReason: Type.Optional(AiHostingAgentResourceInvalidReasonSchema),
+  name: Type.String(),
+  status: AiHostingAgentResourceStatusSchema,
+});
+
+export const AiHostingAgentKbSummarySchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
 });
-
-export const AiHostingAgentKbSummarySchema = AiHostingAgentResourceSummarySchema;
 
 export const AiHostingAgentListItemSchema = Type.Object({
   autoLearnEnabled: Type.Boolean(),
@@ -271,6 +287,10 @@ export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
+export type AiHostingAgentResourceInvalidReason = Static<
+  typeof AiHostingAgentResourceInvalidReasonSchema
+>;
+export type AiHostingAgentResourceStatus = Static<typeof AiHostingAgentResourceStatusSchema>;
 export type AiHostingAgentResourceSummary = Static<typeof AiHostingAgentResourceSummarySchema>;
 export type AiHostingAgentKbSummary = Static<typeof AiHostingAgentKbSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;

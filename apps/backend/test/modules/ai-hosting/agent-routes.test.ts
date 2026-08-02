@@ -300,11 +300,14 @@ describe("AI hosting agent routes", () => {
   });
 
   it("returns bound knowledge bases and skills from batched detail queries", async () => {
-    const { app, authorization, db } = await createAiHostingApp();
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
     db.setAgentPromptConfig({
-      availableKbIds: [3, 1, 3],
-      availableSkillIds: [2, 1, 2],
-      conditionLogic: "",
+      availableKbIds: [100, 999, 1, 100],
+      availableSkillIds: [3, 999, 2, 3],
+      conditionLogic:
+        '<resource type="knowledge_base" kbId="999" name="已下线知识库" /> <resource type="skill" skillId="999" name="已下线技能" />',
     });
 
     const response = await app.inject({
@@ -317,12 +320,39 @@ describe("AI hosting agent routes", () => {
     expect(response.json()).toMatchObject({
       data: {
         availableKbs: [
-          { id: "3", name: "活动政策知识库" },
-          { id: "1", name: "商品咨询知识库" },
+          {
+            id: "100",
+            invalidReason: "deleted",
+            name: "已删除知识库0",
+            status: "invalid",
+          },
+          {
+            id: "999",
+            invalidReason: "unavailable",
+            name: "已下线知识库",
+            status: "invalid",
+          },
+          { id: "1", name: "商品咨询知识库", status: "available" },
         ],
         availableSkills: [
-          { id: "2", name: "退换货处理" },
-          { id: "1", name: "订单查询" },
+          {
+            id: "3",
+            invalidReason: "deleted",
+            name: "已删除技能",
+            status: "invalid",
+          },
+          {
+            id: "999",
+            invalidReason: "unavailable",
+            name: "已下线技能",
+            status: "invalid",
+          },
+          {
+            id: "2",
+            invalidReason: "disabled",
+            name: "退换货处理",
+            status: "invalid",
+          },
         ],
       },
       success: true,
@@ -330,14 +360,12 @@ describe("AI hosting agent routes", () => {
     expect(db.kbListExecuteCount).toBe(1);
     expect(db.kbListWheres).toEqual([
       ["uid", "=", 9001],
-      ["status", "=", 1],
-      ["id", "in", [3, 1]],
+      ["id", "in", [100, 999, 1]],
     ]);
     expect(db.skillListExecuteCount).toBe(1);
     expect(db.skillListWheres).toEqual([
       ["uid", "=", 9001],
-      ["is_del", "=", 0],
-      ["id", "in", [2, 1]],
+      ["id", "in", [3, 999, 2]],
     ]);
 
     await app.close();
@@ -429,6 +457,111 @@ describe("AI hosting agent routes", () => {
     expect(db.updatedAgents[1]?.values.last_publish_time).toBeGreaterThan(0);
     expect(db.historyLatestLimitValues).not.toHaveLength(0);
     expect(db.historyLatestLimitValues.every((value) => value === 1)).toBe(true);
+
+    await app.close();
+  });
+
+  it("blocks draft saves when referenced resources are invalid", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [100],
+          availableSkillIds: [2],
+          conditionLogic:
+            '<resource type="knowledge_base" kbId="100" name="已删除知识库0" /> <resource type="skill" skillId="2" name="退换货处理" />',
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_RESOURCES_INVALID",
+        details: {
+          knowledgeBases: [
+            {
+              id: "100",
+              invalidReason: "deleted",
+              name: "已删除知识库0",
+              status: "invalid",
+            },
+          ],
+          skills: [
+            {
+              id: "2",
+              invalidReason: "disabled",
+              name: "退换货处理",
+              status: "invalid",
+            },
+          ],
+        },
+        message: "Agent 依赖的资源已失效，请移除后重试",
+      },
+      success: false,
+    });
+    expect(db.updatedAgents).toEqual([]);
+    expect(db.insertedHistories).toEqual([]);
+
+    await app.close();
+  });
+
+  it("blocks publishing when a referenced resource becomes invalid", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
+    db.setAgentPromptConfig({
+      availableKbIds: [100],
+      availableSkillIds: [3],
+      conditionLogic: "草稿内容",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/agents/301/publish",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_RESOURCES_INVALID",
+        details: {
+          knowledgeBases: [
+            {
+              id: "100",
+              invalidReason: "deleted",
+              name: "已删除知识库0",
+              status: "invalid",
+            },
+          ],
+          skills: [
+            {
+              id: "3",
+              invalidReason: "deleted",
+              name: "已删除技能",
+              status: "invalid",
+            },
+          ],
+        },
+      },
+      success: false,
+    });
+    expect(db.insertedHistories).toEqual([]);
+    expect(db.updatedAgents).toEqual([]);
 
     await app.close();
   });
@@ -1845,6 +1978,13 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       is_del: 0,
       name: "退换货处理",
       status: 0,
+      uid: dataUid,
+    },
+    {
+      id: 3,
+      is_del: 1,
+      name: "已删除技能",
+      status: 1,
       uid: dataUid,
     },
   ];

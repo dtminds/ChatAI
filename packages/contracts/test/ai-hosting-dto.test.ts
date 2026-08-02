@@ -274,10 +274,17 @@ describe("AI hosting DTOs", () => {
     expect(
       Value.Check(AiHostingAgentDetailSchema, {
         availableKbs: [
-          { id: "1", name: "商品咨询知识库" },
-          { id: "3", name: "活动政策知识库" },
+          { id: "1", name: "商品咨询知识库", status: "available" },
+          {
+            id: "3",
+            invalidReason: "deleted",
+            name: "活动政策知识库",
+            status: "invalid",
+          },
         ],
-        availableSkills: [{ id: "2", name: "退换货处理" }],
+        availableSkills: [
+          { id: "2", name: "退换货处理", status: "available" },
+        ],
         hasUnpublishedChanges: true,
         id: "301",
         model: {

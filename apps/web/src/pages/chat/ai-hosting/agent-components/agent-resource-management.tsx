@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Add01Icon,
+  AlertCircleIcon,
   AiBookIcon,
   ArrowDown01Icon,
   ArrowRight01Icon,
@@ -13,6 +14,7 @@ import {
   AI_HOSTING_AGENT_KB_MAX_COUNT,
   AI_HOSTING_AGENT_SKILL_MAX_COUNT,
   KB_SEARCH_QUERY_MAX_LENGTH,
+  type AiHostingAgentResourceSummary,
 } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +35,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import {
   Table,
   TableBody,
   TableCell,
@@ -48,20 +57,15 @@ import {
 import { listAgentSkills } from "../api/agent-skill-service";
 import { listKbs, toKbListViewItem } from "../api/kb-service";
 import type { KbListViewItem } from "../kb-types";
+import { getAgentResourceInvalidReasonLabel } from "./agent-settings.constants";
 
 const RESOURCE_PICKER_PAGE_SIZE = 10;
 const RESOURCE_SEARCH_DEBOUNCE_MS = 300;
 const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
-export type AgentKnowledgeBaseResource = {
-  id: string;
-  name: string;
-};
+export type AgentKnowledgeBaseResource = AiHostingAgentResourceSummary;
 
-export type AgentSkillResource = {
-  id: string;
-  name: string;
-};
+export type AgentSkillResource = AiHostingAgentResourceSummary;
 
 type AgentResourceSectionId = "knowledge-bases" | "skills";
 
@@ -102,6 +106,9 @@ export function AgentResourceManagementPanel({
   onRemoveSkill: (resource: AgentSkillResource) => void;
   skills: readonly AgentSkillResource[];
 }) {
+  const invalidResourceCount = [...knowledgeBases, ...skills].filter(
+    (resource) => resource.status === "invalid",
+  ).length;
   const resourcesBySection = {
     skills,
     "knowledge-bases": knowledgeBases,
@@ -118,6 +125,23 @@ export function AgentResourceManagementPanel({
       >
         资源管理
       </h2>
+      {invalidResourceCount > 0 ? (
+        <div
+          className="mb-4 flex items-start gap-2 rounded-[8px] bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
+          role="alert"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="mt-0.5 shrink-0"
+            icon={AlertCircleIcon}
+            size={16}
+            strokeWidth={1.8}
+          />
+          <span>
+            保存前请移除失效资源
+          </span>
+        </div>
+      ) : null}
       <div className="space-y-5">
         {resourceSections.map((section) => (
           <AgentResourceSection
@@ -153,9 +177,9 @@ function AgentResourceSection({
 }: {
   disabled: boolean;
   icon: typeof ConnectIcon;
-  items: readonly { id: string; name: string }[];
+  items: readonly AiHostingAgentResourceSummary[];
   onAdd: () => void;
-  onRemove: (item: { id: string; name: string }) => void;
+  onRemove: (item: AiHostingAgentResourceSummary) => void;
   title: string;
 }) {
   const [open, setOpen] = useState(true);
@@ -197,7 +221,7 @@ function AgentResourceSection({
         </Button>
       </div>
 
-      <CollapsibleContent className="min-h-40" id={contentId}>
+      <CollapsibleContent id={contentId}>
         {items.length === 0 ? (
           <div
             className="flex min-h-40 flex-col items-center justify-center px-2 py-6"
@@ -214,18 +238,52 @@ function AgentResourceSection({
         ) : (
           <ul
             aria-label={`已添加${title}`}
-            className="min-h-40 space-y-1 px-0.5 py-2"
+            className="space-y-1 px-0.5 py-2"
           >
             {items.map((item) => (
               <li key={item.id}>
-                <div className="group flex min-w-0 items-center gap-2 rounded-[8px] bg-muted/40 px-2 py-1.5 transition-colors hover:bg-muted/70">
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    className="shrink-0 text-muted-foreground"
-                    icon={icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
+                <div
+                  className={cn(
+                    "group flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors",
+                    item.status === "invalid"
+                      ? "bg-destructive/5 hover:bg-destructive/10"
+                      : "bg-muted/40 hover:bg-muted/70",
+                  )}
+                >
+                  {item.status === "invalid" ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            aria-label={`${item.name}已失效`}
+                            className="inline-flex shrink-0 text-destructive"
+                            role="img"
+                          >
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={AlertCircleIcon}
+                              size={15}
+                              strokeWidth={1.8}
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
+                          {getAgentResourceInvalidReasonLabel(
+                            item.invalidReason,
+                            title === "技能" ? "技能" : "知识库",
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      className="shrink-0 text-muted-foreground"
+                      icon={icon}
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                  )}
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {item.name}
                   </span>
@@ -366,7 +424,11 @@ export function AgentKnowledgeBasePickerDialog({
     setDraftSelection((current) => {
       const next = new Map(current);
       if (checked) {
-        next.set(item.id, { id: item.id, name: item.name });
+        next.set(item.id, {
+          id: item.id,
+          name: item.name,
+          status: "available",
+        });
       } else {
         next.delete(item.id);
       }
@@ -603,7 +665,11 @@ export function AgentSkillPickerDialog({
     setDraftSelection((current) => {
       const next = new Map(current);
       if (checked) {
-        next.set(item.id, { id: item.id, name: item.name });
+        next.set(item.id, {
+          id: item.id,
+          name: item.name,
+          status: "available",
+        });
       } else {
         next.delete(item.id);
       }

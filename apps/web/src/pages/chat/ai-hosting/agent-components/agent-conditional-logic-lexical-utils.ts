@@ -178,6 +178,8 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
       paragraph.append(
         $createKnowledgeBaseChipNode({
           id: segment.id,
+          invalid: segment.invalid,
+          invalidReason: segment.invalidReason,
           name: segment.name,
         }),
       );
@@ -188,6 +190,8 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
       paragraph.append(
         $createSkillChipNode({
           id: segment.id,
+          invalid: segment.invalid,
+          invalidReason: segment.invalidReason,
           name: segment.name,
         }),
       );
@@ -217,6 +221,8 @@ function collectConditionalLogicSegmentsFromNode(
   if ($isKnowledgeBaseChipNode(node)) {
     segments.push({
       id: node.getKnowledgeBaseId(),
+      invalid: node.isInvalid(),
+      invalidReason: node.getInvalidReason(),
       name: node.getKnowledgeBaseName(),
       type: "knowledgeBase",
     });
@@ -226,6 +232,8 @@ function collectConditionalLogicSegmentsFromNode(
   if ($isSkillChipNode(node)) {
     segments.push({
       id: node.getSkillId(),
+      invalid: node.isInvalid(),
+      invalidReason: node.getInvalidReason(),
       name: node.getSkillName(),
       type: "skill",
     });

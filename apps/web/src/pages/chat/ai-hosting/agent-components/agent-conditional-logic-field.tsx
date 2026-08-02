@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH } from "@chatai/contracts";
 import {
-  Add01Icon,
   AiBookIcon,
   ConnectIcon,
+  ResourcesAddIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -23,7 +23,10 @@ import {
   KnowledgeBaseChipNode,
   SkillChipNode,
 } from "./agent-conditional-logic-lexical-nodes";
-import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
+import {
+  ConditionalLogicResourceTooltipPlugin,
+  ConditionalLogicRuntimePlugin,
+} from "./agent-conditional-logic-lexical-plugins";
 import {
   getConditionalLogicCharacterCount,
   isConditionalLogicEmpty,
@@ -53,9 +56,49 @@ export function AgentConditionalLogicField({
   const [open, setOpen] = useState(false);
   const editorRef = useRef<LexicalEditor | null>(null);
 
+  const selectableKnowledgeBases = useMemo(
+    () => knowledgeBases.filter((resource) => resource.status === "available"),
+    [knowledgeBases],
+  );
+  const selectableSkills = useMemo(
+    () => skills.filter((resource) => resource.status === "available"),
+    [skills],
+  );
+
   const normalizedSegments = useMemo(
-    () => normalizeConditionalLogicSegments(segments),
-    [segments],
+    () => {
+      const invalidKnowledgeBases = new Map(
+        knowledgeBases
+          .filter((resource) => resource.status === "invalid")
+          .map((resource) => [resource.id, resource.invalidReason]),
+      );
+      const invalidSkills = new Map(
+        skills
+          .filter((resource) => resource.status === "invalid")
+          .map((resource) => [resource.id, resource.invalidReason]),
+      );
+
+      return normalizeConditionalLogicSegments(segments).map((segment) => {
+        if (segment.type === "knowledgeBase") {
+          return {
+            ...segment,
+            invalid: invalidKnowledgeBases.has(segment.id),
+            invalidReason: invalidKnowledgeBases.get(segment.id),
+          };
+        }
+
+        if (segment.type === "skill") {
+          return {
+            ...segment,
+            invalid: invalidSkills.has(segment.id),
+            invalidReason: invalidSkills.get(segment.id),
+          };
+        }
+
+        return segment;
+      });
+    },
+    [knowledgeBases, segments, skills],
   );
 
   const isEmpty = useMemo(() => isConditionalLogicEmpty(normalizedSegments), [normalizedSegments]);
@@ -119,21 +162,59 @@ export function AgentConditionalLogicField({
 
   return (
     <div
-      aria-label="条件逻辑"
+      aria-label="行为指引"
       className="rounded-[8px] border border-border bg-background px-3 py-2.5"
       role="group"
     >
-      <div className="relative min-h-24 text-sm leading-7 text-foreground">
-        <Popover
-          modal={false}
-          onOpenChange={setOpen}
-          open={open}
-        >
+      <Popover modal={false} onOpenChange={setOpen} open={open}>
+        <div className="relative min-h-24 text-sm leading-7 text-foreground">
+          <LexicalComposer initialConfig={editorConfig}>
+            <PlainTextPlugin
+              contentEditable={
+                <ContentEditable
+                  aria-label="行为指引描述"
+                  aria-disabled={disabled}
+                  aria-multiline="true"
+                  className={cn(
+                    "min-h-24 max-h-128 w-full overflow-y-auto whitespace-pre-wrap break-words outline-none",
+                    disabled && "cursor-not-allowed opacity-70",
+                  )}
+                  role="textbox"
+                  tabIndex={disabled ? -1 : undefined}
+                />
+              }
+              ErrorBoundary={LexicalErrorBoundary}
+              placeholder={
+                isEmpty ? (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute left-0 top-0 text-muted-foreground"
+                  >
+                    请输入目标、处理逻辑或约束
+                  </div>
+                ) : null
+              }
+            />
+            <ConditionalLogicRuntimePlugin
+              disabled={disabled}
+              maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+              onChange={onChange}
+              registerEditor={registerEditor}
+              segments={normalizedSegments}
+            />
+            <ConditionalLogicResourceTooltipPlugin />
+            <ConditionalLogicMaxLengthPlugin
+              maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+            />
+          </LexicalComposer>
+        </div>
+
+        <div className="mt-1 flex h-5 items-center justify-between">
           <PopoverTrigger asChild>
             <Button
               aria-expanded={open}
-              aria-label="添加条件逻辑资源"
-              className="absolute left-0 top-0 z-10 size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
+              aria-label="添加引用资源"
+              className="size-5 rounded-[6px] p-0 text-muted-foreground"
               disabled={disabled}
               onMouseDown={(event) => {
                 event.preventDefault();
@@ -142,91 +223,57 @@ export function AgentConditionalLogicField({
               type="button"
               variant="ghost"
             >
-              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+              <HugeiconsIcon icon={ResourcesAddIcon} size={14} strokeWidth={1.8} />
             </Button>
           </PopoverTrigger>
+          <div className="text-xs leading-5 text-muted-foreground">
+            {characterCount}/{AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+          </div>
+        </div>
 
-          <PopoverContent
-            align="start"
-            className="w-[300px] max-w-[min(300px,calc(100vw-2rem))] overflow-hidden rounded-[10px] p-0"
-            onOpenAutoFocus={(event) => event.preventDefault()}
-            sideOffset={8}
+        <PopoverContent
+          align="start"
+          className="w-[260px] max-w-[min(260px,calc(100vw-2rem))] overflow-hidden rounded-[8px] p-0"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          sideOffset={8}
+        >
+          <ScrollArea
+            className="w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full"
+            type="always"
+            viewportProps={{ className: "!h-auto max-h-72" }}
           >
-            <ScrollArea className="max-h-80 w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full">
-              <div
-                aria-label="选择条件逻辑资源"
-                className="w-full min-w-0 max-w-full"
-                role="listbox"
-              >
-                {skills.length > 0 ? (
-                  <ResourceGroup
-                    icon={ConnectIcon}
-                    items={skills}
-                    onSelect={insertSkill}
-                    title="技能"
-                  />
-                ) : null}
-                {knowledgeBases.length > 0 ? (
-                  <ResourceGroup
-                    bordered={skills.length > 0}
-                    icon={AiBookIcon}
-                    items={knowledgeBases}
-                    onSelect={insertKnowledgeBase}
-                    title="知识库"
-                  />
-                ) : null}
-                {skills.length === 0 && knowledgeBases.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    请先在资源管理中添加技能或知识库
-                  </div>
-                ) : null}
-              </div>
-            </ScrollArea>
-          </PopoverContent>
-        </Popover>
-
-        <LexicalComposer initialConfig={editorConfig}>
-          <PlainTextPlugin
-            contentEditable={
-              <ContentEditable
-                aria-label="条件逻辑描述"
-                aria-disabled={disabled}
-                aria-multiline="true"
-                className={cn(
-                  "min-h-24 max-h-128 w-full overflow-y-auto whitespace-pre-wrap break-words pt-8 outline-none",
-                  disabled && "cursor-not-allowed opacity-70",
-                )}
-                role="textbox"
-                tabIndex={disabled ? -1 : undefined}
-              />
-            }
-            ErrorBoundary={LexicalErrorBoundary}
-            placeholder={
-              isEmpty ? (
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute left-0 top-8 text-muted-foreground"
-                >
-                  请输入条件逻辑描述
+            <div
+              aria-label="选择引用资源"
+              className="w-full min-w-0 max-w-full"
+              role="listbox"
+            >
+              {selectableSkills.length > 0 ? (
+                <ResourceGroup
+                  icon={ConnectIcon}
+                  items={selectableSkills}
+                  onSelect={insertSkill}
+                  title="技能"
+                />
+              ) : null}
+              {selectableKnowledgeBases.length > 0 ? (
+                <ResourceGroup
+                  bordered={selectableSkills.length > 0}
+                  icon={AiBookIcon}
+                  items={selectableKnowledgeBases}
+                  onSelect={insertKnowledgeBase}
+                  title="知识库"
+                />
+              ) : null}
+              {selectableSkills.length === 0 &&
+              selectableKnowledgeBases.length === 0 ? (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  请先在资源管理中添加技能或知识库
                 </div>
-              ) : null
-            }
-          />
-          <ConditionalLogicRuntimePlugin
-            disabled={disabled}
-            maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
-            onChange={onChange}
-            registerEditor={registerEditor}
-            segments={normalizedSegments}
-          />
-          <ConditionalLogicMaxLengthPlugin
-            maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
-          />
-        </LexicalComposer>
-      </div>
-      <div className="mt-1 text-right text-xs text-muted-foreground">
-        {characterCount}/{AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
-      </div>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -246,10 +293,10 @@ function ResourceGroup<T extends KnowledgeBaseOption | SkillOption>({
 }) {
   return (
     <section className={bordered ? "border-t border-border/70" : undefined}>
-      <h3 className="px-3 pb-2 pt-3.5 text-xs font-normal text-muted-foreground/60">
+      <h3 className="px-3 pb-1 pt-2.5 text-xs font-normal text-muted-foreground/60">
         {title}
       </h3>
-      <div className="p-1">
+      <div className="px-1 pb-1">
         {items.map((item) => (
           <ResourceOptionRow
             icon={icon}
@@ -275,7 +322,7 @@ function ResourceOptionRow({
   return (
     <button
       aria-label={label}
-      className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40"
+      className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-[6px] px-2 py-1.5 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
       onClick={onSelect}
       onMouseDown={(event) => {
         event.preventDefault();

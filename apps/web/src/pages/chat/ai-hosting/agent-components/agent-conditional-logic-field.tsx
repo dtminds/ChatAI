@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH } from "@chatai/contracts";
 import {
   Add01Icon,
   AiBookIcon,
@@ -32,9 +33,11 @@ import {
 } from "./agent-conditional-logic-lexical-nodes";
 import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
 import {
+  getConditionalLogicCharacterCount,
   isConditionalLogicEmpty,
   normalizeConditionalLogicSegments,
 } from "./agent-conditional-logic-lexical-utils";
+import { ConditionalLogicMaxLengthPlugin } from "./agent-conditional-logic-max-length-plugin";
 import {
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
@@ -73,6 +76,10 @@ export function AgentConditionalLogicField({
   );
 
   const isEmpty = useMemo(() => isConditionalLogicEmpty(normalizedSegments), [normalizedSegments]);
+  const characterCount = useMemo(
+    () => getConditionalLogicCharacterCount(normalizedSegments),
+    [normalizedSegments],
+  );
 
   const filteredKnowledgeBases = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -413,7 +420,7 @@ export function AgentConditionalLogicField({
                 aria-disabled={disabled}
                 aria-multiline="true"
                 className={cn(
-                  "min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none",
+                  "min-h-24 max-h-128 w-full overflow-y-auto whitespace-pre-wrap break-words pt-8 outline-none",
                   disabled && "cursor-not-allowed opacity-70",
                 )}
                 role="textbox"
@@ -434,11 +441,18 @@ export function AgentConditionalLogicField({
           />
           <ConditionalLogicRuntimePlugin
             disabled={disabled}
+            maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
             onChange={onChange}
             registerEditor={registerEditor}
             segments={normalizedSegments}
           />
+          <ConditionalLogicMaxLengthPlugin
+            maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+          />
         </LexicalComposer>
+      </div>
+      <div className="mt-1 text-right text-xs text-muted-foreground">
+        {characterCount}/{AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
       </div>
     </div>
   );

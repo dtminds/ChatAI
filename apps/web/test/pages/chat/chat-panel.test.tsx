@@ -1,8 +1,13 @@
 import { createRef, useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CONTROLLED_TEXT_INSERTION_COMMAND,
+  type LexicalEditor,
+} from "lexical";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
+import { INSERT_COMPOSER_TEXT_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import type { Account, Conversation } from "@/pages/chat/chat-types";
 
 const account: Account = {
@@ -29,6 +34,103 @@ const account: Account = {
 describe("ChatPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it("truncates typed, IME, and dropped composer text to the remaining space", async () => {
+    const composerRef = createRef<LexicalEditor>();
+    const existingText = "字".repeat(994);
+
+    render(
+      <ChatPanel
+        activeAccount={account}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={composerRef}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(composerRef.current).not.toBeNull();
+    });
+
+    act(() => {
+      composerRef.current?.dispatchCommand(
+        INSERT_COMPOSER_TEXT_COMMAND,
+        existingText,
+      );
+      composerRef.current?.dispatchCommand(
+        CONTROLLED_TEXT_INSERTION_COMMAND,
+        "甲乙",
+      );
+      composerRef.current?.dispatchCommand(
+        CONTROLLED_TEXT_INSERTION_COMMAND,
+        new InputEvent("beforeinput", {
+          data: "丙丁",
+          inputType: "insertFromComposition",
+        }),
+      );
+
+      const dropEvent = new InputEvent("beforeinput", {
+        inputType: "insertFromDrop",
+      });
+      Object.defineProperty(dropEvent, "dataTransfer", {
+        value: {
+          getData: (type: string) =>
+            type === "text/plain" ? "戊己庚辛" : "",
+        },
+      });
+      composerRef.current?.dispatchCommand(
+        CONTROLLED_TEXT_INSERTION_COMMAND,
+        dropEvent,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveTextContent(
+        `${existingText}甲乙丙丁戊己`,
+      );
+    });
   });
 
   it("runs header actions for the active conversation and toggles the desktop sidebar", async () => {

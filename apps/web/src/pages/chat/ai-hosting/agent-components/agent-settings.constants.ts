@@ -43,7 +43,6 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
 ];
 
 export const agentNameMaxLength = 50;
-export const agentLongTextMaxLength = 2000;
 export const agentPreviewTestMessageLimit = 20;
 
 export const agentModelOptions = [

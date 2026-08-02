@@ -13,11 +13,42 @@ import {
   $insertConditionalLogicText,
   $insertKnowledgeBaseChip,
   $restoreConditionalLogicFromSegments,
+  getConditionalLogicCharacterCount,
   isConditionalLogicEmpty,
   normalizeConditionalLogicSegments,
+  trimConditionalLogicSegmentsToMaxLength,
 } from "@/pages/chat/ai-hosting/agent-components/agent-conditional-logic-lexical-utils";
 
 describe("conditional logic lexical utils", () => {
+  it("counts text and resource names as visible characters", () => {
+    expect(
+      getConditionalLogicCharacterCount([
+        { type: "text", value: "咨询 " },
+        { type: "knowledgeBase", id: "3", name: "护肤知识库" },
+        { type: "text", value: " 后继续" },
+      ]),
+    ).toBe("咨询 护肤知识库 后继续".length);
+  });
+
+  it("trims restored segments without partially converting a resource chip", () => {
+    const text = "a".repeat(7995);
+
+    expect(
+      trimConditionalLogicSegmentsToMaxLength(
+        [
+          { type: "text", value: text },
+          {
+            id: "kb-over-limit",
+            name: "超长知识库名称测试",
+            type: "knowledgeBase",
+          },
+          { type: "text", value: "尾部内容" },
+        ],
+        8000,
+      ),
+    ).toEqual([{ type: "text", value: text }]);
+  });
+
   it("exports text and knowledge base segments from the editor", () => {
     const editor = createEditor({
       namespace: "conditional-logic-lexical-utils-test",

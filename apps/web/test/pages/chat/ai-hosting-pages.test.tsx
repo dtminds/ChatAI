@@ -3018,7 +3018,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     expect(screen.getByText("保存", { selector: "button" })).toBeDisabled();
     expect(
-      within(loadFailureDialog).getByRole("button", { name: "返回 Agent 管理" }),
+      within(loadFailureDialog).getByRole("button", { name: "返回列表" }),
     ).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalledWith("Agent 设置加载失败，请稍后重试");
 
@@ -3036,7 +3036,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
-  it("returns to agent management from the initial load failure dialog", async () => {
+  it("returns to the agent list from the initial load failure dialog", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),
@@ -3052,7 +3052,7 @@ describe("AI hosting pages", () => {
       name: "Agent 设置加载失败",
     });
     await user.click(
-      within(loadFailureDialog).getByRole("button", { name: "返回 Agent 管理" }),
+      within(loadFailureDialog).getByRole("button", { name: "返回列表" }),
     );
 
     expect(router.state.location.pathname).toBe("/chat/ai-hosting/agents");
@@ -3476,7 +3476,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("条件逻辑")).toBeInTheDocument();
     expect(screen.getByText("转人工条件")).toBeInTheDocument();
     expect(await screen.findByTitle("模型图标：默认模型")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent 模拟测试")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 预览调试")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清空" })).toBeInTheDocument();
     expect(screen.getByLabelText("选择图片")).toBeInTheDocument();
   });
@@ -3567,7 +3567,7 @@ describe("AI hosting pages", () => {
       }),
     );
 
-    const previewPanel = screen.getByRole("region", { name: "Agent 模拟测试" });
+    const previewPanel = screen.getByRole("region", { name: "Agent 预览调试" });
 
     expect(within(previewPanel).getByRole("presentation")).toHaveAttribute(
       "src",
@@ -3637,15 +3637,95 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("maxLength", "50");
   });
 
-  it("limits long text agent settings fields to 2000 characters", async () => {
+  it("uses the field-specific agent settings character limits", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
 
-    expect(screen.getByLabelText("角色描述")).toHaveAttribute("maxLength", "2000");
-    expect(screen.getByLabelText("沟通风格")).toHaveAttribute("maxLength", "2000");
+    expect(screen.getByLabelText("角色描述")).toHaveAttribute("maxLength", "400");
+    expect(screen.getByLabelText("沟通风格")).toHaveAttribute("maxLength", "800");
     expect(screen.getByLabelText("转人工条件")).toHaveAttribute("maxLength", "2000");
-    expect(screen.getAllByText("0/2000")).toHaveLength(3);
+    expect(screen.getByText("0/400")).toBeInTheDocument();
+    expect(screen.getByText("0/800")).toBeInTheDocument();
+    expect(screen.getByText("0/8000")).toBeInTheDocument();
+    expect(screen.getByText("0/2000")).toBeInTheDocument();
+  });
+
+  it("trims conditional logic input at 8000 visible characters", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    const editor = await screen.findByLabelText("条件逻辑描述");
+    await user.click(editor);
+    await user.paste("a".repeat(8001));
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("a".repeat(8000));
+    });
+    expect(screen.getByText("8000/8000")).toBeInTheDocument();
+  });
+
+  it("rejects a conditional logic resource atomically when its chip does not fit", async () => {
+    const user = userEvent.setup();
+    const knowledgeBaseName = "超长知识库名称测试";
+
+    vi.mocked(kbService.listKbs).mockResolvedValue({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "kb-over-limit",
+          name: knowledgeBaseName,
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 200,
+        total: 1,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    const editor = await screen.findByLabelText("条件逻辑描述");
+    await user.click(editor);
+    await user.paste("a".repeat(7995));
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "知识库" }));
+    await user.click(await screen.findByRole("option", { name: knowledgeBaseName }));
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("a".repeat(7995));
+    });
+    expect(editor.querySelector("[data-knowledge-base-chip='true']")).toBeNull();
+    expect(screen.getByText("7995/8000")).toBeInTheDocument();
+  });
+
+  it("trims oversized conditional logic while hydrating an existing agent", async () => {
+    const allowedText = "a".repeat(8000);
+
+    vi.mocked(agentService.getAiHostingAgent).mockResolvedValueOnce({
+      ...mockAgentDetail,
+      promptConfig: {
+        ...mockAgentDetail.promptConfig,
+        conditionLogic: `${allowedText}多`,
+      },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301",
+      <AgentSettingsPage />,
+      "/chat/ai-hosting/agents/:agentId",
+    );
+
+    const editor = await screen.findByLabelText("条件逻辑描述");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(allowedText);
+    });
+    expect(screen.getByText("8000/8000")).toBeInTheDocument();
   });
 
   it("keeps the selected model icon and label in one trigger row", async () => {
@@ -3800,9 +3880,9 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
 
-    const previewPanel = screen.getByRole("region", { name: "Agent 模拟测试" });
+    const previewPanel = screen.getByRole("region", { name: "Agent 预览调试" });
 
-    expect(within(previewPanel).getByRole("heading", { level: 2, name: "模拟测试" })).toBeInTheDocument();
+    expect(within(previewPanel).getByRole("heading", { level: 2, name: "预览调试" })).toBeInTheDocument();
     expect(within(previewPanel).queryByRole("heading", { level: 2, name: "护肤小助理" })).not.toBeInTheDocument();
   });
 

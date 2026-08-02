@@ -13,6 +13,7 @@ import {
   AiHostingLearningCandidateSearchDetailResponseSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
+  getAiHostingAgentConditionLogicCharacterCount,
   AgentSkillTemplateDetailSchema,
   AgentSkillTemplateMarketplaceResponseSchema,
   KbDocCreateRequestSchema,
@@ -24,6 +25,14 @@ import {
 } from "../src";
 
 describe("AI hosting DTOs", () => {
+  it("counts conditional logic text and resource display names", () => {
+    expect(
+      getAiHostingAgentConditionLogicCharacterCount(
+        '咨询 <resource type="knowledge_base" kbId="3" name="护肤知识库" /> 后继续',
+      ),
+    ).toBe("咨询 护肤知识库 后继续".length);
+  });
+
   it("accepts only numeric learning candidate ids", () => {
     expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001")).toBe(true);
     expect(Value.Check(AiHostingLearningCandidateIdSchema, "ENC-CANDIDATE-001")).toBe(false);
@@ -97,8 +106,7 @@ describe("AI hosting DTOs", () => {
     ).toBe(true);
   });
 
-  it("limits long text prompt fields to 2000 characters", () => {
-    const longText = "a".repeat(2001);
+  it("enforces field-specific agent prompt length limits", () => {
     const basePayload = {
       modelId: "11",
       name: "护肤小助理",
@@ -120,7 +128,16 @@ describe("AI hosting DTOs", () => {
         ...basePayload,
         promptConfig: {
           ...basePayload.promptConfig,
-          role: longText,
+          role: "a".repeat(400),
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          role: "a".repeat(401),
         },
       }),
     ).toBe(false);
@@ -131,7 +148,19 @@ describe("AI hosting DTOs", () => {
           ...basePayload.promptConfig,
           replyStyle: {
             ...basePayload.promptConfig.replyStyle,
-            styleInstruction: longText,
+            styleInstruction: "a".repeat(800),
+          },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          replyStyle: {
+            ...basePayload.promptConfig.replyStyle,
+            styleInstruction: "a".repeat(801),
           },
         },
       }),
@@ -141,7 +170,16 @@ describe("AI hosting DTOs", () => {
         ...basePayload,
         promptConfig: {
           ...basePayload.promptConfig,
-          handoffRules: longText,
+          handoffRules: "a".repeat(2000),
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          handoffRules: "a".repeat(2001),
         },
       }),
     ).toBe(false);

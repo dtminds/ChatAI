@@ -22,6 +22,7 @@ import {
   ServiceUnavailableError,
 } from "../../shared/errors.js";
 import { parseMySqlId } from "./ai-hosting-id-utils.js";
+import { assertAiHostingAgentPromptConfigLimits } from "./agent-prompt-config-validation.js";
 import { buildContainsLikePattern } from "./sql-like-utils.js";
 
 type AgentTenantScope = {
@@ -530,6 +531,8 @@ export class AiHostingAgentService {
     scope: AgentTenantScope,
     payload: AiHostingAgentSettingsSaveRequest,
   ) {
+    assertAiHostingAgentPromptConfigLimits(payload.promptConfig);
+
     const modelId = parseMySqlId(payload.modelId);
 
     if (modelId == null || !(await this.getModelRow(scope, modelId))) {

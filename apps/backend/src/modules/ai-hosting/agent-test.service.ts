@@ -7,6 +7,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { assertAiHostingAgentPromptConfigLimits } from "./agent-prompt-config-validation.js";
 import { mapJavaAgentTestResponse } from "./agent-test-mappers.js";
 
 const AGENT_TEST_MESSAGE_LIMIT = 20;
@@ -25,6 +26,7 @@ export class AgentTestService {
     const modelId = parseModelId(request.modelId);
 
     await this.assertModelAvailable(uid, modelId);
+    assertAiHostingAgentPromptConfigLimits(request.promptConfig);
 
     const response = await this.javaClient.testAgent({
       messages: request.messages.slice(-AGENT_TEST_MESSAGE_LIMIT).map((message) => ({

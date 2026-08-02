@@ -20,10 +20,12 @@ import {
   $insertSkillChip,
   $restoreConditionalLogicFromSegments,
   segmentsEqual,
+  trimConditionalLogicSegmentsToMaxLength,
 } from "./agent-conditional-logic-lexical-utils";
 
 type ConditionalLogicRuntimePluginProps = {
   disabled?: boolean;
+  maxLength: number;
   onChange: (segments: ConditionalLogicSegment[]) => void;
   registerEditor: (editor: LexicalEditor | null) => void;
   segments: ConditionalLogicSegment[];
@@ -31,6 +33,7 @@ type ConditionalLogicRuntimePluginProps = {
 
 export function ConditionalLogicRuntimePlugin({
   disabled = false,
+  maxLength,
   onChange,
   registerEditor,
   segments,
@@ -79,7 +82,9 @@ export function ConditionalLogicRuntimePlugin({
       (nextSegments) => {
         editor.update(
           () => {
-            $restoreConditionalLogicFromSegments(nextSegments);
+            $restoreConditionalLogicFromSegments(
+              trimConditionalLogicSegmentsToMaxLength(nextSegments, maxLength),
+            );
           },
           {
             tag: [
@@ -93,18 +98,22 @@ export function ConditionalLogicRuntimePlugin({
       },
       COMMAND_PRIORITY_LOW,
     );
-  }, [editor]);
+  }, [editor, maxLength]);
 
   useEffect(() => {
     editor.update(
       () => {
         const currentSegments = $exportConditionalLogicSegments();
+        const nextSegments = trimConditionalLogicSegmentsToMaxLength(
+          segments,
+          maxLength,
+        );
 
-        if (segmentsEqual(currentSegments, segments)) {
+        if (segmentsEqual(currentSegments, nextSegments)) {
           return;
         }
 
-        $restoreConditionalLogicFromSegments(segments);
+        $restoreConditionalLogicFromSegments(nextSegments);
       },
       {
         tag: [
@@ -114,7 +123,7 @@ export function ConditionalLogicRuntimePlugin({
         ],
       },
     );
-  }, [editor, segments]);
+  }, [editor, maxLength, segments]);
 
   return (
     <OnChangePlugin

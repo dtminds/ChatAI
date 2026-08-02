@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type {
-  AiHostingAgentDetail,
-  AiHostingAgentPromptConfig,
-  AiHostingAgentTestMessage,
-  AiHostingAgentTestMessageContent,
-  AiHostingAgentTestResponse,
-  AiHostingModel,
+import {
+  AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH,
+  AI_HOSTING_AGENT_ROLE_MAX_LENGTH,
+  AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH,
+  type AiHostingAgentDetail,
+  type AiHostingAgentPromptConfig,
+  type AiHostingAgentTestMessage,
+  type AiHostingAgentTestMessageContent,
+  type AiHostingAgentTestResponse,
+  type AiHostingModel,
 } from "@chatai/contracts";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -87,7 +90,6 @@ import {
 import { uploadKbImage } from "./api/kb-doc-service";
 import {
   agentModelOptions,
-  agentLongTextMaxLength,
   agentNameMaxLength,
   agentCommunicationStyleTemplates,
   agentPreviewSeedMessages,
@@ -645,18 +647,18 @@ export function AgentSettingsPage() {
         </header>
 
         <AlertDialog onOpenChange={() => undefined} open={initialLoadFailed}>
-          <AlertDialogContent size="sm">
+          <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Agent 设置加载失败</AlertDialogTitle>
               <AlertDialogDescription>
-                当前 Agent 配置未能加载，请刷新重试或返回 Agent 管理
+                当前 Agent 配置未能加载，请刷新重试或返回列表
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel
                 onClick={() => navigate("/chat/ai-hosting/agents")}
               >
-                返回 Agent 管理
+                返回列表
               </AlertDialogCancel>
               <AlertDialogAction
                 disabled={loading}
@@ -803,12 +805,15 @@ export function AgentSettingsPage() {
                 aria-label="角色描述"
                 className="bg-background"
                 disabled={controlsDisabled}
-                maxLength={agentLongTextMaxLength}
+                maxLength={AI_HOSTING_AGENT_ROLE_MAX_LENGTH}
                 onChange={(event) => updateForm("roleDescription", event.target.value)}
                 placeholder="请输入角色描述"
                 value={form.roleDescription}
               />
-              <TextCounter maxLength={agentLongTextMaxLength} value={form.roleDescription} />
+              <TextCounter
+                maxLength={AI_HOSTING_AGENT_ROLE_MAX_LENGTH}
+                value={form.roleDescription}
+              />
             </CollapsibleAgentSettingsSection>
 
             <CollapsibleAgentSettingsSection
@@ -830,12 +835,15 @@ export function AgentSettingsPage() {
                       aria-label="沟通风格"
                       className="bg-background"
                       disabled={controlsDisabled}
-                      maxLength={agentLongTextMaxLength}
+                      maxLength={AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH}
                       onChange={(event) => updateForm("communicationStyle", event.target.value)}
                       placeholder="请输入沟通风格描述"
                       value={form.communicationStyle}
                     />
-                    <TextCounter maxLength={agentLongTextMaxLength} value={form.communicationStyle} />
+                    <TextCounter
+                      maxLength={AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH}
+                      value={form.communicationStyle}
+                    />
                   </div>
                 </div>
 
@@ -870,12 +878,15 @@ export function AgentSettingsPage() {
                 aria-label="转人工条件"
                 className="bg-background"
                 disabled={controlsDisabled}
-                maxLength={agentLongTextMaxLength}
+                maxLength={AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH}
                 onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
                 placeholder="请输入转人工条件"
                 value={form.transferToHumanConditions}
               />
-              <TextCounter maxLength={agentLongTextMaxLength} value={form.transferToHumanConditions} />
+              <TextCounter
+                maxLength={AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH}
+                value={form.transferToHumanConditions}
+              />
             </CollapsibleAgentSettingsSection>
           </div>
 
@@ -1092,7 +1103,7 @@ function AgentPreviewPanel({
   return (
     <aside className="xl:sticky xl:top-0">
       <section
-        aria-label="Agent 模拟测试"
+        aria-label="Agent 预览调试"
         className={cn(
           agentSettingsModuleSurfaceClassName,
           "flex h-[640px] flex-col overflow-hidden",
@@ -1103,7 +1114,7 @@ function AgentPreviewPanel({
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
-            <h2 className="truncate text-base font-semibold text-foreground">模拟测试</h2>
+            <h2 className="truncate text-base font-semibold text-foreground">预览调试</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button

@@ -76,6 +76,63 @@ export function isConditionalLogicEmpty(segments: ConditionalLogicSegment[]) {
   );
 }
 
+export function getConditionalLogicCharacterCount(segments: ConditionalLogicSegment[]) {
+  return normalizeConditionalLogicSegments(segments).reduce((characterCount, segment) => {
+    if (segment.type === "text") {
+      return characterCount + segment.value.length;
+    }
+
+    return characterCount + (segment.name || segment.id).length;
+  }, 0);
+}
+
+export function trimConditionalLogicSegmentsToMaxLength(
+  segments: ConditionalLogicSegment[],
+  maxLength: number,
+) {
+  const trimmedSegments: ConditionalLogicSegment[] = [];
+  let remainingCharacters = Math.max(0, maxLength);
+
+  for (const segment of normalizeConditionalLogicSegments(segments)) {
+    if (segment.type === "text") {
+      const value = segment.value.slice(0, remainingCharacters);
+
+      if (value) {
+        trimmedSegments.push({ type: "text", value });
+        remainingCharacters -= value.length;
+      }
+
+      if (value.length < segment.value.length) {
+        break;
+      }
+      continue;
+    }
+
+    const resourceLength = (segment.name || segment.id).length;
+
+    if (resourceLength > remainingCharacters) {
+      break;
+    }
+
+    trimmedSegments.push(segment);
+    remainingCharacters -= resourceLength;
+  }
+
+  return normalizeConditionalLogicSegments(trimmedSegments);
+}
+
+export function $trimConditionalLogicToMaxLength(maxLength: number) {
+  const currentSegments = $exportConditionalLogicSegments();
+  const trimmedSegments = trimConditionalLogicSegmentsToMaxLength(
+    currentSegments,
+    maxLength,
+  );
+
+  if (!segmentsEqual(currentSegments, trimmedSegments)) {
+    $restoreConditionalLogicFromSegments(trimmedSegments);
+  }
+}
+
 export function $clearConditionalLogicEditor() {
   const root = $getRoot();
   root.clear();

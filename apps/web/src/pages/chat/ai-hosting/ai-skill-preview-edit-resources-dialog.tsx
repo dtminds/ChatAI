@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  AGENT_SKILL_TOOL_CATALOG,
+  type KbListItem,
+  type WorkTagItem,
+} from "@chatai/contracts";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +31,7 @@ import {
   buildSkillTagVariableStoredName,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
+  collectCompleteSkillResourcesFromContent,
   replaceSkillContentResource,
   type SkillContentResourceSegment,
   type SkillResourceItem,
@@ -35,7 +41,7 @@ import {
 
 const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
 const MALL_TAG_TYPE = 12 as const;
-const KB_PAGE_SIZE = 100;
+const RESOURCE_PAGE_SIZE = 100;
 
 export type SkillPreviewEditableResource = {
   fieldLabel: string;
@@ -56,38 +62,6 @@ type FieldDraft = {
   selectedValue: string;
   variableType: SkillVariableType | null;
 };
-
-const previewToolCatalog: ReadonlyArray<{
-  description: string;
-  id: string;
-  title: string;
-}> = [
-  {
-    id: "search_mall_order_logistics",
-    title: "小店订单物流查询",
-    description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
-  },
-  {
-    id: "transfer_mall_point",
-    title: "代客转积分",
-    description: "代客户将提供的订单号转换为积分",
-  },
-  {
-    id: "remark_mall_order",
-    title: "小店订单备注",
-    description: "为客户的小店订单添加或更新备注",
-  },
-  {
-    id: "search_order",
-    title: "订单查询",
-    description: "根据客户提供的订单号查询订单信息",
-  },
-  {
-    id: "bind_order",
-    title: "绑定订单",
-    description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
-  },
-];
 
 export function SkillPreviewEditResourcesDialog({
   content,
@@ -125,6 +99,21 @@ export function SkillPreviewEditResourcesDialog({
     () => fields.filter((field) => field.segment.kind === "knowledge_base"),
     [fields],
   );
+  const existingTagGroupKeys = useMemo(
+    () =>
+      new Set(
+        collectCompleteSkillResourcesFromContent(content).variables.flatMap(
+          (item) => {
+            const variable = item.variable;
+            return variable &&
+              (variable.type === "work_tag" || variable.type === "mall_tag")
+              ? [`${variable.type}:${variable.select_id}`]
+              : [];
+          },
+        ),
+      ),
+    [content],
+  );
 
   const canConfirm =
     fields.length > 0 &&
@@ -140,13 +129,14 @@ export function SkillPreviewEditResourcesDialog({
     async function loadFields() {
       setLoading(true);
       try {
+        const optionsCache = new Map<string, Promise<OptionItem[]>>();
         const nextFields = await Promise.all(
           editableResources.map(async (item) => ({
             fieldLabel: item.fieldLabel,
             segment: item.segment,
             selectedValue: "",
             variableType: item.variableType,
-            options: await loadOptionsForEditable(item),
+            options: await loadOptionsForEditable(item, optionsCache),
           })),
         );
         if (!cancelled) {
@@ -172,12 +162,43 @@ export function SkillPreviewEditResourcesDialog({
   }, [editableResources, open]);
 
   function setFieldValue(placeholder: string, value: string) {
-    setFields((current) =>
-      current.map((field) =>
+    setFields((current) => {
+      const target = current.find(
+        (field) => field.segment.placeholder === placeholder,
+      );
+      const tagGroupKey = target
+        ? getTagGroupSelectionKey(target, value)
+        : null;
+      if (
+        tagGroupKey &&
+        (existingTagGroupKeys.has(tagGroupKey) ||
+          current.some(
+            (field) =>
+              field.segment.placeholder !== placeholder &&
+              getTagGroupSelectionKey(field, field.selectedValue) === tagGroupKey,
+          ))
+      ) {
+        return current;
+      }
+
+      return current.map((field) =>
         field.segment.placeholder === placeholder
           ? { ...field, selectedValue: value }
           : field,
-      ),
+      );
+    });
+  }
+
+  function isOptionDisabled(field: FieldDraft, option: OptionItem) {
+    const tagGroupKey = getTagGroupSelectionKey(field, option.value);
+    return Boolean(
+      tagGroupKey &&
+        (existingTagGroupKeys.has(tagGroupKey) ||
+          fields.some(
+            (other) =>
+              other.segment.placeholder !== field.segment.placeholder &&
+              getTagGroupSelectionKey(other, other.selectedValue) === tagGroupKey,
+          )),
     );
   }
 
@@ -194,9 +215,13 @@ export function SkillPreviewEditResourcesDialog({
         "knowledge-bases": [] as SkillResourceItem[],
       };
       let nextContent = content;
+      const tagOptionsCache = new Map<string, Promise<SkillVariableConfig | null>>();
+      const builtSelections = await Promise.all(
+        fields.map((field) => buildSelection(field, tagOptionsCache)),
+      );
 
-      for (const field of fields) {
-        const built = await buildSelection(field);
+      for (const [index, field] of fields.entries()) {
+        const built = builtSelections[index];
         if (!built) {
           toast.error(`请选择${field.fieldLabel}`);
           return;
@@ -261,16 +286,19 @@ export function SkillPreviewEditResourcesDialog({
             <div className="space-y-6">
               <ResourceFieldSection
                 fields={variableFields}
+                isOptionDisabled={isOptionDisabled}
                 onChange={setFieldValue}
                 title="推荐变量"
               />
               <ResourceFieldSection
                 fields={toolFields}
+                isOptionDisabled={isOptionDisabled}
                 onChange={setFieldValue}
                 title="推荐工具"
               />
               <ResourceFieldSection
                 fields={knowledgeFields}
+                isOptionDisabled={isOptionDisabled}
                 onChange={setFieldValue}
                 title="推荐知识库"
               />
@@ -299,10 +327,12 @@ export function SkillPreviewEditResourcesDialog({
 
 function ResourceFieldSection({
   fields,
+  isOptionDisabled,
   onChange,
   title,
 }: {
   fields: readonly FieldDraft[];
+  isOptionDisabled: (field: FieldDraft, option: OptionItem) => boolean;
   onChange: (placeholder: string, value: string) => void;
   title: string;
 }) {
@@ -342,7 +372,11 @@ function ResourceFieldSection({
                   </SelectItem>
                 ) : (
                   field.options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem
+                      disabled={isOptionDisabled(field, option)}
+                      key={option.value}
+                      value={option.value}
+                    >
                       {option.label}
                     </SelectItem>
                   ))
@@ -356,20 +390,52 @@ function ResourceFieldSection({
   );
 }
 
+function getTagGroupSelectionKey(field: FieldDraft, value: string) {
+  if (
+    !value ||
+    (field.variableType !== "work_tag" && field.variableType !== "mall_tag")
+  ) {
+    return null;
+  }
+
+  return `${field.variableType}:${value}`;
+}
+
 async function loadOptionsForEditable(
+  item: SkillPreviewEditableResource,
+  cache: Map<string, Promise<OptionItem[]>>,
+): Promise<OptionItem[]> {
+  const cacheKey = getOptionsCacheKey(item);
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const request = loadOptionsForEditableUncached(item);
+  cache.set(cacheKey, request);
+  return request;
+}
+
+function getOptionsCacheKey(item: SkillPreviewEditableResource) {
+  return item.segment.kind === "variable"
+    ? `variable:${item.variableType ?? "unknown"}`
+    : item.segment.kind;
+}
+
+async function loadOptionsForEditableUncached(
   item: SkillPreviewEditableResource,
 ): Promise<OptionItem[]> {
   if (item.segment.kind === "tool") {
-    return previewToolCatalog.map((tool) => ({
-      label: tool.title,
+    return AGENT_SKILL_TOOL_CATALOG.map((tool) => ({
+      label: tool.name,
       value: tool.id,
-      meta: { description: tool.description, title: tool.title },
+      meta: { description: tool.description, title: tool.name },
     }));
   }
 
   if (item.segment.kind === "knowledge_base") {
-    const response = await listKbs({ page: 1, pageSize: KB_PAGE_SIZE });
-    return response.kbs.map((kb) => {
+    const knowledgeBases = await listAllKnowledgeBases();
+    return knowledgeBases.map((kb) => {
       const view = toKbListViewItem(kb);
       return {
         label: view.name,
@@ -430,13 +496,9 @@ async function loadVariableOptions(
     }));
   }
 
-  const response = await listWorkTags({
-    page: 1,
-    pageSize: 100,
-    type: MALL_TAG_TYPE,
-  });
+  const tags = await listAllWorkTags({ type: MALL_TAG_TYPE });
   const groupMap = new Map<string, OptionItem>();
-  for (const tag of response.tags) {
+  for (const tag of tags) {
     const value = String(tag.groupId);
     if (groupMap.has(value)) {
       continue;
@@ -450,7 +512,10 @@ async function loadVariableOptions(
   return [...groupMap.values()];
 }
 
-async function buildSelection(field: FieldDraft): Promise<{
+async function buildSelection(
+  field: FieldDraft,
+  tagOptionsCache: Map<string, Promise<SkillVariableConfig | null>>,
+): Promise<{
   placeholder: string;
   resource: SkillResourceItem;
 } | null> {
@@ -469,6 +534,7 @@ async function buildSelection(field: FieldDraft): Promise<{
         description,
         id: option.value,
         placeholder,
+        status: "available",
         title,
         toolKey: option.value,
       },
@@ -489,6 +555,7 @@ async function buildSelection(field: FieldDraft): Promise<{
         id: `kb:${kbId}`,
         kbId,
         placeholder,
+        status: "available",
         title,
       },
     };
@@ -498,7 +565,13 @@ async function buildSelection(field: FieldDraft): Promise<{
     return null;
   }
 
-  const variable = await buildVariableConfig(field.variableType, option);
+  const cacheKey = `${field.variableType}:${option.value}`;
+  let variableRequest = tagOptionsCache.get(cacheKey);
+  if (!variableRequest) {
+    variableRequest = buildVariableConfig(field.variableType, option);
+    tagOptionsCache.set(cacheKey, variableRequest);
+  }
+  const variable = await variableRequest;
   if (!variable) {
     return null;
   }
@@ -539,21 +612,68 @@ async function buildVariableConfig(
 
   const tagType =
     variableType === "work_tag" ? WECOM_CUSTOMER_TAG_TYPE : MALL_TAG_TYPE;
-  const tagsResponse = await listWorkTags({
-    groupId,
-    page: 1,
-    pageSize: 100,
-    type: tagType,
-  });
-  const selectSubIds = tagsResponse.tags.map((tag) => tag.id);
+  const tags = await listAllWorkTags({ groupId, type: tagType });
+  const selectSubIds = tags.map((tag) => tag.id);
 
   return {
     name: buildSkillTagVariableStoredName(
       name,
-      tagsResponse.tags.map((tag) => tag.name),
+      tags.map((tag) => tag.name),
     ),
     select_id: groupId,
     select_sub_ids: selectSubIds,
     type: variableType,
   };
+}
+
+async function listAllKnowledgeBases() {
+  const knowledgeBases: KbListItem[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await listKbs({ page, pageSize: RESOURCE_PAGE_SIZE });
+    knowledgeBases.push(...response.kbs);
+    if (
+      response.pagination.page * response.pagination.pageSize >=
+      response.pagination.total
+    ) {
+      return knowledgeBases;
+    }
+
+    const nextPage = response.pagination.page + 1;
+    if (nextPage <= page) {
+      throw new Error("knowledge-base pagination did not advance");
+    }
+    page = nextPage;
+  }
+}
+
+async function listAllWorkTags({
+  groupId,
+  type,
+}: {
+  groupId?: number;
+  type: typeof WECOM_CUSTOMER_TAG_TYPE | typeof MALL_TAG_TYPE;
+}) {
+  const tags: WorkTagItem[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await listWorkTags({
+      groupId,
+      page,
+      pageSize: RESOURCE_PAGE_SIZE,
+      type,
+    });
+    tags.push(...response.tags);
+    if (!response.pagination.hasNext) {
+      return tags;
+    }
+
+    const nextPage = response.pagination.page + 1;
+    if (nextPage <= page) {
+      throw new Error("work-tag pagination did not advance");
+    }
+    page = nextPage;
+  }
 }

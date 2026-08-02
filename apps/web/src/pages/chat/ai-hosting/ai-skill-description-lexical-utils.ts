@@ -14,7 +14,11 @@ import type {
   SkillContentResourceSegment,
   SkillContentSegment,
 } from "./ai-skill-resource";
-import { normalizeSkillContentSegments } from "./ai-skill-resource";
+import {
+  normalizeSkillContentSegments,
+  skillContentSegmentsEqual,
+  trimSkillContentSegmentsToMaxLength,
+} from "./ai-skill-resource";
 import {
   $createSkillResourceChipNode,
   $isSkillResourceChipNode,
@@ -53,6 +57,18 @@ export function $restoreSkillContentFromSegments(segments: SkillContentSegment[]
   }
 }
 
+export function $trimSkillContentToMaxLength(maxLength: number) {
+  const currentSegments = $exportSkillContentSegments();
+  const trimmedSegments = trimSkillContentSegmentsToMaxLength(
+    currentSegments,
+    maxLength,
+  );
+
+  if (!skillContentSegmentsEqual(currentSegments, trimmedSegments)) {
+    $restoreSkillContentFromSegments(trimmedSegments);
+  }
+}
+
 export function $exportSkillContentSegments() {
   const segments: SkillContentSegment[] = [];
 
@@ -68,8 +84,15 @@ function collectSkillContentSegmentsFromNode(
   segments: SkillContentSegment[],
 ) {
   if ($isSkillResourceChipNode(node)) {
+    const invalid = node.isInvalid();
     segments.push({
       id: node.getResourceId(),
+      ...(invalid
+        ? {
+            invalid: true,
+            invalidReason: node.getInvalidReason(),
+          }
+        : {}),
       kind: node.getResourceKind(),
       name: node.getResourceName(),
       placeholder: node.getResourcePlaceholder(),

@@ -1,8 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import {
-  AbsoluteIcon,
-  Search01Icon,
-} from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -38,100 +36,48 @@ function isTagKind(kind: VariableKind | null): kind is TagKind {
   return kind === "work_tag" || kind === "mall_tag" || kind === "auto_tag";
 }
 
-function getVariableKindTitle(kind: VariableKind): string {
-  switch (kind) {
-    case "custom_field":
-      return "客户自定义属性";
-    case "work_tag":
-      return "企微标签";
-    case "mall_tag":
-      return "小店标签";
-    case "auto_tag":
-      return "自动化标签";
-    case "system_variable":
-      return "系统变量";
-  }
-}
-
-function FlatOptionList({
+function MultiChoiceList({
+  addedValues,
   ariaLabel,
   items,
-  onSelect,
-  searchAriaLabel,
-  searchable = false,
-  selectedValue,
+  onToggle,
+  selectedValues,
 }: {
+  addedValues: ReadonlySet<string>;
   ariaLabel: string;
   items: ReadonlyArray<{ label: string; value: string }>;
-  onSelect: (value: string) => void;
-  searchAriaLabel?: string;
-  searchable?: boolean;
-  selectedValue: string;
+  onToggle: (value: string) => void;
+  selectedValues: readonly string[];
 }) {
-  const [query, setQuery] = useState("");
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredItems = useMemo(() => {
-    if (!searchable || !normalizedQuery) {
-      return items;
-    }
-
-    return items.filter((item) => item.label.toLowerCase().includes(normalizedQuery));
-  }, [items, normalizedQuery, searchable]);
-
   return (
-    <div className="overflow-hidden rounded-[10px] border border-border">
-      {searchable ? (
-        <div className="border-b border-border p-3">
-          <div className="relative">
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={15}
-              strokeWidth={1.8}
-            />
-            <Input
-              aria-label={searchAriaLabel ?? `搜索${ariaLabel}`}
-              className="h-9 pl-9"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索"
-              value={query}
-            />
-          </div>
-        </div>
-      ) : null}
-      <ul
-        aria-label={ariaLabel}
-        className="max-h-72 space-y-0.5 overflow-y-auto p-2"
-      >
-        {filteredItems.length === 0 ? (
-          <li className="px-2 py-8 text-center text-sm text-muted-foreground">
-            暂无数据
-          </li>
-        ) : (
-          filteredItems.map((item) => {
-            const selected = item.value === selectedValue;
+    <div
+      aria-label={ariaLabel}
+      className="min-h-0 flex-1 content-start gap-0.5 overflow-y-auto rounded-[10px] border border-border p-2"
+      role="group"
+    >
+      {items.map((item) => {
+        const added = addedValues.has(item.value);
+        const checked = added || selectedValues.includes(item.value);
 
-            return (
-              <li key={item.value}>
-                <button
-                  aria-pressed={selected}
-                  className={cn(
-                    "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
-                    selected
-                      ? "bg-accent text-foreground"
-                      : "text-foreground hover:bg-muted/60",
-                  )}
-                  onClick={() => onSelect(item.value)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              </li>
-            );
-          })
-        )}
-      </ul>
+        return (
+          <Label
+            className={cn(
+              "flex items-center gap-2.5 rounded-[8px] px-3 py-2 text-sm font-normal text-foreground transition-colors has-data-[state=checked]:bg-accent",
+              added
+                ? "cursor-not-allowed opacity-60"
+                : "cursor-pointer hover:bg-muted/60",
+            )}
+            key={item.value}
+          >
+            <Checkbox
+              checked={checked}
+              disabled={added}
+              onCheckedChange={() => onToggle(item.value)}
+            />
+            <span className="min-w-0 truncate">{item.label}</span>
+          </Label>
+        );
+      })}
     </div>
   );
 }
@@ -196,32 +142,26 @@ type AutoTagGroupOption = {
 };
 
 const variableOptions: ReadonlyArray<{
-  description: string;
   kind: VariableKind;
   title: string;
 }> = [
   {
-    description: "查询聊天客户的自定义属性后，插入到指定位置",
-    kind: "custom_field",
-    title: "客户自定义属性",
-  },
-  {
-    description: "查询您指定的企微客户标签，然后插入到指定位置",
     kind: "work_tag",
     title: "企微标签",
   },
   {
-    description: "查询您指定的小店标签，然后插入到指定位置",
     kind: "mall_tag",
     title: "小店标签",
   },
   {
-    description: "查询您指定的自动化标签，然后插入到指定位置",
     kind: "auto_tag",
     title: "自动化标签",
   },
   {
-    description: "查询系统运行时变量，然后插入到指定位置",
+    kind: "custom_field",
+    title: "自定义属性",
+  },
+  {
     kind: "system_variable",
     title: "系统变量",
   },
@@ -237,27 +177,30 @@ function usesComponentTagApi(kind: TagKind | null) {
 }
 
 type InsertVariableDialogProps = {
+  addedVariables?: readonly SkillResourceItem[];
   initialConfigure?: InsertVariableInitialConfigure | null;
-  onConfirm: (item: SkillResourceItem) => void;
+  onConfirm: (items: readonly SkillResourceItem[]) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 };
 
 export function InsertVariableDialog({
+  addedVariables = [],
   initialConfigure = null,
   onConfirm,
   onOpenChange,
   open,
 }: InsertVariableDialogProps) {
-  const [step, setStep] = useState<"pick" | "configure">("pick");
   const [variableKind, setVariableKind] = useState<VariableKind | null>(null);
-  const [customFieldId, setCustomFieldId] = useState("");
+  const [selectedCustomFieldIds, setSelectedCustomFieldIds] = useState<string[]>([]);
   const [customInfoFields, setCustomInfoFields] = useState<CustomInfoFieldOption[]>(
     [],
   );
   const [customInfoFieldsLoading, setCustomInfoFieldsLoading] = useState(false);
   const [customInfoFieldsError, setCustomInfoFieldsError] = useState(false);
-  const [systemVariableKey, setSystemVariableKey] = useState("");
+  const [selectedSystemVariableKeys, setSelectedSystemVariableKeys] = useState<
+    string[]
+  >([]);
   const [systemVariables, setSystemVariables] = useState<SystemVariableOption[]>(
     [],
   );
@@ -299,6 +242,52 @@ export function InsertVariableDialog({
   );
   const isTagQueryDebouncing = normalizedTagQuery !== debouncedTagQuery;
   const tagKind = isTagKind(variableKind) ? variableKind : null;
+  const isEditingVariable = Boolean(initialConfigure?.lockKind);
+  const addedTagGroupKeys = useMemo(() => {
+    const currentVariable = initialConfigure?.initialVariable;
+    const currentKey =
+      currentVariable &&
+      (currentVariable.type === "work_tag" || currentVariable.type === "mall_tag")
+        ? `${currentVariable.type}:${currentVariable.select_id}`
+        : null;
+
+    return new Set(
+      addedVariables.flatMap((item) => {
+        const variable = item.variable;
+        if (
+          !variable ||
+          (variable.type !== "work_tag" && variable.type !== "mall_tag")
+        ) {
+          return [];
+        }
+
+        const key = `${variable.type}:${variable.select_id}`;
+        return key === currentKey ? [] : [key];
+      }),
+    );
+  }, [addedVariables, initialConfigure?.initialVariable]);
+  const addedCustomFieldIds = useMemo(
+    () =>
+      new Set(
+        addedVariables.flatMap((item) =>
+          item.variable?.type === "custom_field"
+            ? [String(item.variable.select_id)]
+            : [],
+        ),
+      ),
+    [addedVariables],
+  );
+  const addedSystemVariableKeys = useMemo(
+    () =>
+      new Set(
+        addedVariables.flatMap((item) =>
+          item.variable?.type === "system_variable"
+            ? [item.variable.select_key]
+            : [],
+        ),
+      ),
+    [addedVariables],
+  );
 
   useLayoutEffect(() => {
     if (!open) {
@@ -310,11 +299,11 @@ export function InsertVariableDialog({
       return;
     }
 
-    resetToPick();
+    startConfigure(variableOptions[0].kind);
   }, [initialConfigure, open]);
 
   useEffect(() => {
-    if (!open || step !== "configure" || variableKind !== "custom_field") {
+    if (!open || variableKind !== "custom_field") {
       return;
     }
 
@@ -330,11 +319,15 @@ export function InsertVariableDialog({
           return;
         }
 
-        setCustomInfoFields(
-          response.fields.map((field) => ({
-            id: field.id,
-            name: field.title,
-          })),
+        const fields = response.fields.map((field) => ({
+          id: field.id,
+          name: field.title,
+        }));
+        setCustomInfoFields(fields);
+        setSelectedCustomFieldIds((current) =>
+          current.filter((fieldId) =>
+            fields.some((field) => String(field.id) === fieldId),
+          ),
         );
       } catch {
         if (!cancelled) {
@@ -354,10 +347,10 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, variableKind]);
+  }, [open, variableKind]);
 
   useEffect(() => {
-    if (!open || step !== "configure" || variableKind !== "system_variable") {
+    if (!open || variableKind !== "system_variable") {
       return;
     }
 
@@ -378,17 +371,13 @@ export function InsertVariableDialog({
           name: item.name,
         }));
         setSystemVariables(variables);
-        setSystemVariableKey((current) => {
-          if (current && variables.some((item) => item.key === current)) {
-            return current;
-          }
-
-          return "";
-        });
+        setSelectedSystemVariableKeys((current) =>
+          current.filter((key) => variables.some((item) => item.key === key)),
+        );
       } catch {
         if (!cancelled) {
           setSystemVariables([]);
-          setSystemVariableKey("");
+          setSelectedSystemVariableKeys([]);
           setSystemVariablesError(true);
           toast.error("系统变量加载失败，请稍后重试");
         }
@@ -404,10 +393,10 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, variableKind]);
+  }, [open, variableKind]);
 
   useEffect(() => {
-    if (!open || step !== "configure" || variableKind !== "auto_tag") {
+    if (!open || variableKind !== "auto_tag") {
       return;
     }
 
@@ -459,12 +448,11 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, variableKind]);
+  }, [open, variableKind]);
 
   useEffect(() => {
     if (
       !open ||
-      step !== "configure" ||
       variableKind !== "auto_tag" ||
       autoTagGroups.length === 0 ||
       !selectedAutoTagKey
@@ -482,14 +470,13 @@ export function InsertVariableDialog({
     setSelectedAutoGroupTag((current) =>
       current === owner.groupTag ? current : owner.groupTag,
     );
-  }, [autoTagGroups, open, selectedAutoTagKey, step, variableKind]);
+  }, [autoTagGroups, open, selectedAutoTagKey, variableKind]);
 
   const wecomAttr = wecomMode === "normal" ? 1 : 2;
 
   useEffect(() => {
     if (
       !open ||
-      step !== "configure" ||
       !isTagKind(variableKind) ||
       !usesComponentTagApi(variableKind)
     ) {
@@ -591,12 +578,11 @@ export function InsertVariableDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, step, variableKind, wecomAttr]);
+  }, [open, variableKind, wecomAttr]);
 
   useEffect(() => {
     if (
       !open ||
-      step !== "configure" ||
       variableKind !== "work_tag" ||
       workTagGroupsLoading ||
       workTagGroupsError ||
@@ -614,7 +600,6 @@ export function InsertVariableDialog({
   }, [
     activeGroupId,
     open,
-    step,
     variableKind,
     wecomMode,
     workTagGroups,
@@ -644,10 +629,19 @@ export function InsertVariableDialog({
     );
   }, [debouncedGroupQuery, tagGroups]);
 
+  const selectableFilteredGroups = useMemo(
+    () =>
+      filteredGroups.filter(
+        (group) => !addedTagGroupKeys.has(`${tagKind}:${group.id}`),
+      ),
+    [addedTagGroupKeys, filteredGroups, tagKind],
+  );
+
   const resolvedActiveGroupId =
-    activeGroupId && filteredGroups.some((group) => group.id === activeGroupId)
+    activeGroupId &&
+    selectableFilteredGroups.some((group) => group.id === activeGroupId)
       ? activeGroupId
-      : (filteredGroups[0]?.id ?? null);
+      : (selectableFilteredGroups[0]?.id ?? null);
 
   const activeGroup = useMemo(
     () => filteredGroups.find((group) => group.id === resolvedActiveGroupId) ?? null,
@@ -658,7 +652,6 @@ export function InsertVariableDialog({
     // 小店标签已在分组加载时拉全量，这里只处理企微等需按组回查的场景
     if (
       !open ||
-      step !== "configure" ||
       variableKind !== "work_tag" ||
       resolvedActiveGroupId == null
     ) {
@@ -723,19 +716,18 @@ export function InsertVariableDialog({
     normalizedTagQuery,
     open,
     resolvedActiveGroupId,
-    step,
     variableKind,
   ]);
 
   const filteredTags = useMemo(() => {
     if (tagKind === "mall_tag") {
+      if (resolvedActiveGroupId == null) {
+        return [];
+      }
+
       const query = debouncedTagQuery.toLowerCase();
       return mallAllTags
-        .filter((tag) =>
-          resolvedActiveGroupId == null
-            ? true
-            : tag.groupId === resolvedActiveGroupId,
-        )
+        .filter((tag) => tag.groupId === resolvedActiveGroupId)
         .filter((tag) => (query ? tag.name.toLowerCase().includes(query) : true))
         .map((tag) => ({ id: tag.id, name: tag.name }));
     }
@@ -831,43 +823,22 @@ export function InsertVariableDialog({
 
   const canConfirm =
     variableKind === "custom_field"
-      ? customFieldId.length > 0
+      ? selectedCustomFieldIds.length > 0
       : variableKind === "system_variable"
-        ? systemVariableKey.length > 0
+        ? selectedSystemVariableKeys.length > 0
         : variableKind === "auto_tag"
           ? selectedAutoTag != null
           : isTagKind(variableKind)
             ? selectedTagIds.length > 0 && resolvedActiveGroupId !== null
             : false;
 
-  const isEditingVariable = Boolean(initialConfigure?.lockKind);
-
-  function resetToPick() {
-    setStep("pick");
-    setVariableKind(null);
-    setCustomFieldId("");
-    setSystemVariableKey("");
-    setSystemVariables([]);
-    setSystemVariablesError(false);
-    setWecomMode("normal");
-    setSelectedTagIds([]);
-    setSelectedTagNameById({});
-    setSelectedAutoGroupTag("");
-    setSelectedAutoTagKey("");
-    setAutoTagGroups([]);
-    setActiveGroupId(null);
-    setMallAllTags([]);
-    setGroupQuery("");
-    setTagQuery("");
-  }
-
   function startConfigure(
     kind: VariableKind,
     initialVariable?: SkillVariableConfig,
   ) {
     setVariableKind(kind);
-    setCustomFieldId("");
-    setSystemVariableKey("");
+    setSelectedCustomFieldIds([]);
+    setSelectedSystemVariableKeys([]);
     setSystemVariables([]);
     setSystemVariablesError(false);
     setWecomMode("normal");
@@ -882,19 +853,17 @@ export function InsertVariableDialog({
     setActiveGroupId(null);
     setGroupQuery("");
     setTagQuery("");
-    setStep("configure");
-
     if (!initialVariable || initialVariable.type !== kind) {
       return;
     }
 
     if (initialVariable.type === "custom_field") {
-      setCustomFieldId(String(initialVariable.select_id));
+      setSelectedCustomFieldIds([String(initialVariable.select_id)]);
       return;
     }
 
     if (initialVariable.type === "system_variable") {
-      setSystemVariableKey(initialVariable.select_key);
+      setSelectedSystemVariableKeys([initialVariable.select_key]);
       return;
     }
 
@@ -921,19 +890,13 @@ export function InsertVariableDialog({
     }
   }
 
-  function handleBack() {
-    if (initialConfigure?.lockKind) {
-      onOpenChange(false);
-      return;
-    }
-
-    resetToPick();
-    setStep("pick");
+  function emitVariables(items: readonly SkillResourceItem[]) {
+    onConfirm(items);
+    onOpenChange(false);
   }
 
   function emitVariable(variable: SkillVariableConfig, displayName?: string) {
-    onConfirm(buildSkillVariableResourceItem(variable, displayName));
-    onOpenChange(false);
+    emitVariables([buildSkillVariableResourceItem(variable, displayName)]);
   }
 
   function handleConfirm() {
@@ -942,30 +905,44 @@ export function InsertVariableDialog({
     }
 
     if (variableKind === "custom_field") {
-      const field = customInfoFields.find((item) => String(item.id) === customFieldId);
-      if (!field) {
+      const fields = selectedCustomFieldIds.flatMap((fieldId) => {
+        const field = customInfoFields.find((item) => String(item.id) === fieldId);
+        return field ? [field] : [];
+      });
+      if (fields.length === 0) {
         return;
       }
 
-      emitVariable({
-        name: field.name,
-        select_id: field.id,
-        type: "custom_field",
-      });
+      emitVariables(
+        fields.map((field) =>
+          buildSkillVariableResourceItem({
+            name: field.name,
+            select_id: field.id,
+            type: "custom_field",
+          }),
+        ),
+      );
       return;
     }
 
     if (variableKind === "system_variable") {
-      const systemVariable = systemVariables.find((item) => item.key === systemVariableKey);
-      if (!systemVariable) {
+      const variables = selectedSystemVariableKeys.flatMap((key) => {
+        const variable = systemVariables.find((item) => item.key === key);
+        return variable ? [variable] : [];
+      });
+      if (variables.length === 0) {
         return;
       }
 
-      emitVariable({
-        name: systemVariable.name,
-        select_key: systemVariable.key,
-        type: "system_variable",
-      });
+      emitVariables(
+        variables.map((variable) =>
+          buildSkillVariableResourceItem({
+            name: variable.name,
+            select_key: variable.key,
+            type: "system_variable",
+          }),
+        ),
+      );
       return;
     }
 
@@ -1039,7 +1016,7 @@ export function InsertVariableDialog({
       <DialogContent className="flex h-[639px] max-h-[calc(100vh-2rem)] w-[min(792px,calc(100vw-2rem))] max-w-[792px] flex-col gap-0 overflow-hidden p-0 sm:rounded-[14px]">
         <div className="flex shrink-0 items-center px-6 pb-2 pt-6 pr-14">
           <DialogTitle className="text-lg font-semibold text-foreground">
-            {initialConfigure?.lockKind ? "编辑变量" : "插入变量"}
+            {initialConfigure?.lockKind ? "编辑变量" : "添加变量"}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {initialConfigure?.lockKind
@@ -1048,58 +1025,42 @@ export function InsertVariableDialog({
           </DialogDescription>
         </div>
 
-        {step === "pick" && !initialConfigure?.lockKind ? (
-          <ul aria-label="插入变量" className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 pb-6 pt-3">
-            {variableOptions.map((option) => (
-              <li className="flex items-start gap-3" key={option.kind}>
-                <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={AbsoluteIcon}
-                    size={16}
-                    strokeWidth={1.8}
-                  />
-                </span>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-sm font-medium text-foreground">{option.title}</p>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    {option.description}
-                  </p>
-                </div>
-                <Button
-                  aria-label={`添加${option.title}`}
-                  className="mt-0.5 h-8 shrink-0 px-3 text-primary"
-                  onClick={() => startConfigure(option.kind)}
-                  type="button"
-                  variant="outline"
-                >
-                  添加
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 pb-4 pt-2">
-              <div className="flex h-11 items-center gap-2 rounded-[10px] border border-border bg-muted/30 px-3 text-sm text-foreground">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  className="text-muted-foreground"
-                  icon={AbsoluteIcon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-                <span>{variableKind ? getVariableKindTitle(variableKind) : ""}</span>
-              </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 px-6 pb-3 pt-2">
+            <Tabs
+              onValueChange={(value) => {
+                if (!isEditingVariable) {
+                  startConfigure(value as VariableKind);
+                }
+              }}
+              value={variableKind ?? variableOptions[0].kind}
+            >
+              <TabsList aria-label="变量类型" className="grid w-full grid-cols-5">
+                {variableOptions.map((option) => (
+                  <TabsTrigger
+                    aria-label={option.title}
+                    className="min-w-0 px-2"
+                    disabled={isEditingVariable && option.kind !== variableKind}
+                    key={option.kind}
+                    value={option.kind}
+                  >
+                    <span className="truncate">{option.title}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col px-6">
 
               {variableKind === "custom_field" ? (
-                <div className="space-y-2">
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
                   <Label>
                     <span className="text-destructive">*</span> 字段
                   </Label>
                   {customInfoFieldsLoading ? (
                     <div
-                      className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                      className="flex min-h-0 flex-1 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
                       role="status"
                     >
                       <Spinner size={14} />
@@ -1107,46 +1068,47 @@ export function InsertVariableDialog({
                     </div>
                   ) : customInfoFieldsError ? (
                     <div
-                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                      className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
                       role="alert"
                     >
                       加载失败
                     </div>
                   ) : customInfoFields.length === 0 ? (
                     <div
-                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                      className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
                       role="status"
                     >
                       暂无数据
                     </div>
                   ) : (
-                    <FlatOptionList
+                    <MultiChoiceList
+                      addedValues={addedCustomFieldIds}
                       ariaLabel="字段"
                       items={customInfoFields.map((field) => ({
                         label: field.name,
                         value: String(field.id),
                       }))}
-                      onSelect={setCustomFieldId}
-                      searchAriaLabel="搜索字段"
-                      searchable
-                      selectedValue={customFieldId}
+                      onToggle={(fieldId) =>
+                        setSelectedCustomFieldIds((current) =>
+                          current.includes(fieldId)
+                            ? current.filter((item) => item !== fieldId)
+                            : [...current, fieldId],
+                        )
+                      }
+                      selectedValues={selectedCustomFieldIds}
                     />
                   )}
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    <span className="font-medium text-foreground">温馨提示：</span>
-                    工具会查询指定的自定义属性字段，然后告诉智能体该自定义属性字段的内容。
-                  </p>
                 </div>
               ) : null}
 
               {variableKind === "system_variable" ? (
-                <div className="space-y-2">
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
                   <Label>
                     <span className="text-destructive">*</span> 变量
                   </Label>
                   {systemVariablesLoading ? (
                     <div
-                      className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                      className="flex min-h-0 flex-1 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
                       role="status"
                     >
                       <Spinner size={14} />
@@ -1154,49 +1116,50 @@ export function InsertVariableDialog({
                     </div>
                   ) : systemVariablesError ? (
                     <div
-                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                      className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
                       role="alert"
                     >
                       加载失败
                     </div>
                   ) : systemVariables.length === 0 ? (
                     <div
-                      className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                      className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
                       role="status"
                     >
                       暂无数据
                     </div>
                   ) : (
-                    <FlatOptionList
+                    <MultiChoiceList
+                      addedValues={addedSystemVariableKeys}
                       ariaLabel="变量"
                       items={systemVariables.map((item) => ({
                         label: item.name,
                         value: item.key,
                       }))}
-                      onSelect={setSystemVariableKey}
-                      searchAriaLabel="搜索变量"
-                      searchable
-                      selectedValue={systemVariableKey}
+                      onToggle={(key) =>
+                        setSelectedSystemVariableKeys((current) =>
+                          current.includes(key)
+                            ? current.filter((item) => item !== key)
+                            : [...current, key],
+                        )
+                      }
+                      selectedValues={selectedSystemVariableKeys}
                     />
                   )}
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    <span className="font-medium text-foreground">温馨提示：</span>
-                    工具会读取指定的系统变量，然后告诉智能体该变量当前的值。
-                  </p>
                 </div>
               ) : null}
 
               {isTagKind(variableKind) ? (
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <Label>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+                    <Label className="shrink-0">
                       <span className="text-destructive">*</span> 标签
                     </Label>
 
                     {tagKind === "auto_tag" ? (
                       autoTagGroupsLoading ? (
                         <div
-                          className="flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
+                          className="flex min-h-0 flex-1 items-center justify-center gap-2 rounded-[10px] border border-border text-sm text-muted-foreground"
                           role="status"
                         >
                           <Spinner size={14} />
@@ -1204,14 +1167,14 @@ export function InsertVariableDialog({
                         </div>
                       ) : autoTagGroupsError ? (
                         <div
-                          className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
+                          className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-destructive"
                           role="alert"
                         >
                           加载失败
                         </div>
                       ) : autoTagGroups.length === 0 ? (
                         <div
-                          className="flex h-10 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
+                          className="flex min-h-0 flex-1 items-center justify-center rounded-[10px] border border-border text-sm text-muted-foreground"
                           role="status"
                         >
                           暂无数据
@@ -1219,26 +1182,12 @@ export function InsertVariableDialog({
                       ) : (
                         <div
                           aria-label="选择自动化标签"
-                          className="overflow-hidden rounded-[10px] border border-border"
+                          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border"
                         >
-                          {selectedAutoTag && selectedAutoGroup ? (
-                            <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
-                              已选 {selectedAutoGroup.groupName} · {selectedAutoTag.name}
-                            </div>
-                          ) : selectedAutoGroup && isEditingVariable ? (
-                            <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
-                              {selectedAutoGroup.groupName}
-                            </div>
-                          ) : null}
-
                           <div
-                            className={cn(
-                              "grid h-72",
-                              isEditingVariable ? "grid-cols-1" : "grid-cols-2",
-                            )}
+                            className="grid min-h-0 flex-1 grid-cols-[3fr_7fr]"
                           >
-                            {!isEditingVariable ? (
-                              <div className="flex min-h-0 flex-col border-r border-border">
+                            <div className="flex min-h-0 flex-col border-r border-border">
                                 <div className="shrink-0 p-3">
                                   <div className="relative">
                                     <HugeiconsIcon
@@ -1251,6 +1200,7 @@ export function InsertVariableDialog({
                                     <Input
                                       aria-label="搜索标签组"
                                       className="h-9 pl-9"
+                                      disabled={isEditingVariable}
                                       onChange={(event) => setGroupQuery(event.target.value)}
                                       placeholder="搜索"
                                       value={groupQuery}
@@ -1262,7 +1212,7 @@ export function InsertVariableDialog({
                                   className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3"
                                 >
                                   {filteredAutoGroups.length === 0 ? (
-                                    <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                    <li className="flex h-full items-center justify-center px-2 text-center text-sm text-muted-foreground">
                                       暂无数据
                                     </li>
                                   ) : (
@@ -1270,7 +1220,7 @@ export function InsertVariableDialog({
                                       <li key={group.groupTag}>
                                         <button
                                           className={cn(
-                                            "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
+                                            "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                                             group.groupTag === resolvedAutoGroupTag
                                               ? "bg-accent text-foreground"
                                               : "text-foreground hover:bg-muted/60",
@@ -1282,6 +1232,7 @@ export function InsertVariableDialog({
                                             setSelectedAutoGroupTag(group.groupTag);
                                             setTagQuery("");
                                           }}
+                                          disabled={isEditingVariable}
                                           type="button"
                                         >
                                           {group.groupName}
@@ -1291,7 +1242,6 @@ export function InsertVariableDialog({
                                   )}
                                 </ul>
                               </div>
-                            ) : null}
 
                             <div className="flex min-h-0 flex-col">
                               <div className="shrink-0 p-3">
@@ -1312,38 +1262,28 @@ export function InsertVariableDialog({
                                   />
                                 </div>
                               </div>
-                              <ul
+                              <RadioGroup
                                 aria-label="标签列表"
-                                className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3"
+                                className="min-h-0 flex-1 content-start gap-1 overflow-y-auto px-2 pb-3"
+                                onValueChange={setSelectedAutoTagKey}
+                                value={selectedAutoTagKey}
                               >
                                 {filteredAutoTags.length === 0 ? (
-                                  <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                  <div className="flex h-full items-center justify-center px-2 text-center text-sm text-muted-foreground">
                                     暂无数据
-                                  </li>
+                                  </div>
                                 ) : (
-                                  filteredAutoTags.map((tag) => {
-                                    const selected = tag.tag === selectedAutoTagKey;
-
-                                    return (
-                                      <li key={tag.tag}>
-                                        <button
-                                          aria-pressed={selected}
-                                          className={cn(
-                                            "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
-                                            selected
-                                              ? "bg-accent text-foreground"
-                                              : "text-foreground hover:bg-muted/60",
-                                          )}
-                                          onClick={() => setSelectedAutoTagKey(tag.tag)}
-                                          type="button"
-                                        >
-                                          {tag.name}
-                                        </button>
-                                      </li>
-                                    );
-                                  })
+                                  filteredAutoTags.map((tag) => (
+                                    <Label
+                                      className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-normal hover:bg-muted/60"
+                                      key={tag.tag}
+                                    >
+                                      <RadioGroupItem value={tag.tag} />
+                                      <span>{tag.name}</span>
+                                    </Label>
+                                  ))
                                 )}
-                              </ul>
+                              </RadioGroup>
                             </div>
                           </div>
                         </div>
@@ -1351,26 +1291,8 @@ export function InsertVariableDialog({
                     ) : (
                       <div
                         aria-label="选择标签"
-                        className="overflow-hidden rounded-[10px] border border-border"
+                        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border"
                       >
-                        {selectedTagNames.length > 0 ? (
-                          <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
-                            {activeGroup
-                              ? `已选 ${activeGroup.name} · ${
-                                  selectedTagNames.length <= 2
-                                    ? selectedTagNames.join("、")
-                                    : `${selectedTagNames.slice(0, 2).join("、")} 等${selectedTagNames.length}个`
-                                }`
-                              : selectedTagNames.length <= 3
-                                ? `已选 ${selectedTagNames.join("、")}`
-                                : `已选 ${selectedTagNames.length} 个标签`}
-                          </div>
-                        ) : activeGroup && isEditingVariable ? (
-                          <div className="border-b border-border px-3 py-2 text-sm text-muted-foreground">
-                            {activeGroup.name}
-                          </div>
-                        ) : null}
-
                         {tagKind === "work_tag" && !isEditingVariable ? (
                           <div className="border-b border-border px-3 pt-2">
                             <Tabs
@@ -1407,13 +1329,9 @@ export function InsertVariableDialog({
                         ) : null}
 
                         <div
-                          className={cn(
-                            "grid h-72",
-                            isEditingVariable ? "grid-cols-1" : "grid-cols-2",
-                          )}
+                          className="grid min-h-0 flex-1 grid-cols-[3fr_7fr]"
                         >
-                          {!isEditingVariable ? (
-                            <div className="flex min-h-0 flex-col border-r border-border">
+                          <div className="flex min-h-0 flex-col border-r border-border">
                               <div className="shrink-0 p-3">
                                 <div className="relative">
                                   <HugeiconsIcon
@@ -1426,6 +1344,7 @@ export function InsertVariableDialog({
                                   <Input
                                     aria-label="搜索标签组"
                                     className="h-9 pl-9"
+                                    disabled={isEditingVariable}
                                     onChange={(event) => setGroupQuery(event.target.value)}
                                     placeholder="搜索"
                                     value={groupQuery}
@@ -1438,7 +1357,7 @@ export function InsertVariableDialog({
                               >
                                 {usesComponentTagApi(tagKind) && workTagGroupsLoading ? (
                                   <li
-                                    className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
+                                    className="flex h-full items-center justify-center gap-2 px-2 text-sm text-muted-foreground"
                                     role="status"
                                   >
                                     <Spinner size={14} />
@@ -1446,13 +1365,13 @@ export function InsertVariableDialog({
                                   </li>
                                 ) : usesComponentTagApi(tagKind) && workTagGroupsError ? (
                                   <li
-                                    className="px-2 py-8 text-center text-sm text-destructive"
+                                    className="flex h-full items-center justify-center px-2 text-center text-sm text-destructive"
                                     role="alert"
                                   >
                                     加载失败
                                   </li>
                                 ) : filteredGroups.length === 0 ? (
-                                  <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                  <li className="flex h-full items-center justify-center px-2 text-center text-sm text-muted-foreground">
                                     暂无数据
                                   </li>
                                 ) : (
@@ -1460,7 +1379,7 @@ export function InsertVariableDialog({
                                     <li key={group.id}>
                                       <button
                                         className={cn(
-                                          "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors",
+                                          "flex w-full rounded-[8px] px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                                           group.id === resolvedActiveGroupId
                                             ? "bg-accent text-foreground"
                                             : "text-foreground hover:bg-muted/60",
@@ -1476,6 +1395,10 @@ export function InsertVariableDialog({
                                           setTagQuery("");
                                           setWorkTags([]);
                                         }}
+                                        disabled={
+                                          isEditingVariable ||
+                                          addedTagGroupKeys.has(`${tagKind}:${group.id}`)
+                                        }
                                         type="button"
                                       >
                                         {group.name}
@@ -1485,7 +1408,6 @@ export function InsertVariableDialog({
                                 )}
                               </ul>
                             </div>
-                          ) : null}
 
                           <div className="flex min-h-0 flex-col">
                             <div className="shrink-0 p-3">
@@ -1514,7 +1436,7 @@ export function InsertVariableDialog({
                                 ? workTagGroupsLoading
                                 : workTagsLoading) ? (
                                 <li
-                                  className="flex items-center justify-center gap-2 px-2 py-8 text-sm text-muted-foreground"
+                                  className="flex h-full items-center justify-center gap-2 px-2 text-sm text-muted-foreground"
                                   role="status"
                                 >
                                   <Spinner size={14} />
@@ -1524,13 +1446,13 @@ export function InsertVariableDialog({
                                   ? workTagGroupsError
                                   : workTagsError) ? (
                                 <li
-                                  className="px-2 py-8 text-center text-sm text-destructive"
+                                  className="flex h-full items-center justify-center px-2 text-center text-sm text-destructive"
                                   role="alert"
                                 >
                                   加载失败
                                 </li>
                               ) : filteredTags.length === 0 ? (
-                                <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+                                <li className="flex h-full items-center justify-center px-2 text-center text-sm text-muted-foreground">
                                   暂无数据
                                 </li>
                               ) : (
@@ -1558,27 +1480,20 @@ export function InsertVariableDialog({
                       </div>
                     )}
 
-                    <p className="text-sm leading-5 text-muted-foreground">
-                      <span className="font-medium text-foreground">温馨提示：</span>
-                      {tagKind === "auto_tag"
-                        ? "工具会查询指定的自动化标签，然后告诉智能体该客户是否命中该标签。"
-                        : "工具会查询指定的标签，然后告诉智能体该客户命中了所选标签中的哪些标签。"}
-                    </p>
                   </div>
                 </div>
               ) : null}
             </div>
 
-            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-6 py-4">
-              <Button onClick={handleBack} type="button" variant="outline">
-                {initialConfigure?.lockKind ? "取消" : "上一步"}
-              </Button>
-              <Button disabled={!canConfirm} onClick={handleConfirm} type="button">
-                {initialConfigure?.lockKind ? "确认" : "确认插入"}
-              </Button>
-            </div>
+          <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4">
+            <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={!canConfirm} onClick={handleConfirm} type="button">
+              确认
+            </Button>
           </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   );

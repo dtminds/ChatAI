@@ -1,8 +1,72 @@
 import { Type, type Static } from "@sinclair/typebox";
+import {
+  AiHostingAgentResourceInvalidReasonSchema,
+  AiHostingAgentResourceStatusSchema,
+} from "./dto.js";
 
 export const AGENT_SKILL_NAME_MAX_LENGTH = 30;
 export const AGENT_SKILL_APPLY_SCENE_MAX_LENGTH = 500;
+export const AGENT_SKILL_CONTENT_MAX_LENGTH = 8000;
 export const AGENT_SKILL_KB_MAX_COUNT = 10;
+
+export const AGENT_SKILL_TOOL_CATALOG = [
+  {
+    description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
+    id: "search_mall_order_logistics",
+    name: "小店订单物流查询",
+  },
+  {
+    description: "代客户将提供的订单号转换为积分",
+    id: "transfer_mall_point",
+    name: "代客转积分",
+  },
+  {
+    description: "为客户的小店订单添加或更新备注",
+    id: "remark_mall_order",
+    name: "小店订单备注",
+  },
+  {
+    description: "根据客户提供的订单号查询订单信息",
+    id: "search_order",
+    name: "订单查询",
+  },
+  {
+    description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
+    id: "bind_order",
+    name: "绑定订单",
+  },
+] as const;
+
+export function getAgentSkillContentCharacterCount(value: string) {
+  const resourcePattern = /<resource\b[^>]*\/>/g;
+  let characterCount = 0;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = resourcePattern.exec(value))) {
+    characterCount += match.index - lastIndex;
+    const token = match[0] ?? "";
+    const name = unescapeSkillResourceAttribute(
+      readSkillResourceAttribute(token, "name"),
+    );
+    characterCount += name ? name.length : token.length;
+    lastIndex = match.index + token.length;
+  }
+
+  return characterCount + value.length - lastIndex;
+}
+
+function readSkillResourceAttribute(token: string, attribute: string) {
+  return token.match(new RegExp(`${attribute}="([^"]*)"`))?.[1] ?? "";
+}
+
+function unescapeSkillResourceAttribute(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
 
 export const AgentSkillStatusSchema = Type.Union([
   Type.Literal("enabled"),
@@ -99,6 +163,48 @@ export const AgentSkillListItemSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const AgentSkillKnowledgeBaseResourceSchema = Type.Object(
+  {
+    id: Type.String(),
+    invalidReason: Type.Optional(AiHostingAgentResourceInvalidReasonSchema),
+    kbId: Type.Number(),
+    name: Type.String(),
+    status: AiHostingAgentResourceStatusSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const AgentSkillToolResourceSchema = Type.Object(
+  {
+    id: Type.String(),
+    invalidReason: Type.Optional(AiHostingAgentResourceInvalidReasonSchema),
+    name: Type.String(),
+    status: AiHostingAgentResourceStatusSchema,
+    toolKey: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
+export const AgentSkillVariableResourceSchema = Type.Object(
+  {
+    id: Type.String(),
+    invalidReason: Type.Optional(AiHostingAgentResourceInvalidReasonSchema),
+    name: Type.String(),
+    status: AiHostingAgentResourceStatusSchema,
+    variable: AgentSkillVariableSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const AgentSkillResourcesSchema = Type.Object(
+  {
+    knowledgeBases: Type.Array(AgentSkillKnowledgeBaseResourceSchema),
+    tools: Type.Array(AgentSkillToolResourceSchema),
+    variables: Type.Array(AgentSkillVariableResourceSchema),
+  },
+  { additionalProperties: false },
+);
+
 export const AgentSkillDetailSchema = Type.Object(
   {
     applyScene: Type.String(),
@@ -107,6 +213,7 @@ export const AgentSkillDetailSchema = Type.Object(
     id: Type.String(),
     kbs: Type.Array(Type.Number()),
     name: Type.String(),
+    resources: AgentSkillResourcesSchema,
     status: AgentSkillStatusSchema,
     tools: Type.Array(Type.String()),
     updatedAt: Type.String(),
@@ -138,12 +245,18 @@ export const AgentSkillMutationResponseSchema = Type.Object(
 );
 
 export type AgentSkillDetail = Static<typeof AgentSkillDetailSchema>;
+export type AgentSkillKnowledgeBaseResource = Static<
+  typeof AgentSkillKnowledgeBaseResourceSchema
+>;
 export type AgentSkillListItem = Static<typeof AgentSkillListItemSchema>;
 export type AgentSkillListResponse = Static<typeof AgentSkillListResponseSchema>;
 export type AgentSkillMutationResponse = Static<typeof AgentSkillMutationResponseSchema>;
+export type AgentSkillResources = Static<typeof AgentSkillResourcesSchema>;
 export type AgentSkillSaveRequest = Static<typeof AgentSkillSaveRequestSchema>;
 export type AgentSkillStatus = Static<typeof AgentSkillStatusSchema>;
 export type AgentSkillStatusUpdateRequest = Static<
   typeof AgentSkillStatusUpdateRequestSchema
 >;
 export type AgentSkillVariable = Static<typeof AgentSkillVariableSchema>;
+export type AgentSkillToolResource = Static<typeof AgentSkillToolResourceSchema>;
+export type AgentSkillVariableResource = Static<typeof AgentSkillVariableResourceSchema>;

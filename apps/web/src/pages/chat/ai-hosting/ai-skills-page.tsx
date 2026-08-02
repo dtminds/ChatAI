@@ -87,6 +87,7 @@ import { SkillContentView } from "./ai-skill-content-view";
 import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
 import {
   collectCompleteSkillResourcesFromContent,
+  mergeSkillResourceItems,
   listIncompleteSkillResources,
   matchIncompleteResourcesToRecommendations,
   type SkillRecommendBinding,
@@ -154,7 +155,7 @@ export function AiSkillsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSkill, setSelectedSkill] = useState<SkillItem | null>(null);
   const activeTab =
-    searchParams.get("tab") === "mine" ? "mine" : "marketplace";
+    searchParams.get("tab") === "marketplace" ? "marketplace" : "mine";
 
   return (
     <AiHostingLayout title="技能">
@@ -168,7 +169,7 @@ export function AiSkillsPage() {
           className="gap-6"
           onValueChange={(value) => {
             setSearchParams(
-              value === "mine" ? { tab: "mine" } : {},
+              value === "marketplace" ? { tab: "marketplace" } : {},
               { replace: true },
             );
           }}
@@ -1055,12 +1056,15 @@ function SkillDetailDialog({
               applyScene: detail.applicationScenario,
               content,
               resources: {
-                variables: [...existing.variables, ...resources.variables],
-                tools: [...existing.tools, ...resources.tools],
-                "knowledge-bases": [
-                  ...existing["knowledge-bases"],
-                  ...resources["knowledge-bases"],
-                ],
+                variables: mergeSkillResourceItems(
+                  existing.variables,
+                  resources.variables,
+                ),
+                tools: mergeSkillResourceItems(existing.tools, resources.tools),
+                "knowledge-bases": mergeSkillResourceItems(
+                  existing["knowledge-bases"],
+                  resources["knowledge-bases"],
+                ),
               },
             });
           }}

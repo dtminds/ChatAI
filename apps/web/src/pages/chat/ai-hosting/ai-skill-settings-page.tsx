@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Add01Icon,
   AbsoluteIcon,
+  AlertCircleIcon,
   AiBookIcon,
   ApiIcon,
   ArrowDown01Icon,
   ArrowLeft02Icon,
   ArrowRight01Icon,
   Delete02Icon,
+  Edit02Icon,
   File01Icon,
   File02Icon,
   Search01Icon,
@@ -18,11 +20,16 @@ import {
   AGENT_SKILL_APPLY_SCENE_MAX_LENGTH,
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
+  AGENT_SKILL_TOOL_CATALOG,
   KB_SEARCH_QUERY_MAX_LENGTH,
+  type AiHostingAgentResourceInvalidReason,
+  type AgentSkillResources,
+  type AgentSkillVariable,
 } from "@chatai/contracts";
 import type { LexicalEditor } from "lexical";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -48,6 +55,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -65,6 +77,14 @@ import {
 } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
+import { cn } from "@/lib/utils";
+import {
   createAgentSkill,
   getAgentSkill,
   updateAgentSkill,
@@ -80,12 +100,14 @@ import {
   InsertVariableDialog,
   type InsertVariableInitialConfigure,
 } from "./ai-skill-insert-variable-dialog";
-import { AiSkillReferenceMenu } from "./ai-skill-reference-menu";
 import {
   buildKnowledgeBasePlaceholder,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
+  getSkillResourceChipName,
+  getSkillResourceInvalidReasonLabel,
   parseSkillContentSegments,
+  parseSkillTagVariableStoredName,
   removeResourceFromSkillContent,
   replaceResourceInSkillContent,
   serializeSkillContentSegments,
@@ -97,7 +119,6 @@ import { AiHostingLayout } from "./ai-hosting-layout";
 import type { KbListViewItem } from "./kb-types";
 import "./agent-module.css";
 
-const KB_NAME_LOOKUP_PAGE_SIZE = 100;
 const KB_PICKER_PAGE_SIZE = 10;
 const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
 
@@ -141,52 +162,18 @@ const insertDialogMeta: Record<
   },
 };
 
-/** 与需求文档当前可选工具列表对齐 */
 const staticInsertItems: Partial<
   Record<ResourceSectionId, readonly ResourceCatalogItem[]>
 > = {
-  tools: [
-    {
-      description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
-      icon: ApiIcon,
-      id: "search_mall_order_logistics",
-      placeholder: buildToolPlaceholder("search_mall_order_logistics", "小店订单物流查询"),
-      title: "小店订单物流查询",
-      toolKey: "search_mall_order_logistics",
-    },
-    {
-      description: "代客户将提供的订单号转换为积分",
-      icon: ApiIcon,
-      id: "transfer_mall_point",
-      placeholder: buildToolPlaceholder("transfer_mall_point", "代客转积分"),
-      title: "代客转积分",
-      toolKey: "transfer_mall_point",
-    },
-    {
-      description: "为客户的小店订单添加或更新备注",
-      icon: ApiIcon,
-      id: "remark_mall_order",
-      placeholder: buildToolPlaceholder("remark_mall_order", "小店订单备注"),
-      title: "小店订单备注",
-      toolKey: "remark_mall_order",
-    },
-    {
-      description: "根据客户提供的订单号查询订单信息",
-      icon: ApiIcon,
-      id: "search_order",
-      placeholder: buildToolPlaceholder("search_order", "订单查询"),
-      title: "订单查询",
-      toolKey: "search_order",
-    },
-    {
-      description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
-      icon: ApiIcon,
-      id: "bind_order",
-      placeholder: buildToolPlaceholder("bind_order", "绑定订单"),
-      title: "绑定订单",
-      toolKey: "bind_order",
-    },
-  ],
+  tools: AGENT_SKILL_TOOL_CATALOG.map((tool) => ({
+    description: tool.description,
+    icon: ApiIcon,
+    id: tool.id,
+    placeholder: buildToolPlaceholder(tool.id, tool.name),
+    status: "available",
+    title: tool.name,
+    toolKey: tool.id,
+  })),
 };
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
@@ -209,7 +196,55 @@ function buildKnowledgeBaseResourceItem(item: KbListViewItem): ResourceCatalogIt
     id: `kb:${item.id}`,
     kbId: Number.isFinite(kbId) ? kbId : undefined,
     placeholder: buildKnowledgeBasePlaceholder(item.id, item.name),
+    status: "available",
     title: item.name,
+  };
+}
+
+type InvalidSkillResources = Record<
+  ResourceSectionId,
+  SkillResourceItem[]
+> | null;
+
+function buildSelectedResources(
+  resources: AgentSkillResources,
+): Record<ResourceSectionId, SkillResourceItem[]> {
+  const toolCatalog = new Map<
+    string,
+    (typeof AGENT_SKILL_TOOL_CATALOG)[number]
+  >(
+    AGENT_SKILL_TOOL_CATALOG.map((tool) => [tool.id, tool]),
+  );
+
+  return {
+    variables: resources.variables.map((resource) => ({
+      ...buildSkillVariableResourceItem(resource.variable, resource.name),
+      id: resource.id,
+      invalidReason: resource.invalidReason,
+      status: resource.status,
+      title: resource.name,
+    })),
+    tools: resources.tools.map((resource) => {
+      const catalogItem = toolCatalog.get(resource.toolKey);
+      return {
+        description: catalogItem?.description ?? "",
+        id: resource.id,
+        invalidReason: resource.invalidReason,
+        placeholder: buildToolPlaceholder(resource.toolKey, resource.name),
+        status: resource.status,
+        title: resource.name,
+        toolKey: resource.toolKey,
+      };
+    }),
+    "knowledge-bases": resources.knowledgeBases.map((resource) => ({
+      description: "",
+      id: resource.id,
+      invalidReason: resource.invalidReason,
+      kbId: resource.kbId,
+      placeholder: buildKnowledgeBasePlaceholder(resource.kbId, resource.name),
+      status: resource.status,
+      title: resource.name,
+    })),
   };
 }
 
@@ -273,6 +308,8 @@ export function AiSkillSettingsPage() {
     sectionId: ResourceSectionId;
     singular: string;
   } | null>(null);
+  const [invalidResourceDialog, setInvalidResourceDialog] =
+    useState<InvalidSkillResources>(null);
 
   const variableInitialConfigure = useMemo<InsertVariableInitialConfigure | null>(
     () =>
@@ -287,6 +324,9 @@ export function AiSkillSettingsPage() {
   );
 
   const canSubmit = name.trim().length > 0 && !pageLoading && !pageError;
+  const invalidResourceCount = Object.values(selectedResources)
+    .flat()
+    .filter((resource) => resource.status === "invalid").length;
 
   useEffect(() => {
     if (isEditMode || !createDraft || createDraftClearedRef.current) {
@@ -311,60 +351,15 @@ export function AiSkillSettingsPage() {
       setPageError(false);
 
       try {
-        const [detail, kbResponse] = await Promise.all([
-          getAgentSkill(skillId!),
-          listKbs({ page: 1, pageSize: KB_NAME_LOOKUP_PAGE_SIZE }),
-        ]);
+        const detail = await getAgentSkill(skillId!);
         if (cancelled) {
           return;
         }
 
-        const kbNameById = new Map(
-          kbResponse.kbs.map((item) => {
-            const view = toKbListViewItem(item);
-            return [view.id, view.name] as const;
-          }),
-        );
-        const toolCatalog = staticInsertItems.tools ?? [];
-
         setName(detail.name);
         setApplicationScenario(detail.applyScene);
         setSkillContentSegments(parseSkillContentSegments(detail.content));
-        setSelectedResources({
-          variables: detail.variables.map((variable) =>
-            buildSkillVariableResourceItem(variable),
-          ),
-          tools: detail.tools.map((toolKey) => {
-            const catalogItem = toolCatalog.find((item) => item.toolKey === toolKey);
-            if (catalogItem) {
-              return {
-                description: catalogItem.description,
-                id: catalogItem.id,
-                placeholder: catalogItem.placeholder,
-                title: catalogItem.title,
-                toolKey: catalogItem.toolKey,
-              };
-            }
-
-            return {
-              description: "",
-              id: toolKey,
-              placeholder: buildToolPlaceholder(toolKey, toolKey),
-              title: toolKey,
-              toolKey,
-            };
-          }),
-          "knowledge-bases": detail.kbs.map((kbId) => {
-            const title = kbNameById.get(String(kbId)) ?? `知识库 ${kbId}`;
-            return {
-              description: "",
-              id: `kb:${kbId}`,
-              kbId,
-              placeholder: buildKnowledgeBasePlaceholder(kbId, title),
-              title,
-            };
-          }),
-        });
+        setSelectedResources(buildSelectedResources(detail.resources));
       } catch {
         if (!cancelled) {
           setPageError(true);
@@ -397,6 +392,12 @@ export function AiSkillSettingsPage() {
       return;
     }
 
+    const invalidResources = getInvalidSkillResourceGroups(selectedResources);
+    if (invalidResources) {
+      setInvalidResourceDialog(invalidResources);
+      return;
+    }
+
     const payload = {
       applyScene: applicationScenario.trim(),
       content: serializeSkillContentSegments(skillContentSegments),
@@ -421,7 +422,15 @@ export function AiSkillSettingsPage() {
       }
       toast.success(skillId ? "技能已保存" : "技能已提交");
       goBackToMySkills();
-    } catch {
+    } catch (error) {
+      const invalidResources = readInvalidSkillResourcesFromRequestError(error);
+      if (invalidResources) {
+        setSelectedResources((current) =>
+          mergeInvalidSkillResourceGroups(current, invalidResources),
+        );
+        setInvalidResourceDialog(invalidResources);
+        return;
+      }
       toast.error(skillId ? "保存失败，请稍后重试" : "提交失败，请稍后重试");
     } finally {
       setSubmitting(false);
@@ -429,14 +438,30 @@ export function AiSkillSettingsPage() {
   }
 
   function handleAddResource(sectionId: ResourceSectionId, item: SkillResourceItem) {
+    handleAddResources(sectionId, [item]);
+  }
+
+  function handleAddResources(
+    sectionId: ResourceSectionId,
+    items: readonly SkillResourceItem[],
+  ) {
+    if (submitting) {
+      return;
+    }
+
+    const existingIds = new Set(selectedResources[sectionId].map((item) => item.id));
+    const additions = items.filter((item) => !existingIds.has(item.id));
+    if (additions.length === 0) {
+      return;
+    }
+
     setSelectedResources((current) => {
-      if (current[sectionId].some((selected) => selected.id === item.id)) {
-        return current;
-      }
+      const currentIds = new Set(current[sectionId].map((item) => item.id));
+      const currentAdditions = additions.filter((item) => !currentIds.has(item.id));
 
       return {
         ...current,
-        [sectionId]: [...current[sectionId], item],
+        [sectionId]: [...current[sectionId], ...currentAdditions],
       };
     });
 
@@ -447,6 +472,10 @@ export function AiSkillSettingsPage() {
     previous: SkillResourceItem,
     next: SkillResourceItem,
   ) {
+    if (submitting) {
+      return;
+    }
+
     setSelectedResources((current) => {
       const previousIndex = current.variables.findIndex(
         (item) => item.id === previous.id,
@@ -482,6 +511,10 @@ export function AiSkillSettingsPage() {
   }
 
   function handleChangeKnowledgeBases(items: readonly SkillResourceItem[]) {
+    if (submitting) {
+      return;
+    }
+
     if (items.length > AGENT_SKILL_KB_MAX_COUNT) {
       toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
       return;
@@ -513,6 +546,10 @@ export function AiSkillSettingsPage() {
   }
 
   function handleRemoveResource(sectionId: ResourceSectionId, itemId: string) {
+    if (submitting) {
+      return;
+    }
+
     const section = resourceSections.find((item) => item.id === sectionId);
     const item = selectedResources[sectionId].find(
       (resource) => resource.id === itemId,
@@ -530,7 +567,7 @@ export function AiSkillSettingsPage() {
   }
 
   function handleConfirmRemoveResource() {
-    if (!removeTarget) {
+    if (!removeTarget || submitting) {
       return;
     }
 
@@ -551,7 +588,7 @@ export function AiSkillSettingsPage() {
 
   /** 仅插入技能描述；可选池来自右侧已添加资源 */
   function handleInsertReferencedResource(item: SkillResourceItem) {
-    if (!item.placeholder) {
+    if (!item.placeholder || submitting || item.status === "invalid") {
       return;
     }
 
@@ -650,6 +687,7 @@ export function AiSkillSettingsPage() {
                     <Input
                       aria-required="true"
                       className="h-10 pr-14"
+                      disabled={submitting}
                       id="skill-name"
                       maxLength={AGENT_SKILL_NAME_MAX_LENGTH}
                       onChange={(event) => setName(event.target.value)}
@@ -667,6 +705,7 @@ export function AiSkillSettingsPage() {
                   <div className="relative">
                     <Textarea
                       className="min-h-36 bg-background"
+                      disabled={submitting}
                       id="skill-application-scenario"
                       maxLength={AGENT_SKILL_APPLY_SCENE_MAX_LENGTH}
                       onChange={(event) => setApplicationScenario(event.target.value)}
@@ -685,7 +724,7 @@ export function AiSkillSettingsPage() {
               aria-labelledby="skill-description-title"
               className="rounded-[14px] border border-border bg-card p-5"
             >
-              <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="mb-5 flex items-start gap-4">
                 <div className="flex min-w-0 items-start gap-3">
                   <span
                     aria-hidden="true"
@@ -705,17 +744,16 @@ export function AiSkillSettingsPage() {
                     </p>
                   </div>
                 </div>
-                <AiSkillReferenceMenu
-                  knowledgeBases={selectedResources["knowledge-bases"]}
-                  onSelectResource={handleInsertReferencedResource}
-                  tools={selectedResources.tools}
-                  variables={selectedResources.variables}
-                />
               </div>
               <AiSkillDescriptionField
+                disabled={submitting}
                 editorRef={descriptionEditorRef}
+                knowledgeBases={selectedResources["knowledge-bases"]}
                 onChange={setSkillContentSegments}
+                onSelectResource={handleInsertReferencedResource}
                 segments={skillContentSegments}
+                tools={selectedResources.tools}
+                variables={selectedResources.variables}
               />
             </section>
           </div>
@@ -730,9 +768,25 @@ export function AiSkillSettingsPage() {
             >
               资源管理
             </h2>
+            {invalidResourceCount > 0 ? (
+              <div
+                className="mb-4 flex items-start gap-2 rounded-[8px] bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
+                role="alert"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0"
+                  icon={AlertCircleIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                <span>保存前请移除失效资源</span>
+              </div>
+            ) : null}
             <div className="space-y-5">
               {resourceSections.map((section) => (
                 <SkillResourceSection
+                  disabled={submitting}
                   icon={section.icon}
                   items={selectedResources[section.id]}
                   key={section.id}
@@ -747,7 +801,7 @@ export function AiSkillSettingsPage() {
                   onEdit={
                     section.id === "variables"
                       ? (item) => {
-                          if (!item.variable) {
+                          if (!isEditableSkillVariable(item)) {
                             return;
                           }
                           setEditingVariable(item);
@@ -766,13 +820,17 @@ export function AiSkillSettingsPage() {
       </div>
 
       <InsertVariableDialog
+        addedVariables={selectedResources.variables}
         initialConfigure={variableInitialConfigure}
-        onConfirm={(item) => {
+        onConfirm={(items) => {
           if (editingVariable) {
-            handleReplaceVariable(editingVariable, item);
+            const next = items[0];
+            if (next) {
+              handleReplaceVariable(editingVariable, next);
+            }
             setEditingVariable(null);
           } else {
-            handleAddResource("variables", item);
+            handleAddResources("variables", items);
           }
           setVariableDialogOpen(false);
           if (activeInsertSection === "variables") {
@@ -819,6 +877,15 @@ export function AiSkillSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <InvalidSkillResourcesDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvalidResourceDialog(null);
+          }
+        }}
+        state={invalidResourceDialog}
+      />
+
       <InsertResourceDialog
         addedItems={
           activeInsertSection && activeInsertSection !== "variables"
@@ -853,6 +920,7 @@ export function AiSkillSettingsPage() {
 }
 
 function SkillResourceSection({
+  disabled,
   icon,
   items,
   onAdd,
@@ -860,6 +928,7 @@ function SkillResourceSection({
   onRemove,
   title,
 }: {
+  disabled: boolean;
   icon: typeof AbsoluteIcon;
   items: readonly SkillResourceItem[];
   onAdd: () => void;
@@ -894,6 +963,7 @@ function SkillResourceSection({
         <Button
           aria-label={`添加${title}`}
           className="size-6 shrink-0 rounded-[6px] p-0"
+          disabled={disabled}
           onClick={onAdd}
           size="icon"
           type="button"
@@ -918,53 +988,253 @@ function SkillResourceSection({
             <p className="text-sm text-muted-foreground">暂未配置</p>
           </div>
         ) : (
-          <ul aria-label={`已添加${title}`} className="space-y-1 px-0.5 py-2">
-            {items.map((item) => (
-              <li key={item.id}>
-                <div className="group flex min-w-0 items-center gap-2 rounded-[8px] bg-muted/40 px-2 py-1.5 transition-colors hover:bg-muted/70">
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    className="shrink-0 text-muted-foreground"
-                    icon={icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                  {onEdit ? (
-                    <button
-                      aria-label={`编辑${item.title}`}
-                      className="min-w-0 flex-1 truncate text-left text-sm text-foreground hover:text-primary"
-                      onClick={() => onEdit(item)}
-                      type="button"
-                    >
-                      {item.title}
-                    </button>
-                  ) : (
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {item.title}
-                    </span>
+          <ul aria-label={`已添加${title}`} className="space-y-1.5 px-0.5 py-2">
+            {items.map((item) => {
+              const tagPresentation = getSkillTagResourcePresentation(item);
+              const displayTitle = tagPresentation?.title ?? item.title;
+              const canEditResource =
+                Boolean(onEdit) &&
+                item.status !== "invalid" &&
+                isEditableSkillVariable(item);
+              const hasEditableTagPopover =
+                canEditResource && Boolean(tagPresentation?.tagNames.length);
+
+              const resourceRow = (
+                <div
+                  aria-label={
+                    hasEditableTagPopover
+                      ? `${displayTitle}标签详情`
+                      : undefined
+                  }
+                  className={cn(
+                    "group relative flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors",
+                    item.status === "invalid"
+                      ? "bg-destructive/5 hover:bg-destructive/10"
+                      : "bg-muted/80 hover:bg-accent",
                   )}
-                  <Button
-                    aria-label={`删除${item.title}`}
-                    className="size-6 shrink-0 rounded-[6px] p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                    onClick={() => onRemove(item.id)}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={Delete02Icon}
-                      size={14}
-                      strokeWidth={1.8}
-                    />
-                  </Button>
-                </div>
-              </li>
-            ))}
+                >
+                    {item.status === "invalid" ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              aria-label={`${displayTitle}已失效`}
+                              className="inline-flex shrink-0 text-destructive"
+                              role="img"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={AlertCircleIcon}
+                                size={15}
+                                strokeWidth={1.8}
+                              />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            {getSkillResourceInvalidReasonLabel(
+                              item.invalidReason,
+                              title,
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        className="shrink-0 text-muted-foreground"
+                        icon={icon}
+                        size={15}
+                        strokeWidth={1.8}
+                      />
+                    )}
+                    <div className="flex min-w-0 flex-1 items-center gap-1">
+                      <span className="min-w-0 truncate text-[13px] text-foreground">
+                        {displayTitle}
+                      </span>
+                    </div>
+                    <div
+                      className={cn(
+                        "pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-[6px] opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
+                        item.status === "invalid"
+                          ? "bg-destructive/10"
+                          : "bg-muted/90",
+                      )}
+                    >
+                      <Button
+                        aria-label={`删除${displayTitle}`}
+                        className="size-6 rounded-[6px] p-0 text-muted-foreground hover:text-foreground"
+                        disabled={disabled}
+                        onClick={() => onRemove(item.id)}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={Delete02Icon}
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                      </Button>
+                    </div>
+                  </div>
+              );
+
+              return (
+                <li key={item.id}>
+                  {hasEditableTagPopover && tagPresentation ? (
+                    <HoverCard closeDelay={80} openDelay={120}>
+                      <HoverCardTrigger asChild>{resourceRow}</HoverCardTrigger>
+                      <HoverCardContent
+                        align="center"
+                        className="w-auto min-w-48 max-w-72 rounded-[8px] px-3 py-2.5"
+                        side="left"
+                        sideOffset={8}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            已选标签
+                          </p>
+                          <Button
+                            aria-label={`编辑${displayTitle}`}
+                            className="size-6 rounded-[6px] p-0 text-muted-foreground hover:text-foreground"
+                            disabled={disabled}
+                            onClick={() => onEdit?.(item)}
+                            size="icon"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={Edit02Icon}
+                              size={14}
+                              strokeWidth={1.8}
+                            />
+                          </Button>
+                        </div>
+                        <ul aria-label="已选标签" className="max-h-64 space-y-1.5 overflow-y-auto">
+                          {tagPresentation.tagNames.map((tagName, index) => (
+                            <li key={`${index}:${tagName}`}>
+                              <Badge
+                                className="max-w-full px-2 py-1 text-[13px] font-normal"
+                                variant="secondary"
+                              >
+                                <span className="break-all">{tagName}</span>
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </HoverCardContent>
+                    </HoverCard>
+                  ) : (
+                    resourceRow
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function getSkillTagResourcePresentation(item: SkillResourceItem) {
+  const variable = item.variable;
+  if (
+    !variable ||
+    (variable.type !== "work_tag" && variable.type !== "mall_tag")
+  ) {
+    return null;
+  }
+
+  const { groupName, tagNames } = parseSkillTagVariableStoredName(variable.name);
+  return {
+    tagNames,
+    title: getSkillResourceChipName({
+      ...item,
+      variable: { ...variable, name: groupName },
+    }),
+  };
+}
+
+function isEditableSkillVariable(item: SkillResourceItem) {
+  return (
+    item.variable?.type === "work_tag" || item.variable?.type === "mall_tag"
+  );
+}
+
+function InvalidSkillResourcesDialog({
+  onOpenChange,
+  state,
+}: {
+  onOpenChange: (open: boolean) => void;
+  state: InvalidSkillResources;
+}) {
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={state !== null}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>无法保存技能</AlertDialogTitle>
+          <AlertDialogDescription>
+            技能依赖的以下资源已失效，请从右侧资源管理中移除或替换后再保存
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="max-h-64 space-y-4 overflow-y-auto rounded-[8px] border border-border bg-muted/20 p-3">
+          {state?.variables.length ? (
+            <InvalidSkillResourceGroup
+              resources={state.variables}
+              title="变量"
+            />
+          ) : null}
+          {state?.tools.length ? (
+            <InvalidSkillResourceGroup resources={state.tools} title="工具" />
+          ) : null}
+          {state?.["knowledge-bases"].length ? (
+            <InvalidSkillResourceGroup
+              resources={state["knowledge-bases"]}
+              title="知识库"
+            />
+          ) : null}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogAction>知道了</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function InvalidSkillResourceGroup({
+  resources,
+  title,
+}: {
+  resources: readonly SkillResourceItem[];
+  title: string;
+}) {
+  return (
+    <section aria-label={`已失效${title}`}>
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h3>
+      <ul className="space-y-1.5">
+        {resources.map((resource) => (
+          <li
+            className="flex min-w-0 items-center gap-2 rounded-[6px] bg-destructive/5 px-2.5 py-2 text-sm text-destructive"
+            key={resource.id}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0"
+              icon={AlertCircleIcon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <span className="min-w-0 flex-1 truncate" title={resource.title}>
+              {resource.title}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -1380,4 +1650,210 @@ function KnowledgeBasePicker({
       </DialogFooter>
     </>
   );
+}
+
+function getInvalidSkillResourceGroups(
+  resources: Record<ResourceSectionId, SkillResourceItem[]>,
+): InvalidSkillResources {
+  const invalidResources = {
+    variables: resources.variables.filter(
+      (resource) => resource.status === "invalid",
+    ),
+    tools: resources.tools.filter((resource) => resource.status === "invalid"),
+    "knowledge-bases": resources["knowledge-bases"].filter(
+      (resource) => resource.status === "invalid",
+    ),
+  };
+
+  return Object.values(invalidResources).some((items) => items.length > 0)
+    ? invalidResources
+    : null;
+}
+
+function readInvalidSkillResourcesFromRequestError(
+  error: unknown,
+): InvalidSkillResources {
+  if (!isRequestError(error) || error.code !== "SKILL_RESOURCES_INVALID") {
+    return null;
+  }
+
+  const resources = {
+    knowledgeBases: readInvalidKnowledgeBaseResources(
+      error.details?.knowledgeBases,
+    ),
+    tools: readInvalidToolResources(error.details?.tools),
+    variables: readInvalidVariableResources(error.details?.variables),
+  } satisfies AgentSkillResources;
+
+  const mapped = buildSelectedResources(resources);
+  return Object.values(mapped).some((items) => items.length > 0) ? mapped : null;
+}
+
+function readInvalidKnowledgeBaseResources(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((resource) => {
+    if (
+      !isPlainObject(resource) ||
+      typeof resource.id !== "string" ||
+      typeof resource.kbId !== "number" ||
+      typeof resource.name !== "string"
+    ) {
+      return [];
+    }
+
+    return [{
+      id: resource.id,
+      invalidReason: readInvalidReason(resource.invalidReason),
+      kbId: resource.kbId,
+      name: resource.name,
+      status: "invalid" as const,
+    }];
+  });
+}
+
+function readInvalidToolResources(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((resource) => {
+    if (
+      !isPlainObject(resource) ||
+      typeof resource.id !== "string" ||
+      typeof resource.name !== "string" ||
+      typeof resource.toolKey !== "string"
+    ) {
+      return [];
+    }
+
+    return [{
+      id: resource.id,
+      invalidReason: readInvalidReason(resource.invalidReason),
+      name: resource.name,
+      status: "invalid" as const,
+      toolKey: resource.toolKey,
+    }];
+  });
+}
+
+function readInvalidVariableResources(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((resource) => {
+    if (
+      !isPlainObject(resource) ||
+      typeof resource.id !== "string" ||
+      typeof resource.name !== "string"
+    ) {
+      return [];
+    }
+
+    const variable = readAgentSkillVariable(resource.variable);
+    if (!variable) {
+      return [];
+    }
+
+    return [{
+      id: resource.id,
+      invalidReason: readInvalidReason(resource.invalidReason),
+      name: resource.name,
+      status: "invalid" as const,
+      variable,
+    }];
+  });
+}
+
+function readAgentSkillVariable(value: unknown): AgentSkillVariable | null {
+  if (!isPlainObject(value) || typeof value.name !== "string") {
+    return null;
+  }
+
+  if (value.type === "custom_field" && typeof value.select_id === "number") {
+    return {
+      name: value.name,
+      select_id: value.select_id,
+      type: "custom_field",
+    };
+  }
+
+  if (
+    (value.type === "work_tag" || value.type === "mall_tag") &&
+    typeof value.select_id === "number" &&
+    Array.isArray(value.select_sub_ids) &&
+    value.select_sub_ids.every((item) => typeof item === "number")
+  ) {
+    return {
+      name: value.name,
+      select_id: value.select_id,
+      select_sub_ids: value.select_sub_ids,
+      type: value.type,
+    };
+  }
+
+  if (
+    (value.type === "system_variable" || value.type === "auto_tag") &&
+    typeof value.select_key === "string"
+  ) {
+    return {
+      name: value.name,
+      select_key: value.select_key,
+      type: value.type,
+    };
+  }
+
+  return null;
+}
+
+function readInvalidReason(
+  value: unknown,
+): AiHostingAgentResourceInvalidReason | undefined {
+  return value === "deleted" || value === "disabled" || value === "unavailable"
+    ? value
+    : undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeInvalidSkillResourceGroups(
+  current: Record<ResourceSectionId, SkillResourceItem[]>,
+  invalid: Exclude<InvalidSkillResources, null>,
+) {
+  return {
+    variables: mergeInvalidSkillResourceList(current.variables, invalid.variables),
+    tools: mergeInvalidSkillResourceList(current.tools, invalid.tools),
+    "knowledge-bases": mergeInvalidSkillResourceList(
+      current["knowledge-bases"],
+      invalid["knowledge-bases"],
+    ),
+  };
+}
+
+function mergeInvalidSkillResourceList(
+  current: readonly SkillResourceItem[],
+  invalid: readonly SkillResourceItem[],
+) {
+  const invalidMap = new Map(invalid.map((resource) => [resource.id, resource]));
+  const merged = current.map((resource) => {
+    const invalidResource = invalidMap.get(resource.id);
+    if (!invalidResource) {
+      return resource;
+    }
+
+    invalidMap.delete(resource.id);
+    return {
+      ...resource,
+      invalidReason: invalidResource.invalidReason,
+      status: "invalid" as const,
+      title: invalidResource.title,
+    };
+  });
+
+  return [...merged, ...invalidMap.values()];
 }

@@ -1,7 +1,9 @@
 import {
   AGENT_SKILL_APPLY_SCENE_MAX_LENGTH,
+  AGENT_SKILL_CONTENT_MAX_LENGTH,
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
+  getAgentSkillContentCharacterCount,
 } from "@chatai/contracts";
 import type {
   AgentSkillDetail,
@@ -15,7 +17,12 @@ import type {
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import type { AppLogger, RequestAwareLogger } from "../../shared/logger.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import {
+  createAgentSkillResourceService,
+  type AgentSkillResourceService,
+} from "./agent-skill-resource.service.js";
 import { parseMySqlId } from "./ai-hosting-id-utils.js";
 import { buildContainsLikePattern } from "./sql-like-utils.js";
 
@@ -49,7 +56,13 @@ const defaultPageSize = 10;
 const maxPageSize = 100;
 
 export class AgentSkillService {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly resourceService: Pick<
+      AgentSkillResourceService,
+      "resolveResources"
+    >,
+  ) {}
 
   async listSkills(
     uid: number,
@@ -79,7 +92,9 @@ export class AgentSkillService {
     }
 
     const row = await this.getSkillRowOrThrow(uid, numericSkillId);
-    return mapSkillDetail(row);
+    const detail = mapSkillDetail(row);
+    const resources = await this.resourceService.resolveResources(uid, detail);
+    return { ...detail, resources };
   }
 
   async createSkill(
@@ -88,6 +103,7 @@ export class AgentSkillService {
   ): Promise<AgentSkillMutationResponse> {
     const operatorId = requireOperatorId(context.operatorSubUserId);
     const normalized = normalizeSavePayload(payload);
+    await this.assertResourcesAvailable(context.uid, normalized);
 
     const result = await this.db
       .insertInto("xy_wap_embed_agent_skill")
@@ -127,6 +143,7 @@ export class AgentSkillService {
 
     await this.getSkillRowOrThrow(context.uid, numericSkillId);
     const normalized = normalizeSavePayload(payload);
+    await this.assertResourcesAvailable(context.uid, normalized);
 
     await this.db
       .updateTable("xy_wap_embed_agent_skill")
@@ -283,10 +300,46 @@ export class AgentSkillService {
 
     return row;
   }
+
+  private async assertResourcesAvailable(
+    uid: number,
+    payload: AgentSkillSaveRequest,
+  ) {
+    const resources = await this.resourceService.resolveResources(uid, payload);
+    const knowledgeBases = resources.knowledgeBases.filter(
+      (resource) => resource.status === "invalid",
+    );
+    const tools = resources.tools.filter(
+      (resource) => resource.status === "invalid",
+    );
+    const variables = resources.variables.filter(
+      (resource) => resource.status === "invalid",
+    );
+
+    if (
+      knowledgeBases.length === 0 &&
+      tools.length === 0 &&
+      variables.length === 0
+    ) {
+      return;
+    }
+
+    throw new BadRequestError(
+      "SKILL_RESOURCES_INVALID",
+      "技能依赖的资源已失效，请移除后重试",
+      { knowledgeBases, tools, variables },
+    );
+  }
 }
 
-export function createAgentSkillService(db: Kysely<Database>) {
-  return new AgentSkillService(db);
+export function createAgentSkillService(
+  db: Kysely<Database>,
+  logger: AppLogger | RequestAwareLogger,
+) {
+  return new AgentSkillService(
+    db,
+    createAgentSkillResourceService(db, logger),
+  );
 }
 
 function requireOperatorId(operatorSubUserId: string) {
@@ -320,12 +373,21 @@ function normalizeSavePayload(payload: AgentSkillSaveRequest) {
     );
   }
 
+  if (getAgentSkillContentCharacterCount(payload.content) > AGENT_SKILL_CONTENT_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_SKILL_CONTENT",
+      `技能描述不能超过${AGENT_SKILL_CONTENT_MAX_LENGTH}个字`,
+    );
+  }
+
   if (kbs.length > AGENT_SKILL_KB_MAX_COUNT) {
     throw new BadRequestError(
       "INVALID_SKILL_KBS",
       `一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`,
     );
   }
+
+  assertUniqueTagGroups(payload.variables);
 
   return {
     applyScene,
@@ -335,6 +397,25 @@ function normalizeSavePayload(payload: AgentSkillSaveRequest) {
     tools: dedupeNonEmptyStrings(payload.tools),
     variables: payload.variables,
   };
+}
+
+function assertUniqueTagGroups(variables: readonly AgentSkillVariable[]) {
+  const seen = new Set<string>();
+
+  for (const variable of variables) {
+    if (variable.type !== "work_tag" && variable.type !== "mall_tag") {
+      continue;
+    }
+
+    const key = `${variable.type}:${variable.select_id}`;
+    if (seen.has(key)) {
+      throw new BadRequestError(
+        "INVALID_SKILL_VARIABLES",
+        "同一标签分组只能添加一次",
+      );
+    }
+    seen.add(key);
+  }
 }
 
 function dedupePositiveNumbers(values: number[]) {
@@ -398,7 +479,7 @@ function mapSkillListItem(row: SkillListRow): AgentSkillListItem {
   };
 }
 
-function mapSkillDetail(row: SkillDetailRow): AgentSkillDetail {
+function mapSkillDetail(row: SkillDetailRow): Omit<AgentSkillDetail, "resources"> {
   return {
     ...mapSkillListItem(row),
     content: row.content ?? "",

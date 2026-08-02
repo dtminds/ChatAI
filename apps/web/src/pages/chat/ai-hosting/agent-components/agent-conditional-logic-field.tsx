@@ -209,12 +209,12 @@ export function AgentConditionalLogicField({
           </LexicalComposer>
         </div>
 
-        <div className="mt-1 flex h-5 items-center justify-between">
+        <div className="mt-1 flex h-6 items-center justify-between">
           <PopoverTrigger asChild>
             <Button
               aria-expanded={open}
               aria-label="添加引用资源"
-              className="size-5 rounded-[6px] p-0 text-muted-foreground"
+              className="size-6 rounded-[6px] p-0 text-muted-foreground"
               disabled={disabled}
               onMouseDown={(event) => {
                 event.preventDefault();

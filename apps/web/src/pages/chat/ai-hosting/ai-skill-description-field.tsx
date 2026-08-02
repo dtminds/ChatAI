@@ -3,33 +3,84 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { AGENT_SKILL_CONTENT_MAX_LENGTH } from "@chatai/contracts";
 import type { LexicalEditor } from "lexical";
 import { cn } from "@/lib/utils";
 import {
+  getSkillContentCharacterCount,
+  getSkillContentResourceReferenceKey,
+  getSkillResourceReferenceKey,
   isSkillContentEmpty,
   normalizeSkillContentSegments,
+  toSkillContentResourceSegment,
   type SkillContentSegment,
+  type SkillResourceItem,
 } from "./ai-skill-resource";
 import { SkillResourceChipNode } from "./ai-skill-description-lexical-nodes";
-import { SkillDescriptionRuntimePlugin } from "./ai-skill-description-lexical-plugins";
+import {
+  SkillDescriptionResourceTooltipPlugin,
+  SkillDescriptionRuntimePlugin,
+} from "./ai-skill-description-lexical-plugins";
+import { SkillDescriptionMaxLengthPlugin } from "./ai-skill-description-max-length-plugin";
+import { AiSkillReferenceMenu } from "./ai-skill-reference-menu";
 import "./agent-module.css";
+import "./agent-components/agent-conditional-logic.css";
 
 export function AiSkillDescriptionField({
+  disabled = false,
   editorRef,
+  knowledgeBases,
   onChange,
+  onSelectResource,
   segments,
+  tools,
+  variables,
 }: {
+  disabled?: boolean;
   editorRef?: MutableRefObject<LexicalEditor | null>;
+  knowledgeBases: readonly SkillResourceItem[];
   onChange: (value: SkillContentSegment[]) => void;
+  onSelectResource: (item: SkillResourceItem) => void;
   segments: SkillContentSegment[];
+  tools: readonly SkillResourceItem[];
+  variables: readonly SkillResourceItem[];
 }) {
   const localEditorRef = useRef<LexicalEditor | null>(null);
-  const normalizedSegments = useMemo(
-    () => normalizeSkillContentSegments(segments),
-    [segments],
-  );
+  const normalizedSegments = useMemo(() => {
+    const resourceMap = new Map(
+      [...variables, ...tools, ...knowledgeBases].map((resource) => [
+        getSkillResourceReferenceKey(resource),
+        resource,
+      ]),
+    );
+
+    return normalizeSkillContentSegments(segments).map((segment) => {
+      if (segment.type !== "resource") {
+        return segment;
+      }
+
+      const resource = resourceMap.get(
+        getSkillContentResourceReferenceKey(segment),
+      );
+
+      if (!resource) {
+        const {
+          invalid: _invalid,
+          invalidReason: _invalidReason,
+          ...baseSegment
+        } = segment;
+        return baseSegment;
+      }
+
+      return toSkillContentResourceSegment(resource);
+    });
+  }, [knowledgeBases, segments, tools, variables]);
   const isEmpty = useMemo(
     () => isSkillContentEmpty(normalizedSegments),
+    [normalizedSegments],
+  );
+  const characterCount = useMemo(
+    () => getSkillContentCharacterCount(normalizedSegments),
     [normalizedSegments],
   );
 
@@ -66,11 +117,14 @@ export function AiSkillDescriptionField({
             contentEditable={
               <ContentEditable
                 aria-label="技能描述"
+                aria-disabled={disabled}
                 aria-multiline="true"
                 className={cn(
-                  "min-h-48 w-full whitespace-pre-wrap break-words outline-none",
+                  "min-h-48 max-h-128 w-full overflow-y-auto whitespace-pre-wrap break-words outline-none",
+                  disabled && "cursor-not-allowed opacity-70",
                 )}
                 role="textbox"
+                tabIndex={disabled ? -1 : undefined}
               />
             }
             ErrorBoundary={LexicalErrorBoundary}
@@ -86,11 +140,29 @@ export function AiSkillDescriptionField({
             }
           />
           <SkillDescriptionRuntimePlugin
+            disabled={disabled}
+            maxLength={AGENT_SKILL_CONTENT_MAX_LENGTH}
             onChange={onChange}
             registerEditor={registerEditor}
             segments={normalizedSegments}
           />
+          <SkillDescriptionResourceTooltipPlugin />
+          <SkillDescriptionMaxLengthPlugin
+            maxLength={AGENT_SKILL_CONTENT_MAX_LENGTH}
+          />
         </LexicalComposer>
+      </div>
+      <div className="mt-1 flex h-6 items-center justify-between">
+        <AiSkillReferenceMenu
+          disabled={disabled}
+          knowledgeBases={knowledgeBases}
+          onSelectResource={onSelectResource}
+          tools={tools}
+          variables={variables}
+        />
+        <div className="text-xs leading-5 text-muted-foreground">
+          {characterCount}/{AGENT_SKILL_CONTENT_MAX_LENGTH}
+        </div>
       </div>
     </div>
   );

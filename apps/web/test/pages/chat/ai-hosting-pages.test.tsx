@@ -821,6 +821,11 @@ describe("AI hosting pages", () => {
       id: "1",
       kbs: [],
       name: "订单与物流场景查询",
+      resources: {
+        knowledgeBases: [],
+        tools: [],
+        variables: [],
+      },
       status: "enabled",
       tools: [],
       updatedAt: "2026-06-20 23:22:22",
@@ -1964,13 +1969,19 @@ describe("AI hosting pages", () => {
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
     ).toEqual(["我的技能", "技能广场"]);
-    expect(screen.getByRole("tab", { name: "技能广场" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "技能广场" })).toHaveAttribute(
       "aria-selected",
       "false",
+    );
+
+    await user.click(screen.getByRole("tab", { name: "技能广场" }));
+    expect(screen.getByRole("tab", { name: "技能广场" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
     expect(await screen.findByRole("heading", { level: 2, name: "私域通用技能" })).toBeInTheDocument();
     expect(
@@ -2139,6 +2150,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
 
+    await user.click(screen.getByRole("tab", { name: "技能广场" }));
     await user.click(await screen.findByRole("button", { name: /肤质适配推荐/ }));
 
     const dialog = screen.getByRole("dialog");
@@ -2211,7 +2223,9 @@ describe("AI hosting pages", () => {
     expect(within(basicSettings).getByText("0/500")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "技能描述" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "资源管理" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "引用变量" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "添加引用资源" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
     await user.type(applicationScenario, "查询订单");
@@ -2241,6 +2255,22 @@ describe("AI hosting pages", () => {
       id: "1",
       kbs: [],
       name: "订单与物流场景查询",
+      resources: {
+        knowledgeBases: [],
+        tools: [],
+        variables: [
+          {
+            id: "system_variable:chat_type",
+            name: "系统变量 · 会话类型",
+            status: "available",
+            variable: {
+              name: "会话类型",
+              select_key: "chat_type",
+              type: "system_variable",
+            },
+          },
+        ],
+      },
       status: "enabled",
       tools: [],
       updatedAt: "2026-06-20 23:22:22",
@@ -2268,6 +2298,8 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
+    const knowledgeBaseCallCount = vi.mocked(kbService.listKbs).mock.calls.length;
+
     await user.click(
       await screen.findByRole("link", { name: "订单与物流场景查询" }),
     );
@@ -2277,6 +2309,7 @@ describe("AI hosting pages", () => {
       "订单与物流场景查询",
     );
     expect(agentSkillService.getAgentSkill).toHaveBeenCalledWith("1");
+    expect(kbService.listKbs).toHaveBeenCalledTimes(knowledgeBaseCallCount);
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
       "系统变量 · 会话类型",
     );
@@ -2307,88 +2340,239 @@ describe("AI hosting pages", () => {
     expect(router.state.location.search).toBe("?tab=mine");
   });
 
+  it("shows invalid skill resources in the panel and description and blocks saving", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentSkillService.getAgentSkill).mockResolvedValueOnce({
+      applyScene: "引用知识库回答",
+      content:
+        '<resource type="knowledge_base" kbId="9" name="已删除知识库" />',
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      kbs: [9],
+      name: "失效资源技能",
+      resources: {
+        knowledgeBases: [
+          {
+            id: "kb:9",
+            invalidReason: "deleted",
+            kbId: 9,
+            name: "已删除知识库",
+            status: "invalid",
+          },
+        ],
+        tools: [],
+        variables: [],
+      },
+      status: "enabled",
+      tools: [],
+      updatedAt: "2026-06-20 23:22:22",
+      variables: [],
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/skills/1/edit",
+      <AiSkillSettingsPage />,
+      "/chat/ai-hosting/skills/:skillId/edit",
+    );
+
+    expect(await screen.findByText("保存前请移除失效资源")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "已删除知识库已失效" }),
+    ).toBeInTheDocument();
+    const invalidChip = screen.getByText("已删除知识库", {
+      selector: "[data-skill-resource-chip='true']",
+    });
+    expect(invalidChip).toHaveAttribute("data-resource-invalid", "true");
+
+    await user.hover(invalidChip);
+    expect((await screen.findAllByText("知识库已被删除")).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    const dialog = screen.getByRole("alertdialog", { name: "无法保存技能" });
+    expect(within(dialog).getByText("已删除知识库")).toBeInTheDocument();
+    expect(agentSkillService.updateAgentSkill).not.toHaveBeenCalled();
+  });
+
+  it("marks resources invalid when the save API rejects stale resource state", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentSkillService.getAgentSkill).mockResolvedValueOnce({
+      applyScene: "引用知识库回答",
+      content: "",
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      kbs: [9],
+      name: "资源状态变化技能",
+      resources: {
+        knowledgeBases: [
+          {
+            id: "kb:9",
+            kbId: 9,
+            name: "产品知识库",
+            status: "available",
+          },
+        ],
+        tools: [],
+        variables: [],
+      },
+      status: "enabled",
+      tools: [],
+      updatedAt: "2026-06-20 23:22:22",
+      variables: [],
+    });
+    vi.mocked(agentSkillService.updateAgentSkill).mockRejectedValueOnce({
+      code: "SKILL_RESOURCES_INVALID",
+      details: {
+        knowledgeBases: [
+          {
+            id: "kb:9",
+            invalidReason: "deleted",
+            kbId: 9,
+            name: "产品知识库",
+            status: "invalid",
+          },
+        ],
+        tools: [],
+        variables: [],
+      },
+      message: "技能依赖的资源已失效，请移除后重试",
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/skills/1/edit",
+      <AiSkillSettingsPage />,
+      "/chat/ai-hosting/skills/:skillId/edit",
+    );
+
+    await screen.findByLabelText(/技能名称/);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "无法保存技能",
+    });
+    expect(dialog).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "知道了" }));
+    expect(screen.getByText("保存前请移除失效资源")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "产品知识库已失效" }),
+    ).toBeInTheDocument();
+  });
+
+  it("trims skill description input at 8000 visible characters", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    const editor = await screen.findByRole("textbox", { name: "技能描述" });
+    await user.click(editor);
+    await user.paste("a".repeat(8001));
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("a".repeat(8000));
+    });
+    expect(screen.getByText("8000/8000")).toBeInTheDocument();
+  });
+
   it("opens insert resource dialogs from skill settings", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    expect(screen.getByRole("heading", { name: "插入变量" })).toBeInTheDocument();
-    expect(screen.getByText("客户自定义属性")).toBeInTheDocument();
-    expect(screen.getByText("企微标签")).toBeInTheDocument();
-    expect(screen.getByText("小店标签")).toBeInTheDocument();
-    expect(screen.getByText("自动化标签")).toBeInTheDocument();
-    expect(screen.getByText("系统变量")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "添加变量" })).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "变量类型" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "企微标签" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(screen.getByRole("tab", { name: "小店标签" })).toBeEnabled();
+    expect(screen.getByRole("tab", { name: "自动化标签" })).toBeEnabled();
+    expect(screen.getByRole("tab", { name: "自定义属性" })).toBeEnabled();
+    expect(screen.getByRole("tab", { name: "系统变量" })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "添加客户自定义属性" }));
-    expect(await screen.findByRole("list", { name: "字段" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索字段" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "自定义属性" }));
+    expect(await screen.findByRole("group", { name: "字段" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索字段" })).not.toBeInTheDocument();
     expect(customFieldService.listCustomFields).toHaveBeenCalledWith({ status: 1 });
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
 
-    await user.type(screen.getByRole("textbox", { name: "搜索字段" }), "性别");
-    expect(screen.getByRole("button", { name: "性别" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "客户等级" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "性别" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "客户等级" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "性别" }));
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
+    await user.click(screen.getByRole("checkbox", { name: "性别" }));
+    await user.click(screen.getByRole("checkbox", { name: "客户等级" }));
+    expect(screen.getByRole("button", { name: "确认" })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "确认插入" }));
-    expect(screen.queryByRole("heading", { name: "插入变量" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    expect(screen.queryByRole("heading", { name: "添加变量" })).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "客户自定义属性 · 性别",
+      "自定义属性 · 性别",
+    );
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "自定义属性 · 客户等级",
     );
     // 右侧添加只进入可选池，不会直接写入技能描述
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent("性别");
 
-    await user.click(screen.getByRole("button", { name: "编辑客户自定义属性 · 性别" }));
-    expect(await screen.findByRole("heading", { name: "编辑变量" })).toBeInTheDocument();
-    expect(screen.queryByText("企微标签")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "性别" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    await user.click(screen.getByRole("button", { name: "客户等级" }));
-    await user.click(screen.getByRole("button", { name: "确认" }));
-    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "客户自定义属性 · 客户等级",
-    );
-    expect(screen.getByRole("list", { name: "已添加变量" })).not.toHaveTextContent(
-      "客户自定义属性 · 性别",
-    );
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("tab", { name: "自定义属性" }));
+    expect(await screen.findByRole("checkbox", { name: "性别" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "性别" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "客户等级" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "客户等级" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(
+      screen.queryByRole("button", { name: "编辑自定义属性 · 性别" }),
+    ).not.toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "删除客户自定义属性 · 客户等级" }),
+      screen.getByRole("button", { name: "删除自定义属性 · 性别" }),
     );
     expect(screen.getByRole("heading", { name: "删除变量" })).toBeInTheDocument();
     expect(screen.getByText("将删除技能描述中引用的变量，确认删除吗？")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "客户自定义属性 · 客户等级",
+      "自定义属性 · 性别",
     );
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    await user.click(screen.getByRole("button", { name: "添加系统变量" }));
-    expect(await screen.findByRole("list", { name: "变量" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索变量" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "系统变量" }));
+    expect(await screen.findByRole("group", { name: "变量" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索变量" })).not.toBeInTheDocument();
     expect(systemVariableService.listSystemVariables).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
 
-    await user.type(screen.getByRole("textbox", { name: "搜索变量" }), "昵称");
-    expect(screen.getByRole("button", { name: "客户昵称" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "上一次转人工时间" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "客户昵称" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "上一次转人工时间" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "客户昵称" }));
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    await user.click(screen.getByRole("checkbox", { name: "客户昵称" }));
+    await user.click(screen.getByRole("checkbox", { name: "上一次转人工时间" }));
+    expect(screen.getByRole("button", { name: "确认" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "确认" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
       "系统变量 · 客户昵称",
     );
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "系统变量 · 上一次转人工时间",
+    );
+    expect(
+      screen.queryByRole("button", { name: "编辑系统变量 · 客户昵称" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    await user.click(screen.getByRole("button", { name: "添加企微标签" }));
+    await user.click(screen.getByRole("tab", { name: "系统变量" }));
+    expect(await screen.findByRole("checkbox", { name: "客户昵称" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "客户昵称" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "上一次转人工时间" })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "上一次转人工时间" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("tab", { name: "企微标签" }));
     expect(screen.queryByText("标签类型")).not.toBeInTheDocument();
     expect(await screen.findByLabelText("选择标签")).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "普通标签" })).toBeInTheDocument();
@@ -2407,23 +2591,39 @@ describe("AI hosting pages", () => {
     });
     expect(wecomTagCall?.[0]).not.toHaveProperty("attr");
     await user.click(await screen.findByRole("checkbox", { name: "高意向" }));
-    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "企微标签-意向标签组 | 高意向",
+      "企微标签 · 意向标签组 · 1个标签",
     );
+    const wecomTagRow = screen.getByLabelText(
+      "企微标签 · 意向标签组 · 1个标签标签详情",
+    );
+    await user.hover(wecomTagRow);
+    expect((await screen.findAllByText("高意向")).length).toBeGreaterThan(0);
 
     await user.click(
-      screen.getByRole("button", { name: "编辑企微标签-意向标签组 | 高意向" }),
+      screen.getByRole("button", {
+        name: "编辑企微标签 · 意向标签组 · 1个标签",
+      }),
     );
     expect(await screen.findByRole("heading", { name: "编辑变量" })).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "标签组" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("list", { name: "标签组" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索标签组" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "意向标签组" })).toBeDisabled();
     expect(screen.queryByRole("tab", { name: "普通标签" })).not.toBeInTheDocument();
     expect(await screen.findByRole("list", { name: "标签列表" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "高意向" })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "取消" }));
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    await user.click(screen.getByRole("button", { name: "添加小店标签" }));
+    expect(
+      await screen.findByRole("button", { name: "意向标签组" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    await user.click(screen.getByRole("tab", { name: "小店标签" }));
     expect(await screen.findByLabelText("选择标签")).toBeInTheDocument();
     expect(workTagService.listWorkTags).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2432,43 +2632,65 @@ describe("AI hosting pages", () => {
     );
     expect(await screen.findByRole("button", { name: "基础会员标签" })).toBeInTheDocument();
     await user.click(await screen.findByRole("checkbox", { name: "银卡会员" }));
-    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
-      "小店标签-基础会员标签 | 银卡会员",
+      "小店标签 · 基础会员标签 · 1个标签",
     );
+    const mallTagRow = screen.getByLabelText(
+      "小店标签 · 基础会员标签 · 1个标签标签详情",
+    );
+    await user.hover(mallTagRow);
+    expect((await screen.findAllByText("银卡会员")).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    await user.click(screen.getByRole("button", { name: "添加自动化标签" }));
+    await user.click(screen.getByRole("tab", { name: "自动化标签" }));
     expect(await screen.findByLabelText("选择自动化标签")).toBeInTheDocument();
     expect(cdpTagService.listCdpTagGroups).toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "价值分组" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "高价值" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "低价值" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "高价值" }));
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeEnabled();
+    expect(await screen.findByRole("radio", { name: "高价值" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "低价值" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "高价值" }));
+    expect(screen.getByRole("button", { name: "确认" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "消费分组" }));
-    expect(screen.getByRole("button", { name: "确认插入" })).toBeDisabled();
-    expect(await screen.findByRole("button", { name: "复购" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "复购" }));
-    await user.click(screen.getByRole("button", { name: "确认插入" }));
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    expect(await screen.findByRole("radio", { name: "复购" })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "复购" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
       "自动化标签 · 消费分组 · 复购",
     );
+    expect(
+      screen.queryByRole("button", {
+        name: "编辑自动化标签 · 消费分组 · 复购",
+      }),
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "引用变量" }));
-    expect(screen.getByRole("menuitem", { name: "引用变量" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "引用工具" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "引用知识库" })).toBeInTheDocument();
-
-    await user.hover(screen.getByRole("menuitem", { name: "引用变量" }));
-    // 嵌套子菜单在 jsdom 下用 fireEvent 触发 onSelect，与账号菜单主题切换一致
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "客户自定义属性 · 客户等级" }),
+    await user.click(screen.getByRole("button", { name: "添加引用资源" }));
+    let referenceList = await screen.findByRole("listbox", {
+      name: "选择引用资源",
+    });
+    expect(within(referenceList).getByText("变量")).toBeInTheDocument();
+    expect(
+      within(referenceList).getByRole("option", {
+        name: "企微标签 · 意向标签组 · 1个标签",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(referenceList).getByRole("option", {
+        name: "小店标签 · 基础会员标签 · 1个标签",
+      }),
+    ).toBeInTheDocument();
+    expect(within(referenceList).queryByText("工具")).not.toBeInTheDocument();
+    expect(within(referenceList).queryByText("知识库")).not.toBeInTheDocument();
+    await user.click(
+      within(referenceList).getByRole("option", {
+        name: "自定义属性 · 性别",
+      }),
     );
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveTextContent(
-        "客户自定义属性 · 客户等级",
+        "自定义属性 · 性别",
       );
     });
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent(
@@ -2484,9 +2706,13 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "关闭" }));
     expect(screen.getByRole("list", { name: "已添加工具" })).toHaveTextContent("订单查询");
 
-    await user.click(screen.getByRole("button", { name: "引用变量" }));
-    await user.hover(screen.getByRole("menuitem", { name: "引用工具" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "订单查询" }));
+    await user.click(screen.getByRole("button", { name: "添加引用资源" }));
+    referenceList = await screen.findByRole("listbox", {
+      name: "选择引用资源",
+    });
+    await user.click(
+      within(referenceList).getByRole("option", { name: "订单查询" }),
+    );
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveTextContent("订单查询");
     });
@@ -2513,9 +2739,13 @@ describe("AI hosting pages", () => {
       query: "",
     });
 
-    await user.click(screen.getByRole("button", { name: "引用变量" }));
-    await user.hover(screen.getByRole("menuitem", { name: "引用知识库" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "华为产品知识" }));
+    await user.click(screen.getByRole("button", { name: "添加引用资源" }));
+    referenceList = await screen.findByRole("listbox", {
+      name: "选择引用资源",
+    });
+    await user.click(
+      within(referenceList).getByRole("option", { name: "华为产品知识" }),
+    );
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveTextContent(
         "华为产品知识",

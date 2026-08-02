@@ -36,7 +36,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAgentSkillService(app.db).listSkills(getUid(request), {
+        await createAgentSkillService(app.db, app.log).listSkills(getUid(request), {
           page: parseOptionalInteger(request.query.page),
           pageSize: parseOptionalInteger(request.query.pageSize),
           query: request.query.query,
@@ -55,7 +55,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAgentSkillService(app.db).getSkill(
+        await createAgentSkillService(app.db, app.log).getSkill(
           getUid(request),
           request.params.skillId,
         ),
@@ -74,7 +74,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAgentSkillService(app.db).createSkill(
+        await createAgentSkillService(app.db, app.log).createSkill(
           getWriteContext(request),
           request.body,
         ),
@@ -94,7 +94,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAgentSkillService(app.db).updateSkill(
+        await createAgentSkillService(app.db, app.log).updateSkill(
           getWriteContext(request),
           request.params.skillId,
           request.body,
@@ -115,7 +115,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAgentSkillService(app.db).updateSkillStatus(
+        await createAgentSkillService(app.db, app.log).updateSkillStatus(
           getWriteContext(request),
           request.params.skillId,
           request.body,
@@ -135,7 +135,7 @@ export async function registerAgentSkillRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAgentSkillService(app.db).deleteSkill(
+        await createAgentSkillService(app.db, app.log).deleteSkill(
           getWriteContext(request),
           request.params.skillId,
         ),

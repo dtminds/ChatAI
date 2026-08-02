@@ -3,6 +3,7 @@ import { createEditor } from "lexical";
 import {
   normalizeSkillContentSegments,
   serializeSkillContentSegments,
+  skillContentSegmentsEqual,
   type SkillContentSegment,
 } from "@/pages/chat/ai-hosting/ai-skill-resource";
 import { SkillResourceChipNode } from "@/pages/chat/ai-hosting/ai-skill-description-lexical-nodes";
@@ -23,6 +24,40 @@ function createSkillContentEditor() {
 }
 
 describe("ai skill description lexical utils", () => {
+  it("treats invalid resource segments with different property order as equal", () => {
+    const placeholder =
+      '<resource type="knowledge_base" kbId="9" name="已删除知识库" />';
+    const left: SkillContentSegment[] = [
+      { type: "text", value: "" },
+      {
+        id: "kb:9",
+        invalid: true,
+        invalidReason: "deleted",
+        kind: "knowledge_base",
+        name: "已删除知识库",
+        placeholder,
+        type: "resource",
+      },
+      { type: "text", value: "" },
+    ];
+    const right: SkillContentSegment[] = [
+      { type: "text", value: "" },
+      {
+        id: "kb:9",
+        kind: "knowledge_base",
+        name: "已删除知识库",
+        placeholder,
+        type: "resource",
+        invalid: true,
+        invalidReason: "deleted",
+      },
+      { type: "text", value: "" },
+    ];
+
+    expect(JSON.stringify(left)).not.toBe(JSON.stringify(right));
+    expect(skillContentSegmentsEqual(left, right)).toBe(true);
+  });
+
   it("exports chip nodes as resource segments instead of raw placeholder text", () => {
     const editor = createSkillContentEditor();
     let segments: SkillContentSegment[] = [];

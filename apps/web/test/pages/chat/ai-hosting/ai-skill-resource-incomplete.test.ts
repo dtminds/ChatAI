@@ -2,15 +2,55 @@ import { describe, expect, it } from "vitest";
 import {
   buildSkillVariableResourceItem,
   collectCompleteSkillResourcesFromContent,
+  getSkillResourceChipName,
   isIncompleteSkillResource,
   listIncompleteSkillResources,
   matchIncompleteResourcesToRecommendations,
+  mergeSkillResourceItems,
   parseSkillContentSegments,
   replaceSkillContentResource,
   resolveTemplateVariableType,
+  toSkillContentResourceSegment,
 } from "@/pages/chat/ai-hosting/ai-skill-resource";
 
 describe("ai skill incomplete resources", () => {
+  it("formats tag resource chips with the selected tag count", () => {
+    const workTag = buildSkillVariableResourceItem({
+      name: "意向标签组 | 高意向、待跟进",
+      select_id: 11,
+      select_sub_ids: [101, 102],
+      type: "work_tag",
+    });
+    const mallTag = buildSkillVariableResourceItem({
+      name: "会员标签 | 金卡会员",
+      select_id: 12,
+      select_sub_ids: [201],
+      type: "mall_tag",
+    });
+    const sameWorkTagGroup = buildSkillVariableResourceItem({
+      name: "意向标签组 | 金卡",
+      select_id: 11,
+      select_sub_ids: [103],
+      type: "work_tag",
+    });
+
+    expect(workTag.id).toBe("work_tag:11");
+    expect(sameWorkTagGroup.id).toBe(workTag.id);
+    expect(mallTag.id).toBe("mall_tag:12");
+    expect(getSkillResourceChipName(workTag)).toBe(
+      "企微标签 · 意向标签组 · 2个标签",
+    );
+    expect(getSkillResourceChipName(mallTag)).toBe(
+      "小店标签 · 会员标签 · 1个标签",
+    );
+    expect(toSkillContentResourceSegment(workTag)).toMatchObject({
+      name: "企微标签 · 意向标签组 · 2个标签",
+      placeholder: expect.stringContaining(
+        'name="企微标签 · 意向标签组 · 2个标签"',
+      ),
+    });
+  });
+
   it("checks kbId and variable bindings by variableType, skips tools", () => {
     const content = [
       '<resource type="tool" toolId="" name="订单查询" />',
@@ -30,7 +70,7 @@ describe("ai skill incomplete resources", () => {
       "售后知识",
       "企微标签",
       "小店标签",
-      "客户自定义属性 · 自定义属性",
+      "自定义属性",
       "自动化标签",
       "未定类型",
     ]);
@@ -151,14 +191,39 @@ describe("ai skill incomplete resources", () => {
       return;
     }
 
-    expect(variable.name).toBe("企微标签-意向标签组 | 高意向");
-    expect(variable.placeholder).toContain('name="企微标签-意向标签组 | 高意向"');
+    expect(variable.name).toBe("企微标签 · 意向标签组 | 高意向");
+    expect(variable.placeholder).toContain('name="企微标签 · 意向标签组 | 高意向"');
     expect(segments.at(-1)).toEqual({ type: "text", value: " 回复" });
 
     const resources = collectCompleteSkillResourcesFromContent(content);
     expect(resources.variables).toHaveLength(1);
-    expect(resources.variables[0]?.title).toBe("企微标签-意向标签组 | 高意向");
+    expect(resources.variables[0]?.title).toBe("企微标签 · 意向标签组 | 高意向");
     expect(resources.variables[0]?.variable?.name).toBe("意向标签组 | 高意向");
+    expect(getSkillResourceChipName(resources.variables[0]!)).toBe(
+      "企微标签 · 意向标签组 | 高意向",
+    );
+    expect(toSkillContentResourceSegment(resources.variables[0]!).placeholder).toBe(
+      resources.variables[0]?.placeholder,
+    );
+  });
+
+  it("merges repeated tag groups using the latest configured selection", () => {
+    const restored = buildSkillVariableResourceItem({
+      name: "意向标签组",
+      select_id: 11,
+      select_sub_ids: [],
+      type: "work_tag",
+    });
+    const configured = buildSkillVariableResourceItem({
+      name: "意向标签组 | 高意向",
+      select_id: 11,
+      select_sub_ids: [101],
+      type: "work_tag",
+    });
+
+    expect(mergeSkillResourceItems([restored], [configured])).toEqual([
+      configured,
+    ]);
   });
 
   it("removes repeated system variable prefixes from loaded resources", () => {

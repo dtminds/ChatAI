@@ -28,7 +28,32 @@ describe("AgentSkillService", () => {
     nextId = 1;
   });
 
-  function createService() {
+  function createService(
+    resolveResources = vi.fn(async (_uid: number, input: {
+      kbs: number[];
+      tools: string[];
+      variables: Array<{ name: string; type: string }>;
+    }) => ({
+      knowledgeBases: input.kbs.map((kbId) => ({
+        id: `kb:${kbId}`,
+        kbId,
+        name: `知识库 ${kbId}`,
+        status: "available" as const,
+      })),
+      tools: input.tools.map((toolKey) => ({
+        id: toolKey,
+        name: toolKey,
+        status: "available" as const,
+        toolKey,
+      })),
+      variables: input.variables.map((variable, index) => ({
+        id: `variable:${index}`,
+        name: variable.name,
+        status: "available" as const,
+        variable,
+      })),
+    })),
+  ) {
     const db = {
       insertInto(table: string) {
         expect(table).toBe("xy_wap_embed_agent_skill");
@@ -140,7 +165,7 @@ describe("AgentSkillService", () => {
       },
     };
 
-    return new AgentSkillService(db as never);
+    return new AgentSkillService(db as never, { resolveResources } as never);
   }
 
   it("creates, lists, updates status and soft-deletes skills", async () => {
@@ -180,7 +205,22 @@ describe("AgentSkillService", () => {
       "1",
       { status: "disabled" },
     );
-    expect((await service.getSkill(9001, "1")).status).toBe("disabled");
+    const detail = await service.getSkill(9001, "1");
+    expect(detail.status).toBe("disabled");
+    expect(detail.resources).toEqual({
+      knowledgeBases: [
+        expect.objectContaining({ kbId: 9, status: "available" }),
+      ],
+      tools: [
+        expect.objectContaining({
+          status: "available",
+          toolKey: "search_order",
+        }),
+      ],
+      variables: [
+        expect.objectContaining({ status: "available" }),
+      ],
+    });
 
     await service.deleteSkill({ operatorSubUserId: "101", uid: 9001 }, "1");
     expect((await service.listSkills(9001)).skills).toEqual([]);
@@ -227,5 +267,93 @@ describe("AgentSkillService", () => {
       code: "INVALID_SKILL_KBS",
       message: "一个技能最多可添加10个知识库",
     });
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        content: "描".repeat(8001),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_CONTENT",
+      message: "技能描述不能超过8000个字",
+    });
+  });
+
+  it("blocks saving when a referenced resource is invalid", async () => {
+    const resolveResources = vi.fn(async () => ({
+      knowledgeBases: [
+        {
+          id: "kb:9",
+          invalidReason: "deleted" as const,
+          kbId: 9,
+          name: "已删除知识库",
+          status: "invalid" as const,
+        },
+      ],
+      tools: [],
+      variables: [],
+    }));
+    const service = createService(resolveResources);
+
+    await expect(
+      service.createSkill(
+        { operatorSubUserId: "101", uid: 9001 },
+        {
+          applyScene: "查物流",
+          content: "查询订单物流",
+          kbs: [9],
+          name: "物流技能",
+          tools: [],
+          variables: [],
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "SKILL_RESOURCES_INVALID",
+      details: {
+        knowledgeBases: [
+          expect.objectContaining({
+            invalidReason: "deleted",
+            kbId: 9,
+          }),
+        ],
+      },
+    });
+    expect(skills.size).toBe(0);
+  });
+
+  it("rejects repeated work-tag and mall-tag groups", async () => {
+    const resolveResources = vi.fn();
+    const service = createService(resolveResources);
+
+    for (const type of ["work_tag", "mall_tag"] as const) {
+      await expect(
+        service.createSkill(
+          { operatorSubUserId: "101", uid: 9001 },
+          {
+            applyScene: "按标签回复",
+            content: "",
+            kbs: [],
+            name: "标签技能",
+            tools: [],
+            variables: [
+              {
+                name: "意向标签 | 高意向",
+                select_id: 11,
+                select_sub_ids: [111],
+                type,
+              },
+              {
+                name: "意向标签 | 低意向",
+                select_id: 11,
+                select_sub_ids: [112],
+                type,
+              },
+            ],
+          },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_SKILL_VARIABLES" });
+    }
+    expect(resolveResources).not.toHaveBeenCalled();
+    expect(skills.size).toBe(0);
   });
 });

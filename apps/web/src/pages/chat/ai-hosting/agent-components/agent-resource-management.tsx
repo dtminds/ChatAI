@@ -238,16 +238,16 @@ function AgentResourceSection({
         ) : (
           <ul
             aria-label={`已添加${title}`}
-            className="space-y-1 px-0.5 py-2"
+            className="space-y-1.5 px-0.5 py-2"
           >
             {items.map((item) => (
               <li key={item.id}>
                 <div
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors",
+                    "group relative flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors",
                     item.status === "invalid"
                       ? "bg-destructive/5 hover:bg-destructive/10"
-                      : "bg-muted/40 hover:bg-muted/70",
+                      : "bg-muted/80 hover:bg-accent",
                   )}
                 >
                   {item.status === "invalid" ? (
@@ -284,12 +284,17 @@ function AgentResourceSection({
                       strokeWidth={1.8}
                     />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
                     {item.name}
                   </span>
                   <Button
                     aria-label={`删除${item.name}`}
-                    className="size-6 shrink-0 rounded-[6px] p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                    className={cn(
+                      "absolute right-1 top-1/2 size-6 -translate-y-1/2 rounded-[6px] p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
+                      item.status === "invalid"
+                        ? "bg-destructive/10"
+                        : "bg-muted/90",
+                    )}
                     disabled={disabled}
                     onClick={() => onRemove(item)}
                     size="icon"

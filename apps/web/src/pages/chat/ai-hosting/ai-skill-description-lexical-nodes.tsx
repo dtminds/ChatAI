@@ -7,11 +7,17 @@ import {
   type Spread,
   TextNode,
 } from "lexical";
-import type { SkillContentResourceKind } from "./ai-skill-resource";
+import type { AiHostingAgentResourceInvalidReason } from "@chatai/contracts";
+import {
+  getSkillResourceInvalidReasonLabel,
+  type SkillContentResourceKind,
+} from "./ai-skill-resource";
 
 export type SerializedSkillResourceChipNode = Spread<
   {
     resourceId: string;
+    resourceInvalid?: boolean;
+    resourceInvalidReason?: AiHostingAgentResourceInvalidReason;
     resourceKind: SkillContentResourceKind;
     resourceName: string;
     resourcePlaceholder: string;
@@ -21,6 +27,8 @@ export type SerializedSkillResourceChipNode = Spread<
 
 export class SkillResourceChipNode extends TextNode {
   __resourceId: string;
+  __resourceInvalid: boolean;
+  __resourceInvalidReason?: AiHostingAgentResourceInvalidReason;
   __resourceKind: SkillContentResourceKind;
   __resourceName: string;
   __resourcePlaceholder: string;
@@ -33,6 +41,8 @@ export class SkillResourceChipNode extends TextNode {
     return new SkillResourceChipNode(
       {
         id: node.__resourceId,
+        invalid: node.__resourceInvalid,
+        invalidReason: node.__resourceInvalidReason,
         kind: node.__resourceKind,
         name: node.__resourceName,
         placeholder: node.__resourcePlaceholder,
@@ -44,6 +54,8 @@ export class SkillResourceChipNode extends TextNode {
   static importJSON(serializedNode: SerializedSkillResourceChipNode) {
     return $createSkillResourceChipNode({
       id: serializedNode.resourceId,
+      invalid: serializedNode.resourceInvalid,
+      invalidReason: serializedNode.resourceInvalidReason,
       kind: serializedNode.resourceKind,
       name: serializedNode.resourceName,
       placeholder: serializedNode.resourcePlaceholder,
@@ -53,6 +65,8 @@ export class SkillResourceChipNode extends TextNode {
   constructor(
     resource: {
       id: string;
+      invalid?: boolean;
+      invalidReason?: AiHostingAgentResourceInvalidReason;
       kind: SkillContentResourceKind;
       name: string;
       placeholder: string;
@@ -61,6 +75,8 @@ export class SkillResourceChipNode extends TextNode {
   ) {
     super(resource.name, key);
     this.__resourceId = resource.id;
+    this.__resourceInvalid = Boolean(resource.invalid);
+    this.__resourceInvalidReason = resource.invalidReason;
     this.__resourceKind = resource.kind;
     this.__resourceName = resource.name;
     this.__resourcePlaceholder = resource.placeholder;
@@ -69,7 +85,13 @@ export class SkillResourceChipNode extends TextNode {
 
   createDOM(config: EditorConfig) {
     const dom = super.createDOM(config);
-    applyChipDomAttributes(dom, this.__resourceKind);
+    applyChipDomAttributes(
+      dom,
+      this.__resourceKind,
+      this.__resourceInvalid,
+      this.__resourceInvalidReason,
+      this.__resourceName,
+    );
     return dom;
   }
 
@@ -77,7 +99,13 @@ export class SkillResourceChipNode extends TextNode {
     const shouldReplace = super.updateDOM(prevNode, dom, config);
 
     if (!shouldReplace) {
-      applyChipDomAttributes(dom, this.__resourceKind);
+      applyChipDomAttributes(
+        dom,
+        this.__resourceKind,
+        this.__resourceInvalid,
+        this.__resourceInvalidReason,
+        this.__resourceName,
+      );
     }
 
     return shouldReplace;
@@ -86,6 +114,8 @@ export class SkillResourceChipNode extends TextNode {
   exportJSON(): SerializedSkillResourceChipNode {
     return {
       resourceId: this.__resourceId,
+      resourceInvalid: this.__resourceInvalid,
+      resourceInvalidReason: this.__resourceInvalidReason,
       resourceKind: this.__resourceKind,
       resourceName: this.__resourceName,
       resourcePlaceholder: this.__resourcePlaceholder,
@@ -101,6 +131,14 @@ export class SkillResourceChipNode extends TextNode {
 
   getResourceKind() {
     return this.__resourceKind;
+  }
+
+  isInvalid() {
+    return this.__resourceInvalid;
+  }
+
+  getInvalidReason() {
+    return this.__resourceInvalidReason;
   }
 
   getResourceName() {
@@ -126,6 +164,8 @@ export class SkillResourceChipNode extends TextNode {
 
 export function $createSkillResourceChipNode(resource: {
   id: string;
+  invalid?: boolean;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   kind: SkillContentResourceKind;
   name: string;
   placeholder: string;
@@ -139,10 +179,43 @@ export function $isSkillResourceChipNode(
   return node instanceof SkillResourceChipNode;
 }
 
-function applyChipDomAttributes(dom: HTMLElement, kind: SkillContentResourceKind) {
-  dom.className = skillResourceChipClassName;
+function applyChipDomAttributes(
+  dom: HTMLElement,
+  kind: SkillContentResourceKind,
+  invalid: boolean,
+  invalidReason: AiHostingAgentResourceInvalidReason | undefined,
+  name: string,
+) {
+  dom.className = invalid
+    ? `${skillResourceChipClassName} agent-resource-chip-invalid`
+    : skillResourceChipClassName;
   dom.dataset.skillResourceChip = "true";
   dom.dataset.skillResourceKind = kind;
+  dom.dataset.resourceInvalid = String(invalid);
+
+  if (invalid) {
+    const reason = getSkillResourceInvalidReasonLabel(
+      invalidReason,
+      getSkillResourceTypeLabel(kind),
+    );
+    dom.setAttribute("aria-label", `${name}，${reason}`);
+    dom.dataset.resourceInvalidReason = reason;
+    dom.removeAttribute("title");
+  } else {
+    dom.removeAttribute("aria-label");
+    dom.removeAttribute("title");
+    delete dom.dataset.resourceInvalidReason;
+  }
+}
+
+function getSkillResourceTypeLabel(kind: SkillContentResourceKind) {
+  if (kind === "variable") {
+    return "变量";
+  }
+  if (kind === "tool") {
+    return "工具";
+  }
+  return "知识库";
 }
 
 const skillResourceChipClassName =

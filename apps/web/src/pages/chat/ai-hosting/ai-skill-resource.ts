@@ -1,5 +1,10 @@
 /** AI 技能资源：与需求文档 variables / tools / kbs / 占位符约定对齐 */
 
+import type {
+  AiHostingAgentResourceInvalidReason,
+  AiHostingAgentResourceStatus,
+} from "@chatai/contracts";
+
 export type SkillVariableType =
   | "custom_field"
   | "work_tag"
@@ -42,7 +47,9 @@ export type SkillVariableConfig =
 export type SkillResourceItem = {
   description: string;
   id: string;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   placeholder: string;
+  status: AiHostingAgentResourceStatus;
   title: string;
   kbId?: number;
   toolKey?: string;
@@ -53,6 +60,8 @@ export type SkillContentResourceKind = "variable" | "tool" | "knowledge_base";
 
 export type SkillContentResourceSegment = {
   id: string;
+  invalid?: boolean;
+  invalidReason?: AiHostingAgentResourceInvalidReason;
   kind: SkillContentResourceKind;
   name: string;
   placeholder: string;
@@ -80,7 +89,7 @@ function isSkillVariableType(value: string): value is SkillVariableType {
 
 function getSkillVariableTypeLabel(variableType: SkillVariableType) {
   if (variableType === "custom_field") {
-    return "客户自定义属性";
+    return "自定义属性";
   }
 
   if (variableType === "system_variable") {
@@ -117,7 +126,7 @@ function normalizeSkillVariableDisplayName(
   return valueName === typeLabel ? typeLabel : `${typeLabel} · ${valueName}`;
 }
 
-/** 企微 / 小店：`企微标签-渠道 | 淘宝、抖音、快手` */
+/** 标签变量：`企微标签 · 渠道 | 淘宝、抖音、快手` */
 function formatSkillTagVariableDisplayName(
   variableType: "work_tag" | "mall_tag",
   storedName: string,
@@ -126,14 +135,14 @@ function formatSkillTagVariableDisplayName(
   const rest = normalizeSkillTagVariableStoredName(
     stripSkillTagVariableNamePrefixes(storedName, typeLabel),
   );
-  // 未绑定/仅类型名时不要拼成「企微标签-企微标签」
+  // 未绑定/仅类型名时不要重复拼接类型名
   if (!rest || rest === typeLabel) {
     return typeLabel;
   }
 
   const pipeIndex = rest.indexOf(" | ");
   if (pipeIndex === -1) {
-    return `${typeLabel}-${rest}`;
+    return `${typeLabel} · ${rest}`;
   }
 
   const groupName = rest.slice(0, pipeIndex).trim();
@@ -142,7 +151,9 @@ function formatSkillTagVariableDisplayName(
     return tagsPart ? `${typeLabel} | ${tagsPart}` : typeLabel;
   }
 
-  return tagsPart ? `${typeLabel}-${groupName} | ${tagsPart}` : `${typeLabel}-${groupName}`;
+  return tagsPart
+    ? `${typeLabel} · ${groupName} | ${tagsPart}`
+    : `${typeLabel} · ${groupName}`;
 }
 
 function stripSkillTagVariableNamePrefixes(displayName: string, typeLabel: string) {
@@ -239,6 +250,22 @@ export function parseSkillTagVariableStoredName(storedName: string): {
 }
 
 export function getSkillResourceChipName(item: SkillResourceItem) {
+  if (
+    item.variable?.type === "work_tag" ||
+    item.variable?.type === "mall_tag"
+  ) {
+    const { groupName } = parseSkillTagVariableStoredName(item.variable.name);
+    const groupDisplayName = getSkillVariableDisplayName({
+      ...item.variable,
+      name: groupName,
+    });
+    if (item.variable.select_sub_ids.length === 0) {
+      return item.title?.trim() || groupDisplayName;
+    }
+
+    return `${groupDisplayName} · ${item.variable.select_sub_ids.length}个标签`;
+  }
+
   if (item.title) {
     return item.title;
   }
@@ -264,14 +291,78 @@ export function getSkillResourceKind(
   return "knowledge_base";
 }
 
+export function getSkillResourceReferenceKey(item: SkillResourceItem) {
+  if (item.variable) {
+    if (item.variable.type === "system_variable" || item.variable.type === "auto_tag") {
+      return `variable:${item.variable.type}:${item.variable.select_key}`;
+    }
+
+    return `variable:${item.variable.type}:${item.variable.select_id}`;
+  }
+
+  if (item.toolKey) {
+    return `tool:${item.toolKey}`;
+  }
+
+  return `knowledge_base:${item.kbId ?? item.id.replace(/^kb:/u, "")}`;
+}
+
+export function getSkillContentResourceReferenceKey(
+  segment: SkillContentResourceSegment,
+) {
+  if (segment.kind === "tool") {
+    return `tool:${getSkillResourceAttribute(segment.placeholder, "toolId")}`;
+  }
+
+  if (segment.kind === "knowledge_base") {
+    return `knowledge_base:${getSkillResourceAttribute(segment.placeholder, "kbId")}`;
+  }
+
+  const variableType = getSkillResourceAttribute(
+    segment.placeholder,
+    "variableType",
+  );
+  const variableKey = getSkillResourceAttribute(
+    segment.placeholder,
+    "variableKey",
+  );
+  const variableId = getSkillResourceAttribute(
+    segment.placeholder,
+    "variableId",
+  );
+
+  return `variable:${variableType}:${variableKey || variableId}`;
+}
+
+export function getSkillResourceInvalidReasonLabel(
+  reason: AiHostingAgentResourceInvalidReason | undefined,
+  resourceType = "资源",
+) {
+  if (reason === "deleted") {
+    return `${resourceType}已被删除`;
+  }
+  if (reason === "disabled") {
+    return `${resourceType}已停用`;
+  }
+  if (reason === "unavailable") {
+    return `${resourceType}当前不可用`;
+  }
+  return "资源已失效";
+}
+
 export function toSkillContentResourceSegment(
   item: SkillResourceItem,
 ): SkillContentResourceSegment {
+  const name = getSkillResourceChipName(item);
+
   return {
     id: item.id,
+    ...(item.status === "invalid"
+      ? { invalid: true, invalidReason: item.invalidReason }
+      : {}),
     kind: getSkillResourceKind(item),
-    name: getSkillResourceChipName(item),
-    placeholder: item.placeholder,
+    name,
+    placeholder: replaceResourceNameAttribute(item.placeholder, name),
     type: "resource",
   };
 }
@@ -298,12 +389,19 @@ export function removeResourceFromSkillContent(
   segments: SkillContentSegment[],
   resource: Pick<SkillContentResourceSegment, "id" | "placeholder">,
 ): SkillContentSegment[] {
+  const referenceKey = getSkillResourcePlaceholderReferenceKey(
+    resource.placeholder,
+  );
+
   return normalizeSkillContentSegments(
     segments.filter(
       (segment) =>
         !(
           segment.type === "resource" &&
-          (segment.id === resource.id || segment.placeholder === resource.placeholder)
+          (segment.id === resource.id ||
+            segment.placeholder === resource.placeholder ||
+            (referenceKey != null &&
+              getSkillContentResourceReferenceKey(segment) === referenceKey))
         ),
     ),
   );
@@ -315,6 +413,10 @@ export function replaceResourceInSkillContent(
   previous: Pick<SkillContentResourceSegment, "id" | "placeholder">,
   next: SkillContentResourceSegment,
 ): SkillContentSegment[] {
+  const previousReferenceKey = getSkillResourcePlaceholderReferenceKey(
+    previous.placeholder,
+  );
+
   return normalizeSkillContentSegments(
     segments.map((segment) => {
       if (segment.type !== "resource") {
@@ -323,7 +425,9 @@ export function replaceResourceInSkillContent(
 
       if (
         segment.id === previous.id ||
-        segment.placeholder === previous.placeholder
+        segment.placeholder === previous.placeholder ||
+        (previousReferenceKey != null &&
+          getSkillContentResourceReferenceKey(segment) === previousReferenceKey)
       ) {
         return next;
       }
@@ -331,6 +435,29 @@ export function replaceResourceInSkillContent(
       return segment;
     }),
   );
+}
+
+function getSkillResourcePlaceholderReferenceKey(placeholder: string) {
+  const type = readResourceAttribute(placeholder, "type");
+
+  if (type === "tool") {
+    const toolId = readResourceAttribute(placeholder, "toolId");
+    return toolId ? `tool:${toolId}` : null;
+  }
+
+  if (type === "knowledge_base") {
+    const kbId = readResourceAttribute(placeholder, "kbId");
+    return kbId ? `knowledge_base:${kbId}` : null;
+  }
+
+  const variableType = readResourceAttribute(placeholder, "variableType");
+  const variableKey = readResourceAttribute(placeholder, "variableKey");
+  const variableId = readResourceAttribute(placeholder, "variableId");
+  const identifier = variableKey || variableId;
+
+  return variableType && identifier
+    ? `variable:${variableType}:${identifier}`
+    : null;
 }
 
 export function normalizeSkillContentSegments(
@@ -378,10 +505,71 @@ export function skillContentSegmentsEqual(
   left: SkillContentSegment[],
   right: SkillContentSegment[],
 ) {
-  return (
-    JSON.stringify(normalizeSkillContentSegments(left)) ===
-    JSON.stringify(normalizeSkillContentSegments(right))
-  );
+  const normalizedLeft = normalizeSkillContentSegments(left);
+  const normalizedRight = normalizeSkillContentSegments(right);
+
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  return normalizedLeft.every((leftSegment, index) => {
+    const rightSegment = normalizedRight[index];
+
+    if (!rightSegment || leftSegment.type !== rightSegment.type) {
+      return false;
+    }
+
+    if (leftSegment.type === "text") {
+      return rightSegment.type === "text" && leftSegment.value === rightSegment.value;
+    }
+
+    return (
+      rightSegment.type === "resource" &&
+      leftSegment.id === rightSegment.id &&
+      leftSegment.invalid === rightSegment.invalid &&
+      leftSegment.invalidReason === rightSegment.invalidReason &&
+      leftSegment.kind === rightSegment.kind &&
+      leftSegment.name === rightSegment.name &&
+      leftSegment.placeholder === rightSegment.placeholder
+    );
+  });
+}
+
+export function getSkillContentCharacterCount(segments: SkillContentSegment[]) {
+  return normalizeSkillContentSegments(segments).reduce((count, segment) => {
+    return count + (segment.type === "text" ? segment.value.length : segment.name.length);
+  }, 0);
+}
+
+export function trimSkillContentSegmentsToMaxLength(
+  segments: SkillContentSegment[],
+  maxLength: number,
+) {
+  const trimmed: SkillContentSegment[] = [];
+  let remaining = Math.max(0, maxLength);
+
+  for (const segment of normalizeSkillContentSegments(segments)) {
+    if (segment.type === "text") {
+      const value = segment.value.slice(0, remaining);
+      if (value) {
+        trimmed.push({ type: "text", value });
+        remaining -= value.length;
+      }
+      if (value.length < segment.value.length) {
+        break;
+      }
+      continue;
+    }
+
+    if (segment.name.length > remaining) {
+      break;
+    }
+
+    trimmed.push(segment);
+    remaining -= segment.name.length;
+  }
+
+  return normalizeSkillContentSegments(trimmed);
 }
 
 export function isSkillContentEmpty(segments: SkillContentSegment[]) {
@@ -646,6 +834,18 @@ export function collectCompleteSkillResourcesFromContent(content: string): {
   return resources;
 }
 
+export function mergeSkillResourceItems(
+  ...groups: ReadonlyArray<readonly SkillResourceItem[]>
+) {
+  const merged = new Map<string, SkillResourceItem>();
+
+  for (const item of groups.flat()) {
+    merged.set(item.id, item);
+  }
+
+  return [...merged.values()];
+}
+
 function buildSkillResourceFromCompleteSegment(
   segment: SkillContentResourceSegment,
 ): SkillResourceItem | null {
@@ -659,6 +859,7 @@ function buildSkillResourceFromCompleteSegment(
       description: "",
       id: toolId,
       placeholder: segment.placeholder,
+      status: "available",
       title: segment.name,
       toolKey: toolId,
     };
@@ -675,6 +876,7 @@ function buildSkillResourceFromCompleteSegment(
       id: `kb:${kbId}`,
       kbId,
       placeholder: segment.placeholder,
+      status: "available",
       title: segment.name,
     };
   }
@@ -710,12 +912,18 @@ function buildSkillResourceFromCompleteSegment(
     });
   }
 
-  return buildSkillVariableResourceItem({
+  const resource = buildSkillVariableResourceItem({
     name: getSkillVariableValueName(segment.name, variableType),
     select_id: selectId,
     select_sub_ids: [],
     type: variableType,
   });
+
+  return {
+    ...resource,
+    placeholder: segment.placeholder,
+    title: segment.name,
+  };
 }
 
 export function parseSkillContentSegments(content: string): SkillContentSegment[] {
@@ -824,12 +1032,6 @@ export function skillVariableStorageId(variable: SkillVariableConfig) {
     return `${variable.type}:${variable.select_key}`;
   }
 
-  if (variable.type === "work_tag" || variable.type === "mall_tag") {
-    return `${variable.type}:${variable.select_id}:${[...variable.select_sub_ids]
-      .sort((left, right) => left - right)
-      .join(",")}`;
-  }
-
   return `${variable.type}:${variable.select_id}`;
 }
 
@@ -858,6 +1060,7 @@ export function buildSkillVariableResourceItem(
       normalizedVariable,
       normalizedDisplayName,
     ),
+    status: "available",
     title: normalizedDisplayName,
     variable: normalizedVariable,
   };

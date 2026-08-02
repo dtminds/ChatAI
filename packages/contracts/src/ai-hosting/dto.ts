@@ -1,6 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const AI_HOSTING_AGENT_QUOTA_LIMIT = 20;
+export const AI_HOSTING_AGENT_KB_MAX_COUNT = 10;
+export const AI_HOSTING_AGENT_SKILL_MAX_COUNT = 20;
 export const AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH = 8000;
 export const AI_HOSTING_AGENT_ROLE_MAX_LENGTH = 400;
 export const AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH = 800;
@@ -66,8 +68,12 @@ export const AiHostingQuotaOverviewSchema = Type.Object({
 });
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
-  availableKbIds: Type.Array(Type.Number()),
-  availableSkillIds: Type.Array(Type.Number()),
+  availableKbIds: Type.Array(Type.Number(), {
+    maxItems: AI_HOSTING_AGENT_KB_MAX_COUNT,
+  }),
+  availableSkillIds: Type.Array(Type.Number(), {
+    maxItems: AI_HOSTING_AGENT_SKILL_MAX_COUNT,
+  }),
   conditionLogic: Type.String(),
   handoffRules: Type.String({ maxLength: AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH }),
   replyStyle: Type.Object({
@@ -93,10 +99,12 @@ export const AiHostingAgentModelSummarySchema = Type.Object({
   name: Type.String(),
 });
 
-export const AiHostingAgentKbSummarySchema = Type.Object({
+export const AiHostingAgentResourceSummarySchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
 });
+
+export const AiHostingAgentKbSummarySchema = AiHostingAgentResourceSummarySchema;
 
 export const AiHostingAgentListItemSchema = Type.Object({
   autoLearnEnabled: Type.Boolean(),
@@ -124,6 +132,8 @@ export const AiHostingAgentAutoLearnUpdateResponseSchema = Type.Object(
 );
 
 export const AiHostingAgentDetailSchema = Type.Object({
+  availableKbs: Type.Array(AiHostingAgentResourceSummarySchema),
+  availableSkills: Type.Array(AiHostingAgentResourceSummarySchema),
   hasUnpublishedChanges: Type.Boolean(),
   id: Type.String(),
   model: AiHostingAgentModelSummarySchema,
@@ -261,6 +271,7 @@ export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
+export type AiHostingAgentResourceSummary = Static<typeof AiHostingAgentResourceSummarySchema>;
 export type AiHostingAgentKbSummary = Static<typeof AiHostingAgentKbSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;
 export type AiHostingAgentDetail = Static<typeof AiHostingAgentDetailSchema>;

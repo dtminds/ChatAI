@@ -27,6 +27,10 @@ import * as skillTemplateService from "@/pages/chat/ai-hosting/api/skill-templat
 import * as systemVariableService from "@/pages/chat/ai-hosting/api/system-variable-service";
 import * as workTagService from "@/pages/chat/ai-hosting/api/work-tag-service";
 import { useAuthStore } from "@/store/auth-store";
+import {
+  AI_HOSTING_AGENT_KB_MAX_COUNT,
+  AI_HOSTING_AGENT_SKILL_MAX_COUNT,
+} from "@chatai/contracts";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 import {
   createMockKbDocChunksResponse,
@@ -330,6 +334,8 @@ const mockAttachmentLearningCandidateSearchDetail = {
 };
 
 const mockAgentDetail = {
+  availableKbs: [],
+  availableSkills: [],
   hasUnpublishedChanges: true,
   id: "301",
   model: {
@@ -432,6 +438,39 @@ function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
     ...render(<RouterProvider router={router} />),
     router,
   };
+}
+
+async function openAgentPreview(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "打开预览调试" }));
+  return screen.getByRole("region", { name: "Agent 预览调试" });
+}
+
+async function addAgentKnowledgeBases(
+  user: ReturnType<typeof userEvent.setup>,
+  names: readonly string[],
+) {
+  await user.click(screen.getByRole("button", { name: "添加知识库" }));
+  const dialog = await screen.findByRole("dialog", { name: "添加知识库" });
+
+  for (const name of names) {
+    await user.click(await within(dialog).findByRole("checkbox", { name: `选择${name}` }));
+  }
+
+  await user.click(within(dialog).getByRole("button", { name: "确认" }));
+}
+
+async function addAgentSkills(
+  user: ReturnType<typeof userEvent.setup>,
+  names: readonly string[],
+) {
+  await user.click(screen.getByRole("button", { name: "添加技能" }));
+  const dialog = await screen.findByRole("dialog", { name: "添加技能" });
+
+  for (const name of names) {
+    await user.click(await within(dialog).findByRole("checkbox", { name: `选择${name}` }));
+  }
+
+  await user.click(within(dialog).getByRole("button", { name: "确认" }));
 }
 
 function createDropData(file: File) {
@@ -3036,6 +3075,44 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
+  it("renders bound resources from the agent detail without per-resource requests", async () => {
+    vi.mocked(kbService.getKb).mockClear();
+    vi.mocked(kbService.listKbs).mockClear();
+    vi.mocked(agentSkillService.getAgentSkill).mockClear();
+    vi.mocked(agentSkillService.listAgentSkills).mockClear();
+    vi.mocked(agentService.getAiHostingAgent).mockResolvedValueOnce({
+      ...mockAgentDetail,
+      availableKbs: [{ id: "3", name: "真实彩妆知识库" }],
+      availableSkills: [{ id: "1", name: "订单与物流场景查询" }],
+      promptConfig: {
+        ...mockAgentDetail.promptConfig,
+        availableKbIds: [3],
+        availableSkillIds: [1],
+      },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301",
+      <AgentSettingsPage />,
+      "/chat/ai-hosting/agents/:agentId",
+    );
+
+    expect(
+      within(await screen.findByRole("list", { name: "已添加知识库" })).getByText(
+        "真实彩妆知识库",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "已添加技能" })).getByText(
+        "订单与物流场景查询",
+      ),
+    ).toBeInTheDocument();
+    expect(kbService.getKb).not.toHaveBeenCalled();
+    expect(kbService.listKbs).not.toHaveBeenCalled();
+    expect(agentSkillService.getAgentSkill).not.toHaveBeenCalled();
+    expect(agentSkillService.listAgentSkills).not.toHaveBeenCalled();
+  });
+
   it("returns to the agent list from the initial load failure dialog", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(
@@ -3449,6 +3526,8 @@ describe("AI hosting pages", () => {
   });
 
   it("navigates to agent settings page from add agent link", async () => {
+    const user = userEvent.setup();
+
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "创建 Agent" })).toBeInTheDocument();
@@ -3476,9 +3555,15 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("条件逻辑")).toBeInTheDocument();
     expect(screen.getByText("转人工条件")).toBeInTheDocument();
     expect(await screen.findByTitle("模型图标：默认模型")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent 预览调试")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "清空" })).toBeInTheDocument();
-    expect(screen.getByLabelText("选择图片")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "资源管理" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加技能" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识库" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Agent 预览调试" })).not.toBeInTheDocument();
+
+    const previewPanel = await openAgentPreview(user);
+
+    expect(within(previewPanel).getByRole("button", { name: "清空" })).toBeInTheDocument();
+    expect(within(previewPanel).getByLabelText("选择图片")).toBeInTheDocument();
   });
 
   it("clears preview chat messages and input draft", async () => {
@@ -3487,6 +3572,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await openAgentPreview(user);
     await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
 
     expect(await screen.findByText("你好，我是 Agent")).toBeInTheDocument();
@@ -3522,6 +3608,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await openAgentPreview(user);
     await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
 
     expect(screen.getByLabelText("预览输入框")).toHaveValue("");
@@ -3547,6 +3634,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await openAgentPreview(user);
     await user.upload(screen.getByLabelText("选择图片"), imageFile);
 
     expect(uploadKbImageMock).toHaveBeenCalledWith(imageFile);
@@ -3589,6 +3677,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await openAgentPreview(user);
     await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
 
     expect(await screen.findByText("第一段回复")).toBeInTheDocument();
@@ -3606,6 +3695,7 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await openAgentPreview(user);
     await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
 
     await waitFor(() => {
@@ -3675,14 +3765,14 @@ describe("AI hosting pages", () => {
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-over-limit",
+          kbId: "3",
           name: knowledgeBaseName,
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
       ],
       pagination: {
         page: 1,
-        pageSize: 200,
+        pageSize: 10,
         total: 1,
       },
     });
@@ -3692,8 +3782,8 @@ describe("AI hosting pages", () => {
     const editor = await screen.findByLabelText("条件逻辑描述");
     await user.click(editor);
     await user.paste("a".repeat(7995));
+    await addAgentKnowledgeBases(user, [knowledgeBaseName]);
     await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    await user.click(await screen.findByRole("option", { name: "知识库" }));
     await user.click(await screen.findByRole("option", { name: knowledgeBaseName }));
 
     await waitFor(() => {
@@ -3876,11 +3966,13 @@ describe("AI hosting pages", () => {
   });
 
   it("keeps the preview chat title generic on the agent detail page", async () => {
+    const user = userEvent.setup();
+
     renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
 
     await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
 
-    const previewPanel = screen.getByRole("region", { name: "Agent 预览调试" });
+    const previewPanel = await openAgentPreview(user);
 
     expect(within(previewPanel).getByRole("heading", { level: 2, name: "预览调试" })).toBeInTheDocument();
     expect(within(previewPanel).queryByRole("heading", { level: 2, name: "护肤小助理" })).not.toBeInTheDocument();
@@ -4144,67 +4236,44 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("条件逻辑描述")).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("inserts knowledge bases inline with conditional logic text", async () => {
+  it("selects knowledge bases across pages and saves them without conditional logic chips", async () => {
     const user = userEvent.setup();
-    vi.mocked(kbService.listKbs).mockResolvedValue({
+    vi.mocked(kbService.listKbs).mockImplementation(async (params = {}) => ({
       kbs: [
-        {
-          createdAt: "2026-06-20T08:00:00.000Z",
-          description: "",
-          kbId: "1",
-          name: "真实护肤知识库",
-          updatedAt: "2026-06-20T08:00:00.000Z",
-        },
-        {
-          createdAt: "2026-06-20T08:00:00.000Z",
-          description: "",
-          kbId: "3",
-          name: "真实彩妆知识库",
-          updatedAt: "2026-06-20T08:00:00.000Z",
-        },
+        (params.page ?? 1) === 1
+          ? {
+              createdAt: "2026-06-20T08:00:00.000Z",
+              description: "护肤内容",
+              kbId: "1",
+              name: "真实护肤知识库",
+              updatedAt: "2026-06-20T08:00:00.000Z",
+            }
+          : {
+              createdAt: "2026-06-20T08:00:00.000Z",
+              description: "彩妆内容",
+              kbId: "3",
+              name: "真实彩妆知识库",
+              updatedAt: "2026-06-20T08:00:00.000Z",
+            },
       ],
-      pagination: {
-        page: 1,
-        pageSize: 200,
-        total: 2,
-      },
-    });
+      pagination: { page: params.page ?? 1, pageSize: 10, total: 11 },
+    }));
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    expect(
-      screen.getByText(
-        "配置 Agent 在不同客户问题、业务场景或会话状态下的处理方式，例如商品咨询调用知识库",
-      ),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    const dialog = await screen.findByRole("dialog", { name: "添加知识库" });
 
-    const descriptionInput = screen.getByLabelText("条件逻辑描述");
+    await user.click(await within(dialog).findByRole("checkbox", { name: "选择真实护肤知识库" }));
+    await user.click(within(dialog).getByRole("button", { name: "下一页" }));
+    await user.click(await within(dialog).findByRole("checkbox", { name: "选择真实彩妆知识库" }));
+    expect(within(dialog).getByText("已选择 2/10")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
 
-    await user.click(descriptionInput);
-    await user.paste("111 ");
-    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    expect(await screen.findByRole("listbox", { name: "选择资源类型" })).toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "知识库" }));
-
-    const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
-
-    expect(kbService.listKbs).toHaveBeenLastCalledWith({
-      page: 1,
-      pageSize: 200,
-    });
-    expect(screen.queryByRole("option", { name: "美妆知识大全" })).not.toBeInTheDocument();
-
-    await user.type(within(listbox).getByRole("textbox", { name: "搜索知识库" }), "彩妆");
-
-    expect(kbService.listKbs).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("option", { name: "真实护肤知识库" })).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("option", { name: "真实彩妆知识库" }));
-
-    const conditionalLogicGroup = screen.getByRole("group", { name: "条件逻辑" });
-
-    expect(conditionalLogicGroup).toHaveTextContent("111");
-    expect(conditionalLogicGroup).toHaveTextContent("真实彩妆知识库");
+    const addedKnowledgeBases = screen.getByRole("list", { name: "已添加知识库" });
+    expect(within(addedKnowledgeBases).getByText("真实护肤知识库")).toBeInTheDocument();
+    expect(within(addedKnowledgeBases).getByText("真实彩妆知识库")).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Agent 名称"));
     await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
@@ -4214,17 +4283,126 @@ describe("AI hosting pages", () => {
       expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           promptConfig: expect.objectContaining({
-            availableKbIds: [3],
+            availableKbIds: [1, 3],
             availableSkillIds: [],
-            conditionLogic:
-              '111 <resource type="knowledge_base" kbId="3" name="真实彩妆知识库" /> ',
+            conditionLogic: "",
           }),
         }),
       );
     });
   });
 
-  it("shows conditional logic knowledge base load failures in a toast", async () => {
+  it("loads resource picker search on the server and keeps added items selected", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.listKbs).mockImplementation(async (params = {}) => ({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "彩妆内容",
+          kbId: "3",
+          name: "真实彩妆知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: {
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 10,
+        total: 1,
+      },
+    }));
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    let dialog = await screen.findByRole("dialog", { name: "添加知识库" });
+    await user.type(within(dialog).getByRole("textbox", { name: "搜索知识库" }), "彩妆");
+
+    await waitFor(() => {
+      expect(kbService.listKbs).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        query: "彩妆",
+      });
+    });
+    await user.click(await within(dialog).findByRole("checkbox", { name: "选择真实彩妆知识库" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    dialog = await screen.findByRole("dialog", { name: "添加知识库" });
+    expect(await within(dialog).findByRole("checkbox", { name: "选择真实彩妆知识库" })).toBeChecked();
+  });
+
+  it("limits agent knowledge bases to 10 and skills to 20", async () => {
+    const user = userEvent.setup();
+    const availableKbs = Array.from(
+      { length: AI_HOSTING_AGENT_KB_MAX_COUNT },
+      (_, index) => ({ id: String(index + 1), name: `知识库${index + 1}` }),
+    );
+    const availableSkills = Array.from(
+      { length: AI_HOSTING_AGENT_SKILL_MAX_COUNT },
+      (_, index) => ({ id: String(index + 1), name: `技能${index + 1}` }),
+    );
+    vi.mocked(agentService.getAiHostingAgent).mockResolvedValueOnce({
+      ...mockAgentDetail,
+      availableKbs,
+      availableSkills,
+      promptConfig: {
+        ...mockAgentDetail.promptConfig,
+        availableKbIds: availableKbs.map((item) => Number(item.id)),
+        availableSkillIds: availableSkills.map((item) => Number(item.id)),
+      },
+    });
+    vi.mocked(kbService.listKbs).mockResolvedValueOnce({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "11",
+          name: "第十一个知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+    vi.mocked(agentSkillService.listAgentSkills).mockResolvedValueOnce({
+      pagination: { page: 1, pageSize: 10, total: 1 },
+      skills: [
+        {
+          applyScene: "超过 Agent 技能数量限制",
+          createdAt: "2026-06-18 23:22:22",
+          id: "21",
+          name: "第二十一个技能",
+          status: "enabled",
+          updatedAt: "2026-06-20 23:22:22",
+        },
+      ],
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/agents/301",
+      <AgentSettingsPage />,
+      "/chat/ai-hosting/agents/:agentId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: mockAgentDetail.name });
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    let dialog = await screen.findByRole("dialog", { name: "添加知识库" });
+    expect(within(dialog).getByText("已选择 10/10")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByRole("checkbox", { name: "选择第十一个知识库" }),
+    ).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    await user.click(screen.getByRole("button", { name: "添加技能" }));
+    dialog = await screen.findByRole("dialog", { name: "添加技能" });
+    expect(within(dialog).getByText("已选择 20/20")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByRole("checkbox", { name: "选择第二十一个技能" }),
+    ).toBeDisabled();
+  });
+
+  it("shows resource list failures inside the knowledge base picker", async () => {
     const user = userEvent.setup();
     vi.mocked(kbService.listKbs).mockRejectedValueOnce(
       new Error("timeout of 15000ms exceeded"),
@@ -4233,119 +4411,128 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    await user.click(await screen.findByRole("option", { name: "知识库" }));
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    const dialog = await screen.findByRole("dialog", { name: "添加知识库" });
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("知识库加载失败，请稍后重试");
+      expect(toast.error).toHaveBeenCalledWith("知识库列表加载失败，请稍后重试");
     });
-    expect(screen.queryByRole("listbox", { name: "选择知识库" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("timeout of 15000ms exceeded")).not.toBeInTheDocument();
   });
 
-  it("keeps long conditional logic knowledge base names inside the fixed picker width", async () => {
+  it("shows only explicitly added resources in one grouped conditional logic list", async () => {
     const user = userEvent.setup();
-    const longKnowledgeBaseName = "测试超长测试超长测试超长测试超长测试超长测试超长";
-
     vi.mocked(kbService.listKbs).mockResolvedValue({
       kbs: [
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-long-name",
-          name: longKnowledgeBaseName,
+          kbId: "3",
+          name: "真实彩妆知识库",
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
       ],
-      pagination: {
-        page: 1,
-        pageSize: 200,
-        total: 1,
-      },
+      pagination: { page: 1, pageSize: 10, total: 1 },
     });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await addAgentKnowledgeBases(user, ["真实彩妆知识库"]);
+    await addAgentSkills(user, ["订单与物流场景查询"]);
+    const kbCallCount = vi.mocked(kbService.listKbs).mock.calls.length;
+    const skillCallCount = vi.mocked(agentSkillService.listAgentSkills).mock.calls.length;
+
     await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    await user.click(await screen.findByRole("option", { name: "知识库" }));
+    const listbox = await screen.findByRole("listbox", { name: "选择条件逻辑资源" });
 
-    const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
-    const option = within(listbox).getByRole("option", {
-      name: longKnowledgeBaseName,
-    });
-    const optionName = within(option).getByText(longKnowledgeBaseName);
+    expect(within(listbox).getByText("技能")).toBeInTheDocument();
+    expect(within(listbox).getByText("知识库")).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "订单与物流场景查询" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "真实彩妆知识库" })).toBeInTheDocument();
+    expect(kbService.listKbs).toHaveBeenCalledTimes(kbCallCount);
+    expect(agentSkillService.listAgentSkills).toHaveBeenCalledTimes(skillCallCount);
 
-    expect(listbox.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
-      .toHaveClass(
-        "w-full",
-        "min-w-0",
-        "max-w-full",
-        "[&_[data-slot=scroll-area-viewport]>div]:!block",
-        "[&_[data-slot=scroll-area-viewport]>div]:w-full",
-        "[&_[data-slot=scroll-area-viewport]>div]:min-w-0",
-        "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
-      );
-    expect(option).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
-    expect(optionName).toHaveClass("min-w-0", "truncate");
+    await user.click(within(listbox).getByRole("option", { name: "真实彩妆知识库" }));
+    expect(screen.getByRole("group", { name: "条件逻辑" })).toHaveTextContent("真实彩妆知识库");
   });
 
-  it("closes the conditional logic knowledge base popover when clicking outside", async () => {
+  it("omits empty conditional logic groups and closes the list when clicking outside", async () => {
     const user = userEvent.setup();
-
-    vi.mocked(kbService.listKbs).mockResolvedValue({
-      kbs: [
-        {
-          createdAt: "2026-06-20T08:00:00.000Z",
-          description: "",
-          kbId: "kb-real-skincare",
-          name: "真实护肤知识库",
-          updatedAt: "2026-06-20T08:00:00.000Z",
-        },
-      ],
-      pagination: {
-        page: 1,
-        pageSize: 200,
-        total: 1,
-      },
-    });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await addAgentSkills(user, ["订单与物流场景查询"]);
     await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    await user.click(await screen.findByRole("option", { name: "知识库" }));
+    const listbox = await screen.findByRole("listbox", { name: "选择条件逻辑资源" });
 
-    expect(await screen.findByRole("listbox", { name: "选择知识库" })).toBeInTheDocument();
+    expect(within(listbox).getByText("技能")).toBeInTheDocument();
+    expect(within(listbox).queryByText("知识库")).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Agent 名称"));
 
     await waitFor(() => {
-      expect(screen.queryByRole("listbox", { name: "选择知识库" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("listbox", { name: "选择条件逻辑资源" })).not.toBeInTheDocument();
     });
   });
 
-  it("inserts enabled skills from conditional logic picker", async () => {
+  it("removes conditional logic chips when an added resource is deleted", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.listKbs).mockResolvedValue({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "3",
+          name: "真实彩妆知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: { page: 1, pageSize: 10, total: 1 },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await addAgentKnowledgeBases(user, ["真实彩妆知识库"]);
+    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
+    await user.click(await screen.findByRole("option", { name: "真实彩妆知识库" }));
+    expect(screen.getByRole("group", { name: "条件逻辑" })).toHaveTextContent("真实彩妆知识库");
+
+    await user.click(screen.getByRole("button", { name: "删除真实彩妆知识库" }));
+    const removeDialog = screen.getByRole("alertdialog", { name: "删除知识库" });
+    await user.click(within(removeDialog).getByRole("button", { name: "删除" }));
+
+    expect(screen.getByRole("group", { name: "条件逻辑" })).not.toHaveTextContent("真实彩妆知识库");
+    expect(screen.queryByRole("list", { name: "已添加知识库" })).not.toBeInTheDocument();
+  });
+
+  it("adds enabled skills through the dialog and saves them independently", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "添加条件逻辑资源" }));
-    await user.click(await screen.findByRole("option", { name: "技能" }));
+    await user.click(screen.getByRole("button", { name: "添加技能" }));
+    const dialog = await screen.findByRole("dialog", { name: "添加技能" });
 
-    expect(agentSkillService.listAgentSkills).toHaveBeenCalledWith({
-      page: 1,
-      pageSize: 200,
+    expect(await within(dialog).findByRole("checkbox", { name: "选择退换货" })).toBeDisabled();
+    await user.type(within(dialog).getByRole("textbox", { name: "搜索技能" }), "订单");
+    await waitFor(() => {
+      expect(agentSkillService.listAgentSkills).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        query: "订单",
+      });
     });
-    expect(await screen.findByRole("option", { name: "订单与物流场景查询" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "退换货" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("option", { name: "订单与物流场景查询" }));
-
-    expect(screen.getByRole("group", { name: "条件逻辑" })).toHaveTextContent(
-      "订单与物流场景查询",
+    await user.click(
+      await within(dialog).findByRole("checkbox", {
+        name: "选择订单与物流场景查询",
+      }),
     );
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
 
     await user.clear(screen.getByLabelText("Agent 名称"));
     await user.type(screen.getByLabelText("Agent 名称"), "技能小助理");
@@ -4355,10 +4542,9 @@ describe("AI hosting pages", () => {
       expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           promptConfig: expect.objectContaining({
+            availableKbIds: [],
             availableSkillIds: [1],
-            conditionLogic: expect.stringContaining(
-              '<resource type="skill" skillId="1" name="订单与物流场景查询" />',
-            ),
+            conditionLogic: "",
           }),
         }),
       );

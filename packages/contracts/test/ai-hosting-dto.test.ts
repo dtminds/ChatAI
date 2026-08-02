@@ -8,6 +8,8 @@ import {
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
   AiHostingAgentTestResponseSchema,
+  AI_HOSTING_AGENT_KB_MAX_COUNT,
+  AI_HOSTING_AGENT_SKILL_MAX_COUNT,
   AiHostingLearningCandidateIdSchema,
   AiHostingLearningCandidateItemSchema,
   AiHostingLearningCandidateSearchDetailResponseSchema,
@@ -104,6 +106,50 @@ describe("AI hosting DTOs", () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it("limits the resources available to an agent", () => {
+    const basePayload = {
+      modelId: "11",
+      name: "护肤小助理",
+      promptConfig: {
+        availableKbIds: Array.from(
+          { length: AI_HOSTING_AGENT_KB_MAX_COUNT },
+          (_, index) => index + 1,
+        ),
+        availableSkillIds: Array.from(
+          { length: AI_HOSTING_AGENT_SKILL_MAX_COUNT },
+          (_, index) => index + 1,
+        ),
+        conditionLogic: "",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "",
+        role: "",
+      },
+    };
+
+    expect(Value.Check(AiHostingAgentSaveRequestSchema, basePayload)).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          availableKbIds: [...basePayload.promptConfig.availableKbIds, 11],
+        },
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          availableSkillIds: [...basePayload.promptConfig.availableSkillIds, 21],
+        },
+      }),
+    ).toBe(false);
   });
 
   it("enforces field-specific agent prompt length limits", () => {
@@ -227,6 +273,11 @@ describe("AI hosting DTOs", () => {
   it("keeps publish state separate from agent history internals", () => {
     expect(
       Value.Check(AiHostingAgentDetailSchema, {
+        availableKbs: [
+          { id: "1", name: "商品咨询知识库" },
+          { id: "3", name: "活动政策知识库" },
+        ],
+        availableSkills: [{ id: "2", name: "退换货处理" }],
         hasUnpublishedChanges: true,
         id: "301",
         model: {

@@ -17,9 +17,11 @@ import {
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowLeft02Icon,
+  Cancel01Icon,
   Edit02Icon,
   Image01Icon,
   Male02Icon,
+  Minimize01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -104,6 +106,13 @@ import {
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
+import {
+  AgentKnowledgeBasePickerDialog,
+  AgentResourceManagementPanel,
+  AgentSkillPickerDialog,
+  type AgentKnowledgeBaseResource,
+  type AgentSkillResource,
+} from "./agent-components/agent-resource-management";
 import "./agent-module.css";
 
 type PreviewMessage = {
@@ -125,6 +134,17 @@ type OperationErrorDialogState = {
   title: string;
 } | null;
 
+type ResourceRemoveTarget =
+  | {
+      kind: "knowledgeBase";
+      resource: AgentKnowledgeBaseResource;
+    }
+  | {
+      kind: "skill";
+      resource: AgentSkillResource;
+    }
+  | null;
+
 const agentSettingsModuleSurfaceClassName =
   "agent-module-surface rounded-[12px] border border-border bg-card shadow-xs";
 
@@ -136,9 +156,18 @@ export function AgentSettingsPage() {
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [agentDetail, setAgentDetail] = useState<AiHostingAgentDetail | null>(null);
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<
+    AgentKnowledgeBaseResource[]
+  >([]);
+  const [availableSkills, setAvailableSkills] = useState<AgentSkillResource[]>([]);
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>(agentPreviewSeedMessages);
   const [previewInput, setPreviewInput] = useState("");
   const [previewTesting, setPreviewTesting] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [knowledgeBasePickerOpen, setKnowledgeBasePickerOpen] = useState(false);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [resourceRemoveTarget, setResourceRemoveTarget] =
+    useState<ResourceRemoveTarget>(null);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [createdDraftDialogOpen, setCreatedDraftDialogOpen] = useState(false);
@@ -158,7 +187,13 @@ export function AgentSettingsPage() {
   const canManage = canManageAiHostingAgents(role);
   const controlsDisabled = loading || initialLoadFailed || !canManage;
   const hasLocalPublishChanges = Boolean(
-    agentDetail && hasModelOrPromptChanges(form, agentDetail),
+    agentDetail &&
+      hasModelOrPromptChanges(
+        form,
+        availableKnowledgeBases,
+        availableSkills,
+        agentDetail,
+      ),
   );
   const canPublish = hasUnpublishedDraft || hasLocalPublishChanges;
   const modelOptions = useMemo<ModelOption[]>(
@@ -200,8 +235,12 @@ export function AgentSettingsPage() {
       if (detailResponse) {
         setAgentDetail(detailResponse);
         setForm(mapAgentDetailToForm(detailResponse));
+        setAvailableKnowledgeBases(detailResponse.availableKbs);
+        setAvailableSkills(detailResponse.availableSkills);
       } else if (modelsResponse.models[0]) {
         setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
+        setAvailableKnowledgeBases([]);
+        setAvailableSkills([]);
       }
 
       setInitialLoadFailed(false);
@@ -263,7 +302,11 @@ export function AgentSettingsPage() {
     }
 
     if (isEditing && agentId) {
-      const payload = buildSettingsSavePayload(form);
+      const payload = buildSettingsSavePayload(
+        form,
+        availableKnowledgeBases,
+        availableSkills,
+      );
 
       if (!payload) {
         setErrorMessage("请填写 Agent 名称并选择大模型");
@@ -278,6 +321,8 @@ export function AgentSettingsPage() {
 
         setAgentDetail(saved);
         setForm(mapAgentDetailToForm(saved));
+        setAvailableKnowledgeBases(saved.availableKbs);
+        setAvailableSkills(saved.availableSkills);
         if (!silentSuccess) {
           toast.success("保存成功");
         }
@@ -291,7 +336,11 @@ export function AgentSettingsPage() {
       }
     }
 
-    const payload = buildCreatePayload(form);
+    const payload = buildCreatePayload(
+      form,
+      availableKnowledgeBases,
+      availableSkills,
+    );
 
     if (!payload) {
       setErrorMessage("请填写 Agent 名称并选择大模型");
@@ -306,6 +355,8 @@ export function AgentSettingsPage() {
 
       setAgentDetail(saved);
       setForm(mapAgentDetailToForm(saved));
+      setAvailableKnowledgeBases(saved.availableKbs);
+      setAvailableSkills(saved.availableSkills);
       setCreatedDraftAgentId(saved.id);
       setCreatedDraftDialogOpen(true);
       notifyAiHostingQuotaChanged();
@@ -337,6 +388,8 @@ export function AgentSettingsPage() {
       const published = await publishAiHostingAgent(saved.id);
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
+      setAvailableKnowledgeBases(published.availableKbs);
+      setAvailableSkills(published.availableSkills);
       setPublishDialogOpen(false);
       toast.success("发布成功");
     } catch (error) {
@@ -359,6 +412,8 @@ export function AgentSettingsPage() {
       const published = await publishAiHostingAgent(createdDraftAgentId);
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
+      setAvailableKnowledgeBases(published.availableKbs);
+      setAvailableSkills(published.availableSkills);
       setCreatedDraftDialogOpen(false);
       setCreatedDraftAgentId(null);
       navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
@@ -405,6 +460,8 @@ export function AgentSettingsPage() {
       const renamed = await renameAiHostingAgent(agentId, { name });
       setAgentDetail(renamed);
       setForm(mapAgentDetailToForm(renamed));
+      setAvailableKnowledgeBases(renamed.availableKbs);
+      setAvailableSkills(renamed.availableSkills);
       setRenameDialogOpen(false);
     } catch (error) {
       setRenameDialogOpen(false);
@@ -426,6 +483,8 @@ export function AgentSettingsPage() {
       const restored = await restoreAiHostingAgent(agentId);
       setAgentDetail(restored);
       setForm(mapAgentDetailToForm(restored));
+      setAvailableKnowledgeBases(restored.availableKbs);
+      setAvailableSkills(restored.availableSkills);
       setRestoreDialogOpen(false);
     } catch (error) {
       setRestoreDialogOpen(false);
@@ -496,7 +555,11 @@ export function AgentSettingsPage() {
     userContents: AiHostingAgentTestMessageContent[],
     previewOverrides?: Partial<Pick<PreviewMessage, "content" | "imageUrls">>,
   ): Promise<boolean> {
-    const settingsPayload = buildSettingsSavePayload(form);
+    const settingsPayload = buildSettingsSavePayload(
+      form,
+      availableKnowledgeBases,
+      availableSkills,
+    );
 
     if (!settingsPayload) {
       toast.error("请先选择模型");
@@ -865,8 +928,10 @@ export function AgentSettingsPage() {
             >
               <AgentConditionalLogicField
                 disabled={controlsDisabled}
+                knowledgeBases={availableKnowledgeBases}
                 onChange={(value) => updateForm("conditionalLogic", value)}
                 segments={form.conditionalLogic}
+                skills={availableSkills}
               />
             </CollapsibleAgentSettingsSection>
 
@@ -890,17 +955,99 @@ export function AgentSettingsPage() {
             </CollapsibleAgentSettingsSection>
           </div>
 
-          <AgentPreviewPanel
-            inputValue={previewInput}
-            messages={previewMessages}
-            onClear={handlePreviewClear}
-            onImageSelect={handlePreviewImageSelect}
-            onInputChange={setPreviewInput}
-            onSend={handlePreviewSend}
-            testing={previewTesting}
-          />
+          <div className="space-y-4 xl:sticky xl:top-0">
+            <AgentResourceManagementPanel
+              disabled={controlsDisabled}
+              knowledgeBases={availableKnowledgeBases}
+              onAddKnowledgeBases={() => setKnowledgeBasePickerOpen(true)}
+              onAddSkills={() => setSkillPickerOpen(true)}
+              onRemoveKnowledgeBase={(resource) =>
+                setResourceRemoveTarget({ kind: "knowledgeBase", resource })
+              }
+              onRemoveSkill={(resource) =>
+                setResourceRemoveTarget({ kind: "skill", resource })
+              }
+              skills={availableSkills}
+            />
+            <PreviewCallToAction onOpen={() => setPreviewOpen(true)} />
+          </div>
         </div>
       </div>
+
+      <AgentKnowledgeBasePickerDialog
+        onConfirm={(resources) => {
+          setAvailableKnowledgeBases(resources);
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeUnselectedResourceReferences(
+              current.conditionalLogic,
+              resources.map((resource) => resource.id),
+              "knowledgeBase",
+            ),
+          }));
+          setKnowledgeBasePickerOpen(false);
+        }}
+        onOpenChange={setKnowledgeBasePickerOpen}
+        open={knowledgeBasePickerOpen}
+        selected={availableKnowledgeBases}
+      />
+      <AgentSkillPickerDialog
+        onConfirm={(resources) => {
+          setAvailableSkills(resources);
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeUnselectedResourceReferences(
+              current.conditionalLogic,
+              resources.map((resource) => resource.id),
+              "skill",
+            ),
+          }));
+          setSkillPickerOpen(false);
+        }}
+        onOpenChange={setSkillPickerOpen}
+        open={skillPickerOpen}
+        selected={availableSkills}
+      />
+      <AgentResourceRemoveDialog
+        onCancel={() => setResourceRemoveTarget(null)}
+        onConfirm={() => {
+          if (!resourceRemoveTarget) {
+            return;
+          }
+
+          if (resourceRemoveTarget.kind === "skill") {
+            setAvailableSkills((current) =>
+              current.filter((resource) => resource.id !== resourceRemoveTarget.resource.id),
+            );
+          } else {
+            setAvailableKnowledgeBases((current) =>
+              current.filter((resource) => resource.id !== resourceRemoveTarget.resource.id),
+            );
+          }
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeConditionalLogicResource(
+              current.conditionalLogic,
+              resourceRemoveTarget.resource.id,
+              resourceRemoveTarget.kind,
+            ),
+          }));
+          setResourceRemoveTarget(null);
+        }}
+        open={resourceRemoveTarget != null}
+        resource={resourceRemoveTarget}
+      />
+      <AgentPreviewFloatingPanel
+        inputValue={previewInput}
+        messages={previewMessages}
+        onClear={handlePreviewClear}
+        onClose={() => setPreviewOpen(false)}
+        onImageSelect={handlePreviewImageSelect}
+        onInputChange={setPreviewInput}
+        onSend={handlePreviewSend}
+        open={previewOpen}
+        testing={previewTesting}
+      />
     </AiHostingLayout>
   );
 }
@@ -1062,21 +1209,93 @@ function TextCounter({ maxLength, value }: { maxLength: number; value: string })
   );
 }
 
-function AgentPreviewPanel({
+function AgentResourceRemoveDialog({
+  onCancel,
+  onConfirm,
+  open,
+  resource,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  resource: ResourceRemoveTarget;
+}) {
+  const resourceLabel = resource?.kind === "skill" ? "技能" : "知识库";
+
+  return (
+    <AlertDialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onCancel();
+        }
+      }}
+      open={open}
+    >
+      <AlertDialogContent className="max-w-[420px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除{resourceLabel}</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除「{resource?.resource.name ?? ""}」后，条件逻辑中引用的该资源也会同步移除
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction
+            className="border border-destructive bg-background text-destructive hover:bg-destructive/5 hover:text-destructive"
+            onClick={onConfirm}
+            variant="outline"
+          >
+            删除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function PreviewCallToAction({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      aria-label="打开预览调试"
+      className={cn(
+        agentSettingsModuleSurfaceClassName,
+        "flex w-full items-center gap-3 border-primary/30 bg-primary/[0.04] p-4 text-left transition-colors hover:bg-primary/[0.08]",
+      )}
+      onClick={onOpen}
+      type="button"
+    >
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground">
+        <HugeiconsIcon icon={AiChat02Icon} size={21} strokeWidth={1.8} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-base font-semibold text-foreground">预览调试</span>
+        <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+          点击打开悬浮预览窗口，边调边看效果
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function AgentPreviewFloatingPanel({
   inputValue,
   messages,
   onClear,
+  onClose,
   onImageSelect,
   onInputChange,
   onSend,
+  open,
   testing,
 }: {
   inputValue: string;
   messages: PreviewMessage[];
   onClear: () => void;
+  onClose: () => void;
   onImageSelect: (files: FileList | File[] | null) => void | Promise<void>;
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
+  open: boolean;
   testing: boolean;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1100,13 +1319,17 @@ function AgentPreviewPanel({
     });
   }, [scrollPreviewToBottom, testing, visibleMessages]);
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <aside className="xl:sticky xl:top-0">
+    <aside className="fixed bottom-5 right-5 z-40 w-[min(380px,calc(100vw-2rem))]">
       <section
         aria-label="Agent 预览调试"
         className={cn(
           agentSettingsModuleSurfaceClassName,
-          "flex h-[640px] flex-col overflow-hidden",
+          "flex h-[min(640px,calc(100vh-2rem))] flex-col overflow-hidden shadow-xl",
         )}
       >
         <header className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
@@ -1125,6 +1348,26 @@ function AgentPreviewPanel({
               variant="ghost"
             >
               清空
+            </Button>
+            <Button
+              aria-label="收起预览调试"
+              className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
+              onClick={onClose}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon aria-hidden="true" icon={Minimize01Icon} size={15} strokeWidth={1.8} />
+            </Button>
+            <Button
+              aria-label="关闭预览调试"
+              className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
+              onClick={onClose}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={15} strokeWidth={1.8} />
             </Button>
           </div>
         </header>
@@ -1421,8 +1664,12 @@ function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
   };
 }
 
-function buildCreatePayload(form: AgentSettingsForm) {
-  const settingsPayload = buildSettingsSavePayload(form);
+function buildCreatePayload(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+) {
+  const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
   const name = form.name.trim();
 
   if (!settingsPayload || !name) {
@@ -1435,7 +1682,11 @@ function buildCreatePayload(form: AgentSettingsForm) {
   };
 }
 
-function buildSettingsSavePayload(form: AgentSettingsForm) {
+function buildSettingsSavePayload(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+) {
   const modelId = form.model.trim();
 
   if (!modelId) {
@@ -1445,8 +1696,12 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
   return {
     modelId,
     promptConfig: {
-      availableKbIds: collectAvailableKnowledgeBaseIds(form.conditionalLogic),
-      availableSkillIds: collectAvailableSkillIds(form.conditionalLogic),
+      availableKbIds: knowledgeBases
+        .map((resource) => Number(resource.id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+      availableSkillIds: skills
+        .map((resource) => Number(resource.id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
       conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
       handoffRules: form.transferToHumanConditions,
       replyStyle: {
@@ -1458,8 +1713,13 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
   };
 }
 
-function hasModelOrPromptChanges(form: AgentSettingsForm, agent: AiHostingAgentDetail) {
-  const payload = buildSettingsSavePayload(form);
+function hasModelOrPromptChanges(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+  agent: AiHostingAgentDetail,
+) {
+  const payload = buildSettingsSavePayload(form, knowledgeBases, skills);
 
   if (!payload) {
     return false;
@@ -1566,26 +1826,53 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   return segments.length > 0 ? segments : [{ type: "text", value }];
 }
 
-function collectAvailableKnowledgeBaseIds(segments: AgentSettingsForm["conditionalLogic"]) {
-  const ids = segments
-    .filter((segment): segment is Extract<AgentSettingsForm["conditionalLogic"][number], { type: "knowledgeBase" }> =>
-      segment.type === "knowledgeBase",
-    )
-    .map((segment) => Number(segment.id))
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
-
-  return Array.from(new Set(ids));
+function removeUnselectedResourceReferences(
+  segments: AgentSettingsForm["conditionalLogic"],
+  selectedIds: readonly string[],
+  kind: "knowledgeBase" | "skill",
+) {
+  const selectedIdSet = new Set(selectedIds);
+  return normalizeConditionalLogicAfterResourceRemoval(
+    segments.filter(
+      (segment) =>
+        segment.type !== kind || selectedIdSet.has(segment.id),
+    ),
+  );
 }
 
-function collectAvailableSkillIds(segments: AgentSettingsForm["conditionalLogic"]) {
-  const ids = segments
-    .filter((segment): segment is Extract<AgentSettingsForm["conditionalLogic"][number], { type: "skill" }> =>
-      segment.type === "skill",
-    )
-    .map((segment) => Number(segment.id))
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
+function removeConditionalLogicResource(
+  segments: AgentSettingsForm["conditionalLogic"],
+  resourceId: string,
+  kind: "knowledgeBase" | "skill",
+) {
+  return normalizeConditionalLogicAfterResourceRemoval(
+    segments.filter(
+      (segment) =>
+        !(
+          segment.type === kind &&
+          segment.id === resourceId
+        ),
+    ),
+  );
+}
 
-  return Array.from(new Set(ids));
+function normalizeConditionalLogicAfterResourceRemoval(
+  segments: AgentSettingsForm["conditionalLogic"],
+) {
+  const normalized: AgentSettingsForm["conditionalLogic"] = [];
+
+  for (const segment of segments) {
+    const previous = normalized.at(-1);
+    if (segment.type === "text" && previous?.type === "text") {
+      previous.value += segment.value;
+    } else {
+      normalized.push(segment);
+    }
+  }
+
+  return normalized.length > 0
+    ? normalized
+    : ([{ type: "text", value: "" }] satisfies AgentSettingsForm["conditionalLogic"]);
 }
 
 function readResourceAttribute(token: string, attribute: string) {

@@ -299,6 +299,50 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("returns bound knowledge bases and skills from batched detail queries", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+    db.setAgentPromptConfig({
+      availableKbIds: [3, 1, 3],
+      availableSkillIds: [2, 1, 2],
+      conditionLogic: "",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        availableKbs: [
+          { id: "3", name: "活动政策知识库" },
+          { id: "1", name: "商品咨询知识库" },
+        ],
+        availableSkills: [
+          { id: "2", name: "退换货处理" },
+          { id: "1", name: "订单查询" },
+        ],
+      },
+      success: true,
+    });
+    expect(db.kbListExecuteCount).toBe(1);
+    expect(db.kbListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["status", "=", 1],
+      ["id", "in", [3, 1]],
+    ]);
+    expect(db.skillListExecuteCount).toBe(1);
+    expect(db.skillListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["is_del", "=", 0],
+      ["id", "in", [2, 1]],
+    ]);
+
+    await app.close();
+  });
+
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -1788,6 +1832,22 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     uid: dataUid,
     update_time: new Date("2024-06-15T08:01:00Z"),
   }));
+  const skills = [
+    {
+      id: 1,
+      is_del: 0,
+      name: "订单查询",
+      status: 1,
+      uid: dataUid,
+    },
+    {
+      id: 2,
+      is_del: 0,
+      name: "退换货处理",
+      status: 0,
+      uid: dataUid,
+    },
+  ];
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
       create_time: new Date("2024-06-16T08:00:00Z"),
@@ -1821,6 +1881,8 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     joinCalls: [] as string[],
     kbListExecuteCount: 0,
     kbListWheres: [] as Array<[string, string, unknown]>,
+    skillListExecuteCount: 0,
+    skillListWheres: [] as Array<[string, string, unknown]>,
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
     hostingConfigListWheres: [] as Array<[string, string, unknown]>,
@@ -1930,6 +1992,23 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
                 (!Number.isFinite(uid) || kb.uid === uid) &&
                 (!Number.isFinite(status) || kb.status === status) &&
                 (!ids || ids.includes(kb.id)),
+            );
+          }
+
+          if (table === "xy_wap_embed_agent_skill") {
+            state.skillListExecuteCount += 1;
+            state.skillListWheres = wheres;
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const isDeleted = Number(wheres.find(([column]) => column === "is_del")?.[2]);
+            const ids = wheres.find(([column]) => column === "id")?.[2] as
+              | number[]
+              | undefined;
+
+            return skills.filter(
+              (skill) =>
+                (!Number.isFinite(uid) || skill.uid === uid) &&
+                (!Number.isFinite(isDeleted) || skill.is_del === isDeleted) &&
+                (!ids || ids.includes(skill.id)),
             );
           }
 

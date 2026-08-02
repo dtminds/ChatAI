@@ -122,7 +122,7 @@ function resolveKnowledgeBaseDisplayName(knowledgeBaseId: string, knowledgeBaseN
 }
 
 const knowledgeBaseChipClassName =
-  "agent-kb-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] bg-primary/10 px-1.5 align-baseline text-[13px] font-normal leading-[22px] text-primary";
+  "ai-skill-resource-chip agent-kb-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] px-1.5 align-baseline text-[13px] font-normal leading-[22px]";
 
 export type SerializedSkillChipNode = Spread<
   {
@@ -220,4 +220,4 @@ export function $isSkillChipNode(
 }
 
 const skillChipClassName =
-  "agent-skill-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] bg-primary/10 px-1.5 align-baseline text-[13px] font-normal leading-[22px] text-primary";
+  "ai-skill-resource-chip agent-skill-chip mx-0.5 inline-block h-[22px] translate-y-[-1px] rounded-[6px] px-1.5 align-baseline text-[13px] font-normal leading-[22px]";

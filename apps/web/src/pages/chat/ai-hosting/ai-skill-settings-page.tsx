@@ -906,7 +906,7 @@ function SkillResourceSection({
       <CollapsibleContent id={contentId}>
         {items.length === 0 ? (
           <div
-            className="flex flex-col items-center justify-center gap-3 px-2 py-6"
+            className="flex flex-col items-center justify-center px-2 py-6"
             role="status"
           >
             <img

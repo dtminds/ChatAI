@@ -6,6 +6,7 @@ import type {
   AiHostingAgentListResponse,
   AiHostingAgentModelSummary,
   AiHostingAgentPromptConfig,
+  AiHostingAgentResourceSummary,
   AiHostingAgentRenameRequest,
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
@@ -75,8 +76,14 @@ type AgentKbRow = {
   name: string;
 };
 
+type AgentSkillRow = {
+  id: number;
+  name: string;
+};
+
 const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
+const dbNotDeletedStatus = 0;
 const dbPendingLearningStatus = 0;
 const defaultPage = 1;
 const defaultPageSize = 10;
@@ -615,18 +622,68 @@ export class AiHostingAgentService {
     agentId: number,
   ): Promise<AiHostingAgentDetail> {
     const agent = await this.getAgentRowOrThrow(scope, agentId);
-    const model = await this.getModelRow(scope, agent.model_id);
-    const latestHistory = await this.getLatestHistory(scope, agent.id);
+    const promptConfig = parsePromptConfig(agent.prompt_config);
+    const [model, latestHistory, availableResources] = await Promise.all([
+      this.getModelRow(scope, agent.model_id),
+      this.getLatestHistory(scope, agent.id),
+      this.getAgentAvailableResources(scope, promptConfig),
+    ]);
 
     return {
+      availableKbs: availableResources.knowledgeBases,
+      availableSkills: availableResources.skills,
       hasUnpublishedChanges: hasPublishChanges(agent, latestHistory),
       id: String(agent.id),
       model: mapModelSummary(model),
       modelId: String(agent.model_id),
       name: agent.name,
-      promptConfig: parsePromptConfig(agent.prompt_config),
+      promptConfig,
       publishedAt: toOptionalTimestamp(agent.last_publish_time),
       updatedAt: toOptionalTimestamp(agent.update_time),
+    };
+  }
+
+  private async getAgentAvailableResources(
+    scope: AgentTenantScope,
+    promptConfig: AiHostingAgentPromptConfig,
+  ): Promise<{
+    knowledgeBases: AiHostingAgentResourceSummary[];
+    skills: AiHostingAgentResourceSummary[];
+  }> {
+    const kbIds = uniquePositiveIds(promptConfig.availableKbIds);
+    const skillIds = uniquePositiveIds(promptConfig.availableSkillIds);
+    const [kbRows, skillRows] = await Promise.all([
+      kbIds.length > 0
+        ? this.db
+            .selectFrom("xy_wap_embed_agent_kb")
+            .select(["id", "name"])
+            .where("uid", "=", scope.uid)
+            .where("status", "=", dbActiveStatus)
+            .where("id", "in", kbIds)
+            .execute() as Promise<AgentKbRow[]>
+        : Promise.resolve([]),
+      skillIds.length > 0
+        ? this.db
+            .selectFrom("xy_wap_embed_agent_skill")
+            .select(["id", "name"])
+            .where("uid", "=", scope.uid)
+            .where("is_del", "=", dbNotDeletedStatus)
+            .where("id", "in", skillIds)
+            .execute() as Promise<AgentSkillRow[]>
+        : Promise.resolve([]),
+    ]);
+    const kbMap = new Map(kbRows.map((row) => [row.id, row]));
+    const skillMap = new Map(skillRows.map((row) => [row.id, row]));
+
+    return {
+      knowledgeBases: kbIds
+        .map((id) => kbMap.get(id))
+        .filter((row): row is AgentKbRow => Boolean(row))
+        .map(mapAgentResourceSummary),
+      skills: skillIds
+        .map((id) => skillMap.get(id))
+        .filter((row): row is AgentSkillRow => Boolean(row))
+        .map(mapAgentResourceSummary),
     };
   }
 
@@ -780,6 +837,15 @@ function mapModelSummary(row: AiModelRow | undefined): AiHostingAgentModelSummar
     id: String(row.id),
     label: row.name,
     model: row.model?.trim() || row.name,
+    name: row.name,
+  };
+}
+
+function mapAgentResourceSummary(
+  row: AgentKbRow | AgentSkillRow,
+): AiHostingAgentResourceSummary {
+  return {
+    id: String(row.id),
     name: row.name,
   };
 }

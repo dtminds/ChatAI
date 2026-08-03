@@ -80,17 +80,25 @@ export function AgentConditionalLogicField({
 
       return normalizeConditionalLogicSegments(segments).map((segment) => {
         if (segment.type === "knowledgeBase") {
+          if (!invalidKnowledgeBases.has(segment.id)) {
+            return segment;
+          }
+
           return {
             ...segment,
-            invalid: invalidKnowledgeBases.has(segment.id),
+            invalid: true,
             invalidReason: invalidKnowledgeBases.get(segment.id),
           };
         }
 
         if (segment.type === "skill") {
+          if (!invalidSkills.has(segment.id)) {
+            return segment;
+          }
+
           return {
             ...segment,
-            invalid: invalidSkills.has(segment.id),
+            invalid: true,
             invalidReason: invalidSkills.get(segment.id),
           };
         }

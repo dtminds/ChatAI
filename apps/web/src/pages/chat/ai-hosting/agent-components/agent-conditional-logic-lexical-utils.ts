@@ -219,10 +219,16 @@ function collectConditionalLogicSegmentsFromNode(
   segments: ConditionalLogicSegment[],
 ) {
   if ($isKnowledgeBaseChipNode(node)) {
+    const invalid = node.isInvalid();
+
     segments.push({
       id: node.getKnowledgeBaseId(),
-      invalid: node.isInvalid(),
-      invalidReason: node.getInvalidReason(),
+      ...(invalid
+        ? {
+            invalid: true,
+            invalidReason: node.getInvalidReason(),
+          }
+        : {}),
       name: node.getKnowledgeBaseName(),
       type: "knowledgeBase",
     });
@@ -230,10 +236,16 @@ function collectConditionalLogicSegmentsFromNode(
   }
 
   if ($isSkillChipNode(node)) {
+    const invalid = node.isInvalid();
+
     segments.push({
       id: node.getSkillId(),
-      invalid: node.isInvalid(),
-      invalidReason: node.getInvalidReason(),
+      ...(invalid
+        ? {
+            invalid: true,
+            invalidReason: node.getInvalidReason(),
+          }
+        : {}),
       name: node.getSkillName(),
       type: "skill",
     });

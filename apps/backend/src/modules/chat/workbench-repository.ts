@@ -5359,6 +5359,7 @@ export class WorkbenchRepository {
 
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
+    const exactUnicodeMatching = requiresExactUnicodeMatching(keyword);
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_customer_bind_relation as bind")
@@ -5380,13 +5381,21 @@ export class WorkbenchRepository {
       .where("bind.platform", "=", platform)
       .where("bind.third_userid", "=", seatThirdUserId)
       .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where((eb) =>
-        eb.or([
+      .where((eb) => {
+        if (exactUnicodeMatching) {
+          return eb.or([
+            buildUnicodeCaseAccentInsensitiveLike("contact.name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("contact.real_name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("bind.remark", pattern),
+          ]);
+        }
+
+        return eb.or([
           eb("contact.name", "like", pattern),
           eb("contact.real_name", "like", pattern),
           eb("bind.remark", "like", pattern),
-        ]),
-      )
+        ]);
+      })
       .limit(100)
       .execute();
 
@@ -5411,6 +5420,7 @@ export class WorkbenchRepository {
 
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
+    const exactUnicodeMatching = requiresExactUnicodeMatching(keyword);
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_group_seat")
@@ -5424,12 +5434,19 @@ export class WorkbenchRepository {
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where((eb) =>
-        eb.or([
+      .where((eb) => {
+        if (exactUnicodeMatching) {
+          return eb.or([
+            buildUnicodeCaseAccentInsensitiveLike("name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("remark", pattern),
+          ]);
+        }
+
+        return eb.or([
           eb("name", "like", pattern),
           eb("remark", "like", pattern),
-        ]),
-      )
+        ]);
+      })
       .limit(100)
       .execute();
 
@@ -6236,6 +6253,17 @@ function getHistoryScopeRawMsgtypes(scope: WorkbenchHistoryMessageScope) {
 
 function escapeLikeKeyword(keyword: string) {
   return keyword.replace(/[\\%_]/g, "\\$&");
+}
+
+function buildUnicodeCaseAccentInsensitiveLike(column: string, pattern: string) {
+  return sql<boolean>`${sql.ref(column)} collate utf8mb4_0900_ai_ci like ${pattern}`;
+}
+
+function requiresExactUnicodeMatching(keyword: string) {
+  return (
+    /[\u{10000}-\u{10FFFF}]/u.test(keyword) ||
+    /\p{Extended_Pictographic}/u.test(keyword)
+  );
 }
 
 function getLocalDayBounds(day: string | undefined) {

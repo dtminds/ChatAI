@@ -564,6 +564,45 @@ function createQueryBuilder(result: unknown) {
   };
 }
 
+function expectExactBinaryLikeExpressions(
+  whereExpressions: unknown[],
+  columns: string[],
+  pattern: string,
+) {
+  const orExpression = whereExpressions.find(
+    (expression) =>
+      typeof expression === "object" &&
+      expression !== null &&
+      "type" in expression &&
+      expression.type === "or",
+  ) as { expressions: Array<{ toOperationNode(): unknown }> } | undefined;
+
+  expect(orExpression?.expressions).toHaveLength(columns.length);
+
+  orExpression?.expressions.forEach((expression, index) => {
+    const operationNode = expression.toOperationNode() as {
+      parameters: Array<{
+        kind: string;
+        value?: unknown;
+      }>;
+      sqlFragments: string[];
+    };
+
+    expect(operationNode.sqlFragments).toEqual([
+      "binary lower(",
+      ") like binary lower(",
+      ")",
+    ]);
+    expect(JSON.stringify(operationNode.parameters[0])).toContain(
+      `\"name\":\"${columns[index]?.split(".").at(-1)}\"`,
+    );
+    expect(operationNode.parameters[1]).toMatchObject({
+      kind: "ValueNode",
+      value: pattern,
+    });
+  });
+}
+
 function createFilteredRowsQueryBuilder<T extends Record<string, unknown>>(
   rows: T[],
   columnAliases: Record<string, keyof T & string>,
@@ -7773,8 +7812,8 @@ describe("WorkbenchRepository", () => {
     const bindQuery = createQueryBuilder([
       {
         avatar: "",
-        name: "测试客户",
-        realName: "测试客户",
+        name: "测试客户 a\\b%_",
+        realName: "测试客户 a\\b%_",
         remark: "客户备注",
         thirdExternalUserId: "external-001",
       },
@@ -7782,7 +7821,7 @@ describe("WorkbenchRepository", () => {
     const groupQuery = createQueryBuilder([
       {
         avatar: "",
-        name: "测试群",
+        name: "测试群 a\\b%_",
         remark: undefined,
         thirdGroupId: "group-001",
       },
@@ -7809,8 +7848,8 @@ describe("WorkbenchRepository", () => {
     expect(contacts).toEqual([
       {
         avatar: "",
-        name: "测试客户",
-        realName: "测试客户",
+        name: "测试客户 a\\b%_",
+        realName: "测试客户 a\\b%_",
         remark: "客户备注",
         thirdExternalUserId: "external-001",
       },
@@ -7846,7 +7885,7 @@ describe("WorkbenchRepository", () => {
     expect(groups).toEqual([
       {
         avatar: "",
-        name: "测试群",
+        name: "测试群 a\\b%_",
         thirdGroupId: "group-001",
       },
     ]);
@@ -7857,6 +7896,84 @@ describe("WorkbenchRepository", () => {
         { column: "remark", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
+  });
+
+  it("does not return different emoji that the database collation treats as equal", async () => {
+    const bindQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "西瓜🍉客户",
+        realName: "西瓜🍉客户",
+        remark: null,
+        thirdExternalUserId: "external-watermelon",
+      },
+      {
+        avatar: "",
+        name: "糖果🍬客户",
+        realName: "糖果🍬客户",
+        remark: null,
+        thirdExternalUserId: "external-candy",
+      },
+    ]);
+    const groupQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "西瓜🍉群",
+        remark: null,
+        thirdGroupId: "group-watermelon",
+      },
+      {
+        avatar: "",
+        name: "糖果🍬群",
+        remark: null,
+        thirdGroupId: "group-candy",
+      },
+    ]);
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            return bindQuery;
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            return groupQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.searchContacts(9001, 5, "seat-user-001", "🍬"),
+    ).resolves.toEqual([
+      {
+        avatar: "",
+        name: "糖果🍬客户",
+        realName: "糖果🍬客户",
+        thirdExternalUserId: "external-candy",
+      },
+    ]);
+    await expect(
+      repository.searchGroups(9001, 5, "seat-user-001", "🍬"),
+    ).resolves.toEqual([
+      {
+        avatar: "",
+        name: "糖果🍬群",
+        thirdGroupId: "group-candy",
+      },
+    ]);
+    expectExactBinaryLikeExpressions(
+      bindQuery.whereExpressions,
+      ["contact.name", "contact.real_name", "bind.remark"],
+      "%🍬%",
+    );
+    expectExactBinaryLikeExpressions(
+      groupQuery.whereExpressions,
+      ["name", "remark"],
+      "%🍬%",
+    );
   });
 
   it("searches contacts within the requested seat bind scope", async () => {

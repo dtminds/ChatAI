@@ -5359,6 +5359,7 @@ export class WorkbenchRepository {
 
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
+    const exactUnicodeMatching = requiresExactUnicodeMatching(keyword);
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_customer_bind_relation as bind")
@@ -5380,17 +5381,34 @@ export class WorkbenchRepository {
       .where("bind.platform", "=", platform)
       .where("bind.third_userid", "=", seatThirdUserId)
       .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where((eb) =>
-        eb.or([
+      .where((eb) => {
+        if (exactUnicodeMatching) {
+          return eb.or([
+            buildExactCaseInsensitiveLike("contact.name", pattern),
+            buildExactCaseInsensitiveLike("contact.real_name", pattern),
+            buildExactCaseInsensitiveLike("bind.remark", pattern),
+          ]);
+        }
+
+        return eb.or([
           eb("contact.name", "like", pattern),
           eb("contact.real_name", "like", pattern),
           eb("bind.remark", "like", pattern),
-        ]),
-      )
+        ]);
+      })
       .limit(100)
       .execute();
 
-    return rows.map((row) => ({
+    const matchedRows = exactUnicodeMatching
+      ? rows.filter((row) =>
+          hasExactCaseInsensitiveSubstring(
+            [row.name, row.realName, row.remark],
+            keyword,
+          ),
+        )
+      : rows;
+
+    return matchedRows.map((row) => ({
       avatar: row.avatar,
       name: row.name,
       realName: row.realName,
@@ -5411,6 +5429,7 @@ export class WorkbenchRepository {
 
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
+    const exactUnicodeMatching = requiresExactUnicodeMatching(keyword);
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_group_seat")
@@ -5424,16 +5443,29 @@ export class WorkbenchRepository {
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where((eb) =>
-        eb.or([
+      .where((eb) => {
+        if (exactUnicodeMatching) {
+          return eb.or([
+            buildExactCaseInsensitiveLike("name", pattern),
+            buildExactCaseInsensitiveLike("remark", pattern),
+          ]);
+        }
+
+        return eb.or([
           eb("name", "like", pattern),
           eb("remark", "like", pattern),
-        ]),
-      )
+        ]);
+      })
       .limit(100)
       .execute();
 
-    return rows.map((row) => ({
+    const matchedRows = exactUnicodeMatching
+      ? rows.filter((row) =>
+          hasExactCaseInsensitiveSubstring([row.name, row.remark], keyword),
+        )
+      : rows;
+
+    return matchedRows.map((row) => ({
       thirdGroupId: row.thirdGroupId,
       name: row.name ?? undefined,
       avatar: row.avatar,
@@ -6236,6 +6268,28 @@ function getHistoryScopeRawMsgtypes(scope: WorkbenchHistoryMessageScope) {
 
 function escapeLikeKeyword(keyword: string) {
   return keyword.replace(/[\\%_]/g, "\\$&");
+}
+
+function buildExactCaseInsensitiveLike(column: string, pattern: string) {
+  return sql<boolean>`binary lower(${sql.ref(column)}) like binary lower(${pattern})`;
+}
+
+function requiresExactUnicodeMatching(keyword: string) {
+  return (
+    /[\u{10000}-\u{10FFFF}]/u.test(keyword) ||
+    /\p{Extended_Pictographic}/u.test(keyword)
+  );
+}
+
+function hasExactCaseInsensitiveSubstring(
+  values: Array<string | null | undefined>,
+  keyword: string,
+) {
+  const normalizedKeyword = keyword.normalize("NFC").toLocaleLowerCase();
+
+  return values.some((value) =>
+    value?.normalize("NFC").toLocaleLowerCase().includes(normalizedKeyword),
+  );
 }
 
 function getLocalDayBounds(day: string | undefined) {

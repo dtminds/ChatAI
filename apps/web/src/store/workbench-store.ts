@@ -4418,7 +4418,7 @@ export function createWorkbenchStore() {
         // even if the user switches accounts within the 450 ms window.
         const seatIdAtSchedule = get().activeAccountId;
 
-        set({ isSearchLoading: true });
+        set({ isSearchLoading: true, searchResults: null });
 
         searchDebounceTimer = setTimeout(() => {
           void get().triggerSearch(seatIdAtSchedule ?? undefined);
@@ -4483,10 +4483,39 @@ export function createWorkbenchStore() {
       async selectOrCreateAndSelectConversation(item) {
         const seatId = get().activeAccountId;
         const isGroup = "thirdGroupId" in item;
-        const nextMode: ChatMode = isGroup ? "group" : "single";
+        const existingConversation = item.conversationId
+          ? (get().conversationListsByScope[seatId] ?? []).find(
+              (conversation) => conversation.id === item.conversationId,
+            )
+          : undefined;
+        const nextMode: ChatMode =
+          existingConversation?.mode ?? (isGroup ? "group" : "single");
 
         try {
           set({ isConversationLoading: true });
+
+          if (existingConversation) {
+            await get().setActiveMode(nextMode, {
+              preserveConversation: existingConversation,
+            });
+
+            if (get().activeAccountId !== seatId) {
+              return;
+            }
+
+            await get().setActiveConversation(existingConversation.id);
+
+            if (get().activeAccountId === seatId) {
+              set({
+                searchKeyword: "",
+                searchResults: null,
+                isSearchLoading: false,
+              });
+            }
+
+            return;
+          }
+
           const service = getWorkbenchService();
           const payload = {
             seatId,

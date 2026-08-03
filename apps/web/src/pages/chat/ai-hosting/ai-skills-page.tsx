@@ -125,7 +125,7 @@ const skillTabs = [
 
 const skillIntroSteps = [
   {
-    description: "明确技能使用场景，沉淀业务 know-how",
+    description: "明确技能使用场景，将业务经验整理成可复用的资产",
     imageAlt: "编写技能示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
     step: "第 1 步",

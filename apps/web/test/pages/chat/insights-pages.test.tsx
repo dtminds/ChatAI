@@ -3483,7 +3483,7 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { name: "洞察配置" }),
     ).toBeInTheDocument();
-    const summary = screen.getByRole("region", { name: "洞察配置概览" });
+    const summary = await screen.findByRole("region", { name: "洞察配置概览" });
     const cards = within(summary).getAllByRole("article");
 
     expect(cards.map((card) => card.textContent)).toEqual([

@@ -84,12 +84,14 @@ import {
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import {
   createAgentSkill,
   getAgentSkill,
   updateAgentSkill,
 } from "./api/agent-skill-service";
 import { listKbs, toKbListViewItem } from "./api/kb-service";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   SKILL_CREATE_DRAFT_STATE_KEY,
   type SkillCreateDraft,
@@ -270,6 +272,8 @@ export function AiSkillSettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { skillId } = useParams<{ skillId?: string }>();
+  const role = useAuthStore((state) => state.subUser?.role);
+  const canManage = canManageAiHostingAgents(role);
   const isEditMode = Boolean(skillId);
   const descriptionEditorRef = useRef<LexicalEditor | null>(null);
   const [createDraft] = useState(() =>
@@ -323,7 +327,9 @@ export function AiSkillSettingsPage() {
     [editingVariable],
   );
 
-  const canSubmit = name.trim().length > 0 && !pageLoading && !pageError;
+  const controlsDisabled = submitting || !canManage;
+  const canSubmit =
+    canManage && name.trim().length > 0 && !pageLoading && !pageError;
   const invalidResourceCount = Object.values(selectedResources)
     .flat()
     .filter((resource) => resource.status === "invalid").length;
@@ -445,7 +451,7 @@ export function AiSkillSettingsPage() {
     sectionId: ResourceSectionId,
     items: readonly SkillResourceItem[],
   ) {
-    if (submitting) {
+    if (controlsDisabled) {
       return;
     }
 
@@ -472,7 +478,7 @@ export function AiSkillSettingsPage() {
     previous: SkillResourceItem,
     next: SkillResourceItem,
   ) {
-    if (submitting) {
+    if (controlsDisabled) {
       return;
     }
 
@@ -511,7 +517,7 @@ export function AiSkillSettingsPage() {
   }
 
   function handleChangeKnowledgeBases(items: readonly SkillResourceItem[]) {
-    if (submitting) {
+    if (controlsDisabled) {
       return;
     }
 
@@ -546,7 +552,7 @@ export function AiSkillSettingsPage() {
   }
 
   function handleRemoveResource(sectionId: ResourceSectionId, itemId: string) {
-    if (submitting) {
+    if (controlsDisabled) {
       return;
     }
 
@@ -567,7 +573,7 @@ export function AiSkillSettingsPage() {
   }
 
   function handleConfirmRemoveResource() {
-    if (!removeTarget || submitting) {
+    if (!removeTarget || controlsDisabled) {
       return;
     }
 
@@ -588,7 +594,7 @@ export function AiSkillSettingsPage() {
 
   /** 仅插入技能描述；可选池来自右侧已添加资源 */
   function handleInsertReferencedResource(item: SkillResourceItem) {
-    if (!item.placeholder || submitting || item.status === "invalid") {
+    if (!item.placeholder || controlsDisabled || item.status === "invalid") {
       return;
     }
 
@@ -619,19 +625,27 @@ export function AiSkillSettingsPage() {
               技能设置
             </h1>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button onClick={handleCancel} type="button" variant="outline">
-              取消
-            </Button>
-            <Button
-              disabled={!canSubmit || submitting}
-              onClick={() => void handleSubmit()}
-              type="button"
-            >
-              保存
-            </Button>
-          </div>
+          {canManage ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <Button onClick={handleCancel} type="button" variant="outline">
+                取消
+              </Button>
+              <Button
+                disabled={!canSubmit || submitting}
+                onClick={() => void handleSubmit()}
+                type="button"
+              >
+                保存
+              </Button>
+            </div>
+          ) : null}
         </header>
+
+        {!canManage ? (
+          <p className="rounded-[8px] border border-border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
+            当前账号仅可查看技能，管理操作需管理员权限
+          </p>
+        ) : null}
 
         {pageLoading ? (
           <div
@@ -687,7 +701,7 @@ export function AiSkillSettingsPage() {
                     <Input
                       aria-required="true"
                       className="h-10 pr-14"
-                      disabled={submitting}
+                      disabled={controlsDisabled}
                       id="skill-name"
                       maxLength={AGENT_SKILL_NAME_MAX_LENGTH}
                       onChange={(event) => setName(event.target.value)}
@@ -705,7 +719,7 @@ export function AiSkillSettingsPage() {
                   <div className="relative">
                     <Textarea
                       className="min-h-36 bg-background"
-                      disabled={submitting}
+                      disabled={controlsDisabled}
                       id="skill-application-scenario"
                       maxLength={AGENT_SKILL_APPLY_SCENE_MAX_LENGTH}
                       onChange={(event) => setApplicationScenario(event.target.value)}
@@ -746,7 +760,7 @@ export function AiSkillSettingsPage() {
                 </div>
               </div>
               <AiSkillDescriptionField
-                disabled={submitting}
+                disabled={controlsDisabled}
                 editorRef={descriptionEditorRef}
                 knowledgeBases={selectedResources["knowledge-bases"]}
                 onChange={setSkillContentSegments}
@@ -786,7 +800,7 @@ export function AiSkillSettingsPage() {
             <div className="space-y-5">
               {resourceSections.map((section) => (
                 <SkillResourceSection
-                  disabled={submitting}
+                  disabled={controlsDisabled}
                   icon={section.icon}
                   items={selectedResources[section.id]}
                   key={section.id}

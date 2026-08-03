@@ -2026,6 +2026,55 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
+  it("renders skill management as read-only for non-manage roles", async () => {
+    const user = userEvent.setup();
+    mockSession("operator");
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/:skillId/edit",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills?tab=mine"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByText("当前账号仅可查看技能，管理操作需管理员权限"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加技能" })).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 订单与物流场景查询 操作菜单" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "查看" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "停用" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "删除" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("menuitem", { name: "查看" }));
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills/1/edit");
+    expect(await screen.findByLabelText(/技能名称/)).toBeDisabled();
+    expect(screen.getByLabelText("技能应用场景")).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "技能描述" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "添加变量" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(agentSkillService.createAgentSkill).not.toHaveBeenCalled();
+    expect(agentSkillService.updateAgentSkill).not.toHaveBeenCalled();
+    expect(agentSkillService.updateAgentSkillStatus).not.toHaveBeenCalled();
+    expect(agentSkillService.deleteAgentSkill).not.toHaveBeenCalled();
+  });
+
   it("toggles my skill status from the skills list", async () => {
     const user = userEvent.setup();
     vi.mocked(agentSkillService.updateAgentSkillStatus).mockImplementation(
@@ -2143,6 +2192,64 @@ describe("AI hosting pages", () => {
       expect(agentSkillService.deleteAgentSkill).toHaveBeenCalledWith("1");
     });
     expect(screen.queryByText("订单与物流场景查询")).not.toBeInTheDocument();
+  });
+
+  it("returns to the previous page after deleting the only skill on a later page", async () => {
+    const user = userEvent.setup();
+    let deleted = false;
+    const firstPageSkill = {
+      applyScene: "第一页场景",
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      name: "第一页技能",
+      status: "enabled" as const,
+      updatedAt: "2026-06-20 23:22:22",
+    };
+    const secondPageSkill = {
+      applyScene: "第二页场景",
+      createdAt: "2026-06-17 23:22:22",
+      id: "11",
+      name: "第二页唯一技能",
+      status: "enabled" as const,
+      updatedAt: "2026-06-19 23:22:22",
+    };
+
+    vi.mocked(agentSkillService.listAgentSkills).mockImplementation(async (params) => {
+      if (params?.page === 2 && !deleted) {
+        return {
+          pagination: { page: 2, pageSize: 10, total: 11 },
+          skills: [secondPageSkill],
+        };
+      }
+
+      return {
+        pagination: { page: 1, pageSize: 10, total: deleted ? 10 : 11 },
+        skills: [firstPageSkill],
+      };
+    });
+    vi.mocked(agentSkillService.deleteAgentSkill).mockImplementation(async (skillId) => {
+      deleted = true;
+      return { id: skillId };
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+    expect(await screen.findByText("第一页技能")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "2" }));
+    expect(await screen.findByText("第二页唯一技能")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 第二页唯一技能 操作菜单" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(await screen.findByText("第一页技能")).toBeInTheDocument();
+    expect(screen.queryByText("第二页唯一技能")).not.toBeInTheDocument();
+    expect(agentSkillService.listAgentSkills).toHaveBeenLastCalledWith({
+      page: 1,
+      pageSize: 10,
+      query: undefined,
+    });
   });
 
   it("opens a skill detail dialog when a marketplace skill card is clicked", async () => {
@@ -2766,6 +2873,82 @@ describe("AI hosting pages", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent(
       "华为产品知识",
+    );
+  });
+
+  it("loads more WeCom tags without losing selections from previous pages", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(workTagService.listWorkTags).mockImplementation(async (params) => {
+      const page = params?.page ?? 1;
+      const tags =
+        page === 1
+          ? [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 111,
+                name: "高意向",
+                type: 0 as const,
+              },
+            ]
+          : [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 112,
+                name: "中意向",
+                type: 0 as const,
+              },
+            ];
+
+      return {
+        pagination: {
+          hasNext: page === 1,
+          page,
+          pageSize: params?.pageSize ?? 50,
+          total: 2,
+        },
+        tags,
+      };
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    const firstPageTag = await screen.findByRole("checkbox", { name: "高意向" });
+    await user.click(firstPageTag);
+
+    await user.click(screen.getByRole("button", { name: "加载更多" }));
+
+    expect(await screen.findByRole("checkbox", { name: "中意向" })).toBeInTheDocument();
+    expect(firstPageTag).toBeChecked();
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupId: 11,
+        page: 1,
+        pageSize: 50,
+        type: 0,
+      }),
+    );
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupId: 11,
+        page: 2,
+        pageSize: 50,
+        type: 0,
+      }),
+    );
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "中意向" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "企微标签 · 意向标签组 · 2个标签",
     );
   });
 

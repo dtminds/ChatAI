@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -88,6 +88,8 @@ const WECOM_CUSTOMER_TAG_TYPE = 0 as const;
 const MALL_TAG_TYPE = 12 as const;
 /** 企微 / 小店标签搜索防抖，与知识库等列表搜索对齐 */
 const TAG_SEARCH_DEBOUNCE_MS = 300;
+/** 企微标签在弹窗内按页加载，避免一次返回过多标签 */
+const WECOM_TAG_PAGE_SIZE = 50;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -217,7 +219,11 @@ export function InsertVariableDialog({
     Array<TagItem & { groupId: number }>
   >([]);
   const [workTagsLoading, setWorkTagsLoading] = useState(false);
+  const [workTagsLoadingMore, setWorkTagsLoadingMore] = useState(false);
   const [workTagsError, setWorkTagsError] = useState(false);
+  const [workTagsPage, setWorkTagsPage] = useState(1);
+  const [workTagsHasNext, setWorkTagsHasNext] = useState(false);
+  const workTagsRequestVersionRef = useRef(0);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   /** 跨分组保留已选标签名称（企微按组加载时当前页可能没有其他组的标签） */
   const [selectedTagNameById, setSelectedTagNameById] = useState<
@@ -649,12 +655,22 @@ export function InsertVariableDialog({
   );
 
   useEffect(() => {
+    const requestVersion = workTagsRequestVersionRef.current + 1;
+    workTagsRequestVersionRef.current = requestVersion;
+    setWorkTagsLoadingMore(false);
+
     // 小店标签已在分组加载时拉全量，这里只处理企微等需按组回查的场景
     if (
       !open ||
       variableKind !== "work_tag" ||
       resolvedActiveGroupId == null
     ) {
+      if (variableKind === "work_tag") {
+        setWorkTagsLoading(false);
+        setWorkTags([]);
+        setWorkTagsPage(1);
+        setWorkTagsHasNext(false);
+      }
       return;
     }
 
@@ -673,16 +689,19 @@ export function InsertVariableDialog({
     async function loadComponentTags() {
       setWorkTagsLoading(true);
       setWorkTagsError(false);
+      setWorkTags([]);
+      setWorkTagsPage(1);
+      setWorkTagsHasNext(false);
 
       try {
         const response = await listWorkTags({
           groupId: resolvedActiveGroupId ?? undefined,
           keyword: keyword || undefined,
           page: 1,
-          pageSize: 100,
+          pageSize: WECOM_TAG_PAGE_SIZE,
           type: componentType,
         });
-        if (cancelled) {
+        if (cancelled || workTagsRequestVersionRef.current !== requestVersion) {
           return;
         }
 
@@ -692,14 +711,17 @@ export function InsertVariableDialog({
             name: tag.name,
           })),
         );
+        setWorkTagsPage(response.pagination.page);
+        setWorkTagsHasNext(response.pagination.hasNext);
       } catch {
-        if (!cancelled) {
+        if (!cancelled && workTagsRequestVersionRef.current === requestVersion) {
           setWorkTags([]);
+          setWorkTagsHasNext(false);
           setWorkTagsError(true);
           toast.error("企微标签加载失败，请稍后重试");
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && workTagsRequestVersionRef.current === requestVersion) {
           setWorkTagsLoading(false);
         }
       }
@@ -718,6 +740,62 @@ export function InsertVariableDialog({
     resolvedActiveGroupId,
     variableKind,
   ]);
+
+  async function handleLoadMoreWorkTags() {
+    if (
+      variableKind !== "work_tag" ||
+      resolvedActiveGroupId == null ||
+      workTagsLoading ||
+      workTagsLoadingMore ||
+      !workTagsHasNext
+    ) {
+      return;
+    }
+
+    const requestVersion = workTagsRequestVersionRef.current;
+    const nextPage = workTagsPage + 1;
+    const keyword = normalizedTagQuery === "" ? "" : debouncedTagQuery;
+    setWorkTagsLoadingMore(true);
+
+    try {
+      const response = await listWorkTags({
+        groupId: resolvedActiveGroupId,
+        keyword: keyword || undefined,
+        page: nextPage,
+        pageSize: WECOM_TAG_PAGE_SIZE,
+        type: WECOM_CUSTOMER_TAG_TYPE,
+      });
+      if (workTagsRequestVersionRef.current !== requestVersion) {
+        return;
+      }
+
+      if (response.pagination.page < nextPage) {
+        throw new Error("work-tag pagination did not advance");
+      }
+
+      const nextTags = response.tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+      }));
+      setWorkTags((current) => {
+        const existingIds = new Set(current.map((tag) => tag.id));
+        return [
+          ...current,
+          ...nextTags.filter((tag) => !existingIds.has(tag.id)),
+        ];
+      });
+      setWorkTagsPage(response.pagination.page);
+      setWorkTagsHasNext(response.pagination.hasNext);
+    } catch {
+      if (workTagsRequestVersionRef.current === requestVersion) {
+        toast.error("企微标签加载失败，请稍后重试");
+      }
+    } finally {
+      if (workTagsRequestVersionRef.current === requestVersion) {
+        setWorkTagsLoadingMore(false);
+      }
+    }
+  }
 
   const filteredTags = useMemo(() => {
     if (tagKind === "mall_tag") {
@@ -848,6 +926,10 @@ export function InsertVariableDialog({
     setSelectedAutoTagKey("");
     setAutoTagGroups([]);
     setWorkTags([]);
+    setWorkTagsLoadingMore(false);
+    setWorkTagsPage(1);
+    setWorkTagsHasNext(false);
+    workTagsRequestVersionRef.current += 1;
     setWorkTagGroups([]);
     setMallAllTags([]);
     setActiveGroupId(null);
@@ -1456,24 +1538,47 @@ export function InsertVariableDialog({
                                   暂无数据
                                 </li>
                               ) : (
-                                filteredTags.map((tag) => {
-                                  const checked = selectedTagIds.includes(tag.id);
+                                <>
+                                  {filteredTags.map((tag) => {
+                                    const checked = selectedTagIds.includes(tag.id);
 
-                                  return (
-                                    <li key={tag.id}>
-                                      <label className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm hover:bg-muted/60">
-                                        <Checkbox
-                                          checked={checked}
-                                          onCheckedChange={() =>
-                                            toggleTag(tag.id, tag.name)
-                                          }
-                                        />
-                                        <span>{tag.name}</span>
-                                      </label>
-                                    </li>
-                                  );
-                                })
+                                    return (
+                                      <li key={tag.id}>
+                                        <label className="flex cursor-pointer items-center gap-2 rounded-[8px] px-3 py-2 text-sm hover:bg-muted/60">
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={() =>
+                                              toggleTag(tag.id, tag.name)
+                                            }
+                                          />
+                                          <span>{tag.name}</span>
+                                        </label>
+                                      </li>
+                                    );
+                                  })}
+                                </>
                               )}
+                              {tagKind === "work_tag" && workTagsHasNext ? (
+                                <li className="px-2 pt-1">
+                                  <Button
+                                    className="w-full"
+                                    disabled={workTagsLoadingMore}
+                                    onClick={() => void handleLoadMoreWorkTags()}
+                                    size="sm"
+                                    type="button"
+                                    variant="ghost"
+                                  >
+                                    {workTagsLoadingMore ? (
+                                      <>
+                                        <Spinner size={14} />
+                                        <span>正在加载</span>
+                                      </>
+                                    ) : (
+                                      "加载更多"
+                                    )}
+                                  </Button>
+                                </li>
+                              ) : null}
                             </ul>
                           </div>
                         </div>

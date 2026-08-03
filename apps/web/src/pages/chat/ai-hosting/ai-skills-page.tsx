@@ -70,11 +70,13 @@ import {
 } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import {
   deleteAgentSkill,
   listAgentSkills,
   updateAgentSkillStatus,
 } from "./api/agent-skill-service";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   getSkillTemplate,
   listSkillTemplates,
@@ -349,6 +351,8 @@ function filterRecommendations(
 
 function MySkillsPanel() {
   const navigate = useNavigate();
+  const role = useAuthStore((state) => state.subUser?.role);
+  const canManage = canManageAiHostingAgents(role);
   const [skills, setSkills] = useState<MySkillItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -416,7 +420,7 @@ function MySkillsPanel() {
   }
 
   async function handleDisable(skillId: string) {
-    if (actionSubmitting) {
+    if (!canManage || actionSubmitting) {
       return;
     }
 
@@ -432,7 +436,7 @@ function MySkillsPanel() {
   }
 
   async function handleConfirmEnable() {
-    if (!enableTargetId || actionSubmitting) {
+    if (!canManage || !enableTargetId || actionSubmitting) {
       return;
     }
 
@@ -449,7 +453,7 @@ function MySkillsPanel() {
   }
 
   async function handleConfirmDelete() {
-    if (!deleteTargetId || actionSubmitting) {
+    if (!canManage || !deleteTargetId || actionSubmitting) {
       return;
     }
 
@@ -457,7 +461,11 @@ function MySkillsPanel() {
     try {
       await deleteAgentSkill(deleteTargetId);
       setDeleteTargetId(null);
-      setReloadKey((current) => current + 1);
+      if (page > 1 && skills.length === 1) {
+        setPage((current) => Math.max(1, current - 1));
+      } else {
+        setReloadKey((current) => current + 1);
+      }
     } catch {
       toast.error("删除失败，请稍后重试");
     } finally {
@@ -485,15 +493,23 @@ function MySkillsPanel() {
           />
         </div>
 
-        <Button
-          className="h-10 px-4"
-          onClick={() => navigate("/chat/ai-hosting/skills/new")}
-          type="button"
-        >
-          <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-          <span>添加技能</span>
-        </Button>
+        {canManage ? (
+          <Button
+            className="h-10 px-4"
+            onClick={() => navigate("/chat/ai-hosting/skills/new")}
+            type="button"
+          >
+            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+            <span>添加技能</span>
+          </Button>
+        ) : null}
       </div>
+
+      {!canManage ? (
+        <p className="text-sm text-muted-foreground">
+          当前账号仅可查看技能，管理操作需管理员权限
+        </p>
+      ) : null}
 
       <div>
         <Table aria-label="我的技能列表" className="min-w-[1080px] table-fixed">
@@ -577,7 +593,7 @@ function MySkillsPanel() {
                         <Button
                           aria-label={`打开 ${skill.name} 操作菜单`}
                           className="size-8 p-0 text-muted-foreground"
-                          disabled={actionSubmitting}
+                          disabled={canManage && actionSubmitting}
                           size="icon"
                           type="button"
                           variant="ghost"
@@ -593,28 +609,32 @@ function MySkillsPanel() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
                           <Link to={`/chat/ai-hosting/skills/${skill.id}/edit`}>
-                            编辑
+                            {canManage ? "编辑" : "查看"}
                           </Link>
                         </DropdownMenuItem>
-                        {skill.status === "enabled" ? (
-                          <DropdownMenuItem
-                            onSelect={() => void handleDisable(skill.id)}
-                          >
-                            停用
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem
-                            onSelect={() => setEnableTargetId(skill.id)}
-                          >
-                            启用
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onSelect={() => setDeleteTargetId(skill.id)}
-                        >
-                          删除
-                        </DropdownMenuItem>
+                        {canManage ? (
+                          <>
+                            {skill.status === "enabled" ? (
+                              <DropdownMenuItem
+                                onSelect={() => void handleDisable(skill.id)}
+                              >
+                                停用
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onSelect={() => setEnableTargetId(skill.id)}
+                              >
+                                启用
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onSelect={() => setDeleteTargetId(skill.id)}
+                            >
+                              删除
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TablePinnedCell>

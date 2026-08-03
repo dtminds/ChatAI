@@ -4151,8 +4151,14 @@ describe("AI hosting pages", () => {
 
     const previewPanel = await openAgentPreview(user);
 
-    expect(within(previewPanel).getByRole("button", { name: "清空" })).toBeInTheDocument();
+    const clearButton = within(previewPanel).getByRole("button", { name: "清空上下文" });
+    expect(clearButton).toBeInTheDocument();
+    expect(within(previewPanel).getByRole("button", { name: "关闭预览调试" })).toBeInTheDocument();
+    expect(within(previewPanel).queryByRole("button", { name: "收起预览调试" })).not.toBeInTheDocument();
     expect(within(previewPanel).getByLabelText("选择图片")).toBeInTheDocument();
+
+    await user.hover(clearButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("清空上下文");
   });
 
   it("clears preview chat messages and input draft", async () => {
@@ -4177,7 +4183,7 @@ describe("AI hosting pages", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: "清空" }));
+    await user.click(screen.getByRole("button", { name: "清空上下文" }));
 
     expect(screen.queryByText("测试消息")).not.toBeInTheDocument();
     expect(screen.queryByText("你好，我是 Agent")).not.toBeInTheDocument();

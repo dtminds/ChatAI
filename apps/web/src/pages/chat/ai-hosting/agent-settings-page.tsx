@@ -21,12 +21,13 @@ import {
   ArrowLeft02Icon,
   ArrowRight01Icon,
   AlertCircleIcon,
+  Bug02Icon,
   Cancel01Icon,
+  CleanIcon,
   Edit02Icon,
   Image01Icon,
   HelpCircleIcon,
   Male02Icon,
-  Minimize01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -773,7 +774,7 @@ export function AgentSettingsPage() {
               type="button"
               variant="outline"
             >
-              <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
+              <HugeiconsIcon icon={Bug02Icon} size={16} strokeWidth={1.8} />
               调试
             </Button>
             {canManage ? (
@@ -1477,25 +1478,26 @@ function AgentPreviewFloatingPanel({
             <h2 className="truncate text-base font-semibold text-foreground">预览调试</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button
-              className="h-auto rounded-[6px] px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground"
-              disabled={testing}
-              onClick={onClear}
-              type="button"
-              variant="ghost"
-            >
-              清空
-            </Button>
-            <Button
-              aria-label="收起预览调试"
-              className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
-              onClick={onClose}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon aria-hidden="true" icon={Minimize01Icon} size={15} strokeWidth={1.8} />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="清空上下文"
+                    className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
+                    disabled={testing}
+                    onClick={onClear}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={CleanIcon} size={15} strokeWidth={1.8} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  清空上下文
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
               aria-label="关闭预览调试"
               className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"

@@ -564,7 +564,7 @@ function createQueryBuilder(result: unknown) {
   };
 }
 
-function expectExactBinaryLikeExpressions(
+function expectUnicodeCollationLikeExpressions(
   whereExpressions: unknown[],
   columns: string[],
   pattern: string,
@@ -589,9 +589,9 @@ function expectExactBinaryLikeExpressions(
     };
 
     expect(operationNode.sqlFragments).toEqual([
-      "binary lower(",
-      ") like binary lower(",
-      ")",
+      "",
+      " collate utf8mb4_0900_ai_ci like ",
+      "",
     ]);
     expect(JSON.stringify(operationNode.parameters[0])).toContain(
       `\"name\":\"${columns[index]?.split(".").at(-1)}\"`,
@@ -7898,15 +7898,8 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("does not return different emoji that the database collation treats as equal", async () => {
+  it("uses an accent-insensitive Unicode collation that distinguishes emoji", async () => {
     const bindQuery = createQueryBuilder([
-      {
-        avatar: "",
-        name: "西瓜🍉客户",
-        realName: "西瓜🍉客户",
-        remark: null,
-        thirdExternalUserId: "external-watermelon",
-      },
       {
         avatar: "",
         name: "糖果🍬客户",
@@ -7916,12 +7909,6 @@ describe("WorkbenchRepository", () => {
       },
     ]);
     const groupQuery = createQueryBuilder([
-      {
-        avatar: "",
-        name: "西瓜🍉群",
-        remark: null,
-        thirdGroupId: "group-watermelon",
-      },
       {
         avatar: "",
         name: "糖果🍬群",
@@ -7964,16 +7951,71 @@ describe("WorkbenchRepository", () => {
         thirdGroupId: "group-candy",
       },
     ]);
-    expectExactBinaryLikeExpressions(
+    expectUnicodeCollationLikeExpressions(
       bindQuery.whereExpressions,
       ["contact.name", "contact.real_name", "bind.remark"],
       "%🍬%",
     );
-    expectExactBinaryLikeExpressions(
+    expectUnicodeCollationLikeExpressions(
       groupQuery.whereExpressions,
       ["name", "remark"],
       "%🍬%",
     );
+  });
+
+  it("returns Unicode case-insensitive matches without JavaScript refiltering", async () => {
+    const bindQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "İ🍉客户",
+        realName: "İ🍉客户",
+        remark: null,
+        thirdExternalUserId: "external-dotted-i",
+      },
+    ]);
+    const groupQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "İ🍉群",
+        remark: null,
+        thirdGroupId: "group-dotted-i",
+      },
+    ]);
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            return bindQuery;
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            return groupQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.searchContacts(9001, 5, "seat-user-001", "i🍉"),
+    ).resolves.toEqual([
+      {
+        avatar: "",
+        name: "İ🍉客户",
+        realName: "İ🍉客户",
+        thirdExternalUserId: "external-dotted-i",
+      },
+    ]);
+    await expect(
+      repository.searchGroups(9001, 5, "seat-user-001", "i🍉"),
+    ).resolves.toEqual([
+      {
+        avatar: "",
+        name: "İ🍉群",
+        thirdGroupId: "group-dotted-i",
+      },
+    ]);
   });
 
   it("searches contacts within the requested seat bind scope", async () => {

@@ -728,9 +728,8 @@ function SearchResultDropdown({
 
   if (isLoading && customers.length === 0 && groups.length === 0) {
     return (
-      <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Spinner variant="classic" size={18} />
-        <span>正在搜索中...</span>
+      <div className="relative h-full min-h-0">
+        <SearchLoadingIndicator />
       </div>
     );
   }
@@ -749,8 +748,7 @@ function SearchResultDropdown({
     const groupsList = expandedSection === "group" ? groups : [];
 
     return (
-      <div className="flex h-full min-h-0 flex-col">
-        {isLoading ? <SearchLoadingIndicator /> : null}
+      <div className="relative flex h-full min-h-0 flex-col">
         <div className="shrink-0 bg-popover px-4 py-2 border-b border-divider">
           <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
         </div>
@@ -793,13 +791,13 @@ function SearchResultDropdown({
             收起
           </Button>
         </div>
+        {isLoading ? <SearchLoadingIndicator /> : null}
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {isLoading ? <SearchLoadingIndicator /> : null}
+    <div className="relative flex h-full min-h-0 flex-col">
       <ScrollArea
         className="min-h-0 flex-1"
         data-testid="conversation-search-results-scroll-area"
@@ -867,6 +865,7 @@ function SearchResultDropdown({
           ) : null}
         </div>
       </ScrollArea>
+      {isLoading ? <SearchLoadingIndicator /> : null}
     </div>
   );
 }
@@ -875,11 +874,10 @@ function SearchLoadingIndicator() {
   return (
     <div
       aria-label="正在搜索"
-      className="flex shrink-0 items-center gap-2 border-b border-divider px-4 py-2 text-xs text-muted-foreground"
+      className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 text-muted-foreground"
       role="status"
     >
       <Spinner size={14} variant="classic" />
-      <span>正在搜索</span>
     </div>
   );
 }

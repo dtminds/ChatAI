@@ -5384,9 +5384,9 @@ export class WorkbenchRepository {
       .where((eb) => {
         if (exactUnicodeMatching) {
           return eb.or([
-            buildExactCaseInsensitiveLike("contact.name", pattern),
-            buildExactCaseInsensitiveLike("contact.real_name", pattern),
-            buildExactCaseInsensitiveLike("bind.remark", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("contact.name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("contact.real_name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("bind.remark", pattern),
           ]);
         }
 
@@ -5399,16 +5399,7 @@ export class WorkbenchRepository {
       .limit(100)
       .execute();
 
-    const matchedRows = exactUnicodeMatching
-      ? rows.filter((row) =>
-          hasExactCaseInsensitiveSubstring(
-            [row.name, row.realName, row.remark],
-            keyword,
-          ),
-        )
-      : rows;
-
-    return matchedRows.map((row) => ({
+    return rows.map((row) => ({
       avatar: row.avatar,
       name: row.name,
       realName: row.realName,
@@ -5446,8 +5437,8 @@ export class WorkbenchRepository {
       .where((eb) => {
         if (exactUnicodeMatching) {
           return eb.or([
-            buildExactCaseInsensitiveLike("name", pattern),
-            buildExactCaseInsensitiveLike("remark", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("name", pattern),
+            buildUnicodeCaseAccentInsensitiveLike("remark", pattern),
           ]);
         }
 
@@ -5459,13 +5450,7 @@ export class WorkbenchRepository {
       .limit(100)
       .execute();
 
-    const matchedRows = exactUnicodeMatching
-      ? rows.filter((row) =>
-          hasExactCaseInsensitiveSubstring([row.name, row.remark], keyword),
-        )
-      : rows;
-
-    return matchedRows.map((row) => ({
+    return rows.map((row) => ({
       thirdGroupId: row.thirdGroupId,
       name: row.name ?? undefined,
       avatar: row.avatar,
@@ -6270,25 +6255,14 @@ function escapeLikeKeyword(keyword: string) {
   return keyword.replace(/[\\%_]/g, "\\$&");
 }
 
-function buildExactCaseInsensitiveLike(column: string, pattern: string) {
-  return sql<boolean>`binary lower(${sql.ref(column)}) like binary lower(${pattern})`;
+function buildUnicodeCaseAccentInsensitiveLike(column: string, pattern: string) {
+  return sql<boolean>`${sql.ref(column)} collate utf8mb4_0900_ai_ci like ${pattern}`;
 }
 
 function requiresExactUnicodeMatching(keyword: string) {
   return (
     /[\u{10000}-\u{10FFFF}]/u.test(keyword) ||
     /\p{Extended_Pictographic}/u.test(keyword)
-  );
-}
-
-function hasExactCaseInsensitiveSubstring(
-  values: Array<string | null | undefined>,
-  keyword: string,
-) {
-  const normalizedKeyword = keyword.normalize("NFC").toLocaleLowerCase();
-
-  return values.some((value) =>
-    value?.normalize("NFC").toLocaleLowerCase().includes(normalizedKeyword),
   );
 }
 

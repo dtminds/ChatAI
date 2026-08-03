@@ -92,15 +92,23 @@ function mapLocalContactResult(
   conversation: Conversation,
   thirdExternalUserId: string,
 ): WorkbenchSearchContactResultDto {
-  const name = conversation.customerName.trim() || "未知客户";
+  const displayName = conversation.customerName.trim() || "未知客户";
+  const originalName =
+    normalizeLocalContactOriginalName(conversation.contactOriginalName) ||
+    displayName;
 
   return {
     avatar: conversation.customerAvatarUrl,
     conversationId: conversation.id,
-    name,
-    realName: conversation.contactOriginalName?.trim() || name,
+    name: originalName,
+    realName: originalName,
+    ...(displayName !== originalName ? { remark: displayName } : {}),
     thirdExternalUserId,
   };
+}
+
+function normalizeLocalContactOriginalName(name: string | undefined) {
+  return name?.trim().replace(/^微信昵称[:：]\s*/, "").trim() ?? "";
 }
 
 function mapLocalGroupResult(

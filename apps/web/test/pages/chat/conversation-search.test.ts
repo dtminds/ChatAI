@@ -29,8 +29,9 @@ describe("conversation search", () => {
         {
           avatar: singleConversation.customerAvatarUrl,
           conversationId: "conversation-single",
-          name: "老客户",
-          realName: "微信昵称：西瓜糖",
+          name: "西瓜糖",
+          realName: "西瓜糖",
+          remark: "老客户",
           thirdExternalUserId: "external-001",
         },
       ],

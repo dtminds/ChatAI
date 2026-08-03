@@ -1954,7 +1954,7 @@ describe("AI hosting pages", () => {
     expect(agentService.listAiHostingAgents).not.toHaveBeenCalled();
   });
 
-  it("renders the AI skills marketplace with expandable categories", async () => {
+  it("renders the AI skills marketplace as a flat example template list", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
@@ -1964,6 +1964,16 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/skills",
     );
+    const introGuide = screen.getByRole("region", { name: "技能使用引导" });
+    expect(within(introGuide).getAllByRole("heading", { level: 2 })).toHaveLength(3);
+    expect(within(introGuide).getByRole("heading", { name: "编写技能" })).toBeInTheDocument();
+    expect(within(introGuide).getByRole("heading", { name: "配置推荐资源" })).toBeInTheDocument();
+    expect(within(introGuide).getByRole("heading", { name: "保存并应用" })).toBeInTheDocument();
+    expect(within(introGuide).getAllByRole("img").map((image) => image.getAttribute("src"))).toEqual([
+      "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
+      "https://b5.bokr.com.cn/dist/ui/skill_f2.png",
+      "https://b5.bokr.com.cn/dist/ui/skill_f3.png",
+    ]);
     expect(
       within(screen.getByRole("tablist", { name: "AI技能视图" }))
         .getAllByRole("tab")
@@ -1983,22 +1993,29 @@ describe("AI hosting pages", () => {
       "aria-selected",
       "true",
     );
-    expect(await screen.findByRole("heading", { level: 2, name: "私域通用技能" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "示例模板" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "示例模板" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /订单信息查询/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /肤质适配推荐/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "私域通用技能" })).not.toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "「美妆个护」行业严选技能" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "私域通用技能" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("list", { name: "「美妆个护」行业严选技能" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { name: "「美妆个护」行业严选技能" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "收起" })).not.toBeInTheDocument();
     expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
     expect(skillTemplateService.getSkillTemplate).not.toHaveBeenCalled();
 
-    const collapseTrigger = screen.getAllByRole("button", { name: "收起" })[0];
-    expect(collapseTrigger).toHaveAttribute("aria-expanded", "true");
-    await user.click(collapseTrigger);
-    expect(collapseTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(collapseTrigger).toHaveAccessibleName("展开");
+    await user.click(screen.getByRole("button", { name: /定制交付服务/ }));
+    const deliveryDialog = screen.getByRole("dialog");
+    expect(
+      within(deliveryDialog).getByRole("heading", {
+        name: /全链路交付服务，助力 Agent 高效落地/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(deliveryDialog).getByText("需求梳理")).toBeInTheDocument();
+    expect(within(deliveryDialog).getByText("为您带来的价值")).toBeInTheDocument();
+    await user.click(within(deliveryDialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "我的技能" }));
     expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
@@ -2264,6 +2281,8 @@ describe("AI hosting pages", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "肤质适配推荐" })).toBeInTheDocument();
     expect(skillTemplateService.getSkillTemplate).toHaveBeenCalledWith("201");
+    const tipRegion = within(dialog).getByRole("region", { name: "示例问题" });
+    expect(tipRegion).toHaveTextContent("这个烟酰胺有什么作用？敏感肌能用吗？");
     expect(await within(dialog).findByRole("tab", { name: "技能应用场景" })).toHaveAttribute(
       "aria-selected",
       "true",

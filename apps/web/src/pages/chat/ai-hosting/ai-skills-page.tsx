@@ -4,8 +4,6 @@ import {
   AbsoluteIcon,
   AiBookIcon,
   ApiIcon,
-  ArrowDown01Icon,
-  ArrowUp01Icon,
   Cancel01Icon,
   ClipboardIcon,
   Message01Icon,
@@ -33,11 +31,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogClose,
@@ -94,9 +87,12 @@ import {
   matchIncompleteResourcesToRecommendations,
   type SkillRecommendBinding,
 } from "./ai-skill-resource";
+import { SkillDeliveryBanner } from "./ai-skill-delivery-banner";
+import { AiHostingIntroGuide } from "./ai-hosting-intro-guide";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
+import "./ai-skill-template-detail.css";
 
 type SkillRecommendation = {
   description: string;
@@ -105,9 +101,9 @@ type SkillRecommendation = {
 
 type SkillItem = {
   description: string;
-  exampleQuestion: string;
   icon: string;
   id: string;
+  tip: string;
   title: string;
 };
 
@@ -120,16 +116,35 @@ type SkillDetailItem = SkillItem & {
   skillDescription: string;
 };
 
-type SkillCategory = {
-  defaultOpen?: boolean;
-  id: string;
-  skills: SkillItem[];
-  title: string;
-};
+const MARKETPLACE_SECTION_TITLE = "示例模板";
 
 const skillTabs = [
   { label: "我的技能", value: "mine" },
   { label: "技能广场", value: "marketplace" },
+] as const;
+
+const skillIntroSteps = [
+  {
+    description: "确定解决什么问题，适用于哪些业务场景",
+    imageAlt: "编写技能示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
+    step: "第 1 步",
+    title: "编写技能",
+  },
+  {
+    description: "选择推荐变量、工具与知识库，可按需配置",
+    imageAlt: "配置推荐资源示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f2.png",
+    step: "第 2 步",
+    title: "配置推荐资源",
+  },
+  {
+    description: "保存技能，并在Agent中应用",
+    imageAlt: "保存并应用示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f3.png",
+    step: "第 3 步",
+    title: "保存并应用",
+  },
 ] as const;
 
 const detailTabs = [
@@ -166,6 +181,8 @@ export function AiSkillsPage() {
           description="管理和配置场景化专家技能，让 Agent 从通用走向专用"
           title="技能"
         />
+
+        <AiHostingIntroGuide ariaLabel="技能使用引导" steps={skillIntroSteps} />
 
         <Tabs
           className="gap-6"
@@ -213,7 +230,7 @@ function SkillMarketplacePanel({
 }: {
   onSelectSkill: (skill: SkillItem) => void;
 }) {
-  const [categories, setCategories] = useState<SkillCategory[]>([]);
+  const [skills, setSkills] = useState<SkillItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -230,17 +247,14 @@ function SkillMarketplacePanel({
           return;
         }
 
-        setCategories(
-          response.groups.map((group) => ({
-            defaultOpen: true,
-            id: group.id,
-            title: group.name,
-            skills: group.templates.map(mapTemplateToSkillItem),
-          })),
+        setSkills(
+          response.groups.flatMap((group) =>
+            group.templates.map(mapTemplateToSkillItem),
+          ),
         );
       } catch {
         if (!cancelled) {
-          setCategories([]);
+          setSkills([]);
           setLoadError(true);
           toast.error("技能广场加载失败，请稍后重试");
         }
@@ -270,32 +284,39 @@ function SkillMarketplacePanel({
     );
   }
 
-  if (loadError) {
-    return (
-      <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-destructive">
-        <span role="alert">加载失败</span>
-      </div>
-    );
-  }
-
-  if (categories.length === 0) {
-    return (
-      <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-muted-foreground">
-        暂无数据
-      </div>
-    );
-  }
-
   return (
-    <>
-      {categories.map((category) => (
-        <SkillCategorySection
-          category={category}
-          key={category.id}
-          onSelectSkill={onSelectSkill}
-        />
-      ))}
-    </>
+    <div className="space-y-6">
+      {loadError ? (
+        <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-destructive">
+          <span role="alert">加载失败</span>
+        </div>
+      ) : skills.length === 0 ? (
+        <div className="rounded-[12px] border border-border/80 px-4 py-10 text-center text-sm text-muted-foreground">
+          暂无数据
+        </div>
+      ) : (
+        <section aria-labelledby="ai-skill-marketplace-title" className="space-y-4">
+          <h2
+            className="text-base font-semibold text-foreground"
+            id="ai-skill-marketplace-title"
+          >
+            {MARKETPLACE_SECTION_TITLE}
+          </h2>
+          <ul
+            aria-label={MARKETPLACE_SECTION_TITLE}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            {skills.map((skill) => (
+              <li key={skill.id}>
+                <SkillCard onSelect={onSelectSkill} skill={skill} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <SkillDeliveryBanner />
+    </div>
   );
 }
 
@@ -304,7 +325,7 @@ function mapTemplateToSkillItem(template: AgentSkillTemplateListItem): SkillItem
     id: template.id,
     title: template.name,
     description: template.description,
-    exampleQuestion: template.tip,
+    tip: template.tip,
     icon: template.icon,
   };
 }
@@ -725,61 +746,6 @@ function MySkillsPanel() {
   );
 }
 
-function SkillCategorySection({
-  category,
-  onSelectSkill,
-}: {
-  category: SkillCategory;
-  onSelectSkill: (skill: SkillItem) => void;
-}) {
-  const [open, setOpen] = useState(category.defaultOpen ?? true);
-  const sectionId = `ai-skill-category-${category.id}`;
-
-  return (
-    <Collapsible onOpenChange={setOpen} open={open}>
-      <section aria-labelledby={`${sectionId}-title`} className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <h2
-            className="text-base font-semibold text-foreground"
-            id={`${sectionId}-title`}
-          >
-            {category.title}
-          </h2>
-          <CollapsibleTrigger asChild>
-            <Button
-              aria-controls={sectionId}
-              aria-expanded={open}
-              className="h-8 gap-1 px-2 text-sm text-primary"
-              type="button"
-              variant="ghost"
-            >
-              {open ? "收起" : "展开"}
-              <HugeiconsIcon
-                icon={open ? ArrowUp01Icon : ArrowDown01Icon}
-                size={14}
-                strokeWidth={1.8}
-              />
-            </Button>
-          </CollapsibleTrigger>
-        </div>
-
-        <CollapsibleContent id={sectionId}>
-          <ul
-            aria-label={category.title}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            {category.skills.map((skill) => (
-              <li key={skill.id}>
-                <SkillCard onSelect={onSelectSkill} skill={skill} />
-              </li>
-            ))}
-          </ul>
-        </CollapsibleContent>
-      </section>
-    </Collapsible>
-  );
-}
-
 function SkillCard({
   onSelect,
   skill,
@@ -789,36 +755,19 @@ function SkillCard({
 }) {
   return (
     <button
-      className="flex h-full w-full flex-col rounded-[14px] border border-border/80 bg-card p-4 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-4 focus-visible:ring-ring/20"
+      className="flex h-full w-full flex-col gap-3 rounded-[14px] border border-border/80 bg-card p-4 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-4 focus-visible:ring-ring/20"
       onClick={() => onSelect(skill)}
       type="button"
     >
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <SkillIcon icon={skill.icon} title={skill.title} />
-        <div className="min-w-0 space-y-1.5">
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {skill.title}
-          </h3>
-          <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {skill.description}
-          </p>
-        </div>
+        <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {skill.title}
+        </h3>
       </div>
-
-      {skill.exampleQuestion ? (
-        <div className="mt-4 flex items-start gap-2 border-t border-border/70 pt-3">
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="mt-0.5 shrink-0 text-muted-foreground"
-            icon={Message01Icon}
-            size={14}
-            strokeWidth={1.8}
-          />
-          <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {skill.exampleQuestion}
-          </p>
-        </div>
-      ) : null}
+      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+        {skill.description}
+      </p>
     </button>
   );
 }
@@ -978,6 +927,39 @@ function SkillDetailDialog({
                   <DialogDescription className="text-sm leading-6 text-muted-foreground">
                     {skill.description}
                   </DialogDescription>
+                  {(detail?.tip ?? skill.tip).trim() ? (
+                    <div
+                      aria-label="示例问题"
+                      className="ai-skill-template-tip"
+                      role="region"
+                    >
+                      {(detail?.tip ?? skill.tip)
+                        .split(/\n+/)
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                        .map((line, index) => (
+                          <div
+                            className="ai-skill-template-tip__bubble"
+                            key={`${index}-${line}`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="ai-skill-template-tip__bubble-icon"
+                            >
+                              <HugeiconsIcon
+                                color="currentColor"
+                                icon={Message01Icon}
+                                size={14}
+                                strokeWidth={1.8}
+                              />
+                            </span>
+                            <span className="ai-skill-template-tip__bubble-text">
+                              {line}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

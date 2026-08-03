@@ -1609,7 +1609,7 @@ function PreviewMessageRow({
           {message.pending ? (
             <div className="flex items-center gap-2 text-muted-foreground" role="status">
               <Spinner aria-hidden="true" size={14} variant="classic" />
-              正在加载
+              正在思考
             </div>
           ) : (
             <>

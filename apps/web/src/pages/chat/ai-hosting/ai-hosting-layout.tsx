@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   AiGenerativeIcon,
+  ConnectIcon,
   ArrowLeft02Icon,
   AiBookIcon,
   RoboticIcon,
@@ -34,6 +35,11 @@ const aiHostingNavItems = [
     icon: AiBookIcon,
     label: "知识库",
     to: "/chat/ai-hosting/kb",
+  },
+  {
+    icon: ConnectIcon,
+    label: "技能",
+    to: "/chat/ai-hosting/skills",
   },
   {
     icon: UserAiIcon,

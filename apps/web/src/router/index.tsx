@@ -50,6 +50,18 @@ const AgentSubscriptionPage = lazy(() =>
     }),
   ),
 );
+const AiSkillsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skills-page").then(({ AiSkillsPage }) => ({
+    default: AiSkillsPage,
+  })),
+);
+const AiSkillSettingsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skill-settings-page").then(
+    ({ AiSkillSettingsPage }) => ({
+      default: AiSkillSettingsPage,
+    }),
+  ),
+);
 const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
@@ -274,6 +286,18 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/kb/:kbId/docs/:docId",
         element: withRouteSuspense(<KbDocDetailPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills",
+        element: withRouteSuspense(<AiSkillsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/new",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/:skillId/edit",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

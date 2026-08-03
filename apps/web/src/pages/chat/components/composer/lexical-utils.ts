@@ -54,6 +54,47 @@ export function $insertComposerText(text: string) {
   }
 }
 
+export function $insertComposerTextWithinMaxLength(
+  text: string,
+  maxLength: number,
+) {
+  const selection = $getSelection();
+  const selectedCharacterCount = $isRangeSelection(selection)
+    ? getComposerTextOffsetForPoint($getRoot(), selection.anchor) -
+      getComposerTextOffsetForPoint($getRoot(), selection.focus)
+    : 0;
+  let remainingCharacters = Math.max(
+    0,
+    maxLength -
+      ($getComposerTextCharacterCount() - Math.abs(selectedCharacterCount)),
+  );
+  const nodes: LexicalNode[] = [];
+
+  for (const segment of parseWechatEmojiText(text)) {
+    if (segment.type === "emoji") {
+      nodes.push(
+        $createComposerEmojiNode(
+          toWechatEmojiToken(segment.value.name),
+          segment.value.name,
+          segment.value.path,
+        ),
+      );
+      continue;
+    }
+
+    const value = sliceComposerText(segment.value, remainingCharacters);
+
+    if (value) {
+      nodes.push(...createComposerPlainTextNodes(value));
+      remainingCharacters -= value.length;
+    }
+  }
+
+  if (nodes.length > 0) {
+    $insertNodes(nodes);
+  }
+}
+
 export function $replaceWechatEmojiTokens(node: TextNode) {
   const text = node.getTextContent();
   const tokenMatch = findFirstWechatEmojiToken(text);
@@ -426,6 +467,56 @@ export function $getComposerPlainText() {
   return stripComposerTextAnchors($getRoot().getTextContent());
 }
 
+export function $getComposerTextCharacterCount() {
+  return getComposerTextCharacterCountForNode($getRoot());
+}
+
+export function $trimComposerTextToMaxLength(maxLength: number) {
+  let remainingCharacters = Math.max(0, maxLength);
+
+  const trimNode = (node: LexicalNode) => {
+    if (
+      $isComposerMentionNode(node) ||
+      $isComposerEmojiNode(node) ||
+      $isComposerImageNode(node) ||
+      $isComposerLiteAttachmentNode(node)
+    ) {
+      return;
+    }
+
+    if ($isTextNode(node)) {
+      const text = node.getTextContent();
+      const visibleText = stripComposerTextAnchors(text);
+
+      if (visibleText.length <= remainingCharacters) {
+        remainingCharacters -= visibleText.length;
+        return;
+      }
+
+      node.setTextContent(
+        trimComposerTextPreservingAnchors(text, remainingCharacters),
+      );
+      remainingCharacters = 0;
+      return;
+    }
+
+    if ($isLineBreakNode(node)) {
+      if (remainingCharacters > 0) {
+        remainingCharacters -= 1;
+      } else {
+        node.remove();
+      }
+      return;
+    }
+
+    if ($isElementNode(node) || $isRootNode(node)) {
+      (node as ElementNode).getChildren().forEach(trimNode);
+    }
+  };
+
+  trimNode($getRoot());
+}
+
 export function $getComposerPlainTextCursorOffset() {
   const selection = $getSelection();
   const plainTextLength = $getComposerPlainText().length;
@@ -576,6 +667,136 @@ function findFirstWechatEmojiToken(text: string) {
 
 function stripComposerTextAnchors(text: string) {
   return text.replaceAll(COMPOSER_TEXT_ANCHOR, "");
+}
+
+function createComposerPlainTextNodes(text: string) {
+  const nodes: LexicalNode[] = [];
+  const parts = text.split("\n");
+
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      nodes.push($createLineBreakNode());
+    }
+
+    if (part) {
+      nodes.push($createTextNode(part));
+    }
+  });
+
+  return nodes;
+}
+
+function sliceComposerText(text: string, maxLength: number) {
+  const value = text.slice(0, Math.max(0, maxLength));
+  const lastCharacterCode = value.charCodeAt(value.length - 1);
+
+  return lastCharacterCode >= 0xd800 && lastCharacterCode <= 0xdbff
+    ? value.slice(0, -1)
+    : value;
+}
+
+function getComposerTextCharacterCountForNode(node: LexicalNode): number {
+  if (
+    $isComposerMentionNode(node) ||
+    $isComposerEmojiNode(node) ||
+    $isComposerImageNode(node) ||
+    $isComposerLiteAttachmentNode(node)
+  ) {
+    return 0;
+  }
+
+  if ($isTextNode(node)) {
+    return stripComposerTextAnchors(node.getTextContent()).length;
+  }
+
+  if ($isLineBreakNode(node)) {
+    return 1;
+  }
+
+  if (!$isElementNode(node) && !$isRootNode(node)) {
+    return 0;
+  }
+
+  return (node as ElementNode)
+    .getChildren()
+    .reduce(
+      (characterCount, child) =>
+        characterCount + getComposerTextCharacterCountForNode(child),
+      0,
+    );
+}
+
+function getComposerTextOffsetForPoint(
+  node: LexicalNode,
+  point: PointType,
+): number {
+  if (point.type === "text" && node.is(point.getNode())) {
+    if (
+      $isComposerMentionNode(node) ||
+      $isComposerEmojiNode(node) ||
+      $isComposerImageNode(node) ||
+      $isComposerLiteAttachmentNode(node)
+    ) {
+      return 0;
+    }
+
+    return $isTextNode(node)
+      ? stripComposerTextAnchors(node.getTextContent().slice(0, point.offset))
+          .length
+      : 0;
+  }
+
+  if (point.type === "element" && node.is(point.getNode())) {
+    if (!$isElementNode(node) && !$isRootNode(node)) {
+      return 0;
+    }
+
+    return (node as ElementNode)
+      .getChildren()
+      .slice(0, point.offset)
+      .reduce(
+        (characterCount, child) =>
+          characterCount + getComposerTextCharacterCountForNode(child),
+        0,
+      );
+  }
+
+  if (!$isElementNode(node) && !$isRootNode(node)) {
+    return 0;
+  }
+
+  let characterCount = 0;
+
+  for (const child of (node as ElementNode).getChildren()) {
+    if (child.is(point.getNode()) || child.isParentOf(point.getNode())) {
+      return characterCount + getComposerTextOffsetForPoint(child, point);
+    }
+
+    characterCount += getComposerTextCharacterCountForNode(child);
+  }
+
+  return characterCount;
+}
+
+function trimComposerTextPreservingAnchors(text: string, maxLength: number) {
+  let visibleCharacterCount = 0;
+  let trimmedText = "";
+
+  for (const character of text) {
+    if (character === COMPOSER_TEXT_ANCHOR) {
+      trimmedText += character;
+      continue;
+    }
+
+    if (visibleCharacterCount + character.length > maxLength) {
+      continue;
+    }
+
+    trimmedText += character;
+    visibleCharacterCount += character.length;
+  }
+
+  return trimmedText;
 }
 
 function getPlainTextOffsetForPoint(

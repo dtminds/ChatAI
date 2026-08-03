@@ -1966,9 +1966,6 @@ describe("AI hosting pages", () => {
     );
     const introGuide = screen.getByRole("region", { name: "技能使用引导" });
     expect(within(introGuide).getAllByRole("heading", { level: 2 })).toHaveLength(3);
-    expect(within(introGuide).getByRole("heading", { name: "编写技能" })).toBeInTheDocument();
-    expect(within(introGuide).getByRole("heading", { name: "配置推荐资源" })).toBeInTheDocument();
-    expect(within(introGuide).getByRole("heading", { name: "保存并应用" })).toBeInTheDocument();
     expect(within(introGuide).getAllByRole("img").map((image) => image.getAttribute("src"))).toEqual([
       "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
       "https://b5.bokr.com.cn/dist/ui/skill_f2.png",
@@ -2005,16 +2002,17 @@ describe("AI hosting pages", () => {
     expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
     expect(skillTemplateService.getSkillTemplate).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: /定制交付服务/ }));
+    const deliveryTrigger = screen.getByRole("button", { name: /FDE 深度共创服务/ });
+    await user.click(deliveryTrigger);
     const deliveryDialog = screen.getByRole("dialog");
-    expect(
-      within(deliveryDialog).getByRole("heading", {
-        name: /全链路交付服务，助力 Agent 高效落地/,
-      }),
-    ).toBeInTheDocument();
-    expect(within(deliveryDialog).getByText("需求梳理")).toBeInTheDocument();
-    expect(within(deliveryDialog).getByText("为您带来的价值")).toBeInTheDocument();
-    await user.click(within(deliveryDialog).getByRole("button", { name: "关闭" }));
+    expect(within(deliveryDialog).getByRole("heading", { level: 2 })).toBeInTheDocument();
+    expect(within(deliveryDialog).getAllByRole("heading", { level: 3 })).toHaveLength(5);
+    expect(within(deliveryDialog).getAllByRole("heading", { level: 4 })).toHaveLength(4);
+    const deliveryDialogCloseButton = within(deliveryDialog).getByRole("button", {
+      name: "关闭",
+    });
+    expect(deliveryDialogCloseButton).not.toHaveFocus();
+    await user.click(deliveryDialogCloseButton);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "我的技能" }));

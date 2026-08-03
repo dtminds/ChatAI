@@ -119,29 +119,29 @@ export function AgentResourceManagementPanel({
       aria-labelledby="agent-resource-management-title"
       className="rounded-[12px] border border-border bg-card p-5 shadow-xs"
     >
-      <h2
-        className="mb-4 text-base font-semibold text-foreground"
-        id="agent-resource-management-title"
-      >
-        资源管理
-      </h2>
-      {invalidResourceCount > 0 ? (
-        <div
-          className="mb-4 flex items-start gap-2 rounded-[8px] bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
-          role="alert"
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2
+          className="text-base font-semibold text-foreground"
+          id="agent-resource-management-title"
         >
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="mt-0.5 shrink-0"
-            icon={AlertCircleIcon}
-            size={16}
-            strokeWidth={1.8}
-          />
-          <span>
-            保存前请移除失效资源
-          </span>
-        </div>
-      ) : null}
+          资源管理
+        </h2>
+        {invalidResourceCount > 0 ? (
+          <div
+            className="flex shrink-0 items-center gap-2 rounded-full bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
+            role="alert"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0"
+              icon={AlertCircleIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <span>保存前请移除失效资源</span>
+          </div>
+        ) : null}
+      </div>
       <div className="space-y-5">
         {resourceSections.map((section) => (
           <AgentResourceSection

@@ -125,25 +125,25 @@ const skillTabs = [
 
 const skillIntroSteps = [
   {
-    description: "确定解决什么问题，适用于哪些业务场景",
+    description: "明确技能使用场景，沉淀业务 know-how",
     imageAlt: "编写技能示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
     step: "第 1 步",
     title: "编写技能",
   },
   {
-    description: "选择推荐变量、工具与知识库，可按需配置",
-    imageAlt: "配置推荐资源示意图",
+    description: "配置变量、工具和知识库，让 Agent 有据可依",
+    imageAlt: "打通数据示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f2.png",
     step: "第 2 步",
-    title: "配置推荐资源",
+    title: "打通数据",
   },
   {
-    description: "保存技能，并在Agent中应用",
-    imageAlt: "保存并应用示意图",
+    description: "在 Agent 中关联技能，让服务更贴合业务",
+    imageAlt: "Agent 集成示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/skill_f3.png",
     step: "第 3 步",
-    title: "保存并应用",
+    title: "Agent 集成",
   },
 ] as const;
 
@@ -178,7 +178,7 @@ export function AiSkillsPage() {
     <AiHostingLayout title="技能">
       <div className="space-y-6">
         <AiHostingPageHeader
-          description="管理和配置场景化专家技能，让 Agent 从通用走向专用"
+          description="将业务经验沉淀为技能，让 Agent 更懂业务"
           title="技能"
         />
 
@@ -921,45 +921,51 @@ function SkillDetailDialog({
                   </div>
                 </div>
                 <div className="min-w-0 space-y-2">
-                  <DialogTitle className="text-[22px] font-semibold leading-tight text-foreground">
+                  <DialogTitle className="text-[20px] font-bold leading-tight text-foreground">
                     {skill.title}
                   </DialogTitle>
-                  <DialogDescription className="text-sm leading-6 text-muted-foreground">
-                    {skill.description}
-                  </DialogDescription>
                   {(detail?.tip ?? skill.tip).trim() ? (
-                    <div
-                      aria-label="示例问题"
-                      className="ai-skill-template-tip"
-                      role="region"
-                    >
-                      {(detail?.tip ?? skill.tip)
-                        .split(/\n+/)
-                        .map((line) => line.trim())
-                        .filter(Boolean)
-                        .map((line, index) => (
-                          <div
-                            className="ai-skill-template-tip__bubble"
-                            key={`${index}-${line}`}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="ai-skill-template-tip__bubble-icon"
+                    <div className="space-y-5 pt-2">
+                      <div
+                        aria-label="示例问题"
+                        className="ai-skill-template-tip"
+                        role="region"
+                      >
+                        {(detail?.tip ?? skill.tip)
+                          .split(/\n+/)
+                          .map((line) => line.trim())
+                          .filter(Boolean)
+                          .map((line, index) => (
+                            <div
+                              className="ai-skill-template-tip__bubble"
+                              key={`${index}-${line}`}
                             >
-                              <HugeiconsIcon
-                                color="currentColor"
-                                icon={Message01Icon}
-                                size={14}
-                                strokeWidth={1.8}
-                              />
-                            </span>
-                            <span className="ai-skill-template-tip__bubble-text">
-                              {line}
-                            </span>
-                          </div>
-                        ))}
+                              <span
+                                aria-hidden="true"
+                                className="ai-skill-template-tip__bubble-icon"
+                              >
+                                <HugeiconsIcon
+                                  color="currentColor"
+                                  icon={Message01Icon}
+                                  size={14}
+                                  strokeWidth={1.8}
+                                />
+                              </span>
+                              <span className="ai-skill-template-tip__bubble-text">
+                                {line}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                      <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                        {skill.description}
+                      </DialogDescription>
                     </div>
-                  ) : null}
+                  ) : (
+                    <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                      {skill.description}
+                    </DialogDescription>
+                  )}
                 </div>
               </div>
 

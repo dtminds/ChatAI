@@ -23,7 +23,7 @@
   --ai-skill-delivery-card-shadow: 0 8px 24px var(--shadow-soft);
   --ai-skill-delivery-dialog-bg: light-dark(
     oklch(0.985 0.01 78),
-    var(--popover)
+    var(--background)
   );
 }
 
@@ -154,6 +154,15 @@
   border: 0 !important;
   border-radius: 1.25rem !important;
   box-shadow: 0 24px 64px var(--shadow-medium) !important;
+}
+
+.dark .ai-skill-delivery-dialog.ai-skill-delivery-dialog {
+  background-image: none !important;
+  border: 1px solid var(--border) !important;
+}
+
+.dark .ai-skill-delivery-step {
+  border-color: color-mix(in oklch, var(--border) 85%, transparent);
 }
 
 .ai-skill-delivery-dialog__header {

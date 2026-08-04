@@ -621,13 +621,13 @@ export function getSkillResourceAttribute(
   return readResourceAttribute(placeholder, attributeName);
 }
 
-/** 模版里未绑定具体资源的蓝色区块（如 kbId=""） */
+/** 模版里未绑定具体资源的蓝色区块（如 kbId="" / toolId=""） */
 export function isIncompleteSkillResource(
   segment: SkillContentResourceSegment,
 ): boolean {
-  // 工具模版预览时不要求用户再选
+  // type="tool"：校验 toolId
   if (segment.kind === "tool") {
-    return false;
+    return !readResourceAttribute(segment.placeholder, "toolId").trim();
   }
 
   if (segment.kind === "knowledge_base") {

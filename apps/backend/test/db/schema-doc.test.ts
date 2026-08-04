@@ -90,6 +90,7 @@ describe("database schema document", () => {
     const run = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory_run");
     const item = extractCreateTable(schemaSql, "xy_wap_embed_agent_user_memory_run_item");
     const logicalSession = extractCreateTable(schemaSql, "xy_wap_embed_logical_session");
+    const logicalSessionMessage = extractCreateTable(schemaSql, "xy_wap_embed_logical_session_message");
 
     expect(config).toContain("UNIQUE KEY uk_agent_user_memory_config_uid (uid)");
     expect(memory).toContain("UNIQUE KEY uk_agent_user_memory_customer");
@@ -100,6 +101,7 @@ describe("database schema document", () => {
     expect(item).toContain("UNIQUE KEY uk_agent_user_memory_run_customer");
     expect(logicalSession).toContain("KEY idx_logical_session_uid_started (uid, started_at)");
     expect(logicalSession).not.toContain("idx_logical_session_uid_ended_message");
+    expect(logicalSessionMessage).toContain("KEY idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id)");
 
     for (const table of [config, memory, run, item]) {
       expect(table).not.toMatch(/pending_after|pending_through|discovery_cursor|cooldown_until|selection_order_at/);

@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_message_source_uid (uid, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
+  KEY idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id),
   KEY idx_session_message_asset_lookup (uid, asset_id, source_message_time, session_id),
   KEY idx_session_message_asset_window (uid, source_message_time, asset_id, session_id),
   KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id)

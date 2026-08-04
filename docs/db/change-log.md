@@ -1165,3 +1165,18 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
   UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
 ) COMMENT='用户记忆Worker运行状态';
 ```
+
+## 2026-08-04 用户记忆消息窗口索引
+
+- 新增 `idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id)`，支持用户记忆按候选 `conversation_id` 读取每客户最近 100 条消息。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD KEY idx_session_message_conversation_order (
+    conversation_id,
+    source_message_time,
+    source_message_id
+  );
+```

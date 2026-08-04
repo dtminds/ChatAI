@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { sql, type ExpressionBuilder, type Kysely, type Selectable, type Transaction } from "kysely";
 import type { Database, JsonValue } from "../../../db/schema.js";
 import type { AppLogger } from "../../../shared/logger.js";
+import { CURRENT_WORKBENCH_PLATFORM } from "../../workbench-platform-scope.js";
 import { applyAiMemoryOperations, emptyUserMemoryDocument, filterActiveUserMemoryDocument, parseUserMemoryDocument } from "./user-memory-domain.js";
+import { buildUserMemoryMessageWindow, resolveUserMemoryEvidenceSessionIds, USER_MEMORY_MESSAGE_LIMIT } from "./user-memory-message-window.js";
 import { UserMemoryProviderError, type UserMemoryInputMessage, type UserMemoryProvider } from "./user-memory-provider.js";
 import { countUserMemoryRunItems, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, type UserMemoryCustomerLimitResolver } from "./user-memory-service.js";
 
@@ -13,7 +15,7 @@ const TERMINAL_ITEM_STATUSES = ["succeeded", "failed", "skipped", "canceled"];
 
 type RunRow = Selectable<Database["xy_wap_embed_agent_user_memory_run"]>;
 type ItemRow = Selectable<Database["xy_wap_embed_agent_user_memory_run_item"]>;
-type CandidateSession = { id: number; started_at: number; message_count: number; platform: number; third_external_userid: string };
+type CandidateSession = { id: number; conversation_id: number; started_at: number; message_count: number; third_external_userid: string };
 export type UserMemoryCustomerGroup = { platform: number; thirdExternalUserId: string; sessions: CandidateSession[] };
 
 type Claim = { extractionInstruction: string; run: RunRow; token: string };
@@ -121,12 +123,12 @@ export class UserMemoryWorker {
     const range = shanghaiDayRange(claim.run.quota_date);
     const sessions = await buildCandidateSessionQuery(this.input.db, {
       uid: claim.run.uid,
-      start: range.start,
+      start: config.enabled_at == null ? Number.MAX_SAFE_INTEGER : Math.max(range.start, config.enabled_at + 1),
       end: range.end,
-      enabledAt: config.enabled_at ?? Number.MAX_SAFE_INTEGER,
       limit: claim.run.candidate_session_limit,
     }).execute() as CandidateSession[];
-    const groups = groupCandidateSessions(sessions).slice(0, claim.run.customer_limit);
+    const candidateGroups = groupCandidateSessions(sessions);
+    const groups = candidateGroups.slice(0, claim.run.customer_limit);
     await this.input.db.transaction().execute(async (trx) => {
       await assertClaim(trx, claim);
       if (groups.length > 0) {
@@ -140,14 +142,14 @@ export class UserMemoryWorker {
         await finishRun(trx, claim, "succeeded", { success: 0, failure: 0, skipped: 0 });
       } else {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
-          candidate_session_count: sessions.length, candidate_customer_count: groupCandidateSessions(sessions).length,
+          candidate_session_count: sessions.length, candidate_customer_count: candidateGroups.length,
           selected_customer_count: groups.length, phase: "inference", status: "pending", run_after: new Date(), locked_by: null, claim_token: null, lease_until: null,
         }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).executeTakeFirstOrThrow();
       }
     });
     this.input.logger.info({
       component: "agent-user-memory-worker", eventCode: "agent_user_memory.selection_completed",
-      candidateCustomerCount: groupCandidateSessions(sessions).length, candidateSessionCount: sessions.length,
+      candidateCustomerCount: candidateGroups.length, candidateSessionCount: sessions.length,
       candidateSessionLimit: claim.run.candidate_session_limit, runId: claim.run.id, selectedCustomerCount: groups.length, uid: claim.run.uid,
     }, "Agent 用户记忆候选选择完成");
   }
@@ -168,7 +170,7 @@ export class UserMemoryWorker {
       const submitted = await this.input.db.transaction().execute(async (trx) => {
         await assertClaim(trx, claim);
         const result = await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
-          .set({ status: "submitted", attempt_count: item.attempt_count + 1, base_memory_version: prepared.version, base_manual_updated_at: prepared.manualUpdatedAt, message_count: prepared.messages.length, last_error_code: null })
+          .set({ status: "submitted", attempt_count: item.attempt_count + 1, base_memory_version: prepared.version, message_count: prepared.messages.length, last_error_code: null })
           .where("id", "=", item.id).where("run_id", "=", claim.run.id).where("attempt_count", "=", item.attempt_count)
           .where("status", "in", ["prepared", "submitted"]).executeTakeFirst();
         return result.numUpdatedRows > 0n;
@@ -204,28 +206,20 @@ export class UserMemoryWorker {
     const sessionIds = parseNumberArray(item.session_ids_json);
     const range = shanghaiDayRange(claim.run.quota_date);
     const sessions = await this.input.db.selectFrom("xy_wap_embed_logical_session as session")
-      .innerJoin("xy_wap_embed_conversation as conversation", (join) => join.onRef("conversation.id", "=", "session.conversation_id").onRef("conversation.uid", "=", "session.uid"))
-      .select(["session.id", "session.started_at", "session.last_message_at"])
-      .where("session.uid", "=", item.uid).where("session.id", "in", sessionIds).where("session.third_external_userid", "=", item.third_external_userid)
-      .where("session.started_at", ">=", range.start).where("session.started_at", "<", range.end).where("session.message_count", ">=", 5)
-      .where("conversation.chat_type", "=", 1).where("conversation.platform", "=", item.platform)
-      .orderBy("session.started_at", "asc").orderBy("session.id", "asc").execute();
-    const eligible = sessions.filter((session) => memory?.manual_updated_at == null || (session.last_message_at != null && session.last_message_at > memory.manual_updated_at));
-    const eligibleSessionIds = eligible.map((session) => session.id);
-    const messages: UserMemoryInputMessage[] = [];
-    if (eligibleSessionIds.length > 0) {
-      const rows = await buildUserMemoryMessagesQuery(this.input.db, item.uid, eligibleSessionIds).execute();
-      const rowsBySession = new Map<number, typeof rows>();
-      for (const row of rows) {
-        const sessionRows = rowsBySession.get(row.session_id) ?? [];
-        sessionRows.push(row);
-        rowsBySession.set(row.session_id, sessionRows);
-      }
-      for (const session of eligible) {
-        for (const row of rowsBySession.get(session.id) ?? []) {
-          const text = readableMessageText(row.msgtype, row.content);
-          if (text) messages.push({ sourceMessageId: row.source_message_id, sessionId: row.session_id, senderRole: row.sender_role, occurredAt: row.source_message_time, text });
-        }
+      .select(["session.id", "session.conversation_id"])
+      .where("session.uid", "=", item.uid).where("session.id", "in", sessionIds).execute();
+    const conversationIds = [...new Set(sessions.map((session) => session.conversation_id))];
+    let messages: UserMemoryInputMessage[] = [];
+    if (conversationIds.length > 0) {
+      const ownershipRows = await buildUserMemoryMessagesQuery(this.input.db, {
+        uid: item.uid,
+        conversationIds,
+        dayEnd: range.end,
+      }).execute();
+      const sourceMessageIds = ownershipRows.map((row) => row.source_message_id);
+      if (sourceMessageIds.length > 0) {
+        const detailRows = await buildUserMemoryMessageDetailsQuery(this.input.db, item.uid, sourceMessageIds).execute();
+        messages = buildUserMemoryMessageWindow(ownershipRows, detailRows);
       }
     }
     if (messages.length === 0) { await this.skipItem(claim, item, "AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES"); return undefined; }
@@ -233,9 +227,8 @@ export class UserMemoryWorker {
       document,
       extractionInstruction: claim.extractionInstruction,
       messages,
-      sessionIds: eligible.map((s) => s.id),
+      sessionIds: resolveUserMemoryEvidenceSessionIds(messages),
       version: memory?.version ?? 0,
-      manualUpdatedAt: memory?.manual_updated_at ?? null,
     };
   }
 
@@ -247,7 +240,7 @@ export class UserMemoryWorker {
       const itemUsage = accumulatedUsage(currentItem, result);
       await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ input_tokens: run.input_tokens + result.inputTokens, output_tokens: run.output_tokens + result.outputTokens, phase: "merging" }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).execute();
       const memory = await trx.selectFrom("xy_wap_embed_agent_user_memory").selectAll().where("uid", "=", item.uid).where("platform", "=", item.platform).where("third_external_userid", "=", item.third_external_userid).forUpdate().executeTakeFirst();
-      if ((memory?.version ?? 0) !== currentItem.base_memory_version || (memory?.manual_updated_at ?? null) !== currentItem.base_manual_updated_at) {
+      if ((memory?.version ?? 0) !== currentItem.base_memory_version) {
         const terminal = currentItem.attempt_count >= MAX_ITEM_ATTEMPTS;
         await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({
           ...itemUsage,
@@ -308,32 +301,35 @@ export class UserMemoryWorker {
   }
 }
 
-export function buildCandidateSessionQuery(db: Kysely<Database>, input: { uid: number; start: number; end: number; enabledAt: number; limit: number }) {
+export function buildCandidateSessionQuery(db: Kysely<Database>, input: { uid: number; start: number; end: number; limit: number }) {
   return db.selectFrom("xy_wap_embed_logical_session as session")
-    .innerJoin("xy_wap_embed_conversation as conversation", (join) => join.onRef("conversation.id", "=", "session.conversation_id").onRef("conversation.uid", "=", "session.uid"))
-    .select(["session.id", "session.started_at", "session.message_count", "conversation.platform", "session.third_external_userid"])
+    .select(["session.id", "session.conversation_id", "session.started_at", "session.message_count", "session.third_external_userid"])
     .where("session.uid", "=", input.uid).where("session.started_at", ">=", input.start).where("session.started_at", "<", input.end)
-    .where("session.started_at", ">", input.enabledAt).where("session.message_count", ">=", 5)
-    .where("session.third_external_userid", "!=", "").where("conversation.chat_type", "=", 1).where("conversation.platform", ">", 0)
-    .whereRef("conversation.third_external_userid", "=", "session.third_external_userid")
-    .orderBy("session.message_count", "desc").orderBy("session.started_at", "desc").orderBy("session.id", "desc")
+    .where("session.message_count", ">=", 5)
+    .orderBy("session.message_count", "desc")
     .limit(input.limit);
 }
 
-export function buildUserMemoryMessagesQuery(db: Kysely<Database>, uid: number, sessionIds: number[]) {
-  const ranked = db.selectFrom("xy_wap_embed_logical_session_message as ownership")
-    .innerJoin("xy_wap_embed_msg_audit_info as message", (join) => join.onRef("message.id", "=", "ownership.source_message_id").onRef("message.uid", "=", "ownership.uid"))
-    .select(["ownership.session_id", "ownership.source_message_id", "ownership.source_message_time", "ownership.sender_role", "message.content", "message.msgtype", sql<number>`row_number() over (partition by ownership.session_id order by ownership.source_message_time desc, ownership.source_message_id desc)`.as("row_number")])
-    .where("ownership.uid", "=", uid).where("ownership.session_id", "in", sessionIds).where("ownership.included_for_ai", "=", 1);
-  return db.selectFrom(ranked.as("ranked_messages")).selectAll().where("row_number", "<=", 50)
-    .orderBy("source_message_time", "asc").orderBy("source_message_id", "asc");
+export function buildUserMemoryMessagesQuery(db: Kysely<Database>, input: { uid: number; conversationIds: number[]; dayEnd: number }) {
+  return db.selectFrom("xy_wap_embed_logical_session_message as ownership")
+    .select(["ownership.session_id", "ownership.conversation_id", "ownership.source_message_id", "ownership.source_message_time", "ownership.sender_role"])
+    .where("ownership.uid", "=", input.uid).where("ownership.conversation_id", "in", input.conversationIds)
+    .where("ownership.included_for_ai", "=", 1).where("ownership.source_message_time", "<", input.dayEnd)
+    .orderBy("ownership.source_message_time", "desc").orderBy("ownership.source_message_id", "desc").limit(USER_MEMORY_MESSAGE_LIMIT);
+}
+
+export function buildUserMemoryMessageDetailsQuery(db: Kysely<Database>, uid: number, sourceMessageIds: number[]) {
+  return db.selectFrom("xy_wap_embed_msg_audit_info as message")
+    .select(["message.id", "message.content", "message.msgtype"])
+    .where("message.uid", "=", uid).where("message.id", "in", sourceMessageIds);
 }
 
 export function groupCandidateSessions(sessions: CandidateSession[]): UserMemoryCustomerGroup[] {
   const groups = new Map<string, UserMemoryCustomerGroup>();
   for (const session of sessions) {
-    const key = `${session.platform}:${session.third_external_userid}`;
-    const group = groups.get(key) ?? { platform: session.platform, thirdExternalUserId: session.third_external_userid, sessions: [] };
+    if (session.third_external_userid === "") continue;
+    const key = session.third_external_userid;
+    const group = groups.get(key) ?? { platform: CURRENT_WORKBENCH_PLATFORM, thirdExternalUserId: session.third_external_userid, sessions: [] };
     group.sessions.push(session); groups.set(key, group);
   }
   for (const group of groups.values()) group.sessions.sort((a, b) => a.started_at - b.started_at || a.id - b.id);
@@ -400,11 +396,6 @@ async function finishRun(trx: Transaction<Database>, claim: Claim, status: "succ
 }
 function parseNumberArray(value: JsonValue | string) { const parsed = typeof value === "string" ? JSON.parse(value) : value; if (!Array.isArray(parsed) || parsed.some((v) => !Number.isSafeInteger(v) || Number(v) <= 0)) throw new Error("AGENT_USER_MEMORY_DATA_INVALID"); return parsed.map(Number); }
 function parseDocument(value: JsonValue | string) { return parseUserMemoryDocument(typeof value === "string" ? JSON.parse(value) : value); }
-function readableMessageText(type: string, content: string | null) {
-  if (!content || !["text", "markdown", "mixed", "voice", "file", "link", "weapp"].includes(type)) return "";
-  try { const parsed = JSON.parse(content); if (typeof parsed === "string") return parsed.trim(); if (parsed && typeof parsed === "object") { for (const key of ["content", "text", "title", "transVoiceText", "description", "fileName"]) { const value = (parsed as Record<string, unknown>)[key]; if (typeof value === "string" && value.trim()) return value.trim(); } } } catch { return content.trim(); }
-  return "";
-}
 function formatShanghaiDate(value: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(value); }
 function previousShanghaiDate(scheduledFor: Date) { const local = new Date(scheduledFor.getTime() + 8 * 60 * 60 * 1000); return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - 1, 4)); }
 function shanghaiDayRange(quotaDate: Date) { const key = formatShanghaiDate(quotaDate); const [year, month, day] = key.split("-").map(Number); const start = Date.UTC(year!, month! - 1, day!, -8); return { start, end: start + 24 * 60 * 60 * 1000 }; }

@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/auth-store";
 const service = vi.hoisted(() => ({
   createUserMemoryItem: vi.fn(), deleteUserMemoryItem: vi.fn(), getUserMemoryCustomer: vi.fn(), getUserMemoryEvidence: vi.fn(),
   getUserMemoryOverview: vi.fn(), getUserMemoryRun: vi.fn(), listUserMemoryCustomers: vi.fn(), listUserMemoryRuns: vi.fn(), retryUserMemoryRun: vi.fn(),
+  getUserMemoryObservabilitySummary: vi.fn(), listUserMemoryObservabilityTenants: vi.fn(),
   updateUserMemoryItem: vi.fn(), updateUserMemorySettings: vi.fn(),
 }));
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => service);
@@ -16,7 +17,7 @@ vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
   AiHostingPageHeader: ({ title, titleActions }: { title: React.ReactNode; titleActions?: React.ReactNode }) => <div><h1>{title}</h1>{titleActions}</div>,
 }));
 
-const overview = { enabled: false, executionMode: "sync" as const, extractionInstruction: "", customerLimit: 100, schedule: "02:00", timezone: "Asia/Shanghai" };
+const overview = { enabled: false, canViewWorkerObservability: false, executionMode: "sync" as const, extractionInstruction: "", customerLimit: 100, schedule: "02:00", timezone: "Asia/Shanghai" };
 const run = {
   candidateCustomerCount: 1, candidateSessionCount: 1, candidateSessionLimit: 200, customerLimit: 100,
   executionMode: "sync" as const, failureCount: 0, id: 9, inputTokens: 0, outputTokens: 0,
@@ -33,6 +34,14 @@ describe("user memory page", () => {
     service.listUserMemoryRuns.mockResolvedValue({ items: [] });
     service.listUserMemoryCustomers.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
     service.updateUserMemorySettings.mockResolvedValue({ ...overview, enabled: true });
+    service.getUserMemoryObservabilitySummary.mockResolvedValue({
+      observedAt: 1,
+      worker: { health: "healthy", reportedAt: 1 },
+      totals: { enabledTenantCount: 1, dueTenantCount: 0, delayedTenantCount: 0, activeRunCount: 0, expiredLeaseCount: 0 },
+      last24Hours: { succeededRunCount: 0, partialRunCount: 0, failedRunCount: 0, canceledRunCount: 0, selectedCustomerCount: 0, successCount: 0, failureCount: 0, skippedCount: 0, inputTokens: 0, outputTokens: 0 },
+      trend: [],
+    });
+    service.listUserMemoryObservabilityTenants.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
   });
 
   it("loads the daily overview and lets an admin enable maintenance", async () => {
@@ -48,6 +57,15 @@ describe("user memory page", () => {
     render(<UserMemoryPage />);
     expect(await screen.findByRole("switch", { name: "用户记忆" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "规则配置" })).toBeDisabled();
+  });
+
+  it("shows and loads the observability tab only for configured observers", async () => {
+    const user = userEvent.setup();
+    service.getUserMemoryOverview.mockResolvedValue({ ...overview, canViewWorkerObservability: true });
+    render(<UserMemoryPage />);
+    await user.click(await screen.findByRole("tab", { name: "运行观测" }));
+    await waitFor(() => expect(service.getUserMemoryObservabilitySummary).toHaveBeenCalled());
+    expect(service.listUserMemoryObservabilityTenants).toHaveBeenCalledWith({ page: 1, pageSize: 20, uid: undefined }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("fills an industry template, allows editing, and saves only the final instruction", async () => {

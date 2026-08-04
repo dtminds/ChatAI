@@ -131,6 +131,7 @@ export const AgentUserMemoryRunSchema = Type.Object({
 
 export const AgentUserMemoryOverviewResponseSchema = Type.Object({
   activeRun: Type.Optional(AgentUserMemoryRunSchema),
+  canViewWorkerObservability: Type.Boolean(),
   customerLimit: Type.Integer({ minimum: 1 }),
   enabled: Type.Boolean(),
   executionMode: AgentUserMemoryExecutionModeSchema,
@@ -141,6 +142,105 @@ export const AgentUserMemoryOverviewResponseSchema = Type.Object({
   recentRun: Type.Optional(AgentUserMemoryRunSchema),
   schedule: Type.String(),
   timezone: Type.String(),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryWorkerHealthSchema = Type.Union([
+  Type.Literal("healthy"),
+  Type.Literal("error"),
+  Type.Literal("offline"),
+]);
+
+export const AgentUserMemoryWorkerStateSchema = Type.Object({
+  health: AgentUserMemoryWorkerHealthSchema,
+  lastDurationMs: Type.Optional(Type.Integer({ minimum: 0 })),
+  lastErrorCode: Type.Optional(Type.String()),
+  lastFailureAt: Type.Optional(EpochMsSchema),
+  lastStartedAt: Type.Optional(EpochMsSchema),
+  lastSuccessAt: Type.Optional(EpochMsSchema),
+  reportedAt: Type.Optional(EpochMsSchema),
+  reportedBy: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilityTotalsSchema = Type.Object({
+  activeRunCount: Type.Integer({ minimum: 0 }),
+  delayedTenantCount: Type.Integer({ minimum: 0 }),
+  dueTenantCount: Type.Integer({ minimum: 0 }),
+  enabledTenantCount: Type.Integer({ minimum: 0 }),
+  expiredLeaseCount: Type.Integer({ minimum: 0 }),
+  oldestDueAt: Type.Optional(EpochMsSchema),
+  oldestRunnableAt: Type.Optional(EpochMsSchema),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilityPeriodSchema = Type.Object({
+  canceledRunCount: Type.Integer({ minimum: 0 }),
+  failedRunCount: Type.Integer({ minimum: 0 }),
+  failureCount: Type.Integer({ minimum: 0 }),
+  inputTokens: Type.Integer({ minimum: 0 }),
+  outputTokens: Type.Integer({ minimum: 0 }),
+  partialRunCount: Type.Integer({ minimum: 0 }),
+  selectedCustomerCount: Type.Integer({ minimum: 0 }),
+  skippedCount: Type.Integer({ minimum: 0 }),
+  succeededRunCount: Type.Integer({ minimum: 0 }),
+  successCount: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilityTrendPointSchema = Type.Object({
+  date: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+  failureCount: Type.Integer({ minimum: 0 }),
+  inputTokens: Type.Integer({ minimum: 0 }),
+  outputTokens: Type.Integer({ minimum: 0 }),
+  selectedCustomerCount: Type.Integer({ minimum: 0 }),
+  skippedCount: Type.Integer({ minimum: 0 }),
+  successCount: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilitySummaryResponseSchema = Type.Object({
+  last24Hours: AgentUserMemoryObservabilityPeriodSchema,
+  observedAt: EpochMsSchema,
+  totals: AgentUserMemoryObservabilityTotalsSchema,
+  trend: Type.Array(AgentUserMemoryObservabilityTrendPointSchema, { maxItems: 14 }),
+  worker: AgentUserMemoryWorkerStateSchema,
+}, { additionalProperties: false });
+
+export const AgentUserMemoryTenantStateSchema = Type.Union([
+  Type.Literal("normal"),
+  Type.Literal("due"),
+  Type.Literal("running"),
+  Type.Literal("warning"),
+  Type.Literal("disabled"),
+]);
+
+export const AgentUserMemoryObservabilityRunSchema = Type.Object({
+  failureCount: Type.Integer({ minimum: 0 }),
+  finishedAt: Type.Optional(EpochMsSchema),
+  id: Type.Number(),
+  inputTokens: Type.Integer({ minimum: 0 }),
+  lastErrorCode: Type.Optional(Type.String()),
+  outputTokens: Type.Integer({ minimum: 0 }),
+  phase: AgentUserMemoryRunPhaseSchema,
+  scheduledFor: EpochMsSchema,
+  selectedCustomerCount: Type.Integer({ minimum: 0 }),
+  skippedCount: Type.Integer({ minimum: 0 }),
+  startedAt: Type.Optional(EpochMsSchema),
+  status: AgentUserMemoryRunStatusSchema,
+  successCount: Type.Integer({ minimum: 0 }),
+  updatedAt: EpochMsSchema,
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilityTenantSchema = Type.Object({
+  activeRun: Type.Optional(AgentUserMemoryObservabilityRunSchema),
+  enabled: Type.Boolean(),
+  nextRunAt: Type.Optional(EpochMsSchema),
+  recentRun: Type.Optional(AgentUserMemoryObservabilityRunSchema),
+  state: AgentUserMemoryTenantStateSchema,
+  uid: Type.Number(),
+}, { additionalProperties: false });
+
+export const AgentUserMemoryObservabilityTenantListResponseSchema = Type.Object({
+  items: Type.Array(AgentUserMemoryObservabilityTenantSchema),
+  page: Type.Integer({ minimum: 1 }),
+  pageSize: Type.Integer({ minimum: 1, maximum: 100 }),
+  total: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
 export const AgentUserMemoryRunListResponseSchema = Type.Object({
@@ -241,6 +341,13 @@ export type AgentUserMemoryDocument = Static<typeof AgentUserMemoryDocumentSchem
 export type AgentUserMemorySettingsRequest = Static<typeof AgentUserMemorySettingsRequestSchema>;
 export type AgentUserMemoryRun = Static<typeof AgentUserMemoryRunSchema>;
 export type AgentUserMemoryOverviewResponse = Static<typeof AgentUserMemoryOverviewResponseSchema>;
+export type AgentUserMemoryWorkerHealth = Static<typeof AgentUserMemoryWorkerHealthSchema>;
+export type AgentUserMemoryWorkerState = Static<typeof AgentUserMemoryWorkerStateSchema>;
+export type AgentUserMemoryObservabilitySummaryResponse = Static<typeof AgentUserMemoryObservabilitySummaryResponseSchema>;
+export type AgentUserMemoryTenantState = Static<typeof AgentUserMemoryTenantStateSchema>;
+export type AgentUserMemoryObservabilityRun = Static<typeof AgentUserMemoryObservabilityRunSchema>;
+export type AgentUserMemoryObservabilityTenant = Static<typeof AgentUserMemoryObservabilityTenantSchema>;
+export type AgentUserMemoryObservabilityTenantListResponse = Static<typeof AgentUserMemoryObservabilityTenantListResponseSchema>;
 export type AgentUserMemoryRunListResponse = Static<typeof AgentUserMemoryRunListResponseSchema>;
 export type AgentUserMemoryRunItem = Static<typeof AgentUserMemoryRunItemSchema>;
 export type AgentUserMemoryRunDetailResponse = Static<typeof AgentUserMemoryRunDetailResponseSchema>;

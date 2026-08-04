@@ -22,6 +22,31 @@ describe("user memory routes", () => {
     expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN" }, success: false });
   });
 
+  it("protects cross-tenant observability with the shared observer allowlist", async () => {
+    app = await buildMockedApp();
+    app.db = createKbReadDbMock() as never;
+    const token = app.jwt.sign({ roles: ["admin"], sessionId: "1", sessionVersion: 1, subUserId: "101", uid: 9001 });
+    const response = await app.inject({ method: "GET", url: "/api/server/ai-hosting/user-memory/observability/summary", headers: { authorization: `Bearer ${token}` } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: { code: "AGENT_USER_MEMORY_OBSERVABILITY_FORBIDDEN" }, success: false });
+  });
+
+  it("exposes the observability tab capability to a configured observer", async () => {
+    const previousSubjects = process.env.INSIGHTS_WORKER_OBSERVER_SUBJECTS;
+    process.env.INSIGHTS_WORKER_OBSERVER_SUBJECTS = "9001:101";
+    try {
+      app = await buildMockedApp();
+    } finally {
+      if (previousSubjects === undefined) delete process.env.INSIGHTS_WORKER_OBSERVER_SUBJECTS;
+      else process.env.INSIGHTS_WORKER_OBSERVER_SUBJECTS = previousSubjects;
+    }
+    app.db = createKbReadDbMock() as never;
+    const token = app.jwt.sign({ roles: ["viewer"], sessionId: "1", sessionVersion: 1, subUserId: "101", uid: 9001 });
+    const response = await app.inject({ method: "GET", url: "/api/server/ai-hosting/user-memory/overview", headers: { authorization: `Bearer ${token}` } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ data: { canViewWorkerObservability: true }, success: true });
+  });
+
   it("authorizes customer detail through exact scoped lookup instead of paginated search", async () => {
     app = await buildMockedApp();
     app.db = createKbReadDbMock() as never;

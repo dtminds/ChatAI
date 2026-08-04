@@ -28,6 +28,7 @@ import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
 import { USER_MEMORY_CATEGORIES, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
 import { UserMemoryInstructionDialog } from "./user-memory-instruction-dialog";
+import { UserMemoryObservability } from "./user-memory-observability";
 
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
@@ -227,7 +228,7 @@ export function UserMemoryPage() {
         description="AI 自动提炼客户的稳定属性、偏好与近期意向，让每次服务更懂客户"
       />
       <Tabs defaultValue="overview">
-        <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger></TabsList>
+        <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger>{overview?.canViewWorkerObservability ? <TabsTrigger value="observability" variant="underline">运行观测</TabsTrigger> : null}</TabsList>
         <TabsContent className="pt-5" value="overview">
           {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview runs={runs} canManage={canManage} saving={saving} hasMore={Boolean(runNextCursor)} onRetryRun={retry} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
         </TabsContent>
@@ -248,6 +249,7 @@ export function UserMemoryPage() {
             total={customerTotal}
           />
         </TabsContent>
+        {overview?.canViewWorkerObservability ? <TabsContent className="pt-5" value="observability"><UserMemoryObservability /></TabsContent> : null}
       </Tabs>
     </div>
     <CustomerDetailSheet

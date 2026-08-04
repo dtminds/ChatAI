@@ -697,7 +697,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
   UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
   KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
   KEY idx_agent_user_memory_run_terminal (status, finished_at, id),
-  KEY idx_agent_user_memory_run_uid (uid, id)
+  KEY idx_agent_user_memory_run_uid (uid, id),
+  KEY idx_agent_user_memory_run_quota_date (quota_date, id)
 ) COMMENT='Agent用户记忆日运行记录';
 
 
@@ -731,3 +732,21 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
   KEY idx_agent_user_memory_item_run_status (run_id, status, next_attempt_at, id),
   KEY idx_agent_user_memory_item_provider (provider_batch_id, provider_item_key)
 ) COMMENT='Agent用户记忆运行客户明细';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  runtime_key VARCHAR(32) NOT NULL COMMENT '运行状态标识，固定为user_memory',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次Tick开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次Tick成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次Tick失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码，成功后清空',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成Tick耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
+) COMMENT='用户记忆Worker运行状态';

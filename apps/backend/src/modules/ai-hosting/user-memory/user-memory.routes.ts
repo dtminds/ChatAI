@@ -12,9 +12,11 @@ import {
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import { withRequestId } from "../../../shared/logger.js";
 import { getAuthenticatedWorkbenchScope } from "../../workbench-platform-scope.js";
+import { canViewInsightsWorkerObservability } from "../../insights/insights-worker-observer-access.js";
+import { UserMemoryObservabilityService } from "./user-memory-observability.service.js";
 import { createUserMemoryService } from "./user-memory-service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -24,6 +26,7 @@ const CustomerItemParamsSchema = Type.Object({ thirdExternalUserId: Type.String(
 const RunsQuerySchema = Type.Object({ cursor: Type.Optional(Type.String()), pageSize: Type.Optional(NumericStringSchema) });
 const RunDetailQuerySchema = Type.Object({ itemCursor: Type.Optional(Type.String()), itemPageSize: Type.Optional(NumericStringSchema), status: Type.Optional(AgentUserMemoryRunItemStatusSchema) });
 const CustomersQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema), query: Type.Optional(Type.String()) });
+const ObservabilityTenantsQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema), uid: Type.Optional(NumericStringSchema) });
 
 type RunParams = Static<typeof RunParamsSchema>;
 type CustomerParams = Static<typeof CustomerParamsSchema>;
@@ -31,16 +34,35 @@ type CustomerItemParams = Static<typeof CustomerItemParamsSchema>;
 type RunsQuery = Static<typeof RunsQuerySchema>;
 type RunDetailQuery = Static<typeof RunDetailQuerySchema>;
 type CustomersQuery = Static<typeof CustomersQuerySchema>;
+type ObservabilityTenantsQuery = Static<typeof ObservabilityTenantsQuerySchema>;
 
-export async function registerUserMemoryRoutes(app: FastifyInstance) {
+export async function registerUserMemoryRoutes(app: FastifyInstance, observerSubjects: ReadonlySet<string> = new Set()) {
   app.get("/api/server/ai-hosting/user-memory/overview", { preHandler: app.authenticate }, async (request) =>
-    apiSuccess(await createService(app, request).getOverview(request.user.uid)));
+    apiSuccess(await createService(app, request).getOverview(request.user.uid, canObserve(request, observerSubjects))));
+
+  app.get("/api/server/ai-hosting/user-memory/observability/summary", { preHandler: app.authenticate }, async (request, reply) => {
+    assertObserve(request, observerSubjects);
+    reply.header("Cache-Control", "no-store");
+    return apiSuccess(await new UserMemoryObservabilityService(app.db).getSummary());
+  });
+
+  app.get<{ Querystring: ObservabilityTenantsQuery }>("/api/server/ai-hosting/user-memory/observability/tenants", {
+    preHandler: app.authenticate, schema: { querystring: ObservabilityTenantsQuerySchema },
+  }, async (request, reply) => {
+    assertObserve(request, observerSubjects);
+    reply.header("Cache-Control", "no-store");
+    return apiSuccess(await new UserMemoryObservabilityService(app.db).listTenants({
+      page: parseOptionalInteger(request.query.page),
+      pageSize: parseOptionalInteger(request.query.pageSize),
+      uid: parseOptionalPositiveInteger(request.query.uid),
+    }));
+  });
 
   app.put<{ Body: AgentUserMemorySettingsRequest }>("/api/server/ai-hosting/user-memory/settings", {
     preHandler: app.authenticate, schema: { body: AgentUserMemorySettingsRequestSchema },
   }, async (request) => {
     assertManage(request);
-    return apiSuccess(await createService(app, request).updateSettings(request.user.uid, request.body));
+    return apiSuccess(await createService(app, request).updateSettings(request.user.uid, request.body, canObserve(request, observerSubjects)));
   });
 
   app.get<{ Querystring: RunsQuery }>("/api/server/ai-hosting/user-memory/runs", {
@@ -131,5 +153,17 @@ function assertManage(request: FastifyRequest) {
 function assertMaintain(request: FastifyRequest) {
   const roles = request.user.roles ?? [];
   if (!roles.includes("owner") && !roles.includes("admin") && !roles.includes("operator")) throw new ForbiddenError("FORBIDDEN", "无权限访问");
+}
+function canObserve(request: FastifyRequest, subjects: ReadonlySet<string>) {
+  return canViewInsightsWorkerObservability(subjects, { uid: request.user.uid, subUserId: request.user.subUserId });
+}
+function assertObserve(request: FastifyRequest, subjects: ReadonlySet<string>) {
+  if (!canObserve(request, subjects)) throw new ForbiddenError("AGENT_USER_MEMORY_OBSERVABILITY_FORBIDDEN", "无权限查看运行观测");
+}
+function parseOptionalPositiveInteger(value?: string) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new BadRequestError("INVALID_QUERY", "UID 参数无效");
+  return parsed;
 }
 function parseOptionalInteger(value?: string) { if (!value) return undefined; const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : undefined; }

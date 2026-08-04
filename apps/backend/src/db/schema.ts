@@ -2046,6 +2046,20 @@ export interface XyWapEmbedAgentUserMemoryRunItem {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedUserMemoryWorkerState {
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  last_duration_ms: number | null;
+  last_error_code: string | null;
+  last_failure_at: Date | null;
+  last_started_at: Date | null;
+  last_success_at: Date | null;
+  reported_at: Date;
+  reported_by: string;
+  runtime_key: string;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedLogicalSession {
   /**
    * 客服消息数
@@ -3507,6 +3521,7 @@ export interface DB {
   xy_wap_embed_agent_user_memory: XyWapEmbedAgentUserMemory;
   xy_wap_embed_agent_user_memory_run: XyWapEmbedAgentUserMemoryRun;
   xy_wap_embed_agent_user_memory_run_item: XyWapEmbedAgentUserMemoryRunItem;
+  xy_wap_embed_user_memory_worker_state: XyWapEmbedUserMemoryWorkerState;
   xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
   xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;

@@ -6,6 +6,8 @@ import type {
   AgentUserMemoryManualDeleteRequest,
   AgentUserMemoryManualUpdateRequest,
   AgentUserMemoryOverviewResponse,
+  AgentUserMemoryObservabilitySummaryResponse,
+  AgentUserMemoryObservabilityTenantListResponse,
   AgentUserMemoryRetryFailedResponse,
   AgentUserMemoryRunDetailResponse,
   AgentUserMemoryRunItemStatus,
@@ -17,6 +19,12 @@ import { http } from "@/lib/request";
 
 export async function getUserMemoryOverview() {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryOverviewResponse>>("/server/ai-hosting/user-memory/overview")).data;
+}
+export async function getUserMemoryObservabilitySummary(options: { signal?: AbortSignal } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryObservabilitySummaryResponse>>("/server/ai-hosting/user-memory/observability/summary", options)).data;
+}
+export async function listUserMemoryObservabilityTenants(params: { page?: number; pageSize?: number; uid?: number } = {}, options: { signal?: AbortSignal } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryObservabilityTenantListResponse>>(`/server/ai-hosting/user-memory/observability/tenants${queryString(params)}`, options)).data;
 }
 export async function updateUserMemorySettings(payload: AgentUserMemorySettingsRequest) {
   return (await http.put<ApiSuccessEnvelope<AgentUserMemoryOverviewResponse>>("/server/ai-hosting/user-memory/settings", payload)).data;

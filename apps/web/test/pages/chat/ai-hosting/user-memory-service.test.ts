@@ -1,13 +1,15 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { requestInstance } from "@/lib/request";
-import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "@/pages/chat/ai-hosting/api/user-memory-service";
+import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryObservabilitySummary, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryObservabilityTenants, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "@/pages/chat/ai-hosting/api/user-memory-service";
 
 const mock = new MockAdapter(requestInstance);
 describe("user memory service adapter", () => {
   afterEach(() => mock.reset());
   it("uses Agent user-memory endpoints and preserves optimistic versions", async () => {
     mock.onGet("/server/ai-hosting/user-memory/overview").reply(200, { data: { enabled: false }, success: true });
+    mock.onGet("/server/ai-hosting/user-memory/observability/summary").reply(200, { data: { worker: {} }, success: true });
+    mock.onGet("/server/ai-hosting/user-memory/observability/tenants?page=2&pageSize=20&uid=272").reply(200, { data: { items: [] }, success: true });
     mock.onPut("/server/ai-hosting/user-memory/settings").reply(200, { data: { enabled: true }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/runs?cursor=next&pageSize=20").reply(200, { data: { items: [] }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/runs/9?itemCursor=item-next&itemPageSize=100&status=failed").reply(200, { data: { items: [] }, success: true });
@@ -20,6 +22,8 @@ describe("user memory service adapter", () => {
     mock.onDelete("/server/ai-hosting/user-memory/customers/customer%2F1/items/3").reply((config) => [200, { data: JSON.parse(config.data), success: true }]);
 
     await getUserMemoryOverview();
+    await getUserMemoryObservabilitySummary();
+    await listUserMemoryObservabilityTenants({ page: 2, pageSize: 20, uid: 272 });
     await updateUserMemorySettings({ enabled: true });
     await listUserMemoryRuns({ cursor: "next", pageSize: 20 });
     await getUserMemoryRun(9, { itemCursor: "item-next", itemPageSize: 100, status: "failed" });

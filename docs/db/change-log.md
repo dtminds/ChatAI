@@ -1135,3 +1135,33 @@ ANALYZE TABLE xy_wap_embed_logical_session;
 - 用户记忆表只保存当前 JSON、版本和维护时间；不增加 pending、cursor、cooldown 或跨日消费状态。
 
 用户记忆四张表由本次 `docs/db/schema.sql` 建表语句整体创建，不对不存在的表单独执行 `ALTER TABLE`。
+
+## 2026-08-04 用户记忆运行观测
+
+- 新增 `xy_wap_embed_user_memory_worker_state`，保存用户记忆 Worker 最近心跳、Tick 结果、耗时和上报实例，用于区分正常空闲与 Worker 不可用。
+- 新增 `idx_agent_user_memory_run_quota_date (quota_date, id)`，支持按自然日有界查询运行趋势，避免观测接口扫描完整运行记录。
+- Worker 状态表使用自增 ID 作为主键，并通过 `runtime_key = 'user_memory'` 的唯一索引维持单条逻辑运行状态。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD KEY idx_agent_user_memory_run_quota_date (quota_date, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  runtime_key VARCHAR(32) NOT NULL COMMENT '运行状态标识，固定为user_memory',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次Tick开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次Tick成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次Tick失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码，成功后清空',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成Tick耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
+) COMMENT='用户记忆Worker运行状态';
+```

@@ -5,6 +5,7 @@ import type { AppLogger } from "../../../shared/logger.js";
 import { VolcengineUserMemoryProvider } from "./user-memory-provider.js";
 import { DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER, USER_MEMORY_SCHEDULE, USER_MEMORY_TIMEZONE } from "./user-memory-service.js";
 import { UserMemoryWorker } from "./user-memory-worker.js";
+import { UserMemoryWorkerObservability } from "./user-memory-worker-observability.js";
 
 export type UserMemoryWorkerRuntimeConfig = { enabled: boolean; executionMode: "sync"; schedule: "02:00"; timezone: "Asia/Shanghai" };
 type RuntimeEnv = {
@@ -41,22 +42,33 @@ export function createUserMemoryWorkerRuntime(input: { db: Kysely<Database>; env
   if (!apiKey || !model) throw new Error("VOLCENGINE_ARK_API_KEY and VOLCENGINE_ARK_MODEL are required for Agent user memory");
   const maxTokens = env.VOLCENGINE_ARK_MAX_TOKENS ? Number(env.VOLCENGINE_ARK_MAX_TOKENS) : undefined;
   if (maxTokens != null && (!Number.isSafeInteger(maxTokens) || maxTokens <= 0)) throw new Error("VOLCENGINE_ARK_MAX_TOKENS must be a positive integer");
+  const workerId = `${os.hostname()}:${process.pid}`;
   const worker = new UserMemoryWorker({
-    db: input.db, logger: input.logger, customerLimitResolver: DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER, workerId: `${os.hostname()}:${process.pid}`,
+    db: input.db, logger: input.logger, customerLimitResolver: DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER, workerId,
     provider: new VolcengineUserMemoryProvider({ apiKey, model, baseUrl: env.VOLCENGINE_ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3", ...(maxTokens ? { maxTokens } : {}) }),
   });
+  const observability = new UserMemoryWorkerObservability({ db: input.db, logger: input.logger, reportedBy: workerId });
+  observability.start();
   let stopped = false; let running = false;
   const run = async () => {
     if (stopped || running) return;
     running = true;
     try {
-      while (!stopped && await worker.tick()) {
-        // Drain immediately so customer items do not incur the scheduler interval between model calls.
+      while (!stopped) {
+        const startedAt = observability.tickStarted();
+        try {
+          const hasMore = await worker.tick();
+          observability.tickSucceeded(startedAt);
+          if (!hasMore) break;
+        } catch (error) {
+          observability.tickFailed(startedAt, error);
+          throw error;
+        }
       }
     } catch (error) { input.logger.error({ error }, "Agent user-memory worker tick failed"); } finally { running = false; }
   };
   const timer = setInterval(() => void run(), 3_000);
   timer.unref();
   void run();
-  return { async stop() { stopped = true; clearInterval(timer); while (running) await new Promise((resolve) => setTimeout(resolve, 25)); } };
+  return { async stop() { stopped = true; clearInterval(timer); while (running) await new Promise((resolve) => setTimeout(resolve, 25)); await observability.stop(); } };
 }

@@ -44,7 +44,7 @@ export class UserMemoryService {
     private readonly customerLimitResolver: UserMemoryCustomerLimitResolver = DEFAULT_USER_MEMORY_CUSTOMER_LIMIT_RESOLVER,
   ) {}
 
-  async getOverview(uid: number): Promise<AgentUserMemoryOverviewResponse> {
+  async getOverview(uid: number, canViewWorkerObservability = false): Promise<AgentUserMemoryOverviewResponse> {
     const config = await this.getConfig(uid);
     const [activeRun, recentRun] = await Promise.all([
       config?.active_run_id ? this.getRunRow(uid, config.active_run_id) : undefined,
@@ -53,6 +53,7 @@ export class UserMemoryService {
     const customerLimit = resolveUserMemoryCustomerLimit(this.customerLimitResolver, uid);
     return {
       enabled: config?.enabled === 1,
+      canViewWorkerObservability,
       schedule: USER_MEMORY_SCHEDULE,
       timezone: USER_MEMORY_TIMEZONE,
       executionMode: "sync",
@@ -64,7 +65,7 @@ export class UserMemoryService {
     };
   }
 
-  async updateSettings(uid: number, settings: AgentUserMemorySettingsRequest): Promise<AgentUserMemoryOverviewResponse> {
+  async updateSettings(uid: number, settings: AgentUserMemorySettingsRequest, canViewWorkerObservability = false): Promise<AgentUserMemoryOverviewResponse> {
     await this.db.transaction().execute(async (trx) => {
       let config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirst();
       if (!config) {
@@ -102,7 +103,7 @@ export class UserMemoryService {
         } : {}),
       }).where("id", "=", config.id).executeTakeFirstOrThrow();
     });
-    return this.getOverview(uid);
+    return this.getOverview(uid, canViewWorkerObservability);
   }
 
   async listRuns(uid: number, options: { cursor?: string; pageSize?: number }): Promise<AgentUserMemoryRunListResponse> {

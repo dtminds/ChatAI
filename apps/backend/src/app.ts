@@ -61,7 +61,7 @@ export async function buildApp() {
   await registerWorkTagRoutes(app);
   await registerCdpTagRoutes(app);
   await registerSystemVariableRoutes(app);
-  await registerUserMemoryRoutes(app);
+  await registerUserMemoryRoutes(app, workerObserverSubjects);
   await registerKbDocRoutes(app);
   await registerKbChunkRoutes(app);
   await registerKbAttachmentRoutes(app);
@@ -77,5 +77,6 @@ export async function buildApp() {
 
 export function shouldDisableRequestLogging(request: { url: string }) {
   return request.url.startsWith("/api/server/media/playable-voice")
-    || request.url.startsWith("/api/server/insights/worker-observability");
+    || request.url.startsWith("/api/server/insights/worker-observability")
+    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability");
 }

@@ -7,6 +7,7 @@ import {
   AgentUserMemoryErrorCodeSchema,
   AgentUserMemoryItemSchema,
   AgentUserMemoryManualCreateRequestSchema,
+  AgentUserMemoryObservabilitySummaryResponseSchema,
   AgentUserMemoryRunItemStatusSchema,
   AgentUserMemoryRunStatusSchema,
   AgentUserMemorySettingsRequestSchema,
@@ -85,6 +86,20 @@ describe("agent user memory contracts", () => {
       expect(Value.Check(AgentUserMemoryRunItemStatusSchema, status)).toBe(true);
     expect(Value.Check(AgentUserMemoryRunItemStatusSchema, "discovered")).toBe(false);
     expect(Value.Check(AgentUserMemoryRunItemStatusSchema, "deferred")).toBe(false);
+  });
+
+  it("validates the worker summary without exposing customer data", () => {
+    expect(Value.Check(AgentUserMemoryObservabilitySummaryResponseSchema, {
+      observedAt: 1,
+      worker: { health: "healthy", reportedAt: 1, reportedBy: "worker:1" },
+      totals: { enabledTenantCount: 2, dueTenantCount: 1, delayedTenantCount: 0, activeRunCount: 1, expiredLeaseCount: 0, oldestRunnableAt: 1 },
+      last24Hours: {
+        succeededRunCount: 1, partialRunCount: 0, failedRunCount: 0, canceledRunCount: 0,
+        selectedCustomerCount: 10, successCount: 9, failureCount: 0, skippedCount: 1,
+        inputTokens: 100, outputTokens: 20,
+      },
+      trend: [{ date: "2026-08-02", selectedCustomerCount: 10, successCount: 9, failureCount: 0, skippedCount: 1, inputTokens: 100, outputTokens: 20 }],
+    })).toBe(true);
   });
 
   it("exports stable automatic-maintenance error codes", () => {

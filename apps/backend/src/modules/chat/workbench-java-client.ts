@@ -1,4 +1,5 @@
 import type {
+  WorkbenchBroadcastProtectionStatusDto,
   WorkbenchSendMessageResponse,
   WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyAutoGeneralAnswerResponse,
@@ -152,6 +153,9 @@ type JavaRevokeMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  getBroadcastProtectionStatus(input: {
+    uid: number;
+  }): Promise<WorkbenchBroadcastProtectionStatusDto>;
   changeConversationFullAuto(input: {
     /** 0 关闭，1 开启 */
     change: 0 | 1;
@@ -354,6 +358,17 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    getBroadcastProtectionStatus(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/bilin-callback/consume-info?uid=${encodeURIComponent(input.uid)}`,
+        {},
+        logger,
+        "get-broadcast-protection-status",
+        { requireExplicitSuccess: true },
+      ).then((data) => mapJavaBroadcastProtectionStatus(data, logger));
+    },
     changeConversationFullAuto(input) {
       return postJavaEnvelope<boolean>(
         baseUrl,
@@ -1121,7 +1136,7 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
-  options: { timeoutMs?: number } = {},
+  options: { requireExplicitSuccess?: boolean; timeoutMs?: number } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -1133,7 +1148,11 @@ async function postJavaEnvelope<T>(
     options,
   );
 
-  if (!isJavaEnvelopeSuccessful(response)) {
+  const isSuccessful = options.requireExplicitSuccess
+    ? response.success === true
+    : isJavaEnvelopeSuccessful(response);
+
+  if (!isSuccessful) {
     logger.error(
       {
         ...buildJavaLogContext(body),
@@ -1157,6 +1176,43 @@ async function postJavaEnvelope<T>(
   }
 
   return response.data as T;
+}
+
+function mapJavaBroadcastProtectionStatus(
+  data: unknown,
+  logger: AppLogger,
+): WorkbenchBroadcastProtectionStatusDto {
+  if (
+    !isRecord(data) ||
+    !isNonNegativeInteger(data["degradeCallbackCnt"]) ||
+    !isNonNegativeInteger(data["degradeCallbackRate"]) ||
+    !isNonNegativeInteger(data["normalCallbackCnt"]) ||
+    !isNonNegativeInteger(data["normalCallbackRate"])
+  ) {
+    logger.error(
+      {
+        operation: "get-broadcast-protection-status",
+        path: "/third-internal/bilin-callback/consume-info",
+        requestId: getLoggerRequestId(logger),
+      },
+      "上游接口响应异常",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+    );
+  }
+
+  return {
+    degradeCallbackCnt: data["degradeCallbackCnt"],
+    degradeCallbackRate: data["degradeCallbackRate"],
+    normalCallbackCnt: data["normalCallbackCnt"],
+    normalCallbackRate: data["normalCallbackRate"],
+  };
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 async function postJavaPageEnvelope(

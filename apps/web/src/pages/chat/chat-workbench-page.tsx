@@ -117,6 +117,11 @@ import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-
 import { ConversationTicketsPanel } from "@/pages/chat/tickets/conversation-tickets-panel";
 import { TicketCreateDialog } from "@/pages/chat/tickets/ticket-create-dialog";
 import { useTicketCountPolling } from "@/pages/chat/tickets/use-ticket-count-polling";
+import {
+  refreshBroadcastProtection,
+  useBroadcastProtectionPolling,
+  useBroadcastProtectionStore,
+} from "@/pages/chat/broadcast-protection/broadcast-protection-store";
 import { useConversationTicketReminder } from "@/pages/chat/tickets/use-conversation-ticket-reminder";
 import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import { useTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
@@ -284,6 +289,10 @@ function ChatWorkbenchContent({
   onNavigateCustomerPage?: () => void;
 }) {
   useTicketCountPolling();
+  useBroadcastProtectionPolling();
+  const broadcastProtectionStatus = useBroadcastProtectionStore(
+    (state) => state.status,
+  );
   const {
     accounts,
     activeAccountId,
@@ -2126,6 +2135,7 @@ function ChatWorkbenchContent({
     <AccountRail
       accounts={accounts}
       activeAccountId={activeView === "chat" ? activeAccountId : undefined}
+      broadcastProtectionStatus={broadcastProtectionStatus}
       activeNavItem={
         activeView === "customers"
           ? "客户"
@@ -2155,6 +2165,7 @@ function ChatWorkbenchContent({
       onResizeStart={
         isMobileWorkbenchLayout ? undefined : handleAccountRailResizeStart
       }
+      onRefreshBroadcastProtection={refreshBroadcastProtection}
       onSelectAccount={async (accountId) => {
         setMobilePane("list");
         onNavigateChat?.();

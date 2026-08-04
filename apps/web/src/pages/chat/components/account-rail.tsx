@@ -29,6 +29,9 @@ import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
 import { formatUnreadCount } from "@/pages/chat/components/unread-count-badge";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+import type { WorkbenchBroadcastProtectionStatusDto } from "@chatai/contracts";
+import type { BroadcastProtectionRefreshResult } from "@/pages/chat/broadcast-protection/broadcast-protection-store";
+import { BroadcastProtectionNotice } from "@/pages/chat/components/broadcast-protection-notice";
 import {
   type TicketReminderDisplayMode,
   useTicketCountStore,
@@ -74,6 +77,7 @@ type AccountRailProps = {
   accounts: Account[];
   activeAccountId?: string;
   activeNavItem?: string;
+  broadcastProtectionStatus?: WorkbenchBroadcastProtectionStatusDto;
   isCollapsed?: boolean;
   currentEmployee?: EmployeeProfile;
   currentEmployeeId?: string;
@@ -82,6 +86,7 @@ type AccountRailProps = {
   onLogout?: () => void | Promise<void>;
   onNavItemSelect?: (label: string) => void;
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onRefreshBroadcastProtection?: () => Promise<BroadcastProtectionRefreshResult>;
   onSelectAccount: (accountId: string) => void | Promise<void>;
   onOpenSettings?: () => void;
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
@@ -92,6 +97,7 @@ export function AccountRail({
   accounts,
   activeAccountId,
   activeNavItem = "聊天",
+  broadcastProtectionStatus,
   canTakeOverAccount = true,
   isCollapsed = false,
   currentEmployee,
@@ -101,6 +107,7 @@ export function AccountRail({
   onNavItemSelect,
   onOpenSettings,
   onResizeStart,
+  onRefreshBroadcastProtection,
   onSelectAccount,
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
@@ -240,7 +247,17 @@ export function AccountRail({
           </div>
         </ScrollArea>
 
-        <div className="pt-3" data-testid="account-rail-footer">
+        <div
+          className="flex flex-col items-center gap-2 pt-3"
+          data-testid="account-rail-footer"
+        >
+          {broadcastProtectionStatus && onRefreshBroadcastProtection ? (
+            <BroadcastProtectionNotice
+              compact
+              onRefresh={onRefreshBroadcastProtection}
+              status={broadcastProtectionStatus}
+            />
+          ) : null}
           <SignedInAccountMenu
             displayName={currentEmployee?.displayName}
             onLogout={onLogout}
@@ -380,6 +397,14 @@ export function AccountRail({
       </ScrollArea>
 
       <div className="pt-3" data-testid="account-rail-footer">
+        {broadcastProtectionStatus && onRefreshBroadcastProtection ? (
+          <div className="mb-3">
+            <BroadcastProtectionNotice
+              onRefresh={onRefreshBroadcastProtection}
+              status={broadcastProtectionStatus}
+            />
+          </div>
+        ) : null}
         <SignedInAccountMenu
           displayName={currentEmployee?.displayName}
           onLogout={onLogout}

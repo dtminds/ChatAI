@@ -149,7 +149,7 @@ describe("AccountRail", () => {
 
     expect(
       within(screen.getByTestId("account-rail-footer")).getByRole("button", {
-        name: "查看详情",
+        name: "群发保护已激活，查看详情",
       }),
     ).toBeInTheDocument();
     expanded.unmount();

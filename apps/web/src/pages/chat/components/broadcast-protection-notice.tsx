@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { WorkbenchBroadcastProtectionStatusDto } from "@chatai/contracts";
 import {
   ArrowRight01Icon,
-  Clock01Icon,
   Refresh03Icon,
+  TimeQuarterPassIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ type BroadcastProtectionNoticeProps = {
 
 type DetailState = "error" | "idle" | "loading" | "ready";
 
+const BROADCAST_PROTECTION_ICON_URL =
+  "https://b5.bokr.com.cn/dist/ui/shield-lightning.svg";
 export function BroadcastProtectionNotice({
   compact = false,
   onInactive,
@@ -94,7 +96,7 @@ export function BroadcastProtectionNotice({
         <TooltipTrigger asChild>
           <Button
             aria-label="群发保护已激活，查看详情"
-            className="size-9 rounded-[10px] p-0 text-warning shadow-none"
+            className="size-9 rounded-[10px] p-0 shadow-none"
             onClick={() => {
               void refreshDetails();
             }}
@@ -102,12 +104,11 @@ export function BroadcastProtectionNotice({
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon
+            <img
+              alt=""
               aria-hidden="true"
-              color="currentColor"
-              icon={Clock01Icon}
-              size={19}
-              strokeWidth={1.9}
+              className="size-[19px]"
+              src={BROADCAST_PROTECTION_ICON_URL}
             />
           </Button>
         </TooltipTrigger>
@@ -117,42 +118,38 @@ export function BroadcastProtectionNotice({
       </Tooltip>
     </TooltipProvider>
   ) : (
-    <section className="rounded-[12px] border border-warning/30 bg-warning-muted/45 p-3 text-foreground">
-      <div className="flex items-start gap-2.5">
-        <HugeiconsIcon
+    <Button
+      aria-label="群发保护已激活，查看详情"
+      className="h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-[12px] border border-success/30 bg-success-muted/45 p-3 text-left text-foreground shadow-none hover:bg-success-muted/65"
+      onClick={() => {
+        void refreshDetails();
+      }}
+      type="button"
+      variant="ghost"
+    >
+      <span className="flex w-full items-center gap-2.5">
+        <img
+          alt=""
           aria-hidden="true"
-          className="mt-0.5 shrink-0 text-warning"
-          color="currentColor"
-          icon={Clock01Icon}
-          size={19}
-          strokeWidth={1.9}
+          className="size-[19px] shrink-0"
+          src={BROADCAST_PROTECTION_ICON_URL}
         />
-        <div className="min-w-0">
-          <p className="text-[13px] font-semibold leading-5">群发保护已激活</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            检测到大量群发，群发内容已延后展现
-          </p>
-        </div>
-      </div>
-      <Button
-        className="mt-2"
-        onClick={() => {
-          void refreshDetails();
-        }}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        查看详情
+        <span className="min-w-0 flex-1 text-[13px] font-semibold leading-5 text-success">
+          群发保护已激活
+        </span>
         <HugeiconsIcon
           aria-hidden="true"
+          className="shrink-0 text-success"
           color="currentColor"
           icon={ArrowRight01Icon}
           size={15}
           strokeWidth={1.8}
         />
-      </Button>
-    </section>
+      </span>
+      <span className="mt-2 text-xs leading-5 text-muted-foreground">
+        检测到大量群发，群发内容已延后展现
+      </span>
+    </Button>
   );
 
   const eta = formatBroadcastProtectionEta(
@@ -164,30 +161,62 @@ export function BroadcastProtectionNotice({
     <>
       {trigger}
       <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-xl"
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
-            <div className="mb-1 flex size-10 items-center justify-center rounded-[10px] bg-warning-muted/55 text-warning">
-              <HugeiconsIcon
-                aria-hidden="true"
-                color="currentColor"
-                icon={Clock01Icon}
-                size={21}
-                strokeWidth={1.9}
-              />
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-success-muted/55">
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="size-[21px]"
+                  src={BROADCAST_PROTECTION_ICON_URL}
+                />
+              </div>
+              <DialogTitle>群发保护模式</DialogTitle>
             </div>
-            <DialogTitle>群发消息延后显示</DialogTitle>
-            <DialogDescription>
-              检测到大量群发，群发内容正在排队展现
-            </DialogDescription>
           </DialogHeader>
 
+          <section className="space-y-3 py-2 text-sm leading-6 text-muted-foreground">
+            <DialogDescription className="leading-3">
+              检测到消息群发，为保障客服正常收发用户消息，群发内容已延后处理
+            </DialogDescription>
+            <ul className="list-disc space-y-1.5 pl-5">
+              <li>
+                客服正常接待能力已被最大限度保留
+              </li>
+              <li>
+                群发内容会延后出现在聊天记录中，运营和客服应做好信息互通
+              </li>
+              <li>
+                海量群发会导致客户端消息拥挤或丢失，建议尽量分批、错峰进行
+              </li>
+            </ul>
+          </section>
+
           {detailState === "loading" ? (
-            <div
-              className="flex items-center justify-center gap-2 py-7 text-sm text-muted-foreground"
-              role="status"
-            >
-              <Spinner size={16} />
-              正在加载
+            <div className="flex items-center gap-3 rounded-[10px] border border-info/20 bg-info/5 p-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-info text-info-foreground">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={TimeQuarterPassIcon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">预计恢复</p>
+                <div
+                  className="mt-1 flex items-center gap-1.5 text-xs leading-5 text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner size={13} />
+                  正在加载
+                </div>
+              </div>
             </div>
           ) : detailState === "error" ? (
             <div
@@ -215,18 +244,24 @@ export function BroadcastProtectionNotice({
               </Button>
             </div>
           ) : detailState === "ready" ? (
-            <div className="space-y-3">
-              <div className="rounded-[10px] bg-muted/55 p-3">
+            <div className="flex items-center gap-3 rounded-[10px] border border-info/20 bg-info/5 p-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-info text-info-foreground">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={TimeQuarterPassIcon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold">
                   预计恢复：{eta ?? "暂时无法估算"}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  按当前处理速度估算，实际时间可能受后续群发影响
+                  仅为当前估算值，实际时间受群发持续时间和群发消息量级影响
                 </p>
               </div>
-              <p className="text-sm leading-6 text-muted-foreground">
-                客服在工作台发送的消息不受影响，请勿因群发内容暂未出现而重复发送。
-              </p>
             </div>
           ) : null}
 

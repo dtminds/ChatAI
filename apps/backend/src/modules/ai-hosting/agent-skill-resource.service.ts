@@ -127,7 +127,10 @@ export class AgentSkillResourceService {
 
     const types = new Set(variables.map((variable) => variable.type));
     const lookupEntries = await Promise.all(
-      [...types].map(async (type) => [type, await this.loadVariableLookup(uid, type)] as const),
+      [...types].map(async (type) => {
+        const typedVariables = variables.filter((variable) => variable.type === type);
+        return [type, await this.loadVariableLookup(uid, type, typedVariables)] as const;
+      }),
     );
     const lookups = new Map(lookupEntries);
 
@@ -154,6 +157,7 @@ export class AgentSkillResourceService {
   private async loadVariableLookup(
     uid: number,
     type: AgentSkillVariable["type"],
+    variables: readonly AgentSkillVariable[],
   ): Promise<VariableLookup | null> {
     try {
       if (type === "custom_field") {
@@ -197,17 +201,30 @@ export class AgentSkillResourceService {
       }
 
       if (type === "work_tag") {
-        const [groupsResponse, tags] = await Promise.all([
+        // 与前端选择路径对齐：按标签组拉取；同时兼容普通(attr=1)/互斥(attr=2)
+        const groupIds = uniquePositiveNumbers(
+          variables.flatMap((variable) =>
+            variable.type === "work_tag" ? [variable.select_id] : [],
+          ),
+        );
+        const [normalGroups, exclusiveGroups, ...tagPages] = await Promise.all([
           this.dependencies.workTagService.listGroups(uid, {
             attr: 1,
             type: wecomCustomerTagType,
           }),
-          this.listAllWorkTags(uid, wecomCustomerTagType),
+          this.dependencies.workTagService.listGroups(uid, {
+            attr: 2,
+            type: wecomCustomerTagType,
+          }),
+          ...groupIds.map((groupId) =>
+            this.listAllWorkTags(uid, wecomCustomerTagType, groupId),
+          ),
         ]);
-        const groupNames = new Map(
-          groupsResponse.groups.map((group) => [group.id, group.name]),
-        );
-        return buildTagLookup("work_tag", groupNames, tags);
+        const groupNames = new Map<number, string>();
+        for (const group of [...normalGroups.groups, ...exclusiveGroups.groups]) {
+          groupNames.set(group.id, group.name);
+        }
+        return buildTagLookup("work_tag", groupNames, tagPages.flat());
       }
 
       const tags = await this.listAllWorkTags(uid, mallTagType);
@@ -224,12 +241,14 @@ export class AgentSkillResourceService {
   private async listAllWorkTags(
     uid: number,
     type: WorkTagComponentType,
+    groupId?: number,
   ): Promise<WorkTagItem[]> {
     const tags: WorkTagItem[] = [];
     let page = 1;
 
     while (true) {
       const response = await this.dependencies.workTagService.listTags(uid, {
+        ...(groupId != null ? { groupId } : {}),
         page,
         pageSize: workTagPageSize,
         type,

@@ -51,7 +51,7 @@ describe("ai skill incomplete resources", () => {
     });
   });
 
-  it("checks kbId and variable bindings by variableType, skips tools", () => {
+  it("checks toolId, kbId and variable bindings by variableType", () => {
     const content = [
       '<resource type="tool" toolId="" name="订单查询" />',
       '<resource type="knowledge_base" kbId="" name="售后知识" />',
@@ -62,11 +62,13 @@ describe("ai skill incomplete resources", () => {
       '<resource type="variable" variableType="" name="未定类型" />',
       '<resource type="tool" toolId="search_order" name="订单查询" />',
       '<resource type="variable" variableType="work_tag" variableId="12" name="已绑企微" />',
+      '<resource type="variable" variableType="custom_field" variableId="8" name="已绑自定义属性" />',
       '<resource type="variable" variableType="auto_tag" variableKey="g1" name="已绑自动化" />',
     ].join("");
 
     const incomplete = listIncompleteSkillResources(content);
     expect(incomplete.map((item) => item.name)).toEqual([
+      "订单查询",
       "售后知识",
       "企微标签",
       "小店标签",
@@ -122,10 +124,34 @@ describe("ai skill incomplete resources", () => {
     expect(matched).toHaveLength(4);
   });
 
-  it("ignores tool resources even when toolId is empty", () => {
+  it("treats empty toolId as incomplete and keeps filled tool complete", () => {
     expect(
       listIncompleteSkillResources(
         '<resource type="tool" toolId="" name="订单查询" />',
+      ),
+    ).toEqual([
+      expect.objectContaining({ kind: "tool", name: "订单查询" }),
+    ]);
+
+    expect(
+      listIncompleteSkillResources(
+        '<resource type="tool" toolId="search_order" name="订单查询" />',
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("treats empty custom_field variableId as incomplete", () => {
+    expect(
+      listIncompleteSkillResources(
+        '<resource type="variable" variableType="custom_field" variableId="" name="自定义属性" />',
+      ),
+    ).toEqual([
+      expect.objectContaining({ kind: "variable", name: "自定义属性" }),
+    ]);
+
+    expect(
+      listIncompleteSkillResources(
+        '<resource type="variable" variableType="custom_field" variableId="8" name="性别" />',
       ),
     ).toHaveLength(0);
   });

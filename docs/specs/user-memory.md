@@ -25,7 +25,7 @@
 13. 本期没有“立即维护”入口和手工创建新运行 API；开启后等待下一次每日调度。
 14. 不建设客户 pending 队列、全局发现游标、公平轮转、跨日连续消费窗口或“最终消费全部会话”的状态机。
 15. 当日未进入有界候选池、去重后未入选、迟到写入已完成自然日的会话都不结转；这是成本受控抽样的明确取舍。
-16. AI 只返回 `add`、`confirm`、`update`、`remove` 增量操作；服务端执行确定性校验和合并，不建设通用规则引擎。
+16. AI 只返回 `add`、`update`、`remove` 增量操作；已有记忆内容未变化时返回空操作，服务端执行确定性校验和合并，不建设通用规则引擎。
 17. 人工记忆优先。AI 不能修改或删除人工记忆，人工修改发生后，旧模型结果不得覆盖或重新提炼人工时间屏障之前的会话。
 18. 同步推理是首期必须完成的执行模式；火山批量推理在官方 Batch 契约确认后接入，但不得改变抽样、额度和合并语义。
 19. owner/admin 可配置租户级记忆提炼指引，也可从行业模板填充后修改；只保存最终文本，不保存模板 ID。指引只补充行业关注方向，不得覆盖固定分类、证据、安全边界、有效期和 20 条上限。
@@ -666,12 +666,6 @@ KEY idx_logical_session_uid_started (uid, started_at)
 {
   "operations": [
     {
-      "type": "confirm",
-      "id": 2,
-      "sourceSessionId": 510,
-      "evidenceMessageIds": [9101]
-    },
-    {
       "type": "update",
       "id": 4,
       "category": "preference",
@@ -699,7 +693,6 @@ KEY idx_logical_session_uid_started (uid, started_at)
 ```
 
 - `add`：新增 AI 记忆。
-- `confirm`：用新证据确认已有 AI 记忆。
 - `update`：更新已有 AI 记忆。
 - `remove`：新证据明确推翻或使已有 AI 记忆失效。
 
@@ -715,7 +708,7 @@ KEY idx_logical_session_uid_started (uid, started_at)
 - 证据消息属于该来源会话和同一客户。
 - 证据消息在实际送入模型的最后 50 条消息内。
 - 证据角色为 `customer`。
-- `confirm/update/remove` 的目标 ID 存在于当前 AI 记忆。
+- `update/remove` 的目标 ID 存在于当前 AI 记忆。
 - AI 不得引用或修改 manual 条目 ID。
 - 同一响应不得对同一目标 ID 多次操作。
 
@@ -724,7 +717,7 @@ KEY idx_logical_session_uid_started (uid, started_at)
 固定顺序：
 
 ```text
-remove -> update -> confirm -> add
+remove -> update -> add
 ```
 
 任一步失败，整批操作不写入，不做部分成功。
@@ -742,7 +735,7 @@ remove -> update -> confirm -> add
 规则：
 
 - AI add 与人工内容精确重复：不新增。
-- AI add 与 AI 内容精确重复：转为 confirm。
+- AI add 与 AI 内容精确重复：幂等跳过，不更新证据、时间或版本。
 - AI update 与人工内容精确重复：删除该 AI 条目。
 - 合并后 AI-AI 重复：保留较小 ID，证据更新为本次较新证据。
 - 人工新增/编辑与其它有效记忆重复：返回明确错误。
@@ -775,7 +768,7 @@ remove -> update -> confirm -> add
 3. 锁定运行项并验证 `status = submitted`。
 4. 锁定或创建客户行，验证 version、人工时间和自动日期围栏。
 5. 执行结构、证据、去重和数量规则。
-6. JSON 变化时整体更新 JSON 并递增 version；空操作或仅 confirm 未改变内容时可以保持 version。
+6. JSON 变化时整体更新 JSON 并递增 version；空操作或重复 add 不改变内容时保持 version。
 7. 将 `last_auto_quota_date` 单调推进到 run 的 `quota_date`，更新 `last_auto_updated_at`。
 8. 将运行项置为 `succeeded` 并更新运行聚合计数。
 
@@ -950,7 +943,7 @@ Java Agent 运行时：
 - 来源会话数、实际消息数和每会话 50 条截断次数。
 - 成功、失败、跳过、取消和 superseded 数量。
 - 模型请求、Token、耗时和批量任务状态。
-- `add/confirm/update/remove` 数量、空操作和精确去重数量。
+- `add/update/remove` 数量、空操作和精确去重数量。
 - 版本冲突、人工时间冲突、失租拒绝和模型 Schema 错误。
 - 下一调度已过期但没有运行的异常。
 

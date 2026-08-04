@@ -39,7 +39,6 @@ type EvidenceFields = {
 };
 export type UserMemoryAiOperation =
   | ({ type: "add"; category: AgentUserMemoryCategory; content: string; expiresAt: number | null } & EvidenceFields)
-  | ({ type: "confirm"; id: number } & EvidenceFields)
   | ({ type: "update"; id: number; category: AgentUserMemoryCategory; content: string; expiresAt: number | null } & EvidenceFields)
   | ({ type: "remove"; id: number } & EvidenceFields);
 
@@ -221,16 +220,10 @@ export function applyAiMemoryOperations(
     }
   }
 
-  const order = { remove: 0, update: 1, confirm: 2, add: 3 } as const;
+  const order = { remove: 0, update: 1, add: 2 } as const;
   for (const operation of [...operations].sort((a, b) => order[a.type] - order[b.type])) {
     if (operation.type === "remove") {
       document.ai = document.ai.filter((item) => item.id !== operation.id);
-      continue;
-    }
-    if (operation.type === "confirm") {
-      const index = document.ai.findIndex((item) => item.id === operation.id);
-      const current = document.ai[index]!;
-      document.ai[index] = { ...current, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds], updatedAt: context.now };
       continue;
     }
     const content = normalizeUserMemoryContent(operation.content);
@@ -248,11 +241,7 @@ export function applyAiMemoryOperations(
     }
     if (document.manual.some((item) => normalizeUserMemoryContent(item.content) === content)) continue;
     const duplicateIndex = document.ai.findIndex((item) => normalizeUserMemoryContent(item.content) === content);
-    if (duplicateIndex >= 0) {
-      const current = document.ai[duplicateIndex]!;
-      document.ai[duplicateIndex] = { ...current, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds], updatedAt: context.now };
-      continue;
-    }
+    if (duplicateIndex >= 0) continue;
     document.ai.push({ id: document.nextItemId++, category: operation.category, content, createdAt: context.now, updatedAt: context.now, expiresAt, sourceSessionId: operation.sourceSessionId, evidenceMessageIds: [...operation.evidenceMessageIds] });
   }
 

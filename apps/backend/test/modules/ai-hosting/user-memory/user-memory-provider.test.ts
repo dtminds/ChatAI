@@ -36,7 +36,9 @@ describe("user memory prompt", () => {
     expect(systemPrompt).toContain("适用对象、品类、场景或时间范围明确");
     expect(systemPrompt).toContain("不得把局部表达泛化为长期记忆");
     expect(systemPrompt).toContain("单次购买计划只能连同品类、场景和有效期写入 recent_intent");
-    expect(systemPrompt).toContain("confirm 必须有新的、独立的客户直接证据");
+    expect(systemPrompt).toContain("只允许 add/update/remove");
+    expect(systemPrompt).toContain("已有记忆内容未发生变化时返回空操作");
+    expect(systemPrompt).not.toContain("confirm");
   });
   it("accepts strict operation JSON and reports provider usage", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
@@ -63,7 +65,7 @@ describe("user memory prompt", () => {
 
   it("preserves billed token usage when a successful response has invalid model output", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
-      choices: [{ message: { content: "{\"operations\":[{\"type\":\"unsupported\"}]}" } }],
+      choices: [{ message: { content: "{\"operations\":[{\"type\":\"confirm\",\"id\":1,\"sourceSessionId\":3,\"evidenceMessageIds\":[2]}]}" } }],
       usage: { prompt_tokens: 21, completion_tokens: 13 },
     }), { status: 200 }));
     const provider = new VolcengineUserMemoryProvider({ apiKey: "key", baseUrl: "https://ark.example/v3", model: "model" });

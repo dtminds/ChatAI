@@ -95,8 +95,18 @@ describe("user memory domain", () => {
     doc = applyAiMemoryOperations(doc, [{ type: "add", category: "customer_profile", content: "家有儿童。", expiresAt: null, sourceSessionId: 10, evidenceMessageIds: [20] }], context).document;
     expect(doc.ai).toHaveLength(0);
     doc = applyAiMemoryOperations(doc, [{ type: "add", category: "preference", content: "偏好无糖", expiresAt: null, sourceSessionId: 10, evidenceMessageIds: [20] }], context).document;
-    const next = applyAiMemoryOperations(doc, [{ type: "add", category: "preference", content: "偏好无糖。", expiresAt: null, sourceSessionId: 10, evidenceMessageIds: [20] }], { ...context, now: now + 2 }).document;
+    const duplicate = applyAiMemoryOperations(doc, [{ type: "add", category: "preference", content: "偏好无糖。", expiresAt: null, sourceSessionId: 10, evidenceMessageIds: [21] }], {
+      now: now + 2,
+      sessionIds: [10],
+      evidence: [{ messageId: 21, sessionId: 10, senderRole: "customer" }],
+    });
+    const next = duplicate.document;
+    expect(duplicate.changed).toBe(false);
     expect(next.ai).toHaveLength(1);
-    expect(next.ai[0]?.updatedAt).toBe(now + 2);
+    expect(next.ai[0]).toMatchObject({
+      evidenceMessageIds: [20],
+      sourceSessionId: 10,
+      updatedAt: now + 1,
+    });
   });
 });

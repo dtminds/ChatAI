@@ -215,10 +215,10 @@ Steps:
 - [ ] 实现过期过滤、内容校验和固定分类。
 - [ ] 固定 normalize：trim、Unicode 空白压缩、删除末尾连续中英文句读；不做模糊匹配。
 - [ ] 实现人工新增、编辑、编辑 AI 转 manual、删除和 expectedVersion 冲突。
-- [ ] 实现 AI `remove -> update -> confirm -> add` 原子合并。
+- [ ] 实现 AI `remove -> update -> add` 原子合并。
 - [ ] AI 不得操作 manual；同一 AI ID 不得有多个操作。
 - [ ] 证据必须属于运行项来源会话、实际输入消息且角色为 customer。
-- [ ] 测试 AI add 与 manual 重复不新增、与 AI 重复转 confirm、update 与 manual 重复删除 AI、AI-AI 重复保留较小 ID。
+- [ ] 测试 AI add 与 manual 或 AI 重复时幂等跳过、update 与 manual 重复删除 AI、AI-AI 重复保留较小 ID。
 - [ ] 合并后超过 20 条整体失败，不部分写入或静默截断。
 - [ ] `recent_intent` 必须有未来且不超过 180 天的 expiresAt。
 - [ ] 已存 JSON 非法返回 `AGENT_USER_MEMORY_DATA_INVALID`，不得以空文档覆盖。
@@ -416,7 +416,7 @@ Steps:
 - [ ] Prompt 包含当前 manual/ai、固定分类、禁止内容、会话消息和输出 Schema。
 - [ ] Prompt 不包含 UID、客户名或 external ID。
 - [ ] 客服/机器人消息可作上下文，证据只允许 customer 消息。
-- [ ] Parser 只接受 add/confirm/update/remove，最多 40 个 operations；未知字段或完整快照整体拒绝。
+- [ ] Parser 只接受 add/update/remove，最多 40 个 operations；未知字段、confirm 或完整快照整体拒绝。
 - [ ] 围栏事务写 `submitted`、base_memory_version、base_manual_updated_at 后，事务外调用同步模型。
 - [ ] submitted 后崩溃由新持有者重新校验并重新调用；允许重复成本，不误判成功。
 - [ ] 提供商硬限制/持续非法输出使 item 失败，不静默删除某个会话或消息。

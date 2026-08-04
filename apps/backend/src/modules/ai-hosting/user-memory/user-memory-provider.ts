@@ -15,7 +15,6 @@ const EvidenceSchema = Type.Object({
 }, { additionalProperties: false });
 const OutputSchema = Type.Object({ operations: Type.Array(Type.Union([
   Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("add"), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: USER_MEMORY_CONTENT_LIMIT }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
-  Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("confirm"), id: Type.Integer({ minimum: 1 }) }, { additionalProperties: false })], { additionalProperties: false }),
   Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("update"), id: Type.Integer({ minimum: 1 }), category: CategorySchema, content: Type.String({ minLength: 1, maxLength: USER_MEMORY_CONTENT_LIMIT }), expiresAt: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]) }, { additionalProperties: false })], { additionalProperties: false }),
   Type.Composite([EvidenceSchema, Type.Object({ type: Type.Literal("remove"), id: Type.Integer({ minimum: 1 }) }, { additionalProperties: false })], { additionalProperties: false }),
 ]), { maxItems: 40 }) }, { additionalProperties: false });
@@ -55,7 +54,7 @@ export function buildUserMemoryPrompt(input: {
       "仅提取客户本人直接表达、脱离当前会话后仍然准确且对未来电商服务或推荐有价值的事实。不要保存订单物流、待办承诺、单次情绪、诊断或敏感信息；未结投诉或仍在处理中的诉求也不进记忆。",
       "每个 add/update 必须同时满足：信息自身完整；适用对象、品类、场景或时间范围明确；当前订单或会话结束后仍成立，或属于必须过期的近期计划；未来在相同范围内会改变推荐、沟通或服务决策。任一条件不满足都不要保存。",
       "不得把局部表达泛化为长期记忆。仅说“预算 500”“现在不方便接电话”“不喜欢这个”等内容时，不得脱离原场景保存；客户明确表达长期适用范围后才能写入 preference，单次购买计划只能连同品类、场景和有效期写入 recent_intent。",
-      "只允许 add/confirm/update/remove；confirm 必须有新的、独立的客户直接证据，不能仅因旧记忆未被否定而确认；manual 是人工维护来源，不是记忆分类，不得修改或删除 manual。",
+      "只允许 add/update/remove；已有记忆内容未发生变化时返回空操作，不得重复 add；manual 是人工维护来源，不是记忆分类，不得修改或删除 manual。",
       "当前有效 manual 与 ai 合计最多 20 条；空间不足时只能先合并、更新或删除 ai，不得超限新增。",
       "每条记忆 content 必须压缩为不超过 100 个字符的明确短句。",
       "每个操作必须引用一个输入 sessionId 和 1-3 个该会话中 senderRole=customer 的 sourceMessageId。",

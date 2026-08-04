@@ -31,9 +31,7 @@ describe("BroadcastProtectionNotice", () => {
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(
-      await screen.findByText("预计恢复：5～15 分钟"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("预计恢复：15 分钟")).toBeInTheDocument();
   });
 
   it("shows a compact accessible entry that opens the same details", async () => {

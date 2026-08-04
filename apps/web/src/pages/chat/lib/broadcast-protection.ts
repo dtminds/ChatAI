@@ -8,24 +8,24 @@ export function formatBroadcastProtectionEta(
 
   const minutes = Math.ceil(degradeCallbackCnt / degradeCallbackRate);
 
-  if (minutes <= 5) {
-    return "5 分钟内";
-  }
-  if (minutes <= 15) {
-    return "5～15 分钟";
-  }
-  if (minutes <= 30) {
-    return "15～30 分钟";
-  }
-  if (minutes <= 60) {
-    return "30～60 分钟";
-  }
-  if (minutes <= 120) {
-    return "1～2 小时";
-  }
-  if (minutes <= 240) {
-    return "2～4 小时";
+  if (minutes > 120) {
+    return "> 2 小时";
   }
 
-  return "4 小时以上";
+  return formatEtaDuration(minutes);
+}
+
+function formatEtaDuration(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} 分钟`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (remainingMinutes === 0) {
+    return `${hours} 小时`;
+  }
+
+  return `${hours} 小时 ${remainingMinutes} 分钟`;
 }

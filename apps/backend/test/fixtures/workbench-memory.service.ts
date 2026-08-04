@@ -216,6 +216,14 @@ export function createMemoryWorkbenchService() {
     getMe(_subUserId: string) {
       return clone(state.subUser);
     },
+    getBroadcastProtectionStatus(_uid: number) {
+      return {
+        degradeCallbackCnt: 0,
+        degradeCallbackRate: 0,
+        normalCallbackCnt: 0,
+        normalCallbackRate: 0,
+      };
+    },
     listMaterialCollections(
       _subUserId: string,
       request: WorkbenchMaterialCollectionListRequest,

@@ -1314,7 +1314,7 @@ function AgentSettingsFieldLabel({
                 />
               </button>
             </TooltipTrigger>
-            <TooltipContent className="max-w-xs leading-5" side="top" sideOffset={6}>
+            <TooltipContent side="top" sideOffset={6}>
               {tooltip}
             </TooltipContent>
           </Tooltip>

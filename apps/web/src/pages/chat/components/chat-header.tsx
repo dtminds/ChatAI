@@ -300,7 +300,7 @@ function HeaderIconButton({
               <HugeiconsIcon
                 aria-hidden="true"
                 icon={icon}
-                size={16}
+                size={18}
                 strokeWidth={1.8}
               />
               {indicator}

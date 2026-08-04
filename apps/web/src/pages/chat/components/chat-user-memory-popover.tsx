@@ -8,6 +8,7 @@ import {
   AlertCircleIcon,
   ArtificialIntelligence08Icon,
   Brain02Icon,
+  Cancel01Icon,
   CustomerService02Icon,
   Delete02Icon,
   Edit02Icon,
@@ -320,23 +321,40 @@ export function ChatUserMemoryPopover({
               <span className="truncate">{conversation.customerName}</span>
               <span className="shrink-0"> 的记忆</span>
             </h3>
-            {canMaintain && detail ? (
+            <div className="flex shrink-0 items-center">
+              {canMaintain && detail ? (
+                <Button
+                  aria-label="新增"
+                  className="w-8 px-0"
+                  disabled={detail.items.length >= 20 || saving}
+                  onClick={() => setEditor({})}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={PlusSignIcon}
+                    size={15}
+                  />
+                </Button>
+              ) : null}
               <Button
-                aria-label="新增"
+                aria-label="关闭用户记忆"
                 className="w-8 px-0"
-                disabled={detail.items.length >= 20 || saving}
-                onClick={() => setEditor({})}
+                onClick={() => setOpen(false)}
                 size="sm"
                 type="button"
                 variant="ghost"
               >
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={PlusSignIcon}
-                  size={15}
+                  icon={Cancel01Icon}
+                  size={16}
+                  strokeWidth={1.8}
                 />
               </Button>
-            ) : null}
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">

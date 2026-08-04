@@ -88,7 +88,7 @@ describe("chat user-memory popover", () => {
     await user.click(screen.getByRole("button", { name: "聊天输入区" }));
     expect(screen.getByText("暂无记忆")).toBeInTheDocument();
 
-    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "关闭用户记忆" }));
     await waitFor(() =>
       expect(screen.queryByText("暂无记忆")).not.toBeInTheDocument(),
     );

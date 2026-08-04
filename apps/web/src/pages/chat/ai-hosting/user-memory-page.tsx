@@ -208,10 +208,10 @@ export function UserMemoryPage() {
     finally { setPaging(false); }
   }
 
-  return <AiHostingLayout title="用户记忆">
+  return <AiHostingLayout title="客户记忆">
     <div className="space-y-6">
       <AiHostingPageHeader
-        title="用户记忆"
+        title="客户记忆"
         titleActions={overview ? <div className="flex items-center gap-2">
           <div className="flex h-8 items-center gap-2 rounded-full bg-muted px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} className="data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive" disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div>
           <Button

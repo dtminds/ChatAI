@@ -81,7 +81,7 @@ describe("chat user-memory popover", () => {
       </div>,
     );
 
-    const trigger = screen.getByRole("button", { name: "用户记忆" });
+    const trigger = screen.getByRole("button", { name: "客户记忆" });
     await user.click(trigger);
     expect(await screen.findByText("暂无记忆")).toBeInTheDocument();
 
@@ -98,9 +98,9 @@ describe("chat user-memory popover", () => {
     const user = userEvent.setup();
     render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.hover(screen.getByRole("button", { name: "用户记忆" }));
+    await user.hover(screen.getByRole("button", { name: "客户记忆" }));
 
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("用户记忆");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("客户记忆");
   });
 
   it("orders memories by descending id and shows details and actions on hover", async () => {
@@ -135,7 +135,7 @@ describe("chat user-memory popover", () => {
     });
     render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     const rows = await screen.findAllByTestId("user-memory-row");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("最新的近期购买计划完整内容");
@@ -195,7 +195,7 @@ describe("chat user-memory popover", () => {
     });
     render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     await user.click(await screen.findByRole("button", { name: "新增" }));
     const dialog = await screen.findByRole("dialog", { name: "创建新记忆" });
     expect(
@@ -230,7 +230,7 @@ describe("chat user-memory popover", () => {
     });
     render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     await user.click(await screen.findByRole("button", { name: "新增" }));
     await user.click(screen.getByRole("radio", { name: "近期意向" }));
     await user.hover(screen.getByRole("button", { name: "有效期说明" }));
@@ -289,7 +289,7 @@ describe("chat user-memory popover", () => {
     service.createUserMemoryItem.mockReturnValue(pendingSave.promise);
     const view = render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     await user.click(await screen.findByRole("button", { name: "新增" }));
     await user.type(screen.getByRole("textbox", { name: "记忆内容" }), "第一位客户的新记忆");
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -361,7 +361,7 @@ describe("chat user-memory popover", () => {
     service.deleteUserMemoryItem.mockReturnValue(pendingDelete.promise);
     const view = render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     const firstRow = await screen.findByTestId("user-memory-row");
     await user.hover(firstRow);
     const detailCard = await screen.findByTestId("user-memory-detail-card-1");
@@ -416,7 +416,7 @@ describe("chat user-memory popover", () => {
     service.getUserMemoryEvidence.mockReturnValue(pendingEvidence.promise);
     const view = render(<ChatUserMemoryPopover conversation={conversation} />);
 
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     const firstRow = await screen.findByTestId("user-memory-row");
     await user.hover(firstRow);
     const firstCard = await screen.findByTestId("user-memory-detail-card-1");

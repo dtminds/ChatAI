@@ -219,9 +219,9 @@ describe("ChatPanel", () => {
     ).toBe("true");
 
     expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     expect(screen.getByTestId("user-memory-reserved-rail")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "用户记忆" }));
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
     expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
 
     unmount();

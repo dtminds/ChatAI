@@ -284,7 +284,7 @@ export function ChatUserMemoryPopover({
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
                 <Button
-                  aria-label="用户记忆"
+                  aria-label="客户记忆"
                   className={cn(
                     "size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground",
                     open && "bg-accent text-accent-foreground",
@@ -302,7 +302,7 @@ export function ChatUserMemoryPopover({
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>
-            <TooltipContent>用户记忆</TooltipContent>
+            <TooltipContent>客户记忆</TooltipContent>
           </Tooltip>
         </TooltipProvider>
         <PopoverContent

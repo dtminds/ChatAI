@@ -44,7 +44,7 @@ const aiHostingNavItems = [
   },
   {
     icon: Brain02Icon,
-    label: "用户记忆",
+    label: "客户记忆",
     to: "/chat/ai-hosting/user-memory",
   },
   {

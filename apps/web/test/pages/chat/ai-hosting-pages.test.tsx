@@ -1138,7 +1138,7 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/skills",
     );
-    expect(screen.getByRole("link", { name: "用户记忆" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "客户记忆" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/user-memory",
     );

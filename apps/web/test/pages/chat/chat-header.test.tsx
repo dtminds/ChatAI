@@ -199,7 +199,7 @@ describe("ChatHeader", () => {
 
     const buttons = screen.getAllByRole("button");
     const memoryIndex = buttons.indexOf(
-      screen.getByRole("button", { name: "用户记忆" }),
+      screen.getByRole("button", { name: "客户记忆" }),
     );
     const moreIndex = buttons.indexOf(
       screen.getByRole("button", { name: "更多会话操作" }),

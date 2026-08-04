@@ -180,7 +180,7 @@ export function BroadcastProtectionNotice({
           </DialogHeader>
 
           <section className="space-y-3 py-2 text-sm leading-6 text-muted-foreground">
-            <DialogDescription className="leading-3">
+            <DialogDescription className="leading-4">
               检测到消息群发，为保障客服正常收发用户消息，群发内容已延后处理
             </DialogDescription>
             <ul className="list-disc space-y-1.5 pl-5">

@@ -760,6 +760,7 @@ export function matchIncompleteResourcesToRecommendations(
 export function buildEditableResourcesFromRecommendations(
   recommendations: readonly SkillRecommendBinding[],
 ): Array<{
+  description: string;
   fieldLabel: string;
   segment: SkillContentResourceSegment;
   variableType: SkillVariableType | null;
@@ -777,6 +778,7 @@ export function buildEditableResourcesFromRecommendations(
     );
 
     return {
+      description: recommend.description,
       fieldLabel: recommend.title,
       segment: {
         id: `recommend:${index}`,

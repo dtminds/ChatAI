@@ -156,6 +156,12 @@ describe("ai skill incomplete resources", () => {
       "订单查询",
       "美妆护肤",
     ]);
+    expect(editable.map((item) => item.description)).toEqual([
+      "建议选择包含客户基础信息的标签",
+      "无 variableType 时按标题推断",
+      "查订单",
+      "知识库",
+    ]);
     expect(editable.map((item) => item.segment.kind)).toEqual([
       "variable",
       "variable",

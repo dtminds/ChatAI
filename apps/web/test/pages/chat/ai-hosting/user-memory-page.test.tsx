@@ -63,6 +63,26 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({ enabled: true }));
   });
 
+  it("loads only the active tab data and refreshes it when returning to the tab", async () => {
+    const user = userEvent.setup();
+    render(<UserMemoryPage />);
+
+    await screen.findByRole("switch", { name: "用户记忆" });
+    expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(1);
+    expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(1);
+    expect(service.listUserMemoryCustomers).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "记忆明细" }));
+    await waitFor(() => expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(1));
+    expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(1);
+    expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("tab", { name: "概览" }));
+    await waitFor(() => expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(2));
+    expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(2);
+    expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps settings read-only for viewers", async () => {
     useAuthStore.getState().setSession({ accountType: "sub", displayName: "访客", permissions: ["chat.access"], role: "viewer", subUserId: "102", uid: 1 });
     render(<UserMemoryPage />);
@@ -196,21 +216,6 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({
       extractionInstruction: "",
     }));
-  });
-
-  it("can refresh the same customer search without issuing requests on every keystroke", async () => {
-    const user = userEvent.setup();
-    render(<UserMemoryPage />);
-    await screen.findByRole("switch", { name: "用户记忆" });
-    await user.click(screen.getByRole("tab", { name: "记忆明细" }));
-    const input = screen.getByRole("textbox", { name: "搜索客户" });
-    fireEvent.change(input, { target: { value: "张三" } });
-    expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    await waitFor(() => expect(service.listUserMemoryCustomers).toHaveBeenCalledWith({ page: 1, pageSize: 20, query: "张三" }));
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    await waitFor(() => expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(3));
   });
 
   it("paginates run items beyond the first 100 customers", async () => {
@@ -420,7 +425,6 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.listUserMemoryCustomers).toHaveBeenLastCalledWith({
       page: 2,
       pageSize: 20,
-      query: undefined,
     }));
     expect(await screen.findByText("第二页客户")).toBeInTheDocument();
     expect(screen.queryByText("第一页客户")).not.toBeInTheDocument();

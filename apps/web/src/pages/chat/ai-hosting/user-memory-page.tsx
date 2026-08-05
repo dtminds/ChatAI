@@ -1,5 +1,5 @@
 import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse } from "@chatai/contracts";
-import { GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, Search01Icon, Settings03Icon, TimeHalfPassIcon, ViewIcon } from "@hugeicons/core-free-icons";
+import { GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, Settings03Icon, TimeHalfPassIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -31,26 +30,27 @@ import { UserMemoryObservability } from "./user-memory-observability";
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
 type CustomerSelection = Pick<Customer, "customerName" | "platform" | "thirdExternalUserId"> & Partial<Pick<Customer, "avatarUrl" | "memoryCount" | "updatedAt">>;
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
+type UserMemoryTab = "overview" | "customers" | "observability";
 const USER_MEMORY_CUSTOMER_PAGE_SIZE = 20;
 export function UserMemoryPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const canManage = canManageAiHostingAgents(role);
   const canMaintain = canMaintainUserMemory(role);
   const [overview, setOverview] = useState<AgentUserMemoryOverviewResponse>();
+  const [activeTab, setActiveTab] = useState<UserMemoryTab>("overview");
   const [runs, setRuns] = useState<AgentUserMemoryRun[]>([]);
   const [runNextCursor, setRunNextCursor] = useState<string>();
   const [runDetail, setRunDetail] = useState<AgentUserMemoryRunDetailResponse>();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerPage, setCustomerPage] = useState(1);
   const [customerTotal, setCustomerTotal] = useState(0);
-  const [appliedQuery, setAppliedQuery] = useState("");
-  const [searchRevision, setSearchRevision] = useState(0);
   const [selected, setSelected] = useState<CustomerSelection>();
   const [detail, setDetail] = useState<AgentUserMemoryCustomerDetailResponse>();
   const [detailError, setDetailError] = useState(false);
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [customerLoading, setCustomerLoading] = useState(true);
+  const [customerError, setCustomerError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [paging, setPaging] = useState(false);
   const activeCustomerKey = useRef<string | undefined>(undefined);
@@ -59,24 +59,37 @@ export function UserMemoryPage() {
   const [evidence, setEvidence] = useState<Evidence>();
   const [instructionOpen, setInstructionOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setError(false);
+  const loadOverview = useCallback(async () => {
+    setError(false); setLoading(true);
     try {
-      const [nextOverview, nextRuns, nextCustomers] = await Promise.all([
-        getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 }), listUserMemoryCustomers({ page: 1, pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE, query: appliedQuery || undefined }),
+      const [nextOverview, nextRuns] = await Promise.all([
+        getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 }),
       ]);
-      setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor); setCustomers(nextCustomers.items); setCustomerPage(nextCustomers.page); setCustomerTotal(nextCustomers.total);
+      setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor);
     } catch { setError(true); }
     finally { setLoading(false); }
-  }, [appliedQuery, searchRevision]);
-  useEffect(() => { void load(); }, [load]);
+  }, []);
+  const loadCustomers = useCallback(async () => {
+    setCustomerError(false); setCustomerLoading(true);
+    try {
+      const nextCustomers = await listUserMemoryCustomers({ page: 1, pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE });
+      setCustomers(nextCustomers.items); setCustomerPage(nextCustomers.page); setCustomerTotal(nextCustomers.total);
+    } catch { setCustomerError(true); }
+    finally { setCustomerLoading(false); }
+  }, []);
   useEffect(() => {
-    if (!overview?.activeRun) return;
+    if (activeTab === "overview") void loadOverview();
+  }, [activeTab, loadOverview]);
+  useEffect(() => {
+    if (activeTab === "customers") void loadCustomers();
+  }, [activeTab, loadCustomers]);
+  useEffect(() => {
+    if (activeTab !== "overview" || !overview?.activeRun) return;
     const timer = window.setInterval(() => void Promise.all([getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 })])
       .then(([nextOverview, nextRuns]) => { setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor); })
       .catch(() => undefined), 10_000);
     return () => window.clearInterval(timer);
-  }, [overview?.activeRun?.id]);
+  }, [activeTab, overview?.activeRun?.id]);
 
   async function chooseCustomer(customer: CustomerSelection) {
     const key = `${customer.platform}:${customer.thirdExternalUserId}`;
@@ -88,13 +101,6 @@ export function UserMemoryPage() {
     } catch {
       if (activeCustomerKey.current === key) { setDetailError(true); toast.error("加载失败"); }
     }
-  }
-  function searchCustomers() {
-    const nextQuery = query.trim();
-    activeCustomerKey.current = undefined;
-    setSelected(undefined); setDetail(undefined); setDetailError(false);
-    if (nextQuery === appliedQuery) setSearchRevision((value) => value + 1);
-    else setAppliedQuery(nextQuery);
   }
   async function reloadSelectedCustomer() {
     if (!selected) return;
@@ -134,14 +140,14 @@ export function UserMemoryPage() {
       const next = editor?.item
         ? await updateUserMemoryItem(selected.thirdExternalUserId, editor.item.id, { ...input, expectedVersion: detail.version })
         : await createUserMemoryItem(selected.thirdExternalUserId, { ...input, expectedVersion: detail.version });
-      setDetail(next); setEditor(undefined); toast.success("已保存"); await load();
+      setDetail(next); setEditor(undefined); toast.success("已保存"); await loadCustomers();
     } catch (error) { await handleVersionConflict(error, "保存失败"); }
     finally { setSaving(false); }
   }
   async function removeMemory() {
     if (!selected || !detail || !deleting) return;
     setSaving(true);
-    try { setDetail(await deleteUserMemoryItem(selected.thirdExternalUserId, deleting.id, { expectedVersion: detail.version })); setDeleting(undefined); toast.success("已删除"); await load(); }
+    try { setDetail(await deleteUserMemoryItem(selected.thirdExternalUserId, deleting.id, { expectedVersion: detail.version })); setDeleting(undefined); toast.success("已删除"); await loadCustomers(); }
     catch (error) { await handleVersionConflict(error, "删除失败"); }
     finally { setSaving(false); }
   }
@@ -164,7 +170,6 @@ export function UserMemoryPage() {
       const result = await listUserMemoryCustomers({
         page: nextPage,
         pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE,
-        query: appliedQuery || undefined,
       });
       setCustomers(result.items);
       setCustomerPage(result.page);
@@ -207,25 +212,21 @@ export function UserMemoryPage() {
         </div> : undefined}
         description="AI 自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户"
       />
-      <Tabs defaultValue="overview">
+      <Tabs onValueChange={(value) => setActiveTab(value as UserMemoryTab)} value={activeTab}>
         <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger>{overview?.canViewWorkerObservability ? <TabsTrigger value="observability" variant="underline">运行观测</TabsTrigger> : null}</TabsList>
         <TabsContent className="pt-5" value="overview">
-          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview runs={runs} canViewDetails={canManage} loadingMore={paging} hasMore={Boolean(runNextCursor)} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
+          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={loadOverview} /> : <Overview runs={runs} canViewDetails={canManage} loadingMore={paging} hasMore={Boolean(runNextCursor)} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
         </TabsContent>
         <TabsContent className="pt-5" value="customers">
           <MemoryCustomerList
-            appliedQuery={appliedQuery}
             customers={customers}
-            error={error}
-            loading={loading}
+            error={customerError}
+            loading={customerLoading}
             page={customerPage}
             paging={paging}
-            query={query}
             onOpenCustomer={(customer) => void chooseCustomer(customer)}
             onPageChange={(page) => void changeCustomerPage(page)}
-            onQueryChange={setQuery}
-            onRetry={load}
-            onSearch={searchCustomers}
+            onRetry={loadCustomers}
             total={customerTotal}
           />
         </TabsContent>
@@ -313,7 +314,16 @@ function Overview({ runs, canViewDetails, loadingMore, hasMore, onLoadMore, onSh
                     <TableCell className="py-4">{run.selectedCustomerCount}</TableCell>
                     <TableCell className="py-4">{runMemoryChangeLabel(run)}</TableCell>
                     <TableCell className="py-4 text-right">
-                      <Button className="h-8 rounded-[8px]" disabled={!canViewDetails} onClick={() => onShowDetail(run.id)} size="sm" variant="outline">详情</Button>
+                      <Button
+                        aria-label="详情"
+                        className="size-8 p-0 text-muted-foreground"
+                        disabled={!canViewDetails}
+                        onClick={() => onShowDetail(run.id)}
+                        size="icon"
+                        variant="ghost"
+                      >
+                        <HugeiconsIcon icon={ViewIcon} size={18} strokeWidth={1.8} />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -449,7 +459,7 @@ function TrendLegend({ color, label }: { color: string; label: string }) {
   );
 }
 
-function MemoryCustomerList({ appliedQuery, customers, error, loading, page, paging, query, total, onOpenCustomer, onPageChange, onQueryChange, onRetry, onSearch }: { appliedQuery: string; customers: Customer[]; error: boolean; loading: boolean; page: number; paging: boolean; query: string; total: number; onOpenCustomer: (customer: Customer) => void; onPageChange: (page: number) => void; onQueryChange: (value: string) => void; onRetry: () => void; onSearch: () => void }) {
+function MemoryCustomerList({ customers, error, loading, page, paging, total, onOpenCustomer, onPageChange, onRetry }: { customers: Customer[]; error: boolean; loading: boolean; page: number; paging: boolean; total: number; onOpenCustomer: (customer: Customer) => void; onPageChange: (page: number) => void; onRetry: () => void }) {
   const { activePage, totalPages } = resolveTablePagination({
     page,
     pageSize: USER_MEMORY_CUSTOMER_PAGE_SIZE,
@@ -459,32 +469,6 @@ function MemoryCustomerList({ appliedQuery, customers, error, loading, page, pag
     .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <div className="relative w-[280px] max-w-full flex-1 sm:flex-none">
-            <HugeiconsIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              color="currentColor"
-              icon={Search01Icon}
-              size={17}
-              strokeWidth={1.8}
-            />
-            <Input
-              aria-label="搜索客户"
-              className="h-10 rounded-[8px] pl-9"
-              onChange={(event) => onQueryChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") onSearch();
-              }}
-              placeholder="搜索客户"
-              value={query}
-            />
-          </div>
-          <Button className="h-10 rounded-[8px]" onClick={onSearch} variant="outline">
-            搜索
-          </Button>
-        </div>
-      </div>
       <div className="overflow-x-auto">
         <Table aria-label="客户记忆" className="min-w-[760px] table-fixed">
           <TableHeader>
@@ -527,11 +511,6 @@ function MemoryCustomerList({ appliedQuery, customers, error, loading, page, pag
                   </TableCell>
                   <TableCell className="px-4 py-4">
                     <span className="text-sm">{formatUpdatedAt(customer.updatedAt)}</span>
-                    {customer.lastAutoUpdatedAt ? (
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        自动维护 {formatUpdatedAt(customer.lastAutoUpdatedAt)}
-                      </span>
-                    ) : null}
                   </TableCell>
                   <TableCell className="px-4 py-4 text-right">
                     <Button
@@ -552,7 +531,7 @@ function MemoryCustomerList({ appliedQuery, customers, error, loading, page, pag
                   className="py-10 text-center text-sm text-muted-foreground"
                   colSpan={4}
                 >
-                  {appliedQuery ? "暂无匹配客户" : "暂无客户记忆"}
+                  暂无客户记忆
                 </TableCell>
               </TableRow>
             )}

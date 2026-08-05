@@ -26,7 +26,7 @@ const CustomerParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ mi
 const CustomerItemParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ minLength: 1, maxLength: 128 }), itemId: NumericStringSchema });
 const RunsQuerySchema = Type.Object({ cursor: Type.Optional(Type.String()), pageSize: Type.Optional(NumericStringSchema) });
 const RunDetailQuerySchema = Type.Object({ itemCursor: Type.Optional(Type.String()), itemPageSize: Type.Optional(NumericStringSchema), status: Type.Optional(AgentUserMemoryRunItemStatusSchema) });
-const CustomersQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema), query: Type.Optional(Type.String()) });
+const CustomersQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema) });
 const ObservabilityTenantsQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema), uid: Type.Optional(NumericStringSchema) });
 
 type RunParams = Static<typeof RunParamsSchema>;
@@ -98,7 +98,7 @@ export async function registerUserMemoryRoutes(app: FastifyInstance, observerSub
   }, async (request) => {
     const scope = getAuthenticatedWorkbenchScope(request.user);
     return apiSuccess(await createService(app, request).listCustomers(scope.uid, scope.platform, request.user.subUserId, request.user.roles ?? [], {
-      page: parseOptionalInteger(request.query.page), pageSize: parseOptionalInteger(request.query.pageSize), query: request.query.query,
+      page: parseOptionalInteger(request.query.page), pageSize: parseOptionalInteger(request.query.pageSize),
     }));
   });
 

@@ -30,7 +30,6 @@ describe("user memory service policies", () => {
   it("scopes customer-memory pagination to the current tenant and operator seats", () => {
     const db = createCompileOnlyDb();
     const adminQuery = buildUserMemoryCustomerListQuery(db, {
-      keyword: "%_",
       platform: 5,
       uid: 272,
     }).select("memory.id").compile();
@@ -45,7 +44,6 @@ describe("user memory service policies", () => {
     expect(adminQuery.sql.toLowerCase()).toContain("json_length(memory.memories_json");
     expect(adminQuery.sql).not.toContain("relation.sub_id");
     expect(adminQuery.parameters).toContain(5);
-    expect(adminQuery.parameters).toContain("%\\%\\_%");
     expect(operatorQuery.sql).toContain("relation.sub_id = ?");
     expect(operatorQuery.parameters).toContain(101);
   });

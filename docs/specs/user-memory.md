@@ -85,7 +85,7 @@ Agent 管理
 页面复用 `AiHostingLayout`，包含两个页签：
 
 1. **运行概览**：功能开关、调度时间、套餐额度、当前/最近运行和实际记忆变更。
-2. **记忆管理**：客户搜索、记忆查看、人工新增、编辑、删除和 AI 证据查看。
+2. **记忆管理**：客户分页查看、记忆查看、人工新增、编辑、删除和 AI 证据查看。
 
 ### 3.2 运行概览
 
@@ -109,7 +109,7 @@ Agent 管理
 
 ### 3.3 记忆管理
 
-- 复用现有客户访问范围，按记忆更新时间分页和搜索已有记忆的客户。
+- 复用现有客户访问范围，按记忆更新时间分页查看已有记忆的客户，不提供搜索。
 - 客户、记忆和访问范围必须在同一分页查询中完成，禁止逐客户 N+1 查询。
 - 展示当前有效记忆数量，例如 `6 / 20`。
 - 客户记忆明细统一按记忆项 `id DESC` 展示。
@@ -836,7 +836,7 @@ POST /api/server/ai-hosting/user-memory/runs
 ### 11.3 客户记忆管理
 
 ```http
-GET    /api/server/ai-hosting/user-memory/customers?query=&page=1&pageSize=20
+GET    /api/server/ai-hosting/user-memory/customers?page=1&pageSize=20
 GET    /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId?platform=5
 GET    /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items/:itemId/evidence?platform=5
 POST   /api/server/ai-hosting/user-memory/customers/:thirdExternalUserId/items?platform=5

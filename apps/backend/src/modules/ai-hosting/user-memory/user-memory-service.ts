@@ -184,7 +184,7 @@ export class UserMemoryService {
     return { messages };
   }
 
-  async listCustomers(uid: number, platform: number, subUserId: string, roles: string[], options: { page?: number; pageSize?: number; query?: string }): Promise<AgentUserMemoryCustomerListResponse> {
+  async listCustomers(uid: number, platform: number, subUserId: string, roles: string[], options: { page?: number; pageSize?: number }): Promise<AgentUserMemoryCustomerListResponse> {
     const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
     const requestedPage = Math.max(1, options.page ?? 1);
     const canViewAll = roles.includes("owner") || roles.includes("admin");
@@ -193,9 +193,7 @@ export class UserMemoryService {
       return { items: [], page: 1, pageSize, total: 0 };
     }
 
-    const keyword = options.query?.trim();
     const query = buildUserMemoryCustomerListQuery(this.db, {
-      keyword,
       platform,
       subUserId: canViewAll ? undefined : subUserNumericId,
       uid,
@@ -306,7 +304,7 @@ export class UserMemoryService {
 
 export function buildUserMemoryCustomerListQuery(
   db: Kysely<Database>,
-  input: { keyword?: string; platform: number; subUserId?: number; uid: number },
+  input: { platform: number; subUserId?: number; uid: number },
 ) {
   let query = db
     .selectFrom("xy_wap_embed_agent_user_memory as memory")
@@ -340,17 +338,6 @@ export function buildUserMemoryCustomerListQuery(
         AND bind.third_external_userid = memory.third_external_userid
         AND relation.sub_id = ${input.subUserId}
     )`);
-  }
-
-  if (input.keyword) {
-    const pattern = `%${escapeLikeKeyword(input.keyword)}%`;
-    query = query.where((eb) =>
-      eb.or([
-        eb("contact.name", "like", pattern),
-        eb("contact.real_name", "like", pattern),
-        eb("contact.third_external_userid", "like", pattern),
-      ]),
-    );
   }
 
   return query;
@@ -407,9 +394,6 @@ function isDuplicateKeyError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const value = error as { code?: unknown; errno?: unknown };
   return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
-}
-function escapeLikeKeyword(keyword: string) {
-  return keyword.replace(/[\\%_]/g, "\\$&");
 }
 export function summarizeEvidenceContent(content: Record<string, unknown>) {
   for (const key of ["text", "content", "title", "transVoiceText", "description", "fileName"]) {

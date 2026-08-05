@@ -37,7 +37,7 @@ export async function listUserMemoryRuns(params: { cursor?: string; pageSize?: n
 export async function getUserMemoryRun(runId: number, params: { itemCursor?: string; itemPageSize?: number; status?: AgentUserMemoryRunItemStatus } = {}) {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunDetailResponse>>(`/server/ai-hosting/user-memory/runs/${runId}${queryString(params)}`)).data;
 }
-export async function listUserMemoryCustomers(params: { page?: number; pageSize?: number; query?: string } = {}) {
+export async function listUserMemoryCustomers(params: { page?: number; pageSize?: number } = {}) {
   return (await http.get<ApiSuccessEnvelope<AgentUserMemoryCustomerListResponse>>(`/server/ai-hosting/user-memory/customers${queryString(params)}`)).data;
 }
 export async function getUserMemoryCustomer(externalId: string) {

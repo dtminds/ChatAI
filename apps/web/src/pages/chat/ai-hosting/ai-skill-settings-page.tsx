@@ -21,6 +21,7 @@ import {
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
   AGENT_SKILL_TOOL_CATALOG,
+  AGENT_SKILL_VISIBLE_TOOL_CATALOG,
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingAgentResourceInvalidReason,
   type AgentSkillResources,
@@ -167,7 +168,7 @@ const insertDialogMeta: Record<
 const staticInsertItems: Partial<
   Record<ResourceSectionId, readonly ResourceCatalogItem[]>
 > = {
-  tools: AGENT_SKILL_TOOL_CATALOG.map((tool) => ({
+  tools: AGENT_SKILL_VISIBLE_TOOL_CATALOG.map((tool) => ({
     description: tool.description,
     icon: ApiIcon,
     id: tool.id,

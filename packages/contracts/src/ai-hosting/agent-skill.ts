@@ -37,6 +37,17 @@ export const AGENT_SKILL_TOOL_CATALOG = [
   },
 ] as const;
 
+/** 暂时不在插入/选择工具列表展示；目录仍保留以便已有技能解析 */
+export const AGENT_SKILL_HIDDEN_TOOL_IDS = ["bind_order"] as const;
+
+export function isAgentSkillToolVisible(toolId: string) {
+  return !(AGENT_SKILL_HIDDEN_TOOL_IDS as readonly string[]).includes(toolId);
+}
+
+export const AGENT_SKILL_VISIBLE_TOOL_CATALOG = AGENT_SKILL_TOOL_CATALOG.filter(
+  (tool) => isAgentSkillToolVisible(tool.id),
+);
+
 export function getAgentSkillContentCharacterCount(value: string) {
   const resourcePattern = /<resource\b[^>]*\/>/g;
   let characterCount = 0;

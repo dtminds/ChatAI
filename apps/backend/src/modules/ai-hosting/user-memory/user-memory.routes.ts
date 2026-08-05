@@ -21,6 +21,7 @@ import { createUserMemoryService } from "./user-memory-service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 const RunParamsSchema = Type.Object({ runId: NumericStringSchema });
+const ObservabilityTenantParamsSchema = Type.Object({ uid: NumericStringSchema });
 const CustomerParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ minLength: 1, maxLength: 128 }) });
 const CustomerItemParamsSchema = Type.Object({ thirdExternalUserId: Type.String({ minLength: 1, maxLength: 128 }), itemId: NumericStringSchema });
 const RunsQuerySchema = Type.Object({ cursor: Type.Optional(Type.String()), pageSize: Type.Optional(NumericStringSchema) });
@@ -29,6 +30,7 @@ const CustomersQuerySchema = Type.Object({ page: Type.Optional(NumericStringSche
 const ObservabilityTenantsQuerySchema = Type.Object({ page: Type.Optional(NumericStringSchema), pageSize: Type.Optional(NumericStringSchema), uid: Type.Optional(NumericStringSchema) });
 
 type RunParams = Static<typeof RunParamsSchema>;
+type ObservabilityTenantParams = Static<typeof ObservabilityTenantParamsSchema>;
 type CustomerParams = Static<typeof CustomerParamsSchema>;
 type CustomerItemParams = Static<typeof CustomerItemParamsSchema>;
 type RunsQuery = Static<typeof RunsQuerySchema>;
@@ -58,6 +60,17 @@ export async function registerUserMemoryRoutes(app: FastifyInstance, observerSub
     }));
   });
 
+  app.get<{ Params: ObservabilityTenantParams; Querystring: RunsQuery }>("/api/server/ai-hosting/user-memory/observability/tenants/:uid/runs", {
+    preHandler: app.authenticate, schema: { params: ObservabilityTenantParamsSchema, querystring: RunsQuerySchema },
+  }, async (request, reply) => {
+    assertObserve(request, observerSubjects);
+    reply.header("Cache-Control", "no-store");
+    return apiSuccess(await createUserMemoryService(app.db).listRuns(parsePositiveInteger(request.params.uid, "UID 参数无效"), {
+      cursor: request.query.cursor,
+      pageSize: parseOptionalInteger(request.query.pageSize),
+    }));
+  });
+
   app.put<{ Body: AgentUserMemorySettingsRequest }>("/api/server/ai-hosting/user-memory/settings", {
     preHandler: app.authenticate, schema: { body: AgentUserMemorySettingsRequestSchema },
   }, async (request) => {
@@ -73,15 +86,11 @@ export async function registerUserMemoryRoutes(app: FastifyInstance, observerSub
 
   app.get<{ Params: RunParams; Querystring: RunDetailQuery }>("/api/server/ai-hosting/user-memory/runs/:runId", {
     preHandler: app.authenticate, schema: { params: RunParamsSchema, querystring: RunDetailQuerySchema },
-  }, async (request) => apiSuccess(await createService(app, request).getRunDetail(request.user.uid, Number(request.params.runId), {
-    itemCursor: request.query.itemCursor, itemPageSize: parseOptionalInteger(request.query.itemPageSize), status: request.query.status,
-  })));
-
-  app.post<{ Params: RunParams }>("/api/server/ai-hosting/user-memory/runs/:runId/retry-failed", {
-    preHandler: app.authenticate, schema: { params: RunParamsSchema },
   }, async (request) => {
     assertManage(request);
-    return apiSuccess(await createService(app, request).retryFailed(request.user.uid, Number(request.params.runId)));
+    return apiSuccess(await createService(app, request).getRunDetail(request.user.uid, Number(request.params.runId), {
+      itemCursor: request.query.itemCursor, itemPageSize: parseOptionalInteger(request.query.itemPageSize), status: request.query.status,
+    }));
   });
 
   app.get<{ Querystring: CustomersQuery }>("/api/server/ai-hosting/user-memory/customers", {
@@ -164,6 +173,11 @@ function parseOptionalPositiveInteger(value?: string) {
   if (!value) return undefined;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new BadRequestError("INVALID_QUERY", "UID 参数无效");
+  return parsed;
+}
+function parsePositiveInteger(value: string, message: string) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new BadRequestError("INVALID_QUERY", message);
   return parsed;
 }
 function parseOptionalInteger(value?: string) { if (!value) return undefined; const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : undefined; }

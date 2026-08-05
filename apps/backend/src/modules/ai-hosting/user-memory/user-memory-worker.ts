@@ -4,12 +4,11 @@ import type { Database, JsonValue } from "../../../db/schema.js";
 import type { AppLogger } from "../../../shared/logger.js";
 import { CURRENT_WORKBENCH_PLATFORM } from "../../workbench-platform-scope.js";
 import { applyAiMemoryOperations, emptyUserMemoryDocument, filterActiveUserMemoryDocument, parseUserMemoryDocument } from "./user-memory-domain.js";
-import { buildUserMemoryMessageWindow, resolveUserMemoryEvidenceSessionIds, USER_MEMORY_MESSAGE_LIMIT } from "./user-memory-message-window.js";
+import { buildUserMemoryMessageWindow, USER_MEMORY_MESSAGE_LIMIT } from "./user-memory-message-window.js";
 import { UserMemoryProviderError, type UserMemoryInputMessage, type UserMemoryProvider } from "./user-memory-provider.js";
-import { countUserMemoryRunItems, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, type UserMemoryCustomerLimitResolver } from "./user-memory-service.js";
+import { countUserMemoryRunItems, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, sumUserMemoryChanges, type UserMemoryCustomerLimitResolver } from "./user-memory-service.js";
 
 const LEASE_MS = 5 * 60_000;
-const MAX_ITEM_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 30_000;
 const TERMINAL_ITEM_STATUSES = ["succeeded", "failed", "skipped", "canceled"];
 
@@ -135,11 +134,11 @@ export class UserMemoryWorker {
         await trx.insertInto("xy_wap_embed_agent_user_memory_run_item").values(groups.map((group) => ({
           run_id: claim.run.id, uid: claim.run.uid, platform: group.platform, third_external_userid: group.thirdExternalUserId,
           session_ids_json: JSON.stringify(group.sessions.map((s) => s.id)),
-          session_count: group.sessions.length, status: "prepared", next_attempt_at: new Date(),
+          session_count: group.sessions.length, status: "prepared",
         }))).onDuplicateKeyUpdate({ id: sql<number>`id` }).execute();
       }
       if (sessions.length === 0) {
-        await finishRun(trx, claim, "succeeded", { success: 0, failure: 0, skipped: 0 });
+        await finishRun(trx, claim, "succeeded", { success: 0, failure: 0, skipped: 0 }, { added: 0, removed: 0, updated: 0 });
       } else {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
           candidate_session_count: sessions.length, candidate_customer_count: candidateGroups.length,
@@ -156,11 +155,11 @@ export class UserMemoryWorker {
 
   private async processNextItem(claim: Claim) {
     const item = await this.input.db.selectFrom("xy_wap_embed_agent_user_memory_run_item").selectAll().where("run_id", "=", claim.run.id)
-      .where("status", "in", ["prepared", "submitted"]).where((eb) => eb.or([eb("next_attempt_at", "is", null), eb("next_attempt_at", "<=", new Date())]))
+      .where("status", "in", ["prepared", "submitted"])
       .orderBy("id", "asc").executeTakeFirst();
     if (!item) { await this.aggregateOrRelease(claim); return; }
-    if (item.attempt_count >= MAX_ITEM_ATTEMPTS) {
-      await this.failItem(claim, item, new Error(item.last_error_code ?? "AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED"), { forceTerminal: true });
+    if (item.attempt_count > 0) {
+      await this.failItem(claim, item, new Error(item.last_error_code ?? "AGENT_USER_MEMORY_MODEL_REQUEST_ALREADY_SUBMITTED"), { forceTerminal: true });
       return;
     }
     let providerUsage: ProviderUsage | undefined;
@@ -192,7 +191,6 @@ export class UserMemoryWorker {
       await this.failItem(claim, item, error, {
         usage,
         code: isDuplicateKeyError(error) ? "AGENT_USER_MEMORY_VERSION_CONFLICT" : undefined,
-        retryImmediately: isDuplicateKeyError(error),
       });
     }
   }
@@ -227,7 +225,6 @@ export class UserMemoryWorker {
       document,
       extractionInstruction: claim.extractionInstruction,
       messages,
-      sessionIds: resolveUserMemoryEvidenceSessionIds(messages),
       version: memory?.version ?? 0,
     };
   }
@@ -241,13 +238,11 @@ export class UserMemoryWorker {
       await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ input_tokens: run.input_tokens + result.inputTokens, output_tokens: run.output_tokens + result.outputTokens, phase: "merging" }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).execute();
       const memory = await trx.selectFrom("xy_wap_embed_agent_user_memory").selectAll().where("uid", "=", item.uid).where("platform", "=", item.platform).where("third_external_userid", "=", item.third_external_userid).forUpdate().executeTakeFirst();
       if ((memory?.version ?? 0) !== currentItem.base_memory_version) {
-        const terminal = currentItem.attempt_count >= MAX_ITEM_ATTEMPTS;
         await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({
           ...itemUsage,
-          status: terminal ? "failed" : "prepared",
-          next_attempt_at: terminal ? null : new Date(),
-          last_error_code: terminal ? "AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED" : "AGENT_USER_MEMORY_VERSION_CONFLICT",
-          ...(terminal ? { finished_at: new Date() } : {}),
+          status: "failed",
+          last_error_code: "AGENT_USER_MEMORY_VERSION_CONFLICT",
+          finished_at: new Date(),
         }).where("id", "=", item.id).execute();
         await aggregateRun(trx, claim); return;
       }
@@ -256,7 +251,7 @@ export class UserMemoryWorker {
         await aggregateRun(trx, claim); return;
       }
       const merged = applyAiMemoryOperations(memory ? parseDocument(memory.memories_json) : emptyUserMemoryDocument(), result.operations, {
-        now: Date.now(), sessionIds: prepared.sessionIds, evidence: prepared.messages.map((m) => ({ messageId: m.sourceMessageId, sessionId: m.sessionId, senderRole: m.senderRole })),
+        now: Date.now(), evidence: prepared.messages.map((m) => ({ messageId: m.sourceMessageId, sessionId: m.sessionId, senderRole: m.senderRole })),
       });
       if (memory) {
         await trx.updateTable("xy_wap_embed_agent_user_memory").set({
@@ -266,7 +261,15 @@ export class UserMemoryWorker {
       } else {
         await trx.insertInto("xy_wap_embed_agent_user_memory").values({ uid: item.uid, platform: item.platform, third_external_userid: item.third_external_userid, memories_json: JSON.stringify(merged.document), version: merged.changed ? 1 : 0, last_auto_quota_date: claim.run.quota_date, last_auto_updated_at: Date.now() }).execute();
       }
-      await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ ...itemUsage, status: "succeeded", finished_at: new Date(), last_error_code: null }).where("id", "=", item.id).execute();
+      await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({
+        ...itemUsage,
+        status: "succeeded",
+        memory_added_count: merged.changes.added,
+        memory_updated_count: merged.changes.updated,
+        memory_removed_count: merged.changes.removed,
+        finished_at: new Date(),
+        last_error_code: null,
+      }).where("id", "=", item.id).execute();
       await aggregateRun(trx, claim);
     });
   }
@@ -274,26 +277,24 @@ export class UserMemoryWorker {
   private async skipItem(claim: Claim, item: ItemRow, code: string) {
     await this.input.db.transaction().execute(async (trx) => { await assertClaim(trx, claim); await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "skipped", last_error_code: code, finished_at: new Date() }).where("id", "=", item.id).execute(); await aggregateRun(trx, claim); });
   }
-  private async failItem(claim: Claim, item: ItemRow, error: unknown, options: { usage?: ProviderUsage; code?: string; retryImmediately?: boolean; forceTerminal?: boolean } = {}) {
+  private async failItem(claim: Claim, item: ItemRow, error: unknown, options: { usage?: ProviderUsage; code?: string; forceTerminal?: boolean } = {}) {
     const terminal = await this.input.db.transaction().execute(async (trx) => {
       const { run } = await assertClaim(trx, claim);
       const current = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").selectAll().where("id", "=", item.id).forUpdate().executeTakeFirstOrThrow();
       const attempts = options.forceTerminal ? current.attempt_count : current.status === "submitted" ? current.attempt_count : current.attempt_count + 1;
-      const terminal = options.forceTerminal === true || attempts >= MAX_ITEM_ATTEMPTS;
       const usage = options.usage ?? EMPTY_PROVIDER_USAGE;
       await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({
-        ...accumulatedUsage(current, usage), attempt_count: attempts, status: terminal ? "failed" : "prepared",
-        next_attempt_at: terminal ? null : new Date(Date.now() + (options.retryImmediately ? 0 : RETRY_DELAY_MS)),
-        last_error_code: terminal && options.code === "AGENT_USER_MEMORY_VERSION_CONFLICT" ? "AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED" : options.code ?? errorCode(error),
-        ...(terminal ? { finished_at: new Date() } : {}),
+        ...accumulatedUsage(current, usage), attempt_count: attempts, status: "failed",
+        last_error_code: options.code ?? errorCode(error),
+        finished_at: new Date(),
       }).where("id", "=", item.id).execute();
       if (usage.inputTokens > 0 || usage.outputTokens > 0) {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ input_tokens: run.input_tokens + usage.inputTokens, output_tokens: run.output_tokens + usage.outputTokens }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).execute();
       }
       await aggregateRun(trx, claim);
-      return terminal;
+      return true;
     }).catch((fenceError) => { this.input.logger.warn({ error: fenceError, runId: claim.run.id }, "Failed to record user-memory item error"); return false; });
-    if (terminal) this.input.logger.warn({ component: "agent-user-memory-worker", eventCode: "agent_user_memory.item_failed", errorCode: options.code ?? errorCode(error), itemId: item.id, runId: claim.run.id, uid: claim.run.uid }, "Agent 用户记忆运行项达到最大尝试次数");
+    if (terminal) this.input.logger.warn({ component: "agent-user-memory-worker", eventCode: "agent_user_memory.item_failed", errorCode: options.code ?? errorCode(error), itemId: item.id, runId: claim.run.id, uid: claim.run.uid }, "Agent 用户记忆运行项处理失败");
   }
   private async aggregateOrRelease(claim: Claim) { await this.input.db.transaction().execute(async (trx) => { await assertClaim(trx, claim); await aggregateRun(trx, claim); }); }
   private async releaseAfterError(claim: Claim, error: unknown) {
@@ -374,24 +375,25 @@ async function releaseRun(trx: Transaction<Database>, claim: Claim, runAfter: Da
     .where("id", "=", claim.run.id).where("claim_token", "=", claim.token).executeTakeFirstOrThrow();
 }
 async function aggregateRun(trx: Transaction<Database>, claim: Claim) {
-  const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status", "next_attempt_at"]).where("run_id", "=", claim.run.id).execute();
+  const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item")
+    .select(["status", "memory_added_count", "memory_updated_count", "memory_removed_count"])
+    .where("run_id", "=", claim.run.id).execute();
   const counts = countUserMemoryRunItems(items);
+  const changes = sumUserMemoryChanges(items);
   if (items.length === 0) {
-    await finishRun(trx, claim, "succeeded", counts);
+    await finishRun(trx, claim, "succeeded", counts, changes);
   } else if (items.every((i) => TERMINAL_ITEM_STATUSES.includes(i.status))) {
-    await finishRun(trx, claim, resolveTerminalRunStatus(counts), counts);
+    await finishRun(trx, claim, resolveTerminalRunStatus(counts), counts, changes);
   } else {
-    await releaseRun(trx, claim, resolveNextRunAfter(items, Date.now()));
+    await releaseRun(trx, claim, new Date());
   }
 }
-export function resolveNextRunAfter(items: Array<{ status: string; next_attempt_at: Date | null }>, nowMs: number) {
-  const dueTimes = items
-    .filter((item) => !TERMINAL_ITEM_STATUSES.includes(item.status))
-    .map((item) => item.next_attempt_at?.getTime() ?? nowMs);
-  return new Date(Math.max(nowMs, Math.min(...dueTimes)));
-}
-async function finishRun(trx: Transaction<Database>, claim: Claim, status: "succeeded" | "partial" | "failed", counts: { success: number; failure: number; skipped: number }) {
-  await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status, phase: "completed", success_count: counts.success, failure_count: counts.failure, skipped_count: counts.skipped, finished_at: new Date(), locked_by: null, claim_token: null, lease_until: null }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).executeTakeFirstOrThrow();
+async function finishRun(trx: Transaction<Database>, claim: Claim, status: "succeeded" | "partial" | "failed", counts: { success: number; failure: number; skipped: number }, changes: { added: number; removed: number; updated: number }) {
+  await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
+    status, phase: "completed", success_count: counts.success, failure_count: counts.failure, skipped_count: counts.skipped,
+    memory_added_count: changes.added, memory_updated_count: changes.updated, memory_removed_count: changes.removed,
+    finished_at: new Date(), locked_by: null, claim_token: null, lease_until: null,
+  }).where("id", "=", claim.run.id).where("claim_token", "=", claim.token).executeTakeFirstOrThrow();
   await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({ active_run_id: null }).where("uid", "=", claim.run.uid).where("active_run_id", "=", claim.run.id).execute();
 }
 function parseNumberArray(value: JsonValue | string) { const parsed = typeof value === "string" ? JSON.parse(value) : value; if (!Array.isArray(parsed) || parsed.some((v) => !Number.isSafeInteger(v) || Number(v) <= 0)) throw new Error("AGENT_USER_MEMORY_DATA_INVALID"); return parsed.map(Number); }

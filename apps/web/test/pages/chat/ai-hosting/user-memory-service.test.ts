@@ -1,7 +1,7 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { requestInstance } from "@/lib/request";
-import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryObservabilitySummary, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryObservabilityTenants, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "@/pages/chat/ai-hosting/api/user-memory-service";
+import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryObservabilitySummary, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryObservabilityRuns, listUserMemoryObservabilityTenants, listUserMemoryRuns, updateUserMemoryItem, updateUserMemorySettings } from "@/pages/chat/ai-hosting/api/user-memory-service";
 
 const mock = new MockAdapter(requestInstance);
 describe("user memory service adapter", () => {
@@ -10,10 +10,10 @@ describe("user memory service adapter", () => {
     mock.onGet("/server/ai-hosting/user-memory/overview").reply(200, { data: { enabled: false }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/observability/summary").reply(200, { data: { worker: {} }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/observability/tenants?page=2&pageSize=20&uid=272").reply(200, { data: { items: [] }, success: true });
+    mock.onGet("/server/ai-hosting/user-memory/observability/tenants/272/runs?cursor=next&pageSize=20").reply(200, { data: { items: [] }, success: true });
     mock.onPut("/server/ai-hosting/user-memory/settings").reply(200, { data: { enabled: true }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/runs?cursor=next&pageSize=20").reply(200, { data: { items: [] }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/runs/9?itemCursor=item-next&itemPageSize=100&status=failed").reply(200, { data: { items: [] }, success: true });
-    mock.onPost("/server/ai-hosting/user-memory/runs/9/retry-failed").reply(200, { data: { resetCount: 1, skippedCount: 0 }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/customers?page=1&pageSize=20&query=%E5%BC%A0%E4%B8%89").reply(200, { data: { items: [], page: 1, pageSize: 20, total: 0 }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/customers/customer%2F1").reply(200, { data: { items: [], version: 0 }, success: true });
     mock.onGet("/server/ai-hosting/user-memory/customers/customer%2F1/items/3/evidence").reply(200, { data: { messages: [] }, success: true });
@@ -24,10 +24,10 @@ describe("user memory service adapter", () => {
     await getUserMemoryOverview();
     await getUserMemoryObservabilitySummary();
     await listUserMemoryObservabilityTenants({ page: 2, pageSize: 20, uid: 272 });
+    await listUserMemoryObservabilityRuns(272, { cursor: "next", pageSize: 20 });
     await updateUserMemorySettings({ enabled: true });
     await listUserMemoryRuns({ cursor: "next", pageSize: 20 });
     await getUserMemoryRun(9, { itemCursor: "item-next", itemPageSize: 100, status: "failed" });
-    await retryUserMemoryRun(9);
     await listUserMemoryCustomers({ page: 1, pageSize: 20, query: "张三" });
     await getUserMemoryCustomer("customer/1");
     await getUserMemoryEvidence("customer/1", 3);

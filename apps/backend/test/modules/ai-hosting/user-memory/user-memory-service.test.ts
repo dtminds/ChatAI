@@ -1,7 +1,7 @@
 import { Kysely, MysqlDialect } from "kysely";
 import { describe, expect, it } from "vitest";
 import type { Database } from "../../../../src/db/schema.js";
-import { buildUserMemoryCustomerListQuery, countUserMemoryRunItems, nextShanghaiRunAt, parseStoredUserMemoryDocument, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, summarizeEvidenceContent, UserMemoryService } from "../../../../src/modules/ai-hosting/user-memory/user-memory-service.js";
+import { buildUserMemoryCustomerListQuery, countUserMemoryRunItems, nextShanghaiRunAt, parseStoredUserMemoryDocument, resolveCandidateSessionLimit, resolveTerminalRunStatus, resolveUserMemoryCustomerLimit, summarizeEvidenceContent, sumUserMemoryChanges, UserMemoryService } from "../../../../src/modules/ai-hosting/user-memory/user-memory-service.js";
 
 function createCompileOnlyDb() {
   return new Kysely<Database>({ dialect: new MysqlDialect({ pool: {} as never }) });
@@ -58,6 +58,75 @@ describe("user memory service policies", () => {
       { status: "canceled" },
       { status: "prepared" },
     ])).toEqual({ success: 1, failure: 1, skipped: 1 });
+    expect(sumUserMemoryChanges([
+      { memory_added_count: 2, memory_removed_count: 0, memory_updated_count: 1 },
+      { memory_added_count: null, memory_removed_count: null, memory_updated_count: null },
+      { memory_added_count: 0, memory_removed_count: 1, memory_updated_count: 0 },
+    ])).toEqual({ added: 2, removed: 1, updated: 1 });
+  });
+
+  it("resolves customer identity for run items without exposing the external ID as a name", async () => {
+    const run = {
+      id: 9,
+      quota_date: new Date("2026-07-23T00:00:00+08:00"),
+      scheduled_for: new Date("2026-07-24T02:00:00+08:00"),
+      execution_mode: "sync",
+      status: "succeeded",
+      phase: "completed",
+      customer_limit: 100,
+      candidate_session_limit: 200,
+      candidate_session_count: 1,
+      candidate_customer_count: 1,
+      selected_customer_count: 1,
+      success_count: 1,
+      failure_count: 0,
+      skipped_count: 0,
+      input_tokens: 10,
+      output_tokens: 5,
+      started_at: null,
+      finished_at: null,
+      last_error_code: null,
+    };
+    const runItem = {
+      id: 2,
+      platform: 5,
+      third_external_userid: "external-customer-id",
+      session_count: 1,
+      message_count: 5,
+      status: "succeeded",
+      attempt_count: 1,
+      input_tokens: 10,
+      output_tokens: 5,
+      last_error_code: null,
+      finished_at: null,
+    };
+    const selectQuery = (table: string) => {
+      const builder = {
+        execute: async () => table === "xy_wap_embed_agent_user_memory_run_item"
+          ? [runItem]
+          : table === "xy_wap_embed_contact"
+            ? [{ platform: 5, third_external_userid: "external-customer-id", avatar: "avatar.png", name: "张三", real_name: "" }]
+            : [],
+        executeTakeFirst: async () => table === "xy_wap_embed_agent_user_memory_run" ? run : undefined,
+        limit: () => builder,
+        orderBy: () => builder,
+        select: () => builder,
+        selectAll: () => builder,
+        where: () => builder,
+      };
+      return builder;
+    };
+    const service = new UserMemoryService({ selectFrom: selectQuery } as never);
+
+    const detail = await service.getRunDetail(272, 9, {});
+
+    expect(detail.items).toEqual([
+      expect.objectContaining({
+        avatarUrl: "avatar.png",
+        customerName: "张三",
+        thirdExternalUserId: "external-customer-id",
+      }),
+    ]);
   });
 
   it("persists recomputed counters when disabling an active run", async () => {
@@ -111,6 +180,9 @@ describe("user memory service policies", () => {
     expect(overview.enabled).toBe(false);
     expect(runUpdates).toContainEqual(expect.objectContaining({
       failure_count: 1,
+      memory_added_count: 0,
+      memory_removed_count: 0,
+      memory_updated_count: 0,
       skipped_count: 1,
       status: "canceled",
       success_count: 1,

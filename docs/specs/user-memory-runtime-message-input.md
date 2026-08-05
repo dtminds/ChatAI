@@ -37,7 +37,7 @@
 - 不新增表，不新增业务字段；现有 `session_ids_json` 保留。
 - 同一客户存在多个 `conversation_id` 时，使用一次 `conversation_id IN (...)` 查询，不拆成逐会话或逐 `conversation_id` 查询。
 - 消息正文通过第二次批量查询 `xy_wap_embed_msg_audit_info` 获取，不允许通过 JOIN 获取。
-- 已有每日调度、客户额度、运行领取和重试机制保持不变。并发修改只通过记忆 `version` 校验；`manual_updated_at` 不参与 Worker 的准备、提交或合并判断，manual 只读保持不变。
+- 已有每日调度、客户额度和运行领取机制保持不变。每个运行项只允许一次模型调用，失败后直接终态；并发修改只通过记忆 `version` 校验，`manual_updated_at` 不参与 Worker 的准备、提交或合并判断，manual 只读保持不变。
 
 本次不修改已经确定的模型操作协议和记忆合并规则。
 
@@ -118,9 +118,9 @@ type CandidateCustomer = {
 6. 客户数量额度沿用现有 `customer_limit`；“每客户最多 100 条消息”与客户数量额度是两个独立概念。
 7. 不补查该客户未进入候选池的其它历史 `conversation_id`；候选结果中有多少个就使用多少个。
 
-### 4.3 重试恢复
+### 4.3 提交前恢复
 
-运行项重试时不需要新增 `conversation_ids_json`：
+尚未提交模型请求的 `prepared` 运行项在租约恢复后，不需要新增 `conversation_ids_json`：
 
 1. 从现有 `session_ids_json` 读取逻辑会话 ID。
 2. 无 JOIN 查询对应逻辑会话的 `conversation_id`。
@@ -133,7 +133,7 @@ WHERE uid = :uid
   AND id IN (:sessionIds);
 ```
 
-因此不增加表字段。失败项继续复用原运行项的候选逻辑会话集合和目标自然日 `dayEndMs`；这里的快照是固定候选集合和固定时间截止点，不是持久化消息 ID 集合。若平台消息延迟写入但 `source_message_time < dayEndMs`，重试仍可能读取到该迟到消息，这是不新增消息快照字段下接受的语义。
+因此不增加表字段。恢复后的 `prepared` 项继续使用原运行项的候选逻辑会话集合和目标自然日 `dayEndMs`；这里固定的是候选集合和时间截止点，不是持久化消息 ID 集合。若平台消息在首次模型调用前延迟写入且 `source_message_time < dayEndMs`，恢复准备输入时可能读取到该迟到消息，这是不新增消息快照字段下接受的语义。运行项进入 `submitted` 或模型调用失败后直接终态，不再恢复输入或调用模型。
 
 ## 5. 每客户消息查询
 
@@ -164,7 +164,7 @@ LIMIT 100;
 - `LIMIT 100` 对当前客户生效。
 - 多个 `conversation_id` 共享同一个最近 100 条窗口。
 - 未进入候选池的历史 `conversation_id` 不属于本次消息范围。
-- `dayEndMs` 固定来自 run 的目标自然日；02:00 执行和后续重试都不得读取该截止点之后的消息。
+- `dayEndMs` 固定来自 run 的目标自然日；首次处理和提交前租约恢复都不得读取该截止点之后的消息。
 - 当前 manual 和 AI 记忆与滚动消息窗口共同进入模型；人工更新时间不裁剪消息上下文。
 - 每日运行是滚动状态维护，不是消息 exactly-once 消费；相邻运行重复看到部分历史消息是预期行为。
 - 不再按 `session_id` 分区，不再执行“每会话 50 条”。
@@ -256,12 +256,9 @@ Buffer.byteLength(JSON.stringify(messages), "utf8") <= 8000
 
 - `current` 来自模型调用前读取的当前记忆文档，不得省略。
 - `messages` 是第 6 节得到的每客户最近消息窗口。
-- 客服和机器人消息可以作为上下文；证据仍只能引用实际送入模型的客户消息。
-- 证据校验以实际发送的消息集合为准，不能再假设证据消息只属于候选逻辑会话 ID。
-- `sourceSessionId` 使用消息归属表中的真实 `session_id`。
-- `prepared.sessionIds = unique(prepared.messages.map(message => message.sessionId))`，其中 `prepared.messages` 必须是完成正文过滤、100 条限制和 8000 Token 裁剪后实际送入模型的最终消息数组。
+- 客服和机器人消息可以作为上下文；模型的每个操作必须返回 1 至 3 个客户消息 `evidenceMessageIds`，不得返回 `sourceSessionId`。
+- Node 只接受实际送模客户消息中的有效证据 ID，并根据消息归属推导 `sourceSessionId`；任一操作无法匹配客户证据时，本次模型结果无效且不更新记忆。
 - `session_ids_json` 只用于固定候选客户和恢复 `conversationIds`，不得作为模型证据的会话白名单。
-- 候选 `conversation_id` 下的历史逻辑会话只要有消息实际进入模型，其 `session_id` 就可以作为 `sourceSessionId`。
 - 模型调用期间不持有数据库事务。
 - 合并前继续校验记忆版本，避免旧结果覆盖并发人工或自动修改。
 
@@ -358,7 +355,7 @@ Review 必须记录：
 - run 和 run item 业务字段。
 - `xy_wap_embed_conversation` 查询逻辑。
 - Insights 会话切片逻辑。
-- 调度频率、套餐额度和失败重试协议。
+- 调度频率、套餐额度和运行项单次模型调用协议。
 
 ## 10. 必须覆盖的测试
 
@@ -378,8 +375,8 @@ Review 必须记录：
 - 单个逻辑会话只有 5 条新消息，但同 `conversation_id` 历史有 100 条时，模型最多收到最近 100 条，不只收到 5 条。
 - 同客户有两个 `conversation_id` 进入候选池时，两边消息合并后按全局时间取最近 100 条。
 - 同客户另有未进入候选池的历史 `conversation_id` 时，本次不读取该会话消息。
-- 目标自然日之后的消息不进入本次运行；延迟重试仍使用相同 `dayEndMs`。
-- `source_message_time < dayEndMs` 的迟到消息可在重试时进入，测试明确该逻辑截止语义。
+- 目标自然日之后的消息不进入本次运行；未提交运行项在租约恢复后仍使用相同 `dayEndMs`。
+- `source_message_time < dayEndMs` 的迟到消息可在首次模型调用前的恢复准备阶段进入，测试明确该逻辑截止语义。
 - `manual_updated_at >= dayEndMs` 时仍读取 `source_message_time < dayEndMs` 的最近消息，并同时携带当前 manual/AI 记忆。
 - 消息 SQL 不得包含基于 `manual_updated_at` 或 `last_message_at` 的准备期下界。
 - 两个不同客户各自最多 100 条，不能共享一个 100 条上限。
@@ -403,11 +400,10 @@ Review 必须记录：
 - 一个 UID 的同一客户在一个 run 中只调用一次模型。
 - 昨天已有记忆、今天新增少量消息时，输入为当前记忆加滚动消息窗口。
 - 模型返回空操作时不修改记忆 JSON 和版本。
-- 重试从 `session_ids_json` 恢复 `conversationIds`，不需要新字段。
-- `prepared.sessionIds` 精确等于最终送模消息中的去重 `sessionId` 集合，不等于候选 `session_ids_json`。
-- 候选 `conversation_id` 下未进入 `session_ids_json` 的历史逻辑会话，其消息进入模型后可作为合法 `sourceSessionId` 和证据来源。
-- 被 100 条窗口、正文过滤或 8000 Token 裁剪排除的消息及其独有 `sessionId` 不能作为证据。
-- 记忆版本冲突时仍按现有规则重试或放弃旧结果。
+- 尚未提交模型请求的 `prepared` 项从 `session_ids_json` 恢复 `conversationIds`，不需要新字段；已提交项不得重新准备。
+- 候选 `conversation_id` 下未进入 `session_ids_json` 的历史逻辑会话消息可作为证据来源，`sourceSessionId` 由 Node 推导。
+- 被 100 条窗口、正文过滤或 8000 Token 裁剪排除的消息不能作为证据；模型引用这些消息后无法形成有效客户证据时，本次结果无效。
+- 记忆版本冲突时丢弃旧结果并将运行项置为失败终态，不重新准备输入或再次调用模型。
 
 ## 11. 验收命令
 

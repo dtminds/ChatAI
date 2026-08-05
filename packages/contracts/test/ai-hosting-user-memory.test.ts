@@ -28,6 +28,7 @@ describe("agent user memory contracts", () => {
     const base = { id: 1, category: "preference", content: "偏好无糖", createdAt: 1, updatedAt: 1, expiresAt: null };
     expect(Value.Check(AgentUserMemoryItemSchema, { ...base, source: "manual", updatedBySubUserId: 2 })).toBe(true);
     expect(Value.Check(AgentUserMemoryItemSchema, { ...base, source: "ai", sourceSessionId: 3, evidenceMessageIds: [4] })).toBe(true);
+    expect(Value.Check(AgentUserMemoryItemSchema, { ...base, source: "ai" })).toBe(true);
     expect(Value.Check(AgentUserMemoryItemSchema, { ...base, source: "manual", sourceSessionId: 3, evidenceMessageIds: [4] })).toBe(false);
   });
 
@@ -59,9 +60,12 @@ describe("agent user memory contracts", () => {
     expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
       extractionInstruction: "重点关注客户主动表达的尺码与面料偏好",
     })).toBe(true);
+    expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
+      extractionInstruction: "提".repeat(500),
+    })).toBe(true);
     expect(Value.Check(AgentUserMemorySettingsRequestSchema, {})).toBe(false);
     expect(Value.Check(AgentUserMemorySettingsRequestSchema, {
-      extractionInstruction: "提".repeat(2001),
+      extractionInstruction: "提".repeat(501),
     })).toBe(false);
   });
 

@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RequestNormalizedError } from "@/lib/request";
+import { USER_MEMORY_INDUSTRY_TEMPLATES } from "@/pages/chat/ai-hosting/user-memory-instruction-dialog";
 import { UserMemoryPage } from "@/pages/chat/ai-hosting/user-memory-page";
 import { useAuthStore } from "@/store/auth-store";
 
 const service = vi.hoisted(() => ({
   createUserMemoryItem: vi.fn(), deleteUserMemoryItem: vi.fn(), getUserMemoryCustomer: vi.fn(), getUserMemoryEvidence: vi.fn(),
-  getUserMemoryOverview: vi.fn(), getUserMemoryRun: vi.fn(), listUserMemoryCustomers: vi.fn(), listUserMemoryRuns: vi.fn(), retryUserMemoryRun: vi.fn(),
-  getUserMemoryObservabilitySummary: vi.fn(), listUserMemoryObservabilityTenants: vi.fn(),
+    getUserMemoryOverview: vi.fn(), getUserMemoryRun: vi.fn(), listUserMemoryCustomers: vi.fn(), listUserMemoryRuns: vi.fn(),
+  getUserMemoryObservabilitySummary: vi.fn(), listUserMemoryObservabilityRuns: vi.fn(), listUserMemoryObservabilityTenants: vi.fn(),
   updateUserMemoryItem: vi.fn(), updateUserMemorySettings: vi.fn(),
 }));
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => service);
@@ -21,6 +22,7 @@ const overview = { enabled: false, canViewWorkerObservability: false, executionM
 const run = {
   candidateCustomerCount: 1, candidateSessionCount: 1, candidateSessionLimit: 200, customerLimit: 100,
   executionMode: "sync" as const, failureCount: 0, id: 9, inputTokens: 0, outputTokens: 0,
+  memoryAddedCount: 2, memoryRemovedCount: 0, memoryUpdatedCount: 1,
   phase: "completed" as const, quotaDate: "2026-07-23", scheduledFor: 1, selectedCustomerCount: 1,
   skippedCount: 0, status: "succeeded" as const, successCount: 1,
 };
@@ -42,6 +44,15 @@ describe("user memory page", () => {
       trend: [],
     });
     service.listUserMemoryObservabilityTenants.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    service.listUserMemoryObservabilityRuns.mockResolvedValue({ items: [] });
+  });
+
+  it("keeps industry templates focused on durable memory", () => {
+    expect(USER_MEMORY_INDUSTRY_TEMPLATES.map((template) => template.label)).not.toContain("通用电商");
+    for (const template of USER_MEMORY_INDUSTRY_TEMPLATES) {
+      expect(template.instruction).toContain("可长期复用");
+      expect(template.instruction).not.toMatch(/近期购买计划|短期意向|临时需求/u);
+    }
   });
 
   it("loads the daily overview and lets an admin enable maintenance", async () => {
@@ -59,6 +70,18 @@ describe("user memory page", () => {
     expect(screen.getByRole("button", { name: "规则配置" })).toBeDisabled();
   });
 
+  it.each(["viewer", "operator"] as const)("keeps run-detail actions visible but disabled for %s", async (role) => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({ accountType: "sub", displayName: "访客", permissions: ["chat.access"], role, subUserId: "102", uid: 1 });
+    service.listUserMemoryRuns.mockResolvedValue({ items: [run] });
+    render(<UserMemoryPage />);
+
+    const detailButton = await screen.findByRole("button", { name: "详情" });
+    expect(detailButton).toBeDisabled();
+    await user.click(detailButton);
+    expect(service.getUserMemoryRun).not.toHaveBeenCalled();
+  });
+
   it("shows and loads the observability tab only for configured observers", async () => {
     const user = userEvent.setup();
     service.getUserMemoryOverview.mockResolvedValue({ ...overview, canViewWorkerObservability: true });
@@ -66,6 +89,38 @@ describe("user memory page", () => {
     await user.click(await screen.findByRole("tab", { name: "运行观测" }));
     await waitFor(() => expect(service.getUserMemoryObservabilitySummary).toHaveBeenCalled());
     expect(service.listUserMemoryObservabilityTenants).toHaveBeenCalledWith({ page: 1, pageSize: 20, uid: undefined }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it("opens a tenant run-history sheet from the UID", async () => {
+    const user = userEvent.setup();
+    service.getUserMemoryOverview.mockResolvedValue({ ...overview, canViewWorkerObservability: true });
+    service.listUserMemoryObservabilityTenants.mockResolvedValue({
+      items: [{
+        enabled: true,
+        nextRunAt: 2,
+        recentRun: {
+          failureCount: 1, id: 9, inputTokens: 100, outputTokens: 20, phase: "completed", scheduledFor: 1,
+          selectedCustomerCount: 3, skippedCount: 0, status: "partial", successCount: 2, updatedAt: 2,
+        },
+        state: "normal",
+        uid: 272,
+      }],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    service.listUserMemoryObservabilityRuns.mockResolvedValue({ items: [{ ...run, inputTokens: 100, outputTokens: 20 }] });
+
+    render(<UserMemoryPage />);
+    await user.click(await screen.findByRole("tab", { name: "运行观测" }));
+    await user.click(await screen.findByRole("button", { name: "272" }));
+
+    expect(await screen.findByRole("heading", { name: "UID 272" })).toBeInTheDocument();
+    expect(service.listUserMemoryObservabilityRuns).toHaveBeenCalledWith(272, { cursor: undefined, pageSize: 20 }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    const historyTable = screen.getByRole("table", { name: "UID 272 用户记忆运行记录" });
+    expect(historyTable).toBeInTheDocument();
+    expect(within(historyTable).getByText("新增 2 · 更新 1 · 删除 0")).toBeInTheDocument();
+    expect(within(historyTable).getByText("120")).toBeInTheDocument();
   });
 
   it("fills an industry template, allows editing, and saves only the final instruction", async () => {
@@ -89,6 +144,19 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.updateUserMemorySettings).toHaveBeenCalledWith({
       extractionInstruction: "重点关注客户主动表达的身高、体重和常穿尺码，并留意运动场景",
     }));
+  });
+
+  it("limits a custom extraction instruction to 500 characters", async () => {
+    const user = userEvent.setup();
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "规则配置" }));
+    await user.click(screen.getByRole("switch", { name: "使用自定义指令" }));
+    const input = screen.getByRole("textbox", { name: "提炼指引" });
+    expect(input).toHaveProperty("maxLength", 500);
+
+    await user.type(input, "字".repeat(501));
+    expect(input).toHaveValue("字".repeat(500));
   });
 
   it("clears and disables an existing custom instruction when it is turned off", async () => {
@@ -148,8 +216,8 @@ describe("user memory page", () => {
   it("paginates run items beyond the first 100 customers", async () => {
     service.listUserMemoryRuns.mockResolvedValue({ items: [run] });
     service.getUserMemoryRun
-      .mockResolvedValueOnce({ run, items: [{ id: 2, platform: 5, thirdExternalUserId: "a", sessionCount: 1, messageCount: 5, status: "succeeded", attemptCount: 1, inputTokens: 1, outputTokens: 1 }], nextItemCursor: "next" })
-      .mockResolvedValueOnce({ run, items: [{ id: 1, platform: 5, thirdExternalUserId: "b", sessionCount: 1, messageCount: 5, status: "succeeded", attemptCount: 1, inputTokens: 1, outputTokens: 1 }] });
+      .mockResolvedValueOnce({ run, items: [{ id: 2, platform: 5, thirdExternalUserId: "a", customerName: "客户甲", sessionCount: 1, messageCount: 5, status: "succeeded", attemptCount: 1, inputTokens: 1, outputTokens: 1 }], nextItemCursor: "next" })
+      .mockResolvedValueOnce({ run, items: [{ id: 1, platform: 5, thirdExternalUserId: "b", customerName: "客户乙", sessionCount: 1, messageCount: 5, status: "succeeded", attemptCount: 1, inputTokens: 1, outputTokens: 1 }] });
     render(<UserMemoryPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "详情" }));
@@ -157,7 +225,52 @@ describe("user memory page", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "加载更多" }));
 
     await waitFor(() => expect(service.getUserMemoryRun).toHaveBeenLastCalledWith(9, { itemCursor: "next", itemPageSize: 100 }));
-    expect(within(dialog).getByText("b")).toBeInTheDocument();
+    expect(within(dialog).getByText("客户乙")).toBeInTheDocument();
+  });
+
+  it("shows customer identity and a readable processing result in run details", async () => {
+    const user = userEvent.setup();
+    service.listUserMemoryRuns.mockResolvedValue({ items: [run] });
+    service.getUserMemoryRun.mockResolvedValue({
+      run,
+      items: [{
+        id: 2,
+        platform: 5,
+        thirdExternalUserId: "external-customer-id",
+        customerName: "张三",
+        avatarUrl: "https://example.com/avatar.png",
+        sessionCount: 1,
+        messageCount: 44,
+        status: "failed",
+        attemptCount: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        lastErrorCode: "AGENT_USER_MEMORY_MODEL_OUTPUT_INVALID",
+      }],
+    });
+    service.getUserMemoryCustomer.mockResolvedValue({
+      customerName: "张三",
+      items: [],
+      platform: 5,
+      thirdExternalUserId: "external-customer-id",
+      version: 0,
+    });
+    render(<UserMemoryPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "详情" }));
+    const dialog = await screen.findByRole("dialog", { name: "运行详情" });
+
+    expect(within(dialog).getByText("张三")).toBeInTheDocument();
+    expect(within(dialog).getByText("未更新")).toBeInTheDocument();
+    expect(within(dialog).queryByText("未更新原因")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("external-customer-id")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("AGENT_USER_MEMORY_MODEL_OUTPUT_INVALID")).not.toBeInTheDocument();
+    expect(screen.getByText("新增 2 · 更新 1 · 删除 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试失败项" })).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "查看张三记忆" }));
+    expect(service.getUserMemoryCustomer).toHaveBeenCalledWith("external-customer-id");
+    expect(await screen.findByRole("heading", { name: "张三" })).toBeInTheDocument();
   });
 
   it("reloads the latest customer document after an optimistic version conflict", async () => {
@@ -264,6 +377,31 @@ describe("user memory page", () => {
     await user.click(screen.getByRole("button", { name: "记忆操作" }));
     expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
+  });
+
+  it("shows AI memory without offering an unavailable evidence action", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({ accountType: "sub", displayName: "访客", permissions: ["chat.access"], role: "viewer", subUserId: "102", uid: 1 });
+    service.listUserMemoryCustomers.mockResolvedValue({
+      items: [{ platform: 5, thirdExternalUserId: "customer-1", customerName: "张三", memoryCount: 1, updatedAt: 1, version: 1 }],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    service.getUserMemoryCustomer.mockResolvedValue({
+      platform: 5,
+      thirdExternalUserId: "customer-1",
+      customerName: "张三",
+      items: [{ id: 1, category: "preference", content: "偏好无糖", createdAt: 1, updatedAt: 1, expiresAt: null, source: "ai" }],
+      version: 1,
+    });
+    render(<UserMemoryPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "记忆明细" }));
+    await user.click(await screen.findByRole("button", { name: "查看张三记忆" }));
+
+    expect(await screen.findByText("偏好无糖")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "记忆操作" })).not.toBeInTheDocument();
   });
 
   it("uses standard pagination to replace the current customer page", async () => {

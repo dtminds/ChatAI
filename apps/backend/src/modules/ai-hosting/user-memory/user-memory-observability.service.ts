@@ -145,7 +145,7 @@ export class UserMemoryObservabilityService {
         return {
           uid: config.uid,
           enabled: config.enabled === 1,
-          state: resolveTenantState(config, activeRun, recentRun, now),
+          state: resolveTenantState(config, activeRun, now),
           ...(config.next_run_at ? { nextRunAt: config.next_run_at.getTime() } : {}),
           ...(activeRun ? { activeRun: mapObservabilityRun(activeRun) } : {}),
           ...(recentRun ? { recentRun: mapObservabilityRun(recentRun) } : {}),
@@ -166,7 +166,7 @@ export function resolveWorkerHealth(runtime: { reported_at: Date; last_failure_a
       : "healthy" as const;
 }
 
-export function resolveTenantState(config: ConfigRow, activeRun: RunRow | undefined, recentRun: RunRow | undefined, now: number): AgentUserMemoryTenantState {
+export function resolveTenantState(config: ConfigRow, activeRun: RunRow | undefined, now: number): AgentUserMemoryTenantState {
   if (config.enabled !== 1) return "disabled";
   if (config.active_run_id != null && !activeRun) return "warning";
   if (activeRun) {
@@ -176,7 +176,6 @@ export function resolveTenantState(config: ConfigRow, activeRun: RunRow | undefi
     return "running";
   }
   if (config.next_run_at && config.next_run_at.getTime() <= now) return "due";
-  if (recentRun?.finished_at && now - recentRun.finished_at.getTime() <= 24 * 60 * 60_000 && ["partial", "failed"].includes(recentRun.status)) return "warning";
   return "normal";
 }
 

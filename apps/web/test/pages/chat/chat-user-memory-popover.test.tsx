@@ -149,9 +149,9 @@ describe("chat user-memory popover", () => {
       within(detailCard).getByText("最新的近期购买计划完整内容"),
     ).toBeInTheDocument();
     expect(within(detailCard).getByText(/^更新于 /)).toBeInTheDocument();
-    expect(within(detailCard).getByRole("alert")).toHaveTextContent(
-      /^短期记忆：将于 /,
-    );
+    expect(
+      within(detailCard).getByText(/^短期记忆：将于 /),
+    ).toBeInTheDocument();
 
     await user.hover(
       within(detailCard).getByRole("button", { name: "记忆操作" }),
@@ -169,9 +169,72 @@ describe("chat user-memory popover", () => {
     const expiredDetailCard = await screen.findByTestId(
       "user-memory-detail-card-2",
     );
-    expect(within(expiredDetailCard).getByRole("alert")).toHaveTextContent(
-      /^短期记忆：已于 /,
-    );
+    expect(
+      within(expiredDetailCard).getByText(/^短期记忆：已于 /),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the evidence action for AI memories without evidence", async () => {
+    const user = userEvent.setup();
+    service.getUserMemoryCustomer.mockResolvedValue({
+      customerName: "测试客户",
+      items: [{
+        category: "preference",
+        content: "没有证据的 AI 记忆",
+        createdAt: 1,
+        expiresAt: null,
+        id: 1,
+        source: "ai",
+        updatedAt: 1,
+      }],
+      platform: 5,
+      thirdExternalUserId: "external-1",
+      version: 1,
+    });
+    render(<ChatUserMemoryPopover conversation={conversation} />);
+
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
+    await user.hover(await screen.findByTestId("user-memory-row"));
+    const detailCard = await screen.findByTestId("user-memory-detail-card-1");
+    await user.hover(within(detailCard).getByRole("button", { name: "记忆操作" }));
+
+    expect(await screen.findByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "查看证据" })).not.toBeInTheDocument();
+    expect(service.getUserMemoryEvidence).not.toHaveBeenCalled();
+  });
+
+  it("does not show an empty action menu to viewers for AI memories without evidence", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "访客",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "102",
+      uid: 1,
+    });
+    service.getUserMemoryCustomer.mockResolvedValue({
+      customerName: "测试客户",
+      items: [{
+        category: "preference",
+        content: "没有证据的 AI 记忆",
+        createdAt: 1,
+        expiresAt: null,
+        id: 1,
+        source: "ai",
+        updatedAt: 1,
+      }],
+      platform: 5,
+      thirdExternalUserId: "external-1",
+      version: 1,
+    });
+    render(<ChatUserMemoryPopover conversation={conversation} />);
+
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
+    await user.hover(await screen.findByTestId("user-memory-row"));
+    const detailCard = await screen.findByTestId("user-memory-detail-card-1");
+
+    expect(within(detailCard).queryByRole("button", { name: "记忆操作" })).not.toBeInTheDocument();
   });
 
   it("allows an operator to add memory for the active customer", async () => {

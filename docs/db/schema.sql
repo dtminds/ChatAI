@@ -682,6 +682,9 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
   success_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功客户数',
   failure_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败客户数',
   skipped_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '跳过客户数',
+  memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示旧运行未记录',
+  memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示旧运行未记录',
+  memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示旧运行未记录',
   input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输入Token数',
   output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输出Token数',
   locked_by VARCHAR(128) NULL COMMENT 'Worker实例标识',
@@ -714,13 +717,15 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
   message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际输入消息数',
   status VARCHAR(32) NOT NULL COMMENT 'prepared/submitted/终态',
   attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已提交推理次数',
-  next_attempt_at DATETIME(3) NULL COMMENT '下次可重试时间',
   base_memory_version INT UNSIGNED NULL COMMENT '准备输入时的记忆版本',
   base_manual_updated_at BIGINT UNSIGNED NULL COMMENT '准备输入时的人工维护时间，Unix毫秒',
   provider_item_key VARCHAR(128) NULL COMMENT '推理服务项标识',
   provider_batch_id VARCHAR(256) NULL COMMENT '推理服务批任务标识',
   input_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输入Token数',
   output_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输出Token数',
+  memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示尚未完成合并',
+  memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示尚未完成合并',
+  memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示尚未完成合并',
   last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
   finished_at DATETIME(3) NULL COMMENT '结束时间',
   create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -730,7 +735,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
   UNIQUE KEY uk_agent_user_memory_run_customer (
     run_id, platform, third_external_userid
   ),
-  KEY idx_agent_user_memory_item_run_status (run_id, status, next_attempt_at, id),
+  KEY idx_agent_user_memory_item_run_status (run_id, status, id),
   KEY idx_agent_user_memory_item_provider (provider_batch_id, provider_item_key)
 ) COMMENT='Agent用户记忆运行客户明细';
 

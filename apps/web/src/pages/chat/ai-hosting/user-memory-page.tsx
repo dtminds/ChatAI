@@ -1,11 +1,10 @@
-import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse, AgentUserMemoryRunItemStatus } from "@chatai/contracts";
-import { AlertCircleIcon, GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, RefreshIcon, Search01Icon, Settings03Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import type { AgentUserMemoryCategory, AgentUserMemoryCustomerDetailResponse, AgentUserMemoryItem, AgentUserMemoryOverviewResponse, AgentUserMemoryRun, AgentUserMemoryRunDetailResponse } from "@chatai/contracts";
+import { GoogleGeminiIcon, ChartAreaIcon, UserEdit01Icon, Delete02Icon, Edit02Icon, MoreHorizontalIcon, PlusSignIcon, Search01Icon, Settings03Icon, TimeHalfPassIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
 import { toast } from "sonner";
 import { RequestNormalizedError } from "@/lib/request";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -25,12 +23,13 @@ import { useAuthStore } from "@/store/auth-store";
 import { insightChartColors, insightResolutionColors } from "../insights/insights-chart-palette";
 import { canMaintainUserMemory, canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
-import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, retryUserMemoryRun, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
+import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
 import { USER_MEMORY_CATEGORIES, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
 import { UserMemoryInstructionDialog } from "./user-memory-instruction-dialog";
 import { UserMemoryObservability } from "./user-memory-observability";
 
 type Customer = Awaited<ReturnType<typeof listUserMemoryCustomers>>["items"][number];
+type CustomerSelection = Pick<Customer, "customerName" | "platform" | "thirdExternalUserId"> & Partial<Pick<Customer, "avatarUrl" | "memoryCount" | "updatedAt">>;
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
 const USER_MEMORY_CUSTOMER_PAGE_SIZE = 20;
 export function UserMemoryPage() {
@@ -41,13 +40,12 @@ export function UserMemoryPage() {
   const [runs, setRuns] = useState<AgentUserMemoryRun[]>([]);
   const [runNextCursor, setRunNextCursor] = useState<string>();
   const [runDetail, setRunDetail] = useState<AgentUserMemoryRunDetailResponse>();
-  const [runItemStatus, setRunItemStatus] = useState<"all" | AgentUserMemoryRunItemStatus>("all");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerPage, setCustomerPage] = useState(1);
   const [customerTotal, setCustomerTotal] = useState(0);
   const [appliedQuery, setAppliedQuery] = useState("");
   const [searchRevision, setSearchRevision] = useState(0);
-  const [selected, setSelected] = useState<Customer>();
+  const [selected, setSelected] = useState<CustomerSelection>();
   const [detail, setDetail] = useState<AgentUserMemoryCustomerDetailResponse>();
   const [detailError, setDetailError] = useState(false);
   const [query, setQuery] = useState("");
@@ -80,7 +78,7 @@ export function UserMemoryPage() {
     return () => window.clearInterval(timer);
   }, [overview?.activeRun?.id]);
 
-  async function chooseCustomer(customer: Customer) {
+  async function chooseCustomer(customer: CustomerSelection) {
     const key = `${customer.platform}:${customer.thirdExternalUserId}`;
     activeCustomerKey.current = key;
     setSelected(customer); setDetail(undefined); setDetailError(false);
@@ -129,16 +127,6 @@ export function UserMemoryPage() {
       setSaving(false);
     }
   }
-  async function retry(runId: number) {
-    setSaving(true);
-    try {
-      const result = await retryUserMemoryRun(runId);
-      toast.success(result.resetCount > 0 ? "已重新提交失败项" : "失败项已被更晚运行覆盖");
-      await load();
-    }
-    catch { toast.error("重试失败"); }
-    finally { setSaving(false); }
-  }
   async function saveMemory(input: { category: AgentUserMemoryCategory; content: string; expiresAt: number | null }) {
     if (!selected || !detail) return;
     setSaving(true);
@@ -158,7 +146,7 @@ export function UserMemoryPage() {
     finally { setSaving(false); }
   }
   async function showEvidence(item: AgentUserMemoryItem) {
-    if (!selected || item.source !== "ai") return;
+    if (!selected || item.source !== "ai" || !item.sourceSessionId || !item.evidenceMessageIds?.length) return;
     try { setEvidence(await getUserMemoryEvidence(selected.thirdExternalUserId, item.id)); }
     catch { toast.error("证据加载失败"); }
   }
@@ -186,23 +174,15 @@ export function UserMemoryPage() {
     finally { setPaging(false); }
   }
   async function showRunDetail(runId: number) {
-    setRunItemStatus("all");
     try { setRunDetail(await getUserMemoryRun(runId, { itemPageSize: 100 })); }
     catch { toast.error("运行详情加载失败"); }
-  }
-  async function filterRunItems(status: "all" | AgentUserMemoryRunItemStatus) {
-    if (!runDetail || paging) return;
-    setRunItemStatus(status); setPaging(true);
-    try { setRunDetail(await getUserMemoryRun(runDetail.run.id, { itemPageSize: 100, ...(status === "all" ? {} : { status }) })); }
-    catch { toast.error("运行详情加载失败"); }
-    finally { setPaging(false); }
   }
   async function loadMoreRunItems() {
     if (!runDetail?.nextItemCursor || paging) return;
     const currentRunId = runDetail.run.id;
     setPaging(true);
     try {
-      const page = await getUserMemoryRun(currentRunId, { itemCursor: runDetail.nextItemCursor, itemPageSize: 100, ...(runItemStatus === "all" ? {} : { status: runItemStatus }) });
+      const page = await getUserMemoryRun(currentRunId, { itemCursor: runDetail.nextItemCursor, itemPageSize: 100 });
       setRunDetail((current) => current?.run.id === currentRunId ? { ...page, items: [...current.items, ...page.items] } : current);
     } catch { toast.error("运行详情加载失败"); }
     finally { setPaging(false); }
@@ -225,12 +205,12 @@ export function UserMemoryPage() {
             规则配置
           </Button>
         </div> : undefined}
-        description="AI 自动提炼客户的稳定属性、偏好与近期意向，让每次服务更懂客户"
+        description="AI 自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户"
       />
       <Tabs defaultValue="overview">
         <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger>{overview?.canViewWorkerObservability ? <TabsTrigger value="observability" variant="underline">运行观测</TabsTrigger> : null}</TabsList>
         <TabsContent className="pt-5" value="overview">
-          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview runs={runs} canManage={canManage} saving={saving} hasMore={Boolean(runNextCursor)} onRetryRun={retry} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
+          {loading ? <Loading /> : error || !overview ? <LoadError onRetry={load} /> : <Overview runs={runs} canViewDetails={canManage} loadingMore={paging} hasMore={Boolean(runNextCursor)} onLoadMore={() => void loadMoreRuns()} onShowDetail={(id) => void showRunDetail(id)} />}
         </TabsContent>
         <TabsContent className="pt-5" value="customers">
           <MemoryCustomerList
@@ -275,11 +255,17 @@ export function UserMemoryPage() {
     />
     <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !saving) setDeleting(undefined); }}><AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>删除记忆</AlertDialogTitle><AlertDialogDescription>删除后将立即从客户当前记忆中移除</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={(event) => { event.preventDefault(); void removeMemory(); }}>删除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <Dialog open={Boolean(evidence)} onOpenChange={(open) => { if (!open) setEvidence(undefined); }}><DialogContent><DialogHeader><DialogTitle>来源证据</DialogTitle><DialogDescription>AI 提炼时引用的客户消息</DialogDescription></DialogHeader><div className="space-y-2">{evidence?.messages.map((message) => <div className="rounded-lg bg-surface-muted p-3 text-sm" key={message.messageId}>{message.content}</div>)}</div></DialogContent></Dialog>
-    <Dialog open={Boolean(runDetail)} onOpenChange={(open) => { if (!open) setRunDetail(undefined); }}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>运行详情</DialogTitle><DialogDescription>{runDetail?.run.quotaDate} · {runDetail ? statusLabel(runDetail.run.status) : ""}</DialogDescription></DialogHeader><Select value={runItemStatus} onValueChange={(value) => void filterRunItems(value as "all" | AgentUserMemoryRunItemStatus)}><SelectTrigger aria-label="运行项状态" className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="succeeded">成功</SelectItem><SelectItem value="failed">失败</SelectItem><SelectItem value="skipped">已跳过</SelectItem><SelectItem value="prepared">待处理</SelectItem><SelectItem value="submitted">已提交</SelectItem><SelectItem value="canceled">已取消</SelectItem></SelectContent></Select><div className="max-h-[60vh] overflow-auto"><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>状态</TableHead><TableHead>会话</TableHead><TableHead>消息</TableHead><TableHead>错误</TableHead></TableRow></TableHeader><TableBody>{runDetail?.items.map((item) => <TableRow key={item.id}><TableCell>{item.thirdExternalUserId}</TableCell><TableCell>{statusLabel(item.status)}</TableCell><TableCell>{item.sessionCount}</TableCell><TableCell>{item.messageCount}</TableCell><TableCell>{item.lastErrorCode ?? "-"}</TableCell></TableRow>)}</TableBody></Table>{runDetail?.nextItemCursor ? <div className="mt-4 text-center"><Button variant="outline" disabled={paging} onClick={() => void loadMoreRunItems()}>{paging ? <Spinner size={16} /> : null}加载更多</Button></div> : null}</div></DialogContent></Dialog>
+    <RunDetailDialog
+      detail={runDetail}
+      loading={paging}
+      onLoadMore={() => void loadMoreRunItems()}
+      onOpenChange={(open) => { if (!open) setRunDetail(undefined); }}
+      onOpenCustomer={(customer) => void chooseCustomer(customer)}
+    />
   </AiHostingLayout>;
 }
 
-function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, onShowDetail }: { runs: AgentUserMemoryRun[]; canManage: boolean; saving: boolean; hasMore: boolean; onRetryRun: (id: number) => void; onLoadMore: () => void; onShowDetail: (id: number) => void }) {
+function Overview({ runs, canViewDetails, loadingMore, hasMore, onLoadMore, onShowDetail }: { runs: AgentUserMemoryRun[]; canViewDetails: boolean; loadingMore: boolean; hasMore: boolean; onLoadMore: () => void; onShowDetail: (id: number) => void }) {
   return (
     <div className="space-y-5">
       <section className="flex min-h-[240px] flex-col gap-3 rounded-xl border bg-card p-4">
@@ -308,16 +294,15 @@ function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, on
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-11 min-w-[140px]">日期</TableHead>
-                <TableHead className="h-11 min-w-[120px]">状态</TableHead>
                 <TableHead className="h-11 min-w-[100px]">客户数</TableHead>
-                <TableHead className="h-11 min-w-[260px]">结果</TableHead>
-                <TableHead className="h-11 min-w-[180px] text-right">操作</TableHead>
+                <TableHead className="h-11 min-w-[260px]">记忆变更</TableHead>
+                <TableHead className="h-11 min-w-[100px] text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {runs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={4}>
                     <Empty />
                   </TableCell>
                 </TableRow>
@@ -325,36 +310,10 @@ function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, on
                 runs.map((run) => (
                   <TableRow key={run.id}>
                     <TableCell className="py-4 font-medium">{run.quotaDate}</TableCell>
-                    <TableCell className="py-4">
-                      <Badge variant="outline">{statusLabel(run.status)}</Badge>
-                    </TableCell>
                     <TableCell className="py-4">{run.selectedCustomerCount}</TableCell>
-                    <TableCell className="py-4">
-                      {run.successCount} 成功 · {run.failureCount} 失败 · {run.skippedCount} 跳过
-                    </TableCell>
+                    <TableCell className="py-4">{runMemoryChangeLabel(run)}</TableCell>
                     <TableCell className="py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          className="h-8 rounded-[8px]"
-                          onClick={() => onShowDetail(run.id)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          详情
-                        </Button>
-                        {canManage && (run.status === "partial" || run.status === "failed") ? (
-                          <Button
-                            className="h-8 rounded-[8px]"
-                            disabled={saving}
-                            onClick={() => onRetryRun(run.id)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <HugeiconsIcon icon={RefreshIcon} size={15} />
-                            重试失败项
-                          </Button>
-                        ) : null}
-                      </div>
+                      <Button className="h-8 rounded-[8px]" disabled={!canViewDetails} onClick={() => onShowDetail(run.id)} size="sm" variant="outline">详情</Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -363,7 +322,8 @@ function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, on
           </Table>
           {hasMore ? (
             <div className="mt-4 text-center">
-              <Button disabled={saving} onClick={onLoadMore} variant="outline">
+              <Button disabled={loadingMore} onClick={onLoadMore} variant="outline">
+                {loadingMore ? <Spinner size={16} /> : null}
                 加载更多
               </Button>
             </div>
@@ -375,7 +335,10 @@ function Overview({ runs, canManage, saving, hasMore, onRetryRun, onLoadMore, on
 }
 
 function RunTrendChart({ runs }: { runs: AgentUserMemoryRun[] }) {
-  const points = [...runs].sort((left, right) => left.quotaDate.localeCompare(right.quotaDate)).map((run) => ({ date: run.quotaDate, failure: run.failureCount, skipped: run.skippedCount, success: run.successCount }));
+  const points = [...runs]
+    .filter(hasMemoryChangeStats)
+    .sort((left, right) => left.quotaDate.localeCompare(right.quotaDate))
+    .map((run) => ({ date: run.quotaDate, added: run.memoryAddedCount, removed: run.memoryRemovedCount, updated: run.memoryUpdatedCount }));
 
   return (
     <div className="flex flex-1 items-stretch">
@@ -444,9 +407,9 @@ function RunTrendChart({ runs }: { runs: AgentUserMemoryRun[] }) {
 }
 
 const memoryTrendSeries = [
-  { color: insightResolutionColors.resolved, key: "success", label: "成功" },
-  { color: insightResolutionColors.unresolved, key: "failure", label: "失败" },
-  { color: insightResolutionColors.unknown, key: "skipped", label: "跳过" },
+  { color: insightResolutionColors.resolved, key: "added", label: "新增" },
+  { color: insightResolutionColors.unknown, key: "updated", label: "更新" },
+  { color: insightResolutionColors.unresolved, key: "removed", label: "删除" },
 ] as const;
 
 function MemoryTrendTooltip({
@@ -609,7 +572,7 @@ function MemoryCustomerList({ appliedQuery, customers, error, loading, page, pag
   );
 }
 
-function CustomerDetailSheet({ canManage, customer, detail, error, open, onAdd, onDelete, onEdit, onOpenChange, onRetry, onShowEvidence }: { canManage: boolean; customer?: Customer; detail?: AgentUserMemoryCustomerDetailResponse; error: boolean; open: boolean; onAdd: () => void; onDelete: (item: AgentUserMemoryItem) => void; onEdit: (item: AgentUserMemoryItem) => void; onOpenChange: (open: boolean) => void; onRetry: () => void; onShowEvidence: (item: AgentUserMemoryItem) => void }) {
+function CustomerDetailSheet({ canManage, customer, detail, error, open, onAdd, onDelete, onEdit, onOpenChange, onRetry, onShowEvidence }: { canManage: boolean; customer?: CustomerSelection; detail?: AgentUserMemoryCustomerDetailResponse; error: boolean; open: boolean; onAdd: () => void; onDelete: (item: AgentUserMemoryItem) => void; onEdit: (item: AgentUserMemoryItem) => void; onOpenChange: (open: boolean) => void; onRetry: () => void; onShowEvidence: (item: AgentUserMemoryItem) => void }) {
   const memoryCount = detail?.items.length ?? customer?.memoryCount ?? 0;
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
@@ -656,15 +619,16 @@ function CustomerDetailSheet({ canManage, customer, detail, error, open, onAdd, 
 
 function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvidence }: { canManage: boolean; item: AgentUserMemoryItem; onDelete: () => void; onEdit: () => void; onShowEvidence: () => void }) {
   const category = USER_MEMORY_CATEGORIES.find((option) => option.value === item.category) ?? USER_MEMORY_CATEGORIES[0];
+  const hasEvidence = item.source === "ai" && Boolean(item.sourceSessionId && item.evidenceMessageIds?.length);
   return (
-    <div className="rounded-[10px] bg-surface-muted p-4">
+    <div className="rounded-[10px] border bg-background px-4 pb-4 pt-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Badge className="h-5 shrink-0 gap-1 rounded-[6px] bg-background px-1.5 py-0 text-[11px] leading-none text-muted-foreground" variant="secondary">
+          <Badge className="h-5 shrink-0 gap-1 rounded-[6px] border-border/80 bg-background px-1.5 py-0 text-[11px] leading-none text-muted-foreground" variant="outline">
             <HugeiconsIcon aria-hidden="true" icon={category.icon} size={12} strokeWidth={1.8} />
             {category.label}
           </Badge>
-          <Badge className={`h-5 shrink-0 gap-1 rounded-[6px] bg-background px-1.5 py-0 text-[11px] leading-none ${item.source === "ai" ? "text-success" : "text-muted-foreground"}`} variant="secondary">
+          <Badge className={`h-5 shrink-0 gap-1 rounded-[6px] border-border/80 bg-background px-1.5 py-0 text-[11px] leading-none ${item.source === "ai" ? "border-success/20 text-success" : "text-muted-foreground"}`} variant="outline">
             <HugeiconsIcon
               aria-hidden="true"
               icon={item.source === "manual" ? UserEdit01Icon : GoogleGeminiIcon}
@@ -674,7 +638,7 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
             {item.source === "manual" ? "手动创建" : "AI 提炼"}
           </Badge>
         </div>
-        {canManage || item.source === "ai" ? (
+        {canManage || hasEvidence ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button aria-label="记忆操作" className="size-7 rounded-[8px] p-0" size="icon" type="button" variant="ghost">
@@ -682,13 +646,13 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {item.source === "ai" ? (
+              {hasEvidence ? (
                 <DropdownMenuItem onSelect={onShowEvidence}>
                   <HugeiconsIcon icon={ViewIcon} />
                   查看证据
                 </DropdownMenuItem>
               ) : null}
-              {item.source === "ai" && canManage ? <DropdownMenuSeparator /> : null}
+              {hasEvidence && canManage ? <DropdownMenuSeparator /> : null}
               {canManage ? (
                 <>
                   <DropdownMenuItem onSelect={onEdit}>
@@ -706,10 +670,10 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
         ) : null}
       </div>
       {item.expiresAt ? (
-        <Alert className="mt-3 px-[8px] py-[4px] text-xs" variant="warning">
-          <HugeiconsIcon aria-hidden="true" icon={AlertCircleIcon} size={15} strokeWidth={1.8} />
-          <AlertDescription className="text-xs leading-5">{formatExpiryStatus(item.expiresAt)}</AlertDescription>
-        </Alert>
+        <div className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-warning">
+          <HugeiconsIcon aria-hidden="true" className="mt-0.5 shrink-0" icon={TimeHalfPassIcon} size={15} strokeWidth={1.8} />
+          <span>{formatExpiryStatus(item.expiresAt)}</span>
+        </div>
       ) : null}
       <p className="mt-3 break-words text-sm font-medium leading-6">{item.content}</p>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -719,7 +683,65 @@ function CustomerDetailMemoryItem({ canManage, item, onDelete, onEdit, onShowEvi
   );
 }
 
-function CustomerAvatar({ customer }: { customer?: Customer }) { return <Avatar className="size-10"><AvatarImage alt="" src={customer?.avatarUrl} /><AvatarFallback>{customer?.customerName?.trim().slice(0, 1) || undefined}</AvatarFallback></Avatar>; }
+function RunDetailDialog({ detail, loading, onLoadMore, onOpenChange, onOpenCustomer }: {
+  detail?: AgentUserMemoryRunDetailResponse;
+  loading: boolean;
+  onLoadMore: () => void;
+  onOpenChange: (open: boolean) => void;
+  onOpenCustomer: (customer: CustomerSelection) => void;
+}) {
+  return (
+    <Dialog open={Boolean(detail)} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>运行详情</DialogTitle>
+          <DialogDescription>{detail?.run.quotaDate} · 处理 {detail?.run.selectedCustomerCount ?? 0} 位客户</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto">
+          <Table aria-label="客户处理明细" className="table-fixed">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[30%]">客户</TableHead>
+                <TableHead className="w-[10%] text-center">会话</TableHead>
+                <TableHead className="w-[10%] text-center">消息</TableHead>
+                <TableHead className="w-[50%]">记忆变更</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {detail?.items.length ? detail.items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <Button aria-label={`查看${item.customerName}记忆`} className="h-auto min-w-0 justify-start gap-2.5 p-0 text-left text-foreground hover:no-underline" onClick={() => onOpenCustomer(item)} variant="link">
+                      <CustomerAvatar className="size-8" customer={item} />
+                      <span className="min-w-0 truncate font-medium" title={item.customerName}>{item.customerName}</span>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums">{item.sessionCount}</TableCell>
+                  <TableCell className="text-center tabular-nums">{item.messageCount}</TableCell>
+                  <TableCell>{runItemMemoryChangeLabel(item)}</TableCell>
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={4}><Empty /></TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          {detail?.nextItemCursor ? (
+            <div className="mt-4 text-center">
+              <Button variant="outline" disabled={loading} onClick={onLoadMore}>
+                {loading ? <Spinner size={16} /> : null}
+                加载更多
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CustomerAvatar({ className, customer }: { className?: string; customer?: { avatarUrl?: string; customerName?: string } }) { return <Avatar className={className ?? "size-10"}><AvatarImage alt="" src={customer?.avatarUrl} /><AvatarFallback>{customer?.customerName?.trim().slice(0, 1) || undefined}</AvatarFallback></Avatar>; }
 function formatUpdatedAt(timestamp?: number) {
   if (!timestamp) return "暂无记录";
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(timestamp);
@@ -737,4 +759,23 @@ function formatTrendDate(value: string) {
 function Loading() { return <div className="flex min-h-32 items-center justify-center gap-2" role="status"><Spinner size={18} /><span className="text-sm text-muted-foreground">正在加载</span></div>; }
 function Empty({ text = "暂无数据" }: { text?: string }) { return <div className="py-10 text-center text-sm text-muted-foreground">{text}</div>; }
 function LoadError({ onRetry }: { onRetry: () => void }) { return <div className="flex min-h-40 flex-col items-center justify-center gap-3"><p className="text-sm text-muted-foreground">加载失败</p><Button variant="outline" onClick={onRetry}>重试</Button></div>; }
-function statusLabel(value: string) { return ({ pending: "等待中", running: "运行中", waiting: "等待结果", succeeded: "成功", partial: "部分成功", failed: "失败", canceled: "已取消", prepared: "待处理", submitted: "已提交", skipped: "已跳过" } as Record<string, string>)[value] ?? value; }
+type MemoryChangeStats = { memoryAddedCount?: number; memoryRemovedCount?: number; memoryUpdatedCount?: number };
+type RecordedMemoryChangeStats = { memoryAddedCount: number; memoryRemovedCount: number; memoryUpdatedCount: number };
+
+function hasMemoryChangeStats(value: MemoryChangeStats): value is MemoryChangeStats & RecordedMemoryChangeStats {
+  return value.memoryAddedCount != null && value.memoryUpdatedCount != null && value.memoryRemovedCount != null;
+}
+function formatMemoryChanges(value: RecordedMemoryChangeStats) {
+  const total = value.memoryAddedCount + value.memoryUpdatedCount + value.memoryRemovedCount;
+  return total === 0 ? "无变化" : `新增 ${value.memoryAddedCount} · 更新 ${value.memoryUpdatedCount} · 删除 ${value.memoryRemovedCount}`;
+}
+function isRunInProgress(run: AgentUserMemoryRun) { return ["pending", "running", "waiting"].includes(run.status); }
+function runMemoryChangeLabel(run: AgentUserMemoryRun) {
+  if (hasMemoryChangeStats(run)) return formatMemoryChanges(run);
+  return isRunInProgress(run) ? "处理中" : "暂无变更记录";
+}
+function runItemMemoryChangeLabel(item: AgentUserMemoryRunDetailResponse["items"][number]) {
+  if (hasMemoryChangeStats(item)) return formatMemoryChanges(item);
+  if (["prepared", "submitted"].includes(item.status)) return "处理中";
+  return item.lastErrorCode ? "未更新" : "暂无变更记录";
+}

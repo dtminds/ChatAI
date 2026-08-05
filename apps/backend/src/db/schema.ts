@@ -2008,6 +2008,9 @@ export interface XyWapEmbedAgentUserMemoryRun {
   last_error_code: string | null;
   lease_until: Date | null;
   locked_by: string | null;
+  memory_added_count: number | null;
+  memory_removed_count: number | null;
+  memory_updated_count: number | null;
   output_tokens: Generated<number>;
   phase: string;
   quota_date: Date;
@@ -2031,8 +2034,10 @@ export interface XyWapEmbedAgentUserMemoryRunItem {
   id: Generated<number>;
   input_tokens: Generated<number>;
   last_error_code: string | null;
+  memory_added_count: number | null;
   message_count: Generated<number>;
-  next_attempt_at: Date | null;
+  memory_removed_count: number | null;
+  memory_updated_count: number | null;
   output_tokens: Generated<number>;
   platform: number;
   provider_batch_id: string | null;

@@ -85,11 +85,15 @@ export class UserMemoryService {
       const now = Date.now();
       if (enabledChanged && !enabled && config.active_run_id) {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run_item").set({ status: "canceled", finished_at: new Date() }).where("run_id", "=", config.active_run_id).where("status", "in", ["prepared", "submitted"]).execute();
-        const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", config.active_run_id).execute();
+        const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item")
+          .select(["status", "memory_added_count", "memory_updated_count", "memory_removed_count"])
+          .where("run_id", "=", config.active_run_id).execute();
         const counts = countUserMemoryRunItems(items);
+        const changes = sumUserMemoryChanges(items);
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
           status: "canceled", phase: "completed", success_count: counts.success, failure_count: counts.failure,
           skipped_count: counts.skipped, finished_at: new Date(), locked_by: null, claim_token: null, lease_until: null,
+          memory_added_count: changes.added, memory_updated_count: changes.updated, memory_removed_count: changes.removed,
         }).where("id", "=", config.active_run_id).where("uid", "=", uid).execute();
       }
       await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({
@@ -126,64 +130,40 @@ export class UserMemoryService {
     if (options.status) query = query.where("status", "=", options.status);
     const rows = await query.orderBy("id", "desc").limit(limit + 1).execute();
     const items = rows.slice(0, limit);
+    const customerIdsByPlatform = new Map<number, Set<string>>();
+    for (const item of items) {
+      const ids = customerIdsByPlatform.get(item.platform) ?? new Set<string>();
+      ids.add(item.third_external_userid);
+      customerIdsByPlatform.set(item.platform, ids);
+    }
+    const contacts = (await Promise.all([...customerIdsByPlatform].map(([platform, externalIds]) =>
+      this.db.selectFrom("xy_wap_embed_contact")
+        .select(["platform", "third_external_userid", "avatar", "name", "real_name"])
+        .where("uid", "=", uid)
+        .where("platform", "=", platform)
+        .where("third_external_userid", "in", [...externalIds])
+        .execute(),
+    ))).flat();
+    const contactsByCustomer = new Map(contacts.map((contact) => [customerKey(contact.platform, contact.third_external_userid), contact]));
     return {
       run: mapRun(run),
-      items: items.map((row) => ({
-        id: row.id, platform: row.platform, thirdExternalUserId: row.third_external_userid,
-        sessionCount: row.session_count, messageCount: row.message_count, status: row.status as never,
-        attemptCount: row.attempt_count, inputTokens: row.input_tokens, outputTokens: row.output_tokens,
-        ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
-        ...(row.finished_at ? { finishedAt: row.finished_at.getTime() } : {}),
-      })),
+      items: items.map((row) => {
+        const contact = contactsByCustomer.get(customerKey(row.platform, row.third_external_userid));
+        return {
+          id: row.id, platform: row.platform, thirdExternalUserId: row.third_external_userid,
+          customerName: contact?.name?.trim() || contact?.real_name?.trim() || "未知客户",
+          ...(contact?.avatar?.trim() ? { avatarUrl: contact.avatar } : {}),
+          sessionCount: row.session_count, messageCount: row.message_count, status: row.status as never,
+          attemptCount: row.attempt_count, inputTokens: row.input_tokens, outputTokens: row.output_tokens,
+          ...(row.memory_added_count != null ? { memoryAddedCount: row.memory_added_count } : {}),
+          ...(row.memory_updated_count != null ? { memoryUpdatedCount: row.memory_updated_count } : {}),
+          ...(row.memory_removed_count != null ? { memoryRemovedCount: row.memory_removed_count } : {}),
+          ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
+          ...(row.finished_at ? { finishedAt: row.finished_at.getTime() } : {}),
+        };
+      }),
       ...(rows.length > limit && items.at(-1) ? { nextItemCursor: encodeIdCursor(items.at(-1)!.id) } : {}),
     };
-  }
-
-  async retryFailed(uid: number, runId: number) {
-    return this.db.transaction().execute(async (trx) => {
-      const config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", uid).forUpdate().executeTakeFirst();
-      if (!config || config.enabled !== 1) throw new BadRequestError("AGENT_USER_MEMORY_DISABLED", "用户记忆功能未开启");
-      if (config.active_run_id && config.active_run_id !== runId) throw new BadRequestError("AGENT_USER_MEMORY_RUN_ACTIVE", "当前存在其它活动运行");
-      const run = await trx.selectFrom("xy_wap_embed_agent_user_memory_run").selectAll().where("uid", "=", uid).where("id", "=", runId).forUpdate().executeTakeFirst();
-      if (!run || !["partial", "failed"].includes(run.status) || run.config_generation !== config.generation) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行不可重试");
-      const failed = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").selectAll().where("run_id", "=", runId).where("status", "=", "failed").forUpdate().execute();
-      const quotaDate = dateOnly(run.quota_date);
-      const platforms = [...new Set(failed.map((item) => item.platform))];
-      const externalIds = [...new Set(failed.map((item) => item.third_external_userid))];
-      const memories = failed.length === 0 ? [] : await trx.selectFrom("xy_wap_embed_agent_user_memory")
-        .select(["platform", "third_external_userid", "last_auto_quota_date"])
-        .where("uid", "=", uid).where("platform", "in", platforms).where("third_external_userid", "in", externalIds).execute();
-      const quotaByCustomer = new Map(memories.map((memory) => [customerKey(memory.platform, memory.third_external_userid), memory.last_auto_quota_date]));
-      const skippedIds: number[] = [];
-      const resetIds: number[] = [];
-      for (const item of failed) {
-        const lastQuotaDate = quotaByCustomer.get(customerKey(item.platform, item.third_external_userid));
-        (lastQuotaDate && dateOnly(lastQuotaDate) > quotaDate ? skippedIds : resetIds).push(item.id);
-      }
-      if (skippedIds.length > 0) await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
-        .set({ status: "skipped", last_error_code: "AGENT_USER_MEMORY_ITEM_SUPERSEDED", finished_at: new Date() })
-        .where("id", "in", skippedIds).execute();
-      if (resetIds.length > 0) await trx.updateTable("xy_wap_embed_agent_user_memory_run_item")
-        .set({ status: "prepared", attempt_count: 0, next_attempt_at: null, last_error_code: null, finished_at: null })
-        .where("id", "in", resetIds).execute();
-      const resetCount = resetIds.length;
-      const skippedCount = skippedIds.length;
-      if (resetCount === 0) {
-        if (skippedCount === 0) throw new BadRequestError("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE", "运行没有可重试失败项");
-        const items = await trx.selectFrom("xy_wap_embed_agent_user_memory_run_item").select(["status"]).where("run_id", "=", runId).execute();
-        const counts = countUserMemoryRunItems(items);
-        const status = resolveTerminalRunStatus(counts);
-        await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({
-          status, phase: "completed", success_count: counts.success, failure_count: counts.failure, skipped_count: counts.skipped,
-          finished_at: new Date(), last_error_code: null, locked_by: null, claim_token: null, lease_until: null,
-        }).where("id", "=", runId).execute();
-        await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({ active_run_id: null }).where("id", "=", config.id).where("active_run_id", "=", runId).execute();
-        return { resetCount, skippedCount };
-      }
-      await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status: "pending", phase: "inference", run_after: new Date(), finished_at: null, last_error_code: null, locked_by: null, claim_token: null, lease_until: null }).where("id", "=", runId).execute();
-      await trx.updateTable("xy_wap_embed_agent_user_memory_config").set({ active_run_id: runId }).where("id", "=", config.id).execute();
-      return { resetCount, skippedCount };
-    });
   }
 
   async getEvidence(uid: number, subUserId: string, customer: CustomerSummary, itemId: number) {
@@ -191,6 +171,7 @@ export class UserMemoryService {
     const row = await this.getMemoryRow(this.db, uid, customer);
     const item = row ? readStoredUserMemoryDocument(row.memories_json).ai.find((entry) => entry.id === itemId) : undefined;
     if (!item) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆条目不存在");
+    if (!item.sourceSessionId || !item.evidenceMessageIds?.length) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆证据不存在");
     const session = await this.db.selectFrom("xy_wap_embed_logical_session").select(["conversation_id", "third_external_userid"]).where("uid", "=", uid).where("id", "=", item.sourceSessionId).executeTakeFirst();
     if (!session || session.third_external_userid !== customer.thirdExternalUserId) throw new NotFoundError("AGENT_USER_MEMORY_ITEM_NOT_FOUND", "记忆证据不存在");
     const page = await this.workbenchService.getMessagesBySeqs(subUserId, String(session.conversation_id), item.evidenceMessageIds);
@@ -392,6 +373,13 @@ export function countUserMemoryRunItems(items: Array<{ status: string }>) {
     skipped: items.filter((item) => item.status === "skipped").length,
   };
 }
+export function sumUserMemoryChanges(items: Array<{ memory_added_count: number | null; memory_removed_count: number | null; memory_updated_count: number | null }>) {
+  return items.reduce((total, item) => ({
+    added: total.added + (item.memory_added_count ?? 0),
+    removed: total.removed + (item.memory_removed_count ?? 0),
+    updated: total.updated + (item.memory_updated_count ?? 0),
+  }), { added: 0, removed: 0, updated: 0 });
+}
 export function nextShanghaiRunAt(nowMs: number) {
   const local = new Date(nowMs + 8 * 60 * 60 * 1000);
   const candidate = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 2 - 8, 0, 0, 0);
@@ -437,6 +425,9 @@ function mapRun(row: Selectable<Database["xy_wap_embed_agent_user_memory_run"]>)
     status: row.status as never, phase: row.phase as never, customerLimit: row.customer_limit, candidateSessionLimit: row.candidate_session_limit,
     candidateSessionCount: row.candidate_session_count, candidateCustomerCount: row.candidate_customer_count, selectedCustomerCount: row.selected_customer_count,
     successCount: row.success_count, failureCount: row.failure_count, skippedCount: row.skipped_count, inputTokens: row.input_tokens, outputTokens: row.output_tokens,
+    ...(row.memory_added_count != null ? { memoryAddedCount: row.memory_added_count } : {}),
+    ...(row.memory_updated_count != null ? { memoryUpdatedCount: row.memory_updated_count } : {}),
+    ...(row.memory_removed_count != null ? { memoryRemovedCount: row.memory_removed_count } : {}),
     ...(row.started_at ? { startedAt: row.started_at.getTime() } : {}), ...(row.finished_at ? { finishedAt: row.finished_at.getTime() } : {}),
     ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
   };

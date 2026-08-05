@@ -1,19 +1,20 @@
-import type { AgentUserMemoryObservabilityRun, AgentUserMemoryObservabilitySummaryResponse, AgentUserMemoryObservabilityTenant, AgentUserMemoryTenantState } from "@chatai/contracts";
+import type { AgentUserMemoryObservabilityRun, AgentUserMemoryObservabilitySummaryResponse, AgentUserMemoryObservabilityTenant, AgentUserMemoryRun, AgentUserMemoryTenantState } from "@chatai/contracts";
 import { AlertCircleIcon, ChartAreaIcon, Clock01Icon, RefreshIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from "recharts";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { resolveTablePagination, TablePagination } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
 import { insightResolutionColors } from "../insights/insights-chart-palette";
 import { useVisiblePolling } from "../insights/use-visible-polling";
-import { getUserMemoryObservabilitySummary, listUserMemoryObservabilityTenants } from "./api/user-memory-service";
+import { getUserMemoryObservabilitySummary, listUserMemoryObservabilityRuns, listUserMemoryObservabilityTenants } from "./api/user-memory-service";
 
 const PAGE_SIZE = 20;
 const trendSeries = [
@@ -31,6 +32,12 @@ export function UserMemoryObservability() {
   const [query, setQuery] = useState("");
   const [uid, setUid] = useState<number>();
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [selectedUid, setSelectedUid] = useState<number>();
+  const [tenantRuns, setTenantRuns] = useState<AgentUserMemoryRun[]>([]);
+  const [tenantRunsNextCursor, setTenantRunsNextCursor] = useState<string>();
+  const [tenantRunsLoading, setTenantRunsLoading] = useState(false);
+  const [tenantRunsError, setTenantRunsError] = useState(false);
+  const tenantRunsRequest = useRef<AbortController | undefined>(undefined);
 
   const load = useCallback(async ({ showLoading, signal }: { showLoading: boolean; signal: AbortSignal }) => {
     if (showLoading) setLoading(true);
@@ -63,6 +70,40 @@ export function UserMemoryObservability() {
     setPage(1);
     setUid(parsedUid);
     setRefreshVersion((value) => value + 1);
+  }
+
+  async function loadTenantRuns(targetUid: number, cursor?: string, append = false) {
+    tenantRunsRequest.current?.abort();
+    const controller = new AbortController();
+    tenantRunsRequest.current = controller;
+    setTenantRunsLoading(true);
+    if (!append) setTenantRuns([]);
+    try {
+      const result = await listUserMemoryObservabilityRuns(targetUid, { cursor, pageSize: PAGE_SIZE }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setTenantRuns((current) => append ? [...current, ...result.items] : result.items);
+      setTenantRunsNextCursor(result.nextCursor);
+      setTenantRunsError(false);
+    } catch {
+      if (!controller.signal.aborted) setTenantRunsError(true);
+    } finally {
+      if (!controller.signal.aborted) setTenantRunsLoading(false);
+    }
+  }
+
+  function openTenantRuns(targetUid: number) {
+    setSelectedUid(targetUid);
+    void loadTenantRuns(targetUid);
+  }
+
+  function closeTenantRuns(open: boolean) {
+    if (open) return;
+    tenantRunsRequest.current?.abort();
+    setSelectedUid(undefined);
+    setTenantRuns([]);
+    setTenantRunsNextCursor(undefined);
+    setTenantRunsError(false);
+    setTenantRunsLoading(false);
   }
 
   if (loading && !summary) return <Loading />;
@@ -109,17 +150,40 @@ export function UserMemoryObservability() {
 
       <section className="overflow-hidden rounded-[8px] border bg-background">
         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-sm font-semibold">租户运行状态</h2><div className="flex w-full gap-2 sm:w-auto"><Input aria-label="搜索 UID" className="w-full sm:w-56" inputMode="numeric" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") search(); }} placeholder="输入 UID" value={query} /><Button aria-label="搜索" onClick={search} size="icon" variant="outline"><HugeiconsIcon icon={Search01Icon} size={16} /></Button></div></div>
-        <div className="overflow-x-auto"><Table aria-label="用户记忆租户运行状态"><TableHeader><TableRow className="hover:bg-transparent"><TableHead>UID</TableHead><TableHead>状态</TableHead><TableHead>功能</TableHead><TableHead>下次运行</TableHead><TableHead>当前进度</TableHead><TableHead>最近结果</TableHead><TableHead>Token</TableHead><TableHead>最近错误</TableHead></TableRow></TableHeader><TableBody>{loading && !tenantPage ? <TableRow><TableCell colSpan={8}><Loading compact /></TableCell></TableRow> : tenantPage?.items.length ? tenantPage.items.map((tenant) => <TenantRow key={tenant.uid} tenant={tenant} />) : <TableRow><TableCell colSpan={8}><Empty /></TableCell></TableRow>}</TableBody></Table></div>
+        <div className="overflow-x-auto"><Table aria-label="用户记忆租户运行状态"><TableHeader><TableRow className="hover:bg-transparent"><TableHead>UID</TableHead><TableHead>状态</TableHead><TableHead>功能</TableHead><TableHead>下次运行</TableHead><TableHead>当前进度</TableHead><TableHead>最近结果</TableHead><TableHead>最近运行 Token</TableHead><TableHead>最近错误</TableHead></TableRow></TableHeader><TableBody>{loading && !tenantPage ? <TableRow><TableCell colSpan={8}><Loading compact /></TableCell></TableRow> : tenantPage?.items.length ? tenantPage.items.map((tenant) => <TenantRow key={tenant.uid} onShowRuns={openTenantRuns} tenant={tenant} />) : <TableRow><TableCell colSpan={8}><Empty /></TableCell></TableRow>}</TableBody></Table></div>
         {tenantPage ? <TablePagination className="px-4" itemLabel="个租户" onPageChange={setPage} page={pagination.activePage} total={tenantPage.total} totalPages={pagination.totalPages} /> : null}
       </section>
+      <TenantRunsSheet
+        error={tenantRunsError}
+        loading={tenantRunsLoading}
+        nextCursor={tenantRunsNextCursor}
+        onLoadMore={() => selectedUid != null && void loadTenantRuns(selectedUid, tenantRunsNextCursor, true)}
+        onOpenChange={closeTenantRuns}
+        onRetry={() => selectedUid != null && void loadTenantRuns(selectedUid)}
+        open={selectedUid != null}
+        runs={tenantRuns}
+        uid={selectedUid}
+      />
     </div>
   );
 }
 
-function TenantRow({ tenant }: { tenant: AgentUserMemoryObservabilityTenant }) {
+function TenantRow({ onShowRuns, tenant }: { onShowRuns: (uid: number) => void; tenant: AgentUserMemoryObservabilityTenant }) {
   const run = tenant.activeRun ?? tenant.recentRun;
   const completed = run ? run.successCount + run.failureCount + run.skippedCount : 0;
-  return <TableRow><TableCell className="font-mono text-sm">{tenant.uid}</TableCell><TableCell><TenantStateBadge state={tenant.state} /></TableCell><TableCell>{tenant.enabled ? "已开启" : "未开启"}</TableCell><TableCell className="whitespace-nowrap text-muted-foreground">{formatTimestamp(tenant.nextRunAt)}</TableCell><TableCell className="whitespace-nowrap">{tenant.activeRun ? `${completed} / ${tenant.activeRun.selectedCustomerCount}` : "—"}</TableCell><TableCell>{run ? <RunStatusBadge run={run} /> : "—"}</TableCell><TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{run ? formatInteger(run.inputTokens + run.outputTokens) : "—"}</TableCell><TableCell className="max-w-48"><span className={cn("block truncate text-xs", run?.lastErrorCode ? "text-destructive" : "text-muted-foreground")} title={run?.lastErrorCode}>{run?.lastErrorCode ?? "—"}</span></TableCell></TableRow>;
+  return <TableRow><TableCell><Button className="h-auto p-0 font-mono text-sm" onClick={() => onShowRuns(tenant.uid)} variant="link">{tenant.uid}</Button></TableCell><TableCell><TenantStateBadge state={tenant.state} /></TableCell><TableCell>{tenant.enabled ? "已开启" : "未开启"}</TableCell><TableCell className="whitespace-nowrap text-muted-foreground">{formatTimestamp(tenant.nextRunAt)}</TableCell><TableCell className="whitespace-nowrap">{tenant.activeRun ? `${completed} / ${tenant.activeRun.selectedCustomerCount}` : "—"}</TableCell><TableCell>{run ? <RunStatusBadge run={run} /> : "—"}</TableCell><TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{run ? formatInteger(run.inputTokens + run.outputTokens) : "—"}</TableCell><TableCell className="max-w-48"><span className={cn("block truncate text-xs", run?.lastErrorCode ? "text-destructive" : "text-muted-foreground")} title={run?.lastErrorCode}>{run?.lastErrorCode ?? "—"}</span></TableCell></TableRow>;
+}
+
+function TenantRunsSheet({ error, loading, nextCursor, onLoadMore, onOpenChange, onRetry, open, runs, uid }: { error: boolean; loading: boolean; nextCursor?: string; onLoadMore: () => void; onOpenChange: (open: boolean) => void; onRetry: () => void; open: boolean; runs: AgentUserMemoryRun[]; uid?: number }) {
+  return <Sheet onOpenChange={onOpenChange} open={open}><SheetContent className="flex w-full flex-col overflow-hidden sm:max-w-[680px]"><SheetHeader><SheetTitle>UID {uid ?? "—"}</SheetTitle><SheetDescription>用户记忆运行记录</SheetDescription></SheetHeader><div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">{loading && runs.length === 0 ? <Loading compact /> : error && runs.length === 0 ? <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-muted-foreground"><span>加载失败</span><Button onClick={onRetry} variant="outline">重新加载</Button></div> : <>{error ? <div className="mb-3 rounded-[8px] border border-warning/30 bg-warning-muted/30 px-3 py-2 text-sm text-warning" role="status">加载更多失败，当前展示已有记录</div> : null}<div className="overflow-x-auto rounded-[8px] border"><Table aria-label={`UID ${uid ?? ""} 用户记忆运行记录`}><TableHeader><TableRow className="hover:bg-transparent"><TableHead>日期</TableHead><TableHead>客户数</TableHead><TableHead>记忆变更</TableHead><TableHead className="text-right">Token</TableHead></TableRow></TableHeader><TableBody>{runs.length ? runs.map((run) => <TableRow key={run.id}><TableCell className="whitespace-nowrap font-medium">{run.quotaDate}</TableCell><TableCell>{run.selectedCustomerCount}</TableCell><TableCell className="whitespace-nowrap">{runMemoryChangeLabel(run)}</TableCell><TableCell className="text-right tabular-nums text-muted-foreground">{formatInteger(run.inputTokens + run.outputTokens)}</TableCell></TableRow>) : <TableRow><TableCell colSpan={4}><Empty /></TableCell></TableRow>}</TableBody></Table></div>{nextCursor ? <div className="mt-4 flex justify-center"><Button disabled={loading} onClick={onLoadMore} variant="outline">{loading ? <><Spinner size={16} /><span>正在加载</span></> : "加载更多"}</Button></div> : null}</>}</div></SheetContent></Sheet>;
+}
+
+function runMemoryChangeLabel(run: AgentUserMemoryRun) {
+  if (run.memoryAddedCount != null && run.memoryUpdatedCount != null && run.memoryRemovedCount != null) {
+    const total = run.memoryAddedCount + run.memoryUpdatedCount + run.memoryRemovedCount;
+    return total === 0 ? "无变化" : `新增 ${run.memoryAddedCount} · 更新 ${run.memoryUpdatedCount} · 删除 ${run.memoryRemovedCount}`;
+  }
+  return ["pending", "running", "waiting"].includes(run.status) ? "处理中" : "暂无变更记录";
 }
 
 function TrendTooltip({ active, label, payload }: TooltipProps<number, string>) {

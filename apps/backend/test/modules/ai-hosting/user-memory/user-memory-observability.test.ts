@@ -15,11 +15,12 @@ describe("user memory observability", () => {
     const now = 100_000;
     const config = { enabled: 1, next_run_at: new Date(now + 1), active_run_id: 1 } as never;
     const running = { status: "running", lease_until: new Date(now + 1) } as never;
-    expect(resolveTenantState({ ...config, enabled: 0 } as never, undefined, undefined, now)).toBe("disabled");
-    expect(resolveTenantState(config, undefined, undefined, now)).toBe("warning");
-    expect(resolveTenantState(config, { ...running, lease_until: new Date(now - 1) } as never, undefined, now)).toBe("warning");
-    expect(resolveTenantState(config, running, undefined, now)).toBe("running");
-    expect(resolveTenantState({ ...config, active_run_id: null, next_run_at: new Date(now - 1) } as never, undefined, undefined, now)).toBe("due");
+    expect(resolveTenantState({ ...config, enabled: 0 } as never, undefined, now)).toBe("disabled");
+    expect(resolveTenantState(config, undefined, now)).toBe("warning");
+    expect(resolveTenantState(config, { ...running, lease_until: new Date(now - 1) } as never, now)).toBe("warning");
+    expect(resolveTenantState(config, running, now)).toBe("running");
+    expect(resolveTenantState({ ...config, active_run_id: null, next_run_at: new Date(now - 1) } as never, undefined, now)).toBe("due");
+    expect(resolveTenantState({ ...config, active_run_id: null, next_run_at: new Date(now + 1) } as never, undefined, now)).toBe("normal");
   });
 
   it("upserts the single runtime row with the latest tick result", async () => {

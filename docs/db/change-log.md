@@ -1180,3 +1180,36 @@ ALTER TABLE xy_wap_embed_logical_session_message
     source_message_id
   );
 ```
+
+## 2026-08-04 用户记忆变更计数
+
+- 运行记录和客户运行项新增实际记忆变更计数，分别记录新增、更新、删除数量。
+- 字段保持 `NULL` 以区分历史未记录数据和本次运行确认无变化。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示旧运行未记录' AFTER skipped_count,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示旧运行未记录' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示旧运行未记录' AFTER memory_updated_count;
+
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示尚未完成合并' AFTER output_tokens,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示尚未完成合并' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示尚未完成合并' AFTER memory_updated_count;
+```
+
+## 2026-08-04 用户记忆取消运行项重试
+
+- 每个客户只调用模型一次，运行项失败后直接终态，不再保存下次重试时间。
+- 运行项领取索引移除无效的 `next_attempt_at` 字段。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  DROP INDEX idx_agent_user_memory_item_run_status,
+  DROP COLUMN next_attempt_at,
+  ADD KEY idx_agent_user_memory_item_run_status (run_id, status, id);
+```

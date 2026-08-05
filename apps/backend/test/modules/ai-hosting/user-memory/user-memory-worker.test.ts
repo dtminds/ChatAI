@@ -25,7 +25,6 @@ import {
   buildUserMemoryMessageDetailsQuery,
   buildUserMemoryMessagesQuery,
   groupCandidateSessions,
-  resolveNextRunAfter,
   UserMemoryWorker,
 } from "../../../../src/modules/ai-hosting/user-memory/user-memory-worker.js";
 
@@ -221,7 +220,6 @@ describe("user memory candidate selection", () => {
         document: typeof storedDocument;
         extractionInstruction: string;
         messages: UserMemoryInputMessage[];
-        sessionIds: number[];
         version: number;
       } | undefined>;
     }).prepareInput.bind(worker);
@@ -239,11 +237,10 @@ describe("user memory candidate selection", () => {
     expect(prepared).toMatchObject({
       document: storedDocument,
       extractionInstruction: "关注长期偏好",
-      sessionIds: [99, 98],
       version: 4,
     });
     expect(prepared?.messages.map((item) => item.sourceMessageId)).toEqual([1001, 1002, 1003]);
-    expect(prepared?.sessionIds).not.toEqual([11, 12]);
+    expect([...new Set(prepared?.messages.map((item) => item.sessionId))]).toEqual([99, 98]);
     expect(queries).toHaveLength(4);
     expect(queries[1]?.parameters).toEqual([272, 11, 12]);
     expect(manualUpdatedAt).toBeGreaterThan(dayEnd);
@@ -267,16 +264,40 @@ describe("user memory candidate selection", () => {
     await db.destroy();
   });
 
-  it("releases a run at the earliest pending item time instead of hot-looping", () => {
-    const now = Date.parse("2026-07-24T02:00:00+08:00");
-    expect(resolveNextRunAfter([
-      { status: "succeeded", next_attempt_at: null },
-      { status: "prepared", next_attempt_at: new Date(now + 30_000) },
-      { status: "prepared", next_attempt_at: new Date(now + 60_000) },
-    ], now).getTime()).toBe(now + 30_000);
-    expect(resolveNextRunAfter([
-      { status: "prepared", next_attempt_at: new Date(now - 1) },
-    ], now).getTime()).toBe(now);
+  it("does not call the model again after an item has already been attempted", async () => {
+    const item = { attempt_count: 1, id: 11, run_id: 7, status: "submitted" };
+    const builder = {
+      executeTakeFirst: vi.fn().mockResolvedValue(item),
+      orderBy: () => builder,
+      selectAll: () => builder,
+      where: () => builder,
+    };
+    const complete = vi.fn();
+    const worker = new UserMemoryWorker({
+      customerLimitResolver: { resolve: () => 100 },
+      db: { selectFrom: () => builder } as never,
+      logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } as never,
+      provider: { complete } as never,
+      workerId: "worker-1",
+    });
+    const internals = worker as unknown as {
+      failItem: ReturnType<typeof vi.fn>;
+      prepareInput: ReturnType<typeof vi.fn>;
+      processNextItem: (claim: unknown) => Promise<void>;
+    };
+    internals.failItem = vi.fn().mockResolvedValue(undefined);
+    internals.prepareInput = vi.fn();
+
+    await internals.processNextItem({ run: { id: 7 }, token: "claim-1" });
+
+    expect(internals.failItem).toHaveBeenCalledWith(
+      expect.anything(),
+      item,
+      expect.objectContaining({ message: "AGENT_USER_MEMORY_MODEL_REQUEST_ALREADY_SUBMITTED" }),
+      { forceTerminal: true },
+    );
+    expect(internals.prepareInput).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("does not call the model when the selected item transition updates zero rows", async () => {
@@ -341,7 +362,6 @@ describe("user memory candidate selection", () => {
     internals.prepareInput = vi.fn().mockResolvedValue({
       document: { ai: [], manual: [], nextId: 1, schemaVersion: 1 },
       messages: [{ occurredAt: 1, senderRole: "customer", sessionId: 1, sourceMessageId: 1, text: "偏好无糖" }],
-      sessionIds: [1],
       version: 0,
     });
     internals.aggregateOrRelease = vi.fn().mockResolvedValue(undefined);

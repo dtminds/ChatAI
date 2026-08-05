@@ -5,7 +5,6 @@ import type {
   AgentUserMemoryItem,
 } from "@chatai/contracts";
 import {
-  AlertCircleIcon,
   ArtificialIntelligence08Icon,
   Brain02Icon,
   Cancel01Icon,
@@ -14,12 +13,12 @@ import {
   Edit02Icon,
   MoreHorizontalIcon,
   PlusSignIcon,
+  TimeHalfPassIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -464,6 +463,9 @@ function MemoryItem({
   const category =
     USER_MEMORY_CATEGORIES.find((option) => option.value === item.category) ??
     USER_MEMORY_CATEGORIES[0];
+  const hasEvidence =
+    item.source === "ai" &&
+    Boolean(item.sourceSessionId && item.evidenceMessageIds?.length);
   const [hoverOpen, setHoverOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuCloseTimerRef = useRef<number | undefined>(undefined);
@@ -526,8 +528,8 @@ function MemoryItem({
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <Badge
-              className="h-5 shrink-0 gap-1 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none text-muted-foreground"
-              variant="secondary"
+              className="h-5 shrink-0 gap-1 rounded-[6px] border border-border/80 bg-background px-1.5 py-0 text-[11px] leading-none text-muted-foreground"
+              variant="outline"
             >
               <HugeiconsIcon
                 aria-hidden="true"
@@ -539,12 +541,12 @@ function MemoryItem({
             </Badge>
             <Badge
               className={cn(
-                "h-5 shrink-0 gap-1 rounded-[6px] bg-muted px-1.5 py-0 text-[11px] leading-none",
+                "h-5 shrink-0 gap-1 rounded-[6px] border border-border/80 bg-background px-1.5 py-0 text-[11px] leading-none",
                 item.source === "ai"
-                  ? "text-success"
+                  ? "border-success/20 text-success"
                   : "text-muted-foreground",
               )}
-              variant="secondary"
+              variant="outline"
             >
               <HugeiconsIcon
                 aria-hidden="true"
@@ -559,7 +561,7 @@ function MemoryItem({
               {item.source === "manual" ? "手动创建" : "AI 提炼"}
             </Badge>
           </div>
-          {canMaintain || item.source === "ai" ? (
+          {canMaintain || hasEvidence ? (
             <DropdownMenu
               modal={false}
               onOpenChange={setMenuOpen}
@@ -591,7 +593,7 @@ function MemoryItem({
                 onPointerEnter={keepMenuOpen}
                 onPointerLeave={scheduleMenuClose}
               >
-                {item.source === "ai" ? (
+                {hasEvidence ? (
                   <DropdownMenuItem
                     onSelect={() => {
                       setMenuOpen(false);
@@ -602,7 +604,7 @@ function MemoryItem({
                     查看证据
                   </DropdownMenuItem>
                 ) : null}
-                {item.source === "ai" && canMaintain ? (
+                {hasEvidence && canMaintain ? (
                   <DropdownMenuSeparator />
                 ) : null}
                 {canMaintain ? (
@@ -633,17 +635,16 @@ function MemoryItem({
           ) : null}
         </div>
         {item.expiresAt ? (
-          <Alert className="mt-3 px-[8px] py-[4px] text-xs" variant="warning">
+          <div className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-warning">
             <HugeiconsIcon
               aria-hidden="true"
-              icon={AlertCircleIcon}
+              className="mt-0.5 shrink-0"
+              icon={TimeHalfPassIcon}
               size={15}
               strokeWidth={1.8}
             />
-            <AlertDescription className="text-xs leading-5">
-              {formatExpiryStatus(item.expiresAt)}
-            </AlertDescription>
-          </Alert>
+            <span>{formatExpiryStatus(item.expiresAt)}</span>
+          </div>
         ) : null}
         <p className="mt-3 break-words text-sm font-medium leading-6">{item.content}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

@@ -2,7 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 
 const EpochMsSchema = Type.Integer({ minimum: 0 });
 const CursorSchema = Type.Optional(Type.String({ minLength: 1 }));
-export const AGENT_USER_MEMORY_EXTRACTION_INSTRUCTION_MAX_LENGTH = 2000;
+export const AGENT_USER_MEMORY_EXTRACTION_INSTRUCTION_MAX_LENGTH = 500;
 
 export const AgentUserMemoryCategorySchema = Type.Union([
   Type.Literal("customer_profile"),
@@ -43,7 +43,6 @@ export const AgentUserMemoryExecutionModeSchema = Type.Union([
 export const AgentUserMemoryErrorCodeSchema = Type.Union([
   Type.Literal("AGENT_USER_MEMORY_DISABLED"),
   Type.Literal("AGENT_USER_MEMORY_RUN_ACTIVE"),
-  Type.Literal("AGENT_USER_MEMORY_RUN_NOT_RETRYABLE"),
   Type.Literal("AGENT_USER_MEMORY_RUN_NOT_FOUND"),
   Type.Literal("AGENT_USER_MEMORY_ITEM_SUPERSEDED"),
   Type.Literal("AGENT_USER_MEMORY_ITEM_NO_READABLE_MESSAGES"),
@@ -54,7 +53,11 @@ export const AgentUserMemoryErrorCodeSchema = Type.Union([
   Type.Literal("AGENT_USER_MEMORY_CONTENT_DUPLICATE"),
   Type.Literal("AGENT_USER_MEMORY_CONTENT_INVALID"),
   Type.Literal("AGENT_USER_MEMORY_DATA_INVALID"),
+  Type.Literal("AGENT_USER_MEMORY_MODEL_JSON_INVALID"),
+  Type.Literal("AGENT_USER_MEMORY_MODEL_OPERATIONS_INVALID"),
   Type.Literal("AGENT_USER_MEMORY_MODEL_OUTPUT_INVALID"),
+  Type.Literal("AGENT_USER_MEMORY_MODEL_REQUEST_ALREADY_SUBMITTED"),
+  Type.Literal("AGENT_USER_MEMORY_MODEL_SCHEMA_INVALID"),
   Type.Literal("AGENT_USER_MEMORY_ATTEMPTS_EXHAUSTED"),
 ]);
 
@@ -77,8 +80,8 @@ export const AgentUserMemoryManualItemSchema = Type.Composite([
 export const AgentUserMemoryAiItemSchema = Type.Composite([
   BaseMemoryItemSchema,
   Type.Object({
-    evidenceMessageIds: Type.Array(Type.Integer({ minimum: 1 }), { minItems: 1, maxItems: 3 }),
-    sourceSessionId: Type.Integer({ minimum: 1 }),
+    evidenceMessageIds: Type.Optional(Type.Array(Type.Integer({ minimum: 1 }), { minItems: 1, maxItems: 3 })),
+    sourceSessionId: Type.Optional(Type.Integer({ minimum: 1 })),
   }, { additionalProperties: false }),
 ], { additionalProperties: false });
 
@@ -118,6 +121,9 @@ export const AgentUserMemoryRunSchema = Type.Object({
   id: Type.Number(),
   inputTokens: Type.Integer({ minimum: 0 }),
   lastErrorCode: Type.Optional(Type.String()),
+  memoryAddedCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  memoryRemovedCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  memoryUpdatedCount: Type.Optional(Type.Integer({ minimum: 0 })),
   outputTokens: Type.Integer({ minimum: 0 }),
   phase: AgentUserMemoryRunPhaseSchema,
   quotaDate: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
@@ -250,11 +256,16 @@ export const AgentUserMemoryRunListResponseSchema = Type.Object({
 
 export const AgentUserMemoryRunItemSchema = Type.Object({
   attemptCount: Type.Integer({ minimum: 0 }),
+  avatarUrl: Type.Optional(Type.String()),
+  customerName: Type.String(),
   finishedAt: Type.Optional(EpochMsSchema),
   id: Type.Number(),
   inputTokens: Type.Integer({ minimum: 0 }),
   lastErrorCode: Type.Optional(Type.String()),
+  memoryAddedCount: Type.Optional(Type.Integer({ minimum: 0 })),
   messageCount: Type.Integer({ minimum: 0 }),
+  memoryRemovedCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  memoryUpdatedCount: Type.Optional(Type.Integer({ minimum: 0 })),
   outputTokens: Type.Integer({ minimum: 0 }),
   platform: Type.Integer({ minimum: 1 }),
   sessionCount: Type.Integer({ minimum: 1 }),
@@ -266,11 +277,6 @@ export const AgentUserMemoryRunDetailResponseSchema = Type.Object({
   items: Type.Array(AgentUserMemoryRunItemSchema),
   nextItemCursor: CursorSchema,
   run: AgentUserMemoryRunSchema,
-}, { additionalProperties: false });
-
-export const AgentUserMemoryRetryFailedResponseSchema = Type.Object({
-  resetCount: Type.Integer({ minimum: 0 }),
-  skippedCount: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
 export const AgentUserMemoryCustomerListItemSchema = Type.Object({
@@ -351,7 +357,6 @@ export type AgentUserMemoryObservabilityTenantListResponse = Static<typeof Agent
 export type AgentUserMemoryRunListResponse = Static<typeof AgentUserMemoryRunListResponseSchema>;
 export type AgentUserMemoryRunItem = Static<typeof AgentUserMemoryRunItemSchema>;
 export type AgentUserMemoryRunDetailResponse = Static<typeof AgentUserMemoryRunDetailResponseSchema>;
-export type AgentUserMemoryRetryFailedResponse = Static<typeof AgentUserMemoryRetryFailedResponseSchema>;
 export type AgentUserMemoryCustomerListItem = Static<typeof AgentUserMemoryCustomerListItemSchema>;
 export type AgentUserMemoryCustomerListResponse = Static<typeof AgentUserMemoryCustomerListResponseSchema>;
 export type AgentUserMemoryCustomerDetailResponse = Static<typeof AgentUserMemoryCustomerDetailResponseSchema>;

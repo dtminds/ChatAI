@@ -22,6 +22,28 @@ describe("user memory routes", () => {
     expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN" }, success: false });
   });
 
+  it("rejects extraction instructions longer than 500 characters before database access", async () => {
+    app = await buildMockedApp();
+    app.db = createKbReadDbMock() as never;
+    const token = app.jwt.sign({ roles: ["admin"], sessionId: "1", sessionVersion: 1, subUserId: "101", uid: 9001 });
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/server/ai-hosting/user-memory/settings",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { extractionInstruction: "提".repeat(501) },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it.each(["viewer", "operator"])("rejects %s run-detail reads before database access", async (role) => {
+    app = await buildMockedApp();
+    app.db = createKbReadDbMock() as never;
+    const token = app.jwt.sign({ roles: [role], sessionId: "1", sessionVersion: 1, subUserId: "101", uid: 9001 });
+    const response = await app.inject({ method: "GET", url: "/api/server/ai-hosting/user-memory/runs/1", headers: { authorization: `Bearer ${token}` } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN" }, success: false });
+  });
+
   it("protects cross-tenant observability with the shared observer allowlist", async () => {
     app = await buildMockedApp();
     app.db = createKbReadDbMock() as never;
@@ -29,6 +51,10 @@ describe("user memory routes", () => {
     const response = await app.inject({ method: "GET", url: "/api/server/ai-hosting/user-memory/observability/summary", headers: { authorization: `Bearer ${token}` } });
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ error: { code: "AGENT_USER_MEMORY_OBSERVABILITY_FORBIDDEN" }, success: false });
+
+    const runsResponse = await app.inject({ method: "GET", url: "/api/server/ai-hosting/user-memory/observability/tenants/272/runs", headers: { authorization: `Bearer ${token}` } });
+    expect(runsResponse.statusCode).toBe(403);
+    expect(runsResponse.json()).toMatchObject({ error: { code: "AGENT_USER_MEMORY_OBSERVABILITY_FORBIDDEN" }, success: false });
   });
 
   it("exposes the observability tab capability to a configured observer", async () => {

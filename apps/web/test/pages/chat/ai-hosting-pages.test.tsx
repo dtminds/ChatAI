@@ -2310,6 +2310,37 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("opens edit resources from recommendResources when previewing a skill without incomplete blue blocks", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+
+    await user.click(screen.getByRole("tab", { name: "技能广场" }));
+    await user.click(await screen.findByRole("button", { name: /订单信息查询/ }));
+
+    const detailDialog = screen.getByRole("dialog");
+    expect(
+      within(detailDialog).getByRole("heading", { name: "订单信息查询" }),
+    ).toBeInTheDocument();
+    expect(skillTemplateService.getSkillTemplate).toHaveBeenCalledWith("101");
+
+    await user.click(within(detailDialog).getByRole("button", { name: "预览技能" }));
+
+    const editDialog = await screen.findByRole("heading", { name: "编辑资源" });
+    expect(editDialog).toBeInTheDocument();
+    const editDialogRoot = editDialog.closest('[role="dialog"]');
+    expect(editDialogRoot).not.toBeNull();
+    expect(
+      within(editDialogRoot as HTMLElement).getByRole("region", { name: "推荐变量" }),
+    ).toBeInTheDocument();
+    expect(
+      within(editDialogRoot as HTMLElement).getByRole("region", { name: "推荐工具" }),
+    ).toBeInTheDocument();
+    expect(
+      within(editDialogRoot as HTMLElement).getByRole("region", { name: "推荐知识库" }),
+    ).toBeInTheDocument();
+  });
+
   it("opens my skills tab from the tab query and navigates to skill settings", async () => {
     const user = userEvent.setup();
     const router = createMemoryRouter(

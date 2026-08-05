@@ -756,19 +756,67 @@ export function matchIncompleteResourcesToRecommendations(
   return matched;
 }
 
-export function resolveTemplateVariableType(
-  segment: SkillContentResourceSegment,
+/** 预览技能：按 recommendResources 生成待编辑项（不依赖描述里蓝色块） */
+export function buildEditableResourcesFromRecommendations(
+  recommendations: readonly SkillRecommendBinding[],
+): Array<{
+  fieldLabel: string;
+  segment: SkillContentResourceSegment;
+  variableType: SkillVariableType | null;
+}> {
+  return recommendations.map((recommend, index) => {
+    const variableType =
+      recommend.type === "variable"
+        ? (recommend.variableType ??
+          inferSkillVariableTypeFromName(recommend.title))
+        : null;
+    const placeholder = buildRecommendEditablePlaceholder(
+      recommend,
+      index,
+      variableType,
+    );
+
+    return {
+      fieldLabel: recommend.title,
+      segment: {
+        id: `recommend:${index}`,
+        kind: recommend.type,
+        name: recommend.title,
+        placeholder,
+        type: "resource",
+      },
+      variableType,
+    };
+  });
+}
+
+function buildRecommendEditablePlaceholder(
+  recommend: SkillRecommendBinding,
+  index: number,
+  variableType: SkillVariableType | null,
+) {
+  const name = escapeResourceAttribute(recommend.title);
+  const recommendKey = `recommend-${index}`;
+
+  if (recommend.type === "tool") {
+    return `<resource type="tool" toolId="" name="${name}" recommendKey="${recommendKey}" />`;
+  }
+
+  if (recommend.type === "knowledge_base") {
+    return `<resource type="knowledge_base" kbId="" name="${name}" recommendKey="${recommendKey}" />`;
+  }
+
+  if (variableType === "auto_tag" || variableType === "system_variable") {
+    return `<resource type="variable" variableType="${variableType}" variableKey="" name="${name}" recommendKey="${recommendKey}" />`;
+  }
+
+  const typedVariableType = variableType ?? "";
+  return `<resource type="variable" variableType="${typedVariableType}" variableId="" name="${name}" recommendKey="${recommendKey}" />`;
+}
+
+export function inferSkillVariableTypeFromName(
+  name: string,
 ): SkillVariableType | null {
-  if (segment.kind !== "variable") {
-    return null;
-  }
-
-  const variableType = readResourceAttribute(segment.placeholder, "variableType");
-  if (isSkillVariableType(variableType)) {
-    return variableType;
-  }
-
-  const name = segment.name;
   if (name.includes("小店")) {
     return "mall_tag";
   }
@@ -786,6 +834,21 @@ export function resolveTemplateVariableType(
   }
 
   return null;
+}
+
+export function resolveTemplateVariableType(
+  segment: SkillContentResourceSegment,
+): SkillVariableType | null {
+  if (segment.kind !== "variable") {
+    return null;
+  }
+
+  const variableType = readResourceAttribute(segment.placeholder, "variableType");
+  if (isSkillVariableType(variableType)) {
+    return variableType;
+  }
+
+  return inferSkillVariableTypeFromName(segment.name);
 }
 
 export function replaceSkillContentResource(

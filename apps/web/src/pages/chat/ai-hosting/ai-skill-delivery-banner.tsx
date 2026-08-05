@@ -79,7 +79,7 @@ export function SkillDeliveryBanner() {
             src="https://b5.bokr.com.cn/dist/ui/skill_zan.png"
           />
           <span className="ai-skill-delivery-banner__copy">
-            <span className="ai-skill-delivery-banner__title">FDE 深度共创服务</span>
+            <span className="ai-skill-delivery-banner__title">交付专家深度共创服务</span>
             <span className="ai-skill-delivery-banner__description">
               贴近业务现场，共同打造并持续优化专属 Agent
             </span>
@@ -104,7 +104,7 @@ export function SkillDeliveryBanner() {
         >
           <div className="ai-skill-delivery-dialog__header">
             <DialogTitle className="ai-skill-delivery-dialog__title">
-              FDE 深度共创，
+              交付专家深度共创，
               <span className="ai-skill-delivery-dialog__title-accent">
                 让 AI 真正走进业务
               </span>

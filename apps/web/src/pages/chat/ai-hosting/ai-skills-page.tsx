@@ -885,27 +885,38 @@ function SkillDetailDialog({
         open={open}
       >
         <DialogContent
-          className="flex h-[min(40.5rem,calc(100vh-3rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
+          className="flex h-[min(44rem,calc(100vh-2rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
           closeButtonVisible={false}
         >
           {skill ? (
             <>
-              <div className="shrink-0 space-y-3 px-6 pb-5 pt-6">
-                <div className="flex items-center justify-between gap-4">
-                  <SkillIcon className="size-10" icon={skill.icon} title={skill.title} />
+              <div className="scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-4 bg-background/80 px-6 pb-4 pt-6 backdrop-blur-md">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <SkillIcon
+                      className="size-10 shrink-0"
+                      icon={skill.icon}
+                      title={skill.title}
+                    />
+                    <DialogTitle className="min-w-0 truncate text-base font-bold leading-tight text-foreground">
+                      {skill.title}
+                    </DialogTitle>
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
                       className="bg-neutral-950 text-white hover:bg-neutral-800"
                       disabled={!detail}
                       onClick={handlePreviewSkill}
+                      size="sm"
                       type="button"
                     >
-                      <HugeiconsIcon icon={ViewIcon} size={16} strokeWidth={1.8} />
+                      <HugeiconsIcon icon={ViewIcon} size={14} strokeWidth={1.8} />
                       预览技能
                     </Button>
                     <DialogClose asChild>
                       <Button
                         aria-label="关闭"
+                        className="size-8 rounded-[8px] p-0"
                         size="icon"
                         type="button"
                         variant="secondary"
@@ -913,19 +924,20 @@ function SkillDetailDialog({
                         <HugeiconsIcon
                           aria-hidden="true"
                           icon={Cancel01Icon}
-                          size={18}
+                          size={16}
                           strokeWidth={1.8}
                         />
                       </Button>
                     </DialogClose>
                   </div>
                 </div>
-                <div className="min-w-0 space-y-2">
-                  <DialogTitle className="text-[20px] font-bold leading-tight text-foreground">
-                    {skill.title}
-                  </DialogTitle>
+
+                <div className="shrink-0 px-6 pb-5">
                   {(detail?.tip ?? skill.tip).trim() ? (
-                    <div className="space-y-5 pt-2">
+                    <div className="space-y-5">
+                      <DialogDescription className="text-sm leading-6 text-muted-foreground">
+                        {skill.description}
+                      </DialogDescription>
                       <div
                         aria-label="示例问题"
                         className="ai-skill-template-tip"
@@ -957,9 +969,6 @@ function SkillDetailDialog({
                             </div>
                           ))}
                       </div>
-                      <DialogDescription className="text-sm leading-6 text-muted-foreground">
-                        {skill.description}
-                      </DialogDescription>
                     </div>
                   ) : (
                     <DialogDescription className="text-sm leading-6 text-muted-foreground">
@@ -967,27 +976,22 @@ function SkillDetailDialog({
                     </DialogDescription>
                   )}
                 </div>
-              </div>
 
-              {detailLoading ? (
-                <div
-                  className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
-                  role="status"
-                >
-                  <Spinner size={16} />
-                  <span>正在加载</span>
-                </div>
-              ) : detailError ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-destructive">
-                  <span role="alert">加载失败</span>
-                </div>
-              ) : detail ? (
-                <>
-                  <Tabs
-                    className="flex min-h-0 flex-1 flex-col gap-0"
-                    defaultValue="scenario"
+                {detailLoading ? (
+                  <div
+                    className="flex min-h-48 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
+                    role="status"
                   >
-                    <div className="shrink-0 px-6">
+                    <Spinner size={16} />
+                    <span>正在加载</span>
+                  </div>
+                ) : detailError ? (
+                  <div className="flex min-h-48 flex-1 items-center justify-center text-sm text-destructive">
+                    <span role="alert">加载失败</span>
+                  </div>
+                ) : detail ? (
+                  <Tabs className="shrink-0 gap-0" defaultValue="scenario">
+                    <div className="px-6">
                       <TabsList
                         aria-label="技能详情"
                         className="h-auto w-full justify-start gap-6"
@@ -1006,7 +1010,7 @@ function SkillDetailDialog({
                       </TabsList>
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                    <div className="px-6 py-5">
                       <TabsContent className="mt-0 space-y-0" value="scenario">
                         <p className="min-h-28 pb-5 text-sm leading-6 text-muted-foreground">
                           {detail.applicationScenario || "暂无数据"}
@@ -1041,8 +1045,8 @@ function SkillDetailDialog({
                       </TabsContent>
                     </div>
                   </Tabs>
-                </>
-              ) : null}
+                ) : null}
+              </div>
             </>
           ) : null}
         </DialogContent>

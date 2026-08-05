@@ -1,74 +1,160 @@
-import { useMemo } from "react";
-import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
-import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  GROUP_MEMBER_TYPE,
+  type WorkbenchCustomerSeatRelationDto,
+} from "@chatai/contracts";
+import {
+  Cancel01Icon,
+  ReloadIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
+import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
+import type {
+  Account,
+  CustomerChatStartInput,
+  GroupMember,
+} from "@/pages/chat/chat-types";
 
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
   [GROUP_MEMBER_TYPE.NORMAL]: 2,
 } as const;
+const CUSTOMER_SEAT_RELATIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CUSTOMER_SEAT_RELATIONS_REQUEST_DELAY_MS = 250;
 
 const groupMemberNameSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
     ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
     : undefined;
+const groupMemberNameCollator = new Intl.Collator("zh-Hans-CN");
 
 export function GroupMembersSidePanel({
+  accounts = [],
+  currentEmployeeId,
   groupMembers,
   isLoading,
   onRefresh,
+  onStartChat,
 }: {
+  accounts?: Account[];
+  currentEmployeeId?: string;
   groupMembers: GroupMember[];
   isLoading: boolean;
   onRefresh: () => void;
+  onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
 }) {
-  const groups = useMemo(
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const normalizedSearchKeyword = searchKeyword.trim().toLocaleLowerCase();
+  const filteredGroupMembers = useMemo(
     () =>
-      [
+      normalizedSearchKeyword
+        ? groupMembers.filter((member) =>
+            member.displayName.toLocaleLowerCase().includes(normalizedSearchKeyword),
+          )
+        : groupMembers,
+    [groupMembers, normalizedSearchKeyword],
+  );
+  const groups = useMemo(
+    () => {
+      const administrators: GroupMember[] = [];
+      const regularMembers: GroupMember[] = [];
+
+      for (const member of filteredGroupMembers) {
+        if (member.type === GROUP_MEMBER_TYPE.NORMAL) {
+          regularMembers.push(member);
+        } else if (
+          member.type === GROUP_MEMBER_TYPE.OWNER ||
+          member.type === GROUP_MEMBER_TYPE.ADMIN
+        ) {
+          administrators.push(member);
+        }
+      }
+
+      return [
         {
-          items: groupMembers
-            .filter(
-              (member) =>
-                member.type === GROUP_MEMBER_TYPE.OWNER ||
-                member.type === GROUP_MEMBER_TYPE.ADMIN,
-            )
-            .sort(sortGroupMembers),
+          items: administrators.sort(sortGroupMembers),
           label: "管理员",
         },
         {
-          items: groupMembers
-            .filter((member) => member.type === GROUP_MEMBER_TYPE.NORMAL)
-            .sort(sortGroupMembers),
+          items: regularMembers.sort(sortGroupMembers),
           label: "普通成员",
         },
-      ].filter((group) => group.items.length > 0),
-    [groupMembers],
+      ].filter((group) => group.items.length > 0);
+    },
+    [filteredGroupMembers],
   );
 
   return (
     <ScrollArea className="h-full min-h-0">
       <div className="space-y-4 px-4 py-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="min-w-0 whitespace-nowrap text-xs font-semibold leading-4 text-muted-foreground">
-            群成员 · 共 {groupMembers.length} 人
-          </h2>
-          <button
-            aria-label="刷新群成员"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50"
-            disabled={isLoading}
-            onClick={onRefresh}
-            title="刷新群成员"
-            type="button"
-          >
-            <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
-          </button>
+        <div className="flex h-6 items-center justify-between gap-2">
+          <div className="flex h-6 min-w-0 flex-1 items-center">
+            {isSearchOpen ? (
+              <Input
+                aria-label="搜索群成员"
+                autoFocus
+                className="h-6 rounded-[6px] px-2 py-0 text-xs leading-4 shadow-none md:text-xs"
+                onChange={(event) => setSearchKeyword(event.target.value)}
+                placeholder="搜索群成员"
+                value={searchKeyword}
+              />
+            ) : (
+              <h2 className="min-w-0 whitespace-nowrap text-xs font-semibold leading-4 text-muted-foreground">
+                群成员 · 共 {groupMembers.length} 人
+              </h2>
+            )}
+          </div>
+          <div className="flex h-6 shrink-0 items-center gap-1">
+            <Button
+              aria-label={isSearchOpen ? "关闭搜索" : "搜索群成员"}
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+              onClick={() => {
+                if (isSearchOpen) {
+                  setSearchKeyword("");
+                  setIsSearchOpen(false);
+                  return;
+                }
+
+                setIsSearchOpen(true);
+              }}
+              size="icon"
+              title={isSearchOpen ? "关闭搜索" : "搜索群成员"}
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                icon={isSearchOpen ? Cancel01Icon : Search01Icon}
+                size={13}
+                strokeWidth={2}
+              />
+            </Button>
+            <Button
+              aria-label="刷新群成员"
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+              disabled={isLoading}
+              onClick={onRefresh}
+              size="icon"
+              title="刷新群成员"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -88,14 +174,20 @@ export function GroupMembersSidePanel({
               </h3>
               <div className="space-y-0.5">
                 {group.items.map((member) => (
-                  <GroupMemberRow key={member.id} member={member} />
+                  <GroupMemberRow
+                    accounts={accounts}
+                    currentEmployeeId={currentEmployeeId}
+                    key={member.id}
+                    member={member}
+                    onStartChat={onStartChat}
+                  />
                 ))}
               </div>
             </section>
           ))
         ) : (
           <div className="px-0 py-8 text-center text-sm text-muted-foreground">
-            暂无群成员
+            {normalizedSearchKeyword ? "暂无匹配成员" : "暂无群成员"}
           </div>
         )}
       </div>
@@ -103,12 +195,224 @@ export function GroupMembersSidePanel({
   );
 }
 
-function GroupMemberRow({ member }: { member: GroupMember }) {
+function GroupMemberRow({
+  accounts,
+  currentEmployeeId,
+  member,
+  onStartChat,
+}: {
+  accounts: Account[];
+  currentEmployeeId?: string;
+  member: GroupMember;
+  onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
+}) {
+  if (member.isOpeningAccount || member.isReceptionAccount) {
+    return (
+      <div
+        className="flex min-w-0 items-center gap-2 rounded-[6px] px-1 py-1.5"
+        data-group-member-id={member.id}
+      >
+        <GroupMemberRowContent member={member} />
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="flex min-w-0 items-center gap-2 rounded-[6px] px-1 py-1.5"
-      data-group-member-id={member.id}
+    <GroupMemberCustomerPopover
+      accounts={accounts}
+      currentEmployeeId={currentEmployeeId}
+      member={member}
+      onStartChat={onStartChat}
+    />
+  );
+}
+
+function GroupMemberCustomerPopover({
+  accounts,
+  currentEmployeeId,
+  member,
+  onStartChat,
+}: {
+  accounts: Account[];
+  currentEmployeeId?: string;
+  member: GroupMember;
+  onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
+}) {
+  const requestIdRef = useRef(0);
+  const requestTimerRef = useRef<number | undefined>(undefined);
+  const [relationState, setRelationState] = useState<{
+    items: WorkbenchCustomerSeatRelationDto[];
+    loadedAt?: number;
+    status: "idle" | "loading" | "loaded" | "error";
+  }>({ items: [], status: "idle" });
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(requestTimerRef.current);
+      requestIdRef.current += 1;
+    },
+    [],
+  );
+
+  function cancelScheduledRelationsLoad() {
+    if (requestTimerRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(requestTimerRef.current);
+    requestTimerRef.current = undefined;
+    requestIdRef.current += 1;
+    setRelationState((currentState) =>
+      currentState.status === "loading"
+        ? { items: [], status: "idle" }
+        : currentState,
+    );
+  }
+
+  function loadRelations(force = false, requestDelay = 0) {
+    if (!force) {
+      if (
+        relationState.status === "loading" ||
+        requestTimerRef.current !== undefined
+      ) {
+        return;
+      }
+      if (
+        relationState.status === "loaded" &&
+        relationState.loadedAt != null &&
+        Date.now() - relationState.loadedAt <=
+          CUSTOMER_SEAT_RELATIONS_CACHE_TTL_MS
+      ) {
+        return;
+      }
+    }
+
+    window.clearTimeout(requestTimerRef.current);
+    requestTimerRef.current = undefined;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setRelationState({ items: [], status: "loading" });
+
+    const requestRelations = () => {
+      requestTimerRef.current = undefined;
+
+      // 群成员表无法区分员工 ID 与客户 external ID。普通成员直接用这一个
+      // 原始 third_userid 探测好友关系；能匹配到可见席位关系时才视为客户。
+      void getWorkbenchService()
+        .getCustomerSeatRelations(member.id)
+        .then((response) => {
+          if (requestIdRef.current !== requestId) {
+            return;
+          }
+
+          setRelationState({
+            items: response.items,
+            loadedAt: Date.now(),
+            status: "loaded",
+          });
+        })
+        .catch(() => {
+          if (requestIdRef.current === requestId) {
+            setRelationState({ items: [], status: "error" });
+          }
+        });
+    };
+
+    if (requestDelay > 0) {
+      requestTimerRef.current = window.setTimeout(requestRelations, requestDelay);
+      return;
+    }
+
+    requestRelations();
+  }
+
+  return (
+    <DelayedHoverPopover
+      contentProps={{
+        align: "start",
+        className:
+          "w-[22rem] rounded-[12px] border-border p-3 shadow-[0_12px_30px_var(--shadow-medium)]",
+        side: "left",
+        sideOffset: 8,
+      }}
+      onOpenChange={(open) => {
+        if (open) {
+          loadRelations(false, CUSTOMER_SEAT_RELATIONS_REQUEST_DELAY_MS);
+        } else {
+          cancelScheduledRelationsLoad();
+        }
+      }}
+      openDelay={400}
+      trigger={
+        <Button
+          aria-label={`查看 ${member.displayName} 的好友关系`}
+          className="h-auto w-full justify-start gap-2 rounded-[6px] px-1 py-1.5 text-left"
+          data-group-member-id={member.id}
+          type="button"
+          variant="ghost"
+        >
+          <GroupMemberRowContent member={member} />
+        </Button>
+      }
     >
+      <div className="flex items-center gap-2 px-1 py-0.5">
+        <Avatar className="size-9 shrink-0">
+          <AvatarImage alt={member.displayName} src={member.avatarUrl} />
+          <AvatarFallback className="text-xs">
+            {getFirstGroupMemberNameGrapheme(member.displayName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {member.displayName}
+        </div>
+      </div>
+      <Separator className="my-2.5 bg-divider" />
+      {relationState.status === "loading" || relationState.status === "idle" ? (
+        <div
+          className="flex min-h-20 items-center justify-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <Spinner className="text-current" size={16} variant="classic" />
+          <span>正在加载</span>
+        </div>
+      ) : relationState.status === "error" ? (
+        <div className="flex min-h-20 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <span>加载失败</span>
+          <Button onClick={() => loadRelations(true)} size="sm" variant="outline">
+            重试
+          </Button>
+        </div>
+      ) : relationState.items.length === 0 ? (
+        <div className="flex min-h-20 items-center justify-center text-sm text-muted-foreground">
+          暂未添加为好友
+        </div>
+      ) : (
+        <ScrollArea className="max-h-[16rem]">
+          <div className="pr-2">
+            <CustomerSeatRelationList
+              accounts={accounts}
+              allowConversationViewWithoutTakeover
+              compact
+              currentEmployeeId={currentEmployeeId}
+              customer={{
+                avatar: member.avatarUrl ?? "",
+                name: member.displayName,
+                realName: "",
+                thirdExternalUserId: member.id,
+              }}
+              onStartChat={onStartChat}
+              relations={relationState.items}
+            />
+          </div>
+        </ScrollArea>
+      )}
+    </DelayedHoverPopover>
+  );
+}
+
+function GroupMemberRowContent({ member }: { member: GroupMember }) {
+  return (
+    <>
       <Avatar className="size-7 shrink-0">
         <AvatarImage alt={member.displayName} src={member.avatarUrl} />
         <AvatarFallback className="text-[11px]">
@@ -137,7 +441,7 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
           </Badge>
         ) : null}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -164,11 +468,14 @@ function sortGroupMembers(left: GroupMember, right: GroupMember) {
     return leftRank - rightRank;
   }
 
-  const nameOrder = left.displayName.localeCompare(right.displayName, "zh-Hans-CN");
+  const nameOrder = groupMemberNameCollator.compare(
+    left.displayName,
+    right.displayName,
+  );
 
   if (nameOrder !== 0) {
     return nameOrder;
   }
 
-  return left.id.localeCompare(right.id, "zh-Hans-CN");
+  return groupMemberNameCollator.compare(left.id, right.id);
 }

@@ -4,7 +4,7 @@ import {
   type KbAttachmentListItem,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
-import type { MessageDraftAttachment as QuickReplyDraftAttachment } from "@/pages/chat/components/message-content/message-attachment-picker";
+import type { QuickReplyDraftAttachment } from "@/pages/chat/lib/quick-reply-attachment-types";
 
 export const KB_ATTACHMENT_TYPE = {
   FILE: 2,

@@ -1,21 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type {
-  AiHostingAgentDetail,
-  AiHostingAgentPromptConfig,
-  AiHostingAgentTestMessage,
-  AiHostingAgentTestMessageContent,
-  AiHostingAgentTestResponse,
-  AiHostingModel,
+import {
+  AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH,
+  AI_HOSTING_AGENT_ROLE_MAX_LENGTH,
+  AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH,
+  type AiHostingAgentDetail,
+  type AiHostingAgentPromptConfig,
+  type AiHostingAgentResourceSummary,
+  type AiHostingAgentTestAttachmentMaterialType,
+  type AiHostingAgentTestMessage,
+  type AiHostingAgentTestMessageContent,
+  type AiHostingAgentTestResponse,
+  type AiHostingModel,
+  type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AiIdeaIcon,
   AiChat02Icon,
   ArrowDown01Icon,
-  ArrowLeft01Icon,
   ArrowLeft02Icon,
+  ArrowRight01Icon,
+  AlertCircleIcon,
+  Bug02Icon,
+  Cancel01Icon,
+  CleanIcon,
   Edit02Icon,
   Image01Icon,
+  HelpCircleIcon,
   Male02Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
@@ -65,7 +76,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import {
@@ -84,10 +102,10 @@ import {
   testAiHostingAgent,
   updateAiHostingAgent,
 } from "./agent-service";
+import { MessageAttachmentPreview as QuickReplyAttachmentPreview } from "@/pages/chat/components/message-content/message-attachment-preview";
 import { uploadKbImage } from "./api/kb-doc-service";
 import {
   agentModelOptions,
-  agentLongTextMaxLength,
   agentNameMaxLength,
   agentCommunicationStyleTemplates,
   agentPreviewSeedMessages,
@@ -102,9 +120,24 @@ import {
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
-import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
+import {
+  AgentKnowledgeBasePickerDialog,
+  AgentResourceManagementPanel,
+  AgentSkillPickerDialog,
+  type AgentKnowledgeBaseResource,
+  type AgentSkillResource,
+} from "./agent-components/agent-resource-management";
+import "./agent-module.css";
+
+type PreviewAttachment = {
+  content: Record<string, unknown>;
+  title: string;
+  type: AiHostingAgentTestAttachmentMaterialType;
+  typeLabel: string;
+};
 
 type PreviewMessage = {
+  attachments?: PreviewAttachment[];
   content: string;
   id: string;
   imageUrls?: string[];
@@ -123,11 +156,27 @@ type OperationErrorDialogState = {
   title: string;
 } | null;
 
-const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
+type InvalidResourceBlockedAction = "save" | "publish";
 
-const agentSettingsModuleSurfaceStyle = {
-  background: aiHostingSettingsModuleSurface.background,
-} as const;
+type InvalidResourceDialogState = {
+  action: InvalidResourceBlockedAction;
+  knowledgeBases: AgentKnowledgeBaseResource[];
+  skills: AgentSkillResource[];
+} | null;
+
+type ResourceRemoveTarget =
+  | {
+      kind: "knowledgeBase";
+      resource: AgentKnowledgeBaseResource;
+    }
+  | {
+      kind: "skill";
+      resource: AgentSkillResource;
+    }
+  | null;
+
+const agentSettingsModuleSurfaceClassName =
+  "agent-module-surface rounded-[12px] border border-border bg-card shadow-xs";
 
 export function AgentSettingsPage() {
   const navigate = useNavigate();
@@ -137,9 +186,18 @@ export function AgentSettingsPage() {
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
   const [models, setModels] = useState<AiHostingModel[]>([]);
   const [agentDetail, setAgentDetail] = useState<AiHostingAgentDetail | null>(null);
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<
+    AgentKnowledgeBaseResource[]
+  >([]);
+  const [availableSkills, setAvailableSkills] = useState<AgentSkillResource[]>([]);
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>(agentPreviewSeedMessages);
   const [previewInput, setPreviewInput] = useState("");
   const [previewTesting, setPreviewTesting] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [knowledgeBasePickerOpen, setKnowledgeBasePickerOpen] = useState(false);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [resourceRemoveTarget, setResourceRemoveTarget] =
+    useState<ResourceRemoveTarget>(null);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [createdDraftDialogOpen, setCreatedDraftDialogOpen] = useState(false);
@@ -153,13 +211,21 @@ export function AgentSettingsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [operationErrorDialog, setOperationErrorDialog] =
     useState<OperationErrorDialogState>(null);
+  const [invalidResourceDialog, setInvalidResourceDialog] =
+    useState<InvalidResourceDialogState>(null);
   const initialLoadRequestVersionRef = useRef(0);
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
   const canManage = canManageAiHostingAgents(role);
-  const controlsDisabled = loading || initialLoadFailed || !canManage;
+  const controlsDisabled = loading || initialLoadFailed || submitting || !canManage;
   const hasLocalPublishChanges = Boolean(
-    agentDetail && hasModelOrPromptChanges(form, agentDetail),
+    agentDetail &&
+      hasModelOrPromptChanges(
+        form,
+        availableKnowledgeBases,
+        availableSkills,
+        agentDetail,
+      ),
   );
   const canPublish = hasUnpublishedDraft || hasLocalPublishChanges;
   const modelOptions = useMemo<ModelOption[]>(
@@ -201,8 +267,12 @@ export function AgentSettingsPage() {
       if (detailResponse) {
         setAgentDetail(detailResponse);
         setForm(mapAgentDetailToForm(detailResponse));
+        setAvailableKnowledgeBases(detailResponse.availableKbs);
+        setAvailableSkills(detailResponse.availableSkills);
       } else if (modelsResponse.models[0]) {
         setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
+        setAvailableKnowledgeBases([]);
+        setAvailableSkills([]);
       }
 
       setInitialLoadFailed(false);
@@ -240,6 +310,44 @@ export function AgentSettingsPage() {
     });
   }
 
+  function showInvalidResourceBlock(
+    action: InvalidResourceBlockedAction,
+    resources = getInvalidResourceGroups(
+      availableKnowledgeBases,
+      availableSkills,
+    ),
+  ) {
+    if (resources.knowledgeBases.length === 0 && resources.skills.length === 0) {
+      return false;
+    }
+
+    if (action === "publish") {
+      setPublishDialogOpen(false);
+      setCreatedDraftDialogOpen(false);
+    }
+    setInvalidResourceDialog({ action, ...resources });
+    return true;
+  }
+
+  function handleInvalidResourceRequestError(
+    action: InvalidResourceBlockedAction,
+    error: unknown,
+  ) {
+    const invalidResources = readInvalidResourcesFromRequestError(error);
+
+    if (!invalidResources) {
+      return false;
+    }
+
+    setAvailableKnowledgeBases((current) =>
+      mergeInvalidResourceStatuses(current, invalidResources.knowledgeBases),
+    );
+    setAvailableSkills((current) =>
+      mergeInvalidResourceStatuses(current, invalidResources.skills),
+    );
+    return showInvalidResourceBlock(action, invalidResources);
+  }
+
   function applyCommunicationStyleTemplate(value: AgentToneStyle) {
     if (!canManage) {
       return;
@@ -263,8 +371,18 @@ export function AgentSettingsPage() {
       return null;
     }
 
+    const blockedAction = silentSuccess ? "publish" : "save";
+
+    if (showInvalidResourceBlock(blockedAction)) {
+      return null;
+    }
+
     if (isEditing && agentId) {
-      const payload = buildSettingsSavePayload(form);
+      const payload = buildSettingsSavePayload(
+        form,
+        availableKnowledgeBases,
+        availableSkills,
+      );
 
       if (!payload) {
         setErrorMessage("请填写 Agent 名称并选择大模型");
@@ -279,20 +397,28 @@ export function AgentSettingsPage() {
 
         setAgentDetail(saved);
         setForm(mapAgentDetailToForm(saved));
+        setAvailableKnowledgeBases(saved.availableKbs);
+        setAvailableSkills(saved.availableSkills);
         if (!silentSuccess) {
           toast.success("保存成功");
         }
 
         return saved;
       } catch (error) {
-        showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+        if (!handleInvalidResourceRequestError(blockedAction, error)) {
+          showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+        }
         return null;
       } finally {
         setSubmitting(false);
       }
     }
 
-    const payload = buildCreatePayload(form);
+    const payload = buildCreatePayload(
+      form,
+      availableKnowledgeBases,
+      availableSkills,
+    );
 
     if (!payload) {
       setErrorMessage("请填写 Agent 名称并选择大模型");
@@ -307,13 +433,17 @@ export function AgentSettingsPage() {
 
       setAgentDetail(saved);
       setForm(mapAgentDetailToForm(saved));
+      setAvailableKnowledgeBases(saved.availableKbs);
+      setAvailableSkills(saved.availableSkills);
       setCreatedDraftAgentId(saved.id);
       setCreatedDraftDialogOpen(true);
       notifyAiHostingQuotaChanged();
 
       return saved;
     } catch (error) {
-      showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+      if (!handleInvalidResourceRequestError(blockedAction, error)) {
+        showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
+      }
       return null;
     } finally {
       setSubmitting(false);
@@ -322,6 +452,10 @@ export function AgentSettingsPage() {
 
   async function handlePublish() {
     if (!canManage || !agentId) {
+      return;
+    }
+
+    if (showInvalidResourceBlock("publish")) {
       return;
     }
 
@@ -338,11 +472,15 @@ export function AgentSettingsPage() {
       const published = await publishAiHostingAgent(saved.id);
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
+      setAvailableKnowledgeBases(published.availableKbs);
+      setAvailableSkills(published.availableSkills);
       setPublishDialogOpen(false);
       toast.success("发布成功");
     } catch (error) {
       setPublishDialogOpen(false);
-      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+      if (!handleInvalidResourceRequestError("publish", error)) {
+        showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -353,6 +491,10 @@ export function AgentSettingsPage() {
       return;
     }
 
+    if (showInvalidResourceBlock("publish")) {
+      return;
+    }
+
     setSubmitting(true);
     setErrorMessage("");
 
@@ -360,13 +502,17 @@ export function AgentSettingsPage() {
       const published = await publishAiHostingAgent(createdDraftAgentId);
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
+      setAvailableKnowledgeBases(published.availableKbs);
+      setAvailableSkills(published.availableSkills);
       setCreatedDraftDialogOpen(false);
       setCreatedDraftAgentId(null);
       navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
       toast.success("发布成功");
     } catch (error) {
       setCreatedDraftDialogOpen(false);
-      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+      if (!handleInvalidResourceRequestError("publish", error)) {
+        showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -406,6 +552,8 @@ export function AgentSettingsPage() {
       const renamed = await renameAiHostingAgent(agentId, { name });
       setAgentDetail(renamed);
       setForm(mapAgentDetailToForm(renamed));
+      setAvailableKnowledgeBases(renamed.availableKbs);
+      setAvailableSkills(renamed.availableSkills);
       setRenameDialogOpen(false);
     } catch (error) {
       setRenameDialogOpen(false);
@@ -427,6 +575,8 @@ export function AgentSettingsPage() {
       const restored = await restoreAiHostingAgent(agentId);
       setAgentDetail(restored);
       setForm(mapAgentDetailToForm(restored));
+      setAvailableKnowledgeBases(restored.availableKbs);
+      setAvailableSkills(restored.availableSkills);
       setRestoreDialogOpen(false);
     } catch (error) {
       setRestoreDialogOpen(false);
@@ -497,7 +647,11 @@ export function AgentSettingsPage() {
     userContents: AiHostingAgentTestMessageContent[],
     previewOverrides?: Partial<Pick<PreviewMessage, "content" | "imageUrls">>,
   ): Promise<boolean> {
-    const settingsPayload = buildSettingsSavePayload(form);
+    const settingsPayload = buildSettingsSavePayload(
+      form,
+      availableKnowledgeBases,
+      availableSkills,
+    );
 
     if (!settingsPayload) {
       toast.error("请先选择模型");
@@ -614,52 +768,63 @@ export function AgentSettingsPage() {
             </div>
           </div>
 
-          {canManage ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                disabled={submitting || controlsDisabled}
-                onClick={() => {
-                  void handleSave();
-                }}
-                type="button"
-                variant="outline"
-              >
-                {submitting ? <ButtonSpinner label="保存中" /> : null}
-                保存
-              </Button>
-              {/*
-                先注释按钮，不要删除。智能生成暂未接实际生成逻辑，入口先隐藏。
-                <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
-                  智能生成
-                </AgentGenerateGradientButton>
-              */}
-              {isEditing ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              aria-label="打开预览调试"
+              onClick={() => setPreviewOpen(true)}
+              type="button"
+              variant="outline"
+            >
+              <HugeiconsIcon icon={Bug02Icon} size={16} strokeWidth={1.8} />
+              调试
+            </Button>
+            {canManage ? (
+              <>
                 <Button
-                  disabled={submitting || controlsDisabled || !canPublish}
-                  onClick={() => setPublishDialogOpen(true)}
+                  disabled={submitting || controlsDisabled}
+                  onClick={() => {
+                    void handleSave();
+                  }}
                   type="button"
+                  variant="outline"
                 >
-                  <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
-                  发布正式版
+                  {submitting ? <ButtonSpinner label="保存中" /> : null}
+                  保存
                 </Button>
-              ) : null}
-            </div>
-          ) : null}
+                {/*
+                  先注释按钮，不要删除。智能生成暂未接实际生成逻辑，入口先隐藏。
+                  <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
+                    智能生成
+                  </AgentGenerateGradientButton>
+                */}
+                {isEditing ? (
+                  <Button
+                    disabled={submitting || controlsDisabled || !canPublish}
+                    onClick={() => setPublishDialogOpen(true)}
+                    type="button"
+                  >
+                    <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
+                    发布正式版
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </header>
 
         <AlertDialog onOpenChange={() => undefined} open={initialLoadFailed}>
-          <AlertDialogContent size="sm">
+          <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Agent 设置加载失败</AlertDialogTitle>
               <AlertDialogDescription>
-                当前 Agent 配置未能加载，请刷新重试或返回 Agent 管理
+                当前 Agent 配置未能加载，请刷新重试或返回列表
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel
                 onClick={() => navigate("/chat/ai-hosting/agents")}
               >
-                返回 Agent 管理
+                返回列表
               </AlertDialogCancel>
               <AlertDialogAction
                 disabled={loading}
@@ -729,6 +894,15 @@ export function AgentSettingsPage() {
           </AlertDialogContent>
         </AlertDialog>
 
+        <InvalidResourceBlockedDialog
+          onOpenChange={(open) => {
+            if (!open) {
+              setInvalidResourceDialog(null);
+            }
+          }}
+          state={invalidResourceDialog}
+        />
+
         {errorMessage ? (
           <p className="text-sm text-destructive" role="alert">
             {errorMessage}
@@ -740,25 +914,20 @@ export function AgentSettingsPage() {
           </p>
         ) : null}
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-4">
             <AgentSettingsSection title="基本设置">
               <div className="grid gap-5 md:grid-cols-2">
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
-                  <div className="relative">
-                    <Input
-                      disabled={isEditing || controlsDisabled}
-                      id="agent-settings-name"
-                      maxLength={agentNameMaxLength}
-                      onChange={(event) => updateForm("name", event.target.value)}
-                      placeholder="请输入 Agent 名称"
-                      value={form.name}
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                      {form.name.length}/{agentNameMaxLength}
-                    </span>
-                  </div>
+                  <Input
+                    disabled={isEditing || controlsDisabled}
+                    id="agent-settings-name"
+                    maxLength={agentNameMaxLength}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder="请输入 Agent 名称"
+                    value={form.name}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -799,50 +968,66 @@ export function AgentSettingsPage() {
             </AgentSettingsSection>
 
             <CollapsibleAgentSettingsSection
-              description={agentSettingsFieldHints.roleDescription}
-              title="角色"
+              description={agentSettingsFieldHints.roleDefinition}
+              title="角色定义"
             >
-              <Textarea
-                aria-label="角色描述"
-                className="bg-background"
-                disabled={controlsDisabled}
-                maxLength={agentLongTextMaxLength}
-                onChange={(event) => updateForm("roleDescription", event.target.value)}
-                placeholder="请输入角色描述"
-                value={form.roleDescription}
-              />
-              <TextCounter maxLength={agentLongTextMaxLength} value={form.roleDescription} />
-            </CollapsibleAgentSettingsSection>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <AgentSettingsFieldLabel
+                    htmlFor="agent-settings-role"
+                    label="角色"
+                    tooltip={agentSettingsFieldHints.roleDescription}
+                  />
+                  <div>
+                    <Textarea
+                      aria-label="角色描述"
+                      className="bg-background"
+                      disabled={controlsDisabled}
+                      id="agent-settings-role"
+                      maxLength={AI_HOSTING_AGENT_ROLE_MAX_LENGTH}
+                      onChange={(event) => updateForm("roleDescription", event.target.value)}
+                      placeholder="请输入角色描述"
+                      value={form.roleDescription}
+                    />
+                    <TextCounter
+                      maxLength={AI_HOSTING_AGENT_ROLE_MAX_LENGTH}
+                      value={form.roleDescription}
+                    />
+                  </div>
+                </div>
 
-            <CollapsibleAgentSettingsSection
-              description={
-                <>
-                  {agentSettingsFieldHints.communicationStyle}
-                  {canManage ? (
-                    <CommunicationStyleTemplateDropdown onSelect={applyCommunicationStyleTemplate} />
-                  ) : null}
-                </>
-              }
-              title="沟通风格"
-            >
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <Label>风格描述</Label>
-                  <div className="relative">
+                <div className="flex flex-col gap-2">
+                  <AgentSettingsFieldLabel
+                    action={
+                      canManage ? (
+                        <CommunicationStyleTemplateDropdown
+                          onSelect={applyCommunicationStyleTemplate}
+                        />
+                      ) : null
+                    }
+                    htmlFor="agent-settings-communication-style"
+                    label="沟通风格"
+                    tooltip={agentSettingsFieldHints.communicationStyle}
+                  />
+                  <div>
                     <Textarea
                       aria-label="沟通风格"
                       className="bg-background"
                       disabled={controlsDisabled}
-                      maxLength={agentLongTextMaxLength}
+                      id="agent-settings-communication-style"
+                      maxLength={AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH}
                       onChange={(event) => updateForm("communicationStyle", event.target.value)}
                       placeholder="请输入沟通风格描述"
                       value={form.communicationStyle}
                     />
-                    <TextCounter maxLength={agentLongTextMaxLength} value={form.communicationStyle} />
+                    <TextCounter
+                      maxLength={AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH}
+                      value={form.communicationStyle}
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <Label>回复长度</Label>
                   <OptionChipGroup
                     disabled={controlsDisabled}
@@ -856,12 +1041,14 @@ export function AgentSettingsPage() {
 
             <CollapsibleAgentSettingsSection
               description={agentSettingsFieldHints.conditionalLogic}
-              title="条件逻辑"
+              title="行为指引"
             >
               <AgentConditionalLogicField
                 disabled={controlsDisabled}
+                knowledgeBases={availableKnowledgeBases}
                 onChange={(value) => updateForm("conditionalLogic", value)}
                 segments={form.conditionalLogic}
+                skills={availableSkills}
               />
             </CollapsibleAgentSettingsSection>
 
@@ -869,30 +1056,170 @@ export function AgentSettingsPage() {
               description={agentSettingsFieldHints.transferToHumanConditions}
               title="转人工条件"
             >
-              <Textarea
-                aria-label="转人工条件"
-                className="bg-background"
-                disabled={controlsDisabled}
-                maxLength={agentLongTextMaxLength}
-                onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
-                placeholder="请输入转人工条件"
-                value={form.transferToHumanConditions}
-              />
-              <TextCounter maxLength={agentLongTextMaxLength} value={form.transferToHumanConditions} />
+              <div>
+                <Textarea
+                  aria-label="转人工条件"
+                  className="bg-background"
+                  disabled={controlsDisabled}
+                  maxLength={AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH}
+                  onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
+                  placeholder="请输入转人工条件"
+                  value={form.transferToHumanConditions}
+                />
+                <TextCounter
+                  maxLength={AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH}
+                  value={form.transferToHumanConditions}
+                />
+              </div>
             </CollapsibleAgentSettingsSection>
           </div>
 
-          <AgentPreviewPanel
-            inputValue={previewInput}
-            messages={previewMessages}
-            onClear={handlePreviewClear}
-            onImageSelect={handlePreviewImageSelect}
-            onInputChange={setPreviewInput}
-            onSend={handlePreviewSend}
-            testing={previewTesting}
-          />
+          <div className="space-y-4 xl:sticky xl:top-0">
+            <AgentResourceManagementPanel
+              disabled={controlsDisabled}
+              knowledgeBases={availableKnowledgeBases}
+              onAddKnowledgeBases={() => setKnowledgeBasePickerOpen(true)}
+              onAddSkills={() => setSkillPickerOpen(true)}
+              onRemoveKnowledgeBase={(resource) =>
+                setResourceRemoveTarget({ kind: "knowledgeBase", resource })
+              }
+              onRemoveSkill={(resource) =>
+                setResourceRemoveTarget({ kind: "skill", resource })
+              }
+              skills={availableSkills}
+            />
+            <section
+              aria-labelledby="agent-user-memory-title"
+              className="rounded-[12px] border border-border bg-card p-5 shadow-xs"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5">
+                  <h2
+                    className="text-base font-semibold text-foreground"
+                    id="agent-user-memory-title"
+                  >
+                    使用客户记忆
+                  </h2>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label="查看客户记忆说明"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/20"
+                          type="button"
+                        >
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={HelpCircleIcon}
+                            size={15}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-80" side="top" sideOffset={6}>
+                        前往「记忆」开启自动提炼，AI
+                        会基于会话自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户
+                        <Link
+                          className="ml-1 font-medium text-primary underline-offset-4 hover:underline"
+                          rel="noopener noreferrer"
+                          target="_blank"
+                          to="/chat/ai-hosting/user-memory"
+                        >
+                          了解更多
+                        </Link>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Switch
+                  aria-label="客户记忆"
+                  checked={form.useUserMemory}
+                  disabled={controlsDisabled}
+                  onCheckedChange={(checked) => updateForm("useUserMemory", checked)}
+                />
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                开启后，即授权此 Agent 读取和使用客户记忆
+              </p>
+            </section>
+          </div>
         </div>
       </div>
+
+      <AgentKnowledgeBasePickerDialog
+        onConfirm={(resources) => {
+          setAvailableKnowledgeBases(resources);
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeUnselectedResourceReferences(
+              current.conditionalLogic,
+              resources.map((resource) => resource.id),
+              "knowledgeBase",
+            ),
+          }));
+          setKnowledgeBasePickerOpen(false);
+        }}
+        onOpenChange={setKnowledgeBasePickerOpen}
+        open={knowledgeBasePickerOpen}
+        selected={availableKnowledgeBases}
+      />
+      <AgentSkillPickerDialog
+        onConfirm={(resources) => {
+          setAvailableSkills(resources);
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeUnselectedResourceReferences(
+              current.conditionalLogic,
+              resources.map((resource) => resource.id),
+              "skill",
+            ),
+          }));
+          setSkillPickerOpen(false);
+        }}
+        onOpenChange={setSkillPickerOpen}
+        open={skillPickerOpen}
+        selected={availableSkills}
+      />
+      <AgentResourceRemoveDialog
+        onCancel={() => setResourceRemoveTarget(null)}
+        onConfirm={() => {
+          if (!resourceRemoveTarget) {
+            return;
+          }
+
+          if (resourceRemoveTarget.kind === "skill") {
+            setAvailableSkills((current) =>
+              current.filter((resource) => resource.id !== resourceRemoveTarget.resource.id),
+            );
+          } else {
+            setAvailableKnowledgeBases((current) =>
+              current.filter((resource) => resource.id !== resourceRemoveTarget.resource.id),
+            );
+          }
+          setForm((current) => ({
+            ...current,
+            conditionalLogic: removeConditionalLogicResource(
+              current.conditionalLogic,
+              resourceRemoveTarget.resource.id,
+              resourceRemoveTarget.kind,
+            ),
+          }));
+          setResourceRemoveTarget(null);
+        }}
+        open={resourceRemoveTarget != null}
+        resource={resourceRemoveTarget}
+      />
+      <AgentPreviewFloatingPanel
+        inputValue={previewInput}
+        messages={previewMessages}
+        onClear={handlePreviewClear}
+        onClose={() => setPreviewOpen(false)}
+        onImageSelect={handlePreviewImageSelect}
+        onInputChange={setPreviewInput}
+        onSend={handlePreviewSend}
+        open={previewOpen}
+        testing={previewTesting}
+      />
     </AiHostingLayout>
   );
 }
@@ -909,10 +1236,7 @@ function AgentSettingsSection({
   title: string;
 }) {
   return (
-    <section
-      className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
-      style={agentSettingsModuleSurfaceStyle}
-    >
+    <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1">
           <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -941,10 +1265,7 @@ function CollapsibleAgentSettingsSection({
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <section
-        className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
-        style={agentSettingsModuleSurfaceStyle}
-      >
+      <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-1">
             <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -961,7 +1282,7 @@ function CollapsibleAgentSettingsSection({
               type="button"
             >
               <HugeiconsIcon
-                icon={open ? ArrowDown01Icon : ArrowLeft01Icon}
+                icon={open ? ArrowDown01Icon : ArrowRight01Icon}
                 size={16}
                 strokeWidth={1.8}
               />
@@ -986,7 +1307,7 @@ function CommunicationStyleTemplateDropdown({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button
-          className="ml-1 inline-flex items-baseline gap-1 align-baseline text-sm font-normal leading-6 text-primary outline-none hover:text-primary/80 focus-visible:ring-4 focus-visible:ring-ring/20"
+          className="inline-flex items-baseline gap-0.5 align-baseline text-[13px] font-normal leading-5 text-primary outline-none hover:text-primary/80 focus-visible:ring-4 focus-visible:ring-ring/20"
           onClick={(event) => event.stopPropagation()}
           type="button"
         >
@@ -994,7 +1315,7 @@ function CommunicationStyleTemplateDropdown({
             aria-hidden="true"
             className="relative top-[1px]"
             icon={AiIdeaIcon}
-            size={14}
+            size={13}
             strokeWidth={1.8}
           />
           查看模板
@@ -1011,6 +1332,48 @@ function CommunicationStyleTemplateDropdown({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function AgentSettingsFieldLabel({
+  action,
+  htmlFor,
+  label,
+  tooltip,
+}: {
+  action?: ReactNode;
+  htmlFor: string;
+  label: string;
+  tooltip: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Label htmlFor={htmlFor}>{label}</Label>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label={`查看${label}说明`}
+                className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/20"
+                type="button"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={HelpCircleIcon}
+                  size={15}
+                  strokeWidth={1.8}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6}>
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
   );
 }
 
@@ -1054,27 +1417,75 @@ function OptionChipGroup({
 
 function TextCounter({ maxLength, value }: { maxLength: number; value: string }) {
   return (
-    <div className="mt-1 text-right text-xs text-muted-foreground">
+    <div className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
       {value.length}/{maxLength}
     </div>
   );
 }
 
-function AgentPreviewPanel({
+function AgentResourceRemoveDialog({
+  onCancel,
+  onConfirm,
+  open,
+  resource,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  resource: ResourceRemoveTarget;
+}) {
+  const resourceLabel = resource?.kind === "skill" ? "技能" : "知识库";
+
+  return (
+    <AlertDialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onCancel();
+        }
+      }}
+      open={open}
+    >
+      <AlertDialogContent className="max-w-[420px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除{resourceLabel}</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除「{resource?.resource.name ?? ""}」后，行为指引中引用的该资源也会同步移除
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction
+            className="border border-destructive bg-background text-destructive hover:bg-destructive/5 hover:text-destructive"
+            onClick={onConfirm}
+            variant="outline"
+          >
+            删除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function AgentPreviewFloatingPanel({
   inputValue,
   messages,
   onClear,
+  onClose,
   onImageSelect,
   onInputChange,
   onSend,
+  open,
   testing,
 }: {
   inputValue: string;
   messages: PreviewMessage[];
   onClear: () => void;
+  onClose: () => void;
   onImageSelect: (files: FileList | File[] | null) => void | Promise<void>;
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
+  open: boolean;
   testing: boolean;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1098,39 +1509,63 @@ function AgentPreviewPanel({
     });
   }, [scrollPreviewToBottom, testing, visibleMessages]);
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <aside className="xl:sticky xl:top-0">
+    <aside className="fixed bottom-5 right-5 z-40 w-[min(380px,calc(100vw-2rem))]">
       <section
-        aria-label="Agent 模拟测试"
+        aria-label="Agent 预览调试"
         className={cn(
           agentSettingsModuleSurfaceClassName,
-          "flex h-[640px] flex-col overflow-hidden",
+          "flex h-[min(640px,calc(100vh-2rem))] flex-col overflow-hidden shadow-xl",
         )}
-        style={agentSettingsModuleSurfaceStyle}
       >
         <header className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
-            <h2 className="truncate text-base font-semibold text-foreground">模拟测试</h2>
+            <h2 className="truncate text-base font-semibold text-foreground">预览调试</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="清空上下文"
+                    className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
+                    disabled={testing}
+                    onClick={onClear}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={CleanIcon} size={15} strokeWidth={1.8} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  清空上下文
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
-              className="h-auto rounded-[6px] px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground"
-              disabled={testing}
-              onClick={onClear}
+              aria-label="关闭预览调试"
+              className="size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-background hover:text-foreground"
+              onClick={onClose}
+              size="icon"
               type="button"
               variant="ghost"
             >
-              清空
+              <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={15} strokeWidth={1.8} />
             </Button>
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col bg-background">
           <div
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+            className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4"
             ref={messageViewportRef}
           >
             {visibleMessages.map((message) => (
@@ -1198,36 +1633,66 @@ function PreviewMessageRow({
 }) {
   const isAgent = message.role === "agent";
   const hasImages = Boolean(message.imageUrls?.length);
+  const attachments = message.attachments ?? [];
+  const singleAttachment =
+    attachments.length === 1 ? attachments[0] : undefined;
+  const richAttachment = singleAttachment
+    ? toAgentTestQuickReplyAttachment(singleAttachment)
+    : undefined;
+  const hasSimpleAttachments = attachments.length > 1;
 
   return (
-    <div className={cn("flex items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
+    <div className={cn("flex min-w-0 items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
       {isAgent ? <PreviewAgentAvatar /> : null}
-      <div className="max-w-[78%] space-y-2 rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
-        {message.pending ? (
-          <div className="flex items-center gap-2 text-muted-foreground" role="status">
-            <Spinner aria-hidden="true" size={14} variant="classic" />
-            正在加载
-          </div>
-        ) : (
-          <>
-            {hasImages ? (
-              <div className="space-y-2">
-                {message.imageUrls?.map((imageUrl, index) => (
-                  <img
-                    alt=""
-                    className="max-h-44 max-w-full rounded-lg border border-border object-contain"
-                    draggable={false}
-                    key={`${message.id}-image-${index}`}
-                    onLoad={onMediaLoad}
-                    src={imageUrl}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {message.content ? <p>{message.content}</p> : null}
-          </>
-        )}
-      </div>
+      {richAttachment && !message.pending ? (
+        <div
+          className={cn(
+            "min-w-0 max-w-[78%] overflow-hidden",
+            richAttachment.type === "weapp" ? "w-auto" : "flex-1",
+          )}
+        >
+          <QuickReplyAttachmentPreview
+            attachment={richAttachment}
+            className={
+              richAttachment.type === "weapp" ? undefined : "w-full max-w-full"
+            }
+          />
+        </div>
+      ) : (
+        <div className="min-w-0 max-w-[78%] space-y-2 break-words rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
+          {message.pending ? (
+            <div className="flex items-center gap-2 text-muted-foreground" role="status">
+              <Spinner aria-hidden="true" size={14} variant="classic" />
+              正在思考
+            </div>
+          ) : (
+            <>
+              {hasImages ? (
+                <div className="space-y-2">
+                  {message.imageUrls?.map((imageUrl, index) => (
+                    <img
+                      alt=""
+                      className="max-h-44 max-w-full rounded-lg border border-border object-contain"
+                      draggable={false}
+                      key={`${message.id}-image-${index}`}
+                      onLoad={onMediaLoad}
+                      src={imageUrl}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {hasSimpleAttachments ? (
+                <p className="whitespace-pre-wrap">
+                  {attachments
+                    .map((attachment) => `${attachment.typeLabel} ${attachment.title}`)
+                    .join("\n")}
+                </p>
+              ) : null}
+              {message.content ? <p>{message.content}</p> : null}
+            </>
+          )}
+        </div>
+      )}
       {!isAgent ? <PreviewCustomerAvatar /> : null}
     </div>
   );
@@ -1365,10 +1830,10 @@ function RenameAgentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 px-6 pt-5">
-          <Label htmlFor="agent-rename-name">Agent 名称</Label>
-          <div className="relative">
+        <div className="px-6 pt-5">
+          <div>
             <Input
+              aria-label="Agent 名称"
               disabled={disabled}
               id="agent-rename-name"
               maxLength={agentNameMaxLength}
@@ -1376,9 +1841,7 @@ function RenameAgentDialog({
               placeholder="请输入 Agent 名称"
               value={name}
             />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-              {name.length}/{agentNameMaxLength}
-            </span>
+            <TextCounter maxLength={agentNameMaxLength} value={name} />
           </div>
         </div>
 
@@ -1407,6 +1870,76 @@ function ButtonSpinner({ label }: { label: string }) {
   );
 }
 
+function InvalidResourceBlockedDialog({
+  onOpenChange,
+  state,
+}: {
+  onOpenChange: (open: boolean) => void;
+  state: InvalidResourceDialogState;
+}) {
+  const actionLabel = state?.action === "publish" ? "发布" : "保存";
+
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={state !== null}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>无法{actionLabel} Agent</AlertDialogTitle>
+          <AlertDialogDescription>
+            Agent 依赖的以下资源已失效，请从右侧资源管理中移除或替换后再{actionLabel}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="max-h-64 space-y-4 overflow-y-auto rounded-[8px] border border-border bg-muted/20 p-3">
+          {state?.skills.length ? (
+            <InvalidResourceGroup resources={state.skills} title="技能" />
+          ) : null}
+          {state?.knowledgeBases.length ? (
+            <InvalidResourceGroup
+              resources={state.knowledgeBases}
+              title="知识库"
+            />
+          ) : null}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogAction>知道了</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function InvalidResourceGroup({
+  resources,
+  title,
+}: {
+  resources: readonly AiHostingAgentResourceSummary[];
+  title: string;
+}) {
+  return (
+    <section aria-label={`已失效${title}`}>
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h3>
+      <ul className="space-y-1.5">
+        {resources.map((resource) => (
+          <li
+            className="flex min-w-0 items-center gap-2 rounded-[6px] bg-destructive/5 px-2.5 py-2 text-sm text-destructive"
+            key={resource.id}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0"
+              icon={AlertCircleIcon}
+              size={15}
+              strokeWidth={1.8}
+            />
+            <span className="min-w-0 flex-1 truncate" title={resource.name}>
+              {resource.name}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
   return {
     communicationStyle: agent.promptConfig.replyStyle.styleInstruction,
@@ -1417,11 +1950,16 @@ function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
     roleDescription: agent.promptConfig.role,
     toneStyle: normalizeToneStyle(agent.promptConfig.replyStyle.styleInstruction),
     transferToHumanConditions: agent.promptConfig.handoffRules,
+    useUserMemory: agent.promptConfig.useUserMemory === true,
   };
 }
 
-function buildCreatePayload(form: AgentSettingsForm) {
-  const settingsPayload = buildSettingsSavePayload(form);
+function buildCreatePayload(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+) {
+  const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
   const name = form.name.trim();
 
   if (!settingsPayload || !name) {
@@ -1434,7 +1972,11 @@ function buildCreatePayload(form: AgentSettingsForm) {
   };
 }
 
-function buildSettingsSavePayload(form: AgentSettingsForm) {
+function buildSettingsSavePayload(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+) {
   const modelId = form.model.trim();
 
   if (!modelId) {
@@ -1444,7 +1986,12 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
   return {
     modelId,
     promptConfig: {
-      availableKbIds: collectAvailableKnowledgeBaseIds(form.conditionalLogic),
+      availableKbIds: knowledgeBases
+        .map((resource) => Number(resource.id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+      availableSkillIds: skills
+        .map((resource) => Number(resource.id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
       conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
       handoffRules: form.transferToHumanConditions,
       replyStyle: {
@@ -1452,12 +1999,18 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
         styleInstruction: form.communicationStyle || form.toneStyle,
       },
       role: form.roleDescription,
+      useUserMemory: form.useUserMemory,
     } satisfies AiHostingAgentPromptConfig,
   };
 }
 
-function hasModelOrPromptChanges(form: AgentSettingsForm, agent: AiHostingAgentDetail) {
-  const payload = buildSettingsSavePayload(form);
+function hasModelOrPromptChanges(
+  form: AgentSettingsForm,
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+  agent: AiHostingAgentDetail,
+) {
+  const payload = buildSettingsSavePayload(form, knowledgeBases, skills);
 
   if (!payload) {
     return false;
@@ -1495,13 +2048,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditionalLogic"]) {
   return segments
-    .map((segment) =>
-      segment.type === "knowledgeBase"
-        ? `<resource type="knowledge_base" kbId="${escapeResourceAttribute(
-            segment.id,
-          )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`
-        : segment.value,
-    )
+    .map((segment) => {
+      if (segment.type === "knowledgeBase") {
+        return `<resource type="knowledge_base" kbId="${escapeResourceAttribute(
+          segment.id,
+        )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`;
+      }
+
+      if (segment.type === "skill") {
+        return `<resource type="skill" skillId="${escapeResourceAttribute(
+          segment.id,
+        )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`;
+      }
+
+      return segment.value;
+    })
     .join("");
 }
 
@@ -1511,7 +2072,7 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   }
 
   const segments: AgentSettingsForm["conditionalLogic"] = [];
-  const tokenPattern = /<resource\s+type="knowledge_base"\s+kbId="([^"]+)"\s+name="([^"]*)"\s*\/>/g;
+  const tokenPattern = /<resource\b[^>]*\/>/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -1520,14 +2081,31 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
       segments.push({ type: "text", value: value.slice(lastIndex, match.index) });
     }
 
-    const id = unescapeResourceAttribute(match[1] ?? "");
-    const name = unescapeResourceAttribute(match[2] ?? "");
+    const token = match[0] ?? "";
+    const type = readResourceAttribute(token, "type");
+    const name = unescapeResourceAttribute(readResourceAttribute(token, "name"));
 
-    segments.push({
-      id,
-      name: name || undefined,
-      type: "knowledgeBase",
-    });
+    if (type === "knowledge_base") {
+      const id = unescapeResourceAttribute(readResourceAttribute(token, "kbId"));
+      if (id) {
+        segments.push({
+          id,
+          name: name || undefined,
+          type: "knowledgeBase",
+        });
+      }
+    } else if (type === "skill") {
+      const id = unescapeResourceAttribute(readResourceAttribute(token, "skillId"));
+      if (id) {
+        segments.push({
+          id,
+          name: name || undefined,
+          type: "skill",
+        });
+      }
+    } else {
+      segments.push({ type: "text", value: token });
+    }
 
     lastIndex = match.index + match[0].length;
   }
@@ -1539,15 +2117,142 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   return segments.length > 0 ? segments : [{ type: "text", value }];
 }
 
-function collectAvailableKnowledgeBaseIds(segments: AgentSettingsForm["conditionalLogic"]) {
-  const ids = segments
-    .filter((segment): segment is Extract<AgentSettingsForm["conditionalLogic"][number], { type: "knowledgeBase" }> =>
-      segment.type === "knowledgeBase",
-    )
-    .map((segment) => Number(segment.id))
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
+function removeUnselectedResourceReferences(
+  segments: AgentSettingsForm["conditionalLogic"],
+  selectedIds: readonly string[],
+  kind: "knowledgeBase" | "skill",
+) {
+  const selectedIdSet = new Set(selectedIds);
+  return normalizeConditionalLogicAfterResourceRemoval(
+    segments.filter(
+      (segment) =>
+        segment.type !== kind || selectedIdSet.has(segment.id),
+    ),
+  );
+}
 
-  return Array.from(new Set(ids));
+function removeConditionalLogicResource(
+  segments: AgentSettingsForm["conditionalLogic"],
+  resourceId: string,
+  kind: "knowledgeBase" | "skill",
+) {
+  return normalizeConditionalLogicAfterResourceRemoval(
+    segments.filter(
+      (segment) =>
+        !(
+          segment.type === kind &&
+          segment.id === resourceId
+        ),
+    ),
+  );
+}
+
+function normalizeConditionalLogicAfterResourceRemoval(
+  segments: AgentSettingsForm["conditionalLogic"],
+) {
+  const normalized: AgentSettingsForm["conditionalLogic"] = [];
+
+  for (const segment of segments) {
+    const previous = normalized.at(-1);
+    if (segment.type === "text" && previous?.type === "text") {
+      normalized[normalized.length - 1] = {
+        type: "text",
+        value: previous.value + segment.value,
+      };
+    } else {
+      normalized.push(segment);
+    }
+  }
+
+  return normalized.length > 0
+    ? normalized
+    : ([{ type: "text", value: "" }] satisfies AgentSettingsForm["conditionalLogic"]);
+}
+
+function getInvalidResourceGroups(
+  knowledgeBases: readonly AgentKnowledgeBaseResource[],
+  skills: readonly AgentSkillResource[],
+) {
+  return {
+    knowledgeBases: knowledgeBases.filter(
+      (resource) => resource.status === "invalid",
+    ),
+    skills: skills.filter((resource) => resource.status === "invalid"),
+  };
+}
+
+function readInvalidResourcesFromRequestError(error: unknown) {
+  if (!isRequestError(error) || error.code !== "AGENT_RESOURCES_INVALID") {
+    return null;
+  }
+
+  return {
+    knowledgeBases: readInvalidResourceList(error.details?.knowledgeBases),
+    skills: readInvalidResourceList(error.details?.skills),
+  };
+}
+
+function readInvalidResourceList(value: unknown): AiHostingAgentResourceSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((resource) => {
+    if (
+      !isPlainObject(resource) ||
+      typeof resource.id !== "string" ||
+      typeof resource.name !== "string"
+    ) {
+      return [];
+    }
+
+    const invalidReason = readInvalidResourceReason(resource.invalidReason);
+
+    return [{
+      id: resource.id,
+      ...(invalidReason ? { invalidReason } : {}),
+      name: resource.name,
+      status: "invalid" as const,
+    }];
+  });
+}
+
+function readInvalidResourceReason(value: unknown) {
+  return value === "deleted" || value === "disabled" || value === "unavailable"
+    ? value
+    : undefined;
+}
+
+function mergeInvalidResourceStatuses<TResource extends AiHostingAgentResourceSummary>(
+  current: readonly TResource[],
+  invalid: readonly AiHostingAgentResourceSummary[],
+): TResource[] {
+  const invalidMap = new Map(invalid.map((resource) => [resource.id, resource]));
+  const merged = current.map((resource) => {
+    const invalidResource = invalidMap.get(resource.id);
+
+    if (!invalidResource) {
+      return resource;
+    }
+
+    invalidMap.delete(resource.id);
+    return {
+      ...resource,
+      invalidReason: invalidResource.invalidReason,
+      name: invalidResource.name,
+      status: "invalid" as const,
+    };
+  });
+
+  return [
+    ...merged,
+    ...Array.from(invalidMap.values()).map((resource) => resource as TResource),
+  ];
+}
+
+function readResourceAttribute(token: string, attribute: string) {
+  const matched = token.match(new RegExp(`${attribute}="([^"]*)"`));
+  return matched?.[1] ?? "";
 }
 
 function escapeResourceAttribute(value: string) {
@@ -1671,8 +2376,81 @@ function mapTestResponseToPreviewMessages(
       ];
     }
 
+    if (item.type === "attachment" && item.attachments.length > 0) {
+      return [
+        {
+          id,
+          role: "agent" as const,
+          content: "",
+          attachments: item.attachments.map((attachment) => ({
+            type: attachment.type,
+            typeLabel: getAgentTestAttachmentTypeLabel(attachment.type),
+            title: attachment.title,
+            content: attachment.content,
+          })),
+        },
+      ];
+    }
+
     return [];
   });
+}
+
+function toAgentTestQuickReplyAttachment(
+  attachment: PreviewAttachment,
+): WorkbenchQuickReplyAttachment | undefined {
+  const type = mapAgentTestAttachmentToQuickReplyType(attachment.type);
+  if (!type) {
+    return undefined;
+  }
+
+  return {
+    type,
+    content: {
+      ...attachment.content,
+      ...(type === "file" && !readPreviewAttachmentString(attachment.content.fileName)
+        ? { fileName: attachment.title }
+        : {}),
+      ...(type === "h5" || type === "weapp"
+        ? {
+            title:
+              readPreviewAttachmentString(attachment.content.title) || attachment.title,
+          }
+        : {}),
+    },
+  };
+}
+
+function mapAgentTestAttachmentToQuickReplyType(
+  type: AiHostingAgentTestAttachmentMaterialType,
+): WorkbenchQuickReplyAttachment["type"] | undefined {
+  switch (type) {
+    case "image":
+      return "image";
+    case "file":
+      return "file";
+    case "link":
+      return "h5";
+    case "mini-program":
+      return "weapp";
+  }
+}
+
+function getAgentTestAttachmentTypeLabel(type: AiHostingAgentTestAttachmentMaterialType) {
+  switch (type) {
+    case "image":
+      return "图片";
+    case "file":
+      return "文件";
+    case "link":
+      return "链接";
+    case "mini-program":
+      return "小程序";
+  }
+}
+
+function readPreviewAttachmentString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizePreviewReplyText(item: AiHostingAgentTestResponse["reply"][number]) {

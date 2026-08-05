@@ -27,6 +27,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 const maxReceptionManagedAccountsPerGroup = 5;
 
@@ -169,7 +170,7 @@ export function GroupChatReceptionSettingsDialog({
       );
       onOpenChange(false);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(resolveErrorMessage(error, "保存失败，请稍后重试"));
     } finally {
       setSaving(false);
     }
@@ -455,16 +456,4 @@ function ManagedAccountIdentity({
 
 function getInitial(name: string) {
   return name.trim().slice(0, 1) || "?";
-}
-
-function getErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  return "保存失败，请稍后重试";
 }

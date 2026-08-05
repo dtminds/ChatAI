@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 import { MaterialImageGrid } from "@/pages/chat/components/material-collection/material-image-grid";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";

@@ -6,8 +6,6 @@ import {
   InsightFeatureConfigUpdateRequestSchema,
   InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
-  InsightActionStatusSchema,
-  InsightCreateActionItemRequestSchema,
   InsightMessageContextRequestSchema,
   InsightQaRuleConfigMutationRequestSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
@@ -19,8 +17,6 @@ import {
   type InsightFeatureConfigUpdateRequest,
   type InsightIntentConfigMutationRequest,
   type InsightLabelConfigMutationRequest,
-  type InsightActionStatus,
-  type InsightCreateActionItemRequest,
   type InsightQaRuleConfigMutationRequest,
   type InsightSessionizationSettingsUpdateRequest,
   type InsightsRescanRequest,
@@ -38,22 +34,6 @@ import { UnauthorizedError } from "../../shared/errors.js";
 
 const DateQuerySchema = Type.String({
   pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?(?:Z|[+-]\\d{2}:\\d{2})?)?$",
-});
-
-const FollowUpsQuerySchema = Type.Object({
-  from: Type.Optional(DateQuerySchema),
-  page: Type.Optional(Type.Number()),
-  pageSize: Type.Optional(Type.Number()),
-  priority: Type.Optional(Type.Union([
-    Type.Literal("low"),
-    Type.Literal("medium"),
-    Type.Literal("high"),
-  ])),
-  status: Type.Optional(Type.Union([
-    InsightActionStatusSchema,
-    Type.Literal("processed"),
-  ])),
-  to: Type.Optional(DateQuerySchema),
 });
 
 const OverviewQuerySchema = Type.Object({
@@ -81,6 +61,7 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("partial"),
     Type.Literal("failed"),
     Type.Literal("stale"),
+    Type.Literal("skipped"),
   ])),
   entityId: Type.Optional(Type.String()),
   from: Type.Optional(DateQuerySchema),
@@ -138,14 +119,6 @@ const SessionParamsSchema = Type.Object({
   sessionId: Type.String({ minLength: 1 }),
 });
 
-const ActionItemParamsSchema = Type.Object({
-  actionItemId: Type.String({ minLength: 1 }),
-});
-
-const ActionStatusBodySchema = Type.Object({
-  status: InsightActionStatusSchema,
-});
-
 const ConfigParamsSchema = Type.Object({
   configId: Type.String({ minLength: 1 }),
 });
@@ -154,7 +127,6 @@ const PresetConfigParamsSchema = Type.Object({
   presetCode: Type.String({ minLength: 1 }),
 });
 
-type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
 type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
@@ -162,14 +134,33 @@ type BusinessTopicsQuery = Static<typeof BusinessTopicsQuerySchema>;
 type QualityQuery = Static<typeof QualityQuerySchema>;
 type QualitySummaryQuery = Static<typeof QualitySummaryQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
-type ActionItemParams = Static<typeof ActionItemParamsSchema>;
-type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
-type CreateActionItemBody = InsightCreateActionItemRequest;
 type ConfigParams = Static<typeof ConfigParamsSchema>;
 type PresetConfigParams = Static<typeof PresetConfigParamsSchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
-export async function registerInsightsRoutes(app: FastifyInstance) {
+export async function registerInsightsRoutes(
+  app: FastifyInstance,
+  workerObserverSubjects: ReadonlySet<string>,
+) {
+  const createService = () => new InsightsService(
+    new InsightsRepository(app.db),
+    workerObserverSubjects,
+  );
+
+  app.get(
+    "/api/server/insights/capabilities",
+    { preHandler: app.authenticate },
+    async (request) => {
+      return apiSuccess(
+        await createService().getCapabilities(
+          getUidScope(request),
+          getAccountRole(request),
+          request.user.subUserId,
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: OverviewQuery }>(
     "/api/server/insights/overview",
     {
@@ -310,24 +301,6 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Querystring: FollowUpsQuery }>(
-    "/api/server/insights/follow-ups",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        querystring: FollowUpsQuerySchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).getFollowUps(
-          getUidScope(request),
-          normalizeFollowUpsQuery(request.query),
-        ),
-      );
-    },
-  );
-
   app.get<{ Params: SessionParams }>(
     "/api/server/insights/sessions/:sessionId",
     {
@@ -341,6 +314,10 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).getDetail(
           getUidScope(request),
           request.params.sessionId,
+          {
+            role: getAccountRole(request),
+            subUserId: request.user?.subUserId,
+          },
         ),
       );
     },
@@ -378,45 +355,6 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           getUidScope(request),
           request.query.conversationId,
           request.query.messageId,
-        ),
-      );
-    },
-  );
-
-  app.patch<{ Body: ActionStatusBody; Params: ActionItemParams }>(
-    "/api/server/insights/action-items/:actionItemId/status",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: ActionStatusBodySchema,
-        params: ActionItemParamsSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).updateActionStatus(
-          getUidScope(request),
-          request.params.actionItemId,
-          request.body.status,
-        ),
-      );
-    },
-  );
-
-  app.post<{ Body: CreateActionItemBody }>(
-    "/api/server/insights/action-items",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: InsightCreateActionItemRequestSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).createActionItem(
-          getUidScope(request),
-          request.body,
-          request.user?.subUserId,
         ),
       );
     },
@@ -1007,6 +945,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).createRescanJob(
           getUidScope(request),
+          getAccountRole(request),
           request.body,
           request.user?.subUserId,
         ),
@@ -1030,6 +969,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).listRescanTasks(
           getUidScope(request),
+          getAccountRole(request),
           { page, pageSize },
         ),
       );
@@ -1073,17 +1013,6 @@ function normalizeQualityQuery(query: QualityQuery) {
 function normalizeQualitySummaryQuery(query: QualitySummaryQuery) {
   return {
     from: query.from,
-    to: query.to,
-  };
-}
-
-function normalizeFollowUpsQuery(query: FollowUpsQuery) {
-  return {
-    from: query.from,
-    page: normalizePositiveQueryNumber(query.page),
-    pageSize: normalizePositiveQueryNumber(query.pageSize),
-    priority: query.priority,
-    status: query.status,
     to: query.to,
   };
 }

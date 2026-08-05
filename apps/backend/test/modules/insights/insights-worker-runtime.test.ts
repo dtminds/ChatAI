@@ -1,18 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createInsightsWorkerRuntime,
-  getInitialInsightWorkerCursor,
   parseInsightsWorkerRuntimeConfig,
 } from "../../../src/modules/insights/insights-worker-runtime";
 
 describe("insights worker runtime config", () => {
-  it("defaults to a disabled standalone worker with a three-day cursor lookback", () => {
+  it("defaults to a disabled standalone worker", () => {
     expect(parseInsightsWorkerRuntimeConfig({})).toEqual({
       batchSize: 200,
+      discoveryBatchSize: 1_000,
+      discoveryMaxBatchesPerTick: 20,
       enabled: false,
       intervalMs: 3_000,
       modelEnabled: false,
-      startLookbackDays: 3,
+      traceUids: new Set(),
     });
   });
 
@@ -20,19 +21,23 @@ describe("insights worker runtime config", () => {
     expect(
       parseInsightsWorkerRuntimeConfig({
         INSIGHTS_WORKER_BATCH_SIZE: "500",
+        INSIGHTS_WORKER_DISCOVERY_BATCH_SIZE: "2000",
+        INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: "12",
         INSIGHTS_WORKER_ENABLED: "true",
         INSIGHTS_WORKER_INTERVAL_MS: "10000",
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
-        INSIGHTS_WORKER_START_LOOKBACK_DAYS: "7",
+        INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: "9001,9002",
         VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
         VOLCENGINE_ARK_LITE_MODEL: "ep-lite",
       }),
     ).toEqual({
       batchSize: 500,
+      discoveryBatchSize: 2_000,
+      discoveryMaxBatchesPerTick: 12,
       enabled: true,
       intervalMs: 10_000,
       modelEnabled: true,
-      startLookbackDays: 7,
+      traceUids: new Set([9001, 9002]),
     });
   });
 
@@ -48,30 +53,42 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_INTERVAL_MS: "100",
       }),
     ).toThrow("INSIGHTS_WORKER_INTERVAL_MS must be at least 1000");
-  });
 
-  it("creates an initial cursor from the configured lookback window", () => {
-    expect(
-      getInitialInsightWorkerCursor({
-        now: new Date("2026-06-02T00:00:00.000Z"),
-        startLookbackDays: 3,
+    expect(() =>
+      parseInsightsWorkerRuntimeConfig({
+        INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK: "0",
       }),
-    ).toEqual({
-      cursorAuditId: 0,
-      cursorMsgtime: Date.parse("2026-05-30T00:00:00.000Z"),
-    });
+    ).toThrow(
+      "INSIGHTS_WORKER_DISCOVERY_MAX_BATCHES_PER_TICK must be a positive integer",
+    );
+
+    expect(() =>
+      parseInsightsWorkerRuntimeConfig({
+        INSIGHTS_WORKER_TRACE_UID_ALLOWLIST: "9001,invalid",
+      }),
+    ).toThrow("INSIGHTS_WORKER_TRACE_UID_ALLOWLIST");
   });
 
   it("does not start the standalone worker when disabled", () => {
+    const logger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
     const runtime = createInsightsWorkerRuntime({
       db: {} as never,
       env: { INSIGHTS_WORKER_ENABLED: "false" },
-      logger: {
-        error() {},
-        info() {},
-      },
+      logger,
     });
 
     expect(runtime).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventCode: "insights_worker.disabled",
+      }),
+      expect.any(String),
+    );
   });
 });

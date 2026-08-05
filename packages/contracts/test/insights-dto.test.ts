@@ -1,11 +1,11 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
-  InsightActionStatusSchema,
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightBusinessTopicSchema,
   InsightBusinessTrendPointSchema,
   InsightBusinessTopicsResponseSchema,
+  InsightCapabilitiesResponseSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightFilterOptionsResponseSchema,
@@ -18,16 +18,121 @@ import {
   InsightSettingsSummaryResponseSchema,
   InsightSessionMessagesResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
-  InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityAgentStatsResponseSchema,
   InsightsQualityOverviewSchema,
   InsightsQualityOverviewResponseSchema,
   InsightsQualityResultsResponseSchema,
   InsightsRescanRequestSchema,
+  InsightsWorkerSummaryResponseSchema,
+  InsightsWorkerUidDetailResponseSchema,
+  InsightsWorkerUidListResponseSchema,
 } from "../src/insights/dto";
 
 describe("insights DTOs", () => {
+  it("requires worker observability capability and validates observer responses", () => {
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(true);
+    expect(Value.Check(InsightCapabilitiesResponseSchema, {
+      canManageInsights: true,
+      insightAvailable: false,
+      mode: "basic",
+    })).toBe(false);
+
+    const pipeline = {
+      activity: "idle",
+      health: "healthy",
+      lastDurationMs: 12,
+      lastSuccessAt: 1784800000000,
+      pipeline: "discovery",
+      reportedAt: 1784800001000,
+      reportedBy: "worker-a:101",
+    };
+    const sessionization = {
+      queueAgeMs: 0,
+      state: "idle",
+    };
+    const analysis = {
+      failedLast24h: 0,
+      pending: 0,
+      processing: 0,
+      queueAgeMs: 0,
+      retrying: 0,
+      state: "idle",
+    };
+    const sessions = {
+      open: 0,
+      overdue: 0,
+    };
+
+    expect(Value.Check(InsightsWorkerSummaryResponseSchema, {
+      analysisJobs: {
+        expiredLease: 0,
+        failedLast24h: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      discovery: {
+        auditIdGap: 0,
+        cursorAuditId: 100,
+        hasBacklog: false,
+        sourceHeadAuditId: 100,
+      },
+      observedAt: 1784800001000,
+      observedUids: {
+        blocked: 0,
+        error: 0,
+        idle: 1,
+        processing: 0,
+        queued: 0,
+        retrying: 0,
+        total: 1,
+      },
+      pipelines: [pipeline],
+      sessionizationJobs: {
+        expiredLease: 0,
+        pending: 0,
+        retrying: 0,
+        running: 0,
+      },
+      sessions,
+    })).toBe(true);
+
+    const uidItem = {
+      analysis,
+      overallState: "idle",
+      sessionization,
+      sessions,
+      uid: 9001,
+    };
+    expect(Value.Check(InsightsWorkerUidListResponseSchema, {
+      items: [uidItem],
+      observedAt: 1784800001000,
+      page: 1,
+      pageSize: 50,
+      total: 1,
+      totalPages: 1,
+    })).toBe(true);
+    expect(Value.Check(InsightsWorkerUidDetailResponseSchema, {
+      ...uidItem,
+      hasPendingMessages: false,
+      observedAt: 1784800001000,
+      recentAnalysisRuns: [],
+      recentErrors: [],
+      recentRescans: [],
+      recentSessions: [],
+      sourceHead: {
+        auditId: 100,
+        msgtime: 1784800000000,
+      },
+    })).toBe(true);
+  });
+
   it("accepts overview responses with statistics only", () => {
     expect(
       Value.Check(InsightsOverviewResponseSchema, {
@@ -38,6 +143,8 @@ describe("insights DTOs", () => {
           ready: 30,
           stale: 3,
         },
+        comparisonAvailable: true,
+        mode: "insight",
         problemSessions: 20,
         readySessions: 30,
         resolution: {
@@ -102,20 +209,49 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
+  it("accepts basic overview responses without AI aggregate fields", () => {
+    expect(
+      Value.Check(InsightsOverviewResponseSchema, {
+        comparison: {
+          agentMessages: { current: 12, delta: 2, deltaRate: 0.2, previous: 10 },
+          consultingCustomers: { current: 4, delta: 1, deltaRate: 1 / 3, previous: 3 },
+          customerMessages: { current: 18, delta: 3, deltaRate: 0.2, previous: 15 },
+          logicalSessions: { current: 5, delta: 1, deltaRate: 0.25, previous: 4 },
+          messages: { current: 30, delta: 5, deltaRate: 0.2, previous: 25 },
+        },
+        comparisonAvailable: true,
+        mode: "basic",
+        totals: {
+          agentMessages: 12,
+          consultingCustomers: 4,
+          customerMessages: 18,
+          logicalSessions: 5,
+          messages: 30,
+        },
+        trend: [],
+      }),
+    ).toBe(true);
+  });
+
   it("accepts overview session list responses separately", () => {
     expect(
       Value.Check(InsightOverviewSessionsResponseSchema, {
         items: [
           {
+            agentMessageCount: 2,
             analysisStatus: "ready",
             conversationId: "301",
+            customerMessageCount: 3,
             customerName: "张三",
+            messageCount: 5,
             resolutionStatus: "unresolved",
             sessionId: "session-1",
+            sessionState: "ended",
             startedAt: 1780243200000,
             summarySessionTitle: "退款进度咨询",
           },
         ],
+        mode: "insight",
         page: 1,
         pageSize: 20,
         total: 36,
@@ -231,122 +367,17 @@ describe("insights DTOs", () => {
     expect(Value.Check(InsightsQualityResultsResponseSchema, { qualityResultsPage, qualityResults })).toBe(true);
   });
 
-  it("accepts follow-up action statuses and rejects unknown status", () => {
-    expect(Value.Check(InsightActionStatusSchema, "open")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "done")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "dismissed")).toBe(true);
-    expect(Value.Check(InsightActionStatusSchema, "closed")).toBe(false);
-
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(true);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            actionType: "follow_up",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            priority: "high",
-            reason: "客户仍在追问退款进度",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            evidenceMessageIds: ["9001"],
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-    expect(
-      Value.Check(InsightsFollowUpsResponseSchema, {
-        items: [
-          {
-            actionItemId: "act-1",
-            conversationId: "301",
-            createdAt: 1780243000000,
-            customerName: "张三",
-            lastCustomerMessageAt: 1780243200000,
-            priority: "high",
-            sessionId: "session-1",
-            status: "open",
-            title: "确认退款进度并回复客户",
-          },
-        ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
-        totalPages: 1,
-      }),
-    ).toBe(false);
-  });
-
   it("accepts detail responses without embedded conversation messages", () => {
     expect(
       Value.Check(InsightDetailResponseSchema, {
-        actionItems: [],
+        actionItems: [
+          {
+            canEdit: true,
+            status: "in_progress",
+            ticketId: "801",
+            title: "确认退款进度并回复客户",
+          },
+        ],
         analysisStatus: "ready",
         currentSnapshotId: "snapshot-1",
         entities: [],
@@ -393,6 +424,40 @@ describe("insights DTOs", () => {
         tags: [],
       }),
     ).toBe(true);
+    expect(
+      Value.Check(InsightDetailResponseSchema, {
+        actionItems: [
+          {
+            actionItemId: "801",
+            canEdit: true,
+            status: "open",
+            ticketId: "801",
+            title: "旧字段不得继续出现在投影中",
+          },
+        ],
+        entities: [],
+        evidenceItems: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        sentiment: [],
+        session: {
+          conversationId: "301",
+          customerName: "张三",
+          sessionId: "session-1",
+          startedAt: 1780240000000,
+        },
+        summary: { sessionTitle: "", text: "" },
+        tags: [],
+      }),
+    ).toBe(false);
     expect(
       Value.Check(InsightDetailResponseSchema, {
         actionItems: [],

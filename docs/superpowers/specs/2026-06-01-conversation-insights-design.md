@@ -511,7 +511,7 @@ xy_wap_embed_model_profile
 - repair retry 仍失败时，任务失败并保留 raw output 摘要。
 - 模型温度默认低值，保证稳定性。
 - 每个结论尽量携带 `evidence_message_ids` 和 `confidence`。
-- 保存 `provider_code`、`model_name`、`prompt_version`、`rule_version`、token usage、request id 和耗时。
+- `analysis_run.token_usage` 按火山 `usage` 结构累计一次运行内所有模型调用；一次运行可能混用多个模型，不在运行记录上保存单值 `provider_code` 或 `model_name`。
 
 第一版推荐模型输出维度：
 
@@ -723,11 +723,7 @@ xy_wap_embed_analysis_run
 - source_message_from
 - source_message_to
 - status
-- input_token_count
-- output_token_count
-- cost_estimate
-- provider_code
-- model_name
+- token_usage
 - prompt_version
 - raw_output_ref
 - error_code
@@ -879,7 +875,6 @@ xy_wap_embed_session_action_item
 - action_type: follow_up / supervisor_intervention / refund_progress_check / logistics_check / faq_candidate_review / custom
 - title
 - priority: low / medium / high
-- due_hint
 - status: open / dismissed / done
 - evidence_message_ids
 ```

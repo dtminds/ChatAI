@@ -135,6 +135,348 @@ ALTER TABLE xy_wap_embed_workflow_outbox
 - All Workflow tables use meaningless auto-increment primary keys and include `create_time` and `update_time`.
 
 Apply the `xy_wap_embed_workflow_*` `CREATE TABLE` statements from `docs/db/schema.sql` before enabling the Workflow HTTP repository.
+## 2026-07-30
+
+- Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.
+- Run this only when production has not executed any ticket-system DDL from this branch. The expected starting table still contains `updated_by_sub_user_id`, `dismissed_at`, and `due_hint`, plus `idx_action_uid_conversation_status` and `idx_action_uid_status_id`.
+- Production currently contains only disposable test tickets. This migration deletes all existing action-item rows and their `action_item` evidence instead of backfilling legacy ticket data.
+- This is a maintenance-window migration. Stop every old backend and Insights Worker writer before deleting data or changing the table.
+- Ticket lists now sort by descending ID. The final ticket-list indexes intentionally exclude high-frequency `update_time`.
+
+### 1. Backup and preflight
+
+Take a database backup before starting. Confirm that the production definition matches the expected `main` baseline:
+
+```sql
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW INDEX FROM xy_wap_embed_session_action_item;
+```
+
+Inventory the rows that will be deleted:
+
+```sql
+SELECT
+  uid,
+  source_type,
+  status,
+  COUNT(*) AS row_count,
+  MIN(create_time) AS first_create_time,
+  MAX(create_time) AS last_create_time
+FROM xy_wap_embed_session_action_item
+GROUP BY uid, source_type, status
+ORDER BY uid, source_type, status;
+
+SELECT COUNT(*) AS action_item_evidence_rows
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+```
+
+Proceed only after confirming that every returned action item and every `action_item` evidence row is disposable test data.
+
+### 2. Enter the maintenance window
+
+1. Pause or drain the old Insights Worker and backend instances.
+2. Confirm no old process can insert or update `xy_wap_embed_session_action_item`.
+3. Keep the backend unavailable until the cleanup and schema migration have completed.
+
+### 3. Delete the existing test tickets
+
+Delete the polymorphic evidence first so no orphaned `action_item` evidence remains:
+
+```sql
+START TRANSACTION;
+
+DELETE FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+
+DELETE FROM xy_wap_embed_session_action_item;
+
+COMMIT;
+```
+
+Both counts must be zero before altering the table:
+
+```sql
+SELECT COUNT(*) AS remaining_action_items
+FROM xy_wap_embed_session_action_item;
+
+SELECT COUNT(*) AS remaining_action_item_evidence
+FROM xy_wap_embed_insight_evidence
+WHERE dimension_type = 'action_item';
+```
+
+### 4. Apply the final schema directly
+
+Because the old rows have been deleted and all old writers are stopped, no legacy status or cancellation-time backfill is required. The two existing indexes whose columns already match the final design are renamed instead of rebuilt.
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  MODIFY COLUMN session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
+  ADD COLUMN anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID' AFTER session_id,
+  ADD COLUMN assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID' AFTER created_by_sub_user_id,
+  DROP COLUMN updated_by_sub_user_id,
+  ADD COLUMN canceled_at DATETIME NULL COMMENT '取消时间' AFTER completed_at,
+  ADD COLUMN canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID' AFTER canceled_at,
+  DROP COLUMN dismissed_at,
+  MODIFY COLUMN action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
+  MODIFY COLUMN title VARCHAR(255) NOT NULL COMMENT '工单标题',
+  ADD COLUMN description TEXT NULL COMMENT '工单描述' AFTER title,
+  ADD COLUMN due_at DATETIME NULL COMMENT '明确截止时间' AFTER priority,
+  DROP COLUMN due_hint,
+  MODIFY COLUMN status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消，deleted：内部逻辑删除墓碑',
+  RENAME INDEX idx_action_uid_conversation_status TO idx_ticket_uid_conversation_status_id,
+  RENAME INDEX idx_action_uid_status_id TO idx_ticket_uid_status_id,
+  ADD KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
+  ADD KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
+  ADD KEY idx_ticket_uid_created_id (uid, create_time, id),
+  ADD KEY idx_ticket_uid_status_due_at (uid, status, due_at),
+  ADD KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
+  ADD KEY idx_ticket_uid_source_status_id (uid, source_type, status, id),
+  COMMENT = '工单主表';
+
+CREATE TABLE xy_wap_embed_ticket_activity (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
+  ticket_id BIGINT UNSIGNED NOT NULL COMMENT '工单ID',
+  activity_type VARCHAR(32) NOT NULL COMMENT '活动类型',
+  operator_type VARCHAR(32) NOT NULL COMMENT '操作者类型，sub_user：子账号，ai：AI，system：系统',
+  operator_sub_user_id BIGINT UNSIGNED NULL COMMENT '操作者子账号ID',
+  content TEXT NULL COMMENT '处理备注内容',
+  detail_json JSON NULL COMMENT '结构化变更详情',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ticket_activity_uid_ticket_id (uid, ticket_id, id)
+) COMMENT='工单活动记录表';
+
+ANALYZE TABLE xy_wap_embed_session_action_item, xy_wap_embed_ticket_activity;
+```
+
+### 5. Verify the schema and deploy
+
+```sql
+SHOW CREATE TABLE xy_wap_embed_session_action_item;
+SHOW CREATE TABLE xy_wap_embed_ticket_activity;
+
+SELECT
+  index_name,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index) AS index_columns
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+GROUP BY index_name
+ORDER BY index_name;
+
+SELECT
+  column_name,
+  column_type,
+  is_nullable,
+  column_comment
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'session_id',
+    'anchor_message_id',
+    'assignee_sub_user_id',
+    'canceled_at',
+    'canceled_by_sub_user_id',
+    'description',
+    'due_at'
+  )
+ORDER BY ordinal_position;
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item'
+  AND column_name IN (
+    'updated_by_sub_user_id',
+    'dismissed_at',
+    'due_hint'
+  );
+
+SELECT table_comment
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'xy_wap_embed_session_action_item';
+```
+
+Expected indexes and column order:
+
+```text
+PRIMARY                                      (id)
+idx_action_snapshot                          (snapshot_id)
+idx_action_uid_session_status                (uid, session_id, status)
+idx_ticket_uid_assignee_status_id            (uid, assignee_sub_user_id, status, id)
+idx_ticket_uid_conversation_status_id        (uid, conversation_id, status, id)
+idx_ticket_uid_conversation_id               (uid, conversation_id, id)
+idx_ticket_uid_created_id                    (uid, create_time, id)
+idx_ticket_uid_status_id                     (uid, status, id)
+idx_ticket_uid_status_due_at                 (uid, status, due_at)
+idx_ticket_uid_creator_id                    (uid, created_by_sub_user_id, id)
+idx_ticket_uid_source_status_id              (uid, source_type, status, id)
+```
+
+Expected new or modified columns:
+
+```text
+session_id                 BIGINT UNSIGNED NULL
+anchor_message_id          BIGINT UNSIGNED NULL
+assignee_sub_user_id       BIGINT UNSIGNED NULL
+canceled_at                DATETIME NULL
+canceled_by_sub_user_id    BIGINT UNSIGNED NULL
+description                TEXT NULL
+due_at                     DATETIME NULL
+```
+
+The legacy-column query must return no rows: `updated_by_sub_user_id`, `dismissed_at`, and `due_hint` must not exist. The expected table comment is `工单主表`.
+
+Confirm that the action-item table is still empty, then deploy every backend and Insights Worker instance from this release. Deploy the web application after the backend is healthy, and complete ticket create/list/update/cancel smoke tests.
+
+Rollback boundary:
+
+- The cleanup and schema migration are destructive. The deleted test tickets, their evidence, and the dropped legacy columns cannot be reconstructed from the new schema.
+- If cleanup or migration must be reversed, restore the pre-migration backup before restarting the old `main` application.
+- After the new version writes tickets or activities, the old `main` application is not a safe rollback target.
+
+- Documented Boss-managed skill marketplace tables `xy_wap_embed_agent_skill_template` and `xy_wap_embed_agent_skill_template_group`.
+- ChatAI Node reads these tables for the skills marketplace only; they are **not** on the writable allowlist. Template CRUD remains Boss-owned.
+
+Manual migration for existing databases:
+
+```sql
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
+  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
+  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';
+```
+
+## 2026-07-28
+
+- Added `xy_wap_embed_agent_skill` for ChatAI-owned Agent skill CRUD (list / create / update / enable-disable / soft delete).
+- Node writes this table directly; it is on the `writable-tables.ts` allowlist. Boss skill templates are out of scope for this change.
+
+Manual migration for existing databases:
+
+```sql
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '租户id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `variables` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能变量（复杂json数组，不同变量类型有不同格式）',
+  `tools` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能工具,示例：["web","weather"]',
+  `kbs` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能知识库,示例：[1,2,3]',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未启用 1：已启用',
+  `is_del` tinyint NOT NULL DEFAULT '0' COMMENT '是否已删除 0：未删除 1：已删除',
+  `operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建操作人（子账号id）',
+  `last_operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '最近一次操作人（子账号id）',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';
+```
+
+## 2026-07-27
+
+- Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.
+- `token_usage` stores the accumulated Volcengine Ark `usage` shape for every model response observed during one analysis run, including retries and responses whose business payload later fails validation.
+- The removed columns were never read or written by the backend. Confirm they are empty before applying the destructive column drops to an existing database.
+
+Manual verification before migration:
+
+```sql
+SELECT
+  COUNT(input_token_count) AS input_usage_rows,
+  COUNT(output_token_count) AS output_usage_rows,
+  COUNT(cost_estimate) AS cost_rows,
+  COUNT(provider_code) AS provider_rows,
+  COUNT(model_name) AS model_rows
+FROM xy_wap_embed_analysis_run;
+```
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_analysis_run
+  DROP COLUMN input_token_count,
+  DROP COLUMN output_token_count,
+  DROP COLUMN cost_estimate,
+  DROP COLUMN provider_code,
+  DROP COLUMN model_name,
+  ADD COLUMN token_usage JSON NULL COMMENT '本次分析运行内模型调用Token用量累计'
+  AFTER status;
+```
+
+## 2026-07-24
+
+- Added `xy_wap_embed_insight_job.idx_insight_job_archive_scan` so hourly terminal-job archival can select bounded batches by status and update time without scanning the hot queue.
+- Terminal-job archival now locks one exact ID batch and uses the same IDs for archive insertion and hot-table deletion.
+- Successful archive attempts wait one hour before the next scan; failed attempts retry after five minutes instead of waiting for the full hourly interval or retrying every Worker tick.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_job
+  ADD KEY idx_insight_job_archive_scan (status, update_time, id);
+```
+
+## 2026-07-23
+
+- Replaced the retired `maintain_insight_uid` and `cleanup_disabled_insights` insight-job type documentation with the temporary `sessionize_uid` task used by always-on logical-session generation.
+- Changed the default `max_attempts` for insight jobs and archived insight jobs from `3` to `2`, meaning the first failed execution is retried once.
+- No new table, column, or index is required for sessionization claim renewal; it reuses `locked_by`, `lease_until`, and `status`.
+- Added the fixed-capacity `xy_wap_embed_insight_worker_runtime_state` table with one row per Worker pipeline. Its `DATETIME(3)` precision is intentional: multi-instance reports can occur within the same second, and associated error/duration fields are replaced only when their event timestamp is strictly newer. Do not reduce these columns to second-precision `DATETIME`.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_job
+  MODIFY COLUMN job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  MODIFY COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次';
+
+ALTER TABLE xy_wap_embed_insight_job_archive
+  MODIFY COLUMN job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  MODIFY COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
+  pipeline VARCHAR(32) NOT NULL COMMENT 'Worker管线，discovery、sessionization、analysis',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次开始实际执行tick的时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次实际执行成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次实际执行失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '时间最新的一次已完成执行耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近状态上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近一次状态上报时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (pipeline)
+) COMMENT='会话洞察Worker管线运行状态表';
+```
 
 ## 2026-07-05
 
@@ -915,4 +1257,92 @@ ALTER TABLE xy_wap_embed_insight_analysis_policy
   ADD COLUMN enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用' AFTER uid;
 
 ANALYZE TABLE xy_wap_embed_logical_session;
+```
+
+## 2026-07-24 Agent 用户记忆
+
+- 新增 `xy_wap_embed_agent_user_memory_config`、`xy_wap_embed_agent_user_memory`、`xy_wap_embed_agent_user_memory_run`、`xy_wap_embed_agent_user_memory_run_item`。
+- 用户记忆按 `started_at` 自然日窗口复用现有 `idx_logical_session_uid_started (uid, started_at)`，不新增逻辑会话索引。
+- 新增 `idx_agent_user_memory_run_terminal (status, finished_at, id)`，支持按小时有界清理 90 天前的终态运行，避免扫描运行全表。
+- 四张新表默认无数据，所有租户默认关闭；不初始化水位、不回刷历史。
+- 用户记忆表只保存当前 JSON、版本和维护时间；不增加 pending、cursor、cooldown 或跨日消费状态。
+
+用户记忆四张表由本次 `docs/db/schema.sql` 建表语句整体创建，不对不存在的表单独执行 `ALTER TABLE`。
+
+## 2026-08-04 用户记忆运行观测
+
+- 新增 `xy_wap_embed_user_memory_worker_state`，保存用户记忆 Worker 最近心跳、Tick 结果、耗时和上报实例，用于区分正常空闲与 Worker 不可用。
+- 新增 `idx_agent_user_memory_run_quota_date (quota_date, id)`，支持按自然日有界查询运行趋势，避免观测接口扫描完整运行记录。
+- Worker 状态表使用自增 ID 作为主键，并通过 `runtime_key = 'user_memory'` 的唯一索引维持单条逻辑运行状态。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD KEY idx_agent_user_memory_run_quota_date (quota_date, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  runtime_key VARCHAR(32) NOT NULL COMMENT '运行状态标识，固定为user_memory',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次Tick开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次Tick成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次Tick失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码，成功后清空',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成Tick耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
+) COMMENT='用户记忆Worker运行状态';
+```
+
+## 2026-08-04 用户记忆消息窗口索引
+
+- 新增 `idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id)`，支持用户记忆按候选 `conversation_id` 读取每客户最近 100 条消息。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD KEY idx_session_message_conversation_order (
+    conversation_id,
+    source_message_time,
+    source_message_id
+  );
+```
+
+## 2026-08-04 用户记忆变更计数
+
+- 运行记录和客户运行项新增实际记忆变更计数，分别记录新增、更新、删除数量。
+- 字段保持 `NULL` 以区分历史未记录数据和本次运行确认无变化。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示旧运行未记录' AFTER skipped_count,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示旧运行未记录' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示旧运行未记录' AFTER memory_updated_count;
+
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示尚未完成合并' AFTER output_tokens,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示尚未完成合并' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示尚未完成合并' AFTER memory_updated_count;
+```
+
+## 2026-08-04 用户记忆取消运行项重试
+
+- 每个客户只调用模型一次，运行项失败后直接终态，不再保存下次重试时间。
+- 运行项领取索引移除无效的 `next_attempt_at` 字段。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  DROP INDEX idx_agent_user_memory_item_run_status,
+  DROP COLUMN next_attempt_at,
+  ADD KEY idx_agent_user_memory_item_run_status (run_id, status, id);
 ```

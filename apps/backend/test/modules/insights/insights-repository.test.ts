@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { MysqlDialect } from "kysely";
 import { InsightsRepository } from "../../../src/modules/insights/insights.repository";
 import { MysqlInsightWorkerRepository } from "../../../src/modules/insights/insights-worker.repository";
 
@@ -128,6 +129,96 @@ describe("InsightsRepository", () => {
     );
   });
 
+  it("loads active analysis session ids for a historical rescan in one indexed batch", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [{ target_id: "501" }, { target_id: "503" }],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listActiveAnalysisSessionIds({
+      sessionIds: ["501", "502", "503"],
+      uid: 9001,
+    })).resolves.toEqual(["501", "503"]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_insight_job");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "target_id",
+      "in",
+      ["501", "502", "503"],
+    ]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "status",
+      "in",
+      ["pending", "running"],
+    ]);
+  });
+
+  it("loads historical rescan eligibility from logical-session counters and current snapshot phase", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [
+            {
+              current_snapshot_phase: "final",
+              message_count: 8,
+              session_id: 501,
+              status: "analyzed",
+            },
+            {
+              current_snapshot_phase: "live",
+              message_count: 3,
+              session_id: 502,
+              status: "open",
+            },
+          ],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listRescanSessionEligibility({
+      sessionIds: ["501", "502"],
+      uid: 9001,
+    })).resolves.toEqual([
+      {
+        currentSnapshotPhase: "final",
+        messageCount: 8,
+        sessionId: "501",
+        status: "analyzed",
+      },
+      {
+        currentSnapshotPhase: "live",
+        messageCount: 3,
+        sessionId: "502",
+        status: "open",
+      },
+    ]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain(
+      "xy_wap_embed_session_insight_snapshot as current_snapshot",
+    );
+    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "session.id",
+      "in",
+      [501, 502],
+    ]);
+  });
+
   it("loads recent action items for prompt by conversation", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -137,8 +228,14 @@ describe("InsightsRepository", () => {
             {
               create_time: new Date("2026-06-01T10:00:00Z"),
               priority: "high",
-              status: "open",
+              status: "in_progress",
               title: "跟进物流异常",
+            },
+            {
+              create_time: new Date("2026-06-01T09:00:00Z"),
+              priority: "medium",
+              status: "expired",
+              title: "旧工单",
             },
           ],
           table,
@@ -158,8 +255,12 @@ describe("InsightsRepository", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         priority: "high",
-        status: "open",
+        status: "in_progress",
         title: "跟进物流异常",
+      }),
+      expect.objectContaining({
+        status: "canceled",
+        title: "旧工单",
       }),
     ]);
 
@@ -170,7 +271,88 @@ describe("InsightsRepository", () => {
       "=",
       301,
     ]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "!=", "deleted"]);
     expect(builders[0]?.limitCalls).toEqual([10]);
+  });
+
+  it("checks only the latest non-deleted conversation ticket against the session start", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_session_action_item"
+          ? [{ create_time: new Date(1_780_244_001_000) }]
+          : [{ started_at: 1_780_244_000_000 }];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(true);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_session_action_item");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "conversation_id",
+      "=",
+      301,
+    ]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "!=", "deleted"]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["id", "desc"]);
+    expect(builders[0]?.limitCalls).toEqual([1]);
+    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session");
+    expect(builders[1]?.whereCalls).toContainEqual(["id", "=", 501]);
+    expect(builders[1]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+  });
+
+  it("does not suppress ticket generation when the latest ticket predates the session", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_session_action_item"
+            ? [{ create_time: new Date(1_780_243_999_000) }]
+            : [{ started_at: 1_780_244_000_000 }],
+          table,
+        ),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("does not read the session start when the conversation has no ticket", async () => {
+    const selectedTables: string[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        selectedTables.push(table);
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.hasTicketCreatedAfterSessionStart({
+        conversationId: "301",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+
+    expect(selectedTables).toEqual(["xy_wap_embed_session_action_item"]);
   });
 
   it("reads the global sync cursor through the non-null uid sentinel", async () => {
@@ -363,13 +545,11 @@ describe("InsightsRepository", () => {
     });
   });
 
-  it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
-    const insertedTables: string[] = [];
+  it("deduplicates and caps AI action items before one batch write", async () => {
     const selectedActionItemBuilders: SelectBuilderStub[] = [];
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) => {
-        insertedTables.push(table);
         return createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
           table,
         });
@@ -394,7 +574,10 @@ describe("InsightsRepository", () => {
         createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
       ),
     };
-    const repository = new MysqlInsightWorkerRepository(db as never);
+    const ticketWriter = {
+      createAiTickets: vi.fn(async () => Array.from({ length: 10 }, (_, index) => 7801 + index)),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
     await repository.saveAnalysisResult({
       job: {
@@ -423,6 +606,16 @@ describe("InsightsRepository", () => {
             priority: "medium",
             title: "提醒 客户 补充 地址",
           },
+          {
+            evidenceMessageIds: ["9204"],
+            priority: "medium",
+            title: "确认客户收货",
+          },
+          ...Array.from({ length: 10 }, (_, index) => ({
+            evidenceMessageIds: [`93${index}`],
+            priority: "medium" as const,
+            title: `补充跟进事项${index + 1}`,
+          })),
         ],
         entities: [],
         faqCandidates: [],
@@ -469,12 +662,28 @@ describe("InsightsRepository", () => {
       "=",
       301,
     ]);
+    expect(selectedActionItemBuilders[0]?.whereCalls).toContainEqual([
+      "status",
+      "!=",
+      "deleted",
+    ]);
     expect(selectedActionItemBuilders[0]?.limitCalls).toEqual([10]);
-    expect(
-      insertedTables.filter(
-        (table) => table === "xy_wap_embed_session_action_item",
-      ),
-    ).toHaveLength(1);
+    expect(ticketWriter.createAiTickets).toHaveBeenCalledTimes(1);
+    const batchInput = ticketWriter.createAiTickets.mock.calls[0]?.[0];
+    expect(batchInput).toEqual(expect.objectContaining({
+      conversationId: 301,
+      items: expect.arrayContaining([{
+        priority: "medium",
+        title: "提醒客户补充地址",
+      }]),
+      sessionId: 501,
+      snapshotId: 7001,
+      uid: 9001,
+    }));
+    expect(batchInput?.items).toHaveLength(10);
+    expect(batchInput?.items).not.toContainEqual(expect.objectContaining({
+      title: "补充跟进事项9",
+    }));
   });
 
   it("loads quality agent stats through grouped SQL", async () => {
@@ -861,8 +1070,11 @@ describe("InsightsRepository", () => {
             customer_message_count: 2,
             customer_name: null,
             ended_at: null,
+            final_analysis_failed: 0,
             generated_at: 1_780_245_000_000,
             last_message_at: 1_780_244_900_000,
+            live_analysis_enabled: 1,
+            logical_session_status: "open",
             message_count: 3,
             phase: "live",
             problem_detected: 1,
@@ -884,8 +1096,14 @@ describe("InsightsRepository", () => {
             current_snapshot_id: null,
             customer_name: null,
             ended_at: null,
+            final_analysis_failed: 0,
             generated_at: null,
             last_message_at: 1_780_245_100_000,
+            logical_session_status: "open",
+            live_analysis_enabled: 1,
+            message_count: 0,
+            agent_message_count: 0,
+            customer_message_count: 0,
             phase: null,
             problem_detected: null,
             problem_summary: null,
@@ -1020,6 +1238,129 @@ describe("InsightsRepository", () => {
     ).toBe(true);
   });
 
+  it("does not report an open session as analyzing when live analysis is disabled", async () => {
+    const rowsByTable = new Map<string, unknown[]>([
+      ["xy_wap_embed_logical_session as session", [{ count: 1 }]],
+      ["xy_wap_embed_logical_session as session#2", [{
+        agent_message_count: 1,
+        conversation_id: 301,
+        current_snapshot_id: null,
+        customer_message_count: 1,
+        ended_at: null,
+        final_analysis_failed: 0,
+        generated_at: null,
+        last_message_at: 1_780_245_100_000,
+        live_analysis_enabled: 0,
+        logical_session_status: "open",
+        message_count: 2,
+        phase: null,
+        problem_detected: null,
+        problem_summary: null,
+        resolution_status: null,
+        session_id: 202,
+        started_at: 1_780_245_000_000,
+        status: null,
+        summary_session_title: null,
+        summary_text: null,
+        third_external_userid: "external-2",
+        third_userid: "agent-2",
+        unresolved_reason: null,
+      }]],
+      ["xy_wap_embed_contact", []],
+      ["xy_wap_embed_user_seat", []],
+    ]);
+    const db = {
+      currentQueryCount: 0,
+      selectFrom: vi.fn((table: string) => {
+        const key = table === "xy_wap_embed_logical_session as session"
+          && db.currentQueryCount++ > 0 ? `${table}#2` : table;
+        return createSelectBuilder(rowsByTable.get(key) ?? [], table);
+      }),
+    };
+
+    const result = await new InsightsRepository(db as never)
+      .listCurrentSessions({ uid: 9001 });
+
+    expect(result.items[0]?.analysisStatus).toBeUndefined();
+  });
+
+  it("reports the latest terminal final run failure while preserving a live snapshot", async () => {
+    const rowsByTable = new Map<string, unknown[]>([
+      ["xy_wap_embed_logical_session as session", [{ count: 1 }]],
+      ["xy_wap_embed_logical_session as session#2", [{
+        agent_message_count: 1,
+        conversation_id: 301,
+        current_snapshot_id: 501,
+        customer_message_count: 1,
+        ended_at: 1_780_245_100_000,
+        final_analysis_failed: 1,
+        generated_at: 1_780_245_000_000,
+        last_message_at: 1_780_245_000_000,
+        live_analysis_enabled: 1,
+        logical_session_status: "analyzed",
+        message_count: 2,
+        phase: "live",
+        problem_detected: 1,
+        problem_summary: "物流异常",
+        resolution_status: "unresolved",
+        session_id: 202,
+        started_at: 1_780_244_000_000,
+        status: "ready",
+        summary_session_title: "物流咨询",
+        summary_text: "已有实时结果",
+        third_external_userid: "external-2",
+        third_userid: "agent-2",
+        unresolved_reason: null,
+      }]],
+      ["xy_wap_embed_contact", []],
+      ["xy_wap_embed_user_seat", []],
+    ]);
+    const db = {
+      currentQueryCount: 0,
+      selectFrom: vi.fn((table: string) => {
+        const key = table === "xy_wap_embed_logical_session as session"
+          && db.currentQueryCount++ > 0 ? `${table}#2` : table;
+        return createSelectBuilder(rowsByTable.get(key) ?? [], table);
+      }),
+    };
+
+    const result = await new InsightsRepository(db as never)
+      .listCurrentSessions({ uid: 9001 });
+
+    expect(result.items[0]).toMatchObject({
+      analysisStatus: "failed",
+      currentSnapshotId: "501",
+      phase: "live",
+    });
+  });
+
+  it("uses actor fields and stable ids for basic-mode keyword search", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      currentQueryCount: 0,
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_logical_session as session"
+            && db.currentQueryCount++ === 0 ? [{ count: 0 }] : [],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+
+    await new InsightsRepository(db as never).listCurrentSessions(
+      { uid: 9001 },
+      { keyword: "张三", searchMode: "basic" },
+    );
+
+    const sqlText = builders.flatMap((builder) => builder.whereRawCalls).join("\n");
+    expect(sqlText).toContain("xy_wap_embed_contact");
+    expect(sqlText).toContain("xy_wap_embed_user_seat");
+    expect(sqlText).toContain("cast(session.id as char)");
+    expect(sqlText).not.toContain("problem.problem_summary");
+  });
+
   it("paginates and filters current sessions in SQL before hydration", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
@@ -1078,6 +1419,11 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_session_intent as intent_filter",
     );
     expect(countQuery.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(countQuery.whereCalls).toContainEqual([
+      "snapshot.phase",
+      "=",
+      "final",
+    ]);
     expect(countQuery.whereCalls).toContainEqual([
       "snapshot.status",
       "=",
@@ -1149,8 +1495,11 @@ describe("InsightsRepository", () => {
       { analysisStatus: "analyzing" },
     );
 
-    expect(builders[0]?.whereRawCalls).toContain(
-      "(session.current_snapshot_id is null or snapshot.id is null)",
+    expect(builders[0]?.whereRawCalls.join("\n")).toContain(
+      "session.status = 'closed_pending_analysis'",
+    );
+    expect(builders[0]?.whereRawCalls.join("\n")).toContain(
+      "analysis_policy.live_analysis_enabled",
     );
   });
 
@@ -1371,221 +1720,13 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_session_insight_current as current",
     );
     expect(builders[0]?.joins).not.toContain("action_aggregate");
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain(
+      "snapshot.phase = 'final' and snapshot.status = 'ready'",
+    );
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain(
+      "snapshot.phase = 'final' and snapshot.status = 'failed'",
+    );
     expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
-  });
-
-  it("paginates action items before evidence hydration", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_session_action_item as action:0",
-        [
-          {
-            total_count: 2,
-          },
-        ],
-      ],
-      [
-        "xy_wap_embed_session_action_item as action:1",
-        [
-          {
-            action_id: 802,
-            action_status: "open",
-            action_type: "follow_up",
-            conversation_id: 302,
-            created_at: 1_780_243_900_000,
-            priority: "medium",
-            session_id: 202,
-            snapshot_id: 502,
-            title: "沉淀退款 FAQ",
-          },
-        ],
-      ],
-      ["xy_wap_embed_conversation", []],
-    ]);
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const key = `${table}:${builders.filter((builder) => builder.table === table).length}`;
-        const builder = createSelectBuilder(
-          rowsByTable.get(key) ?? rowsByTable.get(table) ?? [],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.listActionItemsPage(
-        { uid: 9001 },
-        {
-          from: "2026-06-01T00:00:00.000+08:00",
-          page: 2,
-          pageSize: 1,
-          status: "open",
-          to: "2026-06-30T23:59:59.999+08:00",
-        },
-      ),
-    ).resolves.toMatchObject({
-      items: [
-        {
-          actionItemId: "802",
-          createdAt: 1_780_243_900_000,
-        },
-      ],
-      total: 2,
-    });
-
-    const countQuery = builders[0];
-    const pageQuery = builders[1];
-    expect(countQuery?.joins).not.toContain("xy_wap_embed_logical_session as session");
-    expect(countQuery?.joins).not.toContain(
-      "xy_wap_embed_session_problem_resolution as problem",
-    );
-    expect(countQuery?.selectRawCalls.join("\n")).toContain("count(*)");
-    expect(pageQuery?.joins).toContain("xy_wap_embed_logical_session as session");
-    expect(pageQuery?.joins).not.toContain(
-      "xy_wap_embed_session_problem_resolution as problem",
-    );
-    expect(pageQuery?.selectRawCalls.join("\n")).not.toContain("count(*) over()");
-    expect(pageQuery?.limitCalls).toEqual([1]);
-    expect(pageQuery?.offsetCalls).toEqual([1]);
-    expect(pageQuery?.orderByCalls).toEqual([["action.id", "desc"]]);
-    expect(pageQuery?.whereCalls).toContainEqual(["action.uid", "=", 9001]);
-    expect(pageQuery?.whereCalls).not.toContainEqual([
-      "session.uid",
-      "=",
-      9001,
-    ]);
-    expect(pageQuery?.whereCalls).toContainEqual([
-      "action.status",
-      "=",
-      "open",
-    ]);
-    expect(pageQuery?.whereCalls).toContainEqual([
-      "action.create_time",
-      ">=",
-      Date.parse("2026-06-01T00:00:00.000+08:00"),
-    ]);
-    expect(pageQuery?.whereCalls).toContainEqual([
-      "action.create_time",
-      "<=",
-      Date.parse("2026-06-30T23:59:59.999+08:00"),
-    ]);
-    expect(pageQuery?.whereCalls).not.toContainEqual([
-      "session.started_at",
-      ">=",
-      Date.parse("2026-06-01T00:00:00.000+08:00"),
-    ]);
-    expect(builders).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          table: "xy_wap_embed_insight_evidence as evidence",
-        }),
-      ]),
-    );
-  });
-
-  it("filters processed action items by completed and dismissed statuses", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder([], table);
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await repository.listActionItemsPage(
-      { uid: 9001 },
-      {
-        page: 1,
-        pageSize: 10,
-        status: "processed",
-      },
-    );
-
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "action.status",
-      "in",
-      ["done", "dismissed"],
-    ]);
-    expect(builders[0]?.whereCalls).not.toContainEqual([
-      "action.status",
-      "=",
-      "processed",
-    ]);
-  });
-
-  it("does not join problem resolution when listing action items", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder([], table);
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await repository.listActionItemsPage(
-      { uid: 9001 },
-      {
-        page: 1,
-        pageSize: 10,
-        status: "open",
-      },
-    );
-
-    const pageQuery = builders[1];
-    expect(pageQuery?.joins).not.toContain(
-      "xy_wap_embed_session_problem_resolution as problem",
-    );
-    expect(pageQuery?.whereCalls).not.toContainEqual([
-      "problem.resolution_status",
-      "in",
-      ["unresolved", "partially_resolved"],
-    ]);
-    expect(pageQuery?.limitCalls).toEqual([10]);
-    expect(pageQuery?.offsetCalls).toEqual([0]);
-  });
-
-  it("validates manual action item targets against current uid and conversation linkage", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const rows =
-          table === "xy_wap_embed_conversation" ? [{ id: 301 }] : [{ id: 501 }];
-        const builder = createSelectBuilder(rows, table);
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.validateActionItemTarget(
-        { uid: 9001 },
-        {
-          conversationId: "301",
-          sessionId: "501",
-        },
-      ),
-    ).resolves.toBe(true);
-
-    expect(builders[0]?.table).toBe("xy_wap_embed_conversation");
-    expect(builders[0]?.whereCalls).toContainEqual(["id", "=", 301]);
-    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
-    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session");
-    expect(builders[1]?.whereCalls).toContainEqual(["id", "=", 501]);
-    expect(builders[1]?.whereCalls).toContainEqual(["uid", "=", 9001]);
-    expect(builders[1]?.whereCalls).toContainEqual([
-      "conversation_id",
-      "=",
-      301,
-    ]);
   });
 
   it("aggregates business asset topics directly from stored asset message references", async () => {
@@ -1935,7 +2076,7 @@ describe("InsightsRepository", () => {
     );
   });
 
-  it("loads detail qa findings and actions through focused snapshot queries", async () => {
+  it("loads detail qa findings and current-snapshot AI tickets through focused queries", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
       [
@@ -1995,48 +2136,9 @@ describe("InsightsRepository", () => {
           {
             action_id: 801,
             action_status: "open",
-            action_type: "follow_up",
-            conversation_id: 301,
+            assignee_sub_user_id: 77,
             priority: "high",
-            resolution_status: "unresolved",
-            session_id: 201,
-            snapshot_id: 501,
-            third_external_userid: "external-1",
             title: "催物流",
-          },
-          {
-            action_id: 802,
-            action_status: "open",
-            action_type: "follow_up",
-            conversation_id: 301,
-            priority: "medium",
-            resolution_status: "unresolved",
-            session_id: 202,
-            snapshot_id: 502,
-            third_external_userid: "external-2",
-            title: "其它逻辑会话待办",
-          },
-        ],
-      ],
-      [
-        "xy_wap_embed_insight_evidence as evidence",
-        [
-          {
-            action_id: 801,
-            evidence_message_id: 9001,
-            last_customer_message_at: 1_780_244_000_000,
-            reason: "承诺催办",
-          },
-        ],
-      ],
-      [
-        "xy_wap_embed_contact",
-        [
-          {
-            avatar: "https://example.com/customer.png",
-            name: "张三",
-            real_name: "",
-            third_external_userid: "external-1",
           },
         ],
       ],
@@ -2074,9 +2176,9 @@ describe("InsightsRepository", () => {
     expect(detail?.actionItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          actionItemId: "801",
-          customerName: "张三",
+          assigneeSubUserId: "77",
           evidenceMessageIds: [],
+          ticketId: "801",
         }),
       ]),
     );
@@ -2085,9 +2187,19 @@ describe("InsightsRepository", () => {
         builder.table === "xy_wap_embed_session_action_item as action",
     );
     expect(actionQuery?.whereCalls).toContainEqual([
-      "action.session_id",
+      "action.snapshot_id",
       "=",
-      201,
+      501,
+    ]);
+    expect(actionQuery?.whereCalls).toContainEqual([
+      "action.source_type",
+      "=",
+      "ai",
+    ]);
+    expect(actionQuery?.whereCalls).toContainEqual([
+      "action.status",
+      "!=",
+      "deleted",
     ]);
     expect(actionQuery?.whereCalls).not.toContainEqual([
       "action.conversation_id",
@@ -2128,6 +2240,7 @@ describe("InsightsRepository", () => {
             ended_at: null,
             generated_at: null,
             last_message_at: 1_780_245_500_000,
+            logical_session_status: "open",
             message_count: 3,
             phase: null,
             problem_detected: null,
@@ -2219,189 +2332,6 @@ describe("InsightsRepository", () => {
         (builder) => builder.table === "xy_wap_embed_session_qa_finding",
       ),
     ).toBe(false);
-  });
-
-  it("updates an action item back to open status", async () => {
-    let updateBuilder: UpdateBuilderStub | undefined;
-    const db = {
-      selectFrom: vi.fn(),
-      updateTable: vi.fn(() => {
-        updateBuilder = createUpdateBuilder(async () => ({
-          numAffectedRows: 1n,
-        }));
-        return updateBuilder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.updateActionStatus({ uid: 9001 }, "801", "open"),
-    ).resolves.toBe(true);
-
-    expect(db.selectFrom).not.toHaveBeenCalled();
-    expect(updateBuilder?.setCalls[0]).toEqual(
-      expect.objectContaining({
-        completed_at: null,
-        dismissed_at: null,
-        status: "open",
-      }),
-    );
-    expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 801]);
-    expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
-    expect(updateBuilder?.whereCalls).toContainEqual([
-      "status",
-      "in",
-      ["open", "done", "dismissed"],
-    ]);
-    expect(updateBuilder?.whereCalls).not.toContainEqual([
-      "status",
-      "=",
-      "open",
-    ]);
-  });
-
-  it("writes terminal timestamps when completing or dismissing action items", async () => {
-    const setCalls: Array<Record<string, unknown>> = [];
-    const db = {
-      updateTable: vi.fn(() =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
-          onSet: (values) => setCalls.push(values),
-        })
-      ),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.updateActionStatus({ uid: 9001 }, "801", "done"),
-    ).resolves.toBe(true);
-    await expect(
-      repository.updateActionStatus({ uid: 9001 }, "801", "dismissed"),
-    ).resolves.toBe(true);
-
-    expect(setCalls[0]).toMatchObject({
-      dismissed_at: null,
-      status: "done",
-    });
-    expect(setCalls[0]?.completed_at).toBeInstanceOf(Date);
-    expect(setCalls[1]).toMatchObject({
-      completed_at: null,
-      status: "dismissed",
-    });
-    expect(setCalls[1]?.dismissed_at).toBeInstanceOf(Date);
-  });
-
-  it("does not update an action item outside the current uid scope", async () => {
-    let updateBuilder: UpdateBuilderStub | undefined;
-    const db = {
-      selectFrom: vi.fn(),
-      updateTable: vi.fn(() => {
-        updateBuilder = createUpdateBuilder(async () => ({ numAffectedRows: 0n }));
-        return updateBuilder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.updateActionStatus({ uid: 9001 }, "801", "done"),
-    ).resolves.toBe(false);
-
-    expect(db.selectFrom).not.toHaveBeenCalled();
-    expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 801]);
-    expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
-  });
-
-  it("inserts manual action items as session todos without snapshot ownership", async () => {
-    let insertedActionItem: Record<string, unknown> | undefined;
-    const db = {
-      insertInto: vi.fn((table: string) =>
-        createInsertBuilder(async () => ({ insertId: 8101 }), {
-          onValues: (values) => {
-            insertedActionItem = values as Record<string, unknown>;
-          },
-          table,
-        }),
-      ),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.createActionItem(
-        { uid: 9001 },
-        {
-          conversationId: "301",
-          createdBySubUserId: "77",
-          dueHint: "今天内",
-          priority: "high",
-          sessionId: "501",
-          title: "回访物流状态",
-        },
-      ),
-    ).resolves.toEqual({ actionItemId: "8101" });
-
-    expect(db.insertInto).toHaveBeenCalledWith(
-      "xy_wap_embed_session_action_item",
-    );
-    expect(insertedActionItem).toEqual(
-      expect.objectContaining({
-        action_type: "follow_up",
-        conversation_id: 301,
-        created_by_sub_user_id: 77,
-        due_hint: "今天内",
-        priority: "high",
-        session_id: 501,
-        snapshot_id: null,
-        source_type: "manual",
-        status: "open",
-        title: "回访物流状态",
-        uid: 9001,
-        updated_by_sub_user_id: 77,
-      }),
-    );
-  });
-
-  it("rejects manual action items with invalid conversation ids before insert", async () => {
-    const db = {
-      insertInto: vi.fn(),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.createActionItem(
-        { uid: 9001 },
-        {
-          conversationId: "",
-          priority: "high",
-          title: "回访物流状态",
-        },
-      ),
-    ).rejects.toMatchObject({
-      code: "INVALID_ACTION_ITEM_TARGET",
-    });
-
-    expect(db.insertInto).not.toHaveBeenCalled();
-  });
-
-  it("rejects manual action items with invalid session ids before insert", async () => {
-    const db = {
-      insertInto: vi.fn(),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.createActionItem(
-        { uid: 9001 },
-        {
-          conversationId: "301",
-          priority: "high",
-          sessionId: "",
-          title: "回访物流状态",
-        },
-      ),
-    ).rejects.toMatchObject({
-      code: "INVALID_ACTION_ITEM_TARGET",
-    });
-
-    expect(db.insertInto).not.toHaveBeenCalled();
   });
 
   it("returns an existing rescan job and task when the idempotency key already exists", async () => {
@@ -2837,9 +2767,136 @@ describe("InsightsRepository", () => {
       ),
     ).toBe(true);
   });
+
+  it("pages session messages backwards with a stable time and id cursor", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let sessionMessageQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        let rows: unknown[] = [];
+        if (table === "xy_wap_embed_logical_session_message as session_message") {
+          sessionMessageQueryCount += 1;
+          rows = sessionMessageQueryCount === 1
+            ? [{
+                chat_type: 1,
+                conversation_external_id: "customer-1",
+                conversation_group_id: "",
+                conversation_id: 301,
+                group_seat_id: null,
+                platform: 5,
+                seat_id: 201,
+                session_id: 501,
+                third_userid: "account-1",
+                uid: 9001,
+              }]
+            : [
+                createSessionMessageRow(9002, 1_785_168_002_000),
+                createSessionMessageRow(9001, 1_785_168_001_000),
+                createSessionMessageRow(9000, 1_785_168_000_000),
+              ];
+        }
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    const page = await repository.listSessionMessageRecordPage(
+      { uid: 9001 },
+      "501",
+      {
+        before: { messageId: 9003, messageTime: 1_785_168_003_000 },
+        limit: 2,
+      },
+    );
+
+    expect(page).toMatchObject({
+      hasMore: true,
+      nextCursor: { messageId: 9001, messageTime: 1_785_168_001_000 },
+    });
+    const pageQuery = builders.filter(
+      (builder) => builder.table === "xy_wap_embed_logical_session_message as session_message",
+    )[1];
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_time",
+      "<",
+      1_785_168_003_000,
+    ]);
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_time",
+      "=",
+      1_785_168_003_000,
+    ]);
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_id",
+      "<",
+      9003,
+    ]);
+    expect(pageQuery?.orderByCalls).toEqual([
+      ["session_message.source_message_time", "desc"],
+      ["session_message.source_message_id", "desc"],
+    ]);
+    expect(pageQuery?.limitCalls).toEqual([3]);
+  });
 });
 
 describe("MysqlInsightWorkerRepository", () => {
+  it("upserts pipeline runtime state with database time and monotonic event guards", async () => {
+    const compiler = new MysqlDialect({ pool: {} as never }).createQueryCompiler();
+    const executeQuery = vi.fn(async () => ({ rows: [] }));
+    const executor = {
+      compileQuery: (node: unknown) => compiler.compileQuery(node as never),
+      executeQuery,
+      transformQuery: (node: unknown) => node,
+    };
+    const repository = new MysqlInsightWorkerRepository({
+      getExecutor: () => executor,
+    } as never);
+    const lastStartedAt = new Date("2026-07-23T04:00:00.100Z");
+    const lastSuccessAt = new Date("2026-07-23T04:00:00.200Z");
+
+    await repository.upsertWorkerPipelineRuntimeState({
+      lastDurationMs: 100,
+      lastStartedAt,
+      lastSuccessAt,
+      pipeline: "discovery",
+      reportedBy: "worker-a:1",
+    });
+
+    const compiled = executeQuery.mock.calls[0]?.[0] as {
+      parameters: unknown[];
+      sql: string;
+    };
+    const normalizedSql = compiled.sql.replace(/\s+/g, " ").trim();
+
+    expect(normalizedSql).toContain(
+      "insert into xy_wap_embed_insight_worker_runtime_state",
+    );
+    expect(normalizedSql).toContain("reported_at ) values ( ?, ?, ?, ?, ?, ?, ?, current_timestamp(3) )");
+    expect(normalizedSql).toContain(
+      "values(last_started_at) > last_started_at",
+    );
+    expect(normalizedSql).toContain(
+      "values(last_success_at) > last_success_at",
+    );
+    expect(normalizedSql).toContain(
+      "values(last_failure_at) > last_failure_at",
+    );
+    expect(normalizedSql).toContain(
+      "reported_at = current_timestamp(3)",
+    );
+    expect(compiled.parameters).toEqual([
+      "discovery",
+      lastStartedAt,
+      lastSuccessAt,
+      null,
+      null,
+      100,
+      "worker-a:1",
+    ]);
+  });
+
   it("loads worker analysis policy including minimum analysis messages and falls back to defaults", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -3461,23 +3518,27 @@ describe("MysqlInsightWorkerRepository", () => {
   it("claims historical rescan sync jobs from stored message timestamp watermarks", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
+    let selectCall = 0;
     const db = {
       transaction: vi.fn(),
       selectFrom: vi.fn((table: string) => {
         const builder = createSelectBuilder(
-          [
-            {
-              analysis_scope: "classification",
-              id: 702,
-              rescan_from_time: 1_780_272_000_000,
-              rescan_task_id: 9901,
-              rescan_to_time: 1_780_275_600_000,
-              target_id: "9001",
-              uid: 9001,
-            },
-          ],
+          selectCall === 0
+            ? [
+                {
+                  analysis_scope: "classification",
+                  id: 702,
+                  rescan_from_time: 1_780_272_000_000,
+                  rescan_task_id: 9901,
+                  rescan_to_time: 1_780_275_600_000,
+                  target_id: "9001",
+                  uid: 9001,
+                },
+              ]
+            : [{ status: "pending" }],
           table,
         );
+        selectCall += 1;
         builders.push(builder);
         return builder;
       }),
@@ -3504,122 +3565,61 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.selectRawCalls.join("\n")).toContain(
       "rescan_task.to_time as rescan_to_time",
     );
+    expect(builders[0]?.whereRawCalls.join("\n")).toContain(
+      "sessionization_job.status = 'running'",
+    );
+    expect(builders[1]?.whereCalls).toContainEqual([
+      "idempotency_key",
+      "=",
+      "sessionize_uid:9001",
+    ]);
+    expect(builders[1]?.forUpdateCalls).toBe(1);
     expect(updateExecute).toHaveBeenCalled();
   });
 
-  it("claims cleanup-disabled-insights jobs for disabled tenant session cleanup", async () => {
-    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+  it("leaves a sync job pending while the same uid sessionization job is running", async () => {
     const builders: SelectBuilderStub[] = [];
+    let selectCall = 0;
     const db = {
       transaction: vi.fn(),
       selectFrom: vi.fn((table: string) => {
         const builder = createSelectBuilder(
-          [
-            {
-              id: 703,
-              target_id: "1780243000000",
-              uid: 9001,
-            },
-          ],
+          selectCall === 0
+            ? [{
+                analysis_scope: "all",
+                id: 702,
+                rescan_task_id: null,
+                target_id: "1780272000000",
+                uid: 9001,
+              }]
+            : [{ status: "running" }],
           table,
         );
+        selectCall += 1;
         builders.push(builder);
         return builder;
       }),
-      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n })),
+      ),
     };
     db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await expect(
-      repository.claimNextCleanupDisabledInsightsJob(),
-    ).resolves.toEqual({
-      enableEpoch: 1_780_243_000_000,
-      jobId: "703",
-      uid: 9001,
-    });
+    await expect(repository.claimNextSyncMessagesJob()).resolves.toBeUndefined();
 
-    expect(builders[0]?.whereCalls).toContainEqual(["target_type", "=", "uid"]);
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "job_type",
+    expect(builders[1]?.whereCalls).toContainEqual([
+      "idempotency_key",
       "=",
-      "cleanup_disabled_insights",
+      "sessionize_uid:9001",
     ]);
-    expect(builders[0]?.forUpdateCalls).toBe(1);
-    expect(builders[0]?.skipLockedCalls).toBe(1);
-    expect(updateExecute).toHaveBeenCalled();
+    expect(builders[1]?.forUpdateCalls).toBe(1);
+    expect(db.updateTable).not.toHaveBeenCalled();
   });
 
-  it("seeds uid maintenance jobs for active insight tenants idempotently", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const insertedValues: Record<string, unknown>[] = [];
-    const db = {
-      insertInto: vi.fn((table: string) =>
-        createInsertBuilder(async () => ({ numInsertedOrUpdatedRows: 1n }), {
-          onValues: (values) =>
-            insertedValues.push(values as Record<string, unknown>),
-          table,
-        }),
-      ),
-      selectFrom: vi.fn((table: string) => {
-        if (table === "xy_wap_embed_insight_feature_config as config") {
-          const builder = createSelectBuilder(
-            [
-              {
-                entity_enabled: 1,
-                insight_enabled: 1,
-                intent_enabled: 1,
-                label_enabled: 1,
-                last_enable_time: 1_780_243_000_000,
-                qa_enabled: 1,
-                todo_enabled: 1,
-                uid: 9001,
-              },
-            ],
-            table,
-          );
-          builders.push(builder);
-          return builder;
-        }
-
-        const builder = createSelectBuilder([], table);
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new MysqlInsightWorkerRepository(db as never);
-
-    await expect(
-      repository.seedUidMaintenanceJobs({
-        limit: 20,
-        runAfter: new Date("2026-06-01T00:00:00Z"),
-      }),
-    ).resolves.toEqual({
-      insertedJobs: 1,
-      scannedUids: 1,
-    });
-
-    expect(insertedValues).toContainEqual(
-      expect.objectContaining({
-        idempotency_key: "maintain_insight_uid:9001",
-        job_type: "maintain_insight_uid",
-        run_after: new Date("2026-06-01T00:00:00Z"),
-        status: "pending",
-        target_id: "9001",
-        target_type: "uid",
-        uid: 9001,
-      }),
-    );
-    const seedQuery = builders.find(
-      (builder) =>
-        builder.table === "xy_wap_embed_insight_feature_config as config",
-    );
-    expect(seedQuery?.joins).toContain("xy_wap_embed_insight_job as job");
-    expect(seedQuery?.whereCalls).toContainEqual(["job.id", "is", null]);
-  });
-
-  it("claims uid maintenance jobs through the uid job skip-locked path", async () => {
+  it("claims sessionization uid jobs through the uid job skip-locked path", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const setCalls: Record<string, unknown>[] = [];
     const builders: SelectBuilderStub[] = [];
     const db = {
       transaction: vi.fn(),
@@ -3639,12 +3639,16 @@ describe("MysqlInsightWorkerRepository", () => {
         builders.push(builder);
         return builder;
       }),
-      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(updateExecute, {
+        onSet: (values) => setCalls.push(values),
+        table,
+      })),
     };
     db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await expect(repository.claimNextUidMaintenanceJob()).resolves.toEqual({
+    await expect(repository.claimNextSessionizationUidJob()).resolves.toEqual({
+      claimToken: expect.any(String),
       jobId: "704",
       uid: 9001,
     });
@@ -3653,14 +3657,428 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual([
       "job_type",
       "=",
-      "maintain_insight_uid",
+      "sessionize_uid",
     ]);
     expect(builders[0]?.forUpdateCalls).toBe(1);
     expect(builders[0]?.skipLockedCalls).toBe(1);
+    const sessionizationClaimSql = builders[0]?.whereRawCalls.join("\n") ?? "";
+    expect(sessionizationClaimSql).toContain("sync_job.status in ('pending', 'running')");
+    expect(sessionizationClaimSql).toContain("sync_job.run_after <= now()");
     expect(updateExecute).toHaveBeenCalled();
+    expect(setCalls[0]).toMatchObject({
+      lease_until: expect.any(Date),
+      locked_by: expect.any(String),
+      status: "running",
+    });
   });
 
-  it("claims only pending uid maintenance jobs after expired leases are reclaimed", async () => {
+  it("excludes sessionization uid jobs already claimed in the current worker tick", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.claimNextSessionizationUidJob({
+        excludeJobIds: ["704", "invalid", "705"],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "id",
+      "not in",
+      [704, 705],
+    ]);
+  });
+
+  it("discovers message uids by the global id cursor before advancing it", async () => {
+    const cutoverAt = new Date("2026-06-11T08:00:00.000Z");
+    const now = new Date("2026-06-13T08:00:00.000Z");
+    const operations: string[] = [];
+    const insertValues: Array<{
+      table: string;
+      values: Record<string, unknown> | Record<string, unknown>[];
+    }> = [];
+    const selectBuilders: SelectBuilderStub[] = [];
+    const updateValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const db = {
+      deleteFrom: vi.fn((table: string) =>
+        createDeleteBuilder(async () => ({ numAffectedRows: 1n }), table),
+      ),
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => {
+          operations.push(`insert:${table}`);
+          return { insertId: 1 };
+        }, {
+          onValues: (values) => insertValues.push({
+            table,
+            values,
+          }),
+          table,
+        }),
+      ),
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_insight_sync_cursor"
+          ? [{
+              create_time: cutoverAt,
+              cursor_audit_id: 100,
+              cursor_msgtime: 0,
+            }]
+          : table === "xy_wap_embed_msg_audit_info"
+            ? [
+                { id: 101, uid: 9001 },
+                { id: 102, uid: 9002 },
+                { id: 103, uid: 9001 },
+              ]
+            : [];
+        const builder = createSelectBuilder(rows, table);
+        selectBuilders.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => {
+          operations.push(`update:${table}`);
+          return { numAffectedRows: 1n };
+        }, {
+          onSet: (values) => updateValues.push({ table, values }),
+          table,
+        }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.discoverMessageUids({ batchSize: 200, now })).resolves.toEqual({
+      cursorAuditId: 103,
+      discoveredMessages: 3,
+      discoveredUidIds: [9001, 9002],
+      skipped: false,
+    });
+
+    const messageQuery = selectBuilders.find(
+      (builder) => builder.table === "xy_wap_embed_msg_audit_info",
+    );
+    expect(messageQuery?.whereCalls).toContainEqual(["id", ">", 100]);
+    expect(messageQuery?.orderByCalls).toContainEqual(["id", "asc"]);
+    const cursorRows = insertValues.filter(
+      (entry) => entry.table === "xy_wap_embed_insight_sync_cursor",
+    );
+    expect(cursorRows).toHaveLength(1);
+    expect(cursorRows[0]?.values).toEqual([
+      expect.objectContaining({
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 9001,
+      }),
+      expect.objectContaining({
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 9002,
+      }),
+    ]);
+    const jobRows = insertValues.filter(
+      (entry) => entry.table === "xy_wap_embed_insight_job",
+    );
+    expect(jobRows).toHaveLength(1);
+    expect(jobRows[0]?.values).toEqual([
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:9001",
+        uid: 9001,
+      }),
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:9002",
+        uid: 9002,
+      }),
+    ]);
+    expect(updateValues).toContainEqual({
+      table: "xy_wap_embed_insight_sync_cursor",
+      values: expect.objectContaining({
+        cursor_audit_id: 103,
+        cursor_msgtime: 0,
+        update_time: now,
+      }),
+    });
+    expect(operations.at(-1)).toBe("update:xy_wap_embed_insight_sync_cursor");
+  });
+
+  it("distinguishes global cursor lock contention from missing initialization", async () => {
+    let cursorQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_sync_cursor") {
+          cursorQueryCount += 1;
+          return createSelectBuilder(
+            cursorQueryCount === 1 ? [] : [{ id: 1 }],
+            table,
+          );
+        }
+        return createSelectBuilder([], table);
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.discoverMessageUids({ batchSize: 200, now: new Date() }),
+    ).resolves.toEqual({
+      cursorAuditId: 0,
+      discoveredMessages: 0,
+      discoveredUidIds: [],
+      skipped: true,
+    });
+  });
+
+  it("fails discovery when the global sessionization cursor is not initialized", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) => createSelectBuilder([], table)),
+      transaction: vi.fn(),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.discoverMessageUids({ batchSize: 200, now: new Date() }),
+    ).rejects.toThrow("GLOBAL_SESSIONIZATION_CURSOR_NOT_INITIALIZED");
+  });
+
+  it("restores a claimed sessionization uid job when authoritative work remains", async () => {
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const selectBuilders: SelectBuilderStub[] = [];
+    const db = {
+      deleteFrom: vi.fn((table: string) =>
+        createDeleteBuilder(async () => ({ numAffectedRows: 1n }), table),
+      ),
+      selectFrom: vi.fn((table: string) => {
+        let builder: SelectBuilderStub;
+        if (table === "xy_wap_embed_insight_job") {
+          builder = createSelectBuilder([{ id: 704 }], table);
+        } else if (table === "xy_wap_embed_insight_sync_cursor") {
+          builder = createSelectBuilder([{
+            cursor_audit_id: 103,
+            cursor_msgtime: 1_780_272_000_000,
+          }], table);
+        } else if (table === "xy_wap_embed_msg_audit_info") {
+          builder = createSelectBuilder([{ id: 104 }], table);
+        } else {
+          builder = createSelectBuilder([], table);
+        }
+        selectBuilders.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.completeSessionizationUidJob({
+      claimToken: "worker-1",
+      jobId: "704",
+      uid: 9001,
+    })).resolves.toBe("pending");
+
+    expect(db.deleteFrom).not.toHaveBeenCalled();
+    expect(updateBuilders[0]?.setCalls[0]).toMatchObject({
+      attempt_count: 0,
+      lease_until: null,
+      locked_by: null,
+      status: "pending",
+    });
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "worker-1"]);
+    expect(
+      selectBuilders.find((builder) => builder.table === "xy_wap_embed_msg_audit_info")?.limitCalls,
+    ).toContain(1);
+    expect(
+      selectBuilders.find((builder) => builder.table === "xy_wap_embed_logical_session")?.limitCalls,
+    ).toContain(1);
+  });
+
+  it("deletes a claimed sessionization uid job when no authoritative work remains", async () => {
+    const deleteBuilders: DeleteBuilderStub[] = [];
+    const db = {
+      deleteFrom: vi.fn((table: string) => {
+        const builder = createDeleteBuilder(async () => ({ numAffectedRows: 1n }), table);
+        deleteBuilders.push(builder);
+        return builder;
+      }),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_job") {
+          return createSelectBuilder([{ id: 704 }], table);
+        }
+        if (table === "xy_wap_embed_insight_sync_cursor") {
+          return createSelectBuilder([{
+            cursor_audit_id: 103,
+            cursor_msgtime: 1_780_272_000_000,
+          }], table);
+        }
+        return createSelectBuilder([], table);
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.completeSessionizationUidJob({
+      claimToken: "worker-1",
+      jobId: "704",
+      uid: 9001,
+    })).resolves.toBe("deleted");
+
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "worker-1"]);
+  });
+
+  it("fails sessionization completion after its claim token is lost", async () => {
+    const db = {
+      deleteFrom: vi.fn((table: string) =>
+        createDeleteBuilder(async () => ({ numAffectedRows: 0n }), table),
+      ),
+      selectFrom: vi.fn((table: string) => createSelectBuilder([], table)),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n }), { table }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.completeSessionizationUidJob({
+      claimToken: "stale-worker",
+      jobId: "704",
+      uid: 9001,
+    })).rejects.toThrow("SESSIONIZATION_UID_CLAIM_LOST");
+  });
+
+  it("finalizes without analysis while preserving an existing live snapshot pointer", async () => {
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: 1 }), { table }),
+      ),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          return createSelectBuilder([{ id: 501 }], table);
+        }
+        if (table === "xy_wap_embed_insight_feature_config") {
+          return createSelectBuilder([{ insight_enabled: 0 }], table);
+        }
+        return createSelectBuilder([{ final_analysis_enabled: 1 }], table);
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.finalizeOpenSession({
+      analysisDelayMinutes: 10,
+      closeReason: "idle_timeout",
+      endedAt: 1_780_272_000_000,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(updateBuilders[0]?.setCalls[0]).toMatchObject({
+      close_reason: "idle_timeout",
+      ended_at: 1_780_272_000_000,
+      next_close_at: null,
+      status: "analyzed",
+    });
+    expect(updateBuilders[0]?.setCalls[0]).not.toHaveProperty("current_snapshot_id");
+    expect(db.insertInto).not.toHaveBeenCalled();
+  });
+
+  it("finalizes and enqueues one delayed final analysis with a stable idempotency key", async () => {
+    const endedAt = 1_780_272_000_000;
+    const insertBuilders: InsertBuilderStub[] = [];
+    const insertValues: Record<string, unknown>[] = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: 1 }), {
+          onCreate: (builder) => insertBuilders.push(builder),
+          onValues: (values) => insertValues.push(values as Record<string, unknown>),
+          table,
+        }),
+      ),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          return createSelectBuilder([{ id: 501 }], table);
+        }
+        if (table === "xy_wap_embed_insight_feature_config") {
+          return createSelectBuilder([{ insight_enabled: 1 }], table);
+        }
+        return createSelectBuilder([{ final_analysis_enabled: 1 }], table);
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.finalizeOpenSession({
+      analysisDelayMinutes: 10,
+      closeReason: "hard_max_duration",
+      endedAt,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(updateBuilders[0]?.setCalls[0]).toMatchObject({
+      close_reason: "hard_max_duration",
+      status: "closed_pending_analysis",
+    });
+    expect(insertValues[0]).toMatchObject({
+      idempotency_key: "analyze_session:9001:501:final",
+      job_type: "analyze_session",
+      max_attempts: 2,
+      run_after: new Date(endedAt + 10 * 60_000),
+      status: "pending",
+      target_id: "501",
+      uid: 9001,
+    });
+    expect(insertBuilders[0]?.ignoreCalls).toBe(1);
+  });
+
+  it("claims only pending sessionization uid jobs after expired leases are reclaimed", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -3686,7 +4104,8 @@ describe("MysqlInsightWorkerRepository", () => {
     db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await expect(repository.claimNextUidMaintenanceJob()).resolves.toEqual({
+    await expect(repository.claimNextSessionizationUidJob()).resolves.toEqual({
+      claimToken: expect.any(String),
       jobId: "705",
       uid: 9002,
     });
@@ -3741,7 +4160,139 @@ describe("MysqlInsightWorkerRepository", () => {
     });
   });
 
-  it("reschedules uid maintenance jobs back to pending after a successful pass", async () => {
+  it("reclaims expired sessionization uid jobs without touching analysis runs", async () => {
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 2n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+    const now = new Date("2026-06-11T08:00:00Z");
+
+    await expect(repository.reclaimExpiredSessionizationUidJobs({ now })).resolves.toBe(2);
+
+    expect(db.updateTable).toHaveBeenCalledTimes(1);
+    expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(updateBuilders[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["lease_until", "<=", now]);
+  });
+
+  it("renews only the currently claimed sessionization uid job", async () => {
+    const setCalls: Record<string, unknown>[] = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          onSet: (values) => setCalls.push(values),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.renewSessionizationUidJobLease({
+      claimToken: "claim-704",
+      jobId: "704",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(setCalls[0]).toMatchObject({
+      lease_until: expect.any(Date),
+      update_time: expect.any(Date),
+    });
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "claim-704"]);
+  });
+
+  it("rejects stale sessionization claims before running business writes", async () => {
+    const claimQueries: SelectBuilderStub[] = [];
+    const operation = vi.fn(async () => undefined);
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        claimQueries.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n })),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.withSessionizationClaim({
+      claimToken: "stale-worker",
+      jobId: "704",
+      uid: 9001,
+    }, operation)).rejects.toThrow("SESSIONIZATION_UID_CLAIM_LOST");
+
+    expect(operation).not.toHaveBeenCalled();
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "job_type",
+      "=",
+      "sessionize_uid",
+    ]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "locked_by",
+      "=",
+      "stale-worker",
+    ]);
+    expect(claimQueries[0]?.whereCalls).toContainEqual([
+      "lease_until",
+      ">",
+      expect.any(Date),
+    ]);
+    expect(claimQueries[0]?.forUpdateCalls).toBe(1);
+  });
+
+  it("keeps uid cursor updates monotonic by message time and audit id", async () => {
+    const duplicateUpdates: Record<string, unknown>[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ numInsertedOrUpdatedRows: 1n }), {
+          onDuplicateKeyUpdate: (values) => duplicateUpdates.push(values),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.updateCursor({
+      cursorAuditId: 9002,
+      cursorMsgtime: 1_780_244_060_000,
+      uid: 9001,
+    });
+
+    expect(readRawSql(duplicateUpdates[0]?.cursor_msgtime)).toContain(
+      "greatest",
+    );
+    const auditSql = readRawSql(duplicateUpdates[0]?.cursor_audit_id);
+    expect(auditSql).toContain("values(cursor_msgtime) > cursor_msgtime");
+    expect(auditSql).toContain("values(cursor_msgtime) = cursor_msgtime");
+    expect(auditSql).toContain("greatest");
+  });
+
+  it("returns failed sessionization uid jobs to pending with a retry delay", async () => {
     const setCalls: Record<string, unknown>[] = [];
     const updateBuilders: UpdateBuilderStub[] = [];
     const db = {
@@ -3759,19 +4310,20 @@ describe("MysqlInsightWorkerRepository", () => {
     };
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await repository.rescheduleUidMaintenanceJob("704", {
-      runAfter: new Date("2026-06-01T00:00:10Z"),
-    });
+    await repository.markSessionizationUidJobFailed({
+      claimToken: "claim-704",
+      jobId: "704",
+      uid: 9001,
+    }, new Error("temporary failure"));
 
     expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_insight_job");
     expect(setCalls).toContainEqual(
       expect.objectContaining({
-        attempt_count: 0,
-        error_code: null,
-        error_message: null,
+        error_code: "SESSIONIZATION_UID_FAILED",
+        error_message: "temporary failure",
         lease_until: null,
         locked_by: null,
-        run_after: new Date("2026-06-01T00:00:10Z"),
+        run_after: expect.any(Date),
         status: "pending",
       }),
     );
@@ -3779,38 +4331,10 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateBuilders[0]?.whereCalls).toContainEqual([
       "job_type",
       "=",
-      "maintain_insight_uid",
+      "sessionize_uid",
     ]);
-  });
-
-  it("deletes running uid maintenance jobs when insights are disabled", async () => {
-    const deleteBuilders: ReturnType<typeof createDeleteBuilder>[] = [];
-    const db = {
-      deleteFrom: vi.fn((table: string) => {
-        const builder = createDeleteBuilder(
-          async () => ({ numDeletedRows: 1n }),
-          table,
-        );
-        deleteBuilders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new MysqlInsightWorkerRepository(db as never);
-
-    await repository.deleteUidMaintenanceJob("704");
-
-    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
-      "job_type",
-      "=",
-      "maintain_insight_uid",
-    ]);
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
-      "status",
-      "=",
-      "running",
-    ]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["locked_by", "=", "claim-704"]);
   });
 
   it("rejects malformed historical rescan watermarks before claiming the job", async () => {
@@ -3864,6 +4388,127 @@ describe("MysqlInsightWorkerRepository", () => {
       "<=",
       1_780_000_030_000,
     ]);
+  });
+
+  it("probes for uid messages after the current composite cursor", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([{ id: 8002 }], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.hasPendingMessages({
+      cursorAuditId: 8001,
+      cursorMsgtime: 1_780_000_000_000,
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("id");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["msgtime", ">", 1_780_000_000_000]);
+    expect(builders[0]?.whereCalls).toContainEqual(["msgtime", "=", 1_780_000_000_000]);
+    expect(builders[0]?.whereCalls).toContainEqual(["id", ">", 8001]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["msgtime", "asc"]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["id", "asc"]);
+    expect(builders[0]?.limitCalls).toContain(1);
+  });
+
+  it("resolves the customer bind type for single-chat sessionization", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [{
+            conversation_id: 301,
+            customer_bind_type: 2,
+            uid: 9001,
+          }],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findPlatformConversation({
+      chatType: 1,
+      content: null,
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_000_000,
+      msgtype: "text",
+      platform: 5,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+      uid: 9001,
+    })).resolves.toEqual({
+      conversationId: "301",
+      customerBindType: 2,
+      uid: 9001,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_conversation as conversation");
+    expect(builders[0]?.joins).toContain(
+      "xy_wap_embed_customer_bind_relation as bind",
+    );
+    expect(builders[0]?.joinConditions).toEqual(
+      expect.arrayContaining([
+        {
+          left: "bind.uid",
+          right: "conversation.uid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.platform",
+          right: "conversation.platform",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.third_userid",
+          right: "conversation.third_userid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+        {
+          left: "bind.third_external_userid",
+          right: "conversation.third_external_userid",
+          table: "xy_wap_embed_customer_bind_relation as bind",
+        },
+      ]),
+    );
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "conversation.third_external_userid",
+      "=",
+      "external-1",
+    ]);
+  });
+
+  it("skips non-single-chat conversation lookups without querying the database", async () => {
+    const db = {
+      selectFrom: vi.fn(),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findPlatformConversation({
+      chatType: 2,
+      content: null,
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_000_000,
+      msgtype: "text",
+      platform: 5,
+      thirdExternalId: "",
+      thirdGroupId: "group-1",
+      thirdUserId: "user-1",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+
+    expect(db.selectFrom).not.toHaveBeenCalled();
   });
 
   it("checks pending live analysis jobs with exact indexed columns", async () => {
@@ -4186,6 +4831,7 @@ describe("MysqlInsightWorkerRepository", () => {
   it("archives terminal insight jobs before pruning them from the hot queue", async () => {
     const insertBuilders: InsertBuilderStub[] = [];
     const deleteBuilders: DeleteBuilderStub[] = [];
+    const selectBuilders: SelectBuilderStub[] = [];
     const db = {
       deleteFrom: vi.fn((table: string) => {
         const builder = createDeleteBuilder(
@@ -4203,7 +4849,23 @@ describe("MysqlInsightWorkerRepository", () => {
         insertBuilders.push(builder);
         return builder;
       }),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_insight_job"
+            || table === "xy_wap_embed_insight_job_archive"
+            ? [{ id: 701 }, { id: 702 }, { id: 703 }]
+            : [],
+          table,
+        );
+        selectBuilders.push(builder);
+        return builder;
+      }),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n }), { table }),
+      ),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(
@@ -4216,20 +4878,79 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(db.insertInto).toHaveBeenCalledWith(
       "xy_wap_embed_insight_job_archive",
     );
-    expect(insertBuilders[0]?.columnsCalls[0]).toContain("archived_at");
-    expect(insertBuilders[0]?.expressionCalls).toBe(1);
-    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+    expect(selectBuilders[0]?.whereCalls).toContainEqual([
       "status",
       "in",
       ["succeeded", "failed"],
     ]);
-    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+    expect(selectBuilders[0]?.whereCalls).toContainEqual([
       "update_time",
       "<",
       new Date("2026-06-01T00:00:00.000Z"),
     ]);
-    expect(deleteBuilders[0]?.limitCalls).toEqual([5000]);
+    expect(selectBuilders[0]?.orderByCalls).toEqual([
+      ["update_time", "asc"],
+      ["id", "asc"],
+    ]);
+    expect(selectBuilders[0]?.forUpdateCalls).toBe(1);
+    expect(selectBuilders[0]?.skipLockedCalls).toBe(1);
+    expect(insertBuilders[0]?.columnsCalls[0]).toContain("archived_at");
+    expect(insertBuilders[0]?.expressionCalls).toBe(1);
+    expect(
+      insertBuilders[0]?.expressionSelectBuilders[0]?.whereCalls,
+    ).toContainEqual(["id", "in", [701, 702, 703]]);
+    expect(selectBuilders[1]?.table).toBe(
+      "xy_wap_embed_insight_job_archive",
+    );
+    expect(selectBuilders[1]?.whereCalls).toContainEqual([
+      "id",
+      "in",
+      [701, 702, 703],
+    ]);
+    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual([
+      "id",
+      "in",
+      [701, 702, 703],
+    ]);
+    expect(deleteBuilders[0]?.limitCalls).toEqual([]);
+  });
+
+  it("keeps hot jobs when the exact archive ID set cannot be verified", async () => {
+    const deleteFrom = vi.fn((table: string) =>
+      createDeleteBuilder(async () => ({ numDeletedRows: 0n }), table),
+    );
+    const db = {
+      deleteFrom,
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(
+          async () => ({ numInsertedOrUpdatedRows: 1n }),
+          { table },
+        ),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_insight_job"
+            ? [{ id: 701 }, { id: 702 }]
+            : [{ id: 701 }],
+          table,
+        ),
+      ),
+      transaction: vi.fn(),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 0n }), { table }),
+      ),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.archiveTerminalJobs({
+        before: new Date("2026-06-01T00:00:00.000Z"),
+        limit: 5000,
+      }),
+    ).rejects.toThrow("INSIGHT_JOB_ARCHIVE_INCOMPLETE");
+    expect(deleteFrom).not.toHaveBeenCalled();
   });
 
   it("loads closable open sessions through the indexed next close timestamp", async () => {
@@ -4381,96 +5102,6 @@ describe("MysqlInsightWorkerRepository", () => {
     ).resolves.toEqual([]);
 
     expect(db.selectFrom).not.toHaveBeenCalled();
-  });
-
-  it("loads enabled feature configs in scan batches ordered by oldest cursor update", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(
-          [
-            {
-              entity_enabled: 1,
-              insight_enabled: 1,
-              intent_enabled: 1,
-              label_enabled: 1,
-              last_enable_time: 1_780_243_000_000,
-              qa_enabled: 1,
-              todo_enabled: 1,
-              uid: 9001,
-            },
-          ],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new MysqlInsightWorkerRepository(db as never);
-
-    await expect(
-      repository.getActiveFeatureConfigs({
-        limit: 100,
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        insightEnabled: true,
-        uid: 9001,
-      }),
-    ]);
-
-    expect(builders[0]?.table).toBe(
-      "xy_wap_embed_insight_feature_config as config",
-    );
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_insight_sync_cursor as cursor",
-    );
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "config.insight_enabled",
-      "=",
-      1,
-    ]);
-    expect(builders[0]?.orderByCalls.length).toBeGreaterThan(0);
-    expect(builders[0]?.limitCalls).toEqual([100]);
-  });
-
-  it("closes disabled open sessions in cleanup batches", async () => {
-    let logicalSessionUpdate: UpdateBuilderStub | undefined;
-    const db = {
-      updateTable: vi.fn((table: string) =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 25n }), {
-          onCreate: (builder) => {
-            if (table === "xy_wap_embed_logical_session") {
-              logicalSessionUpdate = builder;
-            }
-          },
-          table,
-        }),
-      ),
-    };
-    const repository = new MysqlInsightWorkerRepository(db as never);
-
-    await expect(
-      repository.closeDisabledOpenSessions({
-        endedAt: 1_780_252_000_000,
-        limit: 500,
-        uid: 9001,
-      }),
-    ).resolves.toBe(25);
-
-    expect(logicalSessionUpdate?.setCalls[0]).toMatchObject({
-      close_reason: "insight_disabled",
-      ended_at: 1_780_252_000_000,
-      next_close_at: null,
-      status: "canceled",
-    });
-    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
-    expect(logicalSessionUpdate?.whereCalls).toContainEqual([
-      "status",
-      "=",
-      "open",
-    ]);
-    expect(logicalSessionUpdate?.limitCalls).toEqual([500]);
   });
 
   it("stores next close time when creating and appending logical-session messages", async () => {
@@ -5184,8 +5815,9 @@ describe("MysqlInsightWorkerRepository", () => {
     ).toBe(false);
   });
 
-  it("writes insufficient-message manual reanalysis snapshots as final", async () => {
+  it("marks insufficient-message final runs while publishing the skipped final snapshot", async () => {
     const snapshotValues: Record<string, unknown>[] = [];
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) =>
@@ -5207,7 +5839,14 @@ describe("MysqlInsightWorkerRepository", () => {
         ),
       ),
       updateTable: vi.fn((table: string) =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
       ),
     };
     const repository = new MysqlInsightWorkerRepository(db as never);
@@ -5218,7 +5857,7 @@ describe("MysqlInsightWorkerRepository", () => {
         attemptCount: 1,
         jobId: "job-1",
         maxAttempts: 3,
-        mode: "manual_reanalyze",
+        mode: "final",
         sessionId: "501",
         uid: 9001,
       },
@@ -5245,6 +5884,7 @@ describe("MysqlInsightWorkerRepository", () => {
         tags: [],
       },
       resultKind: "insufficient_messages",
+      resultReason: "AI有效消息数 1 低于最小分析消息数 5",
       runId: "6001",
       sourceMessageHighWatermark: "9001",
       validationWarnings: [],
@@ -5256,10 +5896,16 @@ describe("MysqlInsightWorkerRepository", () => {
         status: "building",
       }),
     );
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "INSUFFICIENT_MESSAGES",
+      error_message: "AI有效消息数 1 低于最小分析消息数 5",
+      status: "succeeded",
+    });
   });
 
   it("writes model-analysis manual reanalysis snapshots as final", async () => {
     const snapshotValues: Record<string, unknown>[] = [];
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
     let nextInsertId = 7001;
     const db = {
       insertInto: vi.fn((table: string) =>
@@ -5281,7 +5927,14 @@ describe("MysqlInsightWorkerRepository", () => {
         ),
       ),
       updateTable: vi.fn((table: string) =>
-        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
       ),
     };
     const repository = new MysqlInsightWorkerRepository(db as never);
@@ -5321,6 +5974,13 @@ describe("MysqlInsightWorkerRepository", () => {
       resultKind: "model_analysis",
       runId: "6001",
       sourceMessageHighWatermark: "9001",
+      tokenUsage: {
+        completion_tokens: 9,
+        completion_tokens_details: { reasoning_tokens: 2 },
+        prompt_tokens: 19,
+        prompt_tokens_details: { cached_tokens: 4 },
+        total_tokens: 28,
+      },
       validationWarnings: [],
     });
 
@@ -5330,6 +5990,16 @@ describe("MysqlInsightWorkerRepository", () => {
         status: "building",
       }),
     );
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      status: "succeeded",
+      token_usage: JSON.stringify({
+        completion_tokens: 9,
+        completion_tokens_details: { reasoning_tokens: 2 },
+        prompt_tokens: 19,
+        prompt_tokens_details: { cached_tokens: 4 },
+        total_tokens: 28,
+      }),
+    });
   });
 
   it("marks live insufficient-message runs succeeded without publishing a snapshot", async () => {
@@ -5381,14 +6051,68 @@ describe("MysqlInsightWorkerRepository", () => {
       code: "LIVE_GATE_SKIPPED",
       reason: "新增内容没有实质变化",
       runId: "6002",
+      tokenUsage: {
+        completion_tokens: 4,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 16,
+        prompt_tokens_details: { cached_tokens: 5 },
+        total_tokens: 20,
+      },
     });
 
     expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
       error_code: "LIVE_GATE_SKIPPED",
       error_message: "新增内容没有实质变化",
       status: "succeeded",
+      token_usage: JSON.stringify({
+        completion_tokens: 4,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 16,
+        prompt_tokens_details: { cached_tokens: 5 },
+        total_tokens: 20,
+      }),
     });
     expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6002]);
+  });
+
+  it("persists observed token usage when an analysis run fails", async () => {
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+    const failure = new Error("model output is invalid");
+
+    await repository.markAnalysisRunFailed("6003", failure, {
+      completion_tokens: 3,
+      completion_tokens_details: { reasoning_tokens: 1 },
+      prompt_tokens: 7,
+      prompt_tokens_details: { cached_tokens: 2 },
+      total_tokens: 10,
+    });
+
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "ANALYSIS_FAILED",
+      error_message: "model output is invalid",
+      status: "failed",
+      token_usage: JSON.stringify({
+        completion_tokens: 3,
+        completion_tokens_details: { reasoning_tokens: 1 },
+        prompt_tokens: 7,
+        prompt_tokens_details: { cached_tokens: 2 },
+        total_tokens: 10,
+      }),
+    });
+    expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6003]);
   });
 
   it("does not expose an empty current output when the session has no current snapshot", async () => {
@@ -5516,7 +6240,10 @@ describe("MysqlInsightWorkerRepository", () => {
         createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
       ),
     };
-    const repository = new MysqlInsightWorkerRepository(db as never);
+    const ticketWriter = {
+      createAiTickets: vi.fn(async () => [7901]),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never, ticketWriter);
 
     await repository.saveAnalysisResult({
       job: {
@@ -5598,7 +6325,6 @@ describe("MysqlInsightWorkerRepository", () => {
       (entry) => entry.table === "xy_wap_embed_insight_evidence",
     );
     for (const table of [
-      "xy_wap_embed_session_action_item",
       "xy_wap_embed_session_entity",
       "xy_wap_embed_session_faq_candidate",
       "xy_wap_embed_session_intent",
@@ -5607,17 +6333,16 @@ describe("MysqlInsightWorkerRepository", () => {
       const insert = insertValues.find((entry) => entry.table === table);
       expect(insert?.values).toEqual(expect.objectContaining({ uid: 9001 }));
     }
-    const actionInsert = insertValues.find(
-      (entry) => entry.table === "xy_wap_embed_session_action_item",
-    );
-    expect(actionInsert?.values).toEqual(
-      expect.objectContaining({
-        conversation_id: 301,
-        session_id: 501,
-        snapshot_id: 7001,
-        source_type: "ai",
-      }),
-    );
+    expect(ticketWriter.createAiTickets).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 301,
+      items: [{
+        priority: "high",
+        title: "跟进退款",
+      }],
+      sessionId: 501,
+      snapshotId: 7001,
+      uid: 9001,
+    }));
     expect(evidenceInserts).toHaveLength(1);
     expect(evidenceInserts[0]?.values).toEqual(
       expect.arrayContaining([
@@ -5921,6 +6646,31 @@ type DeleteBuilderStub = ReturnType<typeof createDeleteBuilder>;
 type InsertBuilderStub = ReturnType<typeof createInsertBuilder>;
 type UpdateBuilderStub = ReturnType<typeof createUpdateBuilder>;
 
+function createSessionMessageRow(id: number, messageTime: number) {
+  return {
+    chat_type: 1,
+    content: `message-${id}`,
+    conversation_external_id: "customer-1",
+    conversation_group_id: "",
+    conversation_group_seat_id: null,
+    conversation_id: 301,
+    from_type: 1,
+    id,
+    msgid: `msg-${id}`,
+    msgtime: messageTime,
+    msgtype: "text",
+    opt_no: null,
+    revoke_status: 0,
+    seat_id: 201,
+    session_message_time: messageTime,
+    status: 1,
+    third_external_id: "customer-1",
+    third_from_id: "customer-1",
+    third_group_id: null,
+    third_user_id: "account-1",
+  };
+}
+
 function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
     alias: undefined as string | undefined,
@@ -5976,6 +6726,13 @@ function createSelectBuilder(rows: unknown[], table = "") {
             alias?: string;
             table?: string;
           }),
+      leftOrCallback?:
+        | unknown
+        | ((join: {
+            on: (...args: unknown[]) => unknown;
+            onRef: (...args: unknown[]) => unknown;
+          }) => unknown),
+      right?: unknown,
     ) => {
       if (typeof joinTable === "function") {
         const joined = joinTable({
@@ -5986,6 +6743,29 @@ function createSelectBuilder(rows: unknown[], table = "") {
       }
 
       builder.joins.push(joinTable);
+      if (typeof leftOrCallback === "function") {
+        const join = {
+          on: (...args: unknown[]) => {
+            builder.whereCalls.push(args);
+            return join;
+          },
+          onRef: (left: string, _operator: unknown, right: string) => {
+            builder.joinConditions.push({
+              left,
+              right,
+              table: joinTable,
+            });
+            return join;
+          },
+        };
+        leftOrCallback(join);
+      } else if (typeof leftOrCallback === "string" && typeof right === "string") {
+        builder.joinConditions.push({
+          left: leftOrCallback,
+          right,
+          table: joinTable,
+        });
+      }
       return builder;
     },
     limit: (value: number) => {
@@ -6093,14 +6873,26 @@ function createInsertBuilder(
     executeTakeFirstOrThrow,
     execute: async () => [await executeTakeFirstOrThrow()],
     expressionCalls: 0,
+    expressionSelectBuilders: [] as SelectBuilderStub[],
     ignoreCalls: 0,
     valuesCalls: [] as Array<Record<string, unknown> | Record<string, unknown>[]>,
     columns: (columns: string[]) => {
       builder.columnsCalls.push(columns);
       return builder;
     },
-    expression: () => {
+    expression: (
+      callback?: (expressionBuilder: {
+        selectFrom: (table: string) => SelectBuilderStub;
+      }) => unknown,
+    ) => {
       builder.expressionCalls += 1;
+      callback?.({
+        selectFrom: (table: string) => {
+          const selectBuilder = createSelectBuilder([], table);
+          builder.expressionSelectBuilders.push(selectBuilder);
+          return selectBuilder;
+        },
+      });
       return builder;
     },
     ignore: () => {
@@ -6111,7 +6903,9 @@ function createInsertBuilder(
       options.onDuplicateKeyUpdate?.(values);
       return builder;
     },
-    values: (values: Record<string, unknown>) => {
+    values: (
+      values: Record<string, unknown> | Record<string, unknown>[],
+    ) => {
       builder.valuesCalls.push(values);
       options.onValues?.(values);
       return builder;

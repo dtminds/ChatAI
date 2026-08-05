@@ -137,6 +137,40 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("looks up one accessible customer by exact external id and authenticated scope", async () => {
+    const javaClient = createJavaClient();
+    const getAccessibleCustomer = vi.fn().mockResolvedValue(undefined);
+    const service = createWorkbenchService(
+      {
+        getAccessibleCustomer,
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getAccessibleCustomer("101", {
+        scope: "mine",
+        thirdExternalUserId: "external-target",
+      }),
+    ).resolves.toBeUndefined();
+    expect(getAccessibleCustomer).toHaveBeenCalledWith({
+      platform: 5,
+      scope: "mine",
+      subUserId: "101",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    });
+  });
+
   it("loads tenant-level customer recent conversation", async () => {
     const javaClient = createJavaClient();
     const getCustomerLastConversation = vi.fn().mockResolvedValue({
@@ -224,6 +258,120 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("loads visible customer seat relations and their latest conversation times", async () => {
+    const javaClient = createJavaClient();
+    const listAccessibleCustomerSeatRelations = vi.fn().mockResolvedValue([
+      {
+        bindId: "301",
+        bindStatus: 1,
+        bindType: 1,
+        seatAvatar: "",
+        seatId: "12",
+        seatName: "销售一号",
+        thirdUserId: "seat-user-12",
+      },
+    ]);
+    const listCustomerRelationConversations = vi.fn().mockResolvedValue([
+      {
+        lastMessageTime: 1_779_600_000_000,
+        thirdUserId: "seat-user-12",
+      },
+    ]);
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+        listAccessibleCustomerSeatRelations,
+        listCustomerRelationConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getCustomerSeatRelations("101", "external-b"),
+    ).resolves.toEqual({
+      items: [
+        {
+          bindId: "301",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: 1_779_600_000_000,
+          seatAvatar: "",
+          seatId: "12",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-12",
+        },
+      ],
+    });
+    expect(listAccessibleCustomerSeatRelations).toHaveBeenCalledWith({
+      limit: 20,
+      platform: 5,
+      subUserId: "101",
+      thirdExternalUserId: "external-b",
+      uid: 9001,
+    });
+    expect(listCustomerRelationConversations).toHaveBeenCalledWith({
+      platform: 5,
+      thirdExternalUserId: "external-b",
+      thirdUserIds: ["seat-user-12"],
+      uid: 9001,
+    });
+  });
+
+  it("keeps visible seat relations available when conversation time lookup fails", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    const relation = {
+      bindId: "301",
+      bindStatus: 1,
+      bindType: 1,
+      seatAvatar: "",
+      seatId: "12",
+      seatName: "销售一号",
+      thirdUserId: "seat-user-12",
+    };
+    const listCustomerRelationConversations = vi
+      .fn()
+      .mockRejectedValue(new Error("conversation query unavailable"));
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+        listAccessibleCustomerSeatRelations: vi.fn().mockResolvedValue([relation]),
+        listCustomerRelationConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getCustomerSeatRelations("101", "external-b"),
+    ).resolves.toEqual({ items: [relation] });
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        error: expect.any(Error),
+        operation: "load-customer-seat-relation-conversation-times",
+        subUserId: "101",
+        thirdExternalUserId: "external-b",
+        uid: 9001,
+      },
+      "Failed to load customer seat relation conversation times",
+    );
+  });
+
   it("rejects seat-scoped access when the service has no authenticated request uid", async () => {
     const javaClient = createJavaClient();
     const canAccessSeat = vi.fn().mockResolvedValue(true);
@@ -245,6 +393,52 @@ describe("MysqlWorkbenchService", () => {
       statusCode: 401,
     });
     expect(canAccessSeat).not.toHaveBeenCalled();
+  });
+
+  it("hydrates an accessible conversation for profile refresh", async () => {
+    const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    const getHydratedConversation = vi.fn().mockResolvedValue({
+      conversationId: "88",
+      customerAvatar: "https://example.com/customer.png",
+      customerId: "external-001",
+      customerName: "补齐后的客户",
+      handoffMsgId: 0,
+      lastMessage: "",
+      mode: "single",
+      priority: "medium",
+      replied: false,
+      seatId: "12",
+      unreadCount: 0,
+      verified: true,
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup,
+        getHydratedConversation,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getConversation("101", "88")).resolves.toMatchObject({
+      conversationId: "88",
+      customerName: "补齐后的客户",
+      verified: true,
+    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
+    expect(getHydratedConversation).toHaveBeenCalledWith(
+      9001,
+      5,
+      "seat-user-001",
+      "88",
+    );
   });
 
   it("delegates get-or-create conversation decisions to Java before hydrating", async () => {
@@ -2902,7 +3096,7 @@ describe("MysqlWorkbenchService", () => {
       sinceLastMsgTime: 1_778_839_999_999,
     });
     expect(listMessages).toHaveBeenCalledWith("88", {
-      beforeSeq: undefined,
+      afterSeq: 5,
       includeHiddenConversation: true,
       limit: 50,
     });
@@ -3208,7 +3402,7 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
-      beforeSeq: undefined,
+      afterSeq: 101,
       includeHiddenConversation: true,
       limit: 50,
     });

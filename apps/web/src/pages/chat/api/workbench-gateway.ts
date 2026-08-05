@@ -5,6 +5,7 @@ import {
   adaptGroupMember,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
+import { CHAT_TYPE } from "@chatai/contracts";
 import type {
   SettingsSidebarItem,
   WorkbenchHistoryMessagePageDto,
@@ -46,8 +47,10 @@ import {
   adaptSmartReplyAttachments,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
-import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type {
+  SmartReplyRecommendedAttachment,
+  SmartReplySuggestion,
+} from "@/pages/chat/lib/smart-reply-types";
 import type {
   Account,
   ChatMessage,
@@ -66,6 +69,21 @@ type GatewayContext = {
   customerProfilesById: Record<string, CustomerProfile>;
   me?: EmployeeProfile;
 };
+
+export type WorkbenchOpenConversationRequest =
+  | {
+      conversationId: string;
+    }
+  | {
+      mode: "group";
+      seatId: string;
+      thirdGroupId: string;
+    }
+  | {
+      mode: "single";
+      seatId: string;
+      thirdExternalUserId: string;
+    };
 
 export type WorkbenchScopeRequest = {
   activeConversationId?: string;
@@ -99,9 +117,11 @@ export type WorkbenchBootstrapResult = {
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
+  conversationOpenError?: string;
   conversationListsByScope: Record<string, Conversation[]>;
   conversationPage?: WorkbenchConversationPage;
   me: EmployeeProfile;
+  openedConversation?: Conversation;
   pollBaseline: number;
   sidebarItems: SettingsSidebarItem[];
 };
@@ -146,7 +166,6 @@ export type WorkbenchPollResult = {
 };
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
-export const UNVERIFIED_CONVERSATION_HIDE_DELAY_MS = 3 * 60 * 1000;
 export const CONVERSATION_MODE_CACHE_TTL_MS = 60 * 1000;
 export const CONVERSATION_MODE_LIMITS = {
   group: 100,
@@ -162,6 +181,7 @@ export async function bootstrapWorkbench(
   customerProfilesById: Record<string, CustomerProfile>,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   now = Date.now(),
+  preferredConversationId?: string,
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
   const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
@@ -172,15 +192,38 @@ export async function bootstrapWorkbench(
 
   const me = adaptEmployee(meDto);
   const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
-  const activeAccountId = accounts[0]?.id ?? "";
+  let conversationOpenError: string | undefined;
+  let openedConversation: Conversation | undefined;
+
+  if (preferredConversationId) {
+    try {
+      const resolvedConversation = await resolveWorkbenchConversation({
+        conversationId: preferredConversationId,
+      });
+
+      if (accounts.some((account) => account.id === resolvedConversation.accountId)) {
+        openedConversation = resolvedConversation;
+      } else {
+        conversationOpenError = "当前账号无法访问该会话";
+      }
+    } catch (error) {
+      conversationOpenError =
+        error instanceof Error ? error.message : "获取/开启会话失败，请稍后重试";
+    }
+  }
+
+  const activeAccountId = openedConversation?.accountId ?? accounts[0]?.id ?? "";
   const conversationLoadResult = activeAccountId
     ? await loadAccountConversationsWithBaseline(activeAccountId)
     : { conversations: [], pollBaseline: now };
-  const conversations = conversationLoadResult.conversations;
-  const nextConversation = getFirstConversation(
-    getVisibleConversations(conversations, now),
-    preferredMode,
-  );
+  const conversations = openedConversation
+    ? mergeConversations([
+        [openedConversation],
+        conversationLoadResult.conversations,
+      ])
+    : conversationLoadResult.conversations;
+  const nextConversation =
+    openedConversation ?? getFirstConversation(conversations, preferredMode);
   const activeConversationId = nextConversation?.id ?? "";
   const activeMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = activeConversationId
@@ -200,11 +243,13 @@ export async function bootstrapWorkbench(
     activeAccountId,
     activeConversationId,
     activeMode,
+    conversationOpenError,
     conversationListsByScope: {
       [activeAccountId]: conversations,
     },
     conversationPage,
     me,
+    openedConversation,
     pollBaseline: conversationLoadResult.pollBaseline,
     sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
@@ -272,14 +317,18 @@ export async function loadAccountScope(
   context: GatewayContext,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   preferredConversationId?: string,
-  now = Date.now(),
+  preferredConversation?: Conversation,
 ): Promise<WorkbenchAccountScopeResult> {
   const conversationLoadResult = await loadAccountConversationsWithBaseline(accountId);
-  const conversations = conversationLoadResult.conversations;
-  const visibleConversations = getVisibleConversations(conversations, now);
+  const conversations = preferredConversation
+    ? mergeConversations([
+        [preferredConversation],
+        conversationLoadResult.conversations,
+      ])
+    : conversationLoadResult.conversations;
   const nextConversation =
-    visibleConversations.find((conversation) => conversation.id === preferredConversationId) ??
-    getFirstConversation(visibleConversations, preferredMode);
+    conversations.find((conversation) => conversation.id === preferredConversationId) ??
+    getFirstConversation(conversations, preferredMode);
   const nextConversationId = nextConversation?.id ?? "";
   const nextMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = nextConversationId
@@ -300,6 +349,62 @@ export async function loadAccountScope(
 
 export async function loadAccountConversations(accountId: string): Promise<Conversation[]> {
   return (await loadAccountConversationsWithBaseline(accountId)).conversations;
+}
+
+export async function loadConversationSummary(conversationId: string): Promise<Conversation> {
+  const conversation = await getWorkbenchService().getConversation(conversationId);
+
+  return adaptConversation(conversation);
+}
+
+export async function resolveWorkbenchConversation(
+  request: WorkbenchOpenConversationRequest,
+): Promise<Conversation> {
+  const service = getWorkbenchService();
+
+  if ("conversationId" in request) {
+    const summary = await loadConversationSummary(request.conversationId);
+    const restoreRequest =
+      summary.mode === "group" && summary.thirdGroupId
+        ? {
+            chatType: CHAT_TYPE.GROUP,
+            seatId: summary.accountId,
+            thirdGroupId: summary.thirdGroupId,
+          }
+        : summary.mode === "single" && summary.thirdExternalUserId
+          ? {
+              chatType: CHAT_TYPE.SINGLE,
+              seatId: summary.accountId,
+              thirdExternalUserId: summary.thirdExternalUserId,
+            }
+          : undefined;
+
+    if (!restoreRequest) {
+      return summary;
+    }
+
+    try {
+      return adaptConversation(
+        await service.getOrCreateConversation(restoreRequest),
+      );
+    } catch {
+      // The summary already passed the read-access check. Restoring visibility
+      // is best-effort and must not block an otherwise readable deep link.
+      return summary;
+    }
+  }
+
+  return adaptConversation(
+    await service.getOrCreateConversation({
+      chatType:
+        request.mode === "group" ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      seatId: request.seatId,
+      thirdExternalUserId:
+        request.mode === "single" ? request.thirdExternalUserId : undefined,
+      thirdGroupId:
+        request.mode === "group" ? request.thirdGroupId : undefined,
+    }),
+  );
 }
 
 export async function loadAccountConversationsWithBaseline(
@@ -759,27 +864,4 @@ function getFirstConversation(
   mode: ChatMode,
 ) {
   return conversations.find((conversation) => conversation.mode === mode) ?? conversations[0];
-}
-
-export function getVisibleConversations(
-  conversations: Conversation[],
-  now = Date.now(),
-) {
-  return conversations.filter((conversation) =>
-    isConversationVisible(conversation, now),
-  );
-}
-
-export function isConversationVisible(conversation: Conversation, now = Date.now()) {
-  if (conversation.isVerified !== false) {
-    return true;
-  }
-
-  const createdAt = conversation.createdAtMs;
-
-  if (!createdAt || createdAt <= 0) {
-    return true;
-  }
-
-  return now - createdAt >= UNVERIFIED_CONVERSATION_HIDE_DELAY_MS;
 }

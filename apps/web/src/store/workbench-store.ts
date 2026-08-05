@@ -5,7 +5,6 @@ import {
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
 import {
-  adaptConversation,
   formatConversationPreview,
   formatWorkbenchTimestamp,
   isInvalidMessageUiKey,
@@ -18,9 +17,9 @@ import {
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getFullAutoAnswerStatus,
-  getVisibleConversations,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
+  loadConversationSummary,
   loadUnreadAccountConversationsByMode,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
@@ -35,6 +34,7 @@ import {
   requestSmartReplyAutoGeneralAnswer,
   requestSmartReplyGeneralAnswer,
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
+  resolveWorkbenchConversation,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   retryMessage as retryMessageRequest,
@@ -45,7 +45,11 @@ import {
   unpinConversation,
   updateSeatAgentMode,
 } from "@/pages/chat/api/workbench-gateway";
-import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
+import type {
+  WorkbenchConversationChange,
+  WorkbenchConversationPage,
+  WorkbenchOpenConversationRequest,
+} from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
   JAVA_MENTION_PLACEHOLDER,
@@ -53,7 +57,10 @@ import {
   type ComposerSegment,
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
-import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import {
+  sortConversations,
+  type ConversationPromotion,
+} from "@/pages/chat/lib/conversation-order";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
@@ -74,7 +81,6 @@ import {
 } from "@/pages/chat/lib/conversation-ai-assistant";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
-  CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
   WORKBENCH_MESSAGE_SOURCE,
   type WorkbenchFullAutoAnswerStatusResponse,
@@ -153,6 +159,8 @@ type SendMessageResult =
 
 type RetryFailedMessageResult = SendMessageResult;
 
+type RefreshInitializingMessageResult = "initializing" | "missing" | "updated";
+
 type MarkConversationHandoffHandledResult =
   | { ok: true }
   | { errorMessage: string; ok: false };
@@ -208,6 +216,19 @@ type HistoryPanelState = {
 
 type HistoryPanelScrollMode = "end";
 
+type ConversationActivationOptions = {
+  beforeActivate?: (conversation: Conversation) => void;
+  clearSearchOnSuccess?: boolean;
+  onResolved?: (conversation: Conversation) => void;
+  promote?: boolean;
+};
+
+type InitializeWorkbenchOptions = {
+  beforeActivate?: (conversation: Conversation) => void;
+  preferredConversationId?: string;
+  promotePreferredConversation?: boolean;
+};
+
 const emptyHistoryPanelState: HistoryPanelState = {
   hasNext: false,
   hasPrev: false,
@@ -247,6 +268,7 @@ type WorkbenchState = {
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
+  conversationPromotion?: ConversationPromotion;
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   fullAutoActionError?: string;
@@ -283,13 +305,14 @@ type WorkbenchState = {
   changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
   syncFullAutoAgentStatus: () => Promise<void>;
   resetWorkbenchRuntime: () => void;
+  cancelConversationOpen: () => void;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
   dismissFullAutoActionError: () => void;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
-  initializeWorkbench: () => Promise<void>;
+  initializeWorkbench: (options?: InitializeWorkbenchOptions) => Promise<void>;
   markActiveConversationHandoffHandled: () => Promise<MarkConversationHandoffHandledResult>;
   markConversationRead: (conversationId: string) => Promise<void>;
   pinConversation: (conversationId: string) => Promise<void>;
@@ -299,6 +322,11 @@ type WorkbenchState = {
     mode: ChatMode,
     options?: { preserveConversation?: Conversation },
   ) => Promise<void>;
+  clearConversationPromotion: () => void;
+  openConversation: (
+    request: WorkbenchOpenConversationRequest,
+    options?: ConversationActivationOptions,
+  ) => Promise<boolean>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   loadUnreadConversations: (mode?: ChatMode) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
@@ -321,6 +349,10 @@ type WorkbenchState = {
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (uiMessageKey: string) => Promise<RetryFailedMessageResult>;
+  refreshInitializingMessage: (
+    conversationId: string,
+    messageSeq: number,
+  ) => Promise<RefreshInitializingMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -400,11 +432,17 @@ const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
+const UNVERIFIED_CONVERSATION_PROFILE_RETRY_DELAYS_MS = [
+  3_000,
+  10_000,
+  30_000,
+] as const;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
   WorkbenchState,
   | "deleteConversation"
+  | "cancelConversationOpen"
   | "clearActiveConversation"
   | "resetWorkbenchSession"
   | "initializeWorkbench"
@@ -414,6 +452,8 @@ function createInitialState(): Omit<
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
+  | "clearConversationPromotion"
+  | "openConversation"
   | "loadActiveGroupMembers"
   | "loadUnreadConversations"
   | "markConversationUnread"
@@ -424,6 +464,7 @@ function createInitialState(): Omit<
   | "takeOverAccount"
   | "unpinConversation"
   | "retryFailedMessage"
+  | "refreshInitializingMessage"
   | "revokeMessage"
   | "loadOlderMessages"
   | "openHistoryPanel"
@@ -461,6 +502,7 @@ function createInitialState(): Omit<
     activeConversationId: "",
     activeMessageSeq: 0,
     activeMode: "single",
+    conversationPromotion: undefined,
     bootstrapError: undefined,
     bootstrapStatus: "idle",
     hasChatSendPermission: false,
@@ -524,17 +566,16 @@ function getFirstConversationId(
   mode: ChatMode,
 ) {
   const conversations = conversationListsByScope[accountId] ?? [];
-  return getFirstVisibleConversationId(conversations, mode);
+  return getFirstConversationIdByMode(conversations, mode);
 }
 
-function getFirstVisibleConversationId(
+function getFirstConversationIdByMode(
   conversations: Conversation[],
   mode: ChatMode,
 ) {
-  const visibleConversations = getVisibleConversations(conversations);
   const firstMatch =
-    visibleConversations.find((conversation) => conversation.mode === mode) ??
-    visibleConversations[0];
+    conversations.find((conversation) => conversation.mode === mode) ??
+    conversations[0];
 
   return firstMatch?.id ?? "";
 }
@@ -552,7 +593,7 @@ function getOptimisticAccountSwitchState(
   accountId: string,
 ) {
   const cachedConversations = state.conversationListsByScope[accountId] ?? [];
-  const nextConversationId = getFirstVisibleConversationId(
+  const nextConversationId = getFirstConversationIdByMode(
     cachedConversations,
     state.activeMode,
   );
@@ -635,41 +676,6 @@ function markAllConversationModesLoaded(
   );
 }
 
-function applyAccountUnreadSummary(
-  accounts: Account[],
-  accountId: string,
-  unreadSummary: { group: number; single: number; total: number } | undefined,
-) {
-  if (!unreadSummary) {
-    return accounts;
-  }
-
-  let changed = false;
-  const nextAccounts = accounts.map((account) => {
-    if (account.id !== accountId) {
-      return account;
-    }
-
-    if (
-      account.unreadCount === unreadSummary.total &&
-      account.singleUnreadCount === unreadSummary.single &&
-      account.groupUnreadCount === unreadSummary.group
-    ) {
-      return account;
-    }
-
-    changed = true;
-    return {
-      ...account,
-      groupUnreadCount: unreadSummary.group,
-      singleUnreadCount: unreadSummary.single,
-      unreadCount: unreadSummary.total,
-    };
-  });
-
-  return changed ? nextAccounts : accounts;
-}
-
 function isConversationModeCacheFresh(
   state: WorkbenchState,
   accountId: string,
@@ -743,13 +749,39 @@ function mergeConversationList(
   ]);
 }
 
-function mergePolledConversation(
-  currentList: Conversation[],
+function createConversationPromotion(
+  conversation: Conversation,
+  conversations: Conversation[],
+): ConversationPromotion {
+  return {
+    accountId: conversation.accountId,
+    baselineUpdatedAtMs: conversations.reduce(
+      (latestUpdatedAtMs, currentConversation) =>
+        currentConversation.mode === conversation.mode
+          ? Math.max(latestUpdatedAtMs, currentConversation.updatedAtMs ?? 0)
+          : latestUpdatedAtMs,
+      0,
+    ),
+    conversationId: conversation.id,
+    mode: conversation.mode,
+  };
+}
+
+function haveSameShallowValues(left: object, right: object) {
+  const leftEntries = Object.entries(left);
+
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) =>
+      Object.is(value, (right as Record<string, unknown>)[key]),
+    )
+  );
+}
+
+function resolvePolledConversation(
+  currentConversation: Conversation | undefined,
   conversation: Conversation,
 ) {
-  const currentConversation = currentList.find(
-    (item) => item.id === conversation.id,
-  );
   const shouldPreserveOptimisticReply =
     currentConversation?.replied === true &&
     conversation.replied === false &&
@@ -757,25 +789,101 @@ function mergePolledConversation(
     conversation.updatedAtMs != null &&
     currentConversation.updatedAtMs > conversation.updatedAtMs;
 
-  return mergeConversationList(
-    currentList,
-    shouldPreserveOptimisticReply
+  return shouldPreserveOptimisticReply
+    ? {
+        ...conversation,
+        replied: true,
+      }
+    : conversation;
+}
+
+function applyPolledConversationChanges(
+  currentList: Conversation[],
+  changes: WorkbenchConversationChange[],
+) {
+  const conversationsById = new Map(
+    currentList.map((conversation) => [conversation.id, conversation]),
+  );
+  const removedConversationIds: string[] = [];
+  let didChange = false;
+  let hasUnreadIncrease = false;
+
+  for (const change of changes) {
+    if (change.type === "remove") {
+      removedConversationIds.push(change.conversationId);
+      didChange = conversationsById.delete(change.conversationId) || didChange;
+      continue;
+    }
+
+    const currentConversation = conversationsById.get(change.conversation.id);
+    hasUnreadIncrease ||=
+      change.conversation.unread > (currentConversation?.unread ?? 0);
+    const nextConversation = resolvePolledConversation(
+      currentConversation,
+      change.conversation,
+    );
+
+    if (
+      currentConversation &&
+      haveSameShallowValues(currentConversation, nextConversation)
+    ) {
+      continue;
+    }
+
+    conversationsById.set(nextConversation.id, nextConversation);
+    didChange = true;
+  }
+
+  return {
+    conversations: didChange
+      ? sortConversations([...conversationsById.values()])
+      : currentList,
+    hasUnreadIncrease,
+    removedConversationIds,
+  };
+}
+
+function mergeConversationProfile(
+  currentList: Conversation[],
+  conversation: Conversation,
+) {
+  return currentList.map((currentConversation) =>
+    currentConversation.id === conversation.id
       ? {
-          ...conversation,
-          replied: true,
+          ...currentConversation,
+          bizStatus: conversation.bizStatus,
+          contactOriginalName: conversation.contactOriginalName,
+          customerAvatarUrl: conversation.customerAvatarUrl,
+          customerBindType: conversation.customerBindType,
+          customerName: conversation.customerName,
+          groupOriginalName: conversation.groupOriginalName,
+          isVerified: conversation.isVerified,
         }
-      : conversation,
+      : currentConversation,
   );
 }
 
-function mergeConversationLists(
+function supplementConversationList(
   currentList: Conversation[],
   conversations: Conversation[],
 ) {
-  return conversations.reduce(
-    (nextList, conversation) => mergeConversationList(nextList, conversation),
-    currentList,
+  const conversationIds = new Set(
+    currentList.map((conversation) => conversation.id),
   );
+  const nextList = [...currentList];
+
+  for (const conversation of conversations) {
+    if (conversationIds.has(conversation.id)) {
+      continue;
+    }
+
+    conversationIds.add(conversation.id);
+    nextList.push(conversation);
+  }
+
+  return nextList.length === currentList.length
+    ? currentList
+    : sortConversations(nextList);
 }
 
 function findNextConversationIdAfterRemove(
@@ -1115,17 +1223,6 @@ function hasNewCustomerMessage(
         isSameMessage(currentMessage, nextMessage),
       ),
   );
-}
-
-function hasConversationUnreadIncrease(
-  conversations: Conversation[],
-  nextConversation: Conversation,
-) {
-  const currentConversation = conversations.find(
-    (conversation) => conversation.id === nextConversation.id,
-  );
-
-  return nextConversation.unread > (currentConversation?.unread ?? 0);
 }
 
 function omitPendingSmartReplyKey(
@@ -3063,6 +3160,11 @@ export function createWorkbenchStore() {
   let latestGroupMembersRequestId = 0;
   let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
+  let latestConversationOpenRequestId = 0;
+  let loadingConversationOpenRequestId: number | undefined;
+  let currentConversationOpenRequestId: number | undefined;
+  let currentConversationOpenTargetId: string | undefined;
+  let latestConversationProfileRefreshGeneration = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3079,10 +3181,24 @@ export function createWorkbenchStore() {
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
+  const latestConversationListRefreshIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
   const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
+  const conversationProfileRefreshRequestsById = new Map<
+    string,
+    Promise<Conversation>
+  >();
+  const conversationProfileRefreshRetryAttemptsById = new Map<string, number>();
+  const conversationProfileRefreshRetryTimersById = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  const conversationReadRequestsById = new Map<
+    string,
+    ReturnType<typeof markConversationRead>
+  >();
 
   function issueScopeRequestId() {
     latestScopeRequestId += 1;
@@ -3103,6 +3219,25 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function issueConversationOpenRequestId() {
+    latestConversationOpenRequestId += 1;
+    return latestConversationOpenRequestId;
+  }
+
+  function cancelConversationOpenRequest() {
+    latestConversationOpenRequestId += 1;
+    const didCancelLoadingRequest =
+      loadingConversationOpenRequestId !== undefined;
+    loadingConversationOpenRequestId = undefined;
+    currentConversationOpenRequestId = undefined;
+    currentConversationOpenTargetId = undefined;
+    return didCancelLoadingRequest;
+  }
+
+  function isCurrentConversationOpenRequest(requestId: number) {
+    return requestId === latestConversationOpenRequestId;
   }
 
   function buildAcceptedOptimisticMessageState(
@@ -3325,8 +3460,10 @@ export function createWorkbenchStore() {
 
   function clearAllRuntimeState() {
     bumpScopeRequestId();
+    cancelConversationOpenRequest();
     latestTakeoverRequestId += 1;
     latestGroupMembersRequestId += 1;
+    latestConversationProfileRefreshGeneration += 1;
     runningPollRunId = undefined;
     isPollWorkbenchRunning = false;
 
@@ -3350,6 +3487,13 @@ export function createWorkbenchStore() {
     }
     fullAutoResetTimersByConversationId.clear();
     fullAutoPollInFlightConversationIds.clear();
+    conversationProfileRefreshRequestsById.clear();
+    conversationProfileRefreshRetryAttemptsById.clear();
+    for (const timer of conversationProfileRefreshRetryTimersById.values()) {
+      clearTimeout(timer);
+    }
+    conversationProfileRefreshRetryTimersById.clear();
+    conversationReadRequestsById.clear();
     fullAutoFinishedMessageByConversationId.clear();
 
     for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
@@ -3373,6 +3517,12 @@ export function createWorkbenchStore() {
 
     for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
       delete latestTakeoverRequestIdByAccountId[accountId];
+    }
+
+    for (const accountId of Object.keys(
+      latestConversationListRefreshIdByAccountId,
+    )) {
+      delete latestConversationListRefreshIdByAccountId[accountId];
     }
 
     for (const conversationId of Object.keys(
@@ -3866,8 +4016,34 @@ export function createWorkbenchStore() {
       conversationId: string,
       requestId: number,
     ) {
+      const conversation = getConversationById(get(), conversationId);
+
+      if (!conversation || conversation.unread <= 0) {
+        return;
+      }
+
       try {
-        const readResult = await markConversationRead(conversationId);
+        let readRequest = conversationReadRequestsById.get(conversationId);
+
+        if (!readRequest) {
+          readRequest = markConversationRead(conversationId);
+          conversationReadRequestsById.set(conversationId, readRequest);
+
+          void readRequest.then(
+            () => {
+              if (conversationReadRequestsById.get(conversationId) === readRequest) {
+                conversationReadRequestsById.delete(conversationId);
+              }
+            },
+            () => {
+              if (conversationReadRequestsById.get(conversationId) === readRequest) {
+                conversationReadRequestsById.delete(conversationId);
+              }
+            },
+          );
+        }
+
+        const readResult = await readRequest;
 
         if (!isCurrentScopeRequest(requestId)) {
           return;
@@ -3977,6 +4153,185 @@ export function createWorkbenchStore() {
       });
     }
 
+    function clearUnverifiedConversationProfileRetry(conversationId: string) {
+      const timer = conversationProfileRefreshRetryTimersById.get(conversationId);
+
+      if (timer) {
+        clearTimeout(timer);
+        conversationProfileRefreshRetryTimersById.delete(conversationId);
+      }
+
+      conversationProfileRefreshRetryAttemptsById.delete(conversationId);
+    }
+
+    function scheduleUnverifiedConversationProfileRetry(input: {
+      accountId: string;
+      conversationId: string;
+    }) {
+      const state = get();
+      const conversation = (
+        state.conversationListsByScope[input.accountId] ?? []
+      ).find((item) => item.id === input.conversationId);
+
+      if (
+        state.activeAccountId !== input.accountId ||
+        state.activeConversationId !== input.conversationId ||
+        conversation?.isVerified !== false
+      ) {
+        clearUnverifiedConversationProfileRetry(input.conversationId);
+        return;
+      }
+
+      if (conversationProfileRefreshRetryTimersById.has(input.conversationId)) {
+        return;
+      }
+
+      const retryAttempt =
+        conversationProfileRefreshRetryAttemptsById.get(input.conversationId) ?? 0;
+      const retryDelay =
+        UNVERIFIED_CONVERSATION_PROFILE_RETRY_DELAYS_MS[retryAttempt];
+
+      if (retryDelay == null) {
+        conversationProfileRefreshRetryAttemptsById.delete(input.conversationId);
+        return;
+      }
+
+      conversationProfileRefreshRetryAttemptsById.set(
+        input.conversationId,
+        retryAttempt + 1,
+      );
+
+      const timer = setTimeout(() => {
+        if (
+          conversationProfileRefreshRetryTimersById.get(input.conversationId) !==
+          timer
+        ) {
+          return;
+        }
+
+        conversationProfileRefreshRetryTimersById.delete(input.conversationId);
+
+        const latestState = get();
+        const latestConversation = (
+          latestState.conversationListsByScope[input.accountId] ?? []
+        ).find((item) => item.id === input.conversationId);
+
+        if (
+          latestState.activeAccountId !== input.accountId ||
+          latestState.activeConversationId !== input.conversationId ||
+          latestConversation?.isVerified !== false
+        ) {
+          conversationProfileRefreshRetryAttemptsById.delete(input.conversationId);
+          return;
+        }
+
+        void refreshUnverifiedConversationProfile(input);
+      }, retryDelay);
+
+      conversationProfileRefreshRetryTimersById.set(input.conversationId, timer);
+    }
+
+    function startUnverifiedConversationProfileRefresh(input: {
+      accountId: string;
+      conversationId: string;
+    }) {
+      clearUnverifiedConversationProfileRetry(input.conversationId);
+      void refreshUnverifiedConversationProfile(input);
+    }
+
+    async function refreshUnverifiedConversationProfile(input: {
+      accountId: string;
+      conversationId: string;
+    }) {
+      const refreshGeneration = latestConversationProfileRefreshGeneration;
+      let request = conversationProfileRefreshRequestsById.get(
+        input.conversationId,
+      );
+
+      if (!request) {
+        request = loadConversationSummary(input.conversationId);
+        conversationProfileRefreshRequestsById.set(input.conversationId, request);
+
+        void request.then(
+          () => {
+            if (
+              conversationProfileRefreshRequestsById.get(input.conversationId) ===
+              request
+            ) {
+              conversationProfileRefreshRequestsById.delete(input.conversationId);
+            }
+          },
+          () => {
+            if (
+              conversationProfileRefreshRequestsById.get(input.conversationId) ===
+              request
+            ) {
+              conversationProfileRefreshRequestsById.delete(input.conversationId);
+            }
+          },
+        );
+      }
+
+      try {
+        const conversation = await request;
+
+        if (refreshGeneration !== latestConversationProfileRefreshGeneration) {
+          return;
+        }
+
+        if (
+          conversation.accountId !== input.accountId ||
+          conversation.id !== input.conversationId
+        ) {
+          clearUnverifiedConversationProfileRetry(input.conversationId);
+          return;
+        }
+
+        const state = get();
+        const currentConversation = (
+          state.conversationListsByScope[input.accountId] ?? []
+        ).find((item) => item.id === input.conversationId);
+
+        if (!currentConversation || currentConversation.isVerified === true) {
+          clearUnverifiedConversationProfileRetry(input.conversationId);
+          return;
+        }
+
+        set((currentState) => {
+          const currentList =
+            currentState.conversationListsByScope[input.accountId] ?? [];
+          const latestConversation = currentList.find(
+            (item) => item.id === input.conversationId,
+          );
+
+          if (!latestConversation || latestConversation.isVerified === true) {
+            return currentState;
+          }
+
+          return {
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [input.accountId]: mergeConversationProfile(
+                currentList,
+                conversation,
+              ),
+            },
+          };
+        });
+
+        if (conversation.isVerified === false) {
+          scheduleUnverifiedConversationProfileRetry(input);
+        } else {
+          clearUnverifiedConversationProfileRetry(input.conversationId);
+        }
+      } catch {
+        // Profile refresh is best-effort and must not block opening the conversation.
+        if (refreshGeneration === latestConversationProfileRefreshGeneration) {
+          scheduleUnverifiedConversationProfileRetry(input);
+        }
+      }
+    }
+
     async function setConversationPinned(
       conversationId: string,
       isPinned: boolean,
@@ -4035,6 +4390,14 @@ export function createWorkbenchStore() {
       });
 
       const state = get();
+      const conversation = getConversationById(state, conversationId);
+
+      if (conversation?.isVerified === false) {
+        startUnverifiedConversationProfileRefresh({
+          accountId: conversation.accountId,
+          conversationId,
+        });
+      }
 
       try {
         const page = await loadConversationMessagesPage(
@@ -4153,6 +4516,452 @@ export function createWorkbenchStore() {
       }
     }
 
+    async function activateResolvedConversation(
+      conversation: Conversation,
+      openRequestId: number,
+      beforeActivate?: (conversation: Conversation) => void,
+      promote = true,
+    ) {
+      const state = get();
+      const didSwitchAccount = state.activeAccountId !== conversation.accountId;
+      let didFinishAccountRefresh = !didSwitchAccount;
+      let didFinishMessageLoad = false;
+      let requestId: number | undefined;
+      let didActivate = false;
+      let didLoadMessages = false;
+      const finishResolvedConversationOpen = () => {
+        if (
+          didFinishAccountRefresh &&
+          didFinishMessageLoad &&
+          loadingConversationOpenRequestId === openRequestId
+        ) {
+          loadingConversationOpenRequestId = undefined;
+        }
+      };
+
+      try {
+        if (!isCurrentConversationOpenRequest(openRequestId)) {
+          return false;
+        }
+
+        beforeActivate?.(conversation);
+        requestId = issueScopeRequestId();
+
+        const previousConversationId = get().activeConversationId;
+
+        if (previousConversationId) {
+          clearUnverifiedConversationProfileRetry(previousConversationId);
+          clearSmartReplyRuntimeTimers(previousConversationId);
+          clearFullAutoRuntime(previousConversationId);
+        }
+
+        clearSmartReplyRuntimeTimers(conversation.id);
+        clearFullAutoRuntime(conversation.id);
+
+        set((currentState) => {
+          const targetConversations = mergeConversationList(
+            currentState.conversationListsByScope[conversation.accountId] ?? [],
+            conversation,
+          );
+          const conversationListCacheSeatOrder = getConversationListCacheSeatOrder(
+            currentState.conversationListCacheSeatOrder,
+            conversation.accountId,
+          );
+          const prunedConversationListCache = pruneConversationListCache({
+            activeAccountId: conversation.accountId,
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [conversation.accountId]: targetConversations,
+            },
+            conversationModeLoadedAtByScope:
+              currentState.conversationModeLoadedAtByScope,
+            seatOrder: conversationListCacheSeatOrder,
+          });
+          const evictedConversationIds =
+            prunedConversationListCache.evictedSeatIds.flatMap(
+              (seatId) =>
+                currentState.conversationListsByScope[seatId]?.map(
+                  (currentConversation) => currentConversation.id,
+                ) ?? [],
+            );
+          const clearedMessageState = clearConversationMessageState(
+            currentState,
+            evictedConversationIds,
+            { preservePending: true },
+          );
+          const nextGroupMembersLoadingByConversationId = omitByKeys(
+            currentState.groupMembersLoadingByConversationId,
+            evictedConversationIds,
+          );
+          const shouldLoadGroupMembers =
+            conversation.mode === "group" &&
+            (currentState.groupMembersByConversationId[conversation.id] ===
+              undefined ||
+              !isGroupMembersCacheFresh(
+                currentState.groupMembersLoadedAtByConversationId,
+                conversation.id,
+              ));
+
+          return {
+            ...clearedMessageState,
+            accounts: currentState.accounts,
+            activeAccountId: conversation.accountId,
+            activeConversationId: conversation.id,
+            activeMessageSeq: getActiveMessageSeq(
+              clearedMessageState.messagesByConversationId,
+              conversation.id,
+            ),
+            activeMode: conversation.mode,
+            conversationListCacheSeatOrder:
+              prunedConversationListCache.conversationListCacheSeatOrder,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            conversationModeLoadedAtByScope:
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            conversationOpenError: undefined,
+            conversationPromotion: promote
+              ? createConversationPromotion(conversation, targetConversations)
+              : undefined,
+            groupMembersLoadedAtByConversationId: omitByKeys(
+              currentState.groupMembersLoadedAtByConversationId,
+              evictedConversationIds,
+            ),
+            groupMembersByConversationId: omitByKeys(
+              currentState.groupMembersByConversationId,
+              evictedConversationIds,
+            ),
+            groupMembersLoadingByConversationId:
+              shouldLoadGroupMembers
+                ? {
+                    ...nextGroupMembersLoadingByConversationId,
+                    [conversation.id]: true,
+                  }
+                : nextGroupMembersLoadingByConversationId,
+            historyPanelOpenConversationId: undefined,
+            isConversationLoading: true,
+            isPollBaselineFresh: didSwitchAccount
+              ? false
+              : currentState.isPollBaselineFresh,
+            messageUpdateCursor: undefined,
+            scopeTransitionError: undefined,
+          };
+        });
+        didActivate = true;
+
+        if (conversation.isVerified === false) {
+          startUnverifiedConversationProfileRefresh({
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+          });
+        }
+
+        const conversationPagePromise = loadConversationMessagesPage(
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          conversation.id,
+          { limit: MESSAGE_PAGE_SIZE },
+        );
+
+        if (didSwitchAccount) {
+          latestConversationListRefreshIdByAccountId[conversation.accountId] =
+            openRequestId;
+          void loadAccountConversationsWithBaseline(conversation.accountId)
+            .then((conversationLoadResult) => {
+              set((currentState) => {
+                if (
+                  latestConversationListRefreshIdByAccountId[
+                    conversation.accountId
+                  ] !== openRequestId ||
+                  currentState.activeAccountId !== conversation.accountId ||
+                  (currentState.isPollBaselineFresh &&
+                    conversationLoadResult.pollBaseline <
+                      currentState.sinceVersion)
+                ) {
+                  return currentState;
+                }
+
+                const resolvedConversation =
+                  getConversationById(currentState, conversation.id) ?? conversation;
+                const activeConversation = getConversationById(
+                  currentState,
+                  currentState.activeConversationId,
+                );
+                let refreshedConversations = mergeConversationList(
+                  conversationLoadResult.conversations,
+                  resolvedConversation,
+                );
+
+                if (
+                  activeConversation?.accountId === conversation.accountId &&
+                  activeConversation.id !== resolvedConversation.id
+                ) {
+                  refreshedConversations = mergeConversationList(
+                    refreshedConversations,
+                    activeConversation,
+                  );
+                }
+
+                const conversationListCacheSeatOrder =
+                  getConversationListCacheSeatOrder(
+                    currentState.conversationListCacheSeatOrder,
+                    conversation.accountId,
+                  );
+                const prunedConversationListCache = pruneConversationListCache({
+                  activeAccountId: conversation.accountId,
+                  conversationListsByScope: {
+                    ...currentState.conversationListsByScope,
+                    [conversation.accountId]: refreshedConversations,
+                  },
+                  conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+                    currentState.conversationModeLoadedAtByScope,
+                    conversation.accountId,
+                    Date.now(),
+                  ),
+                  seatOrder: conversationListCacheSeatOrder,
+                });
+                const evictedConversationIds =
+                  prunedConversationListCache.evictedSeatIds.flatMap(
+                    (seatId) =>
+                      currentState.conversationListsByScope[seatId]?.map(
+                        (currentConversation) => currentConversation.id,
+                      ) ?? [],
+                  );
+
+                return {
+                  ...clearConversationResourceState(
+                    currentState,
+                    evictedConversationIds,
+                    { preservePending: true },
+                  ),
+                  conversationListCacheSeatOrder:
+                    prunedConversationListCache.conversationListCacheSeatOrder,
+                  conversationListsByScope:
+                    prunedConversationListCache.conversationListsByScope,
+                  conversationModeLoadedAtByScope:
+                    prunedConversationListCache.conversationModeLoadedAtByScope,
+                  conversationPromotion: currentState.conversationPromotion,
+                  isPollBaselineFresh: true,
+                  sinceVersion: conversationLoadResult.pollBaseline,
+                };
+              });
+            })
+            .catch(() => {
+              // The resolved conversation remains usable even if the target
+              // seat's list refresh fails.
+            })
+            .finally(() => {
+              if (
+                latestConversationListRefreshIdByAccountId[
+                  conversation.accountId
+                ] === openRequestId
+              ) {
+                delete latestConversationListRefreshIdByAccountId[
+                  conversation.accountId
+                ];
+              }
+              didFinishAccountRefresh = true;
+              finishResolvedConversationOpen();
+            });
+        }
+
+        const conversationPage = await conversationPagePromise;
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          get(),
+          conversationPage,
+        );
+        const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
+          conversationPage.messages,
+          pageSmartReplyByMessageId,
+        );
+        const pageSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          pageSmartReplyByMessageId,
+          { hidden: pageSmartReplyHidden },
+        );
+
+        set((currentState) => {
+          const staleMessageConversationIds = [
+            ...getMessageStateConversationIds(currentState),
+          ].filter(
+            (cachedConversationId) =>
+              cachedConversationId !== conversation.id,
+          );
+          const clearedMessageState = clearConversationMessageState(
+            currentState,
+            staleMessageConversationIds,
+            { preservePending: true },
+          );
+          const nextMessagesByConversationId = {
+            ...clearedMessageState.messagesByConversationId,
+            [conversation.id]: upsertMessageList(
+              [],
+              conversationPage.messages,
+            ),
+          };
+
+          return {
+            ...clearedMessageState,
+            activeMessageSeq: getActiveMessageSeq(
+              nextMessagesByConversationId,
+              conversation.id,
+            ),
+            hasMoreHistoryByConversationId: {
+              ...clearedMessageState.hasMoreHistoryByConversationId,
+              [conversation.id]: conversationPage.hasMoreHistory,
+            },
+            isConversationLoading: false,
+            messagePaginationByConversationId: {
+              ...clearedMessageState.messagePaginationByConversationId,
+              [conversation.id]:
+                buildMessagePaginationState(conversationPage),
+            },
+            messagesByConversationId: nextMessagesByConversationId,
+            messageUpdateCursor: undefined,
+            scopeTransitionError: undefined,
+            smartReplyByMessageIdByConversationId: {
+              ...clearedMessageState.smartReplyByMessageIdByConversationId,
+              [conversation.id]: pageSmartReplyByMessageId,
+            },
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...clearedMessageState.smartReplyHiddenMessageKeysByConversationId,
+              [conversation.id]: pageSmartReplyHidden,
+            },
+            smartReplyPendingMessageKeysByConversationId: {
+              ...clearedMessageState.smartReplyPendingMessageKeysByConversationId,
+              [conversation.id]: pageSmartReplyPending,
+            },
+          };
+        });
+        didLoadMessages = true;
+        didFinishMessageLoad = true;
+        finishResolvedConversationOpen();
+
+        await syncFullAutoAgentStatusForCurrentState();
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        await loadGroupMembersForConversation(conversation.id, requestId);
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        if (
+          canUseConversationActions(
+            get(),
+            get().accounts.find(
+              (account) => account.id === conversation.accountId,
+            ),
+          )
+        ) {
+          await markActiveConversationRead(conversation.id, requestId);
+        }
+
+        if (
+          !isCurrentConversationOpenRequest(openRequestId) ||
+          !isCurrentScopeRequest(requestId)
+        ) {
+          return true;
+        }
+
+        scheduleSmartReplyPollForConversation(conversation.id, {
+          force: Object.keys(pageSmartReplyPending).length > 0,
+        });
+
+        const autoGenerateMessage = shouldAutoGenerateSmartReply({
+          autoPending:
+            get().smartReplyAutoPendingMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          autoSkipped:
+            get().smartReplyAutoSkippedMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          message: getLatestNonSystemMessage(conversationPage.messages),
+          pending:
+            get().smartReplyPendingMessageKeysByConversationId[
+              conversation.id
+            ] ?? {},
+          suggestions:
+            get().smartReplyByMessageIdByConversationId[conversation.id] ?? {},
+        });
+
+        if (
+          autoGenerateMessage &&
+          canUseSmartReplyForConversation(get(), conversation.id)
+        ) {
+          triggerSmartReplyAutoGeneration(
+            get,
+            set,
+            conversation.id,
+            autoGenerateMessage,
+            {
+              clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
+              scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
+              schedulePoll: scheduleSmartReplyPollForConversation,
+              syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+            },
+          );
+        }
+
+        return true;
+      } catch (error) {
+        if (didActivate) {
+          if (didLoadMessages) {
+            return true;
+          }
+
+          if (
+            isCurrentConversationOpenRequest(openRequestId) &&
+            (requestId === undefined || isCurrentScopeRequest(requestId))
+          ) {
+            didFinishMessageLoad = true;
+            finishResolvedConversationOpen();
+            set({
+              isConversationLoading: false,
+              scopeTransitionError:
+                getRequestApiErrorMessage(error) ?? "切换会话失败",
+            });
+          }
+
+          return false;
+        }
+
+        if (
+          isCurrentConversationOpenRequest(openRequestId) &&
+          (requestId === undefined || isCurrentScopeRequest(requestId))
+        ) {
+          loadingConversationOpenRequestId = undefined;
+          set({
+            conversationOpenError:
+              getRequestApiErrorMessage(error) ??
+              "获取/开启会话失败，请稍后重试",
+            isConversationLoading: false,
+          });
+        }
+
+        return false;
+      }
+    }
+
     return {
       ...createInitialState(),
       setChatSendPermission(hasChatSendPermission) {
@@ -4236,52 +5045,157 @@ export function createWorkbenchStore() {
           }
         }
       },
+      clearConversationPromotion() {
+        const didCancelLoadingRequest = cancelConversationOpenRequest();
+        set({
+          conversationPromotion: undefined,
+          ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+        });
+      },
+      cancelConversationOpen() {
+        const state = get();
+        const cancelledOpenRequestId = currentConversationOpenRequestId;
+        const cancelledTargetId = currentConversationOpenTargetId;
+        const wasBootstrapLoading = state.bootstrapStatus === "loading";
+        const shouldClearActiveConversation =
+          wasBootstrapLoading ||
+          (cancelledTargetId != null &&
+            state.activeConversationId === cancelledTargetId);
+
+        bumpScopeRequestId();
+        cancelConversationOpenRequest();
+
+        for (const accountId of Object.keys(
+          latestConversationListRefreshIdByAccountId,
+        )) {
+          if (
+            latestConversationListRefreshIdByAccountId[accountId] ===
+            cancelledOpenRequestId
+          ) {
+            delete latestConversationListRefreshIdByAccountId[accountId];
+          }
+        }
+
+        const previousConversationId = shouldClearActiveConversation
+          ? state.activeConversationId
+          : undefined;
+
+        if (previousConversationId) {
+          clearFullAutoRuntime(previousConversationId);
+        }
+
+        set((currentState) => ({
+          ...(shouldClearActiveConversation
+            ? {
+                activeConversationId: "",
+                activeMessageSeq: 0,
+                historyPanelOpenConversationId: undefined,
+                messageUpdateCursor: undefined,
+              }
+            : {}),
+          bootstrapError:
+            wasBootstrapLoading ? undefined : currentState.bootstrapError,
+          bootstrapStatus:
+            wasBootstrapLoading ? "idle" : currentState.bootstrapStatus,
+          conversationOpenError: undefined,
+          conversationPromotion:
+            wasBootstrapLoading ||
+            (cancelledTargetId != null &&
+              currentState.conversationPromotion?.conversationId ===
+                cancelledTargetId)
+              ? undefined
+              : currentState.conversationPromotion,
+          isConversationLoading: false,
+          scopeTransitionError: undefined,
+        }));
+      },
+      async openConversation(request, options) {
+        const openRequestId = issueConversationOpenRequestId();
+        loadingConversationOpenRequestId = openRequestId;
+        currentConversationOpenRequestId = openRequestId;
+        currentConversationOpenTargetId = undefined;
+
+        set({
+          conversationOpenError: undefined,
+          isConversationLoading: true,
+        });
+
+        try {
+          const conversation = await resolveWorkbenchConversation(request);
+
+          if (!isCurrentConversationOpenRequest(openRequestId)) {
+            return false;
+          }
+
+          currentConversationOpenTargetId = conversation.id;
+
+          if (
+            !get().accounts.some(
+              (account) => account.id === conversation.accountId,
+            )
+          ) {
+            throw new Error("当前账号无法访问该会话");
+          }
+
+          options?.onResolved?.(conversation);
+
+          const opened = await activateResolvedConversation(
+            conversation,
+            openRequestId,
+            options?.beforeActivate,
+            options?.promote !== false,
+          );
+
+          if (
+            opened &&
+            options?.clearSearchOnSuccess &&
+            isCurrentConversationOpenRequest(openRequestId)
+          ) {
+            set({
+              isSearchLoading: false,
+              searchKeyword: "",
+              searchResults: null,
+            });
+          }
+
+          return opened;
+        } catch (error) {
+          if (isCurrentConversationOpenRequest(openRequestId)) {
+            loadingConversationOpenRequestId = undefined;
+            set({
+              conversationOpenError:
+                getRequestApiErrorMessage(error) ??
+                "获取/开启会话失败，请稍后重试",
+              isConversationLoading: false,
+            });
+          }
+
+          return false;
+        } finally {
+          if (isCurrentConversationOpenRequest(openRequestId)) {
+            currentConversationOpenRequestId = undefined;
+            currentConversationOpenTargetId = undefined;
+          }
+        }
+      },
       async selectOrCreateAndSelectConversation(item) {
         const seatId = get().activeAccountId;
         const isGroup = "thirdGroupId" in item;
-        const nextMode: ChatMode = isGroup ? "group" : "single";
 
-        try {
-          set({ isConversationLoading: true });
-          const service = getWorkbenchService();
-          const payload = {
-            seatId,
-            chatType: isGroup ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
-            thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
-            thirdGroupId: isGroup ? item.thirdGroupId : undefined,
-          };
-          const summaryDto = await service.getOrCreateConversation(payload);
-
-          if (get().activeAccountId !== seatId) {
-            return;
-          }
-
-          const hydratedConversation = adaptConversation(summaryDto);
-
-          await get().setActiveMode(nextMode, {
-            preserveConversation: hydratedConversation,
-          });
-
-          if (get().activeAccountId !== seatId) {
-            return;
-          }
-          await get().setActiveConversation(hydratedConversation.id);
-
-          if (get().activeAccountId === seatId) {
-            set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
-          }
-        } catch (error) {
-          if (get().activeAccountId === seatId) {
-            set({
-              conversationOpenError:
-                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
-            });
-          }
-        } finally {
-          if (get().activeAccountId === seatId) {
-            set({ isConversationLoading: false });
-          }
-        }
+        await get().openConversation(
+          isGroup
+            ? {
+                mode: "group",
+                seatId,
+                thirdGroupId: item.thirdGroupId,
+              }
+            : {
+                mode: "single",
+                seatId,
+                thirdExternalUserId: item.thirdExternalUserId,
+              },
+          { clearSearchOnSuccess: true },
+        );
       },
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });
@@ -4790,6 +5704,11 @@ export function createWorkbenchStore() {
             activeMessageSeq: shouldSwitchActive ? 0 : latestState.activeMessageSeq,
             activeMode: nextActiveMode,
             composerDraftsByConversationId,
+            conversationPromotion:
+              latestState.conversationPromotion?.conversationId ===
+              conversationId
+                ? undefined
+                : latestState.conversationPromotion,
             conversationListsByScope: {
               ...latestState.conversationListsByScope,
               [account.id]: (latestState.conversationListsByScope[account.id] ?? []).filter(
@@ -4953,7 +5872,7 @@ export function createWorkbenchStore() {
     async unpinConversation(conversationId) {
       await setConversationPinned(conversationId, false);
     },
-    async initializeWorkbench() {
+    async initializeWorkbench(options) {
       const state = get();
 
       if (state.bootstrapStatus === "loading") {
@@ -4971,11 +5890,17 @@ export function createWorkbenchStore() {
           state.activeMode,
           defaultCustomerProfiles,
           MESSAGE_PAGE_SIZE,
+          Date.now(),
+          options?.preferredConversationId,
         );
         const conversationPage = bootstrapResult.conversationPage;
 
         if (!isCurrentScopeRequest(requestId)) {
           return;
+        }
+
+        if (bootstrapResult.openedConversation) {
+          options?.beforeActivate?.(bootstrapResult.openedConversation);
         }
 
         const loadedAt = Date.now();
@@ -5036,6 +5961,17 @@ export function createWorkbenchStore() {
             ),
             activeMode: bootstrapResult.activeMode,
             bootstrapStatus: "ready",
+            conversationOpenError: bootstrapResult.conversationOpenError,
+            conversationPromotion:
+              bootstrapResult.openedConversation &&
+              options?.promotePreferredConversation !== false
+              ? createConversationPromotion(
+                  bootstrapResult.openedConversation,
+                  bootstrapResult.conversationListsByScope[
+                    bootstrapResult.activeAccountId
+                  ] ?? [],
+                )
+              : undefined,
             conversationListCacheSeatOrder:
               prunedConversationListCache.conversationListCacheSeatOrder,
             conversationListsByScope:
@@ -5096,6 +6032,13 @@ export function createWorkbenchStore() {
         ]?.find(
           (conversation) => conversation.id === bootstrapResult.activeConversationId,
         );
+
+        if (bootstrapActiveConversation?.isVerified === false) {
+          startUnverifiedConversationProfileRefresh({
+            accountId: bootstrapResult.activeAccountId,
+            conversationId: bootstrapActiveConversation.id,
+          });
+        }
 
         await syncFullAutoAgentStatusForCurrentState();
 
@@ -5193,6 +6136,7 @@ export function createWorkbenchStore() {
       if (
         state.bootstrapStatus !== "ready" ||
         !state.activeAccountId ||
+        loadingConversationOpenRequestId !== undefined ||
         state.pollState.status === "paused" ||
         isPollWorkbenchRunning
       ) {
@@ -5304,7 +6248,8 @@ export function createWorkbenchStore() {
             currentState.accounts.some((account) =>
               accountChangesById.has(account.id),
             );
-          const nextAccounts = hasAccountChanges
+          let didAccountsChange = false;
+          const mappedAccounts = hasAccountChanges
             ? currentState.accounts.map((account) => {
                 const change = accountChangesById.get(account.id);
 
@@ -5316,40 +6261,54 @@ export function createWorkbenchStore() {
                 void accountId;
                 void seatId;
 
-                return {
+                const nextAccount = {
                   ...account,
                   ...accountChange,
                   id: account.id,
                   metrics: account.metrics,
                   tone: account.tone,
                 };
+
+                if (haveSameShallowValues(account, nextAccount)) {
+                  return account;
+                }
+
+                didAccountsChange = true;
+                return nextAccount;
               })
             : currentState.accounts;
-          const hasConversationChanges = response.conversationChanges.length > 0;
-          const nextConversationLists = hasConversationChanges
-            ? { ...currentState.conversationListsByScope }
-            : currentState.conversationListsByScope;
+          const nextAccounts = didAccountsChange
+            ? mappedAccounts
+            : currentState.accounts;
+          let nextConversationLists = currentState.conversationListsByScope;
           const removedConversationIds: string[] = [];
+          const conversationChangesByAccountId = new Map<
+            string,
+            WorkbenchConversationChange[]
+          >();
 
           for (const change of response.conversationChanges) {
-            const currentList = nextConversationLists[change.accountId] ?? [];
+            const accountChanges =
+              conversationChangesByAccountId.get(change.accountId) ?? [];
+            accountChanges.push(change);
+            conversationChangesByAccountId.set(change.accountId, accountChanges);
+          }
 
-            if (change.type === "remove") {
-              nextConversationLists[change.accountId] = currentList.filter(
-                (conversation) => conversation.id !== change.conversationId,
-              );
-              removedConversationIds.push(change.conversationId);
+          for (const [accountId, changes] of conversationChangesByAccountId) {
+            const currentList = currentState.conversationListsByScope[accountId] ?? [];
+            const result = applyPolledConversationChanges(currentList, changes);
+
+            removedConversationIds.push(...result.removedConversationIds);
+            shouldNotifyPulledCustomerMessage ||= result.hasUnreadIncrease;
+
+            if (result.conversations === currentList) {
               continue;
             }
 
-            nextConversationLists[change.accountId] = mergePolledConversation(
-              currentList,
-              change.conversation,
-            );
-            shouldNotifyPulledCustomerMessage ||= hasConversationUnreadIncrease(
-              currentList,
-              change.conversation,
-            );
+            if (nextConversationLists === currentState.conversationListsByScope) {
+              nextConversationLists = { ...currentState.conversationListsByScope };
+            }
+            nextConversationLists[accountId] = result.conversations;
           }
 
           const clearedResourceState = removedConversationIds.length
@@ -5865,6 +6824,56 @@ export function createWorkbenchStore() {
           type: "text",
         },
       ]);
+    },
+    async refreshInitializingMessage(conversationId, messageSeq) {
+      if (!conversationId || !isValidMessageSeq(messageSeq)) {
+        return "missing";
+      }
+
+      const state = get();
+      const refreshedMessages = await loadMessagesBySeqs(
+        {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        },
+        conversationId,
+        [messageSeq],
+      );
+      const refreshedMessage = refreshedMessages.find(
+        (message) => message.seq === messageSeq,
+      );
+
+      if (!refreshedMessage) {
+        return "missing";
+      }
+
+      const latestMessages =
+        get().messagesByConversationId[conversationId] ?? [];
+      const currentMessage = latestMessages.find(
+        (message) => message.seq === messageSeq,
+      );
+
+      if (
+        currentMessage?.status !== "initializing" &&
+        refreshedMessage.status === "initializing"
+      ) {
+        return "updated";
+      }
+
+      set((currentState) => ({
+        messagesByConversationId: {
+          ...currentState.messagesByConversationId,
+          [conversationId]: patchExistingMessageList(
+            currentState.messagesByConversationId[conversationId] ?? [],
+            [refreshedMessage],
+          ),
+        },
+      }));
+
+      return refreshedMessage.status === "initializing"
+        ? "initializing"
+        : "updated";
     },
     async retryFailedMessage(uiMessageKey) {
       const state = get();
@@ -6623,6 +7632,12 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const didCancelLoadingRequest = cancelConversationOpenRequest();
+      set({
+        conversationPromotion: undefined,
+        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+      });
+
       if (state.activeConversationId) {
         clearSmartReplyRuntimeTimers(state.activeConversationId);
       }
@@ -6649,13 +7664,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const visibleConversations = getVisibleConversations(
-          scopeLoadResult.conversations,
-        );
         const nextConversation =
-          visibleConversations.find(
+          scopeLoadResult.conversations.find(
             (conversation) => conversation.mode === state.activeMode,
-          ) ?? visibleConversations[0];
+          ) ?? scopeLoadResult.conversations[0];
         const nextConversationId = nextConversation?.id ?? "";
         const nextMode = nextConversation?.mode ?? state.activeMode;
         const loadedAt = Date.now();
@@ -6731,6 +7743,13 @@ export function createWorkbenchStore() {
             sinceVersion: scopeLoadResult.pollBaseline,
           };
         });
+
+        if (nextConversation?.isVerified === false) {
+          startUnverifiedConversationProfileRefresh({
+            accountId,
+            conversationId: nextConversation.id,
+          });
+        }
 
         if (!nextConversationId) {
           return;
@@ -6885,10 +7904,20 @@ export function createWorkbenchStore() {
       const currentConversation = getConversationById(state, conversationId);
 
       if (state.activeConversationId === conversationId) {
+        if (currentConversation?.isVerified === false) {
+          startUnverifiedConversationProfileRefresh({
+            accountId: currentConversation.accountId,
+            conversationId,
+          });
+        }
+
         return;
       }
 
+      cancelConversationOpenRequest();
+
       const requestId = issueScopeRequestId();
+      clearUnverifiedConversationProfileRetry(state.activeConversationId);
       clearSmartReplyRuntimeTimers(state.activeConversationId);
       clearSmartReplyRuntimeTimers(conversationId);
       clearFullAutoRuntime(state.activeConversationId);
@@ -6901,6 +7930,13 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
         messageUpdateCursor: undefined,
       });
+
+      if (currentConversation?.isVerified === false) {
+        startUnverifiedConversationProfileRefresh({
+          accountId: currentConversation.accountId,
+          conversationId,
+        });
+      }
 
       if (currentConversation?.mode === "group") {
         set((currentState) => ({
@@ -7069,18 +8105,13 @@ export function createWorkbenchStore() {
         set((currentState) => {
           const nextConversationListsByScope = {
             ...currentState.conversationListsByScope,
-            [accountId]: mergeConversationLists(
+            [accountId]: supplementConversationList(
               currentState.conversationListsByScope[accountId] ?? [],
               result.conversations,
             ),
           };
 
           return {
-            accounts: applyAccountUnreadSummary(
-              currentState.accounts,
-              accountId,
-              result.unreadSummary,
-            ),
             conversationListsByScope: nextConversationListsByScope,
             hasMoreUnreadByScope: {
               ...currentState.hasMoreUnreadByScope,
@@ -7121,6 +8152,12 @@ export function createWorkbenchStore() {
 
         return;
       }
+
+      const didCancelLoadingRequest = cancelConversationOpenRequest();
+      set({
+        conversationPromotion: undefined,
+        ...(didCancelLoadingRequest ? { isConversationLoading: false } : {}),
+      });
 
       if (state.activeConversationId) {
         clearSmartReplyRuntimeTimers(state.activeConversationId);

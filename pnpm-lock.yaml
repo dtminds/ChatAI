@@ -123,6 +123,12 @@ importers:
       '@lexical/react':
         specifier: ^0.45.0
         version: 0.45.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.30)
+      '@lexical/selection':
+        specifier: ^0.45.0
+        version: 0.45.0
+      '@lexical/utils':
+        specifier: ^0.45.0
+        version: 0.45.0
       '@oreo-design/avatar':
         specifier: 0.1.0
         version: 0.1.0(react@19.2.7)
@@ -147,6 +153,9 @@ importers:
       '@radix-ui/react-collapsible':
         specifier: ^1.1.12
         version: 1.1.13(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@radix-ui/react-context-menu':
+        specifier: 2.3.0
+        version: 2.3.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@radix-ui/react-dialog':
         specifier: ^1.1.15
         version: 1.1.16(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -1308,6 +1317,19 @@ packages:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
     peerDependenciesMeta:
       '@types/react':
+        optional: true
+
+  '@radix-ui/react-context-menu@2.3.0':
+    resolution: {integrity: sha512-d7CouXhAW+CGmFOqmB+IEvd3E9GcaqfgvfjCc3hfulp2pkaUCEVEGa0SN5nNWYA+IvQ6g1Pt+S5dpNn1AoY9hg==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+      react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
         optional: true
 
   '@radix-ui/react-context@1.1.4':
@@ -5225,6 +5247,19 @@ snapshots:
       react: 19.2.7
     optionalDependencies:
       '@types/react': 19.2.17
+
+  '@radix-ui/react-context-menu@2.3.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@radix-ui/primitive': 1.1.4
+      '@radix-ui/react-context': 1.1.4(@types/react@19.2.17)(react@19.2.7)
+      '@radix-ui/react-menu': 2.1.17(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@radix-ui/react-primitive': 2.1.5(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@radix-ui/react-use-controllable-state': 1.2.3(@types/react@19.2.17)(react@19.2.7)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+    optionalDependencies:
+      '@types/react': 19.2.17
+      '@types/react-dom': 19.2.3(@types/react@19.2.17)
 
   '@radix-ui/react-context@1.1.4(@types/react@19.2.17)(react@19.2.7)':
     dependencies:

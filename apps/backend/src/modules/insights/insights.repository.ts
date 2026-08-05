@@ -1,11 +1,8 @@
 import type {
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
-  InsightActionStatus,
   InsightAnalysisStatus,
   InsightConfigStatus,
-  InsightCreateActionItemRequest,
-  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -27,6 +24,8 @@ import type {
   InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
+  TicketPriority,
+  TicketStatus,
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -43,9 +42,6 @@ import {
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { BadRequestError } from "../../shared/errors.js";
 import type {
-  InsightActionItemPage,
-  InsightDetailActionItemRow,
-  InsightActionItemRow,
   InsightBusinessTopicAnalytics,
   InsightCurrentSessionPage,
   InsightCurrentSessionRow,
@@ -54,7 +50,6 @@ import type {
   InsightQualityAgentStatRow,
   InsightQualityAggregateRow,
   InsightQualityResultPage,
-  InsightsFollowUpFilters,
   InsightsBusinessRelatedSessionFilters,
   InsightsOverviewFilters,
   InsightsRepositoryPort,
@@ -77,6 +72,7 @@ type JsonColumnValue =
   | undefined;
 
 type CurrentSessionQueryRow = {
+  agent_message_count: number | string;
   action_id?: number | string | null;
   action_status?: string | null;
   action_type?: string | null;
@@ -84,12 +80,17 @@ type CurrentSessionQueryRow = {
   action_title?: string | null;
   conversation_id: number | string;
   current_snapshot_id: number | string | null;
+  customer_message_count: number | string;
   ended_at: number | string | null;
   evidence_message_id?: number | string | null;
   evidence_role?: string | null;
+  final_analysis_failed: number | string;
   generated_at: number | string | Date | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
+  logical_session_status: string;
+  live_analysis_enabled: number | string;
+  message_count: number | string;
   phase: string | null;
   problem_detected: number | string | null;
   problem_confidence?: number | string | null;
@@ -105,27 +106,6 @@ type CurrentSessionQueryRow = {
   third_userid: string;
   unresolved_reason: string | null;
 };
-
-type ActionItemQueryRow = {
-  action_id: number | string;
-  action_status: string;
-  action_type: string;
-  conversation_id: number | string;
-  created_at?: Date | number | string;
-  evidence_message_id: number | string | null;
-  last_customer_message_at: number | string | null;
-  priority: string;
-  resolution_status: string | null;
-  session_id: number | string;
-  snapshot_id?: number | string | null;
-  third_external_userid: string | null;
-  title: string;
-};
-
-type FollowUpActionItemQueryRow = Omit<
-  ActionItemQueryRow,
-  "evidence_message_id" | "last_customer_message_at" | "resolution_status"
->;
 
 type QualityResultQueryRow = {
   current_snapshot_id: number | string;
@@ -403,7 +383,6 @@ type InsertResult = {
   insertId?: bigint | number | string | null;
 };
 
-const manualActionStatuses = new Set<InsightActionStatus>(["open", "done", "dismissed"]);
 const allCurrentSessionsLimit = 5_000;
 
 export class InsightsRepository implements InsightsRepositoryPort {
@@ -618,7 +597,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     payload: InsightFeatureConfigUpdateRequest,
   ): Promise<InsightFeatureConfig> {
     const current = await this.getFeatureConfig(scope);
-    const shouldQueueCleanup = current.insightEnabled && !payload.insightEnabled;
     const lastEnableTime = payload.insightEnabled && !current.insightEnabled
       ? Date.now()
       : current.lastEnableTime ?? null;
@@ -646,27 +624,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         update_time: new Date(),
       })
       .execute();
-
-    if (shouldQueueCleanup) {
-      const cleanupEnableEpoch = current.lastEnableTime ?? 0;
-
-      await this.db
-        .insertInto("xy_wap_embed_insight_job")
-        .values({
-          analysis_scope: "all",
-          idempotency_key: `cleanup_disabled_insights:${scope.uid}:${cleanupEnableEpoch}`,
-          job_type: "cleanup_disabled_insights",
-          priority: 30,
-          rescan_task_id: null,
-          run_after: new Date(),
-          status: "pending",
-          target_id: String(cleanupEnableEpoch),
-          target_type: "uid",
-          uid: scope.uid,
-        })
-        .ignore()
-        .executeTakeFirst();
-    }
 
     return this.getFeatureConfig(scope);
   }
@@ -1923,6 +1880,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let query = buildCurrentSessionBaseQuery(this.db)
       .select([
         "session.current_snapshot_id as current_snapshot_id",
+        "session.agent_message_count as agent_message_count",
+        "session.customer_message_count as customer_message_count",
         "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
@@ -1932,9 +1891,29 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.ended_at as ended_at",
         "session.id as session_id",
         "session.last_message_at as last_message_at",
+        "session.message_count as message_count",
+        "session.status as logical_session_status",
         "session.started_at as started_at",
         "session.third_external_userid as third_external_userid",
         "session.third_userid as third_userid",
+        sql<number>`coalesce(analysis_policy.live_analysis_enabled, 1)`.as("live_analysis_enabled"),
+        sql<number>`case when exists (
+          select 1
+          from xy_wap_embed_analysis_run as final_run
+          where final_run.session_id = session.id
+            and final_run.mode = 'final'
+            and final_run.status = 'failed'
+            and final_run.id = (
+              select max(latest_final_run.id)
+              from xy_wap_embed_analysis_run as latest_final_run
+              where latest_final_run.session_id = session.id
+                and latest_final_run.mode = 'final'
+            )
+            and (
+              snapshot.create_time is null
+              or final_run.create_time > snapshot.create_time
+            )
+        ) then 1 else 0 end`.as("final_analysis_failed"),
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.source_message_high_watermark as source_message_high_watermark",
@@ -1948,6 +1927,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let groupedQuery = query
       .groupBy([
         "session.current_snapshot_id",
+        "session.agent_message_count",
+        "session.customer_message_count",
         "problem.confidence",
         "problem.problem_detected",
         "problem.problem_summary",
@@ -1957,9 +1938,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.ended_at",
         "session.id",
         "session.last_message_at",
+        "session.message_count",
+        "session.status",
         "session.started_at",
         "session.third_external_userid",
         "session.third_userid",
+        "analysis_policy.live_analysis_enabled",
         "snapshot.phase",
         "snapshot.create_time",
         "snapshot.status",
@@ -2007,10 +1991,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
           sql<number>`coalesce(sum(session.customer_message_count), 0)`.as("customer_messages"),
           sql<number>`coalesce(sum(session.agent_message_count), 0)`.as("agent_messages"),
           sql<number>`count(distinct session.conversation_id)`.as("consulting_customers"),
-          sql<number>`count(distinct case when snapshot.status = 'ready' then session.id end)`.as("ready"),
-          sql<number>`count(distinct case when snapshot.status = 'partial' then session.id end)`.as("partial"),
-          sql<number>`count(distinct case when snapshot.status = 'failed' then session.id end)`.as("failed"),
-          sql<number>`count(distinct case when snapshot.status = 'stale' then session.id end)`.as("stale"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'ready' then session.id end)`.as("ready"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'partial' then session.id end)`.as("partial"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'failed' then session.id end)`.as("failed"),
+          sql<number>`count(distinct case when snapshot.phase = 'final' and snapshot.status = 'stale' then session.id end)`.as("stale"),
           sql<number>`count(distinct case when problem.resolution_status = 'resolved' then session.id end)`.as("resolved_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partially_resolved_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved_resolution_sessions"),
@@ -2023,8 +2007,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
               then session.id
             end)
           `.as("problem_sessions"),
-          // Overview avoids joining action_item on this high-traffic aggregate path;
-          // action-items are served by the dedicated follow-up endpoint.
+          // Ticket counts are served by the Tickets domain, so this aggregate
+          // keeps the legacy field neutral without joining the ticket table.
           sql<number>`0`.as("action_items_open"),
           sql<number>`
             count(distinct case
@@ -2099,6 +2083,24 @@ export class InsightsRepository implements InsightsRepositoryPort {
       })),
       unresolvedSessions: parseNumber(totals?.unresolved_sessions ?? 0),
     };
+  }
+
+  async getSessionizationCoverageStart(
+    scope: InsightsUidScope,
+  ): Promise<number | undefined> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_sync_cursor")
+      .select(["create_time", "uid"])
+      .where("source", "=", "xy_wap_embed_msg_audit_info")
+      .where("uid", "in", [0, scope.uid])
+      .execute() as Array<{ create_time: Date | string; uid: number | string }>;
+    const timestamps = rows
+      .map((row) => row.create_time instanceof Date
+        ? row.create_time.getTime()
+        : Date.parse(row.create_time))
+      .filter(Number.isFinite);
+
+    return timestamps.length > 0 ? Math.max(...timestamps) : undefined;
   }
 
   async getBusinessTopicAnalytics(
@@ -2553,85 +2555,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return sessionRows;
   }
 
-  async listActionItemsPage(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters = {},
-  ): Promise<InsightActionItemPage> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 20;
-    const total = await this.countActionItemRows(scope, filters);
-    const rows = await this.listActionItemRows(scope, filters, {
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    });
-    const actionItems = mapFollowUpActionItemRows(rows);
-    await this.hydrateActionItemCustomers(scope, actionItems);
-
-    return {
-      items: actionItems,
-      total,
-    };
-  }
-
-  private buildActionItemListBaseQuery(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-  ) {
-    let query = this.db
-      .selectFrom("xy_wap_embed_session_action_item as action")
-      .where("action.uid", "=", scope.uid);
-
-    if (filters.status === "processed") {
-      query = query.where("action.status", "in", ["done", "dismissed"]);
-    } else if (filters.status) {
-      query = query.where("action.status", "=", filters.status);
-    }
-
-    if (filters.priority) {
-      query = query.where("action.priority", "=", filters.priority);
-    }
-
-    return applyActionItemDateFilters(query, filters);
-  }
-
-  private async countActionItemRows(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-  ) {
-    const row = await this.buildActionItemListBaseQuery(scope, filters)
-      .select(sql<number>`count(*)`.as("total_count"))
-      .executeTakeFirst() as { total_count: number | string } | undefined;
-
-    return parseNumber(row?.total_count ?? 0);
-  }
-
-  private async listActionItemRows(
-    scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters,
-    pagination: { limit: number; offset: number },
-  ) {
-    return (await this.buildActionItemListBaseQuery(scope, filters)
-      .leftJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "action.session_id"),
-      )
-      .select([
-        "action.id as action_id",
-        "action.action_type as action_type",
-        "action.create_time as created_at",
-        "action.priority as priority",
-        "action.status as action_status",
-        "action.title as title",
-        "action.conversation_id as conversation_id",
-        "action.session_id as session_id",
-        "action.snapshot_id as snapshot_id",
-        "session.third_external_userid as third_external_userid",
-      ])
-      .orderBy("action.id", "desc")
-      .limit(pagination.limit)
-      .offset(pagination.offset)
-      .execute() as FollowUpActionItemQueryRow[]);
-  }
-
   async findDetail(
     scope: InsightsUidScope,
     sessionId: string,
@@ -2708,13 +2631,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       this.listSessionActionItems(
         scope,
         snapshotId,
-        current.conversationId,
-        current.sessionId,
-        current.resolutionStatus,
-        current.thirdExternalUserId,
+        dimensionEvidence,
       ),
     ]);
-    await this.hydrateActionItemCustomers(scope, actionItems);
 
     const [
       sentiment,
@@ -2821,35 +2740,43 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async listSessionActionItems(
     scope: InsightsUidScope,
     snapshotId: string,
-    conversationId: string,
-    sessionId: string,
-    resolutionStatus: string | null,
-    thirdExternalUserId: string,
+    dimensionEvidence: DimensionEvidenceRow[],
   ) {
     const rows = (await this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
       .select([
+        "action.assignee_sub_user_id as assignee_sub_user_id",
         "action.id as action_id",
-        "action.action_type as action_type",
         "action.priority as priority",
         "action.status as action_status",
         "action.title as title",
-        "action.snapshot_id as snapshot_id",
       ])
       .where("action.uid", "=", scope.uid)
-      .where("action.session_id", "=", parsePositiveInteger(sessionId) ?? -1)
-      .execute() as Array<Pick<ActionItemQueryRow,
-        "action_id" | "action_status" | "action_type" | "priority" | "snapshot_id" | "title"
-      >>).map((row) => toActionItemBaseRow({
-        ...row,
-        conversation_id: conversationId,
-        resolution_status: resolutionStatus,
-        session_id: sessionId,
-        third_external_userid: thirdExternalUserId,
-      }));
-    const actionItems = mapActionItemRows(rows);
+      .where("action.snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .where("action.source_type", "=", "ai")
+      .where("action.status", "!=", "deleted")
+      .execute() as Array<{
+        action_id: number | string;
+        action_status: string;
+        assignee_sub_user_id: number | string | null;
+        priority: string;
+        title: string;
+      }>);
 
-    return actionItems;
+    return rows.map((row) => ({
+      assigneeSubUserId: row.assignee_sub_user_id == null
+        ? undefined
+        : String(row.assignee_sub_user_id),
+      evidenceMessageIds: evidenceForDimension(
+        dimensionEvidence,
+        "action_item",
+        row.action_id,
+      ),
+      priority: normalizePriority(row.priority),
+      status: normalizeTicketStatus(row.action_status),
+      ticketId: String(row.action_id),
+      title: row.title,
+    }));
   }
 
   private async listSentiment(
@@ -2952,6 +2879,49 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as MessageRow[];
 
     return await this.mapMessageRows(target, rows);
+  }
+
+  async listSessionMessageRecordPage(
+    scope: InsightsUidScope,
+    sessionId: string,
+    options: {
+      before?: { messageId: number; messageTime: number };
+      limit: number;
+    },
+  ) {
+    const targetSessionId = parsePositiveInteger(sessionId);
+    if (targetSessionId == null) return undefined;
+    const target = await this.findInsightConversationBySession(scope, targetSessionId);
+    if (!target) return undefined;
+
+    let query = this.buildSessionMessageRowsQuery(target)
+      .select("session_message.source_message_time as session_message_time");
+    if (options.before) {
+      const beforeTime = options.before.messageTime;
+      query = query.where((expressionBuilder) => expressionBuilder.or([
+        expressionBuilder("session_message.source_message_time", "<", beforeTime),
+        expressionBuilder.and([
+          expressionBuilder("session_message.source_message_time", "=", beforeTime),
+          expressionBuilder("session_message.source_message_id", "<", options.before!.messageId),
+        ]),
+      ]));
+    }
+    const rows = await query
+      .orderBy("session_message.source_message_time", "desc")
+      .orderBy("session_message.source_message_id", "desc")
+      .limit(options.limit + 1)
+      .execute() as Array<MessageRow & { session_message_time: number }>;
+    const hasMore = rows.length > options.limit;
+    const pageRows = rows.slice(0, options.limit);
+    const oldest = pageRows.at(-1);
+
+    return {
+      hasMore,
+      messages: await this.mapMessageRows(target, [...pageRows].reverse()),
+      nextCursor: hasMore && oldest
+        ? { messageId: Number(oldest.id), messageTime: oldest.session_message_time }
+        : null,
+    };
   }
 
   async listMessageContext(
@@ -3343,114 +3313,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
-  async updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: Extract<InsightActionStatus, "open" | "done" | "dismissed">,
-  ): Promise<boolean> {
-    if (!manualActionStatuses.has(status)) {
-      return false;
-    }
-
-    const id = parsePositiveInteger(actionItemId);
-
-    if (id == null) {
-      return false;
-    }
-
-    const now = new Date();
-    const result = await this.db
-      .updateTable("xy_wap_embed_session_action_item")
-      .set({
-        completed_at: status === "done" ? now : null,
-        dismissed_at: status === "dismissed" ? now : null,
-        status,
-        update_time: now,
-      })
-      .where("id", "=", id)
-      .where("uid", "=", scope.uid)
-      .where("status", "in", ["open", "done", "dismissed"])
-      .executeTakeFirst();
-
-    return getAffectedRows(result) !== 0;
-  }
-
-  async validateActionItemTarget(
-    scope: InsightsUidScope,
-    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
-  ): Promise<boolean> {
-    const conversationId = parsePositiveInteger(input.conversationId);
-
-    if (conversationId == null) {
-      return false;
-    }
-
-    const conversation = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id"])
-      .where("id", "=", conversationId)
-      .where("uid", "=", scope.uid)
-      .executeTakeFirst();
-
-    if (!conversation) {
-      return false;
-    }
-
-    const sessionId = parsePositiveInteger(input.sessionId);
-
-    if (sessionId == null) {
-      return false;
-    }
-
-    const session = await this.db
-      .selectFrom("xy_wap_embed_logical_session")
-      .select(["id"])
-      .where("id", "=", sessionId)
-      .where("uid", "=", scope.uid)
-      .where("conversation_id", "=", conversationId)
-      .executeTakeFirst();
-
-    return Boolean(session);
-  }
-
-  async createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
-  ): Promise<InsightCreateActionItemResponse> {
-    const conversationId = parsePositiveInteger(input.conversationId);
-    const sessionId = parsePositiveInteger(input.sessionId);
-
-    if (conversationId == null || sessionId == null) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_session_action_item")
-      .values({
-        action_type: "follow_up",
-        conversation_id: conversationId,
-        created_by_sub_user_id: input.createdBySubUserId == null
-          ? null
-          : parsePositiveInteger(input.createdBySubUserId) ?? null,
-        due_hint: input.dueHint ?? null,
-        priority: input.priority,
-        session_id: sessionId,
-        snapshot_id: null,
-        source_type: "manual",
-        status: "open",
-        title: input.title,
-        uid: scope.uid,
-        updated_by_sub_user_id: input.createdBySubUserId == null
-          ? null
-          : parsePositiveInteger(input.createdBySubUserId) ?? null,
-      })
-      .executeTakeFirstOrThrow() as InsertResult;
-
-    return {
-      actionItemId: String(parseInsertedMySqlId(inserted) ?? ""),
-    };
-  }
-
   async createRescanJob(
     scope: InsightsUidScope,
     input: {
@@ -3662,7 +3524,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
       const evidence = problemEvidenceBySnapshotId.get(snapshotId) ?? [];
 
-      // Avoid per-page action_item fan-out here; follow-up counts are loaded by the dedicated endpoint.
+      // Ticket counts are no longer hydrated into Insights session rows.
       row.actionOpenCount = 0;
       row.problemEvidenceMessageIds = sortNumericStrings(
         evidence.map((item) => String(item.evidence_message_id)),
@@ -3743,29 +3605,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       row.tags = snapshotId ? tagsBySnapshotId.get(snapshotId) ?? [] : [];
       row.entities = snapshotId ? entitiesBySnapshotId.get(snapshotId) ?? [] : [];
       row.intents = snapshotId ? intentsBySnapshotId.get(snapshotId) ?? [] : [];
-    }
-  }
-
-  private async hydrateActionItemCustomers(
-    scope: InsightsUidScope,
-    rows: Array<InsightActionItemRow | InsightDetailActionItemRow>,
-  ) {
-    if (rows.length === 0) {
-      return;
-    }
-
-    const contacts = await this.listContactProfiles(
-      scope.uid,
-      uniqueNonEmpty(rows.map((row) => row.thirdExternalUserId)),
-    );
-
-    for (const row of rows) {
-      const contact = row.thirdExternalUserId
-        ? contacts.get(row.thirdExternalUserId)
-        : undefined;
-
-      row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
-      row.customerName = contact?.name ?? row.customerName;
     }
   }
 
@@ -3913,17 +3752,19 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         agentSeatId: normalizeOptionalString(
           readOptionalDetailField<number | string>(row, "agent_seat_id"),
         ),
-        analysisStatus: row.current_snapshot_id == null || row.status == null
-          ? "analyzing"
-          : normalizeAnalysisStatus(row.status),
+        agentMessageCount: parseNumber(row.agent_message_count),
+        analysisStatus: deriveAnalysisStatus(row),
         conversationId: String(row.conversation_id),
         currentSnapshotId: normalizeOptionalId(row.current_snapshot_id),
         customerAvatarUrl: null,
+        customerMessageCount: parseNumber(row.customer_message_count),
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         generatedAt: parseNullableNumber(row.generated_at) ?? undefined,
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
+        logicalSessionStatus: normalizeLogicalSessionStatus(row.logical_session_status),
+        messageCount: parseNumber(row.message_count),
         phase: row.phase == null ? undefined : row.phase === "final" ? "final" : "live",
         problemDetected: parseNullableNumber(row.problem_detected) === 1,
         problemEvidenceMessageIds: [],
@@ -3955,6 +3796,43 @@ function readOptionalDetailField<T extends string | number>(
   }
 
   return (row as unknown as Record<typeof field, T | null>)[field] ?? null;
+}
+
+function deriveAnalysisStatus(row: CurrentSessionQueryRow): InsightAnalysisStatus | undefined {
+  if (row.logical_session_status === "closed_pending_analysis") {
+    return "analyzing";
+  }
+
+  if (parseNumber(row.final_analysis_failed) === 1) {
+    return "failed";
+  }
+
+  if (row.current_snapshot_id == null || row.status == null) {
+    if (row.logical_session_status === "open") {
+      return row.live_analysis_enabled == null || parseNumber(row.live_analysis_enabled) === 1
+        ? "analyzing"
+        : undefined;
+    }
+
+    return "skipped";
+  }
+
+  return normalizeAnalysisStatus(row.status);
+}
+
+function normalizeLogicalSessionStatus(
+  value: string,
+): InsightCurrentSessionRow["logicalSessionStatus"] {
+  if (
+    value === "analyzed"
+    || value === "canceled"
+    || value === "closed_pending_analysis"
+    || value === "open"
+  ) {
+    return value;
+  }
+
+  return "analyzed";
 }
 
 function normalizeOptionalString(value: number | string | null) {
@@ -4013,21 +3891,6 @@ function groupByActionId<T extends { action_id: number | string }>(rows: T[]) {
   return byActionId;
 }
 
-function mapFollowUpActionItemRows(rows: FollowUpActionItemQueryRow[]): InsightActionItemRow[] {
-  return rows.map((row) => ({
-    actionItemId: String(row.action_id),
-    conversationId: String(row.conversation_id),
-    createdAt: parseNumber(row.created_at ?? 0),
-    customerAvatarUrl: undefined,
-    customerName: "未知客户",
-    priority: normalizePriority(row.priority),
-    sessionId: String(row.session_id),
-    status: normalizeActionStatus(row.action_status),
-    thirdExternalUserId: row.third_external_userid ?? undefined,
-    title: row.title,
-  }));
-}
-
 function mapQualityResultRows(
   rows: QualityResultQueryRow[],
   ruleRows: QualityRuleQueryRow[],
@@ -4080,51 +3943,6 @@ function mapQualityResultRows(
   });
 }
 
-function mapActionItemRows(rows: ActionItemQueryRow[]): InsightDetailActionItemRow[] {
-  const byAction = new Map<string, InsightDetailActionItemRow>();
-
-  for (const row of rows) {
-    const actionItemId = String(row.action_id);
-    const current =
-      byAction.get(actionItemId) ??
-      {
-        actionItemId,
-        conversationId: String(row.conversation_id),
-        customerAvatarUrl: undefined,
-        customerName: "未知客户",
-        evidenceMessageIds: [],
-        priority: normalizePriority(row.priority),
-        resolutionStatus: normalizeResolutionStatus(row.resolution_status),
-        sessionId: String(row.session_id),
-        status: normalizeActionStatus(row.action_status),
-        thirdExternalUserId: row.third_external_userid ?? undefined,
-        title: row.title,
-      };
-
-    if (row.evidence_message_id != null) {
-      current.evidenceMessageIds.push(String(row.evidence_message_id));
-    }
-
-    byAction.set(actionItemId, current);
-  }
-
-  for (const current of byAction.values()) {
-    current.evidenceMessageIds = Array.from(new Set(current.evidenceMessageIds));
-  }
-
-  return Array.from(byAction.values());
-}
-
-function toActionItemBaseRow(row: Omit<ActionItemQueryRow,
-  "evidence_message_id" | "last_customer_message_at"
->): ActionItemQueryRow {
-  return {
-    ...row,
-    evidence_message_id: null,
-    last_customer_message_at: null,
-  };
-}
-
 function normalizeAnalysisStatus(value: string): InsightAnalysisStatus {
   if (
     value === "ready" ||
@@ -4161,7 +3979,7 @@ function normalizeSeverity(value: string | null): "high" | "low" | "medium" | nu
   return null;
 }
 
-function normalizePriority(value: string) {
+function normalizePriority(value: string): TicketPriority {
   if (value === "low" || value === "medium" || value === "high") {
     return value;
   }
@@ -4183,17 +4001,11 @@ function normalizePolarity(value: string): InsightDetailResponse["sentiment"][nu
   return "unknown";
 }
 
-function normalizeActionStatus(value: string): InsightActionStatus {
-  if (
-    value === "open" ||
-    value === "done" ||
-    value === "dismissed" ||
-    value === "expired"
-  ) {
+function normalizeTicketStatus(value: string): TicketStatus {
+  if (value === "in_progress" || value === "done" || value === "canceled") {
     return value;
   }
-
-  return "open";
+  return value === "dismissed" || value === "expired" ? "canceled" : "open";
 }
 
 function normalizeRescanAnalysisScope(value: string): InsightRescanAnalysisScope {
@@ -4675,27 +4487,6 @@ function applyAssetMessageDateFilters<Query>(
   return next;
 }
 
-function applyActionItemDateFilters<Query>(
-  query: Query,
-  filters: InsightsFollowUpFilters,
-): Query {
-  let next = query as Query & {
-    where(column: string, operator: string, value: unknown): Query;
-  };
-  const from = parseDateBoundary(filters.from);
-  const to = parseDateBoundary(filters.to);
-
-  if (from != null) {
-    next = next.where("action.create_time", ">=", from) as typeof next;
-  }
-
-  if (to != null) {
-    next = next.where("action.create_time", "<=", to) as typeof next;
-  }
-
-  return next;
-}
-
 function getBusinessRelatedTopicDefinition(
   dimension: InsightsBusinessRelatedSessionFilters["dimension"],
 ): BusinessRelatedTopicDefinition {
@@ -4782,6 +4573,11 @@ function buildAnalyzedCurrentSessionBaseQuery(db: Kysely<Database>) {
 function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
   return db
     .selectFrom("xy_wap_embed_logical_session as session")
+    .leftJoin("xy_wap_embed_insight_analysis_policy as analysis_policy", (join) =>
+      join
+        .onRef("analysis_policy.uid", "=", "session.uid")
+        .on("analysis_policy.enabled", "=", 1),
+    )
     .leftJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
       join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
     );
@@ -4879,7 +4675,7 @@ function applyQualityResultSessionStatusFilter<Query>(
 }
 
 function needsCurrentSessionHydrationJoins(filters: InsightsOverviewFilters) {
-  const keyword = Boolean(filters.keyword?.trim());
+  const keyword = Boolean(filters.keyword?.trim()) && filters.searchMode !== "basic";
   return (
     keyword
     || Boolean(filters.resolutionStatus)
@@ -4926,11 +4722,48 @@ function applyCurrentSessionFilters<Query>(
   }
 
   if (filters.analysisStatus) {
-    // "analyzing" only matches logical-session based queries that left-join snapshot.
-    // Analyzed-only queries intentionally cannot return sessions without a current snapshot.
-    next = filters.analysisStatus === "analyzing"
-      ? next.where(sql<boolean>`(session.current_snapshot_id is null or snapshot.id is null)`) as typeof next
-      : next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+    if (filters.analysisStatus === "analyzing") {
+      next = next.where(sql<boolean>`
+        session.status = 'closed_pending_analysis'
+        or (
+          session.status = 'open'
+          and session.current_snapshot_id is null
+          and coalesce(analysis_policy.live_analysis_enabled, 1) = 1
+        )
+      `) as typeof next;
+    } else if (filters.analysisStatus === "skipped") {
+      next = next.where(sql<boolean>`
+        session.status in ('analyzed', 'canceled')
+        and session.current_snapshot_id is null
+      `) as typeof next;
+    } else if (filters.analysisStatus === "failed") {
+      next = next.where(sql<boolean>`
+        (snapshot.phase = 'final' and snapshot.status = 'failed')
+        or (
+          session.status in ('analyzed', 'canceled')
+          and exists (
+            select 1
+            from xy_wap_embed_analysis_run as final_run
+            where final_run.session_id = session.id
+              and final_run.mode = 'final'
+              and final_run.status = 'failed'
+              and final_run.id = (
+                select max(latest_final_run.id)
+                from xy_wap_embed_analysis_run as latest_final_run
+                where latest_final_run.session_id = session.id
+                  and latest_final_run.mode = 'final'
+              )
+              and (
+                snapshot.create_time is null
+                or final_run.create_time > snapshot.create_time
+              )
+          )
+        )
+      `) as typeof next;
+    } else {
+      next = next.where("snapshot.phase", "=", "final") as typeof next;
+      next = next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+    }
   }
 
   if (filters.resolutionStatus) {
@@ -4950,13 +4783,39 @@ function applyCurrentSessionFilters<Query>(
 
   if (keyword) {
     const pattern = `%${escapeLikePattern(keyword)}%`;
-    next = next.where(sql<boolean>`
-      (
+    if (filters.searchMode === "basic") {
+      next = next.where(sql<boolean>`
+        cast(session.id as char) like ${pattern} escape '\\'
+        or cast(session.conversation_id as char) like ${pattern} escape '\\'
+        or session.third_external_userid like ${pattern} escape '\\'
+        or session.third_userid like ${pattern} escape '\\'
+        or exists (
+          select 1
+          from xy_wap_embed_contact as contact
+          where contact.uid = session.uid
+            and contact.third_external_userid = session.third_external_userid
+            and contact.biz_status = 1
+            and (
+              contact.name like ${pattern} escape '\\'
+              or contact.real_name like ${pattern} escape '\\'
+            )
+        )
+        or exists (
+          select 1
+          from xy_wap_embed_user_seat as seat
+          where seat.uid = session.uid
+            and seat.third_userid = session.third_userid
+            and seat.biz_status = 1
+            and seat.third_user_name like ${pattern} escape '\\'
+        )
+      `) as typeof next;
+    } else {
+      next = next.where(sql<boolean>`
         problem.problem_summary like ${pattern} escape '\\'
         or summary.session_title like ${pattern} escape '\\'
         or summary.summary_text like ${pattern} escape '\\'
-      )
-    `) as typeof next;
+      `) as typeof next;
+    }
   }
 
   if (filters.tagId) {

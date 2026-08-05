@@ -1,6 +1,6 @@
 import type {
   AccountRole,
-  InsightActionStatus,
+  InsightCapabilitiesResponse,
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
@@ -12,8 +12,6 @@ import type {
   InsightConfigDeletedResponse,
   InsightConfigStatus,
   InsightConfigStatusUpdateRequest,
-  InsightCreateActionItemRequest,
-  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -34,13 +32,13 @@ import type {
   InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
-  InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityAgentStatsResponse,
   InsightsQualityOverviewResponse,
   InsightsQualityResultsResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
+  TicketPriority,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
@@ -56,6 +54,9 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../shared/errors.js";
+import {
+  canViewInsightsWorkerObservability,
+} from "./insights-worker-observer-access.js";
 
 type InsightConfigLimitType = "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs";
 
@@ -85,9 +86,11 @@ export type InsightCurrentSessionRow = {
   agentAvatarUrl: string | null;
   agentName: string | null;
   agentSeatId: string | null;
-  analysisStatus: InsightAnalysisStatus;
+  analysisStatus?: InsightAnalysisStatus;
+  agentMessageCount: number;
   conversationId: string;
   currentSnapshotId?: string;
+  customerMessageCount: number;
   customerAvatarUrl: string | null;
   customerName: string;
   endedAt: number | null;
@@ -95,6 +98,8 @@ export type InsightCurrentSessionRow = {
   generatedAt?: number;
   intents?: Array<Pick<InsightDetailResponse["intents"][number], "intentId" | "intentLabel">>;
   lastMessageAt: number | null;
+  logicalSessionStatus: "analyzed" | "canceled" | "closed_pending_analysis" | "open";
+  messageCount: number;
   lastCustomerMessageAt: number | null;
   phase?: InsightDetailResponse["session"]["phase"];
   problemDetected: boolean;
@@ -113,13 +118,18 @@ export type InsightCurrentSessionRow = {
   unresolvedReason: string | null;
 };
 
-export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & {
-  thirdExternalUserId?: string;
+export type InsightDetailActionItemRow = Omit<
+  InsightDetailResponse["actionItems"][number],
+  "canEdit"
+> & {
+  assigneeSubUserId?: string;
+  evidenceMessageIds: string[];
+  priority: TicketPriority;
 };
 
-export type InsightDetailActionItemRow = InsightDetailResponse["actionItems"][number] & {
-  resolutionStatus?: InsightResolutionStatus;
-  thirdExternalUserId?: string;
+export type InsightDetailActor = {
+  role?: AccountRole | string;
+  subUserId?: string;
 };
 
 export type InsightDetailRow = {
@@ -137,15 +147,6 @@ export type InsightDetailRow = {
   qaFindings: InsightDetailResponse["qaFindings"];
   sentiment: InsightDetailResponse["sentiment"];
   tags: InsightDetailResponse["tags"];
-};
-
-export type InsightsFollowUpFilters = {
-  from?: string;
-  page?: number;
-  pageSize?: number;
-  priority?: InsightActionItemRow["priority"];
-  status?: InsightActionStatus | "processed";
-  to?: string;
 };
 
 export type InsightsQualityFilters = {
@@ -166,6 +167,7 @@ export type InsightsOverviewFilters = {
   pageSize?: number;
   problemScope?: InsightOverviewSessionsQuery["problemScope"];
   resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
+  searchMode?: "basic" | "insight";
   sessionIds?: string[];
   tagId?: string;
   to?: string;
@@ -219,7 +221,7 @@ export type InsightCurrentSessionPage = {
 
 export type InsightOverviewAggregateRow = Omit<
   InsightsOverviewResponse,
-  "comparison" | "sessions"
+  "comparison" | "comparisonAvailable" | "mode" | "sessions"
 >;
 
 export type InsightBusinessTopicAnalytics = Pick<
@@ -238,11 +240,6 @@ export type InsightQualityResultPage = {
   total: number;
 };
 
-export type InsightActionItemPage = {
-  items: InsightActionItemRow[];
-  total: number;
-};
-
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
@@ -256,10 +253,6 @@ export type InsightsRepositoryPort = {
   ): Promise<{ jobId: string; taskId: string }>;
   findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
   hasSession(scope: InsightsUidScope, sessionId: string): Promise<boolean>;
-  listActionItemsPage(
-    scope: InsightsUidScope,
-    filters?: InsightsFollowUpFilters,
-  ): Promise<InsightActionItemPage>;
   listCurrentSessions(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -290,6 +283,7 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightOverviewAggregateRow>;
+  getSessionizationCoverageStart(scope: InsightsUidScope): Promise<number | undefined>;
   getBusinessTopicAnalytics?(
     scope: InsightsUidScope,
     filters: InsightsBusinessTopicFilters,
@@ -313,19 +307,6 @@ export type InsightsRepositoryPort = {
     messageId: string,
     options: { after: number; before: number },
   ): Promise<InsightMessageContextResponse>;
-  updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
-  ): Promise<boolean>;
-  createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
-  ): Promise<InsightCreateActionItemResponse>;
-  validateActionItemTarget(
-    scope: InsightsUidScope,
-    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
-  ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
   getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse>;
   getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
@@ -439,12 +420,15 @@ const analysisStatuses: InsightAnalysisStatus[] = [
   "partial",
   "failed",
   "stale",
+  "skipped",
 ];
 
 const defaultMessageContextSize = 30;
 const defaultOverviewPageSize = 20;
 const maxOverviewPageSize = 100;
 const defaultOverviewRangeDays = 30;
+const maxRescanLookbackMs = 7 * 24 * 60 * 60 * 1000;
+const rescanLookbackBufferMs = 60 * 60 * 1000;
 const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimitRule> = {
   entityDictionary: { hardLimit: 20, softLimit: 15 },
   intentConfigs: { hardLimit: 15, softLimit: 12 },
@@ -454,7 +438,10 @@ const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimit
 const insightConfigTotalLimit = 50;
 
 export class InsightsService {
-  constructor(private readonly repository: InsightsRepositoryPort) {}
+  constructor(
+    private readonly repository: InsightsRepositoryPort,
+    private readonly workerObserverSubjects: ReadonlySet<string> = new Set(),
+  ) {}
 
   async getOverview(
     scope: InsightsUidScope,
@@ -466,14 +453,28 @@ export class InsightsService {
       to: boundedFilters.to,
     };
     const comparisonFilters = getPreviousOverviewDateRange(aggregateFilters);
-    const [aggregate, previousAggregate] = await Promise.all([
+    const [aggregate, previousAggregate, featureConfig, coverageStart] = await Promise.all([
       this.repository.getOverviewAggregate(scope, aggregateFilters),
       this.repository.getOverviewAggregate(scope, comparisonFilters),
+      this.repository.getFeatureConfig(scope),
+      this.repository.getSessionizationCoverageStart(scope),
     ]);
+    const previousFrom = parseOverviewBoundary(comparisonFilters.from);
+    const comparisonAvailable = coverageStart == null
+      || (previousFrom != null && previousFrom >= coverageStart);
+    const mode = featureConfig.insightEnabled ? "insight" : "basic";
 
     return {
       ...aggregate,
-      comparison: buildOverviewComparison(aggregate.totals, previousAggregate.totals),
+      comparison: buildOverviewComparison(
+        aggregate.totals,
+        previousAggregate.totals,
+        comparisonAvailable,
+      ),
+      comparisonAvailable,
+      mode,
+      totals: aggregate.totals,
+      trend: aggregate.trend,
     };
   }
 
@@ -489,14 +490,38 @@ export class InsightsService {
       page: normalizedPage,
       pageSize: normalizedPageSize,
     };
-    const sessions = await this.repository.listCurrentSessions(scope, normalizedFilters);
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+    const mode = featureConfig.insightEnabled ? "insight" : "basic";
+    const sessions = await this.repository.listCurrentSessions(scope, {
+      ...normalizedFilters,
+      searchMode: mode,
+    });
 
     return {
       items: buildOverviewSessions(sessions.items),
+      mode,
       page: normalizedPage,
       pageSize: normalizedPageSize,
       total: sessions.total,
       totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
+    };
+  }
+
+  async getCapabilities(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    subUserId: string,
+  ): Promise<InsightCapabilitiesResponse> {
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+
+    return {
+      canManageInsights: role === "admin" || role === "owner",
+      canViewWorkerObservability: canViewInsightsWorkerObservability(
+        this.workerObserverSubjects,
+        { subUserId, uid: scope.uid },
+      ),
+      insightAvailable: isInsightAvailable(scope),
+      mode: featureConfig.insightEnabled ? "insight" : "basic",
     };
   }
 
@@ -602,14 +627,18 @@ export class InsightsService {
       );
     }
 
-    const sessions = await this.repository.listBusinessRelatedSessions(scope, {
-      ...boundedFilters,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    });
+    const [sessions, featureConfig] = await Promise.all([
+      this.repository.listBusinessRelatedSessions(scope, {
+        ...boundedFilters,
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+      }),
+      this.repository.getFeatureConfig(scope),
+    ]);
 
     return {
       items: buildOverviewSessions(sessions.items),
+      mode: featureConfig.insightEnabled ? "insight" : "basic",
       page: normalizedPage,
       pageSize: normalizedPageSize,
       total: sessions.total,
@@ -617,29 +646,11 @@ export class InsightsService {
     };
   }
 
-  async getFollowUps(
+  async getDetail(
     scope: InsightsUidScope,
-    filters: InsightsFollowUpFilters = {},
-  ): Promise<InsightsFollowUpsResponse> {
-    const normalizedPage = normalizeOverviewPage(filters.page);
-    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const pageResult = await this.repository.listActionItemsPage(scope, {
-      ...filters,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    });
-
-    return {
-      items: pageResult.items
-        .map(stripActionItemInternalFields),
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-      total: pageResult.total,
-      totalPages: Math.max(1, Math.ceil(pageResult.total / normalizedPageSize)),
-    };
-  }
-
-  async getDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailResponse> {
+    sessionId: string,
+    actor: InsightDetailActor = {},
+  ): Promise<InsightDetailResponse> {
     const detail = await this.repository.findDetail(scope, sessionId);
 
     if (!detail) {
@@ -647,7 +658,9 @@ export class InsightsService {
     }
 
     return {
-      actionItems: detail.actionItems.map(stripDetailActionItemInternalFields),
+      actionItems: detail.actionItems.map((item) =>
+        mapDetailTicketProjection(item, actor)
+      ),
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
@@ -1197,80 +1210,43 @@ export class InsightsService {
     return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteEntityDictionaryItem(scope, id)) };
   }
 
-  async updateActionStatus(
-    scope: InsightsUidScope,
-    actionItemId: string,
-    status: InsightActionStatus,
-  ) {
-    if (status !== "done" && status !== "dismissed" && status !== "open") {
-      throw new BadRequestError("INVALID_ACTION_STATUS", "不支持的处理状态");
-    }
-
-    const updated = await this.repository.updateActionStatus(scope, actionItemId, status);
-
-    if (!updated) {
-      throw new BusinessError("INSIGHT_ACTION_ITEM_NOT_FOUND", "待处理事项不存在");
-    }
-
-    return {
-      actionItemId,
-      status,
-    };
-  }
-
-  async createActionItem(
-    scope: InsightsUidScope,
-    input: InsightCreateActionItemRequest,
-    createdBySubUserId?: string,
-  ): Promise<InsightCreateActionItemResponse> {
-    const title = input.title.trim();
-
-    if (!title) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TITLE", "待办标题不能为空");
-    }
-
-    const sessionId = input.sessionId?.trim();
-
-    if (!sessionId) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    const targetValid = await this.repository.validateActionItemTarget(scope, {
-      conversationId: input.conversationId,
-      sessionId,
-    });
-
-    if (!targetValid) {
-      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
-    }
-
-    return await this.repository.createActionItem(scope, {
-      ...input,
-      createdBySubUserId,
-      sessionId,
-      title,
-    });
-  }
-
   async createRescanJob(
     scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
     payload: InsightsRescanRequest,
     createdBy?: string,
   ): Promise<InsightsRescanResponse> {
+    assertInsightSettingsAdmin(role);
+
     const from = new Date(payload.from);
 
     if (Number.isNaN(from.getTime())) {
       throw new BadRequestError("INVALID_RESCAN_FROM", "重刷开始时间无效");
     }
 
-    const to = payload.to ? new Date(payload.to) : new Date();
+    const now = Date.now();
+    const to = payload.to ? new Date(payload.to) : new Date(now);
 
     if (Number.isNaN(to.getTime())) {
       throw new BadRequestError("INVALID_RESCAN_TO", "重刷结束时间无效");
     }
 
+    if (from.getTime() < now - maxRescanLookbackMs - rescanLookbackBufferMs) {
+      throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷开始时间仅支持最近 7 天");
+    }
+
+    if (from.getTime() > now || to.getTime() > now) {
+      throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷时间不能晚于当前时间");
+    }
+
     if (to.getTime() < from.getTime()) {
       throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷结束时间不能早于开始时间");
+    }
+
+    const featureConfig = await this.repository.getFeatureConfig(scope);
+
+    if (!featureConfig.insightEnabled) {
+      throw new BadRequestError("INSIGHT_DISABLED", "请先开启会话洞察再创建重刷任务");
     }
 
     if (await this.repository.hasActiveRescanTask(scope)) {
@@ -1299,8 +1275,11 @@ export class InsightsService {
 
   async listRescanTasks(
     scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
     options?: { page?: number; pageSize?: number },
   ): Promise<InsightRescanTaskListResponse> {
+    assertInsightSettingsAdmin(role);
+
     const page = Math.max(1, options?.page ?? 1);
     const pageSize = Math.min(50, Math.max(1, options?.pageSize ?? 10));
     const offset = (page - 1) * pageSize;
@@ -1471,19 +1450,24 @@ function raiseConfigNotFound(): never {
 
 function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
   return rows.map((row) => ({
+      agentMessageCount: row.agentMessageCount,
       agentAvatarUrl: row.agentAvatarUrl ?? undefined,
       agentName: row.agentName ?? undefined,
+      analysisPhase: row.phase,
       analysisStatus: row.analysisStatus,
       conversationId: row.conversationId,
+      customerMessageCount: row.customerMessageCount,
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
       lastMessageAt: row.lastMessageAt ?? undefined,
+      messageCount: row.messageCount,
       problemSummary: row.problemSummary || undefined,
       resolutionStatus: row.resolutionStatus,
       sessionId: row.sessionId,
+      sessionState: row.logicalSessionStatus === "open" ? "open" as const : "ended" as const,
       startedAt: row.startedAt,
-      summarySessionTitle: row.summarySessionTitle,
+      summarySessionTitle: row.summarySessionTitle || undefined,
     }));
 }
 
@@ -1497,16 +1481,22 @@ function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityA
   };
 }
 
-function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
-  const { thirdExternalUserId: _thirdExternalUserId, ...item } = row;
+function mapDetailTicketProjection(
+  row: InsightDetailActionItemRow,
+  actor: InsightDetailActor,
+): InsightDetailResponse["actionItems"][number] {
+  const canEdit = actor.role === "owner" || actor.role === "admin" || (
+    actor.role != null
+    && actor.subUserId != null
+    && row.assigneeSubUserId === actor.subUserId
+  );
 
-  return item;
-}
-
-function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): InsightDetailResponse["actionItems"][number] {
-  const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
-
-  return item;
+  return {
+    canEdit,
+    status: row.status,
+    ticketId: row.ticketId,
+    title: row.title,
+  };
 }
 
 function formatDateKey(value: number) {
@@ -1604,23 +1594,30 @@ function formatOverviewBoundary(value: number, boundary: "end" | "start") {
 function buildOverviewComparison(
   current: InsightsOverviewResponse["totals"],
   previous: InsightsOverviewResponse["totals"],
+  comparisonAvailable = true,
 ): InsightsOverviewResponse["comparison"] {
   return {
-    agentMessages: buildOverviewComparisonValue(current.agentMessages, previous.agentMessages),
-    consultingCustomers: buildOverviewComparisonValue(current.consultingCustomers, previous.consultingCustomers),
-    customerMessages: buildOverviewComparisonValue(current.customerMessages, previous.customerMessages),
-    logicalSessions: buildOverviewComparisonValue(current.logicalSessions, previous.logicalSessions),
-    messages: buildOverviewComparisonValue(current.messages, previous.messages),
+    agentMessages: buildOverviewComparisonValue(current.agentMessages, previous.agentMessages, comparisonAvailable),
+    consultingCustomers: buildOverviewComparisonValue(current.consultingCustomers, previous.consultingCustomers, comparisonAvailable),
+    customerMessages: buildOverviewComparisonValue(current.customerMessages, previous.customerMessages, comparisonAvailable),
+    logicalSessions: buildOverviewComparisonValue(current.logicalSessions, previous.logicalSessions, comparisonAvailable),
+    messages: buildOverviewComparisonValue(current.messages, previous.messages, comparisonAvailable),
   };
 }
 
-function buildOverviewComparisonValue(current: number, previous: number) {
+function buildOverviewComparisonValue(
+  current: number,
+  previous: number,
+  comparisonAvailable: boolean,
+) {
   const delta = current - previous;
 
   return {
     current,
     delta,
-    deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0,
+    ...(comparisonAvailable
+      ? { deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0 }
+      : {}),
     previous,
   };
 }

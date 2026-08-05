@@ -118,6 +118,7 @@ import {
 } from "./api/insights-service";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { InsightTablePagination } from "./insight-table-pagination";
+import { useInsightsCapabilities } from "./insights-capabilities-context";
 
 type MutableCollection = "entity" | "intent" | "label" | "qa";
 type ConfigDialogErrors = Partial<Record<string, string>>;
@@ -197,6 +198,7 @@ const insightPolicyOptionLimits = {
 } as const;
 
 const intentWeightOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const maxRescanLookbackMs = 7 * 24 * 60 * 60 * 1000;
 
 const rescanScopeOptions: Array<{
   description: string;
@@ -221,6 +223,7 @@ const rescanScopeOptions: Array<{
 ];
 
 export function InsightsSettingsPage() {
+  const { capabilities, refresh: refreshCapabilities } = useInsightsCapabilities();
   const role = useAuthStore((state) => state.subUser?.role);
   const [dialogState, setDialogState] = useState<ConfigDialogState | null>(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState<DeleteConfirmState | null>(null);
@@ -382,8 +385,10 @@ export function InsightsSettingsPage() {
         todoEnabled: next.todoEnabled,
       });
 
-      await refreshSummary();
-      toast.success(featureConfig.insightEnabled ? "会话洞察已开启" : "会话洞察已暂停");
+      await Promise.all([refreshSummary(), refreshCapabilities()]);
+      toast.success(featureConfig.insightEnabled
+        ? "会话洞察已开启"
+        : "会话洞察已关闭，基础会话数据将继续更新");
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
@@ -637,7 +642,10 @@ export function InsightsSettingsPage() {
 
   if (!canAccessSettings) {
     return (
-      <InsightsLayout title="洞察配置">
+      <InsightsLayout
+        canViewWorkerObservability={capabilities.canViewWorkerObservability}
+        title="洞察配置"
+      >
         <div className="rounded-[8px] border bg-background p-8 text-center">
           <h2 className="text-lg font-semibold">仅管理员可查看洞察配置</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -656,7 +664,10 @@ export function InsightsSettingsPage() {
   const rescanData = tabData?.tab === "rescan" ? tabData : undefined;
 
   return (
-    <InsightsLayout title="洞察配置">
+    <InsightsLayout
+      canViewWorkerObservability={capabilities.canViewWorkerObservability}
+      title="洞察配置"
+    >
       <div className="space-y-5">
         <InsightsPageHeader
           actions={(
@@ -688,6 +699,7 @@ export function InsightsSettingsPage() {
               <InsightPolicyPanel
                 analysisPolicy={policyData.analysisPolicy}
                 disabled={tabLoading || pendingKey === "insight-policy"}
+                insightEnabled={capabilities.mode === "insight"}
                 onSubmit={(payload) => void handleInsightPolicySubmit(payload)}
                 sessionization={policyData.sessionization}
               />
@@ -785,7 +797,7 @@ export function InsightsSettingsPage() {
           <TabsContent value="rescan">
             {rescanData ? (
               <RescanPanel
-                disabled={pendingKey === "rescan" || tabLoading}
+                disabled={pendingKey === "rescan" || tabLoading || summary?.insightEnabled !== true}
                 onCreateClick={() => setRescanDialogOpen(true)}
                 onPageChange={(page) => void handleRescanPageChange(page)}
                 page={rescanData.page}
@@ -820,8 +832,12 @@ export function InsightsSettingsPage() {
         state={deleteConfirmState}
       />
       <RescanCreateDialog
-        disabled={pendingKey === "rescan"}
+        disabled={pendingKey === "rescan" || summary?.insightEnabled !== true}
         from={rescanFrom}
+        max={toDateTimeLocalValue(Date.now())}
+        min={toDateTimeLocalValue(
+          Math.ceil((Date.now() - maxRescanLookbackMs) / 60_000) * 60_000,
+        )}
         onChange={setRescanFrom}
         onCreate={() => void createRescan()}
         onOpenChange={setRescanDialogOpen}
@@ -973,7 +989,7 @@ function InsightRunConfigDialog({
           <div className="overflow-hidden rounded-[8px] border bg-background">
             <RunSettingRow
               checked={form.insightEnabled}
-              description={insightAvailable ? "开启后，系统会自动同步新会话，完成切片并生成洞察" : "当前账号暂未开通会话洞察"}
+              description={insightAvailable ? "开启后，系统会基于服务会话生成摘要、诊断、质检等 AI 洞察，关闭后基础会话数据仍会持续更新" : "当前账号暂未开通会话洞察"}
               disabled={disabled || !insightAvailable}
               disabledTooltip={!insightAvailable ? "当前账号暂未开通会话洞察" : undefined}
               icon={AiIdeaIcon}
@@ -987,10 +1003,10 @@ function InsightRunConfigDialog({
             <div className="overflow-hidden rounded-[8px] border bg-background">
               <RunSettingRow
                 checked={form.todoEnabled}
-                description="识别到需要人工跟进的事项后，自动生成待办"
+                description="识别到需要人工跟进的事项后，自动创建工单"
                 disabled={disabled}
                 icon={AiContentGenerator01Icon}
-                label="智能创建待办"
+                label="智能创建工单"
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, todoEnabled: checked }))}
               />
               <RunSettingRow
@@ -1098,7 +1114,7 @@ function SettingsSummary({ summary }: { summary: InsightSettingsSummaryResponse 
   const statusText = (enabled: boolean) => enabled ? "已开启" : "未开启";
   const stats = [
     { enabled: summary.insightEnabled, icon: AiIdeaIcon, label: "总开关" },
-    { enabled: summary.todoEnabled, icon: AiContentGenerator01Icon, label: "智能创建待办" },
+    { enabled: summary.todoEnabled, icon: AiContentGenerator01Icon, label: "智能创建工单" },
     { count: `${summary.enabledIntentCount} / ${summary.intentLimit}`, enabled: summary.intentEnabled, icon: UserAiIcon, label: "智能意图识别" },
     { count: `${summary.enabledQaCount} / ${summary.qaLimit}`, enabled: summary.qaEnabled, icon: AiSecurity02Icon, label: "智能质检" },
     { count: `${summary.enabledLabelCount} / ${summary.labelLimit}`, enabled: summary.labelEnabled, icon: AiGenerativeIcon, label: "智能标签" },
@@ -1152,11 +1168,13 @@ function LimitReachedDialog({
 function InsightPolicyPanel({
   analysisPolicy,
   disabled,
+  insightEnabled,
   onSubmit,
   sessionization,
 }: {
   analysisPolicy: InsightAnalysisPolicy;
   disabled: boolean;
+  insightEnabled: boolean;
   onSubmit: (value: {
     analysisPolicy: InsightAnalysisPolicy;
     sessionization: InsightSessionizationSettings;
@@ -1227,7 +1245,10 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           },
         })}
     >
-      <SettingsSection title="会话切分规则">
+      <SettingsSection
+        description="控制一轮服务何时结束，并用于基础会话统计；关闭会话洞察后仍然生效"
+        title="服务会话规则"
+      >
         <PresetSelectRow
           description="空闲多久后结束本轮服务；越短越快出结果，越长上下文越完整"
           label="会话空闲多久后视为结束"
@@ -1244,6 +1265,14 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           suffix="小时"
           value={sessionizationForm.hardMaxDurationHours}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        description={insightEnabled
+          ? "以下设置控制自动 AI 分析的时机、频率和准入条件"
+          : "会话洞察当前未开启，以下设置可编辑但暂不生效，也不会触发自动模型调用"}
+        title="AI 洞察规则"
+      >
         <PresetSelectRow
           description="会话结束后多久生成最终结果；等待越久越能覆盖补充消息"
           label="会话结束后多久生成最终结果"
@@ -1252,9 +1281,6 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           suffix="分钟"
           value={sessionizationForm.analysisDelayMinutes}
         />
-      </SettingsSection>
-
-      <SettingsSection title="未完结会话">
         <BooleanSettingRow
           checked={analysisForm.liveAnalysisEnabled}
           description="会话未结束时，系统会检查是否出现值得提前关注的客户诉求、风险或处理进展"
@@ -1269,9 +1295,6 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
             value={detectAnalysisFrequencyPreset(analysisForm)}
           />
         ) : null}
-      </SettingsSection>
-
-      <SettingsSection title="准入规则">
         <NumberSettingRow
           description="会话中的消息数少于该数量时，AI 会跳过分析，避免得出无效结论"
           label="有效会话门槛"
@@ -1282,7 +1305,7 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           value={analysisForm.minAnalysisMessages}
         />
         <SliderSettingRow
-          description="低于该阈值时，问题解决判断会标记为未知，且不会自动生成待办"
+          description="低于该阈值时，问题解决判断会标记为未知，且不会自动创建工单"
           label="AI 置信度阈值"
           onChange={(lowConfidenceThreshold) => setAnalysisForm((current) => ({ ...current, lowConfidenceThreshold }))}
           value={analysisForm.lowConfidenceThreshold}
@@ -1356,14 +1379,19 @@ function SessionizationTimeline({
 
 function SettingsSection({
   children,
+  description,
   title,
 }: {
   children: ReactNode;
+  description?: string;
   title: string;
 }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        {description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}
+      </div>
       <div className="overflow-hidden rounded-[8px] border bg-background">{children}</div>
     </section>
   );
@@ -2200,6 +2228,8 @@ function RescanPanel({
 function RescanCreateDialog({
   disabled,
   from,
+  max,
+  min,
   onChange,
   onCreate,
   onOpenChange,
@@ -2209,6 +2239,8 @@ function RescanCreateDialog({
 }: {
   disabled?: boolean;
   from: string;
+  max: string;
+  min: string;
   onChange: (value: string) => void;
   onCreate: () => void;
   onOpenChange: (open: boolean) => void;
@@ -2256,6 +2288,8 @@ function RescanCreateDialog({
             <Input
               className="h-10"
               id="insight-rescan-from"
+              max={max}
+              min={min}
               onChange={(event) => onChange(event.target.value)}
               type="datetime-local"
               value={from}

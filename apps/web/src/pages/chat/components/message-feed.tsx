@@ -10,6 +10,7 @@ import {
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
+  Refresh03Icon,
   UserIdVerificationIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -66,13 +67,15 @@ import {
 import {
   SmartReplyInlineProcessingHint,
   SmartReplyMessageAnchor,
-  type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import {
+  INITIALIZING_MESSAGE_DISPLAY_TEXT,
   MESSAGE_REVOKE_WINDOW_MS,
 } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
+  formatMessageDividerDate,
   isSameCalendarDay,
   formatTextMessageSentAt,
   parseWorkbenchDate,
@@ -90,6 +93,7 @@ type ChatMessageListProps = {
   canUseMessageActions?: boolean;
   canUseMessageForward?: boolean;
   conversationId: string;
+  customerAvatarFallbackUrl?: string;
   messages: Message[];
   multiSelectMode?: boolean;
   selectedMessageKeys?: ReadonlySet<string>;
@@ -102,6 +106,7 @@ type ChatMessageListProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
@@ -133,6 +138,7 @@ type FeedItem =
     }
   | {
       message: Message;
+      messageIndex: number;
       type: "message";
     };
 
@@ -141,6 +147,7 @@ export function ChatMessageList({
   canUseMessageActions = true,
   canUseMessageForward = false,
   conversationId,
+  customerAvatarFallbackUrl,
   messages,
   multiSelectMode = false,
   selectedMessageKeys,
@@ -153,6 +160,7 @@ export function ChatMessageList({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
@@ -195,21 +203,6 @@ export function ChatMessageList({
     appendStartIndex >= 0 &&
     appendStartIndex < renderableMessages.length;
   const activeAppendAnimation = activeAppendAnimationRef.current;
-  const shouldAnimateMessageByKey = new Map<string, boolean>();
-
-  renderableMessages.forEach((message, index) => {
-    shouldAnimateMessageByKey.set(
-      getMessageFeedItemKey(message),
-      Boolean(message.isNew) &&
-        (
-          (hasAppendedMessages && index >= appendStartIndex) ||
-          (
-            activeAppendAnimation?.conversationId === conversationId &&
-            index >= activeAppendAnimation.startIndex
-          )
-        ),
-    );
-  });
 
   useLayoutEffect(() => {
     if (hasAppendedMessages) {
@@ -283,6 +276,7 @@ export function ChatMessageList({
               >
                 <MessageRow
                   conversationId={conversationId}
+                  customerAvatarFallbackUrl={customerAvatarFallbackUrl}
                   message={item.message}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canUseMessageActions}
@@ -292,7 +286,14 @@ export function ChatMessageList({
                   }
                   multiSelectMode={multiSelectMode}
                   shouldAnimate={
-                    shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
+                    Boolean(item.message.isNew) &&
+                    (
+                      (hasAppendedMessages && item.messageIndex >= appendStartIndex) ||
+                      (
+                        activeAppendAnimation?.conversationId === conversationId &&
+                        item.messageIndex >= activeAppendAnimation.startIndex
+                      )
+                    )
                   }
                   showTimestamp={showTimestamps}
                   onDownloadMessageFile={onDownloadMessageFile}
@@ -302,6 +303,7 @@ export function ChatMessageList({
                   onMentionMessage={onMentionMessage}
                   onOpenQuotedMessage={onOpenQuotedMessage}
                   onQuoteMessage={onQuoteMessage}
+                  onRefreshInitializingMessage={onRefreshInitializingMessage}
                   onRevokeMessage={onRevokeMessage}
                   onRetryMessage={onRetryMessage}
                   onSendSmartReply={onSendSmartReply}
@@ -386,6 +388,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 
 export function MessageRow({
   conversationId,
+  customerAvatarFallbackUrl,
   message,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
@@ -401,6 +404,7 @@ export function MessageRow({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
@@ -417,6 +421,7 @@ export function MessageRow({
   smartReply,
 }: {
   conversationId?: string;
+  customerAvatarFallbackUrl?: string;
   message: Message;
   canUseMessageActions?: boolean;
   canCollectMaterialActions?: boolean;
@@ -435,6 +440,7 @@ export function MessageRow({
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
@@ -483,10 +489,23 @@ export function MessageRow({
     };
   }, []);
 
+  if (message.role === "system" && message.status === "initializing") {
+    return (
+      <div className="flex justify-center">
+        <InitializingMessageBubble
+          isAgent={false}
+          message={message}
+          onRefresh={onRefreshInitializingMessage}
+        />
+      </div>
+    );
+  }
+
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
   }
 
+  const isInitializing = message.status === "initializing";
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
   const formattedSentAt = showTimestamp ? "" : formatTextMessageSentAt(message.sentAt);
@@ -495,12 +514,14 @@ export function MessageRow({
     !isAgent && showSenderName && Boolean(formattedSentAt);
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
-  const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
+  const showSmartReplyCard =
+    !isInitializing && shouldShowSmartReplyCard(smartReply);
   const smartReplyInlineState =
     !showSmartReplyCard && smartReply
       ? getSmartReplyInlineState(smartReply)
       : undefined;
   const showSmartReplyInlineProcessing =
+    !isInitializing &&
     !showSmartReplyCard &&
     (isSmartReplyAutoPending || isSmartReplyPending || smartReplyInlineState != null);
   const showSmartReplyTriggerIcon =
@@ -512,23 +533,33 @@ export function MessageRow({
   );
   const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
   const canSelectForwardMessage = canUseMessageForward && canForwardMessage(message);
-  const messageActions = multiSelectMode ? null : (
-    <MessageActionAvatar
-      message={message}
-      canCollectMaterialActions={canCollectMaterialActions}
-      canUseMessageActions={canUseMessageActions}
-      canUseMessageForward={canUseMessageForward}
-      triggerRef={dismissTargetRef}
-      onCollectMaterial={onCollectMaterial}
-      onEnterMultiSelectMode={onEnterMultiSelectMode}
-      onForwardMessage={onForwardMessage}
-      onMentionMessage={onMentionMessage}
-      onQuoteMessage={onQuoteMessage}
-      onRevokeMessage={onRevokeMessage}
-      onTriggerSmartReply={onTriggerSmartReply}
-      showSmartReplyRecommendation={showSmartReplyTriggerIcon}
-    />
-  );
+  const messageActions = multiSelectMode
+    ? null
+    : isInitializing
+      ? (
+          <MessageAvatar
+            customerAvatarFallbackUrl={customerAvatarFallbackUrl}
+            message={message}
+          />
+        )
+      : (
+          <MessageActionAvatar
+            customerAvatarFallbackUrl={customerAvatarFallbackUrl}
+            message={message}
+            canCollectMaterialActions={canCollectMaterialActions}
+            canUseMessageActions={canUseMessageActions}
+            canUseMessageForward={canUseMessageForward}
+            triggerRef={dismissTargetRef}
+            onCollectMaterial={onCollectMaterial}
+            onEnterMultiSelectMode={onEnterMultiSelectMode}
+            onForwardMessage={onForwardMessage}
+            onMentionMessage={onMentionMessage}
+            onQuoteMessage={onQuoteMessage}
+            onRevokeMessage={onRevokeMessage}
+            onTriggerSmartReply={onTriggerSmartReply}
+            showSmartReplyRecommendation={showSmartReplyTriggerIcon}
+          />
+        );
   const checkboxControl = (
     <Checkbox
       aria-label="选择消息"
@@ -658,7 +689,13 @@ export function MessageRow({
                     ) : null}
                   </div>
                 ) : null}
-                {message.content.type === "quote" ? (
+                {isInitializing ? (
+                  <InitializingMessageBubble
+                    isAgent={isAgent}
+                    message={message}
+                    onRefresh={onRefreshInitializingMessage}
+                  />
+                ) : message.content.type === "quote" ? (
                   <QuoteMessageContentWithDelivery
                     canRetryMessage={canUseMessageActions}
                     content={message.content}
@@ -721,7 +758,7 @@ export function MessageRow({
                 ) : null}
               </div>
             </div>
-            {isAgent && !inlineDeliveryState && !multiSelectMode ? (
+            {isAgent && !isInitializing && !inlineDeliveryState && !multiSelectMode ? (
               <MessageDeliveryState message={message}/>
             ) : null}
           </div>
@@ -796,6 +833,7 @@ function QuoteMessageContentWithDelivery({
 }
 
 function MessageActionAvatar({
+  customerAvatarFallbackUrl,
   message,
   canCollectMaterialActions,
   canUseMessageActions,
@@ -810,6 +848,7 @@ function MessageActionAvatar({
   onTriggerSmartReply,
   showSmartReplyRecommendation,
 }: {
+  customerAvatarFallbackUrl?: string;
   message: ChatMessage;
   canCollectMaterialActions: boolean;
   canUseMessageActions: boolean;
@@ -859,7 +898,10 @@ function MessageActionAvatar({
   return (
     <>
       <div className="relative shrink-0">
-        <MessageAvatar message={message} />
+        <MessageAvatar
+          customerAvatarFallbackUrl={customerAvatarFallbackUrl}
+          message={message}
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -1235,6 +1277,81 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
   );
 }
 
+function InitializingMessageBubble({
+  isAgent,
+  message,
+  onRefresh,
+}: {
+  isAgent: boolean;
+  message: Message;
+  onRefresh?: (message: Message) => void | Promise<void>;
+}) {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const canRefresh =
+    Boolean(onRefresh) &&
+    isValidMessageSeq(message.seq) &&
+    !isRefreshing;
+  const isRightAligned =
+    isAgent ||
+    ("isOwnMessage" in message && Boolean(message.isOwnMessage));
+
+  const handleRefresh = async () => {
+    if (!canRefresh) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh?.(message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex w-fit max-w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-[14px] leading-6 text-muted-foreground",
+        isRightAligned ? "bg-primary/15" : "bg-secondary",
+      )}
+      data-testid="initializing-message-bubble"
+      role="status"
+    >
+      <span>{INITIALIZING_MESSAGE_DISPLAY_TEXT}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-busy={isRefreshing}
+            aria-label={isRefreshing ? "正在刷新消息" : "刷新消息"}
+            className="size-6 shrink-0"
+            disabled={!canRefresh}
+            onClick={() => {
+              void handleRefresh();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            {isRefreshing ? (
+              <Spinner className="text-current" size={13} strokeWidth={2.2} />
+            ) : (
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Refresh03Icon}
+                size={14}
+                strokeWidth={2}
+              />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          刷新消息
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 function isOptimisticAcceptedMessage(message: ChatMessage) {
   return (
     message.status === "accepted" &&
@@ -1262,12 +1379,30 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
 
 export { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 
-export function MessageAvatar({ message }: { message: ChatMessage }) {
+export function resolveMessageAvatarUrl(
+  message: ChatMessage,
+  customerAvatarFallbackUrl?: string,
+) {
+  return (
+    message.sender.avatarUrl ||
+    (message.role === "customer" ? customerAvatarFallbackUrl : undefined)
+  );
+}
+
+export function MessageAvatar({
+  customerAvatarFallbackUrl,
+  message,
+}: {
+  customerAvatarFallbackUrl?: string;
+  message: ChatMessage;
+}) {
+  const avatarUrl = resolveMessageAvatarUrl(message, customerAvatarFallbackUrl);
+
   return (
     <div className="relative">
       <Avatar className="size-8 rounded-[6px] bg-surface">
-        {message.sender.avatarUrl ? (
-          <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
+        {avatarUrl ? (
+          <AvatarImage alt={message.sender.name} src={avatarUrl} />
         ) : null}
         <AvatarFallback className="rounded-[6px] text-sm">
           <HugeiconsIcon
@@ -1286,119 +1421,44 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
 
 function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedItem[] {
   const items: FeedItem[] = [];
-  let previousTimestampedMessage: Message | undefined;
+  let previousTimestampedDate: Date | undefined;
 
-  messages.forEach((message) => {
-    const hasValidTimestamp = parseWorkbenchDate(message.sentAt) !== null;
+  messages.forEach((message, messageIndex) => {
+    const currentDate = parseWorkbenchDate(message.sentAt);
 
     if (
       showTimeDividers &&
-      hasValidTimestamp &&
-      shouldInsertDivider(previousTimestampedMessage, message)
+      currentDate &&
+      shouldInsertDivider(previousTimestampedDate, currentDate)
     ) {
       items.push({
         id: `divider-${message.uiMessageKey}`,
-        label: formatMessageDividerLabel(message.sentAt),
+        label: formatMessageDividerDate(currentDate),
         type: "divider",
       });
     }
 
     items.push({
       message,
+      messageIndex,
       type: "message",
     });
 
-    if (hasValidTimestamp) {
-      previousTimestampedMessage = message;
+    if (currentDate) {
+      previousTimestampedDate = currentDate;
     }
   });
 
   return items;
 }
 
-function shouldInsertDivider(previous: Message | undefined, current: Message) {
-  if (!previous) {
+function shouldInsertDivider(previousDate: Date | undefined, currentDate: Date) {
+  if (!previousDate) {
     return true;
-  }
-
-  const previousDate = parseWorkbenchDate(previous.sentAt);
-  const currentDate = parseWorkbenchDate(current.sentAt);
-
-  if (!previousDate || !currentDate) {
-    return previous.sentAt !== current.sentAt;
   }
 
   return (
     !isSameCalendarDay(previousDate, currentDate) ||
     currentDate.getTime() - previousDate.getTime() >= TIMESTAMP_BREAK_MS
   );
-}
-
-export function formatMessageDividerLabel(value: string) {
-  const date = parseWorkbenchDate(value);
-
-  if (!date) {
-    return value;
-  }
-
-  const now = new Date();
-  const time = formatTimePart(date);
-
-  if (isSameCalendarDay(date, now)) {
-    return time;
-  }
-
-  if (isSameCalendarDay(date, addDays(now, -1))) {
-    return `昨天 ${time}`;
-  }
-
-  if (isSameWeekMondayToSunday(date, now)) {
-    return `${formatWeekdayPart(date)} ${time}`;
-  }
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-  }
-
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-}
-
-function isSameWeekMondayToSunday(a: Date, b: Date) {
-  const weekStart = getMondayStartOfDay(b);
-  const nextWeekStart = addDays(weekStart, 7);
-
-  return a.getTime() >= weekStart.getTime() && a.getTime() < nextWeekStart.getTime();
-}
-
-function getMondayStartOfDay(value: Date) {
-  const date = startOfDay(value);
-  const day = date.getDay();
-  const daysSinceMonday = day === 0 ? 6 : day - 1;
-
-  return addDays(date, -daysSinceMonday);
-}
-
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-}
-
-function addDays(value: Date, days: number) {
-  const date = new Date(value);
-  date.setDate(date.getDate() + days);
-
-  return date;
-}
-
-function formatTimePart(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-function formatWeekdayPart(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    weekday: "short",
-  }).format(date);
 }

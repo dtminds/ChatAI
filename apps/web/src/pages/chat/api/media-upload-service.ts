@@ -1,7 +1,3 @@
-import type COS from "cos-js-sdk-v5";
-import {
-  createCosClientOptions,
-} from "@/lib/cos-dev-proxy";
 import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -9,9 +5,15 @@ import {
   getSupportedFileExtension,
 } from "@/pages/chat/lib/composer-file-files";
 import {
-  MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
-  MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
-} from "@/pages/chat/api/media-upload-errors";
+  COS_UPLOAD_SLICE_SIZE,
+  createCosClient,
+  uploadCosFile,
+} from "@/pages/chat/lib/cos-upload-runtime";
+import {
+  buildCosUploadObjectKey,
+  normalizeCosUploadPrefix,
+  resolveImageUploadExtension,
+} from "@/pages/chat/lib/cos-upload-key";
 import type {
   ComposerImageSegment,
   ComposerFileSegment,
@@ -22,14 +24,6 @@ import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
 const DEFAULT_IMAGE_UPLOAD_PREFIX = "chat-images/";
 const DEFAULT_FILE_UPLOAD_PREFIX = "chat-files/";
 const DEFAULT_FALLBACK_EXTENSION = "bin";
-const UPLOAD_SLICE_SIZE = 1024 * 1024;
-
-type CosConstructor = typeof COS;
-type CosClient = InstanceType<CosConstructor>;
-type CosModule = Awaited<ReturnType<typeof importCosModule>>;
-
-let cosConstructorPromise: Promise<CosConstructor> | null = null;
-
 export async function resolveImageSegmentsForSend(
   conversationId: string,
   segments: ComposerSegment[],
@@ -58,7 +52,7 @@ export async function resolveImageSegmentsForSend(
     const blob = await dataUrlToBlob(segment.localUrl);
     const key = buildObjectKey({
       credential,
-      extension: getImageExtension(blob.type),
+      extension: resolveImageUploadExtension(blob.type),
     });
     await cos.uploadFile({
       Body: blob,
@@ -66,7 +60,7 @@ export async function resolveImageSegmentsForSend(
       ContentType: blob.type || undefined,
       Key: key,
       Region: credential.region,
-      SliceSize: UPLOAD_SLICE_SIZE,
+      SliceSize: COS_UPLOAD_SLICE_SIZE,
     });
 
     const nextSegment: ComposerSegment = {
@@ -107,46 +101,15 @@ export async function uploadWorkbenchFile(
     credential,
     extension,
   });
-  let taskId: string | undefined;
-  const abortUploadTask = () => {
-    if (taskId) {
-      cos.cancelTask(taskId);
-    }
-  };
-
-  if (options.signal?.aborted) {
-    throw createUploadAbortError();
-  }
-
-  options.signal?.addEventListener("abort", abortUploadTask, { once: true });
-
-  try {
-    await cos.uploadFile({
-      Body: file,
-      Bucket: credential.bucket,
-      ContentType: file.type || undefined,
-      Key: key,
-      Region: credential.region,
-      SliceSize: UPLOAD_SLICE_SIZE,
-      onProgress(progressData: COS.ProgressInfo) {
-        options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
-      },
-      onTaskReady(nextTaskId: COS.TaskId) {
-        taskId = nextTaskId;
-        if (options.signal?.aborted) {
-          cos.cancelTask(nextTaskId);
-        }
-      },
-    });
-  } finally {
-    options.signal?.removeEventListener("abort", abortUploadTask);
-  }
-
-  if (options.signal?.aborted) {
-    throw createUploadAbortError();
-  }
-
-  options.onProgress?.(100);
+  await uploadCosFile({
+    body: file,
+    contentType: file.type,
+    cos,
+    credential,
+    key,
+    onProgress: options.onProgress,
+    signal: options.signal,
+  });
 
   return {
     extension,
@@ -167,7 +130,7 @@ export async function uploadWorkbenchImageFile(
   const cos = await createCosClient(credential);
   const key = buildObjectKey({
     credential,
-    extension: getImageExtension(file.type),
+    extension: resolveImageUploadExtension(file.type),
   });
 
   await cos.uploadFile({
@@ -176,7 +139,7 @@ export async function uploadWorkbenchImageFile(
     ContentType: file.type || undefined,
     Key: key,
     Region: credential.region,
-    SliceSize: UPLOAD_SLICE_SIZE,
+    SliceSize: COS_UPLOAD_SLICE_SIZE,
   });
 
   return {
@@ -185,10 +148,6 @@ export async function uploadWorkbenchImageFile(
     type: "image",
     url: buildObjectUrl(key),
   };
-}
-
-function createUploadAbortError() {
-  return new DOMException("文件上传已取消", "AbortError");
 }
 
 export function isLocalImageSegment(segment: ComposerSegment) {
@@ -201,90 +160,6 @@ export function isLocalImageSegment(segment: ComposerSegment) {
 
 function isLocalPreviewUrl(url: string) {
   return url.startsWith("data:") || url.startsWith("blob:");
-}
-
-async function createCosClient(
-  credential: WorkbenchUploadCredentialResponse,
-): Promise<CosClient> {
-  const COS = await loadCosConstructor();
-
-  return new COS(createCosClientOptions(COS, credential));
-}
-
-async function loadCosConstructor() {
-  cosConstructorPromise ??= importCosModule()
-    .then((module) => getCosConstructor(module))
-    .catch((error: unknown) => {
-      cosConstructorPromise = null;
-      if (isDynamicImportFailure(error)) {
-        throw new MediaUploadSdkLoadError(error);
-      }
-
-      throw error;
-    });
-
-  return cosConstructorPromise;
-}
-
-function importCosModule() {
-  return import("cos-js-sdk-v5");
-}
-
-function getCosConstructor(module: CosModule): CosConstructor {
-  return (
-    "default" in module && module.default ? module.default : module
-  ) as CosConstructor;
-}
-
-class MediaUploadSdkLoadError extends Error {
-  readonly code = MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE;
-
-  constructor(cause: unknown) {
-    super(MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE);
-    this.name = "MediaUploadSdkLoadError";
-    this.cause = cause;
-  }
-}
-
-function isDynamicImportFailure(error: unknown) {
-  const messages = collectErrorMessages(error);
-
-  return messages.some((message) => {
-    const normalized = message.toLowerCase();
-
-    return (
-      normalized.includes("failed to fetch dynamically imported module") ||
-      normalized.includes("error loading dynamically imported module") ||
-      normalized.includes("importing a module script failed") ||
-      normalized.includes("loading chunk") ||
-      normalized.includes("chunkloaderror")
-    );
-  });
-}
-
-function collectErrorMessages(error: unknown): string[] {
-  if (typeof error === "string") {
-    return [error];
-  }
-
-  if (!error || typeof error !== "object") {
-    return [];
-  }
-
-  const messages: string[] = [];
-  const message = "message" in error
-    ? (error as { message: unknown }).message
-    : undefined;
-
-  if (typeof message === "string") {
-    messages.push(message);
-  }
-
-  if ("cause" in error) {
-    messages.push(...collectErrorMessages(error.cause));
-  }
-
-  return messages;
 }
 
 async function dataUrlToBlob(dataUrl: string) {
@@ -307,9 +182,8 @@ function buildObjectKey({
   const prefix = normalizeUploadPrefix(
     getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_IMAGE_UPLOAD_PREFIX,
   );
-  const randomPart = Math.random().toString(36).slice(2, 10);
 
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+  return buildCosUploadObjectKey(prefix, extension);
 }
 
 function buildFileObjectKey({
@@ -323,46 +197,15 @@ function buildFileObjectKey({
     getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_FILE_UPLOAD_PREFIX,
     DEFAULT_FILE_UPLOAD_PREFIX,
   );
-  const randomPart = Math.random().toString(36).slice(2, 10);
 
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+  return buildCosUploadObjectKey(prefix, extension);
 }
 
 function normalizeUploadPrefix(
   prefix: string,
   fallbackPrefix = DEFAULT_IMAGE_UPLOAD_PREFIX,
 ) {
-  const normalizedPrefix = prefix
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/\*+$/, "")
-    .replace(/\/+$/, "")
-    .replace(/\/+/g, "/");
-
-  if (!normalizedPrefix) {
-    return fallbackPrefix;
-  }
-
-  return `${normalizedPrefix}/`;
-}
-
-function getImageExtension(contentType: string) {
-  const [, rawSubtype] = contentType.split("/");
-  const subtype = rawSubtype?.split(";")[0]?.trim().toLowerCase();
-
-  if (!subtype) {
-    return DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  if (subtype === "jpeg") {
-    return "jpg";
-  }
-
-  if (subtype.includes("+")) {
-    return subtype.split("+")[0] || DEFAULT_FALLBACK_EXTENSION;
-  }
-
-  return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_FALLBACK_EXTENSION;
+  return normalizeCosUploadPrefix(prefix, fallbackPrefix);
 }
 
 function buildObjectUrl(key: string) {

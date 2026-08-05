@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
   ArrowLeft01Icon,
   BubbleChatNotificationIcon,
@@ -8,6 +8,7 @@ import {
   MoreHorizontalIcon,
   PinIcon,
   PinOffIcon,
+  StickyNote02Icon,
   TeamWorkIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -30,9 +31,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { AIHostingIcon } from "@/pages/chat/components/ai-hosting-avatar-badge";
+import { ChatUserMemoryPopover } from "@/pages/chat/components/chat-user-memory-popover";
 import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
+import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
+
+const headerIconActionWidthWithGap = 44;
+const soundControlWidthWithGap = 120;
+const memoryPopoverRightNudge = 24;
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
@@ -40,12 +48,18 @@ type ChatHeaderProps = {
   isConversationActionDisabled?: boolean;
   isMobileLayout?: boolean;
   isSidebarOpen?: boolean;
+  isTicketsPanelOpen?: boolean;
+  ticketReminderCount?: number;
+  ticketReminderDisplayMode?: TicketReminderDisplayMode;
+  isUserMemoryOpen?: boolean;
   onBack?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
   onPinConversation?: () => void | Promise<void>;
   onToggleSidebar?: () => void;
+  onToggleTickets?: () => void;
   onUnpinConversation?: () => void | Promise<void>;
+  onUserMemoryOpenChange?: (open: boolean) => void;
 };
 
 export function ChatHeader({
@@ -54,12 +68,18 @@ export function ChatHeader({
   isConversationActionDisabled = false,
   isMobileLayout = false,
   isSidebarOpen = false,
+  isTicketsPanelOpen = false,
+  ticketReminderCount,
+  ticketReminderDisplayMode,
+  isUserMemoryOpen,
   onBack,
   onMarkConversationRead,
   onMarkConversationUnread,
   onPinConversation,
   onToggleSidebar,
+  onToggleTickets,
   onUnpinConversation,
+  onUserMemoryOpenChange,
 }: ChatHeaderProps) {
   const hasConversationActions = Boolean(
     activeConversation &&
@@ -67,6 +87,14 @@ export function ChatHeader({
         onMarkConversationUnread ||
         onPinConversation ||
         onUnpinConversation),
+  );
+  const memoryPopoverAlignOffset = -(
+    (hasConversationActions ? headerIconActionWidthWithGap : 0) +
+    (activeConversation && onToggleSidebar
+      ? headerIconActionWidthWithGap
+      : 0) +
+    (isMobileLayout ? 0 : soundControlWidthWithGap) +
+    memoryPopoverRightNudge
   );
 
   return (
@@ -118,6 +146,30 @@ export function ChatHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {activeConversation?.mode === "single" && onToggleTickets ? (
+            <HeaderIconButton
+              icon={StickyNote02Icon}
+              label="工单"
+              onClick={onToggleTickets}
+              pressed={isTicketsPanelOpen}
+              indicator={
+                <ConversationTicketReminderIndicator
+                  count={ticketReminderCount}
+                  mode={ticketReminderDisplayMode}
+                />
+              }
+            />
+          ) : null}
+          {activeConversation?.mode === "single" &&
+          activeConversation.customerBindType !== 2 &&
+          activeConversation.thirdExternalUserId?.trim() ? (
+            <ChatUserMemoryPopover
+              alignOffset={memoryPopoverAlignOffset}
+              conversation={activeConversation}
+              onOpenChange={onUserMemoryOpenChange}
+              open={isUserMemoryOpen}
+            />
+          ) : null}
           {hasConversationActions && activeConversation ? (
             <ConversationHeaderActions
               conversation={activeConversation}
@@ -216,11 +268,15 @@ function HeaderIconButton({
   icon,
   label,
   onClick,
+  pressed,
+  indicator,
 }: {
   disabled?: boolean;
   icon: ComponentProps<typeof HugeiconsIcon>["icon"];
   label: string;
   onClick: () => void;
+  pressed?: boolean;
+  indicator?: ReactNode;
 }) {
   return (
     <TooltipProvider delayDuration={300}>
@@ -228,19 +284,27 @@ function HeaderIconButton({
         <TooltipTrigger asChild>
           <Button
             aria-label={label}
-            className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+            aria-pressed={pressed}
+            className={cn(
+              "size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground",
+              pressed &&
+                "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
             disabled={disabled}
             onClick={onClick}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={icon}
-              size={16}
-              strokeWidth={1.8}
-            />
+            <span className="relative inline-flex">
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={icon}
+                size={18}
+                strokeWidth={1.8}
+              />
+              {indicator}
+            </span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
@@ -248,6 +312,38 @@ function HeaderIconButton({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ConversationTicketReminderIndicator({
+  count,
+  mode,
+}: {
+  count?: number;
+  mode?: TicketReminderDisplayMode;
+}) {
+  if (!count || !mode || mode === "hidden") {
+    return null;
+  }
+
+  if (mode === "dot") {
+    return (
+      <span
+        aria-label="有待处理工单"
+        className="absolute -right-1 -top-1 block size-2 animate-in rounded-full border border-background bg-destructive duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] zoom-in-50 motion-reduce:animate-none"
+        role="status"
+      />
+    );
+  }
+
+  return (
+    <Badge
+      aria-label={`${count} 个待处理工单`}
+      className="absolute -right-2.5 -top-2.5 h-4 min-w-4 animate-in justify-center rounded-full border border-background bg-destructive px-1 py-0 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] zoom-in-50 motion-reduce:animate-none"
+      role="status"
+    >
+      {count > 9 ? "9+" : count}
+    </Badge>
   );
 }
 

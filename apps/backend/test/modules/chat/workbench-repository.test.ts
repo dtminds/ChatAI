@@ -159,6 +159,53 @@ function createMessagesDb(
   };
 }
 
+function createMessageContextDb(rows: {
+  after: MessageRow[];
+  anchor: MessageRow;
+  before: MessageRow[];
+}) {
+  const selectedTables: string[] = [];
+  const messageQueries: ReturnType<typeof createQueryBuilder>[] = [];
+
+  return {
+    messageQueries,
+    selectedTables,
+    selectFrom(table: string) {
+      selectedTables.push(table);
+
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          chat_type: 1,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const result = [rows.anchor, rows.before, rows.after][messageQueries.length] ?? [];
+        const query = createQueryBuilder(result);
+        messageQueries.push(query);
+        return query;
+      }
+
+      if (
+        table === "xy_wap_embed_group_member as member"
+        || table === "xy_wap_embed_user_seat"
+        || table === "xy_wap_embed_contact"
+      ) {
+        return createQueryBuilder([]);
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
 function createMessagesBySeqsDb(
   rows: MessageRow[],
   quoteRows: MessageRow[] = [],
@@ -3500,6 +3547,206 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("limits customer friend relations to the current sub-user's visible seats", async () => {
+    let relationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            relationQuery = createQueryBuilder([
+              {
+                add_time: 100,
+                bind_status: 1,
+                bind_type: 1,
+                description: null,
+                bind_id: 301,
+                seat_avatar: "https://example.com/seat-12.png",
+                seat_id: 12,
+                seat_name: "销售一号",
+                third_user_id: "seat-user-12",
+              },
+            ]);
+            return relationQuery;
+          }
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listAccessibleCustomerSeatRelations({
+        limit: 200,
+        platform: 5,
+        subUserId: "101",
+        thirdExternalUserId: "external-a",
+        uid: 9001,
+      }),
+    ).resolves.toEqual([
+      {
+        addTime: 100,
+        bindId: "301",
+        bindStatus: 1,
+        bindType: 1,
+        seatAvatar: "https://example.com/seat-12.png",
+        seatId: "12",
+        seatName: "销售一号",
+        thirdUserId: "seat-user-12",
+      },
+    ]);
+    expect(relationQuery?.joins).toEqual(["innerJoin", "innerJoin"]);
+    expect(relationQuery?.joinConditions).toContainEqual({
+      conditions: [
+        ["seat.third_userid", "=", "bind.third_userid"],
+        ["seat.uid", "=", "bind.uid"],
+        ["seat.platform", "=", "bind.platform"],
+      ],
+      table: "xy_wap_embed_user_seat as seat",
+      type: "innerJoin",
+    });
+    expect(relationQuery?.joinConditions).toContainEqual({
+      conditions: [
+        ["access.user_seat_id", "=", "seat.id"],
+        ["access.uid", "=", "seat.uid"],
+        ["access.platform", "=", "seat.platform"],
+      ],
+      table: "xy_wap_embed_user_seat_sub_relation as access",
+      type: "innerJoin",
+    });
+    expect(relationQuery?.wheres).toContainEqual(["access.sub_id", "=", 101]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
+    expect(relationQuery?.wheres).toContainEqual([
+      "bind.third_external_userid",
+      "=",
+      "external-a",
+    ]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.biz_status", "=", 1]);
+    expect(relationQuery?.wheres).toContainEqual(["bind.bind_type", "=", 1]);
+    const priorityOrder = relationQuery?.orderBys[0]?.[0] as unknown as {
+      toOperationNode: () => {
+        parameters: Array<{ kind: string; value: number }>;
+        sqlFragments: string[];
+      };
+    };
+    expect(priorityOrder.toOperationNode()).toEqual({
+      kind: "RawNode",
+      parameters: [
+        { kind: "ValueNode", value: 101 },
+        { kind: "ValueNode", value: 101 },
+      ],
+      sqlFragments: [
+        "case\n          when seat.host_sub_id = ",
+        " and seat.is_online = 1 then 0\n          when seat.host_sub_id = ",
+        " then 1\n          else 2\n        end",
+      ],
+    });
+    expect(relationQuery?.orderBys.slice(1)).toEqual([
+      ["bind.add_time", "desc"],
+      ["bind.id", "desc"],
+    ]);
+    expect(relationQuery?.limits).toEqual([20]);
+  });
+
+  it("looks up an all-scope customer by exact external id without pagination", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/target.png",
+              biz_status: 1,
+              gender: null,
+              name: "目标客户",
+              platform: 5,
+              real_name: "",
+              third_external_userid: "external-target",
+              uid: 9001,
+              update_time: new Date(),
+            });
+            queries.push({ table, query });
+            return query;
+          }
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getAccessibleCustomer({
+      platform: 5,
+      scope: "all",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    })).resolves.toMatchObject({
+      customerKey: "9001:5:external-target",
+      name: "目标客户",
+      thirdExternalUserId: "external-target",
+    });
+    expect(queries[0]?.query.wheres).toContainEqual([
+      "contact.third_external_userid",
+      "=",
+      "external-target",
+    ]);
+    expect(queries[0]?.query.whereExpressions).toEqual([]);
+    expect(queries[0]?.query.limits).toEqual([]);
+  });
+
+  it("checks mine-scope exact customer access through visible seat bindings", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_avatar: "",
+              third_user_name: "销售一号",
+              third_userid: "seat-user-12",
+              uid: 9001,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getAccessibleCustomer({
+      platform: 5,
+      scope: "mine",
+      subUserId: "101",
+      thirdExternalUserId: "external-target",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.wheres).toContainEqual([
+      "bind.third_external_userid",
+      "=",
+      "external-target",
+    ]);
+    expect(bindQuery?.wheres).toContainEqual([
+      "bind.third_userid",
+      "=",
+      "seat-user-12",
+    ]);
+    expect(bindQuery?.whereExpressions).toEqual([]);
+    expect(bindQuery?.limits).toEqual([]);
+  });
+
   it("limits my customer visible seat contexts to the explicit workbench scope", async () => {
     const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
     const repository = new WorkbenchRepository(
@@ -3625,6 +3872,7 @@ describe("WorkbenchRepository", () => {
         { column: "contact.name", operator: "like", value: "%张三%" },
         { column: "contact.real_name", operator: "like", value: "%张三%" },
         { column: "bind.remark", operator: "like", value: "%张三%" },
+        { column: "bind.third_external_userid", operator: "like", value: "%张三%" },
       ],
     });
   });
@@ -7003,6 +7251,40 @@ describe("WorkbenchRepository", () => {
     expect(sources.seatsByThirdUserId.size).toBe(0);
   });
 
+  it("loads an anchor context directly from the conversation without a logical session", async () => {
+    const anchor = messageRow({ id: 102, msgid: "remote-msg-102", msgtime: 2_000 });
+    const before = messageRow({ id: 101, msgid: "remote-msg-101", msgtime: 1_000 });
+    const after = messageRow({ id: 103, msgid: "remote-msg-103", msgtime: 3_000 });
+    const db = createMessageContextDb({ after: [after], anchor, before: [before] });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessageContext({
+      after: 10,
+      before: 10,
+      conversationId: "88",
+      messageId: "102",
+      uid: 9001,
+    })).resolves.toMatchObject({
+      messages: [
+        { msgid: "remote-msg-101" },
+        { msgid: "remote-msg-102" },
+        { msgid: "remote-msg-103" },
+      ],
+      targetMessageId: "102",
+    });
+
+    expect(db.selectedTables).not.toContain("xy_wap_embed_logical_session_message as session_message");
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 102]);
+    expect(db.messageQueries[1]?.orderBys).toEqual([
+      ["message.msgtime", "desc"],
+      ["message.id", "desc"],
+    ]);
+    expect(db.messageQueries[2]?.orderBys).toEqual([
+      ["message.msgtime", "asc"],
+      ["message.id", "asc"],
+    ]);
+  });
+
   it("keeps revoke event rows visible in historical message pages", async () => {
     const repository = new WorkbenchRepository(createMessagesDb([
       messageRow({
@@ -7052,6 +7334,22 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+  });
+
+  it("limits poll message reads to rows after the active message sequence", async () => {
+    const db = createMessagesDb([
+      messageRow({ id: 102, msgid: "remote-msg-102" }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessages("88", { afterSeq: 101, limit: 50 });
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.id",
+      ">",
+      101,
+    ]);
+    expect(db.messageQueries[0]?.limits).toEqual([51]);
   });
 
   it("loads shadow group messages with the opening seat third user id", async () => {
@@ -7448,6 +7746,33 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 321]);
     expect(db.messageQueries[0]?.whereExpressions).toEqual([]);
     expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
+  });
+
+  it("keeps initializing messages out of the sent revoke state", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        from_type: 1,
+        id: 321,
+        msgid: "321",
+        status: -1,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSourceThirdUserId: "seat-third-user-1",
+        messageSeq: 321,
+        platform: 5,
+        receptionThirdUserId: "seat-third-user-1",
+        thirdExternalUserId: "external-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      seq: 321,
+      status: "initializing",
+    });
   });
 
   it("keeps ordinary group revoke lookup and ownership on the current seat", async () => {

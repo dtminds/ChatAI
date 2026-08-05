@@ -155,6 +155,7 @@ describe("AI hosting agent routes", () => {
 
     db.setAgentPromptConfig({
       availableKbIds: [1, 3, 1],
+      availableSkillIds: [],
       conditionLogic: "如果客户咨询成分，那么说明功效",
     });
 
@@ -298,6 +299,78 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("returns bound knowledge bases and skills from batched detail queries", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
+    db.setAgentPromptConfig({
+      availableKbIds: [100, 999, 1, 100],
+      availableSkillIds: [3, 999, 2, 3],
+      conditionLogic:
+        '<resource type="knowledge_base" kbId="999" name="已下线知识库" /> <resource type="skill" skillId="999" name="已下线技能" />',
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        availableKbs: [
+          {
+            id: "100",
+            invalidReason: "deleted",
+            name: "已删除知识库0",
+            status: "invalid",
+          },
+          {
+            id: "999",
+            invalidReason: "unavailable",
+            name: "已下线知识库",
+            status: "invalid",
+          },
+          { id: "1", name: "商品咨询知识库", status: "available" },
+        ],
+        availableSkills: [
+          {
+            id: "3",
+            invalidReason: "deleted",
+            name: "已删除技能",
+            status: "invalid",
+          },
+          {
+            id: "999",
+            invalidReason: "unavailable",
+            name: "已下线技能",
+            status: "invalid",
+          },
+          {
+            id: "2",
+            invalidReason: "disabled",
+            name: "退换货处理",
+            status: "invalid",
+          },
+        ],
+      },
+      success: true,
+    });
+    expect(db.kbListExecuteCount).toBe(1);
+    expect(db.kbListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["id", "in", [100, 999, 1]],
+    ]);
+    expect(db.skillListExecuteCount).toBe(1);
+    expect(db.skillListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["id", "in", [3, 999, 2]],
+    ]);
+
+    await app.close();
+  });
+
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -308,6 +381,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如何客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -315,6 +389,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/301",
@@ -346,6 +421,7 @@ describe("AI hosting agent routes", () => {
     expect(db.updatedAgents[0]?.values).not.toHaveProperty("name");
     expect(JSON.parse(String(db.updatedAgents[0]?.values.prompt_config))).toEqual({
       available_kb_ids: [1, 3],
+      available_skill_ids: [],
       condition_logic: "如何客户咨询成分，那么说明功效",
       handoff_rules: "客户要求真人",
       reply_style: {
@@ -353,6 +429,7 @@ describe("AI hosting agent routes", () => {
         style_instruction: "亲切自然",
       },
       role: "你是护肤顾问",
+      use_user_memory: false,
     });
     expect(unchangedPublish.statusCode).toBe(400);
     expect(unchangedPublish.json()).toMatchObject({
@@ -382,6 +459,112 @@ describe("AI hosting agent routes", () => {
     expect(db.updatedAgents[1]?.values.last_publish_time).toBeGreaterThan(0);
     expect(db.historyLatestLimitValues).not.toHaveLength(0);
     expect(db.historyLatestLimitValues.every((value) => value === 1)).toBe(true);
+
+    await app.close();
+  });
+
+  it("blocks draft saves when referenced resources are invalid", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [100],
+          availableSkillIds: [2],
+          conditionLogic:
+            '<resource type="knowledge_base" kbId="100" name="已删除知识库0" /> <resource type="skill" skillId="2" name="退换货处理" />',
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+          useUserMemory: false,
+        },
+      },
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_RESOURCES_INVALID",
+        details: {
+          knowledgeBases: [
+            {
+              id: "100",
+              invalidReason: "deleted",
+              name: "已删除知识库0",
+              status: "invalid",
+            },
+          ],
+          skills: [
+            {
+              id: "2",
+              invalidReason: "disabled",
+              name: "退换货处理",
+              status: "invalid",
+            },
+          ],
+        },
+        message: "Agent 依赖的资源已失效，请移除后重试",
+      },
+      success: false,
+    });
+    expect(db.updatedAgents).toEqual([]);
+    expect(db.insertedHistories).toEqual([]);
+
+    await app.close();
+  });
+
+  it("blocks publishing when a referenced resource becomes invalid", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      deletedKbCount: 1,
+    });
+    db.setAgentPromptConfig({
+      availableKbIds: [100],
+      availableSkillIds: [3],
+      conditionLogic: "草稿内容",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/agents/301/publish",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_RESOURCES_INVALID",
+        details: {
+          knowledgeBases: [
+            {
+              id: "100",
+              invalidReason: "deleted",
+              name: "已删除知识库0",
+              status: "invalid",
+            },
+          ],
+          skills: [
+            {
+              id: "3",
+              invalidReason: "deleted",
+              name: "已删除技能",
+              status: "invalid",
+            },
+          ],
+        },
+      },
+      success: false,
+    });
+    expect(db.insertedHistories).toEqual([]);
+    expect(db.updatedAgents).toEqual([]);
 
     await app.close();
   });
@@ -429,6 +612,7 @@ describe("AI hosting agent routes", () => {
         name: "售后小助理",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -436,6 +620,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "退款投诉",
           role: "你是售后客服",
+          useUserMemory: true,
         },
       },
       url: "/api/server/ai-hosting/agents",
@@ -464,6 +649,7 @@ describe("AI hosting agent routes", () => {
     });
     expect(JSON.parse(String(db.insertedAgent?.prompt_config))).toEqual({
       available_kb_ids: [],
+      available_skill_ids: [],
       condition_logic: "",
       handoff_rules: "退款投诉",
       reply_style: {
@@ -471,6 +657,7 @@ describe("AI hosting agent routes", () => {
         style_instruction: "亲切自然",
       },
       role: "你是售后客服",
+      use_user_memory: true,
     });
     expect(db.insertedHistories).toEqual([]);
     expect(remove.statusCode).toBe(200);
@@ -500,6 +687,7 @@ describe("AI hosting agent routes", () => {
         name: "超额小助理",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -507,6 +695,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "退款投诉",
           role: "你是售后客服",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents",
@@ -553,6 +742,7 @@ describe("AI hosting agent routes", () => {
       const headers = { authorization };
       const promptConfig = {
         availableKbIds: [1, 3],
+        availableSkillIds: [],
         conditionLogic: "",
         replyStyle: {
           length: "简洁",
@@ -560,6 +750,7 @@ describe("AI hosting agent routes", () => {
         },
         handoffRules: "客户要求真人",
         role: "你是护肤顾问",
+        useUserMemory: false,
       };
       const requests = [
         app.inject({
@@ -1091,7 +1282,7 @@ describe("AI hosting agent routes", () => {
     await developmentApp.app.close();
   });
 
-  it.each([101, 272, 975, 3865])(
+  it.each([101, 272, 975, 3865, 4004])(
     "allows production uid %i to enable full-auto hosting auth",
     async (uid) => {
       process.env.NODE_ENV = "production";
@@ -1224,6 +1415,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -1231,6 +1423,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: true,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1260,6 +1453,7 @@ describe("AI hosting agent routes", () => {
       modelId: 11,
       promptConfig: JSON.stringify({
         available_kb_ids: [1, 3],
+        available_skill_ids: [],
         condition_logic: "如果客户咨询成分，那么说明功效",
         handoff_rules: "客户要求真人",
         reply_style: {
@@ -1267,6 +1461,7 @@ describe("AI hosting agent routes", () => {
           style_instruction: "亲切自然",
         },
         role: "你是护肤顾问",
+        use_user_memory: true,
       }),
       uid: 9001,
     });
@@ -1304,6 +1499,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1311,6 +1507,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1358,6 +1555,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1365,6 +1563,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1412,6 +1611,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1419,6 +1619,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1466,6 +1667,7 @@ describe("AI hosting agent routes", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -1473,6 +1675,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1775,6 +1978,29 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     uid: dataUid,
     update_time: new Date("2024-06-15T08:01:00Z"),
   }));
+  const skills = [
+    {
+      id: 1,
+      is_del: 0,
+      name: "订单查询",
+      status: 1,
+      uid: dataUid,
+    },
+    {
+      id: 2,
+      is_del: 0,
+      name: "退换货处理",
+      status: 0,
+      uid: dataUid,
+    },
+    {
+      id: 3,
+      is_del: 1,
+      name: "已删除技能",
+      status: 1,
+      uid: dataUid,
+    },
+  ];
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
       create_time: new Date("2024-06-16T08:00:00Z"),
@@ -1808,6 +2034,8 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     joinCalls: [] as string[],
     kbListExecuteCount: 0,
     kbListWheres: [] as Array<[string, string, unknown]>,
+    skillListExecuteCount: 0,
+    skillListWheres: [] as Array<[string, string, unknown]>,
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
     hostingConfigListWheres: [] as Array<[string, string, unknown]>,
@@ -1840,9 +2068,17 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
     },
-    setAgentPromptConfig: (prompt: { availableKbIds: number[]; conditionLogic: string }) => {
+    setAgentPromptConfig: (prompt: {
+      availableKbIds: number[];
+      availableSkillIds?: number[];
+      conditionLogic: string;
+    }) => {
       agentPrompt = prompt.conditionLogic;
-      agents[0].prompt_config = buildPromptConfig(prompt.conditionLogic, prompt.availableKbIds);
+      agents[0].prompt_config = buildPromptConfig(
+        prompt.conditionLogic,
+        prompt.availableKbIds,
+        prompt.availableSkillIds ?? [],
+      );
     },
     clearHistories: () => {
       histories.splice(0, histories.length);
@@ -1909,6 +2145,23 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
                 (!Number.isFinite(uid) || kb.uid === uid) &&
                 (!Number.isFinite(status) || kb.status === status) &&
                 (!ids || ids.includes(kb.id)),
+            );
+          }
+
+          if (table === "xy_wap_embed_agent_skill") {
+            state.skillListExecuteCount += 1;
+            state.skillListWheres = wheres;
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const isDeleted = Number(wheres.find(([column]) => column === "is_del")?.[2]);
+            const ids = wheres.find(([column]) => column === "id")?.[2] as
+              | number[]
+              | undefined;
+
+            return skills.filter(
+              (skill) =>
+                (!Number.isFinite(uid) || skill.uid === uid) &&
+                (!Number.isFinite(isDeleted) || skill.is_del === isDeleted) &&
+                (!ids || ids.includes(skill.id)),
             );
           }
 
@@ -2371,9 +2624,14 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   return state;
 }
 
-function buildPromptConfig(conditionLogic: string, availableKbIds = [1, 3]) {
+function buildPromptConfig(
+  conditionLogic: string,
+  availableKbIds = [1, 3],
+  availableSkillIds: number[] = [],
+) {
   return JSON.stringify({
     available_kb_ids: availableKbIds,
+    available_skill_ids: availableSkillIds,
     condition_logic: conditionLogic,
     reply_style: {
       length: "简洁",

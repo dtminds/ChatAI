@@ -7,6 +7,7 @@ import {
 import { RootLayout } from "@/app/root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import { InsightsCapabilitiesRoute } from "@/pages/chat/insights/insights-capabilities-context";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -63,6 +64,23 @@ const AgentSubscriptionPage = lazy(() =>
     }),
   ),
 );
+const AiSkillsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skills-page").then(({ AiSkillsPage }) => ({
+    default: AiSkillsPage,
+  })),
+);
+const AiSkillSettingsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skill-settings-page").then(
+    ({ AiSkillSettingsPage }) => ({
+      default: AiSkillSettingsPage,
+    }),
+  ),
+);
+const UserMemoryPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/user-memory-page").then(
+    ({ UserMemoryPage }) => ({ default: UserMemoryPage }),
+  ),
+);
 const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
@@ -110,13 +128,6 @@ const InsightsQualityPage = lazy(() =>
     }),
   ),
 );
-const InsightsFollowUpsPage = lazy(() =>
-  import("@/pages/chat/insights/insights-follow-ups-page").then(
-    ({ InsightsFollowUpsPage }) => ({
-      default: InsightsFollowUpsPage,
-    }),
-  ),
-);
 const InsightsBusinessPage = lazy(() =>
   import("@/pages/chat/insights/insights-business-page").then(
     ({ InsightsBusinessPage }) => ({
@@ -128,6 +139,13 @@ const InsightsSettingsPage = lazy(() =>
   import("@/pages/chat/insights/insights-settings-page").then(
     ({ InsightsSettingsPage }) => ({
       default: InsightsSettingsPage,
+    }),
+  ),
+);
+const InsightsWorkerObservabilityPage = lazy(() =>
+  import("@/pages/chat/insights/insights-worker-observability-page").then(
+    ({ InsightsWorkerObservabilityPage }) => ({
+      default: InsightsWorkerObservabilityPage,
     }),
   ),
 );
@@ -199,10 +217,24 @@ export const routerConfig = [
       {
         path: "chat",
         element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
-        path: "chat/customers",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
+        children: [
+          {
+            element: <></>,
+            path: "conversations/:conversationId",
+          },
+          {
+            element: <></>,
+            path: "customers",
+          },
+          {
+            element: <></>,
+            path: "tickets",
+          },
+          {
+            element: <></>,
+            path: "tickets/:ticketId",
+          },
+        ],
       },
       {
         path: "chat/settings",
@@ -214,27 +246,33 @@ export const routerConfig = [
       },
       {
         path: "chat/insights",
-        element: withRouteSuspense(<InsightsOverviewPage />),
-      },
-      {
-        path: "chat/insights/quality",
-        element: withRouteSuspense(<InsightsQualityPage />),
-      },
-      {
-        path: "chat/insights/follow-ups",
-        element: withRouteSuspense(<InsightsFollowUpsPage />),
-      },
-      {
-        path: "chat/insights/business",
-        element: withRouteSuspense(<InsightsBusinessPage />),
-      },
-      {
-        path: "chat/insights/records",
-        element: <Navigate replace to="/chat/insights" />,
-      },
-      {
-        path: "chat/insights/settings",
-        element: withRouteSuspense(<InsightsSettingsPage />),
+        element: <InsightsCapabilitiesRoute />,
+        children: [
+          {
+            index: true,
+            element: withRouteSuspense(<InsightsOverviewPage />),
+          },
+          {
+            path: "quality",
+            element: withRouteSuspense(<InsightsQualityPage />),
+          },
+          {
+            path: "business",
+            element: withRouteSuspense(<InsightsBusinessPage />),
+          },
+          {
+            path: "records",
+            element: <Navigate replace to="/chat/insights" />,
+          },
+          {
+            path: "settings",
+            element: withRouteSuspense(<InsightsSettingsPage />),
+          },
+          {
+            path: "worker-observability",
+            element: withRouteSuspense(<InsightsWorkerObservabilityPage />),
+          },
+        ],
       },
       {
         path: "chat/ai-hosting",
@@ -283,6 +321,22 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/kb/:kbId/docs/:docId",
         element: withRouteSuspense(<KbDocDetailPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills",
+        element: withRouteSuspense(<AiSkillsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/new",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/:skillId/edit",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/user-memory",
+        element: withRouteSuspense(<UserMemoryPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

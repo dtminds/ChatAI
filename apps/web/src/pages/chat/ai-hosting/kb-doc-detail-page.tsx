@@ -41,7 +41,8 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
@@ -81,17 +82,6 @@ function resolveChunkSearchField(docType: KbDocType | undefined) {
     ariaLabel: "搜索切片内容",
     placeholder: "搜索切片内容",
   };
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
 }
 
 export function KbDocDetailPage() {

@@ -12,12 +12,14 @@ import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
 import { GroupMembersSidePanel } from "@/pages/chat/components/group-members-side-panel";
 import type {
+  Account,
   ChatMode,
+  CustomerChatStartInput,
   CustomerProfile,
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
-import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   buildSidebarIframeSrc,
   type SidebarIframeSendStatus,
@@ -59,9 +61,11 @@ function buildSidebarIframeParamsRefreshKey(
 }
 
 type CustomerSidePanelProps = {
+  accounts?: Account[];
   accountName?: string;
   className?: string;
   conversationMode?: ChatMode;
+  currentEmployeeId?: string;
   /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
   /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
@@ -81,12 +85,17 @@ type CustomerSidePanelProps = {
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onStartCustomerChat?: (
+    input: CustomerChatStartInput,
+  ) => void | Promise<void>;
 };
 
 export function CustomerSidePanel({
+  accounts = [],
   accountName,
   className,
   conversationMode,
+  currentEmployeeId,
   customer,
   sidebarIframeConversationId,
   sidebarIframeSeatId,
@@ -102,6 +111,7 @@ export function CustomerSidePanel({
   onQuickReplyActiveChange,
   onRefreshGroupMembers,
   onResizeStart,
+  onStartCustomerChat,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
 
@@ -110,13 +120,14 @@ export function CustomerSidePanel({
     [conversationMode, sidebarItems],
   );
 
-  const hasActiveCustomSidebar = useMemo(
+  const activeSidebarItems = useMemo(
     () =>
-      sortSidebarItems(scopedSidebarItems).some(
+      sortSidebarItems(scopedSidebarItems).filter(
         (item) => item.status === "active",
       ),
     [scopedSidebarItems],
   );
+  const hasActiveCustomSidebar = activeSidebarItems.length > 0;
 
   const needsSidebarIframeParams = Boolean(
     hasActiveCustomSidebar &&
@@ -133,35 +144,35 @@ export function CustomerSidePanel({
     [sidebarIframeConversationId, sidebarIframeSeatId],
   );
 
-  const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
-    (item) => item.status === "active",
-  );
   const defaultSidebarValue = isGroupConversation ? "system" : "quick-reply";
-  const sidebarEntries = [
-    ...(isGroupConversation
-      ? [
-          {
-            id: "system",
-            kind: "system" as const,
-            name: "基础信息",
-            value: "system",
-          },
-        ]
-      : []),
-    {
-      id: "quick-reply",
-      kind: "quick-reply" as const,
-      name: "快捷话术",
-      value: "quick-reply",
-    },
-    ...activeSidebarItems.map((item) => ({
-      id: item.id,
-      item,
-      kind: "custom" as const,
-      name: item.name,
-      value: getSidebarTabValue(item),
-    })),
-  ];
+  const sidebarEntries = useMemo(
+    () => [
+      ...(isGroupConversation
+        ? [
+            {
+              id: "system",
+              kind: "system" as const,
+              name: "基础信息",
+              value: "system",
+            },
+          ]
+        : []),
+      {
+        id: "quick-reply",
+        kind: "quick-reply" as const,
+        name: "快捷话术",
+        value: "quick-reply",
+      },
+      ...activeSidebarItems.map((item) => ({
+        id: item.id,
+        item,
+        kind: "custom" as const,
+        name: item.name,
+        value: getSidebarTabValue(item),
+      })),
+    ],
+    [activeSidebarItems, isGroupConversation],
+  );
   const [activeSidebarValue, setActiveSidebarValue] =
     useState(defaultSidebarValue);
   const previousDefaultSidebarValueRef = useRef(defaultSidebarValue);
@@ -222,7 +233,7 @@ export function CustomerSidePanel({
 
     void (async () => {
       try {
-        const dto = await fetchWorkbenchSidebarIframeParams({
+        const dto = await getWorkbenchService().getSidebarIframeParams({
           conversationId: sidebarIframeConversationId!,
           seatId: sidebarIframeSeatId!,
         });
@@ -376,9 +387,13 @@ export function CustomerSidePanel({
             <TabsContent className="mt-0 min-h-0 flex-1" value="system">
               {isGroupConversation ? (
                 <GroupMembersSidePanel
+                  accounts={accounts}
+                  currentEmployeeId={currentEmployeeId}
                   groupMembers={groupMembers}
                   isLoading={isGroupMembersLoading}
+                  key={sidebarIframeConversationId}
                   onRefresh={onRefreshGroupMembers}
+                  onStartChat={onStartCustomerChat}
                 />
               ) : (
                 <CustomerBasicInfoPanel

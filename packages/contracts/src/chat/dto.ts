@@ -170,7 +170,12 @@ export type WorkbenchQuotedMessagePreviewDto = {
   title?: string;
 };
 
-export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
+export type WorkbenchMessageStatus =
+  | "queued"
+  | "sending"
+  | "initializing"
+  | "sent"
+  | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {
@@ -939,6 +944,14 @@ export const WorkbenchCustomerRelationConversationsResponseSchema = Type.Object(
   items: Type.Array(WorkbenchCustomerRelationConversationSchema),
 });
 
+export const CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT = 20;
+
+export const WorkbenchCustomerSeatRelationsResponseSchema = Type.Object({
+  items: Type.Array(WorkbenchCustomerSeatRelationSchema, {
+    maxItems: CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
+  }),
+});
+
 export const WorkbenchCustomerDetailResponseSchema = Type.Object({
   customer: WorkbenchCustomerSummarySchema,
 });
@@ -957,6 +970,10 @@ export type WorkbenchCustomerRelationConversationDto = Static<
 
 export type WorkbenchCustomerRelationConversationsResponse = Static<
   typeof WorkbenchCustomerRelationConversationsResponseSchema
+>;
+
+export type WorkbenchCustomerSeatRelationsResponse = Static<
+  typeof WorkbenchCustomerSeatRelationsResponseSchema
 >;
 
 export type WorkbenchCustomerSummaryDto = Static<typeof WorkbenchCustomerSummarySchema>;

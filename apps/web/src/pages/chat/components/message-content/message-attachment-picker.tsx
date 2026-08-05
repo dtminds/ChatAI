@@ -40,6 +40,10 @@ import {
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
+import type {
+  QuickReplyDraftAttachment,
+  QuickReplyLocalImageAttachment,
+} from "@/pages/chat/lib/quick-reply-attachment-types";
 
 type MessageAttachmentPickerProps = {
   allowVideoChannel?: boolean;
@@ -49,13 +53,8 @@ type MessageAttachmentPickerProps = {
   onChange: (attachments: MessageDraftAttachment[]) => void;
 };
 
-export type MessageLocalImageAttachment = WorkbenchQuickReplyAttachment & {
-  localFile: File;
-};
-
-export type MessageDraftAttachment =
-  | WorkbenchQuickReplyAttachment
-  | MessageLocalImageAttachment;
+export type MessageLocalImageAttachment = QuickReplyLocalImageAttachment;
+export type MessageDraftAttachment = QuickReplyDraftAttachment;
 
 export function MessageAttachmentPicker({
   allowVideoChannel = !DISABLE_SPH_COLLECTION,

@@ -1,8 +1,60 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const AI_HOSTING_AGENT_QUOTA_LIMIT = 20;
+export const AI_HOSTING_AGENT_KB_MAX_COUNT = 10;
+export const AI_HOSTING_AGENT_SKILL_MAX_COUNT = 20;
+export const AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH = 8000;
+export const AI_HOSTING_AGENT_ROLE_MAX_LENGTH = 400;
+export const AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH = 800;
+export const AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH = 2000;
 export const AI_HOSTING_KB_QUOTA_LIMIT = 20;
 export const AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT = 1024 * 1024 * 1024;
+
+export function getAiHostingAgentConditionLogicCharacterCount(value: string) {
+  const resourcePattern = /<resource\b[^>]*\/>/g;
+  let characterCount = 0;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = resourcePattern.exec(value))) {
+    characterCount += match.index - lastIndex;
+
+    const token = match[0] ?? "";
+    const type = readAiHostingConditionLogicResourceAttribute(token, "type");
+    const idAttribute = type === "knowledge_base" ? "kbId" : type === "skill" ? "skillId" : null;
+    const id = idAttribute
+      ? unescapeAiHostingConditionLogicResourceAttribute(
+          readAiHostingConditionLogicResourceAttribute(token, idAttribute),
+        )
+      : "";
+
+    if (id) {
+      const name = unescapeAiHostingConditionLogicResourceAttribute(
+        readAiHostingConditionLogicResourceAttribute(token, "name"),
+      );
+      characterCount += (name || id).length;
+    } else {
+      characterCount += token.length;
+    }
+
+    lastIndex = match.index + token.length;
+  }
+
+  return characterCount + value.length - lastIndex;
+}
+
+function readAiHostingConditionLogicResourceAttribute(token: string, attribute: string) {
+  const matched = token.match(new RegExp(`${attribute}="([^"]*)"`));
+  return matched?.[1] ?? "";
+}
+
+function unescapeAiHostingConditionLogicResourceAttribute(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
 
 export const AiHostingQuotaSchema = Type.Object({
   limit: Type.Number(),
@@ -16,14 +68,20 @@ export const AiHostingQuotaOverviewSchema = Type.Object({
 });
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
-  availableKbIds: Type.Array(Type.Number()),
+  availableKbIds: Type.Array(Type.Number(), {
+    maxItems: AI_HOSTING_AGENT_KB_MAX_COUNT,
+  }),
+  availableSkillIds: Type.Array(Type.Number(), {
+    maxItems: AI_HOSTING_AGENT_SKILL_MAX_COUNT,
+  }),
   conditionLogic: Type.String(),
-  handoffRules: Type.String({ maxLength: 2000 }),
+  handoffRules: Type.String({ maxLength: AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH }),
   replyStyle: Type.Object({
     length: Type.String(),
-    styleInstruction: Type.String({ maxLength: 2000 }),
+    styleInstruction: Type.String({ maxLength: AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH }),
   }, { additionalProperties: false }),
-  role: Type.String({ maxLength: 2000 }),
+  role: Type.String({ maxLength: AI_HOSTING_AGENT_ROLE_MAX_LENGTH }),
+  useUserMemory: Type.Boolean(),
 }, { additionalProperties: false });
 
 export const AiHostingModelSchema = Type.Object({
@@ -40,6 +98,24 @@ export const AiHostingAgentModelSummarySchema = Type.Object({
   label: Type.String(),
   model: Type.String(),
   name: Type.String(),
+});
+
+export const AiHostingAgentResourceStatusSchema = Type.Union([
+  Type.Literal("available"),
+  Type.Literal("invalid"),
+]);
+
+export const AiHostingAgentResourceInvalidReasonSchema = Type.Union([
+  Type.Literal("deleted"),
+  Type.Literal("disabled"),
+  Type.Literal("unavailable"),
+]);
+
+export const AiHostingAgentResourceSummarySchema = Type.Object({
+  id: Type.String(),
+  invalidReason: Type.Optional(AiHostingAgentResourceInvalidReasonSchema),
+  name: Type.String(),
+  status: AiHostingAgentResourceStatusSchema,
 });
 
 export const AiHostingAgentKbSummarySchema = Type.Object({
@@ -73,6 +149,8 @@ export const AiHostingAgentAutoLearnUpdateResponseSchema = Type.Object(
 );
 
 export const AiHostingAgentDetailSchema = Type.Object({
+  availableKbs: Type.Array(AiHostingAgentResourceSummarySchema),
+  availableSkills: Type.Array(AiHostingAgentResourceSummarySchema),
   hasUnpublishedChanges: Type.Boolean(),
   id: Type.String(),
   model: AiHostingAgentModelSummarySchema,
@@ -142,14 +220,34 @@ export const AiHostingAgentTestRequestSchema = Type.Object({
   promptConfig: AiHostingAgentPromptConfigSchema,
 }, { additionalProperties: false });
 
-export const AiHostingAgentTestReplyItemSchema = Type.Object({
-  content: Type.String(),
-  type: Type.Union([
-    Type.Literal("text"),
-    Type.Literal("image"),
-    Type.Literal("audio"),
-  ]),
+export const AiHostingAgentTestAttachmentMaterialTypeSchema = Type.Union([
+  Type.Literal("image"),
+  Type.Literal("file"),
+  Type.Literal("link"),
+  Type.Literal("mini-program"),
+]);
+
+export const AiHostingAgentTestAttachmentMaterialSchema = Type.Object({
+  content: Type.Record(Type.String(), Type.Unknown()),
+  title: Type.String(),
+  type: AiHostingAgentTestAttachmentMaterialTypeSchema,
 }, { additionalProperties: false });
+
+export const AiHostingAgentTestReplyItemSchema = Type.Union([
+  Type.Object({
+    content: Type.String(),
+    type: Type.Union([
+      Type.Literal("text"),
+      Type.Literal("image"),
+      Type.Literal("audio"),
+    ]),
+  }, { additionalProperties: false }),
+  Type.Object({
+    attachments: Type.Array(AiHostingAgentTestAttachmentMaterialSchema),
+    chunkId: Type.String({ minLength: 1 }),
+    type: Type.Literal("attachment"),
+  }, { additionalProperties: false }),
+]);
 
 export const AiHostingAgentTestResponseSchema = Type.Object({
   action: Type.String(),
@@ -210,6 +308,11 @@ export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
+export type AiHostingAgentResourceInvalidReason = Static<
+  typeof AiHostingAgentResourceInvalidReasonSchema
+>;
+export type AiHostingAgentResourceStatus = Static<typeof AiHostingAgentResourceStatusSchema>;
+export type AiHostingAgentResourceSummary = Static<typeof AiHostingAgentResourceSummarySchema>;
 export type AiHostingAgentKbSummary = Static<typeof AiHostingAgentKbSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;
 export type AiHostingAgentDetail = Static<typeof AiHostingAgentDetailSchema>;
@@ -228,6 +331,10 @@ export type AiHostingAgentTestMessageContent =
   Static<typeof AiHostingAgentTestMessageContentSchema>;
 export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageSchema>;
 export type AiHostingAgentTestRequest = Static<typeof AiHostingAgentTestRequestSchema>;
+export type AiHostingAgentTestAttachmentMaterialType =
+  Static<typeof AiHostingAgentTestAttachmentMaterialTypeSchema>;
+export type AiHostingAgentTestAttachmentMaterial =
+  Static<typeof AiHostingAgentTestAttachmentMaterialSchema>;
 export type AiHostingAgentTestReplyItem = Static<typeof AiHostingAgentTestReplyItemSchema>;
 export type AiHostingAgentTestResponse = Static<typeof AiHostingAgentTestResponseSchema>;
 export type AiHostingGroupChatReplyMode = Static<

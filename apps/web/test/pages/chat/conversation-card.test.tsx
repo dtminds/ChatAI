@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
@@ -21,6 +21,29 @@ const conversation: Conversation = {
 };
 
 describe("ConversationCard", () => {
+  it("defers offscreen avatar loading and falls back after an image error", () => {
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const avatar = screen.getByRole("img", {
+      name: conversation.customerName,
+    });
+    expect(avatar).toHaveAttribute("loading", "lazy");
+    expect(avatar).toHaveAttribute("decoding", "async");
+
+    fireEvent.error(avatar);
+
+    expect(
+      screen.queryByRole("img", { name: conversation.customerName }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("conversation-avatar-fallback")).toBeInTheDocument();
+  });
+
   it("shows draft preview for saved composer drafts", () => {
     render(
       <ConversationCard
@@ -239,6 +262,80 @@ describe("ConversationCard", () => {
 
     expect(screen.getByRole("menuitem", { name: /标记未读/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /标记已读/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the same conversation actions on right click without selecting the conversation", async () => {
+    const user = userEvent.setup();
+    const handlePin = vi.fn();
+    const handleSelect = vi.fn();
+
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        onPin={handlePin}
+        onSelect={handleSelect}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByTestId(`conversation-card-${conversation.id}`),
+    );
+
+    expect(
+      await screen.findByRole("menuitem", { name: /置顶/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /标记已读/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /不显示/ }),
+    ).toBeInTheDocument();
+    expect(handleSelect).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("menuitem", { name: /置顶/ }));
+
+    expect(handlePin).toHaveBeenCalledWith(conversation.id);
+    expect(handleSelect).not.toHaveBeenCalled();
+  });
+
+  it("disables right-click conversation actions when actions are unavailable", async () => {
+    const user = userEvent.setup();
+    const handleDelete = vi.fn();
+    const handleMarkRead = vi.fn();
+    const handlePin = vi.fn();
+
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActionDisabled
+        isActive
+        onDelete={handleDelete}
+        onMarkRead={handleMarkRead}
+        onPin={handlePin}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByTestId(`conversation-card-${conversation.id}`),
+    );
+
+    const pinItem = await screen.findByRole("menuitem", { name: /置顶/ });
+    const markReadItem = screen.getByRole("menuitem", { name: /标记已读/ });
+    const deleteItem = screen.getByRole("menuitem", { name: /不显示/ });
+
+    expect(pinItem).toHaveAttribute("aria-disabled", "true");
+    expect(markReadItem).toHaveAttribute("aria-disabled", "true");
+    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(pinItem);
+    await user.click(markReadItem);
+    await user.click(deleteItem);
+
+    expect(handlePin).not.toHaveBeenCalled();
+    expect(handleMarkRead).not.toHaveBeenCalled();
+    expect(handleDelete).not.toHaveBeenCalled();
   });
 
   it("disables conversation action items when actions are unavailable", async () => {

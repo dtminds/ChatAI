@@ -9,6 +9,7 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
+  WorkbenchCustomerSeatRelationsResponse,
   WorkbenchGroupMembersResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
@@ -201,8 +202,26 @@ export function createMemoryWorkbenchService() {
           : undefined,
       };
     },
+    getConversation(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationSummaryDto {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return clone(conversation);
+    },
     getMe(_subUserId: string) {
       return clone(state.subUser);
+    },
+    getCustomerSeatRelations(
+      _subUserId: string,
+      _thirdExternalUserId: string,
+    ): WorkbenchCustomerSeatRelationsResponse {
+      return { items: [] };
     },
     listMaterialCollections(
       _subUserId: string,

@@ -14,6 +14,20 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   UNIQUE KEY uk_insight_sync_source_uid (source, uid)
 ) COMMENT='会话洞察消息同步水位表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_worker_runtime_state (
+  pipeline VARCHAR(32) NOT NULL COMMENT 'Worker管线，discovery、sessionization、analysis',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次开始实际执行tick的时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次实际执行成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次实际执行失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码',
+  last_duration_ms INT UNSIGNED NULL COMMENT '时间最新的一次已完成执行耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近状态上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近一次状态上报时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (pipeline)
+) COMMENT='会话洞察Worker管线运行状态表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_feature_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -99,6 +113,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_message_source_uid (uid, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
+  KEY idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id),
   KEY idx_session_message_asset_lookup (uid, asset_id, source_message_time, session_id),
   KEY idx_session_message_asset_window (uid, source_message_time, asset_id, session_id),
   KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id)
@@ -122,7 +137,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
-  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话',
+  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
   analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围，all：全部，qaFindings：质检，classification：分类',
   target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型，uid：租户，logical_session：逻辑会话',
   target_id VARCHAR(128) NOT NULL COMMENT '任务目标ID',
@@ -130,7 +145,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   priority INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '任务优先级',
   run_after DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最早执行时间',
   attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
-  max_attempts INT UNSIGNED NOT NULL DEFAULT 3 COMMENT '最大尝试次数',
+  max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次',
   locked_by VARCHAR(128) NULL COMMENT '任务锁持有者',
   lease_until DATETIME NULL COMMENT '任务租约到期时间',
   idempotency_key VARCHAR(191) NOT NULL COMMENT '幂等键',
@@ -140,6 +155,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
+  KEY idx_insight_job_archive_scan (status, update_time, id),
   KEY idx_insight_job_claim (target_type, job_type, status, run_after ASC, priority DESC, id ASC),
   KEY idx_insight_job_expired_lease (status, lease_until, id),
   KEY idx_insight_job_rescan_task (rescan_task_id),
@@ -150,7 +166,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job_archive (
   id BIGINT UNSIGNED NOT NULL COMMENT '原任务主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
-  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话',
+  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sessionize_uid：按需切分租户消息，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
   analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围，all：全部，qaFindings：质检，classification：分类',
   target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型，uid：租户，logical_session：逻辑会话',
   target_id VARCHAR(128) NOT NULL COMMENT '任务目标ID',
@@ -158,7 +174,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job_archive (
   priority INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '任务优先级',
   run_after DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最早执行时间',
   attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
-  max_attempts INT UNSIGNED NOT NULL DEFAULT 3 COMMENT '最大尝试次数',
+  max_attempts INT UNSIGNED NOT NULL DEFAULT 2 COMMENT '最大执行次数，首次失败后重试1次',
   locked_by VARCHAR(128) NULL COMMENT '任务锁持有者',
   lease_until DATETIME NULL COMMENT '任务租约到期时间',
   idempotency_key VARCHAR(191) NOT NULL COMMENT '幂等键',
@@ -205,11 +221,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
   source_message_from BIGINT UNSIGNED NULL COMMENT '输入消息起始ID',
   source_message_to BIGINT UNSIGNED NULL COMMENT '输入消息结束ID',
   status VARCHAR(32) NOT NULL COMMENT '运行状态，running：执行中，succeeded：成功，partial：部分成功，failed：失败',
-  input_token_count INT UNSIGNED NULL COMMENT '输入token数',
-  output_token_count INT UNSIGNED NULL COMMENT '输出token数',
-  cost_estimate VARCHAR(64) NULL COMMENT '成本估算',
-  provider_code VARCHAR(64) NULL COMMENT '模型服务商编码',
-  model_name VARCHAR(128) NULL COMMENT '模型名称',
+  token_usage JSON NULL COMMENT '本次分析运行内模型调用Token用量累计',
   prompt_version VARCHAR(64) NULL COMMENT '提示词版本',
   raw_output_ref VARCHAR(512) NULL COMMENT '原始输出引用',
   error_code VARCHAR(128) NULL COMMENT '错误或跳过原因码',
@@ -340,27 +352,50 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID',
-  session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
+  session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
+  anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID',
   snapshot_id BIGINT UNSIGNED NULL COMMENT 'AI来源洞察快照ID',
   source_type VARCHAR(32) NOT NULL DEFAULT 'ai' COMMENT '来源，ai：AI生成，manual：人工创建',
   created_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '创建子账号ID',
-  updated_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '最后更新子账号ID',
+  assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID',
   completed_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '完成人子账号ID',
   completed_at DATETIME NULL COMMENT '完成时间',
-  dismissed_at DATETIME NULL COMMENT '忽略时间',
-  action_type VARCHAR(64) NOT NULL COMMENT '行动项类型，当前固定follow_up：跟进',
-  title VARCHAR(255) NOT NULL COMMENT '行动项标题',
+  canceled_at DATETIME NULL COMMENT '取消时间',
+  canceled_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '取消人子账号ID',
+  action_type VARCHAR(64) NOT NULL COMMENT '工单类型，当前固定follow_up：跟进',
+  title VARCHAR(255) NOT NULL COMMENT '工单标题',
+  description TEXT NULL COMMENT '工单描述',
   priority VARCHAR(32) NOT NULL COMMENT '优先级，low：低，medium：中，high：高',
-  due_hint VARCHAR(64) NULL COMMENT '时效提示',
-  status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，done：已完成，dismissed：已忽略，expired：已过期',
+  due_at DATETIME NULL COMMENT '明确截止时间',
+  status VARCHAR(32) NOT NULL COMMENT '处理状态，open：待处理，in_progress：处理中，done：已完成，canceled：已取消，deleted：内部逻辑删除墓碑',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_action_snapshot (snapshot_id),
-  KEY idx_action_uid_conversation_status (uid, conversation_id, status, id),
   KEY idx_action_uid_session_status (uid, session_id, status),
-  KEY idx_action_uid_status_id (uid, status, id)
-) COMMENT='逻辑会话待处理行动项表';
+  KEY idx_ticket_uid_assignee_status_id (uid, assignee_sub_user_id, status, id),
+  KEY idx_ticket_uid_conversation_status_id (uid, conversation_id, status, id),
+  KEY idx_ticket_uid_conversation_id (uid, conversation_id, id),
+  KEY idx_ticket_uid_created_id (uid, create_time, id),
+  KEY idx_ticket_uid_status_id (uid, status, id),
+  KEY idx_ticket_uid_status_due_at (uid, status, due_at),
+  KEY idx_ticket_uid_creator_id (uid, created_by_sub_user_id, id),
+  KEY idx_ticket_uid_source_status_id (uid, source_type, status, id)
+) COMMENT='工单主表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_ticket_activity (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
+  ticket_id BIGINT UNSIGNED NOT NULL COMMENT '工单ID',
+  activity_type VARCHAR(32) NOT NULL COMMENT '活动类型',
+  operator_type VARCHAR(32) NOT NULL COMMENT '操作者类型，sub_user：子账号，ai：AI，system：系统',
+  operator_sub_user_id BIGINT UNSIGNED NULL COMMENT '操作者子账号ID',
+  content TEXT NULL COMMENT '处理备注内容',
+  detail_json JSON NULL COMMENT '结构化变更详情',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ticket_activity_uid_ticket_id (uid, ticket_id, id)
+) COMMENT='工单活动记录表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -788,3 +823,179 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_node_metric (
   UNIQUE KEY uk_workflow_node_metric_dimension (uid, workflow_id, revision, node_id, shard_id),
   KEY idx_workflow_node_metric_query (uid, workflow_id, revision, node_id)
 ) COMMENT='营销Workflow节点分片统计表';
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '租户id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `variables` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能变量（复杂json数组，不同变量类型有不同格式）',
+  `tools` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能工具,示例：["web","weather"]',
+  `kbs` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能知识库,示例：[1,2,3]',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未启用 1：已启用',
+  `is_del` tinyint NOT NULL DEFAULT '0' COMMENT '是否已删除 0：未删除 1：已删除',
+  `operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建操作人（子账号id）',
+  `last_operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '最近一次操作人（子账号id）',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
+  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
+  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_config (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  enabled TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '自动维护开关',
+  extraction_instruction VARCHAR(2000) NOT NULL DEFAULT '' COMMENT '记忆提炼关注方向，空字符串表示使用通用规则',
+  generation INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '启停代次，用于拒绝旧运行结果',
+  enabled_at BIGINT UNSIGNED NULL COMMENT '本代次启用时间，Unix毫秒',
+  next_run_at DATETIME(3) NULL COMMENT '下一调度槽位',
+  active_run_id BIGINT UNSIGNED NULL COMMENT '当前活动运行ID',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_config_uid (uid),
+  KEY idx_agent_user_memory_config_due (enabled, next_run_at, uid)
+) COMMENT='Agent用户记忆配置';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  platform INT UNSIGNED NOT NULL COMMENT '接入平台',
+  third_external_userid VARCHAR(128) NOT NULL COMMENT '平台外部联系人ID',
+  memories_json JSON NOT NULL COMMENT '当前有效记忆JSON，最多20条',
+  version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '记忆JSON乐观锁版本',
+  manual_updated_at BIGINT UNSIGNED NULL COMMENT '最近人工维护时间，Unix毫秒',
+  last_auto_quota_date DATE NULL COMMENT '最近成功自动维护的目标自然日',
+  last_auto_updated_at BIGINT UNSIGNED NULL COMMENT '最近自动维护时间，Unix毫秒',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_customer (
+    uid, platform, third_external_userid
+  ),
+  KEY idx_agent_user_memory_uid_updated (uid, update_time, id)
+) COMMENT='Agent用户记忆';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  config_generation INT UNSIGNED NOT NULL COMMENT '配置代次快照',
+  quota_date DATE NOT NULL COMMENT '目标自然日，Asia/Shanghai',
+  scheduled_for DATETIME(3) NOT NULL COMMENT '计划调度时间',
+  execution_mode VARCHAR(32) NOT NULL COMMENT 'sync或volcengine_batch',
+  status VARCHAR(32) NOT NULL COMMENT 'pending/running/waiting/终态',
+  phase VARCHAR(32) NOT NULL COMMENT 'selecting/inference/merging/completed',
+  customer_limit INT UNSIGNED NOT NULL COMMENT '当日客户额度快照',
+  candidate_session_limit INT UNSIGNED NOT NULL COMMENT '当日候选会话上限快照',
+  candidate_session_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际入选候选会话数',
+  candidate_customer_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '候选客户数',
+  selected_customer_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际选中客户数',
+  success_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功客户数',
+  failure_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败客户数',
+  skipped_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '跳过客户数',
+  memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示旧运行未记录',
+  memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示旧运行未记录',
+  memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示旧运行未记录',
+  input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输入Token数',
+  output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计输出Token数',
+  locked_by VARCHAR(128) NULL COMMENT 'Worker实例标识',
+  claim_token VARCHAR(64) NULL COMMENT '每次领取生成的新围栏token',
+  lease_until DATETIME(3) NULL COMMENT '租约到期时间',
+  run_after DATETIME(3) NULL COMMENT '下次可运行时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  started_at DATETIME(3) NULL COMMENT '实际开始时间',
+  finished_at DATETIME(3) NULL COMMENT '结束时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_run_day (uid, quota_date),
+  KEY idx_agent_user_memory_run_claim (status, run_after, lease_until, id),
+  KEY idx_agent_user_memory_run_terminal (status, finished_at, id),
+  KEY idx_agent_user_memory_run_uid (uid, id),
+  KEY idx_agent_user_memory_run_quota_date (quota_date, id)
+) COMMENT='Agent用户记忆日运行记录';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_agent_user_memory_run_item (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  run_id BIGINT UNSIGNED NOT NULL COMMENT '运行ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  platform INT UNSIGNED NOT NULL COMMENT '接入平台',
+  third_external_userid VARCHAR(128) NOT NULL COMMENT '平台外部联系人ID',
+  session_ids_json JSON NOT NULL COMMENT '本项固定来源逻辑会话ID',
+  session_count INT UNSIGNED NOT NULL COMMENT '来源会话数',
+  message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '实际输入消息数',
+  status VARCHAR(32) NOT NULL COMMENT 'prepared/submitted/终态',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已提交推理次数',
+  base_memory_version INT UNSIGNED NULL COMMENT '准备输入时的记忆版本',
+  base_manual_updated_at BIGINT UNSIGNED NULL COMMENT '准备输入时的人工维护时间，Unix毫秒',
+  provider_item_key VARCHAR(128) NULL COMMENT '推理服务项标识',
+  provider_batch_id VARCHAR(256) NULL COMMENT '推理服务批任务标识',
+  input_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输入Token数',
+  output_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本项输出Token数',
+  memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示尚未完成合并',
+  memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示尚未完成合并',
+  memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示尚未完成合并',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  finished_at DATETIME(3) NULL COMMENT '结束时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_user_memory_run_customer (
+    run_id, platform, third_external_userid
+  ),
+  KEY idx_agent_user_memory_item_run_status (run_id, status, id),
+  KEY idx_agent_user_memory_item_provider (provider_batch_id, provider_item_key)
+) COMMENT='Agent用户记忆运行客户明细';
+
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  runtime_key VARCHAR(32) NOT NULL COMMENT '运行状态标识，固定为user_memory',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次Tick开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次Tick成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次Tick失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码，成功后清空',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成Tick耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
+) COMMENT='用户记忆Worker运行状态';

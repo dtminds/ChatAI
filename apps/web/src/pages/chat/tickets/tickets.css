@@ -1,0 +1,238 @@
+.ticket-activity-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.ticket-activity-group {
+  min-width: 0;
+}
+
+.ticket-activity-date-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+
+.ticket-activity-date-heading h3 {
+  color: #1f2329;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+
+.ticket-activity-date-heading > span {
+  height: 1px;
+  background: #e7eaf0;
+}
+
+.ticket-activity-group-items {
+  display: grid;
+}
+
+.ticket-activity-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 0.75rem;
+  min-width: 0;
+  padding-bottom: 1.125rem;
+}
+
+.ticket-activity-item:last-child {
+  padding-bottom: 0;
+}
+
+.ticket-activity-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 24px;
+  bottom: 0;
+  left: 11.5px;
+  width: 1px;
+  background: #e7eaf0;
+}
+
+.ticket-activity-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #4f8df7;
+}
+
+.ticket-activity-item[data-activity-type="status_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #ffa800;
+}
+
+.ticket-activity-item[data-activity-type="assignee_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #52b447;
+}
+
+.ticket-activity-item[data-activity-type="priority_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #e45b70;
+}
+
+.ticket-activity-item[data-activity-type="due_at_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #8167e8;
+}
+
+.ticket-activity-item[data-activity-type="content_updated"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #718096;
+}
+
+.ticket-activity-item[data-activity-type="created"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #c2c9d3;
+}
+
+.ticket-activity-content {
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.ticket-activity-summary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+.ticket-activity-operator {
+  color: #1f2329;
+  font-weight: 600;
+}
+
+.ticket-activity-action,
+.ticket-activity-time {
+  color: #6f7785;
+}
+
+.ticket-activity-comment {
+  color: #25282d;
+}
+
+.ticket-activity-change {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  color: #25282d;
+  background: #f4f5f7;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.ticket-activity-change-label {
+  color: #6f7785;
+}
+
+.ticket-activity-change-arrow {
+  display: inline-block;
+  margin: 0 0.375rem;
+  color: #a8aeb8;
+}
+
+.ticket-activity-comment {
+  margin-top: 0.125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+.ticket-activity-time {
+  padding-top: 1px;
+  font-size: 0.8125rem;
+  line-height: 1.375rem;
+  white-space: nowrap;
+}
+
+.dark .ticket-activity-date-heading h3,
+.dark .ticket-activity-operator {
+  color: #f1f3f5;
+}
+
+.dark .ticket-activity-date-heading > span,
+.dark .ticket-activity-item:not(:last-child)::after {
+  background: #3b4049;
+}
+
+.dark .ticket-activity-icon {
+  color: #ffffff;
+  background: #5b96ff;
+}
+
+.dark .ticket-activity-item[data-activity-type="status_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #ffb020;
+}
+
+.dark .ticket-activity-item[data-activity-type="assignee_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #48a94e;
+}
+
+.dark .ticket-activity-item[data-activity-type="priority_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #d9566c;
+}
+
+.dark .ticket-activity-item[data-activity-type="due_at_changed"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #7760d8;
+}
+
+.dark .ticket-activity-item[data-activity-type="content_updated"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #65758a;
+}
+
+.dark .ticket-activity-item[data-activity-type="created"] .ticket-activity-icon {
+  color: #ffffff;
+  background: #687386;
+}
+
+.dark .ticket-activity-action,
+.dark .ticket-activity-time {
+  color: #a8b0bd;
+}
+
+.dark .ticket-activity-comment {
+  color: #e6e8eb;
+}
+
+.dark .ticket-activity-change {
+  color: #e6e8eb;
+  background: #2d3036;
+}
+
+.dark .ticket-activity-change-label {
+  color: #a8b0bd;
+}
+
+.dark .ticket-activity-change-arrow {
+  color: #7d8694;
+}
+
+@media (max-width: 639px) {
+  .ticket-activity-item {
+    column-gap: 0.625rem;
+  }
+}

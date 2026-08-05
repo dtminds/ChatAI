@@ -1,0 +1,64 @@
+import type {
+  AgentUserMemoryCustomerDetailResponse,
+  AgentUserMemoryCustomerListResponse,
+  AgentUserMemoryEvidenceResponse,
+  AgentUserMemoryManualCreateRequest,
+  AgentUserMemoryManualDeleteRequest,
+  AgentUserMemoryManualUpdateRequest,
+  AgentUserMemoryOverviewResponse,
+  AgentUserMemoryObservabilitySummaryResponse,
+  AgentUserMemoryObservabilityTenantListResponse,
+  AgentUserMemoryRunDetailResponse,
+  AgentUserMemoryRunItemStatus,
+  AgentUserMemoryRunListResponse,
+  AgentUserMemorySettingsRequest,
+  ApiSuccessEnvelope,
+} from "@chatai/contracts";
+import { http } from "@/lib/request";
+
+export async function getUserMemoryOverview() {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryOverviewResponse>>("/server/ai-hosting/user-memory/overview")).data;
+}
+export async function getUserMemoryObservabilitySummary(options: { signal?: AbortSignal } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryObservabilitySummaryResponse>>("/server/ai-hosting/user-memory/observability/summary", options)).data;
+}
+export async function listUserMemoryObservabilityTenants(params: { page?: number; pageSize?: number; uid?: number } = {}, options: { signal?: AbortSignal } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryObservabilityTenantListResponse>>(`/server/ai-hosting/user-memory/observability/tenants${queryString(params)}`, options)).data;
+}
+export async function listUserMemoryObservabilityRuns(uid: number, params: { cursor?: string; pageSize?: number } = {}, options: { signal?: AbortSignal } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunListResponse>>(`/server/ai-hosting/user-memory/observability/tenants/${uid}/runs${queryString(params)}`, options)).data;
+}
+export async function updateUserMemorySettings(payload: AgentUserMemorySettingsRequest) {
+  return (await http.put<ApiSuccessEnvelope<AgentUserMemoryOverviewResponse>>("/server/ai-hosting/user-memory/settings", payload)).data;
+}
+export async function listUserMemoryRuns(params: { cursor?: string; pageSize?: number } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunListResponse>>(`/server/ai-hosting/user-memory/runs${queryString(params)}`)).data;
+}
+export async function getUserMemoryRun(runId: number, params: { itemCursor?: string; itemPageSize?: number; status?: AgentUserMemoryRunItemStatus } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryRunDetailResponse>>(`/server/ai-hosting/user-memory/runs/${runId}${queryString(params)}`)).data;
+}
+export async function listUserMemoryCustomers(params: { page?: number; pageSize?: number } = {}) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryCustomerListResponse>>(`/server/ai-hosting/user-memory/customers${queryString(params)}`)).data;
+}
+export async function getUserMemoryCustomer(externalId: string) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryCustomerDetailResponse>>(`/server/ai-hosting/user-memory/customers/${encodeURIComponent(externalId)}`)).data;
+}
+export async function getUserMemoryEvidence(externalId: string, itemId: number) {
+  return (await http.get<ApiSuccessEnvelope<AgentUserMemoryEvidenceResponse>>(`/server/ai-hosting/user-memory/customers/${encodeURIComponent(externalId)}/items/${itemId}/evidence`)).data;
+}
+export async function createUserMemoryItem(externalId: string, payload: AgentUserMemoryManualCreateRequest) {
+  return (await http.post<ApiSuccessEnvelope<AgentUserMemoryCustomerDetailResponse>>(`/server/ai-hosting/user-memory/customers/${encodeURIComponent(externalId)}/items`, payload)).data;
+}
+export async function updateUserMemoryItem(externalId: string, itemId: number, payload: AgentUserMemoryManualUpdateRequest) {
+  return (await http.patch<ApiSuccessEnvelope<AgentUserMemoryCustomerDetailResponse>>(`/server/ai-hosting/user-memory/customers/${encodeURIComponent(externalId)}/items/${itemId}`, payload)).data;
+}
+export async function deleteUserMemoryItem(externalId: string, itemId: number, payload: AgentUserMemoryManualDeleteRequest) {
+  return (await http.delete<ApiSuccessEnvelope<AgentUserMemoryCustomerDetailResponse>>(`/server/ai-hosting/user-memory/customers/${encodeURIComponent(externalId)}/items/${itemId}`, { data: payload })).data;
+}
+
+function queryString(params: Record<string, string | number | undefined>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value != null && String(value).trim()) search.set(key, String(value));
+  const result = search.toString();
+  return result ? `?${result}` : "";
+}

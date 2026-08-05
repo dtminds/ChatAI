@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   resolveTablePagination,
   TablePagination,
@@ -82,17 +83,6 @@ type PollAttachmentSyncStatus = (
   },
   options?: { immediate?: boolean; knownDocId?: string },
 ) => void;
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 type KbAttachmentsTabProps = {
   activeType: KbAttachmentType;
@@ -893,7 +883,7 @@ function KbAttachmentsInitState({
       <img
         alt=""
         aria-hidden="true"
-        className="mb-6 size-[200px] object-contain"
+        className="mb-6 h-auto w-[200px]"
         src={kbAttachmentInitIllustrationUrl}
       />
       <p className="max-w-md text-sm leading-6 text-muted-foreground">

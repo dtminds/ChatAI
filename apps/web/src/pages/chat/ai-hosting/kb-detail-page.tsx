@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   Spinner,
 } from "@/components/ui/spinner";
@@ -69,7 +70,7 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
@@ -123,17 +124,6 @@ const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
   "添加各类知识，Agent 会参考相关的知识内容组织回复话术";
 const KB_KNOWLEDGE_EMPTY_SUGGESTION =
   "建议添加的知识：商品知识、活动规则说明、订单售后问答、常见问题FAQ、退换货政策、物流发货政策等";
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 const addKnowledgeOptions = [
   {

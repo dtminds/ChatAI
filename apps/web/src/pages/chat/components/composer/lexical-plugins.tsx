@@ -1,18 +1,22 @@
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import { $restoreEditorState } from "@lexical/utils";
 import {
   $getSelection,
   $isRangeSelection,
   $isTextNode,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
+  CONTROLLED_TEXT_INSERTION_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   PASTE_COMMAND,
+  RootNode,
   TextNode,
+  type EditorState,
   type LexicalEditor,
 } from "lexical";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
@@ -39,11 +43,14 @@ import {
   $exportComposerSegments,
   $getComposerPlainText,
   $getComposerPlainTextCursorOffset,
+  $getComposerTextCharacterCount,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
+  $insertComposerTextWithinMaxLength,
   $removeComposerTextRange,
   $restoreComposerFromSegments,
+  $trimComposerTextToMaxLength,
   $updateComposerImage,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
@@ -52,6 +59,7 @@ type ComposerRuntimePluginProps = {
   canSendMessage: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isMentionPickerOpen: boolean;
+  maxTextLength: number;
   onDraftTextChange: (draftText: string, cursorPosition: number) => void;
   onEscapeMentionPicker: () => void;
   onMoveMentionPicker: (direction: "down" | "up") => void;
@@ -62,10 +70,43 @@ type ComposerRuntimePluginProps = {
   registerEditor: (editor: LexicalEditor | null) => void;
 };
 
+export function ComposerMaxLengthPlugin({ maxLength }: { maxLength: number }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    let lastRestoredEditorState: EditorState | null = null;
+
+    return editor.registerNodeTransform(RootNode, () => {
+      const selection = $getSelection();
+
+      if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return;
+      }
+
+      const previousEditorState = editor.getEditorState();
+      const characterCount = $getComposerTextCharacterCount();
+
+      if (characterCount <= maxLength) {
+        return;
+      }
+
+      if (lastRestoredEditorState === previousEditorState) {
+        return;
+      }
+
+      lastRestoredEditorState = previousEditorState;
+      $restoreEditorState(editor, previousEditorState);
+    });
+  }, [editor, maxLength]);
+
+  return null;
+}
+
 export function ComposerRuntimePlugin({
   canSendMessage,
   inputEnterBehavior,
   isMentionPickerOpen,
+  maxTextLength,
   onDraftTextChange,
   onEscapeMentionPicker,
   onMoveMentionPicker,
@@ -139,13 +180,13 @@ export function ComposerRuntimePlugin({
       INSERT_COMPOSER_TEXT_COMMAND,
       (text) => {
         editor.update(() => {
-          $insertComposerText(text);
+          $insertComposerTextWithinMaxLength(text, maxTextLength);
         });
         return true;
       },
       COMMAND_PRIORITY_LOW,
     );
-  }, [editor]);
+  }, [editor, maxTextLength]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -153,13 +194,13 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $insertComposerMention(payload);
-          $insertComposerText(" ");
+          $insertComposerTextWithinMaxLength(" ", maxTextLength);
         });
         return true;
       },
       COMMAND_PRIORITY_LOW,
     );
-  }, [editor]);
+  }, [editor, maxTextLength]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -180,12 +221,31 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $restoreComposerFromSegments(payload.segments);
+          $trimComposerTextToMaxLength(maxTextLength);
         });
         return true;
       },
       COMMAND_PRIORITY_LOW,
     );
-  }, [editor]);
+  }, [editor, maxTextLength]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      CONTROLLED_TEXT_INSERTION_COMMAND,
+      (eventOrText) => {
+        const text = getControlledInsertionText(eventOrText);
+        const selection = $getSelection();
+
+        if (text === null || !$isRangeSelection(selection)) {
+          return false;
+        }
+
+        $insertComposerTextWithinMaxLength(text, maxTextLength);
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+  }, [editor, maxTextLength]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -200,7 +260,17 @@ export function ComposerRuntimePlugin({
             return true;
           }
 
-          return false;
+          const text = clipboardData?.getData("text/plain");
+
+          if (text === undefined) {
+            return false;
+          }
+
+          event.preventDefault();
+          editor.update(() => {
+            $insertComposerTextWithinMaxLength(text, maxTextLength);
+          });
+          return true;
         }
 
         event.preventDefault();
@@ -209,7 +279,7 @@ export function ComposerRuntimePlugin({
       },
       COMMAND_PRIORITY_HIGH,
     );
-  }, [editor, onPasteImageFiles]);
+  }, [editor, maxTextLength, onPasteImageFiles]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -382,4 +452,16 @@ function hasClipboardImageFile(clipboardData: DataTransfer | null) {
 
 function getEventClipboardData(event: ClipboardEvent | InputEvent | KeyboardEvent) {
   return "clipboardData" in event ? event.clipboardData : null;
+}
+
+function getControlledInsertionText(eventOrText: InputEvent | string) {
+  if (typeof eventOrText === "string") {
+    return eventOrText;
+  }
+
+  if (eventOrText.dataTransfer) {
+    return eventOrText.dataTransfer.getData("text/plain");
+  }
+
+  return eventOrText.data;
 }

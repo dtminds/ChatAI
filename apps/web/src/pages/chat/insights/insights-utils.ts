@@ -1,8 +1,13 @@
-import type {
-  InsightActionStatus,
-  InsightAnalysisStatus,
-  InsightDetailResponse,
-} from "@chatai/contracts";
+import type { InsightAnalysisStatus, InsightDetailResponse } from "@chatai/contracts";
+
+const INSIGHT_TIME_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const INSIGHT_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
+  weekday: "short",
+});
 
 export function formatInsightTime(value?: number) {
   if (!value) {
@@ -11,11 +16,7 @@ export function formatInsightTime(value?: number) {
 
   const date = new Date(value);
   const now = new Date();
-  const time = new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  const time = INSIGHT_TIME_FORMATTER.format(date);
 
   if (isSameCalendarDay(date, now)) {
     return `今天 ${time}`;
@@ -60,7 +61,7 @@ function getMondayStartOfDay(value: Date) {
 }
 
 function formatWeekday(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(date);
+  return INSIGHT_WEEKDAY_FORMATTER.format(date);
 }
 
 export function formatResolutionStatus(
@@ -83,18 +84,8 @@ export function formatAnalysisStatus(status: InsightAnalysisStatus) {
     failed: "失败",
     partial: "部分完成",
     ready: "已完成",
+    skipped: "未运行",
     stale: "已过期",
-  } as const;
-
-  return labels[status];
-}
-
-export function formatActionStatus(status: InsightActionStatus) {
-  const labels = {
-    dismissed: "已忽略",
-    done: "已完成",
-    expired: "已过期",
-    open: "待处理",
   } as const;
 
   return labels[status];

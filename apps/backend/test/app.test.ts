@@ -159,7 +159,10 @@ describe("backend app", () => {
 
   it("disables request logging for playable voice checks", async () => {
     expect(shouldDisableRequestLogging({ url: "/api/server/media/playable-voice?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/worker-observability" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/worker-observability/summary?refresh=1" })).toBe(true);
     expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
+    expect(shouldDisableRequestLogging({ url: "/api/server/insights/overview" })).toBe(false);
   });
 
   it("serves and verifies ALTCHA challenges once", async () => {
@@ -1138,6 +1141,11 @@ describe("backend app", () => {
       method: "GET",
       url: "/api/server/conversations?seatId=drc&mode=single&limit=1000",
     });
+    const conversation = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001",
+    });
     const messages = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -1165,6 +1173,13 @@ describe("backend app", () => {
       conversationId: "conv-001",
       seatId: "drc",
       unreadCount: 2,
+    });
+    expect(conversation.statusCode).toBe(200);
+    expect(conversation.json()).toMatchObject({
+      conversationId: "conv-001",
+      customerAvatar: expect.any(String),
+      customerName: expect.any(String),
+      seatId: "drc",
     });
     expect(messages.statusCode).toBe(200);
     expect(messages.json()).toMatchObject({
@@ -2477,6 +2492,51 @@ describe("backend app", () => {
         }),
       ]),
     );
+
+    await app.close();
+  });
+
+  it("returns visible customer seat relations for the authenticated sub-user", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getCustomerSeatRelations = vi
+      .spyOn(app.workbenchService, "getCustomerSeatRelations")
+      .mockResolvedValue({
+        items: [
+          {
+            bindId: "301",
+            bindStatus: 1,
+            bindType: 1,
+            lastMessageTime: 1_779_600_000_000,
+            seatAvatar: "",
+            seatId: "12",
+            seatName: "销售一号",
+            thirdUserId: "seat-user-12",
+          },
+        ],
+      });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/customers/external-a/seat-relations",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      items: [
+        {
+          bindId: "301",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: 1_779_600_000_000,
+          seatAvatar: "",
+          seatId: "12",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-12",
+        },
+      ],
+    });
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith("101", "external-a");
 
     await app.close();
   });

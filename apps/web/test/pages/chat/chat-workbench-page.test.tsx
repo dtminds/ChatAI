@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { getFirstUnreadCustomerMessageKey } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
@@ -7,11 +13,14 @@ import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchConversationSummaryDto,
   type WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
   installChatWorkbenchTestEnvironment,
+  renderConversationOpenFromOutsideRoute,
   renderChatWorkbenchPage,
+  renderChatWorkbenchRoutePage,
   resetChatWorkbenchTestState,
   workbenchToastSuccessMock,
   workbenchToastWarningMock,
@@ -157,6 +166,457 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("opens a routed conversation when navigating from the ticket view", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn(baseService.getConversation);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(router.state.location.state).toBeNull();
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-002",
+    );
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.pathname).toBe("/chat/tickets");
+
+    await act(async () => {
+      await router.navigate(1);
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a pending routed open after leaving the conversation route", async () => {
+    const baseService = createMockWorkbenchService();
+    const target = await baseService.getConversation("conv-002");
+    const targetDeferred = createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn((conversationId: string) =>
+      conversationId === "conv-002"
+        ? targetDeferred.promise
+        : baseService.getConversation(conversationId),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/tickets");
+    });
+    targetDeferred.resolve(target);
+    await act(async () => {
+      await targetDeferred.promise;
+      await Promise.resolve();
+    });
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+    expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
+
+    await act(async () => {
+      await router.navigate("/chat");
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+  });
+
+  it("lets a newer routed conversation replace a pending routed open", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstTarget = await baseService.getConversation("conv-002");
+    const firstTargetDeferred =
+      createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn((conversationId: string) =>
+      conversationId === "conv-002"
+        ? firstTargetDeferred.promise
+        : baseService.getConversation(conversationId),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-003", {
+        state: { openConversation: true },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-003");
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-003",
+    );
+
+    firstTargetDeferred.resolve(firstTarget);
+    await act(async () => {
+      await firstTargetDeferred.promise;
+      await Promise.resolve();
+    });
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-003");
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-003",
+    );
+    expect(getConversation).toHaveBeenCalledWith("conv-003");
+  });
+
+  it("captures an in-place conversation route before automatic list selection", async () => {
+    const baseService = createMockWorkbenchService();
+    const targetConversation = await baseService.getConversation("conv-002");
+    const conversationRequest = createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn(() => conversationRequest.promise);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    expect(useWorkbenchStore.getState().activeConversationId).not.toBe(
+      "conv-001",
+    );
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+
+    conversationRequest.resolve(targetConversation);
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+  });
+
+  it("opens a routed conversation when navigating from outside the workbench route tree", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const targetConversation = await baseService.getConversation("conv-002");
+    const conversationRequest = createDeferred<WorkbenchConversationSummaryDto>();
+    const getConversation = vi.fn(() => conversationRequest.promise);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderConversationOpenFromOutsideRoute("conv-002");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await act(async () => {
+      await router.navigate("/chat/insights");
+    });
+
+    await user.click(screen.getByRole("link", { name: "打开会话" }));
+
+    await waitFor(() => {
+      expect(getConversation).toHaveBeenCalledWith("conv-002");
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+    expect(router.state.location.state).toEqual({ openConversation: true });
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+
+    conversationRequest.resolve(targetConversation);
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-002",
+    );
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
+    const promotedCard = screen.getByTestId("conversation-card-conv-002");
+    const naturallyFirstCard = screen.getByTestId("conversation-card-conv-001");
+    expect(
+      promotedCard.compareDocumentPosition(naturallyFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the routed conversation intent when the first bootstrap is retried", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn(baseService.getConversation);
+    const getSeats = vi
+      .fn(baseService.getSeats)
+      .mockRejectedValueOnce(new Error("工作台暂时不可用"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+      getSeats,
+    });
+    const { router } = renderChatWorkbenchRoutePage({
+      pathname: "/chat/conversations/conv-002",
+      state: { openConversation: true },
+    });
+
+    expect(await screen.findByText("工作台初始化失败")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+    expect(router.state.location.state).toEqual({ openConversation: true });
+    expect(getConversation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "重新加载" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getSeats).toHaveBeenCalledTimes(2);
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-002",
+    );
+  });
+
+  it("retries a routed conversation after bootstrap falls back from a partial open failure", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi
+      .fn(baseService.getConversation)
+      .mockRejectedValueOnce(new Error("会话摘要暂时不可用"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage({
+      pathname: "/chat/conversations/conv-002",
+      state: { openConversation: true },
+    });
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+      expect(
+        useWorkbenchStore.getState().conversationPromotion?.conversationId,
+      ).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getConversation).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+  });
+
+  it("keeps a failed routed target and retries it before consuming the route", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi
+      .fn(baseService.getConversation)
+      .mockRejectedValueOnce(new Error("会话摘要暂时不可用"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
+    });
+
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    const errorDialog = await screen.findByRole("alertdialog", {
+      name: "开启会话失败",
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+    expect(router.state.location.state).toEqual({ openConversation: true });
+    expect(getConversation).toHaveBeenCalledTimes(1);
+
+    await user.click(within(errorDialog).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(getConversation).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+  });
+
+  it("consumes a failed routed target only after the operator cancels", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn().mockRejectedValue(new Error("无权打开会话"));
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage("/chat/tickets");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+    await act(async () => {
+      await router.navigate("/chat/conversations/conv-002", {
+        state: { openConversation: true },
+      });
+    });
+
+    const errorDialog = await screen.findByRole("alertdialog", {
+      name: "开启会话失败",
+    });
+    expect(router.state.location.pathname).toBe(
+      "/chat/conversations/conv-002",
+    );
+
+    await user.click(within(errorDialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(router.state.location.state).toBeNull();
+    expect(useWorkbenchStore.getState().conversationOpenError).toBeUndefined();
+    expect(getConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a state-free cold conversation route without promoting it", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversation = vi.fn(baseService.getConversation);
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+    });
+    const { router } = renderChatWorkbenchRoutePage(
+      "/chat/conversations/conv-002",
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(router.state.location.state).toBeNull();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+    expect(getConversation).toHaveBeenCalledWith("conv-002");
+  });
+
+  it("keeps the canonical chat URL after deleting an intentionally opened conversation", async () => {
+    const user = userEvent.setup();
+    const { router } = renderChatWorkbenchRoutePage(
+      {
+        pathname: "/chat/conversations/conv-002",
+        state: { openConversation: true },
+      },
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    expect(router.state.location.pathname).toBe("/chat");
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      "conv-002",
+    );
+
+    const activeConversationCard = screen.getByTestId(
+      "conversation-card-conv-002",
+    );
+    await user.click(
+      within(activeConversationCard).getByRole("button", {
+        name: "会话操作",
+      }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "不显示" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).not.toBe(
+        "conv-002",
+      );
+      expect(router.state.location.pathname).toBe("/chat");
+    });
   });
 
   it("locates the loaded handoff trigger message by its existing message seq", async () => {
@@ -368,6 +828,182 @@ describe("ChatWorkbenchPage", () => {
     expect(window.localStorage.getItem("chatai.conversationView")).toContain('"single":"all"');
   });
 
+  it("resets only the opened chat type to all and temporarily shows the target first", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const target: WorkbenchConversationSummaryDto = {
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-search-opened",
+      customerAvatar: "",
+      customerId: "customer-search-opened",
+      customerName: "搜索打开客户",
+      handoffMsgId: 0,
+      lastMessage: "较早消息",
+      lastMessageTime: 1,
+      mode: "single",
+      priority: "medium",
+      replied: true,
+      seatId: "drc",
+      thirdExternalUserId: "external-search-opened",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "unread", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return target;
+      },
+    });
+
+    const { router } = renderChatWorkbenchRoutePage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    act(() => {
+      useWorkbenchStore.setState({
+        isSearchLoading: false,
+        searchKeyword: "搜索打开客户",
+        searchResults: {
+          contacts: [
+            {
+              avatar: "",
+              conversationId: target.conversationId,
+              name: target.customerName,
+              realName: target.customerName,
+              thirdExternalUserId: target.thirdExternalUserId!,
+            },
+          ],
+          groups: [],
+        },
+      });
+    });
+
+    const searchDialog = await screen.findByRole("dialog", {
+      name: "搜索结果",
+    });
+    await user.click(
+      within(searchDialog).getByRole("button", {
+        name: /搜索打开客户/,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        target.conversationId,
+      );
+    });
+    expect(router.state.location.pathname).toBe("/chat");
+    await waitFor(() => {
+      expect(window.localStorage.getItem("chatai.conversationView")).toBe(
+        JSON.stringify({ group: "unread", single: "all" }),
+      );
+    });
+
+    const targetCard = screen.getByTestId(
+      `conversation-card-${target.conversationId}`,
+    );
+    const previousFirstCard = screen.getByTestId("conversation-card-conv-001");
+
+    expect(
+      targetCard.compareDocumentPosition(previousFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
+
+    await user.click(
+      within(previousFirstCard).getByRole("button", { name: /丹阳草莓/ }),
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+    expect(router.state.location.pathname).toBe("/chat");
+    expect(
+      targetCard.compareDocumentPosition(previousFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
+      target.conversationId,
+    );
+  });
+
+  it("keeps the current conversation and filter when opening a search result fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      async getOrCreateConversation() {
+        throw new Error("开启失败");
+      },
+    });
+
+    renderChatWorkbenchPage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const activeConversationId =
+      useWorkbenchStore.getState().activeConversationId;
+
+    act(() => {
+      useWorkbenchStore.setState({
+        isSearchLoading: false,
+        searchKeyword: "失败客户",
+        searchResults: {
+          contacts: [
+            {
+              avatar: "",
+              conversationId: "conv-search-failed",
+              name: "失败客户",
+              realName: "失败客户",
+              thirdExternalUserId: "external-search-failed",
+            },
+          ],
+          groups: [],
+        },
+      });
+    });
+
+    const searchDialog = await screen.findByRole("dialog", {
+      name: "搜索结果",
+    });
+    await user.click(
+      within(searchDialog).getByRole("button", { name: /失败客户/ }),
+    );
+
+    expect(
+      await screen.findByRole("alertdialog", { name: "开启会话失败" }),
+    ).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe(
+      activeConversationId,
+    );
+    expect(useWorkbenchStore.getState().searchKeyword).toBe("失败客户");
+    expect(window.localStorage.getItem("chatai.conversationView")).toBe(
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    expect(useWorkbenchStore.getState().conversationPromotion).toBeUndefined();
+  });
+
   it("selects the first visible conversation after changing the active view", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
@@ -480,6 +1116,177 @@ describe("ChatWorkbenchPage", () => {
         }),
       );
     });
+  });
+
+  it("does not reload unread conversations after switching conversations", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const staleUnreadResponseGate = createDeferred();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+    let unreadRequestCount = 0;
+    const getConversations = vi.fn(async (seatId, options) => {
+      const response = await baseService.getConversations(
+        seatId,
+        options?.unreadOnly
+          ? {
+              ...options,
+              unreadOnly: false,
+            }
+          : options,
+      );
+
+      if (seatId !== "drc" || options?.mode !== "single") {
+        return response;
+      }
+
+      const items = response.items.map((conversation) => ({
+        ...conversation,
+        unreadCount: 1,
+      }));
+
+      if (options.unreadOnly) {
+        unreadRequestCount += 1;
+
+        if (unreadRequestCount > 1) {
+          await staleUnreadResponseGate.promise;
+        }
+      }
+
+      return {
+        ...response,
+        items,
+        unreadSummary: options.unreadOnly
+          ? {
+              group: 0,
+              single: items.length,
+              total: items.length,
+            }
+          : response.unreadSummary,
+      };
+    });
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await waitFor(() => {
+      expect(unreadRequestCount).toBe(1);
+    });
+
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-002");
+    });
+    staleUnreadResponseGate.resolve();
+
+    expect(unreadRequestCount).toBe(1);
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-002",
+        )?.unread,
+    ).toBe(0);
+  });
+
+  it("preserves the default conversation read state when entering the unread view", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const staleUnreadResponseGate = createDeferred();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+    const getConversations = vi.fn(async (seatId, options) => {
+      const response = await baseService.getConversations(
+        seatId,
+        options?.unreadOnly
+          ? {
+              ...options,
+              unreadOnly: false,
+            }
+          : options,
+      );
+
+      if (seatId !== "drc" || options?.mode !== "single") {
+        return response;
+      }
+
+      const items = response.items.map((conversation) => ({
+        ...conversation,
+        unreadCount: conversation.conversationId === "conv-002" ? 1 : 0,
+      }));
+
+      if (options.unreadOnly) {
+        await staleUnreadResponseGate.promise;
+      }
+
+      return {
+        ...response,
+        hasMore: options.unreadOnly ? true : response.hasMore,
+        items,
+        unreadSummary: options.unreadOnly
+          ? {
+              group: 0,
+              single: 1,
+              total: 1,
+            }
+          : response.unreadSummary,
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^未读/ }));
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledWith("conv-002");
+      expect(
+        useWorkbenchStore
+          .getState()
+          .conversationListsByScope.drc?.find(
+            (conversation) => conversation.id === "conv-002",
+          )?.unread,
+      ).toBe(0);
+    });
+    const activeAccountAfterRead = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "drc");
+
+    staleUnreadResponseGate.resolve();
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().hasMoreUnreadByScope.drc?.single).toBe(
+        true,
+      );
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc?.find(
+          (conversation) => conversation.id === "conv-002",
+        )?.unread,
+    ).toBe(0);
+    expect(
+      useWorkbenchStore.getState().accounts.find((account) => account.id === "drc"),
+    ).toBe(activeAccountAfterRead);
   });
 
   it("keeps the active conversation empty when the selected view has no conversations", async () => {
@@ -1829,6 +2636,97 @@ describe("ChatWorkbenchPage", () => {
         activeConversationId: "conv-004",
         activeMode: "group",
       });
+    });
+  });
+
+  it("opens a visible-seat customer conversation from a group member", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const target: WorkbenchConversationSummaryDto = {
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-group-member-customer",
+      customerAvatar: "",
+      customerId: "member-003",
+      customerName: "丹阳草莓",
+      handoffMsgId: 0,
+      lastMessage: "最近单聊消息",
+      lastMessageTime: 1_779_600_000_000,
+      mode: "single",
+      priority: "medium",
+      replied: true,
+      seatId: "drc",
+      thirdExternalUserId: "member-003",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+    const getCustomerSeatRelations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          bindId: "bind-member-003",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: target.lastMessageTime,
+          seatAvatar: "",
+          seatId: "drc",
+          seatName: "德瑞可",
+          thirdUserId: "third-user-drc",
+        },
+      ],
+    });
+    const getOrCreateConversation = vi.fn().mockResolvedValue(target);
+    const targetMessagePage =
+      createDeferred<Awaited<ReturnType<typeof baseService.getMessages>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      getCustomerSeatRelations,
+      getOrCreateConversation,
+      async getMessages(conversationId, options) {
+        if (conversationId === target.conversationId) {
+          return targetMessagePage.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const { router } = renderChatWorkbenchRoutePage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "查看 丹阳草莓 的好友关系",
+      }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "向 德瑞可 继续会话" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+      expect(useWorkbenchStore.getState().activeConversationId).toBe(
+        "conv-group-member-customer",
+      );
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
+    });
+    expect(screen.getByTestId("message-loading-overlay")).toBeInTheDocument();
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith("member-003");
+    expect(getOrCreateConversation).toHaveBeenCalledWith({
+      chatType: 1,
+      seatId: "drc",
+      thirdExternalUserId: "member-003",
+      thirdGroupId: undefined,
+    });
+
+    targetMessagePage.resolve({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
     });
   });
 

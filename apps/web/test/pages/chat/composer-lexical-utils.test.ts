@@ -14,11 +14,14 @@ import {
 import {
   $exportComposerSegments,
   $getComposerPlainText,
+  $getComposerTextCharacterCount,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
+  $insertComposerTextWithinMaxLength,
   $removeComposerTextRange,
   $restoreComposerFromSegments,
+  $trimComposerTextToMaxLength,
 } from "@/pages/chat/components/composer/lexical-utils";
 import {
   ComposerEmojiNode,
@@ -31,7 +34,113 @@ import {
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
 
+function $getTextFromSegments(segments: ComposerSegment[]) {
+  return segments
+    .filter((segment) => segment.type === "text")
+    .map((segment) => segment.text)
+    .join("");
+}
+
 describe("composer lexical utils", () => {
+  it("limits only plain text while preserving composer chips", () => {
+    const editor = createEditor({
+      namespace: "composer-text-limit-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const longText = "字".repeat(1001);
+    let characterCount = 0;
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments([
+          { text: longText, type: "text" },
+          {
+            mentionMemberIds: ["member-1"],
+            text: "@成员",
+            type: "text",
+          },
+          {
+            alt: "截图",
+            type: "image",
+            url: "https://example.com/image.png",
+          },
+          {
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            type: "file",
+            url: "https://example.com/quote.pdf",
+          },
+          { text: "[打脸]", type: "text" },
+        ]);
+
+        characterCount = $getComposerTextCharacterCount();
+        $trimComposerTextToMaxLength(1000);
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(characterCount).toBe(1001);
+    expect($getTextFromSegments(segments)).toContain("字".repeat(1000));
+    expect(segments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          mentionMemberIds: ["member-1"],
+          text: "@成员",
+          type: "text",
+        }),
+        expect.objectContaining({
+          alt: "截图",
+          type: "image",
+        }),
+        expect.objectContaining({
+          fileName: "报价单.pdf",
+          type: "file",
+        }),
+        expect.objectContaining({
+          text: "[打脸]",
+          type: "text",
+        }),
+      ]),
+    );
+  });
+
+  it("uses the selected text as available space when replacing near the limit", () => {
+    const editor = createEditor({
+      namespace: "composer-text-limit-selection-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const prefix = "前".repeat(498);
+    const selectedText = "旧".repeat(4);
+    const suffix = "后".repeat(498);
+    let plainText = "";
+
+    editor.update(
+      () => {
+        $insertComposerText(`${prefix}${selectedText}${suffix}`);
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(prefix.length, prefix.length + selectedText.length);
+        $insertComposerTextWithinMaxLength("甲乙丙丁戊己", 1000);
+        plainText = $getComposerPlainText();
+      },
+      { discrete: true },
+    );
+
+    expect(plainText).toBe(`${prefix}甲乙丙丁${suffix}`);
+  });
+
   it("removes mention trigger text without dropping images or shifting past emoji tokens", () => {
     const editor = createEditor({
       namespace: "composer-lexical-utils-test",

@@ -41,6 +41,29 @@ describe("MessageContentRenderer quote messages", () => {
     expect(screen.getByText("Sender Alpha：测试被引用")).toBeInTheDocument();
   });
 
+  it("renders a quoted reply preview as text without a generic type icon", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={false}
+        message={createQuoteMessage({
+          quoteMsgId: "5697",
+          quotedMessage: {
+            contentType: "quote",
+            fallbackText: "[引用消息]",
+            senderName: "护肤小助理-饭饭",
+            title: "@缪勇飞 测试引用",
+          },
+          text: "测试引用的引用",
+          type: "quote",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("护肤小助理-饭饭：@缪勇飞 测试引用")).toBeInTheDocument();
+    expect(screen.getByTestId("quote-text-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("quote-generic-preview")).not.toBeInTheDocument();
+  });
+
   it("renders an image quoted-message preview as a square thumbnail", () => {
     render(
       <MessageContentRenderer

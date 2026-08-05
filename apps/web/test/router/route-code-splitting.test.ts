@@ -15,13 +15,15 @@ const routePageModules = [
   "@/pages/chat/workflow/workflow-list-page",
   "@/pages/chat/workflow/workflow-editor-page",
   "@/pages/chat/ai-hosting/agent-subscription-page",
+  "@/pages/chat/ai-hosting/ai-skills-page",
+  "@/pages/chat/ai-hosting/ai-skill-settings-page",
   "@/pages/chat/ai-hosting/kb-list-page",
   "@/pages/chat/ai-hosting/kb-detail-page",
   "@/pages/chat/insights/insights-overview-page",
   "@/pages/chat/insights/insights-quality-page",
-  "@/pages/chat/insights/insights-follow-ups-page",
   "@/pages/chat/insights/insights-business-page",
   "@/pages/chat/insights/insights-settings-page",
+  "@/pages/chat/insights/insights-worker-observability-page",
 ] as const;
 
 const routerSourcePath = join(process.cwd(), "src/router/index.tsx");
@@ -41,6 +43,22 @@ describe("route code splitting", () => {
       expect(routerSource).not.toContain(`from '${modulePath}'`);
       expect(routerSource).toContain(`import("${modulePath}")`);
     }
+  });
+
+  it("routes conversation deep links through the workbench page", async () => {
+    const { routerConfig } = await import("@/router");
+    const rootRoute = routerConfig[0];
+    const workbenchRoute = rootRoute.children?.find(
+      (route) => route.path === "chat",
+    );
+
+    expect(workbenchRoute?.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "conversations/:conversationId",
+        }),
+      ]),
+    );
   });
 
   it("shows an accessible route loading state while a lazy page chunk is pending", async () => {

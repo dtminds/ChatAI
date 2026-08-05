@@ -18,7 +18,9 @@ describe("insights routes", () => {
   });
 
   it("serves authenticated P0 insight data and commands", async () => {
-    const { app, authorization, db } = await createInsightsApp("operator");
+    const { app, authorization, db } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
 
     const overview = await app.inject({
       headers: { authorization },
@@ -70,11 +72,6 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/business/related-sessions?dimension=intent&topicCode=31&page=1&pageSize=20",
     });
-    const followUps = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/follow-ups?from=2026-06-01T00:00:00.000%2B08:00&to=2026-06-30T23:59:59.999%2B08:00&priority=high&status=open&page=1&pageSize=1",
-    });
     const detail = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -85,63 +82,6 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/sessions/501/messages",
     });
-    const status = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "done" },
-      url: "/api/server/insights/action-items/801/status",
-    });
-    const processedFollowUps = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/follow-ups?status=processed&page=1&pageSize=10",
-    });
-    const reopenedStatus = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "open" },
-      url: "/api/server/insights/action-items/801/status",
-    });
-    const createdActionItem = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        conversationId: "301",
-        dueHint: "今天内",
-        priority: "high",
-        sessionId: "501",
-        title: "回访物流状态",
-      },
-      url: "/api/server/insights/action-items",
-    });
-    const rescan = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        analysisScope: "classification",
-        from: "2026-06-01T00:00:00.000Z",
-        to: "2026-06-02T00:00:00.000Z",
-      },
-      url: "/api/server/insights/jobs/rescan",
-    });
-    const rescanTasks = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/insights/jobs/rescan",
-    });
-
     expect(overview.statusCode).toBe(200);
     expect(overview.json()).toMatchObject({
       data: {
@@ -262,33 +202,16 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(followUps.statusCode).toBe(200);
-    expect(
-      db.selectBuilders.some((builder) =>
-        builder.wheres.some((call) => call[0] === "action.priority" && call[1] === "=" && call[2] === "high")
-          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === ">=")
-          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === "<=")
-          && !builder.wheres.some((call) => call[0] === "session.started_at"),
-      ),
-    ).toBe(true);
-    expect(followUps.json().data.items).toHaveLength(1);
-    expect(followUps.json().data.items[0]).toMatchObject({
-      actionItemId: "801",
-      createdAt: 1_780_244_000_000,
-      sessionId: "501",
-    });
-    expect(followUps.json().data.items[0]).not.toHaveProperty("evidenceMessageIds");
-    expect(followUps.json().data.items[0]).not.toHaveProperty("lastCustomerMessageAt");
-    expect(followUps.json().data).toMatchObject({
-      page: 1,
-      pageSize: 1,
-      total: 1,
-      totalPages: 1,
-    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data).not.toHaveProperty("evidenceMessages");
     expect(detail.json().data).not.toHaveProperty("evidenceMessageRecords");
     expect(detail.json().data).not.toHaveProperty("sessionMessageRecords");
+    expect(detail.json().data.actionItems).toEqual([{
+      canEdit: true,
+      status: "open",
+      ticketId: "801",
+      title: "确认快递状态",
+    }]);
     expect(sessionMessages.statusCode).toBe(200);
     expect(sessionMessages.json().data.messages).toHaveLength(1);
     expect(detail.json().data.tags).toEqual([
@@ -321,44 +244,36 @@ describe("insights routes", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toMatchObject({
-      data: {
-        actionItemId: "801",
-        status: "done",
-      },
-      success: true,
+    await app.close();
+  });
+
+  it("allows admins to create and list rescan tasks", async () => {
+    const admin = await createInsightsApp("admin", {
+      initialFeatureConfig: { insight_enabled: 1 },
     });
-    expect(processedFollowUps.statusCode).toBe(200);
-    expect(processedFollowUps.json()).toMatchObject({
-      data: {
-        items: [
-          {
-            actionItemId: "801",
-            status: "done",
-          },
-        ],
-        total: 1,
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+
+    const createResponse = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "classification",
+        from: from.toISOString(),
+        to: to.toISOString(),
       },
-      success: true,
+      url: "/api/server/insights/jobs/rescan",
     });
-    expect(reopenedStatus.statusCode).toBe(200);
-    expect(reopenedStatus.json()).toMatchObject({
-      data: {
-        actionItemId: "801",
-        status: "open",
-      },
-      success: true,
+    const listResponse = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/jobs/rescan",
     });
-    expect(createdActionItem.statusCode).toBe(200);
-    expect(createdActionItem.json()).toMatchObject({
-      data: {
-        actionItemId: "8101",
-      },
-      success: true,
-    });
-    expect(rescan.statusCode).toBe(200);
-    expect(rescan.json()).toMatchObject({
+
+    await admin.app.close();
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toMatchObject({
       data: {
         jobId: "8802",
         status: "accepted",
@@ -366,8 +281,8 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(rescanTasks.statusCode).toBe(200);
-    expect(rescanTasks.json()).toMatchObject({
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
       data: {
         items: [
           expect.objectContaining({
@@ -381,33 +296,77 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
-    expect(db.insertedActionItem).toMatchObject({
-      conversation_id: 301,
-      created_by_sub_user_id: 1,
-      session_id: 501,
-      snapshot_id: null,
-      source_type: "manual",
-      title: "回访物流状态",
-      uid: 9001,
-    });
-    expect(db.insertedRescanTask).toMatchObject({
+    expect(admin.db.insertedRescanTask).toMatchObject({
       analysis_scope: "classification",
-      from_time: 1_780_272_000_000,
-      to_time: 1_780_358_400_000,
+      from_time: from.getTime(),
+      to_time: to.getTime(),
       uid: 9001,
     });
-    expect(db.insertedJob).toMatchObject({
+    expect(admin.db.insertedJob).toMatchObject({
       analysis_scope: "classification",
       job_type: "sync_messages",
       rescan_task_id: 9901,
       target_id: "9001",
       uid: 9001,
     });
-    expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:classification:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/);
-    expect(db.rescanTaskListQueries[0]).toMatchObject({ limit: 10, offset: 0 });
+    expect(admin.db.insertedJob?.idempotency_key).toContain(
+      `rescan:9001:classification:${from.toISOString()}:${to.toISOString()}:`,
+    );
+    expect(admin.db.rescanTaskListQueries[0]).toMatchObject({ limit: 10, offset: 0 });
+  });
 
-    await app.close();
+  it("allows only admins to create and list rescan tasks", async () => {
+    const operator = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
+    });
+    const from = new Date(Date.now() - 60_000).toISOString();
+
+    const createResponse = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "all",
+        from,
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+    const listResponse = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "GET",
+      url: "/api/server/insights/jobs/rescan",
+    });
+
+    await operator.app.close();
+
+    expect(createResponse.statusCode).toBe(403);
+    expect(listResponse.statusCode).toBe(403);
+    expect(operator.db.insertedRescanTask).toBeUndefined();
+    expect(operator.db.rescanTaskListQueries).toHaveLength(0);
+  });
+
+  it("rejects rescan creation when insights are disabled", async () => {
+    const admin = await createInsightsApp("admin", {
+      initialFeatureConfig: { insight_enabled: 0 },
+    });
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "POST",
+      payload: {
+        analysisScope: "all",
+        from: new Date(Date.now() - 60_000).toISOString(),
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INSIGHT_DISABLED" },
+      success: false,
+    });
+    expect(admin.db.insertedRescanTask).toBeUndefined();
   });
 
   it("rejects malformed rescan task pagination before querying data", async () => {
@@ -425,53 +384,69 @@ describe("insights routes", () => {
     expect(admin.db.rescanTaskListQueries).toHaveLength(0);
   });
 
-  it("returns action status update misses as a business error envelope", async () => {
-    const { app, authorization } = await createInsightsApp("operator");
-
-    const response = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "PATCH",
-      payload: { status: "done" },
-      url: "/api/server/insights/action-items/404/status",
+  it("does not retain the removed insights follow-up endpoints", async () => {
+    const { app, authorization } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 1 },
     });
+
+    const responses = await Promise.all([
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/follow-ups",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "PATCH",
+        payload: { status: "done" },
+        url: "/api/server/insights/action-items/404/status",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "POST",
+        payload: {},
+        url: "/api/server/insights/action-items",
+      }),
+    ]);
 
     await app.close();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
-        message: "待处理事项不存在",
-      },
-      success: false,
-    });
+    expect(responses.map((response) => response.statusCode)).toEqual([404, 404, 404]);
   });
 
-  it("rejects manual action item titles longer than the database column", async () => {
-    const { app, authorization, db } = await createInsightsApp("operator");
-
-    const response = await app.inject({
-      headers: {
-        authorization,
-        "x-workbench-client": "chat-ai-ui",
-      },
-      method: "POST",
-      payload: {
-        conversationId: "301",
-        priority: "high",
-        sessionId: "501",
-        title: "回".repeat(256),
-      },
-      url: "/api/server/insights/action-items",
+  it("keeps AI detail available in basic mode", async () => {
+    const { app, authorization } = await createInsightsApp("operator", {
+      initialFeatureConfig: { insight_enabled: 0 },
     });
+
+    const [detail, messages] = await Promise.all([
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/sessions/501",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/insights/sessions/501/messages",
+      }),
+    ]);
 
     await app.close();
 
-    expect(response.statusCode).toBe(400);
-    expect(db.insertedActionItem).toBeUndefined();
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      data: {
+        currentSnapshotId: "7001",
+        summary: { sessionTitle: "查物流" },
+      },
+      success: true,
+    });
+    expect(messages.statusCode).toBe(200);
+    expect(messages.json()).toMatchObject({
+      data: { messages: expect.any(Array) },
+      success: true,
+    });
   });
 
   it("allows only admins to read settings", async () => {
@@ -741,7 +716,7 @@ describe("insights routes", () => {
     expect(admin.db.upsertedFeatureConfig).toBeUndefined();
   });
 
-  it("queues cleanup when admins disable tenant insights", async () => {
+  it("only updates the feature switch when admins disable tenant insights", async () => {
     const admin = await createInsightsApp("admin", {
       initialFeatureConfig: {
         entity_enabled: 1,
@@ -776,15 +751,7 @@ describe("insights routes", () => {
       last_enable_time: 1_780_243_000_000,
       uid: 9001,
     });
-    expect(admin.db.insertedJob).toMatchObject({
-      analysis_scope: "all",
-      job_type: "cleanup_disabled_insights",
-      status: "pending",
-      target_id: "1780243000000",
-      target_type: "uid",
-      uid: 9001,
-    });
-    expect(admin.db.insertedJob?.idempotency_key).toBe("cleanup_disabled_insights:9001:1780243000000");
+    expect(admin.db.insertedJob).toBeUndefined();
   });
 
   it("returns system preset candidates when business config tables are empty", async () => {
@@ -1463,6 +1430,7 @@ function createInsightsDbMock(options: {
           {
             action_id: 801,
             action_status: state.actionStatus,
+            assignee_sub_user_id: 1,
             action_type: "logistics_check",
             conversation_id: 301,
             created_at: 1_780_244_000_000,
@@ -1987,6 +1955,15 @@ function createInsightsDbMock(options: {
             },
           ];
         });
+      }
+
+      if (table === "xy_wap_embed_insight_sync_cursor") {
+        return createBuilder(() => [
+          {
+            create_time: new Date("2026-05-01T00:00:00.000Z"),
+            uid: 0,
+          },
+        ]);
       }
 
       throw new Error(`Unexpected select table: ${table}`);

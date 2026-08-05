@@ -1,4 +1,5 @@
 import {
+  CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
   GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
@@ -13,6 +14,7 @@ import {
   type WorkbenchHistoryMessageScope,
   type WorkbenchMessageQueryBySeqsResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchMessageDto,
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
@@ -73,6 +75,7 @@ import {
 import { readBooleanFlag } from "./workbench-flags.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
+const CUSTOMER_BIND_TYPE_NORMAL = 1;
 const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
 /** 群资料/群消息归属席位：影子群用开通号，否则用当前会话席位 */
@@ -163,7 +166,7 @@ export type RevokeMessageLookup = {
   isRevoked: boolean;
   senderType: "agent" | "customer" | "system";
   seq: number;
-  status: "failed" | "sent";
+  status: "failed" | "initializing" | "sent";
 };
 
 export type RetryMessageLookup = {
@@ -309,6 +312,21 @@ type CustomerListScope =
       uid: number;
     };
 
+type CustomerAccessScope =
+  | {
+      platform: number;
+      scope: "all";
+      thirdExternalUserId: string;
+      uid: number;
+    }
+  | {
+      platform: number;
+      scope: "mine";
+      subUserId: string;
+      thirdExternalUserId: string;
+      uid: number;
+    };
+
 type CustomerRow = {
   add_time: Date | number | string | null;
   avatar: string | null;
@@ -364,6 +382,18 @@ type CustomerLastConversationHydratedRow = CustomerLastMessageRow & {
 type CustomerRelationConversationRow = {
   last_message_time: Date | number | string | null;
   third_userid: string;
+};
+
+type AccessibleCustomerSeatRelationRow = {
+  add_time: Date | number | string | null;
+  bind_id: number | string;
+  bind_status: number | null;
+  bind_type: number | null;
+  description: string | null;
+  seat_avatar: string | null;
+  seat_id: number | string;
+  seat_name: string | null;
+  third_user_id: string;
 };
 
 type CustomerListCursor = {
@@ -2164,7 +2194,12 @@ export class WorkbenchRepository {
         thirdUserId: input.receptionThirdUserId,
       }),
       seq,
-      status: toNumber(row.status) === 0 ? "failed" : "sent",
+      status:
+        toNumber(row.status) === -1
+          ? "initializing"
+          : toNumber(row.status) === 0
+            ? "failed"
+            : "sent",
     };
   }
 
@@ -2754,6 +2789,89 @@ export class WorkbenchRepository {
     return this.listAllCustomersFromContact(input);
   }
 
+  async getAccessibleCustomer(
+    input: CustomerAccessScope,
+  ): Promise<WorkbenchCustomerSummaryDto | undefined> {
+    if (input.scope === "mine") {
+      const subUserId = parseMySqlId(input.subUserId);
+      if (subUserId == null) {
+        return undefined;
+      }
+
+      const visibleSeats = await this.listAccessibleSeatContexts({
+        platform: input.platform,
+        subUserId,
+        uid: input.uid,
+      });
+      if (visibleSeats.length === 0) {
+        return undefined;
+      }
+
+      let query = this.db
+        .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+        .select([
+          "bind.add_time as add_time",
+          "bind.bind_type as bind_type",
+          "bind.biz_status as biz_status",
+          "bind.description as description",
+          "bind.id as id",
+          "bind.third_external_userid as third_external_userid",
+          "bind.third_userid as third_userid",
+          "bind.uid as uid",
+          "bind.platform as platform",
+        ])
+        .where("bind.uid", "=", input.uid)
+        .where("bind.platform", "=", input.platform)
+        .where("bind.third_external_userid", "=", input.thirdExternalUserId);
+
+      const visibleThirdUserIds = uniqueNonEmpty(
+        visibleSeats.map((seat) => seat.thirdUserId),
+      );
+      if (visibleThirdUserIds.length === 0) {
+        return undefined;
+      }
+      query = visibleThirdUserIds.length === 1
+        ? query.where("bind.third_userid", "=", visibleThirdUserIds[0] ?? "")
+        : query.where("bind.third_userid", "in", visibleThirdUserIds);
+
+      const rows = (await query
+        .orderBy("bind.add_time", "desc")
+        .orderBy("bind.id", "desc")
+        .execute()) as CustomerBindPageRow[];
+      const customers = await this.hydrateCustomerBindRows(rows, {
+        hydrateTenantRelations: true,
+      });
+      return customers[0];
+    }
+
+    const row = (await this.db
+      .selectFrom("xy_wap_embed_contact as contact")
+      .select([
+        "contact.avatar as avatar",
+        "contact.biz_status as biz_status",
+        "contact.gender as gender",
+        "contact.name as name",
+        "contact.platform as platform",
+        "contact.real_name as real_name",
+        "contact.third_external_userid as third_external_userid",
+        "contact.uid as uid",
+        "contact.update_time as update_time",
+      ])
+      .where("contact.uid", "=", input.uid)
+      .where("contact.platform", "=", input.platform)
+      .where("contact.third_external_userid", "=", input.thirdExternalUserId)
+      .executeTakeFirst()) as CustomerContactPageRow | undefined;
+    if (!row) {
+      return undefined;
+    }
+
+    return (await this.hydrateCustomerContactRows(
+      [row],
+      input.uid,
+      input.platform,
+    ))[0];
+  }
+
   private async listMyCustomersFromBinds(input: {
     cursor?: string;
     keyword?: string;
@@ -2803,6 +2921,7 @@ export class WorkbenchRepository {
             expressionBuilder("contact.name", "like", pattern),
             expressionBuilder("contact.real_name", "like", pattern),
             expressionBuilder("bind.remark", "like", pattern),
+            expressionBuilder("bind.third_external_userid", "like", pattern),
           ]),
         );
     }
@@ -2926,45 +3045,15 @@ export class WorkbenchRepository {
 
     const rows = (await query.execute()) as CustomerContactPageRow[];
     const pageRows = rows.slice(0, limit);
-    const customerKeys = pageRows.map((row) => ({
-      platform: toNumber(row.platform) ?? input.platform ?? 0,
-      thirdExternalUserId: row.third_external_userid,
-      uid: toNumber(row.uid) ?? input.uid ?? 0,
-    }));
-    const thirdExternalUserIds = uniqueNonEmpty(
-      customerKeys.map((key) => key.thirdExternalUserId),
-    );
-    const relationCustomers = await this.listCustomerRelationRowsForKeys(
+    const items = await this.hydrateCustomerContactRows(
+      pageRows,
       input.uid,
       input.platform,
-      thirdExternalUserIds,
-    );
-    const relationsByCustomerKey = new Map(
-      relationCustomers.map((customer) => [customer.customerKey, customer]),
     );
 
     return {
       hasMore: rows.length > limit,
-      items: pageRows.map((row) => {
-        const uid = toNumber(row.uid) ?? input.uid ?? 0;
-        const platform = toNumber(row.platform) ?? input.platform ?? 0;
-        const customerKey = buildCustomerKey(uid, platform, row.third_external_userid);
-        const relationCustomer = relationsByCustomerKey.get(customerKey);
-
-        return {
-          avatar: row.avatar ?? "",
-          bizStatus: row.biz_status ?? 0,
-          customerKey,
-          gender: row.gender ?? null,
-          name: row.name ?? "",
-          platform,
-          realName: row.real_name ?? "",
-          relationCount: relationCustomer?.relationCount ?? 0,
-          seatRelations: relationCustomer?.seatRelations ?? [],
-          thirdExternalUserId: row.third_external_userid,
-          uid,
-        };
-      }),
+      items,
       nextCursor:
         rows.length > limit && pageRows.at(-1)
           ? encodeCustomerListCursor({
@@ -2974,6 +3063,49 @@ export class WorkbenchRepository {
           : undefined,
       total: pageRows.length,
     };
+  }
+
+  private async hydrateCustomerContactRows(
+    rows: CustomerContactPageRow[],
+    fallbackUid: number,
+    fallbackPlatform: number,
+  ): Promise<WorkbenchCustomerSummaryDto[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const thirdExternalUserIds = uniqueNonEmpty(
+      rows.map((row) => row.third_external_userid),
+    );
+    const relationCustomers = await this.listCustomerRelationRowsForKeys(
+      fallbackUid,
+      fallbackPlatform,
+      thirdExternalUserIds,
+    );
+    const relationsByCustomerKey = new Map(
+      relationCustomers.map((customer) => [customer.customerKey, customer]),
+    );
+
+    return rows.map((row) => {
+      const uid = toNumber(row.uid) ?? fallbackUid;
+      const platform = toNumber(row.platform) ?? fallbackPlatform;
+      const customerKey = buildCustomerKey(uid, platform, row.third_external_userid);
+      const relationCustomer = relationsByCustomerKey.get(customerKey);
+
+      return {
+        avatar: row.avatar ?? "",
+        bizStatus: row.biz_status ?? 0,
+        customerKey,
+        gender: row.gender ?? null,
+        name: row.name ?? "",
+        platform,
+        realName: row.real_name ?? "",
+        relationCount: relationCustomer?.relationCount ?? 0,
+        seatRelations: relationCustomer?.seatRelations ?? [],
+        thirdExternalUserId: row.third_external_userid,
+        uid,
+      };
+    });
   }
 
   private async listAccessibleSeatContexts(
@@ -3218,6 +3350,85 @@ export class WorkbenchRepository {
       .execute()) as CustomerBindPageRow[];
 
     return this.hydrateCustomerBindRows(rows, { hydrateContacts: false });
+  }
+
+  async listAccessibleCustomerSeatRelations(input: {
+    limit: number;
+    platform: number;
+    subUserId: string;
+    thirdExternalUserId: string;
+    uid: number;
+  }): Promise<WorkbenchCustomerSeatRelationDto[]> {
+    const subUserNumericId = parseMySqlId(input.subUserId);
+
+    if (subUserNumericId == null) {
+      return [];
+    }
+
+    const limit = Math.min(
+      Math.max(Math.trunc(input.limit), 1),
+      CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
+    );
+    const rows = (await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "bind.third_userid")
+          .onRef("seat.uid", "=", "bind.uid")
+          .onRef("seat.platform", "=", "bind.platform"),
+      )
+      .innerJoin("xy_wap_embed_user_seat_sub_relation as access", (join) =>
+        join
+          .onRef("access.user_seat_id", "=", "seat.id")
+          .onRef("access.uid", "=", "seat.uid")
+          .onRef("access.platform", "=", "seat.platform"),
+      )
+      .select([
+        "bind.add_time as add_time",
+        "bind.id as bind_id",
+        "bind.biz_status as bind_status",
+        "bind.bind_type as bind_type",
+        "bind.description as description",
+        "seat.third_avatar as seat_avatar",
+        "seat.id as seat_id",
+        "seat.third_user_name as seat_name",
+        "seat.third_userid as third_user_id",
+      ])
+      .where("access.sub_id", "=", subUserNumericId)
+      .where("bind.uid", "=", input.uid)
+      .where("bind.platform", "=", input.platform)
+      .where("bind.third_external_userid", "=", input.thirdExternalUserId)
+      .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("bind.bind_type", "=", CUSTOMER_BIND_TYPE_NORMAL)
+      .orderBy(
+        sql<number>`case
+          when seat.host_sub_id = ${subUserNumericId} and seat.is_online = 1 then 0
+          when seat.host_sub_id = ${subUserNumericId} then 1
+          else 2
+        end`,
+        "asc",
+      )
+      .orderBy("bind.add_time", "desc")
+      .orderBy("bind.id", "desc")
+      .limit(limit)
+      .execute()) as AccessibleCustomerSeatRelationRow[];
+
+    return rows.map((row) => {
+      const addTime =
+        row.add_time == null ? undefined : normalizeCursorTime(row.add_time);
+
+      return {
+        ...(addTime == null ? {} : { addTime }),
+        bindId: String(row.bind_id),
+        bindStatus: row.bind_status ?? 0,
+        bindType: row.bind_type ?? 0,
+        ...(row.description == null ? {} : { description: row.description }),
+        seatAvatar: row.seat_avatar ?? "",
+        seatId: String(row.seat_id),
+        seatName: row.seat_name ?? "",
+        thirdUserId: row.third_user_id,
+      };
+    });
   }
 
   async getCustomerLastConversation(input: {
@@ -4206,6 +4417,7 @@ export class WorkbenchRepository {
   async listMessages(
     conversationId: string,
     options: {
+      afterSeq?: number;
       beforeSeq?: number;
       includeHiddenConversation?: boolean;
       limit: number;
@@ -4327,6 +4539,10 @@ export class WorkbenchRepository {
       query = query.where("message.id", "<", options.beforeSeq);
     }
 
+    if (options.afterSeq != null) {
+      query = query.where("message.id", ">", options.afterSeq);
+    }
+
     const rows = await query
       .orderBy("message.id", "desc")
       .limit(options.limit + 1)
@@ -4390,6 +4606,168 @@ export class WorkbenchRepository {
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
       smartReplyScope,
+    };
+  }
+
+  async listMessageContext(input: {
+    after: number;
+    before: number;
+    conversationId: string;
+    messageId: string;
+    uid: number;
+  }): Promise<{ messages: WorkbenchMessageDto[]; targetMessageId: string }> {
+    const conversationId = parseMySqlId(input.conversationId);
+    const messageId = parseMySqlId(input.messageId);
+
+    if (conversationId == null || messageId == null) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.uid as uid",
+        "conversation.platform as platform",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "seat.id as seat_id",
+      ])
+      .select((expressionBuilder) =>
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      )
+      .where("conversation.id", "=", conversationId)
+      .where("conversation.uid", "=", input.uid)
+      .where("conversation.chat_type", "=", CHAT_TYPE_SINGLE)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const buildMessageQuery = () => this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+        "message.source as source",
+        "message.status as status",
+        "message.update_time as update_time",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
+        expressionBuilder.val(conversation.seat_id).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+        expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.chat_type", "=", CHAT_TYPE_SINGLE)
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.third_external_id", "=", conversation.conversation_external_id);
+    const anchor = await buildMessageQuery()
+      .where("message.id", "=", messageId)
+      .executeTakeFirst() as MessageRow | undefined;
+    const anchorTime = toTimestamp(anchor?.msgtime);
+
+    if (!anchor || anchorTime <= 0) {
+      return { messages: [], targetMessageId: input.messageId };
+    }
+
+    const beforeLimit = Math.max(0, Math.min(100, Math.floor(input.before)));
+    const afterLimit = Math.max(0, Math.min(100, Math.floor(input.after)));
+    const [beforeRows, afterRows] = await Promise.all([
+      beforeLimit === 0
+        ? Promise.resolve([] as MessageRow[])
+        : buildMessageQuery()
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder("message.msgtime", "<", anchorTime),
+                expressionBuilder.and([
+                  expressionBuilder("message.msgtime", "=", anchorTime),
+                  expressionBuilder("message.id", "<", messageId),
+                ]),
+              ]),
+            )
+            .orderBy("message.msgtime", "desc")
+            .orderBy("message.id", "desc")
+            .limit(beforeLimit)
+            .execute() as Promise<MessageRow[]>,
+      afterLimit === 0
+        ? Promise.resolve([] as MessageRow[])
+        : buildMessageQuery()
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder("message.msgtime", ">", anchorTime),
+                expressionBuilder.and([
+                  expressionBuilder("message.msgtime", "=", anchorTime),
+                  expressionBuilder("message.id", ">", messageId),
+                ]),
+              ]),
+            )
+            .orderBy("message.msgtime", "asc")
+            .orderBy("message.id", "asc")
+            .limit(afterLimit)
+            .execute() as Promise<MessageRow[]>,
+    ]);
+    const messageRows = [...beforeRows.reverse(), anchor, ...afterRows];
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
+    const hydrationSources = await this.getMessageHydrationSources(
+      allRowsToHydrate,
+      conversation.uid,
+      conversation.platform,
+      toNumber(conversation.group_seat_id),
+    );
+    const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedQuotedRows = hydrateMessageRows(quotedRows.fetchedRows, hydrationSources);
+    const currentRowsById = new Map(
+      hydratedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedRowsById = new Map(
+      hydratedQuotedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedRows,
+      currentRowsById,
+      fetchedRowsById,
+    );
+
+    return {
+      messages: hydratedRows.map((row) =>
+        mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
+      ),
+      targetMessageId: String(messageId),
     };
   }
 

@@ -4,6 +4,7 @@ import type {
   InsightAnalysisOutput,
   InsightLiveAnalysisGateDecision,
   InsightSessionAnalyzer,
+  InsightTokenUsage,
 } from "./insights-worker.js";
 import {
   buildInsightClassificationPromptMessages,
@@ -13,6 +14,11 @@ import {
   buildInsightSummaryPromptMessages,
   type InsightPromptMessage,
 } from "./insight-prompt-builder.js";
+import {
+  getWorkerErrorCode,
+  safeErrorPayload,
+  type InsightsWorkerObservability,
+} from "./insights-worker-observability.js";
 
 export type OpenAiCompatibleProviderConfig = {
   analysisMode?: "multi_step" | "single";
@@ -120,12 +126,19 @@ export function maskProviderConfigForLog(config: OpenAiCompatibleProviderConfig)
 export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private responseFormatUnsupported = false;
 
-  constructor(private readonly config: OpenAiCompatibleProviderConfig) {}
+  constructor(
+    private readonly config: OpenAiCompatibleProviderConfig,
+    private readonly observability?: InsightsWorkerObservability,
+  ) {}
 
   async analyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
-    return retryLlmRequest(() => this.doAnalyzeSessionWithResponseFormatFallback(input), this.config.retry);
+    return retryLlmRequest(
+      () => this.doAnalyzeSessionWithResponseFormatFallback(input),
+      this.config.retry,
+      () => this.observability?.increment("analysis", "modelRetries"),
+    );
   }
 
   async evaluateLiveAnalysisGate(
@@ -137,8 +150,14 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           maxTokens: this.config.liteMaxTokens,
           messages: buildInsightLiveGatePromptMessages(input),
           model: this.config.liteModel,
+          onTokenUsage: input.onTokenUsage,
+          step: "live_gate",
+          uid: input.job?.uid ?? 0,
         }),
-      ), this.config.retry);
+      ),
+      this.config.retry,
+      () => this.observability?.increment("analysis", "modelRetries"),
+    );
   }
 
   private async doAnalyzeSessionWithResponseFormatFallback(
@@ -152,6 +171,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       }
 
       this.responseFormatUnsupported = true;
+      this.reportResponseFormatFallback(input.job?.uid ?? 0);
       return this.doAnalyzeSession(input);
     }
   }
@@ -159,9 +179,29 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
-    const includeActionItems = shouldGenerateActionItems(input.job);
+    const hasQaWork = input.context
+      ? input.context.qaRuleConfigs.length > 0
+      : true;
+    const hasClassificationWork = input.context
+      ? input.context.entityDictionary.length > 0 ||
+        input.context.intentConfigs.length > 0 ||
+        input.context.labelConfigs.length > 0
+      : true;
+
+    if (
+      (input.job?.analysisScope === "qaFindings" && !hasQaWork) ||
+      (input.job?.analysisScope === "classification" && !hasClassificationWork)
+    ) {
+      return emptyAnalysisOutput();
+    }
+
+    const includeActionItems =
+      input.generateActionItems !== false && shouldGenerateActionItems(input.job);
     const output = this.config.analysisMode !== "single"
-      ? await this.doAnalyzeSessionInSteps(input)
+      ? await this.doAnalyzeSessionInSteps(input, {
+          hasClassificationWork,
+          hasQaWork,
+        })
       : await this.completeAnalysisStep({
           maxTokens: this.config.maxTokens,
           messages: buildInsightPromptMessages({
@@ -172,6 +212,9 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             previousSessionContexts: input.previousSessionContexts,
           }),
           model: this.config.model,
+          onTokenUsage: input.onTokenUsage,
+          step: "single",
+          uid: input.job?.uid ?? 0,
         });
 
     return stripFaqCandidates(output);
@@ -179,6 +222,10 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 
   private async doAnalyzeSessionInSteps(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+    work: {
+      hasClassificationWork: boolean;
+      hasQaWork: boolean;
+    },
   ): Promise<InsightAnalyzerOutput> {
     if (input.job.analysisScope === "qaFindings") {
       const priorConclusions = buildPriorConclusions(input.previousOutput);
@@ -191,6 +238,8 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           priorConclusions,
         }),
         model: this.config.model,
+        onTokenUsage: input.onTokenUsage,
+        uid: input.job?.uid ?? 0,
       });
     }
 
@@ -205,10 +254,13 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
           priorConclusions,
         }),
         model: this.config.liteModel,
+        onTokenUsage: input.onTokenUsage,
+        uid: input.job?.uid ?? 0,
       });
     }
 
-    const includeActionItems = shouldGenerateActionItems(input.job);
+    const includeActionItems =
+      input.generateActionItems !== false && shouldGenerateActionItems(input.job);
     const summary = await this.completeAnalysisStep({
       maxTokens: this.config.maxTokens,
       messages: buildInsightSummaryPromptMessages({
@@ -219,13 +271,16 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
         previousSessionContexts: input.previousSessionContexts,
       }),
       model: this.config.model,
+      onTokenUsage: input.onTokenUsage,
+      step: "summary",
+      uid: input.job?.uid ?? 0,
     });
     const priorConclusions = {
       actionItems: summary.actionItems,
       problemResolution: summary.problemResolution,
       summary: summary.summary,
     };
-    const runQa = input.job?.mode !== "live";
+    const runQa = input.job?.mode !== "live" && work.hasQaWork;
     const [qa, classification] = await Promise.all([
       runQa
         ? this.completeOptionalStep("qaFindings", {
@@ -237,18 +292,24 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
             priorConclusions,
           }),
           model: this.config.model,
+          onTokenUsage: input.onTokenUsage,
+          uid: input.job?.uid ?? 0,
         })
         : Promise.resolve(emptyAnalysisOutput()),
-      this.completeOptionalStep("classification", {
-        maxTokens: this.config.liteMaxTokens,
-        messages: buildInsightClassificationPromptMessages({
-          context: input.context,
-          messages: input.messages,
-          previousSessionContexts: input.previousSessionContexts,
-          priorConclusions,
-        }),
-        model: this.config.liteModel,
-      }),
+      work.hasClassificationWork
+        ? this.completeOptionalStep("classification", {
+            maxTokens: this.config.liteMaxTokens,
+            messages: buildInsightClassificationPromptMessages({
+              context: input.context,
+              messages: input.messages,
+              previousSessionContexts: input.previousSessionContexts,
+              priorConclusions,
+            }),
+            model: this.config.liteModel,
+            onTokenUsage: input.onTokenUsage,
+            uid: input.job?.uid ?? 0,
+          })
+        : Promise.resolve(emptyAnalysisOutput()),
     ]);
 
     return {
@@ -265,20 +326,46 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   }
 
   private async completeOptionalStep(
-    stepName: string,
+    stepName: "classification" | "qaFindings",
     input: {
       maxTokens: number;
       messages: InsightPromptMessage[];
       model: string;
+      onTokenUsage?: (usage: InsightTokenUsage) => void;
+      uid: number;
     },
   ): Promise<InsightAnalyzerOutput> {
+    const step = stepName === "qaFindings" ? "qa" : stepName;
     try {
-      return await retryLlmRequest(() => this.completeAnalysisStep(input), this.config.retry);
+      const output = await retryLlmRequest(
+        () => this.completeAnalysisStep({
+          ...input,
+          step,
+        }),
+        this.config.retry,
+        () => this.observability?.increment("analysis", "modelRetries"),
+      );
+      return output;
     } catch (error) {
       if (isResponseFormatUnsupportedError(error)) {
         throw error;
       }
 
+      this.observability?.increment("analysis", "optionalStepFailures");
+      this.observability?.event({
+        errorCode: getWorkerErrorCode(error),
+        eventCode: "insights_worker.llm_optional_step_failed",
+        level: "warn",
+        message: "会话洞察 Worker 可选分析步骤失败",
+        payload: {
+          model: input.model,
+          step,
+          ...safeErrorPayload(error),
+        },
+        pipeline: "analysis",
+        throttleKey: "provider_optional_step",
+        uid: input.uid,
+      });
       return {
         ...emptyAnalysisOutput(),
         analysisWarnings: [`${stepName} analysis failed: ${formatAnalysisError(error)}`],
@@ -290,6 +377,9 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    step: LlmStep;
+    uid: number;
   }) {
     return normalizeAnalysisOutput(await this.completeJson(input));
   }
@@ -298,6 +388,9 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    step: LlmStep;
+    uid: number;
   }) {
     try {
       return await this.completeJson(input);
@@ -307,6 +400,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       }
 
       this.responseFormatUnsupported = true;
+      this.reportResponseFormatFallback(input.uid);
       return this.completeJson(input);
     }
   }
@@ -315,6 +409,9 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
+    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    step: LlmStep;
+    uid: number;
   }) {
     const requestBody: Record<string, unknown> = {
       max_tokens: input.maxTokens,
@@ -327,34 +424,168 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       requestBody.response_format = { type: this.config.responseFormat };
     }
 
-    const response = await fetchWithTimeout(
-      `${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      {
-        body: JSON.stringify(requestBody),
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-          "Content-Type": "application/json",
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(
+        `${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`,
+        {
+          body: JSON.stringify(requestBody),
+          headers: {
+            Authorization: `Bearer ${this.config.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
         },
-        method: "POST",
-      },
-      this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
-    );
+        this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      );
+    } catch (error) {
+      const annotatedError = annotateLlmStep(error, input.step);
+      this.reportRequestCompleted(input, startedAt, undefined, annotatedError);
+      throw annotatedError;
+    }
 
     if (!response.ok) {
-      throw new LlmRequestError(response.status, await readResponseText(response));
+      const error = annotateLlmStep(
+        new LlmRequestError(
+          response.status,
+          await readResponseText(response),
+        ),
+        input.step,
+      );
+      this.reportRequestCompleted(input, startedAt, response.status, error);
+      throw error;
     }
 
     const payload = await response.json() as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: unknown;
     };
+    const tokenUsage = normalizeTokenUsage(payload.usage);
+    if (tokenUsage) {
+      input.onTokenUsage?.(tokenUsage);
+    }
     const content = payload.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error("LLM response content is empty");
+      const error = annotateLlmStep(
+        new Error(
+          "LLM_RESPONSE_CONTENT_EMPTY: LLM response content is empty",
+        ),
+        input.step,
+      );
+      this.reportRequestCompleted(input, startedAt, response.status, error);
+      throw error;
     }
 
-    return parseModelJsonObject(content);
+    try {
+      const result = parseModelJsonObject(content);
+      this.reportRequestCompleted(input, startedAt, response.status);
+      return result;
+    } catch (error) {
+      const annotatedError = annotateLlmStep(error, input.step);
+      this.reportRequestCompleted(
+        input,
+        startedAt,
+        response.status,
+        annotatedError,
+      );
+      throw annotatedError;
+    }
   }
+
+  private reportRequestCompleted(
+    input: { model: string; step: LlmStep; uid: number },
+    startedAt: number,
+    httpStatus?: number,
+    error?: unknown,
+  ) {
+    this.observability?.increment("analysis", "modelRequests");
+    if (error) {
+      this.observability?.increment("analysis", "modelFailures");
+      if (error instanceof LlmTimeoutError) {
+        this.observability?.increment("analysis", "modelTimeouts");
+      }
+    } else {
+      this.observability?.recover("provider", "analysis", input.uid);
+    }
+    this.observability?.event({
+      errorCode: error ? getWorkerErrorCode(error) : undefined,
+      eventCode: "insights_worker.llm_request_completed",
+      level: "debug",
+      message: "会话洞察 Worker 模型请求完成",
+      payload: {
+        durationMs: Math.max(0, Date.now() - startedAt),
+        httpStatus,
+        model: input.model,
+        outcome: error ? "failed" : "succeeded",
+        step: input.step,
+        ...(error ? safeErrorPayload(error) : {}),
+      },
+      pipeline: "analysis",
+      uid: input.uid,
+    });
+  }
+
+  private reportResponseFormatFallback(uid: number) {
+    this.observability?.increment("analysis", "responseFormatFallbacks");
+    this.observability?.event({
+      errorCode: "LLM_RESPONSE_FORMAT_UNSUPPORTED",
+      eventCode: "insights_worker.llm_response_format_fallback",
+      level: "warn",
+      message: "会话洞察 Worker 模型响应格式已降级",
+      pipeline: "analysis",
+      throttleKey: "provider_response_format",
+      uid,
+    });
+  }
+}
+
+type LlmStep = "classification" | "live_gate" | "qa" | "single" | "summary";
+
+function normalizeTokenUsage(value: unknown): InsightTokenUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const promptTokens = readTokenCount(value.prompt_tokens);
+  const completionTokens = readTokenCount(value.completion_tokens);
+  const promptDetails = isRecord(value.prompt_tokens_details)
+    ? value.prompt_tokens_details
+    : {};
+  const completionDetails = isRecord(value.completion_tokens_details)
+    ? value.completion_tokens_details
+    : {};
+
+  return {
+    completion_tokens: completionTokens,
+    completion_tokens_details: {
+      reasoning_tokens: readTokenCount(completionDetails.reasoning_tokens),
+    },
+    prompt_tokens: promptTokens,
+    prompt_tokens_details: {
+      cached_tokens: readTokenCount(promptDetails.cached_tokens),
+    },
+    total_tokens: readTokenCount(
+      value.total_tokens,
+      promptTokens + completionTokens,
+    ),
+  };
+}
+
+function readTokenCount(value: unknown, fallback = 0) {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= 0
+    ? value
+    : fallback;
+}
+
+function annotateLlmStep(error: unknown, failedStep: LlmStep) {
+  if (error instanceof Error) {
+    Object.assign(error, { failedStep });
+  }
+  return error;
 }
 
 class LlmRequestError extends Error {
@@ -363,12 +594,14 @@ class LlmRequestError extends Error {
     readonly responseText: string,
   ) {
     super(`LLM request failed: ${status} ${responseText}`);
+    this.name = "LlmRequestError";
   }
 }
 
 class LlmTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`LLM request timed out after ${timeoutMs}ms`);
+    this.name = "LlmTimeoutError";
   }
 }
 
@@ -387,6 +620,7 @@ function isResponseFormatUnsupportedError(error: unknown) {
 async function retryLlmRequest<T>(
   run: () => Promise<T>,
   config: OpenAiCompatibleProviderConfig["retry"],
+  onRetry?: () => void,
 ) {
   const maxAttempts = config?.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
   const baseDelayMs = config?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
@@ -402,6 +636,7 @@ async function retryLlmRequest<T>(
         throw error;
       }
 
+      onRetry?.();
       await sleep(baseDelayMs * 2 ** (attempt - 1));
     }
   }
@@ -485,7 +720,6 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
 
   return {
     actionItems: readArray(record.actionItems).map((item) => ({
-      dueHint: readOptionalString(item, "dueHint"),
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
       priority: readPriority(readString(item, "priority")),
       title: readString(item, "title") || "待跟进事项",

@@ -23,13 +23,13 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import {
   MessageMaterialPickerDialog as QuickReplyMaterialPickerDialog,
   type MessageAttachmentMaterialBizType as QuickReplyAttachmentMaterialBizType,
 } from "@/pages/chat/components/message-content/message-material-picker-dialog";
-import type { MessageDraftAttachment as QuickReplyDraftAttachment } from "@/pages/chat/components/message-content/message-attachment-picker";
 import { MessageAttachmentPreview as QuickReplyAttachmentPreview } from "@/pages/chat/components/message-content/message-attachment-preview";
+import type { QuickReplyDraftAttachment } from "@/pages/chat/lib/quick-reply-attachment-types";
 import {
   buildKbAttachmentPayloadFromMaterial,
   extractKbAttachmentMeta,

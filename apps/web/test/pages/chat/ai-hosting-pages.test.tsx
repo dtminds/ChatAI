@@ -2823,7 +2823,7 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("button", { name: "添加工具" }));
     expect(screen.getByRole("heading", { name: "插入工具" })).toBeInTheDocument();
-    expect(screen.getByText("绑定订单")).toBeInTheDocument();
+    expect(screen.queryByText("绑定订单")).not.toBeInTheDocument();
     expect(screen.getByText("小店订单物流查询")).toBeInTheDocument();
     expect(screen.queryByText("物业查询")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加订单查询" }));

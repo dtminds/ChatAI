@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AGENT_SKILL_TOOL_CATALOG,
+  AGENT_SKILL_VISIBLE_TOOL_CATALOG,
   type KbListItem,
   type WorkTagItem,
 } from "@chatai/contracts";
@@ -426,7 +426,7 @@ async function loadOptionsForEditableUncached(
   item: SkillPreviewEditableResource,
 ): Promise<OptionItem[]> {
   if (item.segment.kind === "tool") {
-    return AGENT_SKILL_TOOL_CATALOG.map((tool) => ({
+    return AGENT_SKILL_VISIBLE_TOOL_CATALOG.map((tool) => ({
       label: tool.name,
       value: tool.id,
       meta: { description: tool.description, title: tool.name },

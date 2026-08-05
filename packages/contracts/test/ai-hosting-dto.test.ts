@@ -89,23 +89,41 @@ describe("AI hosting DTOs", () => {
   });
 
   it("accepts Chinese prompt config values for agent saves", () => {
+    const payloadWithoutUserMemory = {
+      modelId: "11",
+      name: "护肤小助理",
+      promptConfig: {
+        availableKbIds: [1, 3],
+        availableSkillIds: [],
+        conditionLogic: "如果客户咨询成分，那么说明功效",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "客户要求真人",
+        role: "你是护肤顾问",
+      },
+    };
+
     expect(
       Value.Check(AiHostingAgentSaveRequestSchema, {
-        modelId: "11",
-        name: "护肤小助理",
+        ...payloadWithoutUserMemory,
         promptConfig: {
-          availableKbIds: [1, 3],
-          availableSkillIds: [],
-          conditionLogic: "如果客户咨询成分，那么说明功效",
-          replyStyle: {
-            length: "简洁",
-            styleInstruction: "亲切自然",
-          },
-          handoffRules: "客户要求真人",
-          role: "你是护肤顾问",
+          ...payloadWithoutUserMemory.promptConfig,
+          useUserMemory: true,
         },
       }),
     ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...payloadWithoutUserMemory,
+        promptConfig: {
+          ...payloadWithoutUserMemory.promptConfig,
+          useUserMemory: "true",
+        },
+      }),
+    ).toBe(false);
+    expect(Value.Check(AiHostingAgentSaveRequestSchema, payloadWithoutUserMemory)).toBe(false);
   });
 
   it("limits the resources available to an agent", () => {
@@ -128,6 +146,7 @@ describe("AI hosting DTOs", () => {
         },
         handoffRules: "",
         role: "",
+        useUserMemory: false,
       },
     };
 
@@ -166,6 +185,7 @@ describe("AI hosting DTOs", () => {
         },
         handoffRules: "客户要求真人",
         role: "你是护肤顾问",
+        useUserMemory: false,
       },
     };
 
@@ -245,6 +265,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(true);
@@ -263,6 +284,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(false);
@@ -305,6 +327,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
         publishedAt: 1_718_006_400_000,
         updatedAt: 1_718_006_460_000,
@@ -418,6 +441,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(true);

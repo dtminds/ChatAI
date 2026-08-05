@@ -356,6 +356,7 @@ const mockAgentDetail = {
     },
     handoffRules: "客户要求真人",
     role: "你是护肤顾问",
+    useUserMemory: false,
   },
   publishedAt: 1_718_006_400_000,
   updatedAt: 1_718_006_460_000,
@@ -4335,12 +4336,12 @@ describe("AI hosting pages", () => {
     );
   });
 
-  it("uses the database name length limit for agent names", async () => {
+  it("uses the frontend name length limit for agent names", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
 
-    expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("maxLength", "50");
+    expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("maxLength", "20");
   });
 
   it("uses the field-specific agent settings character limits", async () => {
@@ -4458,6 +4459,31 @@ describe("AI hosting pages", () => {
     expect(screen.getByTitle("模型图标：Doubao-2.0-lite")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "默认模型" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Doubao-2.0-lite" })).toBeInTheDocument();
+  });
+
+  it("defaults user memory off and saves the enabled setting", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    const userMemorySwitch = screen.getByRole("switch", { name: "客户记忆" });
+
+    expect(userMemorySwitch).not.toBeChecked();
+    await user.click(userMemorySwitch);
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "记忆小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          promptConfig: expect.objectContaining({
+            useUserMemory: true,
+          }),
+        }),
+      );
+    });
   });
 
   it("shows an unpublished draft dialog after creating an agent", async () => {

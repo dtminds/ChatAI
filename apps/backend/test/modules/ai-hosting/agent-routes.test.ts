@@ -389,6 +389,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/301",
@@ -428,6 +429,7 @@ describe("AI hosting agent routes", () => {
         style_instruction: "亲切自然",
       },
       role: "你是护肤顾问",
+      use_user_memory: false,
     });
     expect(unchangedPublish.statusCode).toBe(400);
     expect(unchangedPublish.json()).toMatchObject({
@@ -482,6 +484,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/301",
@@ -617,6 +620,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "退款投诉",
           role: "你是售后客服",
+          useUserMemory: true,
         },
       },
       url: "/api/server/ai-hosting/agents",
@@ -653,6 +657,7 @@ describe("AI hosting agent routes", () => {
         style_instruction: "亲切自然",
       },
       role: "你是售后客服",
+      use_user_memory: true,
     });
     expect(db.insertedHistories).toEqual([]);
     expect(remove.statusCode).toBe(200);
@@ -690,6 +695,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "退款投诉",
           role: "你是售后客服",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents",
@@ -744,6 +750,7 @@ describe("AI hosting agent routes", () => {
         },
         handoffRules: "客户要求真人",
         role: "你是护肤顾问",
+        useUserMemory: false,
       };
       const requests = [
         app.inject({
@@ -1416,6 +1423,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: true,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1453,6 +1461,7 @@ describe("AI hosting agent routes", () => {
           style_instruction: "亲切自然",
         },
         role: "你是护肤顾问",
+        use_user_memory: true,
       }),
       uid: 9001,
     });
@@ -1498,6 +1507,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1553,6 +1563,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1608,6 +1619,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",
@@ -1663,6 +1675,7 @@ describe("AI hosting agent routes", () => {
           },
           handoffRules: "",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       },
       url: "/api/server/ai-hosting/agents/test",

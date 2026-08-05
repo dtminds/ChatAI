@@ -112,5 +112,6 @@ function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
       style_instruction: promptConfig.replyStyle.styleInstruction,
     },
     role: promptConfig.role,
+    use_user_memory: promptConfig.useUserMemory === true,
   });
 }

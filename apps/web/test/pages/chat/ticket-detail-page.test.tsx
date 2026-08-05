@@ -125,10 +125,7 @@ describe("TicketDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "跟进退款" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回工单列表" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "打开会话" })).toHaveAttribute(
-      "href",
-      "/chat/conversations/301",
-    );
+    expect(screen.queryByRole("link", { name: "打开会话" })).not.toBeInTheDocument();
   });
 
   it("marks conversation links as intentional in-app opens", async () => {
@@ -138,7 +135,7 @@ describe("TicketDetailPage", () => {
       <MemoryRouter initialEntries={["/chat/tickets/501"]}>
         <Routes>
           <Route
-            element={<TicketDetailContent presentation="drawer" ticketId="501" />}
+            element={<TicketDetailContent ticketId="501" />}
             path="/chat/tickets/:ticketId"
           />
           <Route

@@ -235,6 +235,89 @@ describe("GroupMembersSidePanel", () => {
     });
   });
 
+  it("allows viewing an existing conversation without taking over the seat", async () => {
+    const user = userEvent.setup();
+    const getCustomerSeatRelations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          bindId: "bind-existing",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: 1_779_600_000_000,
+          seatAvatar: "",
+          seatId: "seat-existing",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-existing",
+        },
+        {
+          bindId: "bind-new",
+          bindStatus: 1,
+          bindType: 1,
+          seatAvatar: "",
+          seatId: "seat-new",
+          seatName: "销售二号",
+          thirdUserId: "seat-user-new",
+        },
+      ],
+    });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomerSeatRelations,
+    });
+    const onStartChat = vi.fn();
+
+    render(
+      <GroupMembersSidePanel
+        accounts={[
+          {
+            id: "seat-existing",
+            loginStatus: "online",
+            name: "销售一号",
+          } as Account,
+          {
+            id: "seat-new",
+            loginStatus: "online",
+            name: "销售二号",
+          } as Account,
+        ]}
+        currentEmployeeId="employee-001"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "客户乙",
+            id: "external-customer-002",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onStartChat={onStartChat}
+      />,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 客户乙 的好友关系" }),
+    );
+
+    const continueButton = await screen.findByRole("button", {
+      name: "向 销售一号 继续会话",
+    });
+    expect(continueButton).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "销售二号 不可发起会话" }),
+    ).toBeDisabled();
+
+    await user.click(continueButton);
+
+    expect(onStartChat).toHaveBeenCalledWith({
+      customerAvatar: "",
+      customerName: "客户乙",
+      realName: "",
+      seatId: "seat-existing",
+      thirdExternalUserId: "external-customer-002",
+    });
+  });
+
   it("opens after 400ms and waits another 250ms before requesting relations", async () => {
     vi.useFakeTimers();
     const getCustomerSeatRelations = vi.fn().mockResolvedValue({ items: [] });

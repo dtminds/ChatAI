@@ -57,6 +57,19 @@ describe("user memory page", () => {
 
   it("loads the daily overview and lets an admin enable maintenance", async () => {
     render(<UserMemoryPage />);
+    const introGuide = screen.getByRole("region", { name: "客户记忆使用引导" });
+    expect(within(introGuide).getByAltText("提炼记忆示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/memory_f1.png",
+    );
+    expect(within(introGuide).getByAltText("协同维护示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/memory_f2.png",
+    );
+    expect(within(introGuide).getByAltText("授权使用示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/memory_f3.png",
+    );
     const toggle = await screen.findByRole("switch", { name: "用户记忆" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);

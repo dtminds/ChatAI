@@ -11,27 +11,27 @@ export const AGENT_SKILL_KB_MAX_COUNT = 10;
 
 export const AGENT_SKILL_TOOL_CATALOG = [
   {
-    description: "根据客户提供的小店订单号，查询订单的物流状态与轨迹信息",
-    id: "search_mall_order_logistics",
-    name: "小店订单物流查询",
-  },
-  {
-    description: "代客户将提供的订单号转换为积分",
-    id: "transfer_mall_point",
-    name: "代客转积分",
-  },
-  {
-    description: "为客户的小店订单添加或更新备注",
-    id: "remark_mall_order",
-    name: "小店订单备注",
-  },
-  {
     description: "根据客户提供的订单号查询订单信息",
     id: "search_order",
     name: "订单查询",
   },
   {
-    description: "根据客户提供的订单号，为客户关联绑定订单至客户画像",
+    description: "根据订单号查询小程序订单的物流状态与轨迹信息",
+    id: "search_mall_order_logistics",
+    name: "小程序订单物流查询",
+  },
+  {
+    description: "为小程序订单添加或更新备注",
+    id: "remark_mall_order",
+    name: "小程序订单备注",
+  },
+  {
+    description: "根据客户提供的订单号代客转积分",
+    id: "transfer_mall_point",
+    name: "代客转积分",
+  },
+  {
+    description: "将客户提供的订单号，关联绑定至客户画像",
     id: "bind_order",
     name: "绑定订单",
   },

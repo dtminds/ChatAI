@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store/auth-store";
 import { insightChartColors, insightResolutionColors } from "../insights/insights-chart-palette";
 import { canMaintainUserMemory, canManageAiHostingAgents } from "./agent-permissions";
+import { AiHostingIntroGuide } from "./ai-hosting-intro-guide";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { createUserMemoryItem, deleteUserMemoryItem, getUserMemoryCustomer, getUserMemoryEvidence, getUserMemoryOverview, getUserMemoryRun, listUserMemoryCustomers, listUserMemoryRuns, updateUserMemoryItem, updateUserMemorySettings } from "./api/user-memory-service";
 import { USER_MEMORY_CATEGORIES, UserMemoryEditorDialog } from "./user-memory-editor-dialog";
@@ -32,6 +33,30 @@ type CustomerSelection = Pick<Customer, "customerName" | "platform" | "thirdExte
 type Evidence = Awaited<ReturnType<typeof getUserMemoryEvidence>>;
 type UserMemoryTab = "overview" | "customers" | "observability";
 const USER_MEMORY_CUSTOMER_PAGE_SIZE = 20;
+const userMemoryIntroSteps = [
+  {
+    description: "AI 自动从客户会话中提炼稳定信息形成记忆",
+    imageAlt: "提炼记忆示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/memory_f1.png",
+    step: "第 1 步",
+    title: "提炼记忆",
+  },
+  {
+    description: "客服在服务过程中，也可按需添加、修改或删除记忆",
+    imageAlt: "协同维护示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/memory_f2.png",
+    step: "第 2 步",
+    title: "协同维护",
+  },
+  {
+    description: "在 Agent 设置中开启客户记忆，让每次服务更懂客户",
+    imageAlt: "授权使用示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/memory_f3.png",
+    step: "第 3 步",
+    title: "授权使用",
+  },
+] as const;
+
 export function UserMemoryPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const canManage = canManageAiHostingAgents(role);
@@ -212,6 +237,7 @@ export function UserMemoryPage() {
         </div> : undefined}
         description="AI 自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户"
       />
+      <AiHostingIntroGuide ariaLabel="客户记忆使用引导" steps={userMemoryIntroSteps} />
       <Tabs onValueChange={(value) => setActiveTab(value as UserMemoryTab)} value={activeTab}>
         <TabsList variant="underline"><TabsTrigger value="overview" variant="underline">概览</TabsTrigger><TabsTrigger value="customers" variant="underline">记忆明细</TabsTrigger>{overview?.canViewWorkerObservability ? <TabsTrigger value="observability" variant="underline">运行观测</TabsTrigger> : null}</TabsList>
         <TabsContent className="pt-5" value="overview">

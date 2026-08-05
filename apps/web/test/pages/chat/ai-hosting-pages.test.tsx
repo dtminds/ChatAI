@@ -2007,7 +2007,7 @@ describe("AI hosting pages", () => {
     expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
     expect(skillTemplateService.getSkillTemplate).not.toHaveBeenCalled();
 
-    const deliveryTrigger = screen.getByRole("button", { name: /FDE 深度共创服务/ });
+    const deliveryTrigger = screen.getByRole("button", { name: /交付专家深度共创服务/ });
     await user.click(deliveryTrigger);
     const deliveryDialog = screen.getByRole("dialog");
     expect(within(deliveryDialog).getByRole("heading", { level: 2 })).toBeInTheDocument();

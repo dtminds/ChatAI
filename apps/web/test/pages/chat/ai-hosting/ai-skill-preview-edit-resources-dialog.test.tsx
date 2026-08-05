@@ -134,11 +134,10 @@ describe("SkillPreviewEditResourcesDialog", () => {
 
     await screen.findByRole("heading", { name: "编辑资源" });
     await waitFor(() => {
-      expect(screen.getAllByRole("listbox")).toHaveLength(4);
+      expect(screen.getByRole("button", { name: "选择字段一" })).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("list", { name: "标签组" })).toHaveLength(2);
-    expect(screen.getByLabelText("搜索字段一")).toBeInTheDocument();
-    expect(screen.getByLabelText("搜索知识库一")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择知识库一" })).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
     expect(kbServiceMock.listKbs).toHaveBeenCalledTimes(2);
     expect(kbServiceMock.listKbs).toHaveBeenNthCalledWith(1, {
@@ -161,6 +160,38 @@ describe("SkillPreviewEditResourcesDialog", () => {
     });
   });
 
+  it("allows confirming without selecting optional recommend resources", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+
+    render(
+      <SkillPreviewEditResourcesDialog
+        content=""
+        editableResources={[
+          buildEditableResource("variable", "企微标签", "work_tag"),
+          buildEditableResource("knowledge_base", "知识库"),
+        ]}
+        onCancel={vi.fn()}
+        onConfirm={onConfirm}
+        open
+      />,
+    );
+
+    await screen.findByRole("button", { name: "选择企微标签" });
+    await user.click(getMainConfirmButton());
+
+    await waitFor(() => {
+      expect(onConfirm).toHaveBeenCalledWith({
+        content: "",
+        resources: {
+          variables: [],
+          tools: [],
+          "knowledge-bases": [],
+        },
+      });
+    });
+  });
+
   it("disables tag groups already used by content or another preview field", async () => {
     const user = userEvent.setup();
     workTagServiceMock.listWorkTagGroups.mockResolvedValue({
@@ -169,6 +200,19 @@ describe("SkillPreviewEditResourcesDialog", () => {
         { attr: 1, id: 12, name: "可选标签组", tagCount: 1 },
       ],
     });
+    workTagServiceMock.listWorkTags.mockImplementation(async ({ groupId }) => ({
+      pagination: { hasNext: false, page: 1, pageSize: 100, total: 1 },
+      tags: [
+        {
+          groupAttr: 1,
+          groupId,
+          groupName: groupId === 12 ? "可选标签组" : "已有标签组",
+          groupSort: 1,
+          id: groupId === 12 ? 201 : 101,
+          name: groupId === 12 ? "可选标签" : "已有标签",
+        },
+      ],
+    }));
     const editableResources = [
       buildEditableResource("variable", "标签一", "work_tag"),
       buildEditableResource("variable", "标签二", "work_tag"),
@@ -187,22 +231,29 @@ describe("SkillPreviewEditResourcesDialog", () => {
       />,
     );
 
-    const panels = await screen.findAllByRole("list", { name: "标签组" });
-    const firstPanel = panels[0]!;
-    const secondPanel = panels[1]!;
-
+    const firstPicker = await openResourcePicker(user, "标签一");
     expect(
-      within(firstPanel).getByRole("button", { name: "已有标签组" }),
+      within(firstPicker).getByRole("button", { name: "已有标签组" }),
     ).toBeDisabled();
     await user.click(
-      within(firstPanel).getByRole("button", { name: "可选标签组" }),
+      within(firstPicker).getByRole("button", { name: "可选标签组" }),
     );
+    const firstTagList = await within(firstPicker).findByRole("group", {
+      name: "标签一标签列表",
+    });
+    await user.click(within(firstTagList).getByText("可选标签"));
+    await user.click(within(firstPicker).getByRole("button", { name: "确定" }));
 
+    await waitFor(() => {
+      expect(screen.getByText(/已选：可选标签组/)).toBeInTheDocument();
+    });
+
+    const secondPicker = await openResourcePicker(user, "标签二");
     expect(
-      within(secondPanel).getByRole("button", { name: "已有标签组" }),
+      within(secondPicker).getByRole("button", { name: "已有标签组" }),
     ).toBeDisabled();
     expect(
-      within(secondPanel).getByRole("button", { name: "可选标签组" }),
+      within(secondPicker).getByRole("button", { name: "可选标签组" }),
     ).toBeDisabled();
   });
 
@@ -226,7 +277,8 @@ describe("SkillPreviewEditResourcesDialog", () => {
       />,
     );
 
-    const root = await screen.findByLabelText("选择企微标签");
+    const picker = await openResourcePicker(user, "企微标签");
+    const root = within(picker).getByLabelText("选择企微标签");
     expect(within(root).getByRole("tab", { name: "普通标签" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -243,7 +295,7 @@ describe("SkillPreviewEditResourcesDialog", () => {
     expect(within(root).queryByRole("button", { name: "意向标签" })).not.toBeInTheDocument();
   });
 
-  it("lets users pick tags inside a selected wecom tag group with search", async () => {
+  it("lets users pick tags inside a selected wecom tag group with search and echo selection", async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
 
@@ -257,7 +309,8 @@ describe("SkillPreviewEditResourcesDialog", () => {
       />,
     );
 
-    const root = await screen.findByLabelText("选择企微标签");
+    const picker = await openResourcePicker(user, "企微标签");
+    const root = within(picker).getByLabelText("选择企微标签");
 
     await user.type(within(root).getByLabelText("搜索标签组"), "意向");
     await user.click(within(root).getByRole("button", { name: "意向标签" }));
@@ -269,7 +322,9 @@ describe("SkillPreviewEditResourcesDialog", () => {
       type: 0,
     });
 
-    const tagList = await screen.findByRole("group", { name: "企微标签标签列表" });
+    const tagList = await within(picker).findByRole("group", {
+      name: "企微标签标签列表",
+    });
     await waitFor(() => {
       expect(within(tagList).getByText("高意向")).toBeInTheDocument();
     });
@@ -279,8 +334,13 @@ describe("SkillPreviewEditResourcesDialog", () => {
     await user.clear(within(root).getByLabelText("搜索标签"));
     await user.click(within(tagList).getByText("高意向"));
     await user.click(within(tagList).getByText("待跟进"));
+    await user.click(within(picker).getByRole("button", { name: "确定" }));
 
-    await user.click(screen.getByRole("button", { name: "确定" }));
+    await waitFor(() => {
+      expect(screen.getByText(/已选：意向标签 · 高意向、待跟进/)).toBeInTheDocument();
+    });
+
+    await user.click(getMainConfirmButton());
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -331,26 +391,35 @@ describe("SkillPreviewEditResourcesDialog", () => {
 
     await screen.findByRole("heading", { name: "编辑资源" });
 
-    const customFieldRoot = await screen.findByLabelText("选择自定义属性");
+    const customPicker = await openResourcePicker(user, "自定义属性");
+    const customFieldRoot = within(customPicker).getByLabelText("选择自定义属性");
     await user.type(within(customFieldRoot).getByLabelText("搜索自定义属性"), "性");
     await user.click(within(customFieldRoot).getByRole("option", { name: "性别" }));
+    await user.click(within(customPicker).getByRole("button", { name: "确定" }));
+    expect(await screen.findByText("已选：性别")).toBeInTheDocument();
 
-    const systemRoot = screen.getByLabelText("选择系统变量");
+    const systemPicker = await openResourcePicker(user, "系统变量");
+    const systemRoot = within(systemPicker).getByLabelText("选择系统变量");
     await user.type(within(systemRoot).getByLabelText("搜索系统变量"), "昵称");
     expect(
       within(systemRoot).queryByRole("option", { name: "当前接待 Agent" }),
     ).not.toBeInTheDocument();
     await user.click(within(systemRoot).getByRole("option", { name: "客户昵称" }));
+    await user.click(within(systemPicker).getByRole("button", { name: "确定" }));
 
-    const toolRoot = screen.getByLabelText("选择推荐工具");
+    const toolPicker = await openResourcePicker(user, "推荐工具");
+    const toolRoot = within(toolPicker).getByLabelText("选择推荐工具");
     await user.type(within(toolRoot).getByLabelText("搜索推荐工具"), "订单查询");
     await user.click(within(toolRoot).getByRole("option", { name: /订单查询/ }));
+    await user.click(within(toolPicker).getByRole("button", { name: "确定" }));
 
-    const kbRoot = screen.getByLabelText("选择知识库");
+    const kbPicker = await openResourcePicker(user, "知识库");
+    const kbRoot = within(kbPicker).getByLabelText("选择知识库");
     await user.type(within(kbRoot).getByLabelText("搜索知识库"), "知识库 1");
     await user.click(within(kbRoot).getByRole("option", { name: "知识库 1" }));
+    await user.click(within(kbPicker).getByRole("button", { name: "确定" }));
 
-    await user.click(screen.getByRole("button", { name: "确定" }));
+    await user.click(getMainConfirmButton());
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -399,16 +468,24 @@ describe("SkillPreviewEditResourcesDialog", () => {
       />,
     );
 
-    const root = await screen.findByLabelText("选择自动化标签");
+    const picker = await openResourcePicker(user, "自动化标签");
+    const root = within(picker).getByLabelText("选择自动化标签");
     await user.click(within(root).getByRole("button", { name: "价值分组" }));
 
-    const tagList = await screen.findByRole("group", { name: "自动化标签标签列表" });
+    const tagList = await within(picker).findByRole("group", {
+      name: "自动化标签标签列表",
+    });
     await waitFor(() => {
       expect(within(tagList).getByText("高价值")).toBeInTheDocument();
     });
     await user.click(within(tagList).getByText("高价值"));
+    await user.click(within(picker).getByRole("button", { name: "确定" }));
 
-    await user.click(screen.getByRole("button", { name: "确定" }));
+    await waitFor(() => {
+      expect(screen.getByText(/已选：价值分组 · 高价值/)).toBeInTheDocument();
+    });
+
+    await user.click(getMainConfirmButton());
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -428,6 +505,27 @@ describe("SkillPreviewEditResourcesDialog", () => {
   });
 });
 
+async function openResourcePicker(
+  user: ReturnType<typeof userEvent.setup>,
+  fieldLabel: string,
+) {
+  await user.click(
+    await screen.findByRole("button", { name: `选择${fieldLabel}` }),
+  );
+  const dialogs = await screen.findAllByRole("dialog");
+  return dialogs[dialogs.length - 1]!;
+}
+
+function getMainConfirmButton() {
+  const mainDialog = screen.getByRole("heading", { name: "编辑资源" }).closest(
+    '[role="dialog"]',
+  );
+  if (!(mainDialog instanceof HTMLElement)) {
+    throw new Error("main dialog not found");
+  }
+  return within(mainDialog).getByRole("button", { name: "确定" });
+}
+
 function buildEditableResource(
   kind: "knowledge_base" | "variable",
   name: string,
@@ -446,6 +544,7 @@ function buildEditableResource(
         : `<resource type="variable" variableType="${variableType ?? ""}" variableId="" name="${name}" />`;
 
   return {
+    description: `${name}说明`,
     fieldLabel: name,
     segment: {
       id: placeholder,

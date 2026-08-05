@@ -391,6 +391,7 @@ function GroupMemberCustomerPopover({
           <div className="pr-2">
             <CustomerSeatRelationList
               accounts={accounts}
+              allowConversationViewWithoutTakeover
               compact
               currentEmployeeId={currentEmployeeId}
               customer={{

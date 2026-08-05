@@ -566,7 +566,9 @@ export function TicketDetailContent({
         <aside className="flex min-h-0 flex-col gap-3 px-8 pb-6 max-xl:border-t max-xl:pt-6 xl:h-full xl:border-l xl:px-6 xl:py-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold">关联上下文</h2>
-            <OpenConversationLink conversationId={ticket.conversationId} />
+            {presentation === "page" ? (
+              <OpenConversationLink conversationId={ticket.conversationId} />
+            ) : null}
           </div>
           {isLoadingContext ? <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><Spinner size={16} variant="classic" />正在加载</div> : <TicketContext context={context} isLoadingOlder={isLoadingOlderContext} messages={messages} onLoadOlder={() => void loadOlderContext()} />}
         </aside>

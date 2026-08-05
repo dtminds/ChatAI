@@ -26,6 +26,7 @@ type CustomerSeatRelationTarget = {
 
 export function CustomerSeatRelationList({
   accounts,
+  allowConversationViewWithoutTakeover = false,
   compact = false,
   conversationStatus = "loaded",
   conversationTimes = {},
@@ -35,6 +36,7 @@ export function CustomerSeatRelationList({
   relations,
 }: {
   accounts: Account[];
+  allowConversationViewWithoutTakeover?: boolean;
   compact?: boolean;
   conversationStatus?: "idle" | "loading" | "loaded" | "error";
   conversationTimes?: Record<string, number>;
@@ -52,6 +54,11 @@ export function CustomerSeatRelationList({
         const relationConversationTime =
           conversationTimes[relation.thirdUserId] ?? relation.lastMessageTime;
         const hasRecentConversation = relationConversationTime != null;
+        const canOpenChat =
+          canStartChat ||
+          (allowConversationViewWithoutTakeover &&
+            hasRecentConversation &&
+            account?.loginStatus === "online");
         const actionText = hasRecentConversation ? "继续会话" : "发起会话";
 
         return (
@@ -88,11 +95,11 @@ export function CustomerSeatRelationList({
             </div>
             <Button
               aria-label={
-                canStartChat
+                canOpenChat
                   ? `向 ${seatName} ${actionText}`
                   : `${seatName} 不可${actionText}`
               }
-              disabled={!canStartChat}
+              disabled={!canOpenChat}
               className={compact ? "h-7 gap-1.5 px-2" : undefined}
               onClick={() => {
                 void onStartChat?.({

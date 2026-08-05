@@ -52,6 +52,14 @@
   opacity: 0.96;
 }
 
+.ai-skill-delivery-banner--static {
+  cursor: default;
+}
+
+.ai-skill-delivery-banner--static:hover {
+  opacity: 1;
+}
+
 .ai-skill-delivery-banner:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px

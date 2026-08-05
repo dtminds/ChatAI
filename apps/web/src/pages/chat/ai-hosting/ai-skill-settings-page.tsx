@@ -14,6 +14,7 @@ import {
   File02Icon,
   Search01Icon,
   SlidersHorizontalIcon,
+  Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -121,6 +122,7 @@ import {
 import { AiHostingLayout } from "./ai-hosting-layout";
 import type { KbListViewItem } from "./kb-types";
 import "./agent-module.css";
+import "./ai-skill-delivery.css";
 
 const KB_PICKER_PAGE_SIZE = 10;
 const emptyStateIllustrationUrl = "https://b5.bokr.com.cn/dist/ui/empty-state.svg";
@@ -1281,37 +1283,48 @@ function InsertResourceDialog({
         className={
           sectionId === "knowledge-bases"
             ? "max-h-[calc(100vh-2rem)] max-w-[1040px] grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] gap-0 overflow-hidden p-0 sm:rounded-[14px]"
-            : "max-w-[760px] gap-0 p-0 sm:rounded-[14px]"
+            : "max-h-[calc(100vh-2rem)] max-w-[760px] gap-0 overflow-y-auto p-0 sm:rounded-[14px]"
         }
       >
         {meta ? (
           <>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-4 pt-6 pr-14">
-              <DialogTitle className="text-lg font-semibold text-foreground">
-                {meta.title}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                选择要添加的{meta.title.replace(/^(插入|选择)/u, "")}
-              </DialogDescription>
-              {meta.manageHref && meta.manageLabel ? (
-                <Button
-                  asChild
-                  className="h-8 gap-1 px-0 text-primary"
-                  type="button"
-                  variant="link"
-                >
-                  <Link to={meta.manageHref}>
-                    {meta.manageLabel}
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={ArrowRight01Icon}
-                      size={14}
-                      strokeWidth={1.8}
-                    />
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
+            {sectionId === "tools" ? (
+              <div className="space-y-1.5 px-6 pb-5 pr-14 pt-6">
+                <DialogTitle className="text-lg font-semibold text-foreground">
+                  {meta.title}
+                </DialogTitle>
+                <DialogDescription className="text-sm leading-5 text-muted-foreground">
+                  工具仅支持在单聊自动回复模式下调用，话术推荐模式和群聊场景下无法使用
+                </DialogDescription>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-4 pr-14 pt-6">
+                <DialogTitle className="text-lg font-semibold text-foreground">
+                  {meta.title}
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  选择要添加的{meta.title.replace(/^(插入|选择)/u, "")}
+                </DialogDescription>
+                {meta.manageHref && meta.manageLabel ? (
+                  <Button
+                    asChild
+                    className="h-8 gap-1 px-0 text-primary"
+                    type="button"
+                    variant="link"
+                  >
+                    <Link to={meta.manageHref}>
+                      {meta.manageLabel}
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={ArrowRight01Icon}
+                        size={14}
+                        strokeWidth={1.8}
+                      />
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            )}
 
             {sectionId === "knowledge-bases" ? (
               <KnowledgeBasePicker
@@ -1331,45 +1344,91 @@ function InsertResourceDialog({
                 暂无数据
               </div>
             ) : (
-              <ul
-                aria-label={meta.title}
-                className="max-h-[min(28rem,calc(100vh-12rem))] space-y-5 overflow-y-auto px-6 pb-6 pt-3"
-              >
-                {items.map((item) => {
-                  const added = addedIdSet.has(item.id);
+              <>
+                <ul aria-label={meta.title} className="space-y-2 px-6">
+                  {items.map((item) => {
+                    const added = addedIdSet.has(item.id);
 
-                  return (
-                    <li className="flex items-start gap-3" key={item.id}>
-                      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                        <HugeiconsIcon
-                          aria-hidden="true"
-                          icon={item.icon}
-                          size={16}
-                          strokeWidth={1.8}
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-sm font-medium text-foreground">{item.title}</p>
-                        {item.description ? (
-                          <p className="text-sm leading-5 text-muted-foreground">
-                            {item.description}
-                          </p>
-                        ) : null}
-                      </div>
-                      <Button
-                        aria-label={added ? `已添加${item.title}` : `添加${item.title}`}
-                        className="mt-0.5 h-8 shrink-0 px-3 text-primary"
-                        disabled={added}
-                        onClick={() => onAdd(item)}
-                        type="button"
-                        variant="outline"
+                    return (
+                      <li
+                        className={cn(
+                          "flex items-center gap-3 rounded-[10px] border px-4 py-3 transition-colors",
+                          added
+                            ? "border-primary/25 bg-primary/5"
+                            : "border-border bg-background hover:bg-muted/50",
+                        )}
+                        key={item.id}
                       >
-                        {added ? "已添加" : "添加"}
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
+                        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-background text-sm font-semibold text-primary">
+                          API
+                        </span>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {item.title}
+                          </p>
+                          {item.description ? (
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {item.description}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          aria-label={added ? `已添加${item.title}` : `添加${item.title}`}
+                          className={cn(
+                            "h-9 shrink-0 px-4 text-primary",
+                            added &&
+                              "border-primary/20 bg-primary/5 disabled:opacity-100",
+                          )}
+                          disabled={added}
+                          onClick={() => onAdd(item)}
+                          type="button"
+                          variant="outline"
+                        >
+                          {added ? (
+                            <>
+                              <span>已添加</span>
+                              <span className="inline-flex size-4 items-center justify-center rounded-full bg-primary text-white">
+                                <HugeiconsIcon
+                                  aria-hidden="true"
+                                  icon={Tick01Icon}
+                                  size={11}
+                                  strokeWidth={2.2}
+                                />
+                              </span>
+                            </>
+                          ) : (
+                            "添加"
+                          )}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <aside
+                  aria-label="更多工具接入"
+                  className="ai-skill-delivery px-6 pb-6 pt-4"
+                >
+                  <div className="ai-skill-delivery-banner ai-skill-delivery-banner--static">
+                    <span className="ai-skill-delivery-banner__main">
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        className="ai-skill-delivery-banner__icon"
+                        draggable={false}
+                        src="https://b5.bokr.com.cn/dist/ui/skill_zan.png"
+                      />
+                      <span className="ai-skill-delivery-banner__copy">
+                        <span className="ai-skill-delivery-banner__title">
+                          更多工具接入
+                        </span>
+                        <span className="ai-skill-delivery-banner__description">
+                          与客户成功经理交谈更多工具接入需求
+                        </span>
+                      </span>
+                    </span>
+                  </div>
+                </aside>
+              </>
             )}
           </>
         ) : null}

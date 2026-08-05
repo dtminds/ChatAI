@@ -39,6 +39,7 @@ export type AgentSettingsForm = {
   roleDescription: string;
   toneStyle: AgentToneStyle;
   transferToHumanConditions: string;
+  useUserMemory: boolean;
 };
 
 export type KnowledgeBaseOption = {
@@ -79,7 +80,7 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
   { id: "kb-policy", name: "活动政策知识库", status: "available" },
 ];
 
-export const agentNameMaxLength = 50;
+export const agentNameMaxLength = 20;
 export const agentPreviewTestMessageLimit = 20;
 
 export const agentModelOptions = [
@@ -156,6 +157,7 @@ export const defaultAgentSettingsForm: AgentSettingsForm = {
   communicationStyle: "",
   conditionalLogic: [{ type: "text", value: "" }],
   transferToHumanConditions: "",
+  useUserMemory: false,
 };
 
 export const agentSettingsFieldHints = {

@@ -81,6 +81,7 @@ export const AiHostingAgentPromptConfigSchema = Type.Object({
     styleInstruction: Type.String({ maxLength: AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH }),
   }, { additionalProperties: false }),
   role: Type.String({ maxLength: AI_HOSTING_AGENT_ROLE_MAX_LENGTH }),
+  useUserMemory: Type.Boolean(),
 }, { additionalProperties: false });
 
 export const AiHostingModelSchema = Type.Object({

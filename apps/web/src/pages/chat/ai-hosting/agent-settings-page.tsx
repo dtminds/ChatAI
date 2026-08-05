@@ -76,6 +76,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -919,17 +920,14 @@ export function AgentSettingsPage() {
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
-                  <div>
-                    <Input
-                      disabled={isEditing || controlsDisabled}
-                      id="agent-settings-name"
-                      maxLength={agentNameMaxLength}
-                      onChange={(event) => updateForm("name", event.target.value)}
-                      placeholder="请输入 Agent 名称"
-                      value={form.name}
-                    />
-                    <TextCounter maxLength={agentNameMaxLength} value={form.name} />
-                  </div>
+                  <Input
+                    disabled={isEditing || controlsDisabled}
+                    id="agent-settings-name"
+                    maxLength={agentNameMaxLength}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder="请输入 Agent 名称"
+                    value={form.name}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -1076,7 +1074,7 @@ export function AgentSettingsPage() {
             </CollapsibleAgentSettingsSection>
           </div>
 
-          <div className="xl:sticky xl:top-0">
+          <div className="space-y-4 xl:sticky xl:top-0">
             <AgentResourceManagementPanel
               disabled={controlsDisabled}
               knowledgeBases={availableKnowledgeBases}
@@ -1090,6 +1088,60 @@ export function AgentSettingsPage() {
               }
               skills={availableSkills}
             />
+            <section
+              aria-labelledby="agent-user-memory-title"
+              className="rounded-[12px] border border-border bg-card p-5 shadow-xs"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5">
+                  <h2
+                    className="text-base font-semibold text-foreground"
+                    id="agent-user-memory-title"
+                  >
+                    使用客户记忆
+                  </h2>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label="查看客户记忆说明"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/20"
+                          type="button"
+                        >
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={HelpCircleIcon}
+                            size={15}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-80" side="top" sideOffset={6}>
+                        前往「记忆」开启自动提炼，AI
+                        会基于会话自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户
+                        <Link
+                          className="ml-1 font-medium text-primary underline-offset-4 hover:underline"
+                          rel="noopener noreferrer"
+                          target="_blank"
+                          to="/chat/ai-hosting/user-memory"
+                        >
+                          了解更多
+                        </Link>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Switch
+                  aria-label="客户记忆"
+                  checked={form.useUserMemory}
+                  disabled={controlsDisabled}
+                  onCheckedChange={(checked) => updateForm("useUserMemory", checked)}
+                />
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                开启后，即授权此 Agent 读取和使用客户记忆
+              </p>
+            </section>
           </div>
         </div>
       </div>
@@ -1314,7 +1366,7 @@ function AgentSettingsFieldLabel({
                 />
               </button>
             </TooltipTrigger>
-            <TooltipContent className="max-w-xs leading-5" side="top" sideOffset={6}>
+            <TooltipContent side="top" sideOffset={6}>
               {tooltip}
             </TooltipContent>
           </Tooltip>
@@ -1778,10 +1830,10 @@ function RenameAgentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-2 px-6 pt-5">
-          <Label htmlFor="agent-rename-name">Agent 名称</Label>
+        <div className="px-6 pt-5">
           <div>
             <Input
+              aria-label="Agent 名称"
               disabled={disabled}
               id="agent-rename-name"
               maxLength={agentNameMaxLength}
@@ -1898,6 +1950,7 @@ function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
     roleDescription: agent.promptConfig.role,
     toneStyle: normalizeToneStyle(agent.promptConfig.replyStyle.styleInstruction),
     transferToHumanConditions: agent.promptConfig.handoffRules,
+    useUserMemory: agent.promptConfig.useUserMemory === true,
   };
 }
 
@@ -1946,6 +1999,7 @@ function buildSettingsSavePayload(
         styleInstruction: form.communicationStyle || form.toneStyle,
       },
       role: form.roleDescription,
+      useUserMemory: form.useUserMemory,
     } satisfies AiHostingAgentPromptConfig,
   };
 }

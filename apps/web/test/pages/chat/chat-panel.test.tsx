@@ -10,6 +10,20 @@ import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { INSERT_COMPOSER_TEXT_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import type { Account, Conversation } from "@/pages/chat/chat-types";
 
+vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => ({
+  createUserMemoryItem: vi.fn(),
+  deleteUserMemoryItem: vi.fn(),
+  getUserMemoryCustomer: vi.fn().mockResolvedValue({
+    customerName: "客户",
+    items: [],
+    platform: 5,
+    thirdExternalUserId: "external-1",
+    version: 0,
+  }),
+  getUserMemoryEvidence: vi.fn(),
+  updateUserMemoryItem: vi.fn(),
+}));
+
 const account: Account = {
   avatarUrl: "https://example.com/seat.png",
   description: "",
@@ -140,7 +154,10 @@ describe("ChatPanel", () => {
     const panel = (
       <ChatPanel
         activeAccount={account}
-        activeConversation={createConversation()}
+        activeConversation={{
+          ...createConversation(),
+          thirdExternalUserId: "external-1",
+        }}
         activeHistoryStatus="idle"
         canSendMessage
         composerPlaceholder="输入消息"
@@ -200,6 +217,12 @@ describe("ChatPanel", () => {
     expect(
       window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
     ).toBe("true");
+
+    expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
+    expect(screen.getByTestId("user-memory-reserved-rail")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "客户记忆" }));
+    expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
 
     unmount();
     render(panel);

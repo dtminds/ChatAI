@@ -972,6 +972,7 @@ function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
       style_instruction: promptConfig.replyStyle.styleInstruction,
     },
     role: promptConfig.role,
+    use_user_memory: promptConfig.useUserMemory === true,
   });
 }
 
@@ -986,6 +987,7 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
       styleInstruction: "亲切自然",
     },
     role: "",
+    useUserMemory: false,
   };
 
   if (!value) {
@@ -1017,6 +1019,7 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
           fallback.replyStyle.styleInstruction,
       },
       role: readString(parsed.role),
+      useUserMemory: parsed.use_user_memory === true,
     };
   } catch {
     return fallback;

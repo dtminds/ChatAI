@@ -1965,6 +1965,106 @@ export interface XyWapEmbedInsightWorkerRuntimeState {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedAgentUserMemoryConfig {
+  active_run_id: number | null;
+  create_time: Generated<Date>;
+  enabled: Generated<number>;
+  enabled_at: number | null;
+  extraction_instruction: Generated<string>;
+  generation: Generated<number>;
+  id: Generated<number>;
+  next_run_at: Date | null;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedAgentUserMemory {
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  last_auto_quota_date: Date | null;
+  last_auto_updated_at: number | null;
+  manual_updated_at: number | null;
+  memories_json: Json;
+  platform: number;
+  third_external_userid: string;
+  uid: number;
+  update_time: Generated<Date>;
+  version: Generated<number>;
+}
+
+export interface XyWapEmbedAgentUserMemoryRun {
+  candidate_customer_count: Generated<number>;
+  candidate_session_count: Generated<number>;
+  candidate_session_limit: number;
+  claim_token: string | null;
+  config_generation: number;
+  create_time: Generated<Date>;
+  customer_limit: number;
+  execution_mode: string;
+  failure_count: Generated<number>;
+  finished_at: Date | null;
+  id: Generated<number>;
+  input_tokens: Generated<number>;
+  last_error_code: string | null;
+  lease_until: Date | null;
+  locked_by: string | null;
+  memory_added_count: number | null;
+  memory_removed_count: number | null;
+  memory_updated_count: number | null;
+  output_tokens: Generated<number>;
+  phase: string;
+  quota_date: Date;
+  run_after: Date | null;
+  scheduled_for: Date;
+  selected_customer_count: Generated<number>;
+  skipped_count: Generated<number>;
+  started_at: Date | null;
+  status: string;
+  success_count: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedAgentUserMemoryRunItem {
+  attempt_count: Generated<number>;
+  base_manual_updated_at: number | null;
+  base_memory_version: number | null;
+  create_time: Generated<Date>;
+  finished_at: Date | null;
+  id: Generated<number>;
+  input_tokens: Generated<number>;
+  last_error_code: string | null;
+  memory_added_count: number | null;
+  message_count: Generated<number>;
+  memory_removed_count: number | null;
+  memory_updated_count: number | null;
+  output_tokens: Generated<number>;
+  platform: number;
+  provider_batch_id: string | null;
+  provider_item_key: string | null;
+  run_id: number;
+  session_count: number;
+  session_ids_json: Json;
+  status: string;
+  third_external_userid: string;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedUserMemoryWorkerState {
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  last_duration_ms: number | null;
+  last_error_code: string | null;
+  last_failure_at: Date | null;
+  last_started_at: Date | null;
+  last_success_at: Date | null;
+  reported_at: Date;
+  reported_by: string;
+  runtime_key: string;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedLogicalSession {
   /**
    * 客服消息数
@@ -3422,6 +3522,11 @@ export interface DB {
   xy_wap_embed_agent: XyWapEmbedAgent;
   xy_wap_embed_agent_answer_record: XyWapEmbedAgentAnswerRecord;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;
+  xy_wap_embed_agent_user_memory_config: XyWapEmbedAgentUserMemoryConfig;
+  xy_wap_embed_agent_user_memory: XyWapEmbedAgentUserMemory;
+  xy_wap_embed_agent_user_memory_run: XyWapEmbedAgentUserMemoryRun;
+  xy_wap_embed_agent_user_memory_run_item: XyWapEmbedAgentUserMemoryRunItem;
+  xy_wap_embed_user_memory_worker_state: XyWapEmbedUserMemoryWorkerState;
   xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
   xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;

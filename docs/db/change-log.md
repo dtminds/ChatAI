@@ -1125,3 +1125,91 @@ ALTER TABLE xy_wap_embed_insight_analysis_policy
 
 ANALYZE TABLE xy_wap_embed_logical_session;
 ```
+
+## 2026-07-24 Agent 用户记忆
+
+- 新增 `xy_wap_embed_agent_user_memory_config`、`xy_wap_embed_agent_user_memory`、`xy_wap_embed_agent_user_memory_run`、`xy_wap_embed_agent_user_memory_run_item`。
+- 用户记忆按 `started_at` 自然日窗口复用现有 `idx_logical_session_uid_started (uid, started_at)`，不新增逻辑会话索引。
+- 新增 `idx_agent_user_memory_run_terminal (status, finished_at, id)`，支持按小时有界清理 90 天前的终态运行，避免扫描运行全表。
+- 四张新表默认无数据，所有租户默认关闭；不初始化水位、不回刷历史。
+- 用户记忆表只保存当前 JSON、版本和维护时间；不增加 pending、cursor、cooldown 或跨日消费状态。
+
+用户记忆四张表由本次 `docs/db/schema.sql` 建表语句整体创建，不对不存在的表单独执行 `ALTER TABLE`。
+
+## 2026-08-04 用户记忆运行观测
+
+- 新增 `xy_wap_embed_user_memory_worker_state`，保存用户记忆 Worker 最近心跳、Tick 结果、耗时和上报实例，用于区分正常空闲与 Worker 不可用。
+- 新增 `idx_agent_user_memory_run_quota_date (quota_date, id)`，支持按自然日有界查询运行趋势，避免观测接口扫描完整运行记录。
+- Worker 状态表使用自增 ID 作为主键，并通过 `runtime_key = 'user_memory'` 的唯一索引维持单条逻辑运行状态。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD KEY idx_agent_user_memory_run_quota_date (quota_date, id);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_user_memory_worker_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  runtime_key VARCHAR(32) NOT NULL COMMENT '运行状态标识，固定为user_memory',
+  last_started_at DATETIME(3) NULL COMMENT '最近一次Tick开始时间',
+  last_success_at DATETIME(3) NULL COMMENT '最近一次Tick成功时间',
+  last_failure_at DATETIME(3) NULL COMMENT '最近一次Tick失败时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近一次稳定错误码，成功后清空',
+  last_duration_ms INT UNSIGNED NULL COMMENT '最近一次已完成Tick耗时，毫秒',
+  reported_by VARCHAR(128) NOT NULL COMMENT '最近上报实例，hostname:pid',
+  reported_at DATETIME(3) NOT NULL COMMENT '最近心跳时间',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_memory_worker_state_key (runtime_key)
+) COMMENT='用户记忆Worker运行状态';
+```
+
+## 2026-08-04 用户记忆消息窗口索引
+
+- 新增 `idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id)`，支持用户记忆按候选 `conversation_id` 读取每客户最近 100 条消息。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD KEY idx_session_message_conversation_order (
+    conversation_id,
+    source_message_time,
+    source_message_id
+  );
+```
+
+## 2026-08-04 用户记忆变更计数
+
+- 运行记录和客户运行项新增实际记忆变更计数，分别记录新增、更新、删除数量。
+- 字段保持 `NULL` 以区分历史未记录数据和本次运行确认无变化。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示旧运行未记录' AFTER skipped_count,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示旧运行未记录' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示旧运行未记录' AFTER memory_updated_count;
+
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  ADD COLUMN memory_added_count INT UNSIGNED NULL COMMENT '实际新增记忆数，NULL表示尚未完成合并' AFTER output_tokens,
+  ADD COLUMN memory_updated_count INT UNSIGNED NULL COMMENT '实际更新记忆数，NULL表示尚未完成合并' AFTER memory_added_count,
+  ADD COLUMN memory_removed_count INT UNSIGNED NULL COMMENT '实际删除记忆数，NULL表示尚未完成合并' AFTER memory_updated_count;
+```
+
+## 2026-08-04 用户记忆取消运行项重试
+
+- 每个客户只调用模型一次，运行项失败后直接终态，不再保存下次重试时间。
+- 运行项领取索引移除无效的 `next_attempt_at` 字段。
+
+现有数据库手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_agent_user_memory_run_item
+  DROP INDEX idx_agent_user_memory_item_run_status,
+  DROP COLUMN next_attempt_at,
+  ADD KEY idx_agent_user_memory_item_run_status (run_id, status, id);
+```

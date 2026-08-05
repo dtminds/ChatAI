@@ -23,6 +23,7 @@ import {
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
+import { CHAT_USER_MEMORY_RESERVED_WIDTH } from "@/pages/chat/components/chat-user-memory-popover";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 import type { SidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
@@ -329,6 +330,7 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isUserMemoryOpen, setIsUserMemoryOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
@@ -345,6 +347,11 @@ export function ChatPanel({
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
   const isTicketSupported = isConversationTicketSupported(activeConversation);
+  const canShowUserMemory = Boolean(
+    activeConversation?.mode === "single" &&
+    activeConversation.customerBindType !== 2 &&
+    activeConversation.thirdExternalUserId?.trim(),
+  );
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -435,6 +442,12 @@ export function ChatPanel({
   }, [activeConversation?.id, isMobileLayout]);
 
   useEffect(() => {
+    if (!canShowUserMemory) {
+      setIsUserMemoryOpen(false);
+    }
+  }, [canShowUserMemory]);
+
+  useEffect(() => {
     if (isMobileLayout && !isMobileSidebarOpen) {
       onQuickReplyActiveChange?.(false);
     }
@@ -485,6 +498,7 @@ export function ChatPanel({
         isMobileLayout={isMobileLayout}
         isSidebarOpen={isSidebarOpen}
         isTicketsPanelOpen={resolvedAuxiliaryPanel === "tickets"}
+        isUserMemoryOpen={isUserMemoryOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
         onMarkConversationRead={
           activeConversation && onMarkConversationRead
@@ -514,6 +528,7 @@ export function ChatPanel({
             ? () => onUnpinConversation(activeConversation.id)
             : undefined
         }
+        onUserMemoryOpenChange={setIsUserMemoryOpen}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
@@ -716,7 +731,16 @@ export function ChatPanel({
                   {customerSidePanelNode}
                 </SheetContent>
               </Sheet>
-            ) : isDesktopSidebarCollapsed ? null : (
+            ) : isDesktopSidebarCollapsed ? (
+              isUserMemoryOpen ? (
+                <div
+                  aria-hidden="true"
+                  className="h-full shrink-0 bg-surface"
+                  data-testid="user-memory-reserved-rail"
+                  style={{ width: CHAT_USER_MEMORY_RESERVED_WIDTH }}
+                />
+              ) : null
+            ) : (
               <div
                 className="relative flex h-full min-h-0 min-w-0 shrink-0"
                 data-testid="customer-side-panel-shell"

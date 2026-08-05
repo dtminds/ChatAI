@@ -81,10 +81,9 @@ import {
 import { SkillContentView } from "./ai-skill-content-view";
 import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
 import {
+  buildEditableResourcesFromRecommendations,
   collectCompleteSkillResourcesFromContent,
   mergeSkillResourceItems,
-  listIncompleteSkillResources,
-  matchIncompleteResourcesToRecommendations,
   type SkillRecommendBinding,
 } from "./ai-skill-resource";
 import { SkillDeliveryBanner } from "./ai-skill-delivery-banner";
@@ -827,21 +826,13 @@ function SkillDetailDialog({
     };
   }, [open, skill]);
 
-  const incompleteResources = useMemo(
-    () =>
-      detail ? listIncompleteSkillResources(detail.skillDescription) : [],
-    [detail],
-  );
-
+  // 预览技能是否弹「编辑资源」只看 recommendResources，不扫描述里的蓝色块
   const editableResources = useMemo(
     () =>
       detail
-        ? matchIncompleteResourcesToRecommendations(
-            incompleteResources,
-            detail.recommendBindings,
-          )
+        ? buildEditableResourcesFromRecommendations(detail.recommendBindings)
         : [],
-    [detail, incompleteResources],
+    [detail],
   );
 
   function goToCreateSkill(draft: SkillCreateDraft) {
@@ -859,7 +850,6 @@ function SkillDetailDialog({
       return;
     }
 
-    // 有未绑定蓝色块时先补齐：有对应推荐的按推荐类型选，没有的按区块自身类型正常选
     if (editableResources.length > 0) {
       setEditResourcesOpen(true);
       return;

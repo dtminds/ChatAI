@@ -8,7 +8,7 @@ const textareaVariants = cva(
     variants: {
       variant: {
         outline: "border-input/80 bg-transparent shadow-xs",
-        soft: "border-transparent bg-surface-muted shadow-none",
+        soft: "border-transparent bg-secondary shadow-none",
       },
     },
     defaultVariants: {

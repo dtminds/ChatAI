@@ -1,24 +1,39 @@
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const InputGroup = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<"div">
->(({ className, ...props }, ref) => (
-  <div
-    className={cn(
-      "group/input-group relative flex h-10 w-full min-w-0 items-center rounded-[10px] border border-input bg-background shadow-xs outline-none transition-[color,box-shadow] focus-within:border-ring/60 focus-within:ring-4 focus-within:ring-ring/15",
-      "has-[[data-slot=input-group-control][aria-invalid=true]]:border-destructive has-[[data-slot=input-group-control][aria-invalid=true]]:ring-destructive/20",
-      className,
-    )}
-    data-slot="input-group"
-    ref={ref}
-    role="group"
-    {...props}
-  />
-));
+const inputGroupVariants = cva(
+  "group/input-group relative flex h-10 w-full min-w-0 items-center rounded-[10px] border outline-none transition-[color,box-shadow] focus-within:border-ring/60 focus-within:ring-4 focus-within:ring-ring/15 has-[[data-slot=input-group-control][aria-invalid=true]]:border-destructive has-[[data-slot=input-group-control][aria-invalid=true]]:ring-destructive/20",
+  {
+    variants: {
+      variant: {
+        outline: "border-input bg-background shadow-xs",
+        soft: "border-transparent bg-secondary shadow-none",
+      },
+    },
+    defaultVariants: {
+      variant: "outline",
+    },
+  },
+);
+
+export interface InputGroupProps
+  extends React.ComponentPropsWithoutRef<"div">,
+    VariantProps<typeof inputGroupVariants> {}
+
+const InputGroup = React.forwardRef<HTMLDivElement, InputGroupProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div
+      className={cn(inputGroupVariants({ variant }), className)}
+      data-slot="input-group"
+      ref={ref}
+      role="group"
+      {...props}
+    />
+  ),
+);
 InputGroup.displayName = "InputGroup";
 
 type InputGroupAddonProps = React.ComponentPropsWithoutRef<"div"> & {
@@ -87,4 +102,5 @@ export {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  inputGroupVariants,
 };

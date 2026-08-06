@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
 import {
   AGENT_SKILL_VISIBLE_TOOL_CATALOG,
   type KbListItem,
@@ -16,7 +22,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -43,9 +48,23 @@ const MALL_TAG_TYPE = 12 as const;
 const RESOURCE_PAGE_SIZE = 100;
 
 export type SkillPreviewEditableResource = {
+  description?: string;
   fieldLabel: string;
   segment: SkillContentResourceSegment;
   variableType: SkillVariableType | null;
+};
+
+export type SkillRecommendResourcesConfirmResult = {
+  content: string;
+  resources: {
+    "knowledge-bases": SkillResourceItem[];
+    tools: SkillResourceItem[];
+    variables: SkillResourceItem[];
+  };
+};
+
+export type SkillRecommendResourcesHandle = {
+  confirmSelections: () => Promise<SkillRecommendResourcesConfirmResult | null>;
 };
 
 type OptionItem = {
@@ -60,6 +79,7 @@ type TagOption = {
 };
 
 type FieldDraft = {
+  description: string;
   fieldLabel: string;
   mallTagsByGroupId: Record<string, TagOption[]>;
   options: OptionItem[];
@@ -72,29 +92,39 @@ type FieldDraft = {
   variableType: SkillVariableType | null;
 };
 
-export function SkillPreviewEditResourcesDialog({
-  content,
-  editableResources,
-  onCancel,
-  onConfirm,
-  open,
-}: {
-  content: string;
-  editableResources: readonly SkillPreviewEditableResource[];
-  onCancel: () => void;
-  onConfirm: (result: {
+export const SkillPreviewEditResourcesDialog = forwardRef<
+  SkillRecommendResourcesHandle,
+  {
     content: string;
-    resources: {
-      "knowledge-bases": SkillResourceItem[];
-      tools: SkillResourceItem[];
-      variables: SkillResourceItem[];
-    };
-  }) => void;
-  open: boolean;
-}) {
+    editableResources: readonly SkillPreviewEditableResource[];
+    onCancel: () => void;
+    onConfirm: (result: SkillRecommendResourcesConfirmResult) => void;
+    open: boolean;
+    /**
+     * dialog：独立「编辑资源」弹窗
+     * inline：嵌在技能模版详情中
+     * direct-picker：新建技能页点推荐「选择」时，直接打开对应单项选择弹窗
+     */
+    presentation?: "dialog" | "inline" | "direct-picker";
+  }
+>(function SkillPreviewEditResourcesDialog(
+  {
+    content,
+    editableResources,
+    onCancel,
+    onConfirm,
+    open,
+    presentation = "dialog",
+  },
+  ref,
+) {
   const [fields, setFields] = useState<FieldDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [pickingPlaceholder, setPickingPlaceholder] = useState<string | null>(
+    null,
+  );
+  const [pickerSnapshot, setPickerSnapshot] = useState<FieldDraft | null>(null);
 
   const variableFields = useMemo(
     () => fields.filter((field) => field.segment.kind === "variable"),
@@ -107,6 +137,15 @@ export function SkillPreviewEditResourcesDialog({
   const knowledgeFields = useMemo(
     () => fields.filter((field) => field.segment.kind === "knowledge_base"),
     [fields],
+  );
+  const pickingField = useMemo(
+    () =>
+      pickingPlaceholder
+        ? (fields.find(
+            (field) => field.segment.placeholder === pickingPlaceholder,
+          ) ?? null)
+        : null,
+    [fields, pickingPlaceholder],
   );
   const existingTagGroupKeys = useMemo(
     () =>
@@ -124,21 +163,13 @@ export function SkillPreviewEditResourcesDialog({
     [content],
   );
 
-  const canConfirm =
-    fields.length > 0 &&
-    fields.every((field) => {
-      if (isGroupTagVariableType(field.variableType)) {
-        return (
-          field.selectedValue.trim().length > 0 &&
-          field.selectedTagIds.length > 0
-        );
-      }
-
-      return field.selectedValue.trim().length > 0;
-    });
+  const canConfirmMain = !loading && !submitting && fields.length > 0;
+  const canConfirmPicker = pickingField ? isFieldComplete(pickingField) : false;
 
   useEffect(() => {
     if (!open) {
+      setPickingPlaceholder(null);
+      setPickerSnapshot(null);
       return;
     }
 
@@ -146,12 +177,15 @@ export function SkillPreviewEditResourcesDialog({
 
     async function loadFields() {
       setLoading(true);
+      setPickingPlaceholder(null);
+      setPickerSnapshot(null);
       try {
         const optionsCache = new Map<string, Promise<LoadedVariableOptions>>();
         const nextFields = await Promise.all(
           editableResources.map(async (item) => {
             const loaded = await loadOptionsForEditable(item, optionsCache);
             return {
+              description: item.description?.trim() ?? "",
               fieldLabel: item.fieldLabel,
               mallTagsByGroupId: loaded.mallTagsByGroupId,
               options: loaded.options,
@@ -167,6 +201,10 @@ export function SkillPreviewEditResourcesDialog({
         );
         if (!cancelled) {
           setFields(nextFields);
+          if (presentation === "direct-picker" && nextFields[0]) {
+            setPickerSnapshot(cloneFieldDraft(nextFields[0]));
+            setPickingPlaceholder(nextFields[0].segment.placeholder);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -185,7 +223,86 @@ export function SkillPreviewEditResourcesDialog({
     return () => {
       cancelled = true;
     };
-  }, [editableResources, open]);
+  }, [editableResources, open, presentation]);
+
+  function openPicker(field: FieldDraft) {
+    setPickerSnapshot(cloneFieldDraft(field));
+    setPickingPlaceholder(field.segment.placeholder);
+  }
+
+  function closePickerWithoutSaving() {
+    if (presentation === "direct-picker") {
+      setPickingPlaceholder(null);
+      setPickerSnapshot(null);
+      onCancel();
+      return;
+    }
+
+    if (pickerSnapshot) {
+      const snapshot = pickerSnapshot;
+      setFields((current) =>
+        current.map((field) =>
+          field.segment.placeholder === snapshot.segment.placeholder
+            ? cloneFieldDraft(snapshot)
+            : field,
+        ),
+      );
+    }
+    setPickingPlaceholder(null);
+    setPickerSnapshot(null);
+  }
+
+  function confirmPicker() {
+    if (!pickingField || !isFieldComplete(pickingField)) {
+      toast.error(`请选择${pickingField?.fieldLabel ?? "资源"}`);
+      return;
+    }
+
+    if (presentation === "direct-picker") {
+      void confirmDirectPicker();
+      return;
+    }
+
+    setPickingPlaceholder(null);
+    setPickerSnapshot(null);
+  }
+
+  async function confirmDirectPicker() {
+    if (!pickingField || !isFieldComplete(pickingField) || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const built = await buildSelection(pickingField);
+      if (!built) {
+        toast.error(`${pickingField.fieldLabel}配置无效，请重新选择`);
+        return;
+      }
+
+      const resources = {
+        variables: [] as SkillResourceItem[],
+        tools: [] as SkillResourceItem[],
+        "knowledge-bases": [] as SkillResourceItem[],
+      };
+
+      if (pickingField.segment.kind === "variable") {
+        resources.variables.push(built.resource);
+      } else if (pickingField.segment.kind === "tool") {
+        resources.tools.push(built.resource);
+      } else {
+        resources["knowledge-bases"].push(built.resource);
+      }
+
+      onConfirm({ content, resources });
+      setPickingPlaceholder(null);
+      setPickerSnapshot(null);
+    } catch {
+      toast.error("资源配置失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   function setFieldValue(placeholder: string, value: string) {
     setFields((current) => {
@@ -372,9 +489,13 @@ export function SkillPreviewEditResourcesDialog({
     );
   }
 
-  async function handleConfirm() {
-    if (!canConfirm || submitting) {
-      return;
+  async function confirmSelections(): Promise<SkillRecommendResourcesConfirmResult | null> {
+    if (loading) {
+      toast.error("资源选项还在加载，请稍后再试");
+      return null;
+    }
+    if (submitting) {
+      return null;
     }
 
     setSubmitting(true);
@@ -385,15 +506,16 @@ export function SkillPreviewEditResourcesDialog({
         "knowledge-bases": [] as SkillResourceItem[],
       };
       let nextContent = content;
+      const selectedFields = fields.filter((field) => isFieldComplete(field));
       const builtSelections = await Promise.all(
-        fields.map((field) => buildSelection(field)),
+        selectedFields.map((field) => buildSelection(field)),
       );
 
-      for (const [index, field] of fields.entries()) {
+      for (const [index, field] of selectedFields.entries()) {
         const built = builtSelections[index];
         if (!built) {
-          toast.error(`请选择${field.fieldLabel}`);
-          return;
+          toast.error(`${field.fieldLabel}配置无效，请重新选择`);
+          return null;
         }
 
         nextContent = replaceSkillContentResource(
@@ -411,82 +533,118 @@ export function SkillPreviewEditResourcesDialog({
         }
       }
 
-      onConfirm({ content: nextContent, resources });
+      return { content: nextContent, resources };
     } catch {
       toast.error("资源配置失败，请稍后重试");
+      return null;
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
+  useImperativeHandle(
+    ref,
+    () => ({
+      confirmSelections,
+    }),
+    [content, fields, loading, submitting],
+  );
+
+  async function handleConfirm() {
+    if (!canConfirmMain) {
+      return;
+    }
+
+    const result = await confirmSelections();
+    if (result) {
+      onConfirm(result);
+    }
+  }
+
+  const resourceList =
+    loading ? (
+      <div
+        className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
+        role="status"
+      >
+        <Spinner size={16} />
+        <span>正在加载</span>
+      </div>
+    ) : fields.length === 0 ? (
+      presentation === "dialog" ? (
+        <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+          暂无数据
+        </div>
+      ) : null
+    ) : (
+      <div className="space-y-6">
+        <ResourceFieldSection
+          fields={variableFields}
+          onSelect={openPicker}
+          title="推荐变量"
+        />
+        <ResourceFieldSection
+          fields={toolFields}
+          onSelect={openPicker}
+          title="推荐工具"
+        />
+        <ResourceFieldSection
+          fields={knowledgeFields}
+          onSelect={openPicker}
+          title="推荐知识库"
+        />
+      </div>
+    );
+
+  const pickerDialog = (
     <Dialog
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
-          onCancel();
+          closePickerWithoutSaving();
         }
       }}
-      open={open}
+      open={Boolean(pickingField)}
     >
-      <DialogContent className="flex max-h-[min(44rem,calc(100vh-3rem))] w-[min(720px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]">
+      <DialogContent className="flex max-h-[min(40rem,calc(100vh-3rem))] w-[min(720px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]">
         <div className="shrink-0 space-y-1 border-b border-border px-6 py-5">
           <DialogTitle className="text-base font-semibold text-foreground">
-            编辑资源
+            {pickingField?.fieldLabel ?? "选择资源"}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            为模版中的推荐资源选择具体配置
+            选择{pickingField?.fieldLabel ?? "资源"}
           </DialogDescription>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {loading ? (
-            <div
-              className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
-              role="status"
-            >
-              <Spinner size={16} />
-              <span>正在加载</span>
-            </div>
-          ) : fields.length === 0 ? (
-            <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <ResourceFieldSection
-                fields={variableFields}
+          {pickingField ? (
+            isGroupTagVariableType(pickingField.variableType) ? (
+              <TagGroupField
+                field={pickingField}
                 isOptionDisabled={isOptionDisabled}
                 onChange={setFieldValue}
                 onToggleTag={toggleTagSelection}
-                title="推荐变量"
               />
-              <ResourceFieldSection
-                fields={toolFields}
+            ) : (
+              <SearchableOptionField
+                field={pickingField}
                 isOptionDisabled={isOptionDisabled}
                 onChange={setFieldValue}
-                onToggleTag={toggleTagSelection}
-                title="推荐工具"
               />
-              <ResourceFieldSection
-                fields={knowledgeFields}
-                isOptionDisabled={isOptionDisabled}
-                onChange={setFieldValue}
-                onToggleTag={toggleTagSelection}
-                title="推荐知识库"
-              />
-            </div>
-          )}
+            )
+          ) : null}
         </div>
 
         <div className="flex shrink-0 justify-end gap-3 border-t border-border px-6 py-4">
-          <Button onClick={onCancel} type="button" variant="outline">
+          <Button
+            onClick={closePickerWithoutSaving}
+            type="button"
+            variant="outline"
+          >
             取消
           </Button>
           <Button
-            disabled={!canConfirm || loading || submitting}
-            onClick={() => {
-              void handleConfirm();
-            }}
+            disabled={!canConfirmPicker}
+            onClick={confirmPicker}
             type="button"
           >
             确定
@@ -495,24 +653,146 @@ export function SkillPreviewEditResourcesDialog({
       </DialogContent>
     </Dialog>
   );
-}
+
+  if (presentation === "direct-picker") {
+    const fieldLabel =
+      pickingField?.fieldLabel ??
+      editableResources[0]?.fieldLabel ??
+      "选择资源";
+
+    return (
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closePickerWithoutSaving();
+          }
+        }}
+        open={open}
+      >
+        <DialogContent className="flex max-h-[min(40rem,calc(100vh-3rem))] w-[min(720px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]">
+          <div className="shrink-0 space-y-1 border-b border-border px-6 py-5">
+            <DialogTitle className="text-base font-semibold text-foreground">
+              {fieldLabel}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              选择{fieldLabel}
+            </DialogDescription>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {loading || !pickingField ? (
+              <div
+                className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
+                role="status"
+              >
+                <Spinner size={16} />
+                <span>正在加载</span>
+              </div>
+            ) : fields.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+                暂无数据
+              </div>
+            ) : isGroupTagVariableType(pickingField.variableType) ? (
+              <TagGroupField
+                field={pickingField}
+                isOptionDisabled={isOptionDisabled}
+                onChange={setFieldValue}
+                onToggleTag={toggleTagSelection}
+              />
+            ) : (
+              <SearchableOptionField
+                field={pickingField}
+                isOptionDisabled={isOptionDisabled}
+                onChange={setFieldValue}
+              />
+            )}
+          </div>
+
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border px-6 py-4">
+            <Button
+              onClick={closePickerWithoutSaving}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={!canConfirmPicker || submitting || loading}
+              onClick={confirmPicker}
+              type="button"
+            >
+              确定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (presentation === "inline") {
+    return (
+      <>
+        {resourceList}
+        {pickerDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            if (pickingPlaceholder) {
+              return;
+            }
+            onCancel();
+          }
+        }}
+        open={open}
+      >
+        <DialogContent className="flex max-h-[min(44rem,calc(100vh-3rem))] w-[min(720px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]">
+          <div className="shrink-0 space-y-1 border-b border-border px-6 py-5">
+            <DialogTitle className="text-base font-semibold text-foreground">
+              编辑资源
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              为模版中的推荐资源选择具体配置
+            </DialogDescription>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {resourceList}
+          </div>
+
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border px-6 py-4">
+            <Button onClick={onCancel} type="button" variant="outline">
+              取消
+            </Button>
+            <Button
+              disabled={!canConfirmMain}
+              onClick={() => {
+                void handleConfirm();
+              }}
+              type="button"
+            >
+              确定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {pickerDialog}
+    </>
+  );
+});
 
 function ResourceFieldSection({
   fields,
-  isOptionDisabled,
-  onChange,
-  onToggleTag,
+  onSelect,
   title,
 }: {
   fields: readonly FieldDraft[];
-  isOptionDisabled: (field: FieldDraft, option: OptionItem) => boolean;
-  onChange: (placeholder: string, value: string) => void;
-  onToggleTag: (
-    placeholder: string,
-    tagId: string,
-    tagName: string,
-    multi: boolean,
-  ) => void;
+  onSelect: (field: FieldDraft) => void;
   title: string;
 }) {
   if (fields.length === 0) {
@@ -529,29 +809,46 @@ function ResourceFieldSection({
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
 
-      <div className="space-y-4">
-        {fields.map((field) => (
-          <div className="space-y-2" key={field.segment.placeholder}>
-            <Label className="text-sm font-medium text-foreground">
-              <span className="text-destructive">*</span> {field.fieldLabel}
-            </Label>
-            {isGroupTagVariableType(field.variableType) ? (
-              <TagGroupField
-                field={field}
-                isOptionDisabled={isOptionDisabled}
-                onChange={onChange}
-                onToggleTag={onToggleTag}
-              />
-            ) : (
-              <SearchableOptionField
-                field={field}
-                isOptionDisabled={isOptionDisabled}
-                onChange={onChange}
-              />
-            )}
-          </div>
-        ))}
-      </div>
+      <ul className="space-y-3">
+        {fields.map((field) => {
+          const summary = getFieldSelectionSummary(field);
+
+          return (
+            <li
+              className="rounded-[10px] border border-border px-4 py-3"
+              key={field.segment.placeholder}
+            >
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {field.fieldLabel}
+                  </p>
+                  {field.description ? (
+                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                      {field.description}
+                    </p>
+                  ) : null}
+                  {summary ? (
+                    <p className="truncate text-xs text-foreground">
+                      已选：{summary}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  aria-label={`选择${field.fieldLabel}`}
+                  className="shrink-0"
+                  onClick={() => onSelect(field)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  选择
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -908,6 +1205,53 @@ function isGroupTagVariableType(
     variableType === "mall_tag" ||
     variableType === "auto_tag"
   );
+}
+
+function isFieldComplete(field: FieldDraft) {
+  if (isGroupTagVariableType(field.variableType)) {
+    return (
+      field.selectedValue.trim().length > 0 && field.selectedTagIds.length > 0
+    );
+  }
+
+  return field.selectedValue.trim().length > 0;
+}
+
+function getFieldSelectionSummary(field: FieldDraft) {
+  if (!isFieldComplete(field)) {
+    return null;
+  }
+
+  if (isGroupTagVariableType(field.variableType)) {
+    const groupLabel =
+      field.options.find((option) => option.value === field.selectedValue)
+        ?.label ?? field.selectedValue;
+    const tagNames = field.selectedTagIds
+      .map(
+        (tagId) =>
+          field.selectedTagNameById[tagId] ??
+          field.tagOptions.find((tag) => tag.id === tagId)?.name,
+      )
+      .filter((name): name is string => Boolean(name));
+
+    return tagNames.length > 0
+      ? `${groupLabel} · ${tagNames.join("、")}`
+      : groupLabel;
+  }
+
+  return (
+    field.options.find((option) => option.value === field.selectedValue)
+      ?.label ?? field.selectedValue
+  );
+}
+
+function cloneFieldDraft(field: FieldDraft): FieldDraft {
+  return {
+    ...field,
+    selectedTagIds: [...field.selectedTagIds],
+    selectedTagNameById: { ...field.selectedTagNameById },
+    tagOptions: field.tagOptions.map((tag) => ({ ...tag })),
+  };
 }
 
 function getTagGroupSelectionKey(field: FieldDraft, value: string) {

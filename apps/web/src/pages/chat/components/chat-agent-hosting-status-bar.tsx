@@ -45,10 +45,7 @@ export function ChatAgentHostingStatusBar({
       theme="auto"
     >
       <div
-        className={cn(
-          "relative overflow-hidden border border-border rounded-full shadow-[0_4px_20px_var(--shadow-soft)]",
-          isExited ? "border-border" : "border-primary/25",
-        )}
+        className="relative overflow-hidden rounded-full border border-border shadow-[0_4px_20px_var(--shadow-soft)]"
         data-testid="chat-agent-hosting-status-bar"
       >
         <div

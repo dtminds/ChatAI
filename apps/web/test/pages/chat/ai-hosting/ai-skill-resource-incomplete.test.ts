@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEditableResourcesFromRecommendations,
   buildSkillVariableResourceItem,
+  collectAutoSelectedToolsFromRecommendations,
   collectCompleteSkillResourcesFromContent,
   getSkillResourceChipName,
   isIncompleteSkillResource,
@@ -156,6 +157,12 @@ describe("ai skill incomplete resources", () => {
       "订单查询",
       "美妆护肤",
     ]);
+    expect(editable.map((item) => item.description)).toEqual([
+      "建议选择包含客户基础信息的标签",
+      "无 variableType 时按标题推断",
+      "查订单",
+      "知识库",
+    ]);
     expect(editable.map((item) => item.segment.kind)).toEqual([
       "variable",
       "variable",
@@ -175,6 +182,43 @@ describe("ai skill incomplete resources", () => {
 
   it("returns no editable resources when recommendResources is empty", () => {
     expect(buildEditableResourcesFromRecommendations([])).toEqual([]);
+  });
+
+  it("auto-selects tools from recommendResources when toolId is present", () => {
+    expect(
+      collectAutoSelectedToolsFromRecommendations([
+        {
+          type: "tool",
+          title: "订单查询",
+          description: "查订单",
+          toolId: "search_order",
+        },
+        {
+          type: "tool",
+          title: "无 ID 工具",
+          description: "需要手动选",
+        },
+        {
+          type: "variable",
+          title: "企微标签",
+          description: "标签",
+          variableType: "work_tag",
+        },
+        {
+          type: "tool",
+          title: "重复订单查询",
+          description: "去重",
+          toolId: "search_order",
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        id: "search_order",
+        toolKey: "search_order",
+        title: "订单查询",
+        status: "available",
+      }),
+    ]);
   });
 
   it("treats empty toolId as incomplete and keeps filled tool complete", () => {

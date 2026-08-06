@@ -69,20 +69,14 @@ SELECT
   message_count
 FROM xy_wap_embed_logical_session
 WHERE uid = :uid
-  AND started_at >= :effectiveStartMs
+  AND started_at >= :dayStartMs
   AND started_at < :dayEndMs
   AND message_count >= 5
 ORDER BY message_count DESC
 LIMIT :candidateSessionLimit;
 ```
 
-其中：
-
-```text
-effectiveStartMs = max(dayStartMs, enabledAtMs + 1)
-```
-
-这样只保留一个 `started_at` 下界条件，不再额外拼接 `started_at > enabled_at`。
+候选范围固定为 `quota_date` 对应的完整自然日。`enabled_at` 只记录当前配置代次的开启时间，不参与目标日内的会话裁剪；不回刷历史由 `next_run_at` 只创建应运行的 `quota_date` 保证。
 
 查询明确不得包含：
 

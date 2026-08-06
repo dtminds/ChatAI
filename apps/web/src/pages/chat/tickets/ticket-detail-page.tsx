@@ -498,6 +498,7 @@ export function TicketDetailContent({
                     placeholder="添加评论"
                     rows={isCommentEditing ? 4 : 1}
                     value={comment}
+                    variant="soft"
                   />
                   {isCommentEditing ? (
                     <div className="flex justify-end gap-2">

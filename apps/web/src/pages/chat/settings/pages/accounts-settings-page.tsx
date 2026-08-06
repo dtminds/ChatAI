@@ -18,7 +18,7 @@ export function AccountsSettingsPage() {
       onValueChange={(value) => setActiveTab(value as AccountsSettingsTab)}
       value={activeTab}
     >
-      <TabsList className="bg-muted p-1">
+      <TabsList>
         {settingsTabs.map((tab) => (
           <TabsTrigger
             className="min-w-20 px-4 text-sm"

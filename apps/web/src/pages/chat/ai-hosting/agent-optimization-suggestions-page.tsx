@@ -630,6 +630,7 @@ export function AgentOptimizationSuggestionsPage() {
                       className="w-full"
                       id="optimization-kb-select"
                       ref={knowledgeBaseSelectRef}
+                      variant="soft"
                     >
                       <SelectValue
                         placeholder={
@@ -657,7 +658,7 @@ export function AgentOptimizationSuggestionsPage() {
                     id="optimization-knowledge-select"
                     onClick={() => setKnowledgePickerOpen(true)}
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                   >
                     <span
                       className={cn(
@@ -680,6 +681,7 @@ export function AgentOptimizationSuggestionsPage() {
                         id="optimization-question"
                         onChange={(event) => setIngestQuestion(event.target.value)}
                         value={ingestQuestion}
+                        variant="soft"
                       />
                     </div>
                     <div className="space-y-2">
@@ -692,6 +694,7 @@ export function AgentOptimizationSuggestionsPage() {
                         id="optimization-answer"
                         onChange={(event) => setIngestAnswer(event.target.value)}
                         value={ingestAnswer}
+                        variant="soft"
                       />
                     </div>
                   </>

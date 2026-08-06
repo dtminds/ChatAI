@@ -100,12 +100,8 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
     onCancel: () => void;
     onConfirm: (result: SkillRecommendResourcesConfirmResult) => void;
     open: boolean;
-    /**
-     * dialog：独立「编辑资源」弹窗
-     * inline：嵌在技能模版详情中
-     * direct-picker：新建技能页点推荐「选择」时，直接打开对应单项选择弹窗
-     */
-    presentation?: "dialog" | "inline" | "direct-picker";
+    /** dialog：独立弹窗；inline：嵌在技能模版详情中 */
+    presentation?: "dialog" | "inline";
   }
 >(function SkillPreviewEditResourcesDialog(
   {
@@ -201,10 +197,6 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
         );
         if (!cancelled) {
           setFields(nextFields);
-          if (presentation === "direct-picker" && nextFields[0]) {
-            setPickerSnapshot(cloneFieldDraft(nextFields[0]));
-            setPickingPlaceholder(nextFields[0].segment.placeholder);
-          }
         }
       } catch {
         if (!cancelled) {
@@ -223,7 +215,7 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [editableResources, open, presentation]);
+  }, [editableResources, open]);
 
   function openPicker(field: FieldDraft) {
     setPickerSnapshot(cloneFieldDraft(field));
@@ -231,13 +223,6 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
   }
 
   function closePickerWithoutSaving() {
-    if (presentation === "direct-picker") {
-      setPickingPlaceholder(null);
-      setPickerSnapshot(null);
-      onCancel();
-      return;
-    }
-
     if (pickerSnapshot) {
       const snapshot = pickerSnapshot;
       setFields((current) =>
@@ -258,50 +243,8 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
       return;
     }
 
-    if (presentation === "direct-picker") {
-      void confirmDirectPicker();
-      return;
-    }
-
     setPickingPlaceholder(null);
     setPickerSnapshot(null);
-  }
-
-  async function confirmDirectPicker() {
-    if (!pickingField || !isFieldComplete(pickingField) || submitting) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const built = await buildSelection(pickingField);
-      if (!built) {
-        toast.error(`${pickingField.fieldLabel}配置无效，请重新选择`);
-        return;
-      }
-
-      const resources = {
-        variables: [] as SkillResourceItem[],
-        tools: [] as SkillResourceItem[],
-        "knowledge-bases": [] as SkillResourceItem[],
-      };
-
-      if (pickingField.segment.kind === "variable") {
-        resources.variables.push(built.resource);
-      } else if (pickingField.segment.kind === "tool") {
-        resources.tools.push(built.resource);
-      } else {
-        resources["knowledge-bases"].push(built.resource);
-      }
-
-      onConfirm({ content, resources });
-      setPickingPlaceholder(null);
-      setPickerSnapshot(null);
-    } catch {
-      toast.error("资源配置失败，请稍后重试");
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   function setFieldValue(placeholder: string, value: string) {
@@ -653,81 +596,6 @@ export const SkillPreviewEditResourcesDialog = forwardRef<
       </DialogContent>
     </Dialog>
   );
-
-  if (presentation === "direct-picker") {
-    const fieldLabel =
-      pickingField?.fieldLabel ??
-      editableResources[0]?.fieldLabel ??
-      "选择资源";
-
-    return (
-      <Dialog
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            closePickerWithoutSaving();
-          }
-        }}
-        open={open}
-      >
-        <DialogContent className="flex max-h-[min(40rem,calc(100vh-3rem))] w-[min(720px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]">
-          <div className="shrink-0 space-y-1 border-b border-border px-6 py-5">
-            <DialogTitle className="text-base font-semibold text-foreground">
-              {fieldLabel}
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              选择{fieldLabel}
-            </DialogDescription>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            {loading || !pickingField ? (
-              <div
-                className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
-                role="status"
-              >
-                <Spinner size={16} />
-                <span>正在加载</span>
-              </div>
-            ) : fields.length === 0 ? (
-              <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
-                暂无数据
-              </div>
-            ) : isGroupTagVariableType(pickingField.variableType) ? (
-              <TagGroupField
-                field={pickingField}
-                isOptionDisabled={isOptionDisabled}
-                onChange={setFieldValue}
-                onToggleTag={toggleTagSelection}
-              />
-            ) : (
-              <SearchableOptionField
-                field={pickingField}
-                isOptionDisabled={isOptionDisabled}
-                onChange={setFieldValue}
-              />
-            )}
-          </div>
-
-          <div className="flex shrink-0 justify-end gap-3 border-t border-border px-6 py-4">
-            <Button
-              onClick={closePickerWithoutSaving}
-              type="button"
-              variant="outline"
-            >
-              取消
-            </Button>
-            <Button
-              disabled={!canConfirmPicker || submitting || loading}
-              onClick={confirmPicker}
-              type="button"
-            >
-              确定
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   if (presentation === "inline") {
     return (

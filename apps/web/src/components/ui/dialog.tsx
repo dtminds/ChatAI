@@ -4,6 +4,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
+import { useComposedRefs } from "@/lib/compose-refs";
 import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
@@ -47,41 +48,56 @@ const DialogContent = React.forwardRef<
       closeButtonClassName,
       closeButtonDisabled,
       closeButtonVisible = true,
+      onOpenAutoFocus,
       ...props
     },
-    ref,
-  ) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-150 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98 sm:rounded-xl",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      {closeButtonVisible ? (
-        <DialogPrimitive.Close
+    forwardedRef,
+  ) => {
+    const contentRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Content>>(null);
+    const composedRef = useComposedRefs(forwardedRef, contentRef);
+
+    return (
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+          ref={composedRef}
           className={cn(
-            "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-4 focus:ring-ring/20 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground",
-            closeButtonClassName,
+            "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg outline-none duration-150 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98 sm:rounded-xl",
+            className,
           )}
-          disabled={closeButtonDisabled}
+          onOpenAutoFocus={(event) => {
+            if (onOpenAutoFocus) {
+              onOpenAutoFocus(event);
+              return;
+            }
+
+            event.preventDefault();
+            contentRef.current?.focus({ preventScroll: true });
+          }}
+          {...props}
         >
-          <HugeiconsIcon
-            color="currentColor"
-            icon={Cancel01Icon}
-            size={16}
-            strokeWidth={1.8}
-          />
-          <span className="sr-only">关闭</span>
-        </DialogPrimitive.Close>
-      ) : null}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-  ),
+          {children}
+          {closeButtonVisible ? (
+            <DialogPrimitive.Close
+              className={cn(
+                "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:pointer-events-none",
+                closeButtonClassName,
+              )}
+              disabled={closeButtonDisabled}
+            >
+              <HugeiconsIcon
+                color="currentColor"
+                icon={Cancel01Icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              <span className="sr-only">关闭</span>
+            </DialogPrimitive.Close>
+          ) : null}
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  },
 );
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 

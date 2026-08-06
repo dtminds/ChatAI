@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
+import { useComposedRefs } from "@/lib/compose-refs";
 import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
@@ -57,27 +58,41 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-4 focus:ring-ring/20 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <HugeiconsIcon
-          color="currentColor"
-          icon={Cancel01Icon}
-          size={16}
-          strokeWidth={1.8}
-        />
-        <span className="sr-only">关闭</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(({ side = "right", className, children, onOpenAutoFocus, ...props }, forwardedRef) => {
+  const contentRef = React.useRef<React.ElementRef<typeof SheetPrimitive.Content>>(null);
+  const composedRef = useComposedRefs(forwardedRef, contentRef);
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={composedRef}
+        className={cn(sheetVariants({ side }), "outline-none", className)}
+        onOpenAutoFocus={(event) => {
+          if (onOpenAutoFocus) {
+            onOpenAutoFocus(event);
+            return;
+          }
+
+          event.preventDefault();
+          contentRef.current?.focus({ preventScroll: true });
+        }}
+        {...props}
+      >
+        {children}
+        <SheetPrimitive.Close className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:pointer-events-none">
+          <HugeiconsIcon
+            color="currentColor"
+            icon={Cancel01Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+          <span className="sr-only">关闭</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({

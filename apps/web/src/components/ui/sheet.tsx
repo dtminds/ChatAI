@@ -60,6 +60,7 @@ const SheetContent = React.forwardRef<
   SheetContentProps
 >(({ side = "right", className, children, onOpenAutoFocus, ...props }, forwardedRef) => {
   const contentRef = React.useRef<React.ElementRef<typeof SheetPrimitive.Content>>(null);
+  const closeButtonRef = React.useRef<React.ElementRef<typeof SheetPrimitive.Close>>(null);
   const composedRef = useComposedRefs(forwardedRef, contentRef);
 
   return (
@@ -74,13 +75,19 @@ const SheetContent = React.forwardRef<
             return;
           }
 
-          event.preventDefault();
-          contentRef.current?.focus({ preventScroll: true });
+          queueMicrotask(() => {
+            if (document.activeElement === closeButtonRef.current) {
+              contentRef.current?.focus({ preventScroll: true });
+            }
+          });
         }}
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:pointer-events-none">
+        <SheetPrimitive.Close
+          ref={closeButtonRef}
+          className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:pointer-events-none"
+        >
           <HugeiconsIcon
             color="currentColor"
             icon={Cancel01Icon}

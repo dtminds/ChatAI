@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 
 describe("dialog and sheet focus", () => {
-  it("focuses dialog content instead of the close button by default", async () => {
+  it("focuses dialog content when the close button is the only focusable child", async () => {
     render(
       <Dialog defaultOpen>
         <DialogContent>
@@ -32,7 +32,23 @@ describe("dialog and sheet focus", () => {
     expect(screen.getByRole("button", { name: "关闭" })).not.toHaveFocus();
   });
 
-  it("focuses sheet content instead of the close button by default", async () => {
+  it("preserves dialog autofocus for the first editable control", async () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent>
+          <DialogTitle>转发消息</DialogTitle>
+          <DialogDescription>选择接收人</DialogDescription>
+          <input aria-label="搜索接收人" />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "搜索接收人" })).toHaveFocus();
+    });
+  });
+
+  it("focuses sheet content when the close button is the only focusable child", async () => {
     render(
       <Sheet defaultOpen>
         <SheetContent>
@@ -47,6 +63,22 @@ describe("dialog and sheet focus", () => {
 
     await waitFor(() => expect(sheet).toHaveFocus());
     expect(screen.getByRole("button", { name: "关闭" })).not.toHaveFocus();
+  });
+
+  it("preserves sheet autofocus for the first editable control", async () => {
+    render(
+      <Sheet defaultOpen>
+        <SheetContent>
+          <SheetTitle>工单详情</SheetTitle>
+          <SheetDescription>编辑工单信息</SheetDescription>
+          <input aria-label="工单标题" />
+        </SheetContent>
+      </Sheet>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "工单标题" })).toHaveFocus();
+    });
   });
 
   it("preserves an explicit dialog autofocus target", async () => {

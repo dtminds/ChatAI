@@ -54,6 +54,7 @@ const DialogContent = React.forwardRef<
     forwardedRef,
   ) => {
     const contentRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Content>>(null);
+    const closeButtonRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Close>>(null);
     const composedRef = useComposedRefs(forwardedRef, contentRef);
 
     return (
@@ -71,14 +72,18 @@ const DialogContent = React.forwardRef<
               return;
             }
 
-            event.preventDefault();
-            contentRef.current?.focus({ preventScroll: true });
+            queueMicrotask(() => {
+              if (document.activeElement === closeButtonRef.current) {
+                contentRef.current?.focus({ preventScroll: true });
+              }
+            });
           }}
           {...props}
         >
           {children}
           {closeButtonVisible ? (
             <DialogPrimitive.Close
+              ref={closeButtonRef}
               className={cn(
                 "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:pointer-events-none",
                 closeButtonClassName,

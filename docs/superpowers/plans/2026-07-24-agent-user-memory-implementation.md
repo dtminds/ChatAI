@@ -357,7 +357,6 @@ selectCandidateSessions(run):
   sessions = query logical_session join conversation
     where uid = run.uid
       and started_at in [dayStart, dayEnd)
-      and started_at > config.enabled_at
       and message_count >= 5
       and conversation.chat_type = 1
       and external customer ownership matches

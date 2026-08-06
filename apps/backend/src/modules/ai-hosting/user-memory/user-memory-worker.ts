@@ -118,11 +118,10 @@ export class UserMemoryWorker {
   }
 
   private async selectCandidates(claim: Claim) {
-    const config = await this.input.db.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", claim.run.uid).executeTakeFirstOrThrow();
     const range = shanghaiDayRange(claim.run.quota_date);
     const sessions = await buildCandidateSessionQuery(this.input.db, {
       uid: claim.run.uid,
-      start: config.enabled_at == null ? Number.MAX_SAFE_INTEGER : Math.max(range.start, config.enabled_at + 1),
+      start: range.start,
       end: range.end,
       limit: claim.run.candidate_session_limit,
     }).execute() as CandidateSession[];

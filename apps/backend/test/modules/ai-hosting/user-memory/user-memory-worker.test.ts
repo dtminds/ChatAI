@@ -74,6 +74,56 @@ describe("user memory candidate selection", () => {
     expect(compiled.parameters).toEqual([272, 121, 200, 5, 1000]);
   });
 
+  it("selects candidates from the start of the complete quota date instead of the enable time", async () => {
+    const quotaDate = new Date("2026-08-05T12:00:00+08:00");
+    const dayStart = Date.parse("2026-08-05T00:00:00+08:00");
+    const dayEnd = Date.parse("2026-08-06T00:00:00+08:00");
+    const leaseUntil = new Date(Date.now() + 60_000);
+    const run = {
+      candidate_session_limit: 200,
+      claim_token: "claim-1",
+      config_generation: 2,
+      customer_limit: 100,
+      id: 7,
+      lease_until: leaseUntil,
+      locked_by: "worker-1",
+      quota_date: quotaDate,
+      status: "running",
+      uid: 272,
+    };
+    const { db, queries } = createRecordingDatabase((query) => {
+      if (query.sql.includes("from `xy_wap_embed_logical_session` as `session`")) {
+        return { rows: [] };
+      }
+      if (query.sql.includes("from `xy_wap_embed_agent_user_memory_config`")) {
+        return { rows: [{ active_run_id: 7, enabled: 1, generation: 2, uid: 272 }] };
+      }
+      if (query.sql.includes("from `xy_wap_embed_agent_user_memory_run`")) {
+        return { rows: [run] };
+      }
+      if (query.sql.startsWith("update")) {
+        return { numAffectedRows: 1n, rows: [] };
+      }
+      throw new Error(`Unexpected query: ${query.sql}`);
+    });
+    const worker = new UserMemoryWorker({
+      customerLimitResolver: { resolve: () => 100 },
+      db,
+      logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } as never,
+      provider: { complete: vi.fn() } as never,
+      workerId: "worker-1",
+    });
+    const selectCandidates = (worker as unknown as {
+      selectCandidates: (claim: unknown) => Promise<void>;
+    }).selectCandidates.bind(worker);
+
+    await selectCandidates({ run, token: "claim-1" });
+
+    expect(queries[0]?.sql).toContain("from `xy_wap_embed_logical_session` as `session`");
+    expect(queries[0]?.parameters).toEqual([272, dayStart, dayEnd, 5, 200]);
+    await db.destroy();
+  });
+
   it("fetches the latest 100 AI-eligible messages across candidate conversations with fixed time bounds", () => {
     const compiled = buildUserMemoryMessagesQuery(createCompileOnlyDb(), {
       uid: 272,

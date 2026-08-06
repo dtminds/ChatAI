@@ -156,7 +156,6 @@ uid + platform + third_external_userid
 session.uid = :uid
 AND session.started_at >= :dayStartMs
 AND session.started_at < :dayEndMs
-AND session.started_at > config.enabled_at
 AND session.message_count >= 5
 AND session.third_external_userid <> ''
 AND conversation.id = session.conversation_id
@@ -202,7 +201,6 @@ JOIN xy_wap_embed_conversation AS conversation
 WHERE session.uid = :uid
   AND session.started_at >= :dayStartMs
   AND session.started_at < :dayEndMs
-  AND session.started_at > :enabledAtMs
   AND session.message_count >= 5
   AND session.third_external_userid <> ''
   AND conversation.chat_type = 1
@@ -295,7 +293,7 @@ commit
 - 已终态自然日不得因关闭再开启或 Scheduler 重放而重新扫描。
 - Worker 停机数日后，按过期的 `next_run_at` 一天一天补建遗漏自然日；同一租户同时只运行一个日期。
 - 关闭后不补建关闭期间的日期；重新开启时把 `enabled_at` 设为当前毫秒，并把 `next_run_at` 设为下一次本地 `02:00`。
-- 新开启不会立即运行，也不会扫描开启前历史。
+- 新开启不会立即运行，也不会为更早的自然日补建运行；首次计划运行仍处理其 `quota_date` 对应的完整自然日，不按 `enabled_at` 裁剪该日会话。
 - 调度只补建“应该存在的每日运行”，不保证迟到写入已终态日期的会话被再次发现。
 
 ### 5.2 运行状态

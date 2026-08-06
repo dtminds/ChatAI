@@ -1,9 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AbsoluteIcon,
   Add01Icon,
-  AiBookIcon,
-  ApiIcon,
   Cancel01Icon,
   ClipboardIcon,
   Message01Icon,
@@ -80,7 +77,12 @@ import {
 } from "./ai-skill-create-draft";
 import { SkillContentView } from "./ai-skill-content-view";
 import {
-  collectAutoSelectedToolsFromRecommendations,
+  SkillPreviewEditResourcesDialog,
+  type SkillRecommendResourcesConfirmResult,
+  type SkillRecommendResourcesHandle,
+} from "./ai-skill-preview-edit-resources-dialog";
+import {
+  buildEditableResourcesFromRecommendations,
   collectCompleteSkillResourcesFromContent,
   mergeSkillResourceItems,
   type SkillRecommendBinding,
@@ -91,11 +93,6 @@ import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import "./ai-skill-template-detail.css";
-
-type SkillRecommendation = {
-  description: string;
-  title: string;
-};
 
 type SkillItem = {
   description: string;
@@ -108,9 +105,6 @@ type SkillItem = {
 type SkillDetailItem = SkillItem & {
   applicationScenario: string;
   recommendBindings: readonly SkillRecommendBinding[];
-  recommendedKnowledgeBases: readonly SkillRecommendation[];
-  recommendedTools: readonly SkillRecommendation[];
-  recommendedVariables: readonly SkillRecommendation[];
   skillDescription: string;
 };
 
@@ -336,15 +330,6 @@ function mapTemplateDetailToSkillItem(
     applicationScenario: template.applyScene,
     skillDescription: template.content,
     recommendBindings: template.recommendResources.map(toRecommendBinding),
-    recommendedVariables: filterRecommendations(
-      template.recommendResources,
-      "variable",
-    ),
-    recommendedTools: filterRecommendations(template.recommendResources, "tool"),
-    recommendedKnowledgeBases: filterRecommendations(
-      template.recommendResources,
-      "knowledge_base",
-    ),
   };
 }
 
@@ -356,20 +341,7 @@ function toRecommendBinding(
     title: item.title,
     description: item.description,
     ...(item.variableType ? { variableType: item.variableType } : {}),
-    ...(item.toolId ? { toolId: item.toolId } : {}),
   };
-}
-
-function filterRecommendations(
-  items: readonly AgentSkillTemplateRecommendItem[],
-  type: AgentSkillTemplateRecommendItem["type"],
-): SkillRecommendation[] {
-  return items
-    .filter((item) => item.type === type)
-    .map((item) => ({
-      title: item.title,
-      description: item.description,
-    }));
 }
 
 function MySkillsPanel() {
@@ -784,6 +756,9 @@ function SkillDetailDialog({
   skill: SkillItem | null;
 }) {
   const navigate = useNavigate();
+  const recommendResourcesRef = useRef<SkillRecommendResourcesHandle>(null);
+  const [editResourcesOpen, setEditResourcesOpen] = useState(false);
+  const [previewSubmitting, setPreviewSubmitting] = useState(false);
   const [detail, setDetail] = useState<SkillDetailItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
@@ -793,14 +768,18 @@ function SkillDetailDialog({
       setDetail(null);
       setDetailLoading(false);
       setDetailError(false);
+      setEditResourcesOpen(false);
+      setPreviewSubmitting(false);
       return;
     }
 
     let cancelled = false;
     const templateId = skill.id;
+    setEditResourcesOpen(false);
     setDetail(null);
     setDetailLoading(true);
     setDetailError(false);
+    setPreviewSubmitting(false);
 
     async function loadDetail() {
       try {
@@ -827,31 +806,16 @@ function SkillDetailDialog({
     };
   }, [open, skill]);
 
-  function handlePreviewSkill() {
-    if (!detail) {
-      return;
-    }
+  const editableResources = useMemo(
+    () =>
+      detail
+        ? buildEditableResourcesFromRecommendations(detail.recommendBindings)
+        : [],
+    [detail],
+  );
 
-    const existing = collectCompleteSkillResourcesFromContent(
-      detail.skillDescription,
-    );
-    const autoTools = collectAutoSelectedToolsFromRecommendations(
-      detail.recommendBindings,
-    );
-    const draft: SkillCreateDraft = {
-      name: detail.title,
-      applyScene: detail.applicationScenario,
-      content: detail.skillDescription,
-      resources: {
-        variables: existing.variables,
-        tools: mergeSkillResourceItems(existing.tools, autoTools),
-        "knowledge-bases": existing["knowledge-bases"],
-      },
-      // 已带 toolId 并自动选中的工具不再出现在「推荐选择」提示里
-      recommendResources: detail.recommendBindings.filter(
-        (item) => !(item.type === "tool" && item.toolId?.trim()),
-      ),
-    };
+  function goToCreateSkill(draft: SkillCreateDraft) {
+    setEditResourcesOpen(false);
     onOpenChange(false);
     navigate("/chat/ai-hosting/skills/new", {
       state: {
@@ -860,8 +824,82 @@ function SkillDetailDialog({
     });
   }
 
+  function applySelectedResources(
+    selected: SkillRecommendResourcesConfirmResult,
+  ) {
+    if (!detail) {
+      return;
+    }
+
+    const existing = collectCompleteSkillResourcesFromContent(
+      detail.skillDescription,
+    );
+    goToCreateSkill({
+      name: detail.title,
+      applyScene: detail.applicationScenario,
+      content: selected.content,
+      resources: {
+        variables: mergeSkillResourceItems(
+          existing.variables,
+          selected.resources.variables,
+        ),
+        tools: mergeSkillResourceItems(existing.tools, selected.resources.tools),
+        "knowledge-bases": mergeSkillResourceItems(
+          existing["knowledge-bases"],
+          selected.resources["knowledge-bases"],
+        ),
+      },
+    });
+  }
+
+  async function handlePreviewSkill() {
+    if (!detail || previewSubmitting) {
+      return;
+    }
+
+    if (editableResources.length === 0) {
+      goToCreateSkill({
+        name: detail.title,
+        applyScene: detail.applicationScenario,
+        content: detail.skillDescription,
+        resources: collectCompleteSkillResourcesFromContent(
+          detail.skillDescription,
+        ),
+      });
+      return;
+    }
+
+    setPreviewSubmitting(true);
+    try {
+      const selected =
+        await recommendResourcesRef.current?.confirmSelections();
+      if (!selected) {
+        return;
+      }
+
+      // 详情里一个都没选时，仍弹出编辑资源弹窗提醒选择
+      if (!hasSelectedRecommendResources(selected.resources)) {
+        setEditResourcesOpen(true);
+        return;
+      }
+
+      applySelectedResources(selected);
+    } finally {
+      setPreviewSubmitting(false);
+    }
+  }
+
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
+    <>
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setEditResourcesOpen(false);
+          }
+          onOpenChange(nextOpen);
+        }}
+        open={open}
+      >
       <DialogContent
         className="flex h-[min(44rem,calc(100vh-2rem))] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[12px]"
         closeButtonVisible={false}
@@ -882,8 +920,10 @@ function SkillDetailDialog({
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   className="bg-neutral-950 text-white hover:bg-neutral-800"
-                  disabled={!detail}
-                  onClick={handlePreviewSkill}
+                  disabled={!detail || previewSubmitting}
+                  onClick={() => {
+                    void handlePreviewSkill();
+                  }}
                   size="sm"
                   type="button"
                 >
@@ -987,7 +1027,7 @@ function SkillDetailDialog({
                   </TabsList>
                 </div>
 
-                <div className="px-6 py-5">
+                <div className="space-y-6 px-6 py-5">
                   <TabsContent className="mt-0 space-y-0" value="scenario">
                     <p className="min-h-28 pb-5 text-sm leading-6 text-muted-foreground">
                       {detail.applicationScenario || "暂无数据"}
@@ -1001,71 +1041,52 @@ function SkillDetailDialog({
                     />
                   </TabsContent>
 
-                  <SkillRecommendationSection
-                    icon={AbsoluteIcon}
-                    items={detail.recommendedVariables}
-                    title="推荐变量"
-                  />
-                  <SkillRecommendationSection
-                    icon={ApiIcon}
-                    items={detail.recommendedTools}
-                    title="推荐工具"
-                  />
-                  <SkillRecommendationSection
-                    icon={AiBookIcon}
-                    items={detail.recommendedKnowledgeBases}
-                    title="推荐知识库"
-                  />
+                  {editableResources.length > 0 ? (
+                    <SkillPreviewEditResourcesDialog
+                      key={detail.id}
+                      ref={recommendResourcesRef}
+                      content={detail.skillDescription}
+                      editableResources={editableResources}
+                      onCancel={() => undefined}
+                      onConfirm={() => undefined}
+                      open
+                      presentation="inline"
+                    />
+                  ) : null}
                 </div>
               </Tabs>
             ) : null}
           </div>
         ) : null}
       </DialogContent>
-    </Dialog>
+      </Dialog>
+
+      {detail && editableResources.length > 0 ? (
+        <SkillPreviewEditResourcesDialog
+          content={detail.skillDescription}
+          editableResources={editableResources}
+          onCancel={() => {
+            setEditResourcesOpen(false);
+          }}
+          onConfirm={(result) => {
+            applySelectedResources(result);
+          }}
+          open={editResourcesOpen}
+        />
+      ) : null}
+    </>
   );
 }
 
-function SkillRecommendationSection({
-  icon,
-  items,
-  title,
-}: {
-  icon: typeof AbsoluteIcon;
-  items: readonly SkillRecommendation[];
-  title: string;
+function hasSelectedRecommendResources(resources: {
+  "knowledge-bases": readonly unknown[];
+  tools: readonly unknown[];
+  variables: readonly unknown[];
 }) {
-  if (items.length === 0) {
-    return null;
-  }
-
   return (
-    <section aria-label={title} className="space-y-4 py-5">
-      <h3 className="border-b border-border pb-3 text-sm font-semibold text-foreground">
-        {title}
-      </h3>
-      <ul className="space-y-3">
-        {items.map((item) => (
-          <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="mt-0.5 shrink-0 text-foreground"
-              icon={icon}
-              size={18}
-              strokeWidth={1.8}
-            />
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm font-medium text-foreground">{item.title}</p>
-              {item.description ? (
-                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {item.description}
-                </p>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    resources.variables.length > 0 ||
+    resources.tools.length > 0 ||
+    resources["knowledge-bases"].length > 0
   );
 }
 

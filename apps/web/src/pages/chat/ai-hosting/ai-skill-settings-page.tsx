@@ -104,9 +104,7 @@ import {
   InsertVariableDialog,
   type InsertVariableInitialConfigure,
 } from "./ai-skill-insert-variable-dialog";
-import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
 import {
-  buildEditableResourcesFromRecommendations,
   buildKnowledgeBasePlaceholder,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
@@ -119,7 +117,6 @@ import {
   serializeSkillContentSegments,
   toSkillContentResourceSegment,
   type SkillContentSegment,
-  type SkillRecommendBinding,
   type SkillResourceItem,
 } from "./ai-skill-resource";
 import { AiHostingLayout } from "./ai-hosting-layout";
@@ -313,12 +310,6 @@ export function AiSkillSettingsPage() {
   const [editingVariable, setEditingVariable] = useState<SkillResourceItem | null>(
     null,
   );
-  const [recommendResources, setRecommendResources] = useState<
-    readonly SkillRecommendBinding[]
-  >(() => createDraft?.recommendResources ?? []);
-  const [pickingRecommendIndex, setPickingRecommendIndex] = useState<number | null>(
-    null,
-  );
   const [removeTarget, setRemoveTarget] = useState<{
     item: SkillResourceItem;
     sectionId: ResourceSectionId;
@@ -327,29 +318,15 @@ export function AiSkillSettingsPage() {
   const [invalidResourceDialog, setInvalidResourceDialog] =
     useState<InvalidSkillResources>(null);
 
-  const pickingRecommend =
-    pickingRecommendIndex == null
-      ? null
-      : (recommendResources[pickingRecommendIndex] ?? null);
-  const pickingRecommendEditableResources = useMemo(
-    () =>
-      pickingRecommend
-        ? buildEditableResourcesFromRecommendations([pickingRecommend])
-        : [],
-    [pickingRecommend],
-  );
-
   const variableInitialConfigure = useMemo<InsertVariableInitialConfigure | null>(
-    () => {
-      if (editingVariable?.variable) {
-        return {
-          kind: editingVariable.variable.type,
-          lockKind: true,
-          initialVariable: editingVariable.variable,
-        };
-      }
-      return null;
-    },
+    () =>
+      editingVariable?.variable
+        ? {
+            kind: editingVariable.variable.type,
+            lockKind: true,
+            initialVariable: editingVariable.variable,
+          }
+        : null,
     [editingVariable],
   );
 
@@ -631,52 +608,6 @@ export function AiSkillSettingsPage() {
     descriptionEditorRef.current?.focus();
   }
 
-  function handleSelectRecommendResource(index: number) {
-    if (controlsDisabled) {
-      return;
-    }
-
-    if (!recommendResources[index]) {
-      return;
-    }
-
-    setEditingVariable(null);
-    setActiveInsertSection(null);
-    setVariableDialogOpen(false);
-    setPickingRecommendIndex(index);
-  }
-
-  function handleConfirmRecommendResource(result: {
-    resources: {
-      "knowledge-bases": SkillResourceItem[];
-      tools: SkillResourceItem[];
-      variables: SkillResourceItem[];
-    };
-  }) {
-    const index = pickingRecommendIndex;
-    if (index == null) {
-      return;
-    }
-
-    if (result.resources.variables.length > 0) {
-      handleAddResources("variables", result.resources.variables);
-    }
-    if (result.resources.tools.length > 0) {
-      handleAddResources("tools", result.resources.tools);
-    }
-    if (result.resources["knowledge-bases"].length > 0) {
-      handleAddResources(
-        "knowledge-bases",
-        result.resources["knowledge-bases"],
-      );
-    }
-
-    setRecommendResources((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
-    setPickingRecommendIndex(null);
-  }
-
   return (
     <AiHostingLayout title="技能设置">
       <div className="space-y-6">
@@ -844,75 +775,63 @@ export function AiSkillSettingsPage() {
             </section>
           </div>
 
-          <div className="flex h-fit flex-col gap-5">
-            <aside
-              aria-labelledby="skill-insert-resources-title"
-              className="rounded-[14px] border border-border bg-card p-5"
+          <aside
+            aria-labelledby="skill-insert-resources-title"
+            className="h-fit rounded-[14px] border border-border bg-card p-5"
+          >
+            <h2
+              className="mb-4 text-base font-semibold text-foreground"
+              id="skill-insert-resources-title"
             >
-              <h2
-                className="mb-4 text-base font-semibold text-foreground"
-                id="skill-insert-resources-title"
+              资源管理
+            </h2>
+            {invalidResourceCount > 0 ? (
+              <div
+                className="mb-4 flex items-start gap-2 rounded-[8px] bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
+                role="alert"
               >
-                资源管理
-              </h2>
-              {invalidResourceCount > 0 ? (
-                <div
-                  className="mb-4 flex items-start gap-2 rounded-[8px] bg-destructive/5 px-3 py-1.5 text-sm text-destructive"
-                  role="alert"
-                >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    className="mt-0.5 shrink-0"
-                    icon={AlertCircleIcon}
-                    size={16}
-                    strokeWidth={1.8}
-                  />
-                  <span>保存前请移除失效资源</span>
-                </div>
-              ) : null}
-              <div className="space-y-5">
-                {resourceSections.map((section) => (
-                  <SkillResourceSection
-                    disabled={controlsDisabled}
-                    icon={section.icon}
-                    items={selectedResources[section.id]}
-                    key={section.id}
-                    onAdd={() => {
-                      if (section.id === "variables") {
-                        setEditingVariable(null);
-                        setVariableDialogOpen(true);
-                        return;
-                      }
-                      setActiveInsertSection(section.id);
-                    }}
-                    onEdit={
-                      section.id === "variables"
-                        ? (item) => {
-                            if (!isEditableSkillVariable(item)) {
-                              return;
-                            }
-                            setEditingVariable(item);
-                            setVariableDialogOpen(true);
-                          }
-                        : undefined
-                    }
-                    onRemove={(itemId) => handleRemoveResource(section.id, itemId)}
-                    title={section.title}
-                  />
-                ))}
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0"
+                  icon={AlertCircleIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                <span>保存前请移除失效资源</span>
               </div>
-            </aside>
-
-            {!isEditMode && recommendResources.length > 0 ? (
-              <SkillRecommendResourcesTips
-                disabled={controlsDisabled}
-                items={recommendResources}
-                onSelect={(index) => {
-                  handleSelectRecommendResource(index);
-                }}
-              />
             ) : null}
-          </div>
+            <div className="space-y-5">
+              {resourceSections.map((section) => (
+                <SkillResourceSection
+                  disabled={controlsDisabled}
+                  icon={section.icon}
+                  items={selectedResources[section.id]}
+                  key={section.id}
+                  onAdd={() => {
+                    if (section.id === "variables") {
+                      setEditingVariable(null);
+                      setVariableDialogOpen(true);
+                      return;
+                    }
+                    setActiveInsertSection(section.id);
+                  }}
+                  onEdit={
+                    section.id === "variables"
+                      ? (item) => {
+                          if (!isEditableSkillVariable(item)) {
+                            return;
+                          }
+                          setEditingVariable(item);
+                          setVariableDialogOpen(true);
+                        }
+                      : undefined
+                  }
+                  onRemove={(itemId) => handleRemoveResource(section.id, itemId)}
+                  title={section.title}
+                />
+              ))}
+            </div>
+          </aside>
         </div>
         )}
       </div>
@@ -945,19 +864,6 @@ export function AiSkillSettingsPage() {
           }
         }}
         open={variableDialogOpen || activeInsertSection === "variables"}
-      />
-
-      <SkillPreviewEditResourcesDialog
-        content=""
-        editableResources={pickingRecommendEditableResources}
-        onCancel={() => {
-          setPickingRecommendIndex(null);
-        }}
-        onConfirm={(result) => {
-          handleConfirmRecommendResource(result);
-        }}
-        open={pickingRecommend != null}
-        presentation="direct-picker"
       />
 
       <AlertDialog
@@ -1027,69 +933,6 @@ export function AiSkillSettingsPage() {
         }
       />
     </AiHostingLayout>
-  );
-}
-
-function SkillRecommendResourcesTips({
-  disabled,
-  items,
-  onSelect,
-}: {
-  disabled?: boolean;
-  items: readonly SkillRecommendBinding[];
-  onSelect: (index: number) => void;
-}) {
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <section
-      aria-label="推荐资源"
-      className="rounded-[14px] border border-warning/30 bg-card p-3"
-    >
-      <div className="flex items-center gap-2 rounded-[6px] bg-warning-muted px-3 py-2">
-        <span
-          aria-hidden="true"
-          className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-warning text-[11px] font-semibold leading-none text-warning-foreground"
-        >
-          !
-        </span>
-        <p className="text-sm leading-5 text-foreground">
-          小tips： 推荐选择以下资源
-        </p>
-      </div>
-      <ul className="mt-1">
-        {items.map((item, index) => (
-          <li
-            className="flex items-start gap-3 px-1 py-3"
-            key={`${item.type}-${item.title}-${index}`}
-          >
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-medium leading-5 text-foreground">
-                {item.title}
-              </p>
-              {item.description ? (
-                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {item.description}
-                </p>
-              ) : null}
-            </div>
-            <Button
-              aria-label={`选择${item.title}`}
-              className="h-8 shrink-0 rounded-[8px] px-3"
-              disabled={disabled}
-              onClick={() => onSelect(index)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              选择
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 

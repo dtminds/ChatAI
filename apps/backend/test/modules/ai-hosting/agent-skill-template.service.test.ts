@@ -10,23 +10,13 @@ describe("parseRecommendResources", () => {
       parseRecommendResources(
         JSON.stringify([
           { type: "variable", title: "客户标签查询", description: "按肤质筛选" },
-          {
-            type: "tool",
-            title: "订单查询",
-            description: "查物流",
-            toolId: "search_order",
-          },
+          { type: "tool", title: "订单查询", description: "查物流" },
           { type: "kb", title: "美妆护肤", description: "这是描述" },
         ]),
       ),
     ).toEqual([
       { type: "variable", title: "客户标签查询", description: "按肤质筛选" },
-      {
-        type: "tool",
-        title: "订单查询",
-        description: "查物流",
-        toolId: "search_order",
-      },
+      { type: "tool", title: "订单查询", description: "查物流" },
       { type: "knowledge_base", title: "美妆护肤", description: "这是描述" },
     ]);
   });

@@ -1,15 +1,17 @@
-import { ThinkingOrb } from "thinking-orbs";
+import { ThinkingOrb, type OrbState } from "thinking-orbs";
 
 import { cn } from "@/lib/utils";
 
 export interface AgentThinkingOrbProps {
   className?: string;
   speed?: number;
+  state?: Extract<OrbState, "breathing" | "connecting" | "working">;
 }
 
 export function AgentThinkingOrb({
   className,
   speed = 1,
+  state = "working",
 }: AgentThinkingOrbProps) {
   return (
     <ThinkingOrb
@@ -18,7 +20,7 @@ export function AgentThinkingOrb({
       data-slot="agent-thinking-orb"
       size={20}
       speed={speed}
-      state="working"
+      state={state}
       theme="auto"
     />
   );

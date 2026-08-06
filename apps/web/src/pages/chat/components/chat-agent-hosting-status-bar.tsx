@@ -1,7 +1,7 @@
 import { BorderBeam } from "border-beam";
+import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Button } from "@/components/ui/button";
-import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { cn } from "@/lib/utils";
 import {
   getAgentHostingActionLabel,
@@ -58,25 +58,10 @@ export function ChatAgentHostingStatusBar({
           data-testid="chat-agent-hosting-status-bar-content"
         >
           <div className="flex min-w-0 items-center gap-2">
-            {isBusy ? (
-              <DotMatrixLoader
-                ariaLabel="处理中"
-                className="text-primary"
-                dotSize={2}
-                size={14}
-                speed={1.2}
-              />
-            ) : (
-              <DotMatrixLoader
-                ariaLabel="AI托管中"
-                cellPadding={0.625}
-                className="text-primary"
-                dotSize={2.5}
-                size={15}
-                speed={1.35}
-                type="circular-8"
-              />
-            )}
+            <AgentThinkingOrb
+              speed={isBusy ? 1.2 : 1.35}
+              state={isBusy ? "breathing" : "connecting"}
+            />
             <AnimatedTextSwitch
               className="min-w-0 text-xs font-medium text-muted-foreground"
               shiny

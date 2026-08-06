@@ -1046,16 +1046,16 @@ function SkillRecommendResourcesTips({
   return (
     <section
       aria-label="推荐资源"
-      className="rounded-[14px] border border-warning/30 bg-card p-3"
+      className="ai-skill-recommend-tips rounded-[14px] border bg-card p-3"
     >
-      <div className="flex items-center gap-2 rounded-[6px] bg-warning-muted px-3 py-2">
+      <div className="ai-skill-recommend-tips__banner flex items-center gap-2 rounded-[6px] px-3 py-2">
         <span
           aria-hidden="true"
-          className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-warning text-[11px] font-semibold leading-none text-warning-foreground"
+          className="ai-skill-recommend-tips__icon inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none"
         >
           !
         </span>
-        <p className="text-sm leading-5 text-foreground">
+        <p className="ai-skill-recommend-tips__text text-sm leading-5">
           小tips： 推荐选择以下资源
         </p>
       </div>

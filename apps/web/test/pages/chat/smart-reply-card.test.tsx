@@ -35,6 +35,12 @@ vi.mock("sonner", async (importOriginal) => {
   };
 });
 
+vi.mock("@/components/ui/agent-thinking-orb", () => ({
+  AgentThinkingOrb: () => (
+    <span aria-hidden="true" data-slot="agent-thinking-orb" />
+  ),
+}));
+
 vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/pages/chat/api/workbench-gateway")>();
@@ -1209,7 +1215,9 @@ describe("SmartReplyCard", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("思考中..");
-    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-slot="agent-thinking-orb"]'),
+    ).toBeInTheDocument();
   });
 
   it("switches media processing text to generating text after the hint duration", () => {
@@ -1233,6 +1241,9 @@ describe("SmartReplyCard", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("正在处理图片消息...");
+    expect(
+      document.querySelector('[data-slot="agent-thinking-orb"]'),
+    ).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(SMART_REPLY_MEDIA_PROCESSING_HINT_MS);

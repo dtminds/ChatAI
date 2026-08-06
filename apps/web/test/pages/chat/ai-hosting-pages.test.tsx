@@ -803,6 +803,7 @@ describe("AI hosting pages", () => {
                   type: "tool",
                   title: "订单查询",
                   description: "根据订单号查询订单信息",
+                  toolId: "search_order",
                 },
                 {
                   type: "knowledge_base",
@@ -2296,6 +2297,9 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByRole("region", { name: "推荐工具" })).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "推荐知识库" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "预览技能" })).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "选择客户标签查询" }),
+    ).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("tab", { name: "技能描述" }));
     expect(within(dialog).getByRole("tab", { name: "技能描述" })).toHaveAttribute(
@@ -2311,65 +2315,86 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByRole("region", { name: "推荐工具" })).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "推荐知识库" })).toBeInTheDocument();
 
-    expect(
-      within(dialog).getByRole("button", { name: "选择客户标签查询" }),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "选择订单查询" })).toBeInTheDocument();
-
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens edit resources dialog when previewing without any recommend resource selected", async () => {
+  it("previews a skill template directly into create page with recommend resources tips", async () => {
     const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <AiSkillsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills/new",
+          element: <AiSkillSettingsPage />,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills"] },
+    );
 
-    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
+    render(<RouterProvider router={router} />);
 
     await user.click(screen.getByRole("tab", { name: "技能广场" }));
     await user.click(await screen.findByRole("button", { name: /订单信息查询/ }));
 
     const detailDialog = screen.getByRole("dialog");
     expect(
-      await within(detailDialog).findByRole("button", { name: "选择客户标签查询" }),
+      await within(detailDialog).findByRole("region", { name: "推荐变量" }),
     ).toBeInTheDocument();
-
-    await user.click(within(detailDialog).getByRole("button", { name: "预览技能" }));
-
-    const editDialog = await screen.findByRole("heading", { name: "编辑资源" });
-    expect(editDialog).toBeInTheDocument();
-    const editDialogRoot = editDialog.closest('[role="dialog"]');
-    expect(editDialogRoot).not.toBeNull();
     expect(
-      within(editDialogRoot as HTMLElement).getByRole("region", { name: "推荐变量" }),
-    ).toBeInTheDocument();
-  });
-
-  it("skips edit resources dialog when previewing after selecting a recommend resource", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
-
-    await user.click(screen.getByRole("tab", { name: "技能广场" }));
-    await user.click(await screen.findByRole("button", { name: /订单信息查询/ }));
-
-    const detailDialog = screen.getByRole("dialog");
-    expect(
-      await within(detailDialog).findByRole("button", { name: "选择订单查询" }),
-    ).toBeInTheDocument();
-
-    await user.click(
-      within(detailDialog).getByRole("button", { name: "选择订单查询" }),
-    );
-    const pickerDialogs = await screen.findAllByRole("dialog");
-    const picker = pickerDialogs[pickerDialogs.length - 1]!;
-    await user.click(
-      within(picker).getByRole("option", { name: /订单查询/ }),
-    );
-    await user.click(within(picker).getByRole("button", { name: "确定" }));
-    expect(await within(detailDialog).findByText(/已选：订单查询/)).toBeInTheDocument();
+      within(detailDialog).queryByRole("button", { name: "选择客户标签查询" }),
+    ).not.toBeInTheDocument();
 
     await user.click(within(detailDialog).getByRole("button", { name: "预览技能" }));
     expect(screen.queryByRole("heading", { name: "编辑资源" })).not.toBeInTheDocument();
+
+    expect(await screen.findByRole("heading", { name: "资源管理" })).toBeInTheDocument();
+    expect(screen.getByText("订单查询")).toBeInTheDocument();
+    const recommendTips = screen.getByRole("region", { name: "推荐资源" });
+    expect(recommendTips).toHaveTextContent("小tips：");
+    expect(recommendTips).toHaveTextContent("推荐选择以下资源");
+    expect(
+      within(recommendTips).getByRole("button", { name: "选择客户标签查询" }),
+    ).toBeInTheDocument();
+    expect(
+      within(recommendTips).queryByRole("button", { name: "选择订单查询" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(recommendTips).getByRole("button", { name: "选择订单履约" }),
+    ).toBeInTheDocument();
+
+    await user.click(within(recommendTips).getByRole("button", { name: "选择订单履约" }));
+    const recommendPicker = await screen.findByRole("dialog");
+    expect(
+      within(recommendPicker).getByRole("heading", { name: "订单履约" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "选择知识库" }),
+    ).not.toBeInTheDocument();
+
+    const kbOption = await within(recommendPicker).findByRole("option", {
+      name: "售后问题解答",
+    });
+    await user.click(kbOption);
+    await user.click(within(recommendPicker).getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "选择订单履约" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "推荐资源" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "推荐资源" })).getByRole(
+        "button",
+        { name: "选择客户标签查询" },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("售后问题解答")).toBeInTheDocument();
   });
 
   it("opens my skills tab from the tab query and navigates to skill settings", async () => {

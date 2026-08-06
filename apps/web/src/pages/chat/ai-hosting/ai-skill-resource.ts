@@ -4,6 +4,7 @@ import type {
   AiHostingAgentResourceInvalidReason,
   AiHostingAgentResourceStatus,
 } from "@chatai/contracts";
+import { AGENT_SKILL_TOOL_CATALOG } from "@chatai/contracts";
 
 export type SkillVariableType =
   | "custom_field"
@@ -677,6 +678,8 @@ export function listIncompleteSkillResources(
 export type SkillRecommendBinding = {
   description: string;
   title: string;
+  /** 仅 tool 推荐项可能带；有值时新建技能自动选中 */
+  toolId?: string;
   type: SkillContentResourceKind;
   variableType?: SkillVariableType;
 };
@@ -1084,6 +1087,52 @@ export function buildToolPlaceholder(toolId: string, name: string) {
   return `<resource type="tool" toolId="${escapeResourceAttribute(
     toolId,
   )}" name="${escapeResourceAttribute(name)}" />`;
+}
+
+/** 推荐 tool 且带 toolId：构建可直接加入资源管理的工具项 */
+export function buildSkillToolResourceFromRecommend(
+  recommend: SkillRecommendBinding,
+): SkillResourceItem | null {
+  if (recommend.type !== "tool") {
+    return null;
+  }
+
+  const toolId = recommend.toolId?.trim() ?? "";
+  if (!toolId) {
+    return null;
+  }
+
+  const catalogTool = AGENT_SKILL_TOOL_CATALOG.find((tool) => tool.id === toolId);
+  const title = catalogTool?.name || recommend.title || toolId;
+  const description = catalogTool?.description || recommend.description || "";
+
+  return {
+    description,
+    id: toolId,
+    placeholder: buildToolPlaceholder(toolId, title),
+    status: "available",
+    title,
+    toolKey: toolId,
+  };
+}
+
+/** 从推荐资源中收集可自动选中的工具（去重） */
+export function collectAutoSelectedToolsFromRecommendations(
+  recommendations: readonly SkillRecommendBinding[],
+): SkillResourceItem[] {
+  const tools: SkillResourceItem[] = [];
+  const seen = new Set<string>();
+
+  for (const recommend of recommendations) {
+    const tool = buildSkillToolResourceFromRecommend(recommend);
+    if (!tool || seen.has(tool.id)) {
+      continue;
+    }
+    seen.add(tool.id);
+    tools.push(tool);
+  }
+
+  return tools;
 }
 
 export function buildKnowledgeBasePlaceholder(kbId: number | string, name: string) {

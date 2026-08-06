@@ -217,6 +217,7 @@ function mapRecommendItem(value: unknown): AgentSkillTemplateRecommendItem | nul
   }
 
   const variableType = normalizeRecommendVariableType(value.variableType);
+  const toolId = readString(value.toolId) || readString(value.tool_id);
   const title =
     readString(value.title)
     || readString(value.name)
@@ -232,6 +233,7 @@ function mapRecommendItem(value: unknown): AgentSkillTemplateRecommendItem | nul
     title,
     description: readString(value.description) || readString(value.desc) || "",
     ...(variableType ? { variableType } : {}),
+    ...(type === "tool" && toolId ? { toolId } : {}),
   };
 }
 

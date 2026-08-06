@@ -503,6 +503,51 @@ describe("SkillPreviewEditResourcesDialog", () => {
       );
     });
   });
+
+  it("opens direct-picker for a single recommend resource and confirms selection", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+
+    render(
+      <SkillPreviewEditResourcesDialog
+        content=""
+        editableResources={[
+          buildEditableResource("tool", "订单查询", null),
+        ]}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        open
+        presentation="direct-picker"
+      />,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "订单查询" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "编辑资源" }),
+    ).not.toBeInTheDocument();
+
+    const root = await screen.findByLabelText("选择订单查询");
+    await user.click(within(root).getByRole("option", { name: /订单查询/ }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      expect(onConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resources: expect.objectContaining({
+            tools: [
+              expect.objectContaining({
+                title: expect.stringContaining("订单"),
+              }),
+            ],
+          }),
+        }),
+      );
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
 });
 
 async function openResourcePicker(
@@ -527,7 +572,7 @@ function getMainConfirmButton() {
 }
 
 function buildEditableResource(
-  kind: "knowledge_base" | "variable",
+  kind: "knowledge_base" | "tool" | "variable",
   name: string,
   variableType:
     | "auto_tag"
@@ -539,9 +584,11 @@ function buildEditableResource(
   const placeholder =
     kind === "knowledge_base"
       ? `<resource type="knowledge_base" kbId="" name="${name}" />`
-      : variableType === "auto_tag" || variableType === "system_variable"
-        ? `<resource type="variable" variableType="${variableType}" variableKey="" name="${name}" />`
-        : `<resource type="variable" variableType="${variableType ?? ""}" variableId="" name="${name}" />`;
+      : kind === "tool"
+        ? `<resource type="tool" toolId="" name="${name}" />`
+        : variableType === "auto_tag" || variableType === "system_variable"
+          ? `<resource type="variable" variableType="${variableType}" variableKey="" name="${name}" />`
+          : `<resource type="variable" variableType="${variableType ?? ""}" variableId="" name="${name}" />`;
 
   return {
     description: `${name}说明`,

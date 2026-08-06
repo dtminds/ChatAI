@@ -258,7 +258,7 @@ export function InsightsQualityPage() {
               }}
               value={activeView}
             >
-              <TabsList className="bg-muted p-1">
+              <TabsList>
                 <TabsTrigger className="min-w-24 px-4 text-sm" value="agent-report">
                   客服报表
                 </TabsTrigger>

@@ -4,6 +4,8 @@ import { describe, expect, test } from "vitest";
 
 const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
+const defaultLightThemeBlock = themeCss.match(/^:root\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
+const defaultDarkThemeBlock = themeCss.match(/^\.dark\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
 const allowedFiles = new Set([
   "pages/chat/ai-hosting/ai-hosting-palette.ts",
   "pages/chat/lib/chat-agent-hosting-palette.ts",
@@ -67,22 +69,22 @@ describe("color token policy", () => {
   });
 
   test("keeps the modern minimal baseline for default theme tokens", () => {
-    expect(themeCss).toContain("--background: oklch(1 0 0);");
-    expect(themeCss).toContain("--foreground: oklch(0.2 0 0);");
-    expect(themeCss).toContain("--neutral-strong: oklch(0.18 0 0);");
-    expect(themeCss).toContain("--neutral-strong-foreground: oklch(1 0 0);");
-    expect(themeCss).toContain("--card: oklch(1 0 0);");
-    expect(themeCss).toContain("--card-foreground: oklch(0.32 0 0);");
-    expect(themeCss).toContain("--secondary: oklch(0.97 0 0);");
-    expect(themeCss).toContain("--secondary-foreground: oklch(0.45 0.03 257.68);");
-    expect(themeCss).toContain("--muted: oklch(0.98 0 0);");
-    expect(themeCss).toContain("--background: oklch(0.2 0 0);");
-    expect(themeCss).toContain("--foreground: oklch(0.92 0 0);");
-    expect(themeCss).toContain("--neutral-strong: oklch(0.92 0 0);");
-    expect(themeCss).toContain("--neutral-strong-foreground: oklch(0.18 0 0);");
-    expect(themeCss).toContain("--card: oklch(0.27 0 0);");
-    expect(themeCss).toContain("--secondary: oklch(0.27 0 0);");
-    expect(themeCss).toContain("--muted: oklch(0.27 0 0);");
+    expect(defaultLightThemeBlock).toContain("--background: oklch(1 0 0);");
+    expect(defaultLightThemeBlock).toContain("--foreground: oklch(0.2 0 0);");
+    expect(defaultLightThemeBlock).toContain("--neutral-strong: oklch(0.18 0 0);");
+    expect(defaultLightThemeBlock).toContain("--neutral-strong-foreground: oklch(1 0 0);");
+    expect(defaultLightThemeBlock).toContain("--card: oklch(1 0 0);");
+    expect(defaultLightThemeBlock).toContain("--card-foreground: oklch(0.32 0 0);");
+    expect(defaultLightThemeBlock).toContain("--secondary: oklch(0.96 0 0);");
+    expect(defaultLightThemeBlock).toContain("--secondary-foreground: oklch(0.45 0.015 257.68);");
+    expect(defaultLightThemeBlock).toContain("--muted: oklch(0.98 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--background: oklch(0.2 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--foreground: oklch(0.92 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--neutral-strong: oklch(0.92 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--neutral-strong-foreground: oklch(0.18 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--card: oklch(0.27 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--secondary: oklch(0.31 0 0);");
+    expect(defaultDarkThemeBlock).toContain("--muted: oklch(0.27 0 0);");
   });
 
   test("does not keep custom avatar gradient theme tokens", () => {

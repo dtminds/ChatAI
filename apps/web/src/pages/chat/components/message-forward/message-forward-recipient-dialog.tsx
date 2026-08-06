@@ -385,12 +385,13 @@ export function MessageForwardRecipientDialog({
 
               <Input
                 aria-label="留言"
-                className="h-8 border-0 bg-surface-muted px-2.5 text-[13px] shadow-none focus-visible:ring-1"
+                className="h-8 px-2.5 text-[13px] focus-visible:ring-1"
                 disabled={isSending}
                 id="message-forward-comment"
                 onChange={(event) => setComment(event.target.value)}
                 placeholder="留言"
                 value={comment}
+                variant="soft"
               />
             </div>
 

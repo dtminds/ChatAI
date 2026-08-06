@@ -1459,7 +1459,7 @@ function PresetSelectRow({
   return (
     <SettingsRow description={description} label={label}>
       <Select onValueChange={(next) => onChange(Number(next))} value={String(value)}>
-        <SelectTrigger aria-label={label} className="w-40">
+        <SelectTrigger aria-label={label} className="w-40" variant="soft">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -1490,7 +1490,7 @@ function FrequencyPresetRow({
   return (
     <SettingsRow description={description} label={label}>
       <Select onValueChange={(next) => onChange(next as AnalysisFrequencyPresetValue)} value={value}>
-        <SelectTrigger aria-label={label} className="w-40">
+        <SelectTrigger aria-label={label} className="w-40" variant="soft">
           <span>{selectedPreset?.label}</span>
         </SelectTrigger>
         <SelectContent>
@@ -1593,6 +1593,7 @@ function NumberSettingRow({
           step={1}
           type="number"
           value={draftValue}
+          variant="soft"
         />
         {suffix ? <span className="text-sm text-muted-foreground">{suffix}</span> : null}
       </div>

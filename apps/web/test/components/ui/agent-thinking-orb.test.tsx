@@ -35,7 +35,7 @@ describe("AgentThinkingOrb", () => {
     expect(orb).toHaveAttribute("data-orb-theme", "auto");
   });
 
-  it.each(["breathing", "connecting"] as const)(
+  it.each(["breathing", "connecting", "solving"] as const)(
     "supports the %s preset for agent hosting states",
     (state) => {
       const { container } = render(<AgentThinkingOrb state={state} />);

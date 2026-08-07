@@ -59,8 +59,8 @@ export function ChatAgentHostingStatusBar({
         >
           <div className="flex min-w-0 items-center gap-2">
             <AgentThinkingOrb
-              speed={isBusy ? 1.2 : 1.35}
-              state={isBusy ? "breathing" : "connecting"}
+              speed={isBusy ? 1 : 0.6}
+              state={isBusy ? "solving" : "searching"}
             />
             <AnimatedTextSwitch
               className="min-w-0 text-xs font-medium text-muted-foreground"

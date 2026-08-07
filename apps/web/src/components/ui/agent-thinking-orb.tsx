@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
 export interface AgentThinkingOrbProps {
   className?: string;
   speed?: number;
-  state?: Extract<OrbState, "breathing" | "connecting" | "working">;
+  state?: Extract<
+    OrbState,
+    "breathing" | "connecting" | "solving" | "working" | "shaping" | "searching"
+  >;
 }
 
 export function AgentThinkingOrb({

@@ -79,7 +79,7 @@ describe("ChatAgentHostingStatusBar", () => {
       document.querySelector('[data-slot="agent-thinking-orb"]'),
     ).toHaveAttribute(
       "data-orb-state",
-      "connecting",
+      "searching",
     );
 
     await user.click(screen.getByRole("button", { name: "取消托管" }));
@@ -96,7 +96,7 @@ describe("ChatAgentHostingStatusBar", () => {
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(
       document.querySelector('[data-slot="agent-thinking-orb"]'),
-    ).toHaveAttribute("data-orb-state", "breathing");
+    ).toHaveAttribute("data-orb-state", "solving");
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
@@ -128,7 +128,7 @@ describe("ChatAgentHostingStatusBar", () => {
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(
       document.querySelector('[data-slot="agent-thinking-orb"]'),
-    ).toHaveAttribute("data-orb-state", "breathing");
+    ).toHaveAttribute("data-orb-state", "solving");
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",

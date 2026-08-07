@@ -265,8 +265,54 @@ describe("AgentSkillService", () => {
       }),
     ).rejects.toMatchObject({
       code: "INVALID_SKILL_KBS",
-      message: "一个技能最多可添加10个知识库",
+      message: "最多添加 10 个知识库",
     });
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        variables: Array.from({ length: 11 }, (_, index) => ({
+          name: `系统变量 ${index}`,
+          select_key: `system_variable_${index}`,
+          type: "system_variable" as const,
+        })),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_VARIABLE_COUNT",
+      message: "最多添加 10 个变量",
+    });
+
+    await expect(
+      service.createSkill(context, {
+        ...payload,
+        tools: Array.from({ length: 11 }, (_, index) => `tool_${index}`),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SKILL_TOOL_COUNT",
+      message: "最多添加 10 个工具",
+    });
+
+    for (const type of ["work_tag", "mall_tag"] as const) {
+      await expect(
+        service.createSkill(context, {
+          ...payload,
+          variables: [
+            {
+              name: "标签",
+              select_id: 11,
+              select_sub_ids: Array.from(
+                { length: 11 },
+                (_, index) => index + 1,
+              ),
+              type,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "INVALID_SKILL_TAG_COUNT",
+        message: "最多选择 10 个标签",
+      });
+    }
 
     await expect(
       service.createSkill(context, {

@@ -223,6 +223,14 @@ export function createMemoryWorkbenchService() {
     ): WorkbenchCustomerSeatRelationsResponse {
       return { items: [] };
     },
+    getBroadcastProtectionStatus(_uid: number) {
+      return {
+        degradeCallbackCnt: 0,
+        degradeCallbackRate: 0,
+        normalCallbackCnt: 0,
+        normalCallbackRate: 0,
+      };
+    },
     listMaterialCollections(
       _subUserId: string,
       request: WorkbenchMaterialCollectionListRequest,

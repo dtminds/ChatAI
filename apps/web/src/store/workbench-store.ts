@@ -221,6 +221,7 @@ type ConversationActivationOptions = {
   clearSearchOnSuccess?: boolean;
   onResolved?: (conversation: Conversation) => void;
   promote?: boolean;
+  resolvedConversation?: Conversation;
 };
 
 type InitializeWorkbenchOptions = {
@@ -4983,7 +4984,7 @@ export function createWorkbenchStore() {
         // even if the user switches accounts within the 450 ms window.
         const seatIdAtSchedule = get().activeAccountId;
 
-        set({ isSearchLoading: true });
+        set({ isSearchLoading: true, searchResults: null });
 
         searchDebounceTimer = setTimeout(() => {
           void get().triggerSearch(seatIdAtSchedule ?? undefined);
@@ -5121,7 +5122,9 @@ export function createWorkbenchStore() {
         });
 
         try {
-          const conversation = await resolveWorkbenchConversation(request);
+          const conversation =
+            options?.resolvedConversation ??
+            (await resolveWorkbenchConversation(request));
 
           if (!isCurrentConversationOpenRequest(openRequestId)) {
             return false;
@@ -5181,9 +5184,14 @@ export function createWorkbenchStore() {
       async selectOrCreateAndSelectConversation(item) {
         const seatId = get().activeAccountId;
         const isGroup = "thirdGroupId" in item;
-
-        await get().openConversation(
-          isGroup
+        const existingConversation = item.conversationId
+          ? (get().conversationListsByScope[seatId] ?? []).find(
+              (conversation) => conversation.id === item.conversationId,
+            )
+          : undefined;
+        const request: WorkbenchOpenConversationRequest = existingConversation
+          ? { conversationId: existingConversation.id }
+          : isGroup
             ? {
                 mode: "group",
                 seatId,
@@ -5193,9 +5201,12 @@ export function createWorkbenchStore() {
                 mode: "single",
                 seatId,
                 thirdExternalUserId: item.thirdExternalUserId,
-              },
-          { clearSearchOnSuccess: true },
-        );
+              };
+
+        await get().openConversation(request, {
+          clearSearchOnSuccess: true,
+          ...(existingConversation ? { resolvedConversation: existingConversation } : {}),
+        });
       },
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });

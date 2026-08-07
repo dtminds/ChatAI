@@ -149,6 +149,35 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("loads broadcast protection status for the UID in the authenticated session", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getBroadcastProtectionStatus = vi
+      .spyOn(app.workbenchService, "getBroadcastProtectionStatus")
+      .mockResolvedValue({
+        degradeCallbackCnt: 1800,
+        degradeCallbackRate: 120,
+        normalCallbackCnt: 8,
+        normalCallbackRate: 600,
+      });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/broadcast-protection",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      degradeCallbackCnt: 1800,
+      degradeCallbackRate: 120,
+      normalCallbackCnt: 8,
+      normalCallbackRate: 600,
+    });
+    expect(getBroadcastProtectionStatus).toHaveBeenCalledWith(9001);
+
+    await app.close();
+  });
+
   it("requires DATABASE_URL before backend startup", async () => {
     delete process.env.DATABASE_URL;
 

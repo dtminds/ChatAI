@@ -16,9 +16,9 @@ import {
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1246,14 +1246,7 @@ function SmartReplyReadonlyContent({
     <div className="rounded-[10px]">
       {isThinking || isProcessing ? (
         <div className="flex items-center gap-1 text-muted-foreground">
-          <span aria-hidden="true" className="inline-flex">
-            <DotMatrixLoader
-              ariaLabel="智能回复处理中"
-              dotSize={2}
-              size={14}
-              speed={1.2}
-            />
-          </span>
+          <AgentThinkingOrb speed={1.2} />
           <p className="text-[13px]" role="status">
             <ShinyText duration={1.15} shimmerWidth={44}>
               {processingLabel ??

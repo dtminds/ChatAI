@@ -11534,6 +11534,61 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("opens a loaded local search result without requesting get-or-create", async () => {
+    const baseService = createMockWorkbenchService();
+    const getOrCreateConversation = vi.fn(baseService.getOrCreateConversation);
+
+    setWorkbenchService({
+      ...baseService,
+      getOrCreateConversation,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const localConversation: Conversation = {
+      ...createCachedConversation("drc"),
+      customerId: "external-local-search",
+      customerName: "本地搜索客户",
+      id: "conversation-local-search",
+      thirdExternalUserId: "external-local-search",
+    };
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: [localConversation, ...(state.conversationListsByScope.drc ?? [])],
+      },
+      isSearchLoading: true,
+      searchKeyword: "本地搜索",
+      searchResults: {
+        contacts: [
+          {
+            avatar: "",
+            conversationId: localConversation.id,
+            name: localConversation.customerName,
+            realName: localConversation.customerName,
+            thirdExternalUserId: localConversation.thirdExternalUserId!,
+          },
+        ],
+        groups: [],
+      },
+    }));
+
+    await useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
+      avatar: "",
+      conversationId: localConversation.id,
+      name: localConversation.customerName,
+      realName: localConversation.customerName,
+      thirdExternalUserId: localConversation.thirdExternalUserId!,
+    });
+
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeConversationId: localConversation.id,
+      isSearchLoading: false,
+      searchKeyword: "",
+      searchResults: null,
+    });
+  });
+
   it("does not apply hydrated search results after switching accounts", async () => {
     const baseService = createMockWorkbenchService();
     const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();

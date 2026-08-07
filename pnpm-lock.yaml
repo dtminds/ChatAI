@@ -273,6 +273,9 @@ importers:
       tailwind-merge:
         specifier: ^3.3.0
         version: 3.6.0
+      thinking-orbs:
+        specifier: 0.2.0
+        version: 0.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       zustand:
         specifier: ^5.0.0
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
@@ -4060,6 +4063,12 @@ packages:
 
   thread-stream@3.2.0:
     resolution: {integrity: sha512-zLBvqpwr4Esa0kRjcrzGU6zL25lePWaCLMx0RQFrmteozIfeNdaMLpG5U7PeHzvlFkAWaRKA9/KVW4F60iB+qw==}
+
+  thinking-orbs@0.2.0:
+    resolution: {integrity: sha512-CQux/YsLlB9nY60BDpZ/uW7knAvXg+U2T/gzrzuLRw8xlzfJPLXZxAg2tbbIBGp/nE2Kol1GfbMOJnoH+tcb/A==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   thread-stream@4.0.0:
     resolution: {integrity: sha512-4iMVL6HAINXWf1ZKZjIPcz5wYaOdPhtO8ATvZ+Xqp3BTdaqtAwQkNmKORqcIo5YkQqGXq5cwfswDwMqqQNrpJA==}
@@ -8188,6 +8197,11 @@ snapshots:
   thread-stream@3.2.0:
     dependencies:
       real-require: 0.2.0
+
+  thinking-orbs@0.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
 
   thread-stream@4.0.0:
     dependencies:

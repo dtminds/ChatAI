@@ -31,6 +31,23 @@ vi.mock("border-beam", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/agent-thinking-orb", () => ({
+  AgentThinkingOrb: ({
+    speed,
+    state,
+  }: {
+    speed?: number;
+    state?: string;
+  }) => (
+    <span
+      aria-hidden="true"
+      data-orb-speed={speed}
+      data-orb-state={state}
+      data-slot="agent-thinking-orb"
+    />
+  ),
+}));
+
 describe("ChatAgentHostingStatusBar", () => {
   it("renders active full agent mode status with cancel action", async () => {
     const user = userEvent.setup();
@@ -58,9 +75,11 @@ describe("ChatAgentHostingStatusBar", () => {
     const statusText = screen.getByLabelText("Agent 已就绪，正在等待用户消息");
     expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
-    expect(screen.getByTestId("dot-matrix-loader")).toHaveAttribute(
-      "data-loader-type",
-      "circular-8",
+    expect(
+      document.querySelector('[data-slot="agent-thinking-orb"]'),
+    ).toHaveAttribute(
+      "data-orb-state",
+      "searching",
     );
 
     await user.click(screen.getByRole("button", { name: "取消托管" }));
@@ -75,7 +94,9 @@ describe("ChatAgentHostingStatusBar", () => {
     let statusText = screen.getByLabelText("出了点小问题，我正在重试");
     expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
-    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-slot="agent-thinking-orb"]'),
+    ).toHaveAttribute("data-orb-state", "solving");
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
@@ -105,7 +126,9 @@ describe("ChatAgentHostingStatusBar", () => {
       vi.advanceTimersByTime(800);
     });
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
-    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-slot="agent-thinking-orb"]'),
+    ).toHaveAttribute("data-orb-state", "solving");
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",

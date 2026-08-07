@@ -4,3 +4,6 @@ packages:
 
 onlyBuiltDependencies:
   - pulsar-client
+
+minimumReleaseAgeExclude:
+  - "thinking-orbs@0.2.0"

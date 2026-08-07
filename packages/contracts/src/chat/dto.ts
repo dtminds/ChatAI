@@ -245,6 +245,13 @@ export type WorkbenchSubUserDto = {
   uid?: number;
 };
 
+export type WorkbenchBroadcastProtectionStatusDto = {
+  degradeCallbackCnt: number;
+  degradeCallbackRate: number;
+  normalCallbackCnt: number;
+  normalCallbackRate: number;
+};
+
 /** 侧栏 iframe 涂色查询参数签发请求；三方 ID 由服务端按会话解析，不信任 body */
 export type WorkbenchSidebarIframeParamsRequest = {
   conversationId: string;

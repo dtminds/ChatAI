@@ -106,9 +106,11 @@ const systemVariableServiceMock = vi.hoisted(() => ({
   listSystemVariables: vi.fn(),
 }));
 const agentSkillServiceMock = vi.hoisted(() => ({
+  authorizeAgentSkillResource: vi.fn(),
   createAgentSkill: vi.fn(),
   deleteAgentSkill: vi.fn(),
   getAgentSkill: vi.fn(),
+  getAgentSkillResourceAuth: vi.fn(),
   listAgentSkills: vi.fn(),
   updateAgentSkill: vi.fn(),
   updateAgentSkillStatus: vi.fn(),
@@ -543,6 +545,12 @@ describe("AI hosting pages", () => {
     mockSession();
     resetAiHostingQuotaCacheForTest();
     resetMockKbData();
+    vi.mocked(agentSkillService.getAgentSkillResourceAuth).mockResolvedValue({
+      authorized: true,
+    });
+    vi.mocked(agentSkillService.authorizeAgentSkillResource).mockResolvedValue({
+      authorized: true,
+    });
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
     vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
@@ -2688,11 +2696,52 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("8000/8000")).toBeInTheDocument();
   });
 
+  it("requires resource authorization before first variable or tool add", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentSkillService.getAgentSkillResourceAuth).mockResolvedValue({
+      authorized: false,
+    });
+    vi.mocked(agentSkillService.authorizeAgentSkillResource).mockResolvedValue({
+      authorized: true,
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "添加变量" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    expect(screen.getByRole("heading", { name: "资源授权" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "添加变量" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "添加变量" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加工具" }));
+    expect(screen.getByRole("heading", { name: "资源授权" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "同意并授权" }));
+    await waitFor(() => {
+      expect(agentSkillService.authorizeAgentSkillResource).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "插入工具" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "添加变量" })).toBeInTheDocument();
+  });
+
   it("opens insert resource dialogs from skill settings", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "添加变量" })).toBeEnabled();
+    });
     await user.click(screen.getByRole("button", { name: "添加变量" }));
     expect(screen.getByRole("heading", { name: "添加变量" })).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "变量类型" })).toBeInTheDocument();
@@ -3027,6 +3076,9 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "添加变量" })).toBeEnabled();
+    });
     await user.click(screen.getByRole("button", { name: "添加变量" }));
     const firstPageTag = await screen.findByRole("checkbox", { name: "高意向" });
     await user.click(firstPageTag);

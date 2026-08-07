@@ -88,8 +88,10 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
+  authorizeAgentSkillResource,
   createAgentSkill,
   getAgentSkill,
+  getAgentSkillResourceAuth,
   updateAgentSkill,
 } from "./api/agent-skill-service";
 import { listKbs, toKbListViewItem } from "./api/kb-service";
@@ -105,6 +107,7 @@ import {
   type InsertVariableInitialConfigure,
 } from "./ai-skill-insert-variable-dialog";
 import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
+import { SkillResourceAuthDialog } from "./ai-skill-resource-auth-dialog";
 import {
   buildEditableResourcesFromRecommendations,
   buildKnowledgeBasePlaceholder,
@@ -319,6 +322,13 @@ export function AiSkillSettingsPage() {
   const [pickingRecommendIndex, setPickingRecommendIndex] = useState<number | null>(
     null,
   );
+  const [resourceAuthorized, setResourceAuthorized] = useState(false);
+  const [resourceAuthLoading, setResourceAuthLoading] = useState(true);
+  const [resourceAuthSubmitting, setResourceAuthSubmitting] = useState(false);
+  const [resourceAuthOpen, setResourceAuthOpen] = useState(false);
+  const [pendingAuthSection, setPendingAuthSection] = useState<
+    Extract<ResourceSectionId, "variables" | "tools"> | null
+  >(null);
   const [removeTarget, setRemoveTarget] = useState<{
     item: SkillResourceItem;
     sectionId: ResourceSectionId;
@@ -354,6 +364,7 @@ export function AiSkillSettingsPage() {
   );
 
   const controlsDisabled = submitting || !canManage;
+  const resourceAddDisabled = controlsDisabled || resourceAuthLoading;
   const canSubmit =
     canManage && name.trim().length > 0 && !pageLoading && !pageError;
   const invalidResourceCount = Object.values(selectedResources)
@@ -368,6 +379,34 @@ export function AiSkillSettingsPage() {
     createDraftClearedRef.current = true;
     navigate(location.pathname, { replace: true, state: null });
   }, [createDraft, isEditMode, location.pathname, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadResourceAuth() {
+      setResourceAuthLoading(true);
+      try {
+        const response = await getAgentSkillResourceAuth();
+        if (!cancelled) {
+          setResourceAuthorized(response.authorized);
+        }
+      } catch {
+        if (!cancelled) {
+          setResourceAuthorized(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setResourceAuthLoading(false);
+        }
+      }
+    }
+
+    void loadResourceAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!skillId) {
@@ -631,6 +670,58 @@ export function AiSkillSettingsPage() {
     descriptionEditorRef.current?.focus();
   }
 
+  function openResourceSection(
+    sectionId: Extract<ResourceSectionId, "variables" | "tools">,
+  ) {
+    if (sectionId === "variables") {
+      setEditingVariable(null);
+      setVariableDialogOpen(true);
+      return;
+    }
+
+    setActiveInsertSection(sectionId);
+  }
+
+  function handleAddResourceSection(
+    sectionId: Extract<ResourceSectionId, "variables" | "tools">,
+  ) {
+    if (resourceAddDisabled) {
+      return;
+    }
+
+    if (!resourceAuthorized) {
+      setPendingAuthSection(sectionId);
+      setResourceAuthOpen(true);
+      return;
+    }
+
+    openResourceSection(sectionId);
+  }
+
+  async function handleAgreeResourceAuth() {
+    if (resourceAuthSubmitting) {
+      return;
+    }
+
+    setResourceAuthSubmitting(true);
+    try {
+      await authorizeAgentSkillResource();
+      setResourceAuthorized(true);
+      const sectionId = pendingAuthSection;
+      setResourceAuthOpen(false);
+      setPendingAuthSection(null);
+      if (sectionId) {
+        openResourceSection(sectionId);
+      }
+    } catch (error) {
+      toast.error(
+        isRequestError(error) ? error.message : "授权失败，请稍后重试",
+      );
+    } finally {
+      setResourceAuthSubmitting(false);
+    }
+  }
+
   function handleSelectRecommendResource(index: number) {
     if (controlsDisabled) {
       return;
@@ -873,14 +964,17 @@ export function AiSkillSettingsPage() {
               <div className="space-y-5">
                 {resourceSections.map((section) => (
                   <SkillResourceSection
-                    disabled={controlsDisabled}
+                    disabled={
+                      section.id === "variables" || section.id === "tools"
+                        ? resourceAddDisabled
+                        : controlsDisabled
+                    }
                     icon={section.icon}
                     items={selectedResources[section.id]}
                     key={section.id}
                     onAdd={() => {
-                      if (section.id === "variables") {
-                        setEditingVariable(null);
-                        setVariableDialogOpen(true);
+                      if (section.id === "variables" || section.id === "tools") {
+                        handleAddResourceSection(section.id);
                         return;
                       }
                       setActiveInsertSection(section.id);
@@ -958,6 +1052,20 @@ export function AiSkillSettingsPage() {
         }}
         open={pickingRecommend != null}
         presentation="direct-picker"
+      />
+
+      <SkillResourceAuthDialog
+        onAgree={() => {
+          void handleAgreeResourceAuth();
+        }}
+        onOpenChange={(open) => {
+          setResourceAuthOpen(open);
+          if (!open) {
+            setPendingAuthSection(null);
+          }
+        }}
+        open={resourceAuthOpen}
+        submitting={resourceAuthSubmitting}
       />
 
       <AlertDialog

@@ -1,13 +1,16 @@
 import {
+  AgentSkillResourceAuthUpdateRequestSchema,
   AgentSkillSaveRequestSchema,
   AgentSkillStatusUpdateRequestSchema,
   apiSuccess,
+  type AgentSkillResourceAuthUpdateRequest,
   type AgentSkillSaveRequest,
   type AgentSkillStatusUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { createAgentSkillResourceAuthService } from "./agent-skill-resource-auth.service.js";
 import { createAgentSkillService } from "./agent-skill.service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -26,6 +29,38 @@ type SkillListQuery = Static<typeof SkillListQuerySchema>;
 type SkillParams = Static<typeof SkillParamsSchema>;
 
 export async function registerAgentSkillRoutes(app: FastifyInstance) {
+  app.get(
+    "/api/server/ai-hosting/skills/resource-auth",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createAgentSkillResourceAuthService(app.log).getResourceAuth(
+          getUid(request),
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: AgentSkillResourceAuthUpdateRequest }>(
+    "/api/server/ai-hosting/skills/resource-auth",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AgentSkillResourceAuthUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAgentSkillResourceAuthService(app.log).authorizeResource(
+          getUid(request),
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: SkillListQuery }>(
     "/api/server/ai-hosting/skills",
     {

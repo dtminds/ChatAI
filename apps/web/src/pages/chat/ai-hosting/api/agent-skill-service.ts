@@ -2,6 +2,7 @@ import type {
   AgentSkillDetail,
   AgentSkillListResponse,
   AgentSkillMutationResponse,
+  AgentSkillResourceAuthResponse,
   AgentSkillSaveRequest,
   AgentSkillStatus,
   ApiSuccessEnvelope,
@@ -81,6 +82,35 @@ export async function updateAgentSkillStatus(
 export async function deleteAgentSkill(skillId: string) {
   const response = await http.delete<ApiSuccessEnvelope<AgentSkillMutationResponse>>(
     `/server/ai-hosting/skills/${skillId}`,
+  );
+
+  return response.data;
+}
+
+let resourceAuthInFlight: Promise<AgentSkillResourceAuthResponse> | null = null;
+
+export async function getAgentSkillResourceAuth() {
+  // StrictMode 开发态会重放 effect；复用进行中的请求，避免同一次进入页面打两次
+  if (resourceAuthInFlight) {
+    return resourceAuthInFlight;
+  }
+
+  resourceAuthInFlight = http
+    .get<ApiSuccessEnvelope<AgentSkillResourceAuthResponse>>(
+      "/server/ai-hosting/skills/resource-auth",
+    )
+    .then((response) => response.data)
+    .finally(() => {
+      resourceAuthInFlight = null;
+    });
+
+  return resourceAuthInFlight;
+}
+
+export async function authorizeAgentSkillResource() {
+  const response = await http.put<ApiSuccessEnvelope<AgentSkillResourceAuthResponse>>(
+    "/server/ai-hosting/skills/resource-auth",
+    { authorized: true },
   );
 
   return response.data;

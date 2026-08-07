@@ -50,9 +50,6 @@ export class WorkTagService {
         .map(mapGroupItem)
         .filter((item): item is WorkTagGroupItem => item != null)
         .sort((left, right) => left.id - right.id),
-      ...(result.tagLimit != null && result.tagLimit > 0
-        ? { tagLimit: result.tagLimit }
-        : {}),
     };
   }
 

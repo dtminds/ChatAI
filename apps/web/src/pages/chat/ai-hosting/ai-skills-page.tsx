@@ -118,7 +118,7 @@ const MARKETPLACE_SECTION_TITLE = "示例模板";
 
 const skillTabs = [
   { label: "我的技能", value: "mine" },
-  { label: "技能广场", value: "marketplace" },
+  { label: "技能示例", value: "marketplace" },
 ] as const;
 
 const skillIntroSteps = [
@@ -254,7 +254,7 @@ function SkillMarketplacePanel({
         if (!cancelled) {
           setSkills([]);
           setLoadError(true);
-          toast.error("技能广场加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -415,7 +415,7 @@ function MySkillsPanel() {
           setSkills([]);
           setTotal(0);
           setLoadError(true);
-          toast.error("技能列表加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -811,7 +811,7 @@ function SkillDetailDialog({
       } catch {
         if (!cancelled) {
           setDetailError(true);
-          toast.error("技能详情加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {

@@ -22,6 +22,8 @@ import {
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
   AGENT_SKILL_TOOL_CATALOG,
+  AGENT_SKILL_TOOL_MAX_COUNT,
+  AGENT_SKILL_VARIABLE_MAX_COUNT,
   AGENT_SKILL_VISIBLE_TOOL_CATALOG,
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingAgentResourceInvalidReason,
@@ -377,7 +379,7 @@ export function AiSkillSettingsPage() {
       } catch {
         if (!cancelled) {
           setPageError(true);
-          toast.error("技能加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -445,14 +447,17 @@ export function AiSkillSettingsPage() {
         setInvalidResourceDialog(invalidResources);
         return;
       }
-      toast.error(skillId ? "保存失败，请稍后重试" : "提交失败，请稍后重试");
+      const fallback = skillId
+        ? "保存失败，请稍后重试"
+        : "提交失败，请稍后重试";
+      toast.error(getSkillSaveErrorMessage(error, fallback));
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleAddResource(sectionId: ResourceSectionId, item: SkillResourceItem) {
-    handleAddResources(sectionId, [item]);
+    return handleAddResources(sectionId, [item]);
   }
 
   function handleAddResources(
@@ -460,13 +465,28 @@ export function AiSkillSettingsPage() {
     items: readonly SkillResourceItem[],
   ) {
     if (controlsDisabled) {
-      return;
+      return false;
     }
 
     const existingIds = new Set(selectedResources[sectionId].map((item) => item.id));
     const additions = items.filter((item) => !existingIds.has(item.id));
     if (additions.length === 0) {
-      return;
+      return false;
+    }
+
+    const maxCount =
+      sectionId === "variables"
+        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+        : sectionId === "tools"
+          ? AGENT_SKILL_TOOL_MAX_COUNT
+          : null;
+    if (
+      maxCount != null &&
+      selectedResources[sectionId].length + additions.length > maxCount
+    ) {
+      const resourceName = sectionId === "variables" ? "变量" : "工具";
+      toast.error(`最多添加 ${maxCount} 个${resourceName}`);
+      return false;
     }
 
     setSelectedResources((current) => {
@@ -480,6 +500,7 @@ export function AiSkillSettingsPage() {
     });
 
     toast.success("已添加");
+    return true;
   }
 
   function handleReplaceVariable(
@@ -530,7 +551,7 @@ export function AiSkillSettingsPage() {
     }
 
     if (items.length > AGENT_SKILL_KB_MAX_COUNT) {
-      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      toast.error(`最多添加 ${AGENT_SKILL_KB_MAX_COUNT} 个知识库`);
       return;
     }
 
@@ -614,7 +635,7 @@ export function AiSkillSettingsPage() {
   }
 
   function handleOpenResourcePicker(sectionId: ResourceSectionId) {
-    if (controlsDisabled) {
+    if (controlsDisabled || hasReachedResourceLimit(sectionId)) {
       return;
     }
 
@@ -627,6 +648,19 @@ export function AiSkillSettingsPage() {
 
     setVariableDialogOpen(false);
     setActiveInsertSection(sectionId);
+  }
+
+  function hasReachedResourceLimit(sectionId: ResourceSectionId) {
+    const maxCount =
+      sectionId === "variables"
+        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+        : sectionId === "tools"
+          ? AGENT_SKILL_TOOL_MAX_COUNT
+          : null;
+
+    return (
+      maxCount != null && selectedResources[sectionId].length >= maxCount
+    );
   }
 
   return (
@@ -825,10 +859,20 @@ export function AiSkillSettingsPage() {
               <div className="space-y-5">
                 {resourceSections.map((section) => (
                   <SkillResourceSection
+                    addDisabled={
+                      controlsDisabled || hasReachedResourceLimit(section.id)
+                    }
                     disabled={controlsDisabled}
                     icon={section.icon}
                     items={selectedResources[section.id]}
                     key={section.id}
+                    maxCount={
+                      section.id === "variables"
+                        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+                        : section.id === "tools"
+                          ? AGENT_SKILL_TOOL_MAX_COUNT
+                          : AGENT_SKILL_KB_MAX_COUNT
+                    }
                     onAdd={() => handleOpenResourcePicker(section.id)}
                     onEdit={
                       section.id === "variables"
@@ -867,12 +911,15 @@ export function AiSkillSettingsPage() {
             }
             setEditingVariable(null);
           } else {
-            handleAddResources("variables", items);
+            if (!handleAddResources("variables", items)) {
+              return false;
+            }
           }
           setVariableDialogOpen(false);
           if (activeInsertSection === "variables") {
             setActiveInsertSection(null);
           }
+          return true;
         }}
         onOpenChange={(open) => {
           setVariableDialogOpen(open);
@@ -1005,17 +1052,21 @@ function SkillRecommendResourcesTips({
 }
 
 function SkillResourceSection({
+  addDisabled,
   disabled,
   icon,
   items,
+  maxCount,
   onAdd,
   onEdit,
   onRemove,
   title,
 }: {
+  addDisabled: boolean;
   disabled: boolean;
   icon: typeof AbsoluteIcon;
   items: readonly SkillResourceItem[];
+  maxCount: number;
   onAdd: () => void;
   onEdit?: (item: SkillResourceItem) => void;
   onRemove: (itemId: string) => void;
@@ -1044,11 +1095,16 @@ function SkillResourceSection({
             />
           </Button>
         </CollapsibleTrigger>
-        <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">{title}</p>
+        <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+          {title}
+          <span className="ml-1 text-xs font-normal text-muted-foreground/60">
+            {items.length}/{maxCount}
+          </span>
+        </p>
         <Button
           aria-label={`添加${title}`}
           className="size-6 shrink-0 rounded-[6px] p-0"
-          disabled={disabled}
+          disabled={addDisabled}
           onClick={onAdd}
           size="icon"
           type="button"
@@ -1589,7 +1645,7 @@ function KnowledgeBasePicker({
         setItems([]);
         setTotal(0);
         setError(true);
-        toast.error("知识库列表加载失败，请稍后重试");
+        toast.error("加载失败，请稍后重试");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -1620,7 +1676,7 @@ function KnowledgeBasePicker({
       !selectedItems.has(item.id) &&
       selectedCount >= AGENT_SKILL_KB_MAX_COUNT
     ) {
-      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      toast.error(`最多添加 ${AGENT_SKILL_KB_MAX_COUNT} 个知识库`);
       return;
     }
 
@@ -1829,6 +1885,12 @@ function readInvalidSkillResourcesFromRequestError(
 
   const mapped = buildSelectedResources(resources);
   return Object.values(mapped).some((items) => items.length > 0) ? mapped : null;
+}
+
+function getSkillSaveErrorMessage(error: unknown, fallback: string) {
+  return isRequestError(error) && error.status === 400 && error.message.trim()
+    ? error.message
+    : fallback;
 }
 
 function readInvalidKnowledgeBaseResources(value: unknown) {

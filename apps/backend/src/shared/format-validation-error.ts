@@ -1,6 +1,10 @@
 import type { FastifyError } from "fastify";
 
 const REQUEST_FIELD_LABELS: Record<string, string> = {
+  kbs: "知识库",
+  select_sub_ids: "标签",
+  tools: "工具",
+  variables: "变量",
   description: "链接描述",
   fileName: "文件名称",
   query: "搜索关键词",
@@ -9,6 +13,13 @@ const REQUEST_FIELD_LABELS: Record<string, string> = {
   messageId: "消息",
   bizType: "素材类型",
   collectionId: "素材",
+};
+
+const MAX_ITEMS_ACTIONS: Record<string, string> = {
+  kbs: "添加",
+  select_sub_ids: "选择",
+  tools: "添加",
+  variables: "添加",
 };
 
 type ValidationIssue = NonNullable<FastifyError["validation"]>[number];
@@ -21,6 +32,15 @@ export function formatValidationErrorMessage(error: FastifyError) {
   }
 
   const field = readValidationField(issue);
+
+  if (issue.keyword === "maxItems" && typeof issue.params?.limit === "number") {
+    const fieldName = readValidationFieldName(issue);
+    const action = MAX_ITEMS_ACTIONS[fieldName];
+
+    if (action) {
+      return `最多${action} ${issue.params.limit} 个${field}`;
+    }
+  }
 
   if (issue.keyword === "maxLength" && typeof issue.params?.limit === "number") {
     return `${field}不能超过 ${issue.params.limit} 个字符`;
@@ -42,12 +62,20 @@ export function formatValidationErrorMessage(error: FastifyError) {
 }
 
 function readValidationField(issue: ValidationIssue) {
+  const fieldName = readValidationFieldName(issue);
+
+  if (fieldName) {
+    return REQUEST_FIELD_LABELS[fieldName] ?? fieldName;
+  }
+
+  return "参数";
+}
+
+function readValidationFieldName(issue: ValidationIssue) {
   const instancePath = issue.instancePath.replace(/^\//, "").trim();
 
   if (instancePath) {
-    const fieldName = instancePath.split("/").pop() ?? instancePath;
-
-    return REQUEST_FIELD_LABELS[fieldName] ?? fieldName;
+    return instancePath.split("/").pop() ?? instancePath;
   }
 
   const missingProperty =
@@ -56,8 +84,8 @@ function readValidationField(issue: ValidationIssue) {
       : undefined;
 
   if (missingProperty) {
-    return REQUEST_FIELD_LABELS[missingProperty] ?? missingProperty;
+    return missingProperty;
   }
 
-  return "参数";
+  return "";
 }

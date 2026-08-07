@@ -165,7 +165,7 @@ describe("AI hosting DTOs", () => {
         ...basePayload,
         promptConfig: {
           ...basePayload.promptConfig,
-          availableSkillIds: [...basePayload.promptConfig.availableSkillIds, 21],
+          availableSkillIds: [...basePayload.promptConfig.availableSkillIds, 11],
         },
       }),
     ).toBe(false);

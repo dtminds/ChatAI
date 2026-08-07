@@ -25,6 +25,8 @@ describe("formatValidationErrorMessage", () => {
     ["/tools", "最多添加 10 个工具"],
     ["/kbs", "最多添加 10 个知识库"],
     ["/variables/0/select_sub_ids", "最多选择 10 个标签"],
+    ["/promptConfig/availableKbIds", "最多添加 10 个知识库"],
+    ["/promptConfig/availableSkillIds", "最多添加 10 个技能"],
   ])("maps maxItems validation errors for %s", (instancePath, message) => {
     expect(
       formatValidationErrorMessage({

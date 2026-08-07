@@ -149,6 +149,11 @@ export function AgentResourceManagementPanel({
             icon={section.icon}
             items={resourcesBySection[section.id]}
             key={section.id}
+            maxCount={
+              section.id === "skills"
+                ? AI_HOSTING_AGENT_SKILL_MAX_COUNT
+                : AI_HOSTING_AGENT_KB_MAX_COUNT
+            }
             onAdd={
               section.id === "skills" ? onAddSkills : onAddKnowledgeBases
             }
@@ -171,6 +176,7 @@ function AgentResourceSection({
   disabled,
   icon,
   items,
+  maxCount,
   onAdd,
   onRemove,
   title,
@@ -178,6 +184,7 @@ function AgentResourceSection({
   disabled: boolean;
   icon: typeof ConnectIcon;
   items: readonly AiHostingAgentResourceSummary[];
+  maxCount: number;
   onAdd: () => void;
   onRemove: (item: AiHostingAgentResourceSummary) => void;
   title: string;
@@ -207,6 +214,9 @@ function AgentResourceSection({
         </CollapsibleTrigger>
         <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">
           {title}
+          <span className="ml-1 text-xs font-normal text-muted-foreground/60">
+            {items.length}/{maxCount}
+          </span>
         </p>
         <Button
           aria-label={`添加${title}`}
@@ -422,7 +432,7 @@ export function AgentKnowledgeBasePickerDialog({
       !draftSelection.has(item.id) &&
       draftSelection.size >= AI_HOSTING_AGENT_KB_MAX_COUNT
     ) {
-      toast.error(`Agent 最多可添加${AI_HOSTING_AGENT_KB_MAX_COUNT}个知识库`);
+      toast.error(`最多添加 ${AI_HOSTING_AGENT_KB_MAX_COUNT} 个知识库`);
       return;
     }
 
@@ -663,7 +673,7 @@ export function AgentSkillPickerDialog({
       !draftSelection.has(item.id) &&
       draftSelection.size >= AI_HOSTING_AGENT_SKILL_MAX_COUNT
     ) {
-      toast.error(`Agent 最多可添加${AI_HOSTING_AGENT_SKILL_MAX_COUNT}个技能`);
+      toast.error(`最多添加 ${AI_HOSTING_AGENT_SKILL_MAX_COUNT} 个技能`);
       return;
     }
 

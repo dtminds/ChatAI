@@ -5272,7 +5272,7 @@ describe("AI hosting pages", () => {
     expect(await within(dialog).findByRole("checkbox", { name: "选择真实彩妆知识库" })).toBeChecked();
   });
 
-  it("limits agent knowledge bases to 10 and skills to 20", async () => {
+  it("limits agent knowledge bases and skills to 10", async () => {
     const user = userEvent.setup();
     const availableKbs = Array.from(
       { length: AI_HOSTING_AGENT_KB_MAX_COUNT },
@@ -5318,8 +5318,8 @@ describe("AI hosting pages", () => {
         {
           applyScene: "超过 Agent 技能数量限制",
           createdAt: "2026-06-18 23:22:22",
-          id: "21",
-          name: "第二十一个技能",
+          id: "11",
+          name: "第十一个技能",
           status: "enabled",
           updatedAt: "2026-06-20 23:22:22",
         },
@@ -5333,6 +5333,7 @@ describe("AI hosting pages", () => {
     );
 
     await screen.findByRole("heading", { level: 1, name: mockAgentDetail.name });
+    expect(screen.getAllByText("10/10")).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "添加知识库" }));
     let dialog = await screen.findByRole("dialog", { name: "添加知识库" });
     expect(within(dialog).getByText("已选择 10/10")).toBeInTheDocument();
@@ -5343,9 +5344,9 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("button", { name: "添加技能" }));
     dialog = await screen.findByRole("dialog", { name: "添加技能" });
-    expect(within(dialog).getByText("已选择 20/20")).toBeInTheDocument();
+    expect(within(dialog).getByText("已选择 10/10")).toBeInTheDocument();
     expect(
-      await within(dialog).findByRole("checkbox", { name: "选择第二十一个技能" }),
+      await within(dialog).findByRole("checkbox", { name: "选择第十一个技能" }),
     ).toBeDisabled();
   });
 

@@ -127,7 +127,7 @@ const SkillMallTagVariableSchema = Type.Object(
 const SkillAutoTagVariableSchema = Type.Object(
   {
     name: Type.String(),
-    select_key: Type.String(),
+    select_key: Type.String({ minLength: 1 }),
     type: Type.Literal("auto_tag"),
   },
   skillVariableObjectOptions,
@@ -136,7 +136,7 @@ const SkillAutoTagVariableSchema = Type.Object(
 const SkillSystemVariableSchema = Type.Object(
   {
     name: Type.String(),
-    select_key: Type.String(),
+    select_key: Type.String({ minLength: 1 }),
     type: Type.Literal("system_variable"),
   },
   skillVariableObjectOptions,

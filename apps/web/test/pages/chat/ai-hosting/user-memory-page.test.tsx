@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RequestNormalizedError } from "@/lib/request";
@@ -94,6 +94,38 @@ describe("user memory page", () => {
     await waitFor(() => expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(2));
     expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(2);
     expect(service.listUserMemoryCustomers).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not poll the overview while a run is active", async () => {
+    service.getUserMemoryOverview.mockResolvedValue({
+      ...overview,
+      activeRun: {
+        ...run,
+        memoryAddedCount: undefined,
+        memoryRemovedCount: undefined,
+        memoryUpdatedCount: undefined,
+        phase: "inference",
+        status: "running",
+      },
+    });
+    vi.useFakeTimers();
+
+    try {
+      render(<UserMemoryPage />);
+      await act(async () => {
+        await vi.runAllTicks();
+      });
+      expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(1);
+      expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(service.getUserMemoryOverview).toHaveBeenCalledTimes(1);
+      expect(service.listUserMemoryRuns).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps settings read-only for viewers", async () => {

@@ -37,6 +37,57 @@ function message(id: number, sessionId: number, text: string) {
 }
 
 describe("user memory candidate selection", () => {
+  it("skips locked run candidates while claiming work", async () => {
+    const run = {
+      claim_token: null,
+      config_generation: 2,
+      id: 7,
+      lease_until: null,
+      locked_by: null,
+      phase: "selecting",
+      run_after: new Date(Date.now() - 1_000),
+      scheduled_for: new Date(Date.now() - 60_000),
+      started_at: null,
+      status: "pending",
+      uid: 272,
+    };
+    const { db, queries } = createRecordingDatabase((query) => {
+      if (query.sql.includes("from `xy_wap_embed_agent_user_memory_run`")) {
+        return { rows: [run] };
+      }
+      if (query.sql.includes("from `xy_wap_embed_agent_user_memory_config`")) {
+        return { rows: [{
+          active_run_id: run.id,
+          enabled: 1,
+          extraction_instruction: "",
+          generation: run.config_generation,
+          uid: run.uid,
+        }] };
+      }
+      if (query.sql.startsWith("update `xy_wap_embed_agent_user_memory_run`")) {
+        return { numAffectedRows: 1n, rows: [] };
+      }
+      throw new Error(`Unexpected query: ${query.sql}`);
+    });
+    const worker = new UserMemoryWorker({
+      customerLimitResolver: { resolve: () => 100 },
+      db,
+      logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } as never,
+      provider: { complete: vi.fn() } as never,
+      workerId: "worker-1",
+    });
+    const claimOne = (worker as unknown as {
+      claimOne: () => Promise<unknown>;
+    }).claimOne.bind(worker);
+
+    await expect(claimOne()).resolves.toBeDefined();
+
+    const claimSelects = queries.filter((query) => query.sql.startsWith("select"));
+    expect(claimSelects[0]?.sql).toContain("for update skip locked");
+    expect(claimSelects[1]?.sql).toContain("for update skip locked");
+    await db.destroy();
+  });
+
   it("groups by customer within the claimed UID and drops empty customer IDs before quota slicing", () => {
     const groups = groupCandidateSessions([
       { id: 4, conversation_id: 40, started_at: 40, message_count: 11, third_external_userid: "" },

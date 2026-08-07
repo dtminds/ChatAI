@@ -97,12 +97,14 @@ export class UserMemoryWorker {
       const now = new Date();
       const candidate = await trx.selectFrom("xy_wap_embed_agent_user_memory_run").selectAll()
         .where((eb) => claimableRunExpression(eb, now))
-        .orderBy("scheduled_for", "asc").orderBy("id", "asc").executeTakeFirst();
+        .orderBy("scheduled_for", "asc").orderBy("id", "asc").forUpdate().skipLocked().executeTakeFirst();
       if (!candidate) return undefined;
-      const config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll().where("uid", "=", candidate.uid).forUpdate().executeTakeFirst();
+      const config = await trx.selectFrom("xy_wap_embed_agent_user_memory_config").selectAll()
+        .where("uid", "=", candidate.uid).forUpdate().skipLocked().executeTakeFirst();
+      if (!config) return undefined;
       const run = await trx.selectFrom("xy_wap_embed_agent_user_memory_run").selectAll().where("id", "=", candidate.id).forUpdate().executeTakeFirst();
       if (!run || !isRunClaimable(run, now)) return undefined;
-      if (!config || config.enabled !== 1 || config.generation !== run.config_generation || config.active_run_id !== run.id) {
+      if (config.enabled !== 1 || config.generation !== run.config_generation || config.active_run_id !== run.id) {
         await trx.updateTable("xy_wap_embed_agent_user_memory_run").set({ status: "canceled", phase: "completed", finished_at: now, locked_by: null, claim_token: null, lease_until: null }).where("id", "=", run.id).execute();
         return undefined;
       }

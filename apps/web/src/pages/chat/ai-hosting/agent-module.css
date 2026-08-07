@@ -99,3 +99,25 @@
       color-mix(in oklch, var(--warning) 22%, var(--border))
     );
 }
+
+.ai-skill-resource-auth-logo {
+  background-color: #fff;
+  border-color: #f3d8a6;
+  box-shadow: 0 4px 12px #d9770626;
+}
+
+.ai-skill-resource-auth-logo-icon,
+.ai-skill-resource-auth-title {
+  color: #1f2937;
+}
+
+.ai-skill-resource-auth-arrow,
+.ai-skill-resource-auth-close,
+.ai-skill-resource-auth-description {
+  color: #6b7280;
+}
+
+.ai-skill-resource-auth-close:hover {
+  background-color: #fff3e5;
+  color: #1f2937;
+}

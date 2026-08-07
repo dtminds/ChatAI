@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 
 const XY_LOGO_URL = "https://b5.bokr.com.cn/dist/ui/xy_logo.png";
+const AUTH_BACKGROUND_URL = "https://b5.bokr.com.cn/dist/ui/app_auth_bg.jpg";
 
 const AUTHORIZED_ITEMS = [
   "客户档案读取与操作",
@@ -42,56 +43,60 @@ export function SkillResourceAuthDialog({
     >
       <DialogContent
         className="w-[min(600px,calc(100vw-2rem))] max-w-[600px] gap-0 overflow-hidden p-0 sm:rounded-[14px]"
+        closeButtonClassName="ai-skill-resource-auth-close"
         closeButtonDisabled={submitting}
       >
-        <div className="space-y-1 border-b border-border px-6 py-5 pr-14">
-          <DialogTitle className="text-base font-semibold text-foreground">
-            资源授权
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            授权 ChatAI 访问星云有客资源
-          </DialogDescription>
-        </div>
+        <DialogTitle className="sr-only">授权三方接入</DialogTitle>
+        <DialogDescription className="sr-only">
+          ChatAI 需要授权来访问三方数据
+        </DialogDescription>
 
-        <div className="space-y-6 px-8 py-8">
-          <div className="flex items-center justify-center gap-5">
-            <span className="inline-flex size-16 items-center justify-center overflow-hidden rounded-[14px] border border-border bg-card shadow-xs">
+        <div
+          className="m-4 space-y-6 rounded-[10px] bg-center bg-cover bg-no-repeat px-8 pb-6 pt-8"
+          style={{ backgroundImage: `url(${AUTH_BACKGROUND_URL})` }}
+        >
+          <div className="flex items-center justify-center gap-4">
+            <span className="ai-skill-resource-auth-logo inline-flex size-12 items-center justify-center overflow-hidden rounded-[12px] border">
               <img
                 alt="星云有客"
-                className="size-8 object-contain"
+                className="size-6 object-contain"
                 draggable={false}
                 src={XY_LOGO_URL}
               />
             </span>
             <HugeiconsIcon
               aria-hidden="true"
-              className="shrink-0 text-muted-foreground"
+              className="ai-skill-resource-auth-arrow shrink-0"
               icon={ArrowLeftRightIcon}
-              size={24}
+              size={22}
               strokeWidth={1.8}
             />
-            <span className="inline-flex size-16 items-center justify-center overflow-hidden rounded-[14px] border border-border bg-card shadow-xs">
+            <span className="ai-skill-resource-auth-logo inline-flex size-12 items-center justify-center overflow-hidden rounded-[12px] border">
               <HugeiconsIcon
                 aria-hidden="true"
-                className="text-foreground"
+                className="ai-skill-resource-auth-logo-icon"
                 icon={ChartBreakoutCircleIcon}
-                size={32}
+                size={24}
                 strokeWidth={1.8}
               />
             </span>
           </div>
 
           <div className="space-y-2 text-center">
-            <p className="text-base font-semibold leading-6 text-foreground">
-              ChatAI 想要访问您的星云有客资源
+            <p className="ai-skill-resource-auth-title text-base font-semibold leading-6">
+              授权三方接入
             </p>
-            <p className="text-sm leading-5 text-muted-foreground">
-              为了让智能体更准确地响应，需授权访问您的星云有客资源
+            <p className="ai-skill-resource-auth-description text-sm leading-5">
+              ChatAI 需要授权来访问三方数据
             </p>
           </div>
+        </div>
 
-          <div className="rounded-[10px] bg-muted/60 px-4 py-3 text-left">
-            <p className="text-sm text-muted-foreground">授权项：</p>
+        <div className="px-8 pb-8">
+          <div className="rounded-[10px] px-4 py-3 text-left">
+            <p className="text-sm font-semibold text-foreground">
+              授权后将获得以下权限：
+            </p>
             <ul className="mt-2 space-y-1.5 text-sm leading-5 text-foreground">
               {AUTHORIZED_ITEMS.map((item) => (
                 <li className="flex items-start gap-2" key={item}>

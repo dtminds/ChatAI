@@ -17,7 +17,7 @@ describe("SkillResourceAuthDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "资源授权" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "授权三方接入" })).toBeInTheDocument();
     expect(screen.getByAltText("星云有客")).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/ui/xy_logo.png",

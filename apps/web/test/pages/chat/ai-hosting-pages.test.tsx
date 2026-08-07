@@ -2702,25 +2702,25 @@ describe("AI hosting pages", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    expect(screen.getByRole("heading", { name: "资源授权" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "授权三方接入" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "添加变量" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "授权三方接入" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "添加变量" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "添加工具" }));
-    expect(screen.getByRole("heading", { name: "资源授权" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "授权三方接入" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "同意并授权" }));
     await waitFor(() => {
       expect(agentSkillService.authorizeAgentSkillResource).toHaveBeenCalled();
     });
-    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "授权三方接入" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "插入工具" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "关闭" }));
     await user.click(screen.getByRole("button", { name: "添加变量" }));
-    expect(screen.queryByRole("heading", { name: "资源授权" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "授权三方接入" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "添加变量" })).toBeInTheDocument();
   });
 

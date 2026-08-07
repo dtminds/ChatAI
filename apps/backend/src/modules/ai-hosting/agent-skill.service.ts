@@ -3,6 +3,9 @@ import {
   AGENT_SKILL_CONTENT_MAX_LENGTH,
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
+  AGENT_SKILL_TAG_MAX_COUNT,
+  AGENT_SKILL_TOOL_MAX_COUNT,
+  AGENT_SKILL_VARIABLE_MAX_COUNT,
   getAgentSkillContentCharacterCount,
 } from "@chatai/contracts";
 import type {
@@ -383,10 +386,25 @@ function normalizeSavePayload(payload: AgentSkillSaveRequest) {
   if (kbs.length > AGENT_SKILL_KB_MAX_COUNT) {
     throw new BadRequestError(
       "INVALID_SKILL_KBS",
-      `一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`,
+      `最多添加 ${AGENT_SKILL_KB_MAX_COUNT} 个知识库`,
     );
   }
 
+  if (payload.variables.length > AGENT_SKILL_VARIABLE_MAX_COUNT) {
+    throw new BadRequestError(
+      "INVALID_SKILL_VARIABLE_COUNT",
+      `最多添加 ${AGENT_SKILL_VARIABLE_MAX_COUNT} 个变量`,
+    );
+  }
+
+  if (payload.tools.length > AGENT_SKILL_TOOL_MAX_COUNT) {
+    throw new BadRequestError(
+      "INVALID_SKILL_TOOL_COUNT",
+      `最多添加 ${AGENT_SKILL_TOOL_MAX_COUNT} 个工具`,
+    );
+  }
+
+  assertTagSelectionCounts(payload.variables);
   assertUniqueTagGroups(payload.variables);
 
   return {
@@ -397,6 +415,20 @@ function normalizeSavePayload(payload: AgentSkillSaveRequest) {
     tools: dedupeNonEmptyStrings(payload.tools),
     variables: payload.variables,
   };
+}
+
+function assertTagSelectionCounts(variables: readonly AgentSkillVariable[]) {
+  for (const variable of variables) {
+    if (
+      (variable.type === "work_tag" || variable.type === "mall_tag") &&
+      variable.select_sub_ids.length > AGENT_SKILL_TAG_MAX_COUNT
+    ) {
+      throw new BadRequestError(
+        "INVALID_SKILL_TAG_COUNT",
+        `最多选择 ${AGENT_SKILL_TAG_MAX_COUNT} 个标签`,
+      );
+    }
+  }
 }
 
 function assertUniqueTagGroups(variables: readonly AgentSkillVariable[]) {

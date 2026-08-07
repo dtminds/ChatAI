@@ -4799,7 +4799,7 @@ describe("conversation insights pages", () => {
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
     const overviewTable = screen.getByRole("table", { name: "咨询会话明细" });
-    const emptyCell = within(overviewTable).getByText("暂无数据");
+    const emptyCell = await within(overviewTable).findByText("暂无数据");
 
     expect(emptyCell).toBeInTheDocument();
     expect(

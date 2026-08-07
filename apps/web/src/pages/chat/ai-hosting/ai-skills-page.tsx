@@ -118,7 +118,7 @@ const MARKETPLACE_SECTION_TITLE = "示例模板";
 
 const skillTabs = [
   { label: "我的技能", value: "mine" },
-  { label: "技能广场", value: "marketplace" },
+  { label: "技能示例", value: "marketplace" },
 ] as const;
 
 const skillIntroSteps = [
@@ -254,7 +254,7 @@ function SkillMarketplacePanel({
         if (!cancelled) {
           setSkills([]);
           setLoadError(true);
-          toast.error("技能广场加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -415,7 +415,7 @@ function MySkillsPanel() {
           setSkills([]);
           setTotal(0);
           setLoadError(true);
-          toast.error("技能列表加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -811,7 +811,7 @@ function SkillDetailDialog({
       } catch {
         if (!cancelled) {
           setDetailError(true);
-          toast.error("技能详情加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -1002,19 +1002,23 @@ function SkillDetailDialog({
                   </TabsContent>
 
                   <SkillRecommendationSection
-                    icon={AbsoluteIcon}
-                    items={detail.recommendedVariables}
-                    title="推荐变量"
-                  />
-                  <SkillRecommendationSection
-                    icon={ApiIcon}
-                    items={detail.recommendedTools}
-                    title="推荐工具"
-                  />
-                  <SkillRecommendationSection
-                    icon={AiBookIcon}
-                    items={detail.recommendedKnowledgeBases}
-                    title="推荐知识库"
+                    groups={[
+                      {
+                        icon: AbsoluteIcon,
+                        items: detail.recommendedVariables,
+                        type: "variable",
+                      },
+                      {
+                        icon: AiBookIcon,
+                        items: detail.recommendedKnowledgeBases,
+                        type: "knowledge-base",
+                      },
+                      {
+                        icon: ApiIcon,
+                        items: detail.recommendedTools,
+                        type: "tool",
+                      },
+                    ]}
                   />
                 </div>
               </Tabs>
@@ -1027,30 +1031,34 @@ function SkillDetailDialog({
 }
 
 function SkillRecommendationSection({
-  icon,
-  items,
-  title,
+  groups,
 }: {
-  icon: typeof AbsoluteIcon;
-  items: readonly SkillRecommendation[];
-  title: string;
+  groups: readonly {
+    icon: typeof AbsoluteIcon;
+    items: readonly SkillRecommendation[];
+    type: string;
+  }[];
 }) {
+  const items = groups.flatMap((group) =>
+    group.items.map((item) => ({ ...item, icon: group.icon, type: group.type })),
+  );
+
   if (items.length === 0) {
     return null;
   }
 
   return (
-    <section aria-label={title} className="space-y-4 py-5">
+    <section aria-label="建议关联配置资源" className="space-y-4 py-5">
       <h3 className="border-b border-border pb-3 text-sm font-semibold text-foreground">
-        {title}
+        建议关联配置资源
       </h3>
       <ul className="space-y-3">
         {items.map((item) => (
-          <li className="flex items-start gap-3" key={`${title}-${item.title}`}>
+          <li className="flex items-start gap-3" key={`${item.type}-${item.title}`}>
             <HugeiconsIcon
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-foreground"
-              icon={icon}
+              icon={item.icon}
               size={18}
               strokeWidth={1.8}
             />

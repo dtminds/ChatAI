@@ -76,6 +76,46 @@ describe("agent skill save body schema", () => {
     ["技能名称", { name: "技".repeat(31) }],
     ["技能应用场景", { applyScene: "场".repeat(501) }],
     ["知识库数量", { kbs: Array.from({ length: 11 }, (_, index) => index + 1) }],
+    [
+      "变量数量",
+      {
+        variables: Array.from({ length: 11 }, (_, index) => ({
+          name: `系统变量 ${index}`,
+          select_key: `system_variable_${index}`,
+          type: "system_variable",
+        })),
+      },
+    ],
+    [
+      "工具数量",
+      { tools: Array.from({ length: 11 }, (_, index) => `tool_${index}`) },
+    ],
+    [
+      "企微标签数量",
+      {
+        variables: [
+          {
+            name: "企微标签",
+            select_id: 11,
+            select_sub_ids: Array.from({ length: 11 }, (_, index) => index + 1),
+            type: "work_tag",
+          },
+        ],
+      },
+    ],
+    [
+      "小店标签数量",
+      {
+        variables: [
+          {
+            name: "小店标签",
+            select_id: 31,
+            select_sub_ids: Array.from({ length: 11 }, (_, index) => index + 1),
+            type: "mall_tag",
+          },
+        ],
+      },
+    ],
   ])("rejects %s exceeding the save limit", async (_field, overrides) => {
     app = Fastify();
     app.post<{ Body: AgentSkillSaveRequest }>(

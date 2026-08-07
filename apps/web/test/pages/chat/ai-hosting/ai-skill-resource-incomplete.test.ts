@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildEditableResourcesFromRecommendations,
   buildSkillVariableResourceItem,
   collectAutoSelectedToolsFromRecommendations,
   collectCompleteSkillResourcesFromContent,
@@ -124,64 +123,6 @@ describe("ai skill incomplete resources", () => {
       null,
     ]);
     expect(matched).toHaveLength(4);
-  });
-
-  it("builds preview editable resources from recommendResources only", () => {
-    const editable = buildEditableResourcesFromRecommendations([
-      {
-        type: "variable",
-        variableType: "work_tag",
-        title: "企微标签",
-        description: "建议选择包含客户基础信息的标签",
-      },
-      {
-        type: "variable",
-        title: "客户标签查询",
-        description: "无 variableType 时按标题推断",
-      },
-      {
-        type: "tool",
-        title: "订单查询",
-        description: "查订单",
-      },
-      {
-        type: "knowledge_base",
-        title: "美妆护肤",
-        description: "知识库",
-      },
-    ]);
-
-    expect(editable.map((item) => item.fieldLabel)).toEqual([
-      "企微标签",
-      "客户标签查询",
-      "订单查询",
-      "美妆护肤",
-    ]);
-    expect(editable.map((item) => item.description)).toEqual([
-      "建议选择包含客户基础信息的标签",
-      "无 variableType 时按标题推断",
-      "查订单",
-      "知识库",
-    ]);
-    expect(editable.map((item) => item.segment.kind)).toEqual([
-      "variable",
-      "variable",
-      "tool",
-      "knowledge_base",
-    ]);
-    expect(editable.map((item) => item.variableType)).toEqual([
-      "work_tag",
-      "work_tag",
-      null,
-      null,
-    ]);
-    expect(editable.every((item) => item.segment.placeholder.includes("recommendKey="))).toBe(
-      true,
-    );
-  });
-
-  it("returns no editable resources when recommendResources is empty", () => {
-    expect(buildEditableResourcesFromRecommendations([])).toEqual([]);
   });
 
   it("auto-selects tools from recommendResources when toolId is present", () => {

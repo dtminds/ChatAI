@@ -2,7 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 
 export const AI_HOSTING_AGENT_QUOTA_LIMIT = 20;
 export const AI_HOSTING_AGENT_KB_MAX_COUNT = 10;
-export const AI_HOSTING_AGENT_SKILL_MAX_COUNT = 20;
+export const AI_HOSTING_AGENT_SKILL_MAX_COUNT = 10;
 export const AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH = 8000;
 export const AI_HOSTING_AGENT_ROLE_MAX_LENGTH = 400;
 export const AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH = 800;

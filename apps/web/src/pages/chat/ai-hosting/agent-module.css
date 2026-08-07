@@ -68,11 +68,18 @@
 
 /* 新建技能页：推荐资源 tips 卡片（设计稿浅黄/橙色，颜色放 CSS 以通过 token 策略） */
 .ai-skill-recommend-tips {
-  border-color: light-dark(#f5e6c8, color-mix(in oklch, var(--warning) 35%, var(--border)));
+  background-color: light-dark(
+    #fff7e8,
+    color-mix(in oklch, var(--card) 84%, var(--warning))
+  );
+  border-color: light-dark(
+    #f3d8a6,
+    color-mix(in oklch, var(--warning) 42%, var(--border))
+  );
 }
 
 .ai-skill-recommend-tips__banner {
-  background-color: light-dark(#fff8ec, color-mix(in oklch, var(--warning) 18%, var(--card)));
+  background-color: transparent;
 }
 
 .ai-skill-recommend-tips__icon {
@@ -82,4 +89,13 @@
 
 .ai-skill-recommend-tips__text {
   color: light-dark(#4b5563, var(--foreground));
+}
+
+.ai-skill-recommend-tips__content {
+  background-color: var(--card);
+  box-shadow: 0 -1px 0
+    light-dark(
+      #f8e7c8,
+      color-mix(in oklch, var(--warning) 22%, var(--border))
+    );
 }

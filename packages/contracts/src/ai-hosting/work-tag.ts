@@ -48,8 +48,6 @@ export const WorkTagGroupListQuerySchema = Type.Object(
 export const WorkTagGroupListResponseSchema = Type.Object(
   {
     groups: Type.Array(WorkTagGroupItemSchema),
-    /** 对应场景的标签选择上限；未返回时前端按模式兜底 */
-    tagLimit: Type.Optional(Type.Number()),
   },
   { additionalProperties: false },
 );

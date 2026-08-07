@@ -37,12 +37,10 @@ export type WorkTagJavaGroupItem = {
   group_name?: string | null;
   id?: number | string | null;
   num?: number | string | null;
-  tagLimit?: number | string | null;
 };
 
 export type WorkTagJavaGroupListData = {
   info?: WorkTagJavaGroupItem[] | null;
-  tagLimit?: number | string | null;
 };
 
 export type WorkTagJavaComponentItem = {
@@ -72,7 +70,6 @@ export type WorkTagJavaClient = {
     uid: number;
   }) => Promise<{
     groups: WorkTagJavaGroupItem[];
-    tagLimit: number | null;
   }>;
   listTags: (input: {
     attr?: number;
@@ -121,14 +118,9 @@ export function createWorkTagJavaClient(
 
       const data = response.data;
       const groups = Array.isArray(data?.info) ? data.info : [];
-      // tagLimit 可能在 data 上，也可能挂在 info 项上
-      const tagLimit =
-        normalizeInteger(data?.tagLimit) ??
-        normalizeInteger(groups.find((item) => item.tagLimit != null)?.tagLimit);
 
       return {
         groups,
-        tagLimit,
       };
     },
 

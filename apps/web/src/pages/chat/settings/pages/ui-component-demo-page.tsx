@@ -7,6 +7,7 @@ import {
   HelpCircleIcon,
   Image01Icon,
   Notification03Icon,
+  Search01Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -75,6 +76,11 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import {
   Pagination,
@@ -104,6 +110,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -171,6 +184,128 @@ export function UiComponentDemoPage() {
               可用于页面内错误、配置说明和需要保留在上下文中的提示。
             </AlertDescription>
           </Alert>
+
+          <section
+            aria-label="字段外观变体"
+            className="rounded-[10px] border border-border p-5"
+          >
+            <h2 className="text-base font-semibold text-foreground">字段外观变体</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Outline 用于常规表单，Soft 用于搜索、筛选和轻量内嵌输入
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground">Input</h3>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-input-outline">Outline</Label>
+                  <Input id="variant-input-outline" placeholder="请输入名称" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-input-soft">Soft</Label>
+                  <Input
+                    id="variant-input-soft"
+                    placeholder="搜索客户"
+                    variant="soft"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground">Textarea</h3>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-textarea-outline">Outline</Label>
+                  <Textarea
+                    className="min-h-20"
+                    id="variant-textarea-outline"
+                    placeholder="请输入说明"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-textarea-soft">Soft</Label>
+                  <Textarea
+                    className="min-h-20"
+                    id="variant-textarea-soft"
+                    placeholder="补充备注"
+                    variant="soft"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground">Select</h3>
+                <div className="space-y-1.5">
+                  <Label id="variant-select-outline-label">Outline</Label>
+                  <Select defaultValue="manual">
+                    <SelectTrigger
+                      aria-labelledby="variant-select-outline-label"
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">手动处理</SelectItem>
+                      <SelectItem value="agent">Agent 处理</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label id="variant-select-soft-label">Soft</Label>
+                  <Select defaultValue="all">
+                    <SelectTrigger
+                      aria-labelledby="variant-select-soft-label"
+                      className="w-full"
+                      variant="soft"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部会话</SelectItem>
+                      <SelectItem value="unread">仅未读</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground">InputGroup</h3>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-input-group-outline">Outline</Label>
+                  <InputGroup>
+                    <InputGroupAddon align="inline-start" className="pl-3">
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={Search01Icon}
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="variant-input-group-outline"
+                      placeholder="搜索内容"
+                    />
+                  </InputGroup>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="variant-input-group-soft">Soft</Label>
+                  <InputGroup variant="soft">
+                    <InputGroupAddon align="inline-start" className="pl-3">
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={Search01Icon}
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="variant-input-group-soft"
+                      placeholder="搜索内容"
+                    />
+                  </InputGroup>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <section className="rounded-[10px] border border-border p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">

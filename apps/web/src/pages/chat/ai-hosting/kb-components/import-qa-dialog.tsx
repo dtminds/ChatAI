@@ -41,7 +41,7 @@ import {
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
   wouldExceedQuota,
 } from "@/pages/chat/ai-hosting/quota";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 import { getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;

@@ -20,6 +20,31 @@ describe("formatValidationErrorMessage", () => {
     ).toBe("链接描述不能超过 64 个字符");
   });
 
+  it.each([
+    ["/variables", "最多添加 10 个变量"],
+    ["/tools", "最多添加 10 个工具"],
+    ["/kbs", "最多添加 10 个知识库"],
+    ["/variables/0/select_sub_ids", "最多选择 10 个标签"],
+    ["/promptConfig/availableKbIds", "最多添加 10 个知识库"],
+    ["/promptConfig/availableSkillIds", "最多添加 10 个技能"],
+  ])("maps maxItems validation errors for %s", (instancePath, message) => {
+    expect(
+      formatValidationErrorMessage({
+        message: "must NOT have more than 10 items",
+        name: "FastifyError",
+        validation: [
+          {
+            instancePath,
+            keyword: "maxItems",
+            message: "must NOT have more than 10 items",
+            params: { limit: 10 },
+            schemaPath: "#/maxItems",
+          },
+        ],
+      }),
+    ).toBe(message);
+  });
+
   it("falls back to a generic Chinese message for unknown validation issues", () => {
     expect(
       formatValidationErrorMessage({

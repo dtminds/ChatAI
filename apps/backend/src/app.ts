@@ -2,12 +2,19 @@ import fastifyCookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAgentLearningRoutes } from "./modules/ai-hosting/agent-learning.routes.js";
+import { registerAgentSkillRoutes } from "./modules/ai-hosting/agent-skill.routes.js";
+import { registerAgentSkillTemplateRoutes } from "./modules/ai-hosting/agent-skill-template.routes.js";
+import { registerCdpTagRoutes } from "./modules/ai-hosting/cdp-tag.routes.js";
+import { registerCustomFieldRoutes } from "./modules/ai-hosting/custom-field.routes.js";
+import { registerSystemVariableRoutes } from "./modules/ai-hosting/system-variable.routes.js";
+import { registerWorkTagRoutes } from "./modules/ai-hosting/work-tag.routes.js";
 import { registerKbAttachmentRoutes } from "./modules/ai-hosting/kb-attachment.routes.js";
 import { registerKbChunkRoutes } from "./modules/ai-hosting/kb-chunk.routes.js";
 import { registerAiHostingRoutes as registerKbDocRoutes } from "./modules/ai-hosting/kb-doc.routes.js";
 import { registerKbRoutes } from "./modules/ai-hosting/kb.routes.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
+import { registerUserMemoryRoutes } from "./modules/ai-hosting/user-memory/user-memory.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
@@ -48,6 +55,13 @@ export async function buildApp() {
   await registerAuthRoutes(app);
   await registerAiHostingRoutes(app);
   await registerAgentLearningRoutes(app);
+  await registerAgentSkillRoutes(app);
+  await registerAgentSkillTemplateRoutes(app);
+  await registerCustomFieldRoutes(app);
+  await registerWorkTagRoutes(app);
+  await registerCdpTagRoutes(app);
+  await registerSystemVariableRoutes(app);
+  await registerUserMemoryRoutes(app, workerObserverSubjects);
   await registerKbDocRoutes(app);
   await registerKbChunkRoutes(app);
   await registerKbAttachmentRoutes(app);
@@ -63,5 +77,6 @@ export async function buildApp() {
 
 export function shouldDisableRequestLogging(request: { url: string }) {
   return request.url.startsWith("/api/server/media/playable-voice")
-    || request.url.startsWith("/api/server/insights/worker-observability");
+    || request.url.startsWith("/api/server/insights/worker-observability")
+    || request.url.startsWith("/api/server/ai-hosting/user-memory/observability");
 }

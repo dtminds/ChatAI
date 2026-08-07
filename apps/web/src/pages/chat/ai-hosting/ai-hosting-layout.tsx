@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   AiGenerativeIcon,
+  ConnectIcon,
   ArrowLeft02Icon,
   AiBookIcon,
+  Brain02Icon,
   RoboticIcon,
   TokenCircleIcon,
   UserAiIcon,
@@ -34,6 +36,16 @@ const aiHostingNavItems = [
     icon: AiBookIcon,
     label: "知识库",
     to: "/chat/ai-hosting/kb",
+  },
+  {
+    icon: ConnectIcon,
+    label: "技能",
+    to: "/chat/ai-hosting/skills",
+  },
+  {
+    icon: Brain02Icon,
+    label: "记忆",
+    to: "/chat/ai-hosting/user-memory",
   },
   {
     icon: UserAiIcon,
@@ -255,22 +267,27 @@ export function AiHostingPageHeader({
   actions,
   description,
   title,
+  titleActions,
   titleAriaLabel,
 }: {
   actions?: ReactNode;
   description?: string;
   title: ReactNode;
+  titleActions?: ReactNode;
   titleAriaLabel?: string;
 }) {
   return (
     <header className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1
-          aria-label={titleAriaLabel}
-          className="truncate text-[22px] font-semibold leading-tight text-foreground"
-        >
-          {title}
-        </h1>
+        <div className="flex min-w-0 items-center gap-3">
+          <h1
+            aria-label={titleAriaLabel}
+            className="truncate text-[22px] font-semibold leading-tight text-foreground"
+          >
+            {title}
+          </h1>
+          {titleActions ? <div className="shrink-0">{titleActions}</div> : null}
+        </div>
         {description ? (
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
         ) : null}

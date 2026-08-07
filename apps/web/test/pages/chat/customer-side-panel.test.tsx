@@ -5,6 +5,10 @@ import {
   GROUP_MEMBER_TYPE,
   type SettingsSidebarBindType,
 } from "@chatai/contracts";
+import {
+  createMockWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 import {
   installChatWorkbenchTestEnvironment,
@@ -17,10 +21,7 @@ const sidebarIframeParamsFixture = {
   rd: "rd-cipher",
   ts: "ts-cipher",
 };
-
-vi.mock("@/pages/chat/api/sidebar-iframe-params", () => ({
-  fetchWorkbenchSidebarIframeParams: vi.fn(async () => sidebarIframeParamsFixture),
-}));
+const getSidebarIframeParams = vi.fn(async () => sidebarIframeParamsFixture);
 
 const defaultProps = {
   groupMembers: [],
@@ -35,6 +36,12 @@ describe("CustomerSidePanel", () => {
   beforeEach(() => {
     resetChatWorkbenchTestState();
     installChatWorkbenchTestEnvironment();
+    getSidebarIframeParams.mockReset();
+    getSidebarIframeParams.mockResolvedValue(sidebarIframeParamsFixture);
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getSidebarIframeParams,
+    });
     window.localStorage.clear();
   });
 
@@ -332,9 +339,6 @@ describe("CustomerSidePanel", () => {
 
   it("uses about:blank until iframe params match the current seat and conversation", async () => {
     const user = userEvent.setup();
-    const { fetchWorkbenchSidebarIframeParams } = await import(
-      "@/pages/chat/api/sidebar-iframe-params"
-    );
     const sidebarItems = [
       {
         bindTypes: ["1", "2"] as SettingsSidebarBindType[],
@@ -346,7 +350,7 @@ describe("CustomerSidePanel", () => {
       },
     ];
 
-    vi.mocked(fetchWorkbenchSidebarIframeParams)
+    getSidebarIframeParams
       .mockResolvedValueOnce({
         ...sidebarIframeParamsFixture,
         rd: "rd-initial",
@@ -395,7 +399,7 @@ describe("CustomerSidePanel", () => {
       expect(parsed.searchParams.get("rd")).not.toBe("rd-first");
     });
 
-    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenLastCalledWith({
+    expect(getSidebarIframeParams).toHaveBeenLastCalledWith({
       conversationId: "conv-2",
       seatId: "seat-1",
     });
@@ -403,11 +407,7 @@ describe("CustomerSidePanel", () => {
 
   it("refetches iframe params when switching sidebar tabs in the same conversation", async () => {
     const user = userEvent.setup();
-    const { fetchWorkbenchSidebarIframeParams } = await import(
-      "@/pages/chat/api/sidebar-iframe-params"
-    );
-
-    vi.mocked(fetchWorkbenchSidebarIframeParams)
+    getSidebarIframeParams
       .mockResolvedValueOnce({
         ...sidebarIframeParamsFixture,
         ts: "ts-on-mount",
@@ -444,7 +444,7 @@ describe("CustomerSidePanel", () => {
       />,
     );
 
-    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(1);
+    expect(getSidebarIframeParams).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("tab", { name: "素材中心" }));
 
@@ -455,12 +455,12 @@ describe("CustomerSidePanel", () => {
         ),
       ).toBe("ts-on-custom-tab");
     });
-    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(2);
+    expect(getSidebarIframeParams).toHaveBeenCalledTimes(2);
 
     await user.click(screen.getByRole("tab", { name: "快捷话术" }));
 
     await waitFor(() => {
-      expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(3);
+      expect(getSidebarIframeParams).toHaveBeenCalledTimes(3);
     });
 
     await user.click(screen.getByRole("tab", { name: "素材中心" }));
@@ -472,15 +472,11 @@ describe("CustomerSidePanel", () => {
         ),
       ).toBe("ts-on-custom-tab-again");
     });
-    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(4);
+    expect(getSidebarIframeParams).toHaveBeenCalledTimes(4);
   });
 
   it("appends server-issued iframe params to custom iframe src", async () => {
     const user = userEvent.setup();
-    const { fetchWorkbenchSidebarIframeParams } = await import(
-      "@/pages/chat/api/sidebar-iframe-params"
-    );
-
     render(
       <CustomerSidePanel
         {...defaultProps}
@@ -515,7 +511,7 @@ describe("CustomerSidePanel", () => {
       expect(parsed.searchParams.get("sendStatus")).toBe("3");
     });
 
-    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledWith({
+    expect(getSidebarIframeParams).toHaveBeenCalledWith({
       conversationId: "conv-42",
       seatId: "seat-42",
     });

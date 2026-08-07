@@ -9,9 +9,16 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import {
+  createMockWorkbenchService,
+  resetWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
+import { useWorkbenchStore } from "@/store/workbench-store";
 
 const serviceMocks = vi.hoisted(() => ({
   activatePresetInsightEntityDictionaryItem: vi.fn(),
@@ -1364,6 +1371,8 @@ describe("conversation insights pages", () => {
 
   afterEach(() => {
     cleanup();
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    resetWorkbenchService();
     document.body.removeAttribute("data-scroll-locked");
     document.body.style.removeProperty("pointer-events");
     vi.useRealTimers();
@@ -1625,8 +1634,14 @@ describe("conversation insights pages", () => {
     const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
     const insightRegion = screen.getByRole("region", { name: "洞察结论" });
     const conversationRegion = screen.getByRole("region", { name: "本轮对话" });
+    expect(
+      within(detailDialog).getByRole("button", { name: "关闭" }),
+    ).not.toHaveFocus();
     expect(insightRegion).toBeInTheDocument();
     expect(conversationRegion).toBeInTheDocument();
+    expect(
+      within(conversationRegion).getByRole("link", { name: "打开会话" }),
+    ).toHaveAttribute("href", "/chat/conversations/301");
     expect(
       within(detailDialog).getAllByRole("img", { name: "张三" }).length,
     ).toBeGreaterThan(0);
@@ -1857,6 +1872,94 @@ describe("conversation insights pages", () => {
       screen.queryByRole("button", { name: "查看上下文" }),
     ).not.toBeInTheDocument();
     expect(serviceMocks.getInsightMessageContext).not.toHaveBeenCalled();
+  });
+
+  it("opens and promotes a conversation from the real insight detail route under StrictMode", async () => {
+    const baseService = createMockWorkbenchService();
+    const sourceConversation = await baseService.getConversation("conv-002");
+    const targetConversation = {
+      ...sourceConversation,
+      conversationId: "301",
+    };
+    const getConversation = vi.fn(async (conversationId: string) => {
+      if (conversationId === targetConversation.conversationId) {
+        return targetConversation;
+      }
+
+      return baseService.getConversation(conversationId);
+    });
+    setWorkbenchService({
+      ...baseService,
+      getConversation,
+      async getMessages(conversationId, options) {
+        if (conversationId === targetConversation.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation(request) {
+        if (
+          request.seatId === targetConversation.seatId &&
+          request.thirdExternalUserId ===
+            targetConversation.thirdExternalUserId
+        ) {
+          return targetConversation;
+        }
+
+        return baseService.getOrCreateConversation(request);
+      },
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/chat/insights"],
+    });
+    render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>,
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "会话数据总览",
+      }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "详情" }))[0],
+    );
+    const conversationRegion = await screen.findByRole("region", {
+      name: "本轮对话",
+    });
+    await userEvent.click(
+      within(conversationRegion).getByRole("link", { name: "打开会话" }),
+    );
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("301");
+      expect(
+        useWorkbenchStore.getState().conversationPromotion?.conversationId,
+      ).toBe("301");
+    }, { timeout: 5_000 });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    }, { timeout: 5_000 });
+    const promotedCard = await screen.findByTestId(
+      "conversation-card-301",
+      {},
+      { timeout: 5_000 },
+    );
+    const naturallyFirstCard = screen.getByTestId("conversation-card-conv-001");
+    expect(
+      promotedCard.compareDocumentPosition(naturallyFirstCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(getConversation).toHaveBeenCalledWith("301");
   });
 
   it("shows insight detail loading and error states", async () => {
@@ -3380,7 +3483,7 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { name: "洞察配置" }),
     ).toBeInTheDocument();
-    const summary = screen.getByRole("region", { name: "洞察配置概览" });
+    const summary = await screen.findByRole("region", { name: "洞察配置概览" });
     const cards = within(summary).getAllByRole("article");
 
     expect(cards.map((card) => card.textContent)).toEqual([
@@ -4448,6 +4551,54 @@ describe("conversation insights pages", () => {
     });
   });
 
+  it("clears detail loading when an in-flight UID detail is closed", async () => {
+    serviceMocks.getInsightCapabilities.mockResolvedValue({
+      canManageInsights: true,
+      canViewWorkerObservability: true,
+      insightAvailable: false,
+      mode: "basic",
+    });
+    const detailGate = createDeferred();
+    serviceMocks.getInsightsWorkerUidDetail.mockReturnValueOnce(detailGate.promise);
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+
+    try {
+      renderRoute("/chat/insights/worker-observability");
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: "2002" }),
+      );
+      const detailDialog = await screen.findByRole("dialog", { name: "UID 2002" });
+      const requestOptions = serviceMocks.getInsightsWorkerUidDetail.mock.calls[0]?.[1];
+
+      expect(requestOptions?.signal?.aborted).toBe(false);
+      expect(
+        within(detailDialog).getByRole("button", { name: "刷新 UID 详情" }),
+      ).toBeDisabled();
+
+      await userEvent.click(
+        within(detailDialog).getByRole("button", { name: "关闭" }),
+      );
+      await waitFor(() => {
+        expect(requestOptions?.signal?.aborted).toBe(true);
+        expect(screen.queryByRole("dialog", { name: "UID 2002" })).not.toBeInTheDocument();
+      });
+
+      visibility.mockReturnValue("hidden");
+      await userEvent.click(screen.getByRole("button", { name: "2002" }));
+
+      const reopenedDialog = await screen.findByRole("dialog", { name: "UID 2002" });
+      expect(
+        within(reopenedDialog).getByRole("button", { name: "刷新 UID 详情" }),
+      ).toBeEnabled();
+      expect(serviceMocks.getInsightsWorkerUidDetail).toHaveBeenCalledTimes(1);
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
   it("does not request cross-tenant worker data for a non-observer direct route", async () => {
     serviceMocks.getInsightCapabilities.mockResolvedValue({
       canManageInsights: true,
@@ -4648,7 +4799,7 @@ describe("conversation insights pages", () => {
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
     const overviewTable = screen.getByRole("table", { name: "咨询会话明细" });
-    const emptyCell = within(overviewTable).getByText("暂无数据");
+    const emptyCell = await within(overviewTable).findByText("暂无数据");
 
     expect(emptyCell).toBeInTheDocument();
     expect(

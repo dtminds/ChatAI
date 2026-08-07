@@ -1,74 +1,124 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH } from "@chatai/contracts";
+import {
+  AiBookIcon,
+  ConnectIcon,
+  ResourcesAddIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { listKbs } from "../api/kb-service";
-import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
-import { KnowledgeBaseChipNode } from "./agent-conditional-logic-lexical-nodes";
-import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
 import {
+  INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
+  INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
+} from "./agent-conditional-logic-lexical-commands";
+import {
+  KnowledgeBaseChipNode,
+  SkillChipNode,
+} from "./agent-conditional-logic-lexical-nodes";
+import {
+  ConditionalLogicResourceTooltipPlugin,
+  ConditionalLogicRuntimePlugin,
+} from "./agent-conditional-logic-lexical-plugins";
+import {
+  getConditionalLogicCharacterCount,
   isConditionalLogicEmpty,
   normalizeConditionalLogicSegments,
 } from "./agent-conditional-logic-lexical-utils";
+import { ConditionalLogicMaxLengthPlugin } from "./agent-conditional-logic-max-length-plugin";
 import {
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
+  type SkillOption,
 } from "./agent-settings.constants";
 import "./agent-conditional-logic.css";
 
-const knowledgeBasePickerPageSize = 200;
-
 export function AgentConditionalLogicField({
   disabled = false,
+  knowledgeBases,
   onChange,
   segments,
+  skills,
 }: {
   disabled?: boolean;
+  knowledgeBases: KnowledgeBaseOption[];
   onChange: (value: ConditionalLogicSegment[]) => void;
   segments: ConditionalLogicSegment[];
+  skills: SkillOption[];
 }) {
   const [open, setOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
-  const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
-  const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(false);
   const editorRef = useRef<LexicalEditor | null>(null);
-  const isMountedRef = useRef(false);
+
+  const selectableKnowledgeBases = useMemo(
+    () => knowledgeBases.filter((resource) => resource.status === "available"),
+    [knowledgeBases],
+  );
+  const selectableSkills = useMemo(
+    () => skills.filter((resource) => resource.status === "available"),
+    [skills],
+  );
 
   const normalizedSegments = useMemo(
-    () => normalizeConditionalLogicSegments(segments),
-    [segments],
+    () => {
+      const invalidKnowledgeBases = new Map(
+        knowledgeBases
+          .filter((resource) => resource.status === "invalid")
+          .map((resource) => [resource.id, resource.invalidReason]),
+      );
+      const invalidSkills = new Map(
+        skills
+          .filter((resource) => resource.status === "invalid")
+          .map((resource) => [resource.id, resource.invalidReason]),
+      );
+
+      return normalizeConditionalLogicSegments(segments).map((segment) => {
+        if (segment.type === "knowledgeBase") {
+          if (!invalidKnowledgeBases.has(segment.id)) {
+            return segment;
+          }
+
+          return {
+            ...segment,
+            invalid: true,
+            invalidReason: invalidKnowledgeBases.get(segment.id),
+          };
+        }
+
+        if (segment.type === "skill") {
+          if (!invalidSkills.has(segment.id)) {
+            return segment;
+          }
+
+          return {
+            ...segment,
+            invalid: true,
+            invalidReason: invalidSkills.get(segment.id),
+          };
+        }
+
+        return segment;
+      });
+    },
+    [knowledgeBases, segments, skills],
   );
 
   const isEmpty = useMemo(() => isConditionalLogicEmpty(normalizedSegments), [normalizedSegments]);
-
-  const filteredKnowledgeBases = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return knowledgeBases;
-    }
-
-    return knowledgeBases.filter((knowledgeBase) =>
-      knowledgeBase.name.toLowerCase().includes(normalizedQuery),
-    );
-  }, [knowledgeBases, searchQuery]);
+  const characterCount = useMemo(
+    () => getConditionalLogicCharacterCount(normalizedSegments),
+    [normalizedSegments],
+  );
 
   const editorConfig = useMemo(
     () => ({
       namespace: "AgentConditionalLogicField",
-      nodes: [KnowledgeBaseChipNode],
+      nodes: [KnowledgeBaseChipNode, SkillChipNode],
       onError(error: Error) {
         throw error;
       },
@@ -82,61 +132,6 @@ export function AgentConditionalLogicField({
   function registerEditor(editor: LexicalEditor | null) {
     editorRef.current = editor;
   }
-
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const loadKnowledgeBases = useCallback(async () => {
-    setKnowledgeBasesLoading(true);
-
-    try {
-      const response = await listKbs({
-        page: 1,
-        pageSize: knowledgeBasePickerPageSize,
-      });
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      setKnowledgeBases(
-        response.kbs.map((knowledgeBase) => ({
-          id: knowledgeBase.kbId,
-          name: knowledgeBase.name,
-        })),
-      );
-      setKnowledgeBasesLoaded(true);
-    } catch {
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      setOpen(false);
-      toast.error("知识库加载失败，请稍后重试");
-    } finally {
-      if (isMountedRef.current) {
-        setKnowledgeBasesLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open || knowledgeBasesLoaded || knowledgeBasesLoading) {
-      return;
-    }
-
-    void loadKnowledgeBases();
-  }, [
-    knowledgeBasesLoaded,
-    knowledgeBasesLoading,
-    loadKnowledgeBases,
-    open,
-  ]);
 
   useEffect(() => {
     if (disabled) {
@@ -157,32 +152,77 @@ export function AgentConditionalLogicField({
       },
     );
     setOpen(false);
-    setSearchQuery("");
+    editorRef.current?.focus();
+  }
+
+  function insertSkill(skill: SkillOption) {
+    if (disabled) {
+      return;
+    }
+
+    editorRef.current?.dispatchCommand(INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND, {
+      id: skill.id,
+      name: skill.name,
+    });
+    setOpen(false);
     editorRef.current?.focus();
   }
 
   return (
     <div
-      aria-label="条件逻辑"
+      aria-label="行为指引"
       className="rounded-[8px] border border-border bg-background px-3 py-2.5"
       role="group"
     >
-      <div className="relative min-h-24 text-sm leading-7 text-foreground">
-        <Popover
-          modal={false}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
-            if (!nextOpen) {
-              setSearchQuery("");
-            }
-          }}
-          open={open}
-        >
+      <Popover modal={false} onOpenChange={setOpen} open={open}>
+        <div className="relative min-h-24 text-sm leading-7 text-foreground">
+          <LexicalComposer initialConfig={editorConfig}>
+            <PlainTextPlugin
+              contentEditable={
+                <ContentEditable
+                  aria-label="行为指引描述"
+                  aria-disabled={disabled}
+                  aria-multiline="true"
+                  className={cn(
+                    "min-h-24 max-h-128 w-full overflow-y-auto whitespace-pre-wrap break-words outline-none",
+                    disabled && "cursor-not-allowed opacity-70",
+                  )}
+                  role="textbox"
+                  tabIndex={disabled ? -1 : undefined}
+                />
+              }
+              ErrorBoundary={LexicalErrorBoundary}
+              placeholder={
+                isEmpty ? (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute left-0 top-0 text-muted-foreground"
+                  >
+                    请输入目标、处理逻辑或约束
+                  </div>
+                ) : null
+              }
+            />
+            <ConditionalLogicRuntimePlugin
+              disabled={disabled}
+              maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+              onChange={onChange}
+              registerEditor={registerEditor}
+              segments={normalizedSegments}
+            />
+            <ConditionalLogicResourceTooltipPlugin />
+            <ConditionalLogicMaxLengthPlugin
+              maxLength={AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+            />
+          </LexicalComposer>
+        </div>
+
+        <div className="mt-1 flex h-6 items-center justify-between">
           <PopoverTrigger asChild>
             <Button
               aria-expanded={open}
-              aria-label="添加关联知识库"
-              className="absolute left-0 top-0 z-10 size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
+              aria-label="添加引用资源"
+              className="size-6 rounded-[6px] p-0 text-muted-foreground"
               disabled={disabled}
               onMouseDown={(event) => {
                 event.preventDefault();
@@ -191,117 +231,106 @@ export function AgentConditionalLogicField({
               type="button"
               variant="ghost"
             >
-              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+              <HugeiconsIcon icon={ResourcesAddIcon} size={14} strokeWidth={1.8} />
             </Button>
           </PopoverTrigger>
+          <div className="text-xs leading-5 text-muted-foreground">
+            {characterCount}/{AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH}
+          </div>
+        </div>
 
-          <PopoverContent
-            align="start"
-            className="w-[280px] max-w-[280px] overflow-hidden rounded-[8px] p-0"
-            onOpenAutoFocus={(event) => event.preventDefault()}
-            sideOffset={8}
+        <PopoverContent
+          align="start"
+          className="w-[260px] max-w-[min(260px,calc(100vw-2rem))] overflow-hidden rounded-[8px] p-0"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          sideOffset={8}
+        >
+          <ScrollArea
+            className="w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full"
+            type="always"
+            viewportProps={{ className: "!h-auto max-h-72" }}
           >
-            <div aria-label="选择知识库" className="min-w-0 max-w-full" role="listbox">
-              <div className="border-b border-border p-2">
-                <div className="relative">
-                  <HugeiconsIcon
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    icon={Search01Icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                  <Input
-                    aria-label="搜索知识库"
-                    className="h-9 rounded-[8px] pl-8"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="搜索"
-                    value={searchQuery}
-                  />
+            <div
+              aria-label="选择引用资源"
+              className="w-full min-w-0 max-w-full"
+              role="listbox"
+            >
+              {selectableSkills.length > 0 ? (
+                <ResourceGroup
+                  icon={ConnectIcon}
+                  items={selectableSkills}
+                  onSelect={insertSkill}
+                  title="技能"
+                />
+              ) : null}
+              {selectableKnowledgeBases.length > 0 ? (
+                <ResourceGroup
+                  bordered={selectableSkills.length > 0}
+                  icon={AiBookIcon}
+                  items={selectableKnowledgeBases}
+                  onSelect={insertKnowledgeBase}
+                  title="知识库"
+                />
+              ) : null}
+              {selectableSkills.length === 0 &&
+              selectableKnowledgeBases.length === 0 ? (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  请先在资源管理中添加技能或知识库
                 </div>
-              </div>
-
-              <ScrollArea className="max-h-72 w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full">
-                <div className="w-full min-w-0 max-w-full p-1">
-                  {knowledgeBasesLoading ? (
-                    <div
-                      aria-label="正在加载"
-                      className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground"
-                      role="status"
-                    >
-                      <Spinner aria-hidden="true" size={14} />
-                      <span>正在加载</span>
-                    </div>
-                  ) : filteredKnowledgeBases.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      未找到匹配知识库
-                    </p>
-                  ) : (
-                    filteredKnowledgeBases.map((knowledgeBase) => (
-                      <KnowledgeBaseOptionRow
-                        key={knowledgeBase.id}
-                        knowledgeBase={knowledgeBase}
-                        onSelect={() => insertKnowledgeBase(knowledgeBase)}
-                      />
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
+              ) : null}
             </div>
-          </PopoverContent>
-        </Popover>
-
-        <LexicalComposer initialConfig={editorConfig}>
-          <PlainTextPlugin
-            contentEditable={
-              <ContentEditable
-                aria-label="条件逻辑描述"
-                aria-disabled={disabled}
-                aria-multiline="true"
-                className={cn(
-                  "min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none",
-                  disabled && "cursor-not-allowed opacity-70",
-                )}
-                role="textbox"
-                tabIndex={disabled ? -1 : undefined}
-              />
-            }
-            ErrorBoundary={LexicalErrorBoundary}
-            placeholder={
-              isEmpty ? (
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute left-0 top-8 text-muted-foreground"
-                >
-                  请输入条件逻辑描述
-                </div>
-              ) : null
-            }
-          />
-          <ConditionalLogicRuntimePlugin
-            disabled={disabled}
-            onChange={onChange}
-            registerEditor={registerEditor}
-            segments={normalizedSegments}
-          />
-        </LexicalComposer>
-      </div>
+          </ScrollArea>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
 
-function KnowledgeBaseOptionRow({
-  knowledgeBase,
+function ResourceGroup<T extends KnowledgeBaseOption | SkillOption>({
+  bordered = false,
+  icon,
+  items,
+  onSelect,
+  title,
+}: {
+  bordered?: boolean;
+  icon: typeof ConnectIcon;
+  items: readonly T[];
+  onSelect: (item: T) => void;
+  title: string;
+}) {
+  return (
+    <section className={bordered ? "border-t border-border/70" : undefined}>
+      <h3 className="px-3 pb-1 pt-2.5 text-xs font-normal text-muted-foreground/60">
+        {title}
+      </h3>
+      <div className="px-1 pb-1">
+        {items.map((item) => (
+          <ResourceOptionRow
+            icon={icon}
+            key={item.id}
+            label={item.name}
+            onSelect={() => onSelect(item)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ResourceOptionRow({
+  icon,
+  label,
   onSelect,
 }: {
-  knowledgeBase: KnowledgeBaseOption;
+  icon: typeof ConnectIcon;
+  label: string;
   onSelect: () => void;
 }) {
   return (
     <button
-      aria-label={knowledgeBase.name}
-      className={cn(
-        "flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40",
-      )}
+      aria-label={label}
+      className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 overflow-hidden rounded-[6px] px-2 py-1.5 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
       onClick={onSelect}
       onMouseDown={(event) => {
         event.preventDefault();
@@ -311,12 +340,12 @@ function KnowledgeBaseOptionRow({
     >
       <HugeiconsIcon
         className="shrink-0 text-muted-foreground"
-        icon={AiBookIcon}
+        icon={icon}
         size={15}
         strokeWidth={1.8}
       />
-      <span className="min-w-0 flex-1 truncate" title={knowledgeBase.name}>
-        {knowledgeBase.name}
+      <span className="min-w-0 flex-1 truncate" title={label}>
+        {label}
       </span>
     </button>
   );

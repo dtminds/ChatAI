@@ -14,10 +14,12 @@ import type {
 
 type QuickReplyAttachmentPreviewProps = {
   attachment: WorkbenchQuickReplyAttachment;
+  className?: string;
 };
 
 export function QuickReplyAttachmentPreview({
   attachment,
+  className,
 }: QuickReplyAttachmentPreviewProps) {
   if (attachment.type === "image") {
     return <ImageMessageCard content={toImageContent(attachment)} />;
@@ -26,6 +28,7 @@ export function QuickReplyAttachmentPreview({
   if (attachment.type === "file") {
     return (
       <FileMessageCard
+        className={className}
         content={toFileContent(attachment)}
         showDownloadAction={false}
       />
@@ -35,6 +38,7 @@ export function QuickReplyAttachmentPreview({
   if (attachment.type === "h5") {
     return (
       <LinkMessageCard
+        className={className}
         content={toH5Content(attachment)}
         disableLink
       />
@@ -44,6 +48,7 @@ export function QuickReplyAttachmentPreview({
   if (attachment.type === "weapp") {
     return (
       <MiniAppMessageCard
+        className={className}
         content={toMiniProgramContent(attachment)}
         titleLines={1}
       />

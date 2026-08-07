@@ -24,6 +24,7 @@ import {
   type WorkbenchCustomerListResponse,
   type WorkbenchCustomerLastConversationResponse,
   type WorkbenchCustomerRelationConversationsResponse,
+  type WorkbenchCustomerSeatRelationsResponse,
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
@@ -185,6 +186,9 @@ export type WorkbenchService = {
     thirdExternalUserId: string,
     thirdUserIds: string[],
   ) => Promise<WorkbenchCustomerRelationConversationsResponse>;
+  getCustomerSeatRelations: (
+    thirdExternalUserId: string,
+  ) => Promise<WorkbenchCustomerSeatRelationsResponse>;
   /** 未配置或未接入数据库时可为 `null` */
   getSidebarIframeParams: (input: {
     conversationId: string;
@@ -534,6 +538,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       return {};
     },
     async getCustomerRelationConversations() {
+      return { items: [] };
+    },
+    async getCustomerSeatRelations() {
       return { items: [] };
     },
     async listMaterialCollections(request) {
@@ -2118,6 +2125,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
             third_userids: thirdUserIds.join(","),
           },
         },
+      );
+    },
+    getCustomerSeatRelations(thirdExternalUserId) {
+      return http.get<WorkbenchCustomerSeatRelationsResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/seat-relations`,
       );
     },
     listMaterialCollections(request) {
@@ -4196,11 +4208,12 @@ function getAppendQuickReplyCategorySort(
   scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
   parentId: WorkbenchQuickReplyCategoryDto["parentId"],
 ) {
-  const siblingSorts = categories
-    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
-    .map((category) => category.sort);
-
-  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+  return getSiblingBoundarySort(
+    categories,
+    (category) =>
+      category.scopeType === scopeType && category.parentId === parentId,
+    "append",
+  );
 }
 
 function getPrependQuickReplyCategorySort(
@@ -4208,11 +4221,12 @@ function getPrependQuickReplyCategorySort(
   scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
   parentId: WorkbenchQuickReplyCategoryDto["parentId"],
 ) {
-  const siblingSorts = categories
-    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
-    .map((category) => category.sort);
-
-  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+  return getSiblingBoundarySort(
+    categories,
+    (category) =>
+      category.scopeType === scopeType && category.parentId === parentId,
+    "prepend",
+  );
 }
 
 function getAppendQuickReplySort(
@@ -4220,11 +4234,12 @@ function getAppendQuickReplySort(
   scopeType: WorkbenchQuickReplyDto["scopeType"],
   categoryId: WorkbenchQuickReplyDto["categoryId"],
 ) {
-  const siblingSorts = quickReplies
-    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
-    .map((reply) => reply.sort);
-
-  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+  return getSiblingBoundarySort(
+    quickReplies,
+    (reply) =>
+      reply.scopeType === scopeType && reply.categoryId === categoryId,
+    "append",
+  );
 }
 
 function getPrependQuickReplySort(
@@ -4232,11 +4247,38 @@ function getPrependQuickReplySort(
   scopeType: WorkbenchQuickReplyDto["scopeType"],
   categoryId: WorkbenchQuickReplyDto["categoryId"],
 ) {
-  const siblingSorts = quickReplies
-    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
-    .map((reply) => reply.sort);
+  return getSiblingBoundarySort(
+    quickReplies,
+    (reply) =>
+      reply.scopeType === scopeType && reply.categoryId === categoryId,
+    "prepend",
+  );
+}
 
-  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+function getSiblingBoundarySort<T extends { sort: number }>(
+  items: T[],
+  isSibling: (item: T) => boolean,
+  placement: "append" | "prepend",
+) {
+  let boundarySort: number | undefined;
+
+  for (const item of items) {
+    if (!isSibling(item)) {
+      continue;
+    }
+
+    boundarySort = boundarySort === undefined
+      ? item.sort
+      : placement === "append"
+        ? Math.min(boundarySort, item.sort)
+        : Math.max(boundarySort, item.sort);
+  }
+
+  if (boundarySort === undefined) {
+    return Date.now();
+  }
+
+  return boundarySort + (placement === "append" ? -1 : 1);
 }
 
 function assertSameQuickReplySortScope(currentIds: string[], submittedIds: string[]) {

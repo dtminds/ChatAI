@@ -57,6 +57,7 @@ import {
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
+import { resolveErrorMessage } from "@/pages/chat/lib/error-message";
 
 type DialogState = {
   managedAccount: SettingsManagedAccount;
@@ -92,7 +93,7 @@ export function WecomAccountsSettingsTab({ toolbarStart }: { toolbarStart?: Reac
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(getErrorMessage(error));
+          setErrorMessage(resolveErrorMessage(error, "操作失败，请稍后重试"));
         }
       } finally {
         if (!ignore) {
@@ -144,7 +145,7 @@ export function WecomAccountsSettingsTab({ toolbarStart }: { toolbarStart?: Reac
       setDialogState(null);
       toast.success("关联子账号已更新");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setPendingAccountId(null);
     }
@@ -164,7 +165,7 @@ export function WecomAccountsSettingsTab({ toolbarStart }: { toolbarStart?: Reac
       setErrorMessage("");
       toast.success("群聊同步已触发");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(resolveErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setSyncingAccountIds((current) => current.filter((id) => id !== accountId));
     }
@@ -777,16 +778,4 @@ function formatSubAccountName(subAccount: SettingsManagedAccountSubAccount) {
 
 function getInitial(name: string) {
   return name.trim().slice(0, 1) || "?";
-}
-
-function getErrorMessage(error: unknown) {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  return "操作失败，请稍后重试";
 }

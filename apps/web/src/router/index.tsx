@@ -50,6 +50,23 @@ const AgentSubscriptionPage = lazy(() =>
     }),
   ),
 );
+const AiSkillsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skills-page").then(({ AiSkillsPage }) => ({
+    default: AiSkillsPage,
+  })),
+);
+const AiSkillSettingsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-skill-settings-page").then(
+    ({ AiSkillSettingsPage }) => ({
+      default: AiSkillSettingsPage,
+    }),
+  ),
+);
+const UserMemoryPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/user-memory-page").then(
+    ({ UserMemoryPage }) => ({ default: UserMemoryPage }),
+  ),
+);
 const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
@@ -186,10 +203,24 @@ export const routerConfig = [
       {
         path: "chat",
         element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
-        path: "chat/customers",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
+        children: [
+          {
+            element: <></>,
+            path: "conversations/:conversationId",
+          },
+          {
+            element: <></>,
+            path: "customers",
+          },
+          {
+            element: <></>,
+            path: "tickets",
+          },
+          {
+            element: <></>,
+            path: "tickets/:ticketId",
+          },
+        ],
       },
       {
         path: "chat/settings",
@@ -230,14 +261,6 @@ export const routerConfig = [
         ],
       },
       {
-        path: "chat/tickets",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
-        path: "chat/tickets/:ticketId",
-        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
-      },
-      {
         path: "chat/ai-hosting",
         element: <Navigate replace to="/chat/ai-hosting/agents" />,
       },
@@ -268,6 +291,22 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/kb/:kbId/docs/:docId",
         element: withRouteSuspense(<KbDocDetailPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills",
+        element: withRouteSuspense(<AiSkillsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/new",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/skills/:skillId/edit",
+        element: withRouteSuspense(<AiSkillSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/user-memory",
+        element: withRouteSuspense(<UserMemoryPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

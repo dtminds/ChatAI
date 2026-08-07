@@ -8,11 +8,16 @@ import {
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
   AiHostingAgentTestResponseSchema,
+  AI_HOSTING_AGENT_KB_MAX_COUNT,
+  AI_HOSTING_AGENT_SKILL_MAX_COUNT,
   AiHostingLearningCandidateIdSchema,
   AiHostingLearningCandidateItemSchema,
   AiHostingLearningCandidateSearchDetailResponseSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
+  getAiHostingAgentConditionLogicCharacterCount,
+  AgentSkillTemplateDetailSchema,
+  AgentSkillTemplateMarketplaceResponseSchema,
   KbDocCreateRequestSchema,
   KbDocDetailSchema,
   KbDocListResponseSchema,
@@ -22,6 +27,14 @@ import {
 } from "../src";
 
 describe("AI hosting DTOs", () => {
+  it("counts conditional logic text and resource display names", () => {
+    expect(
+      getAiHostingAgentConditionLogicCharacterCount(
+        '咨询 <resource type="knowledge_base" kbId="3" name="护肤知识库" /> 后继续',
+      ),
+    ).toBe("咨询 护肤知识库 后继续".length);
+  });
+
   it("accepts only numeric learning candidate ids", () => {
     expect(Value.Check(AiHostingLearningCandidateIdSchema, "1001")).toBe(true);
     expect(Value.Check(AiHostingLearningCandidateIdSchema, "ENC-CANDIDATE-001")).toBe(false);
@@ -76,31 +89,12 @@ describe("AI hosting DTOs", () => {
   });
 
   it("accepts Chinese prompt config values for agent saves", () => {
-    expect(
-      Value.Check(AiHostingAgentSaveRequestSchema, {
-        modelId: "11",
-        name: "护肤小助理",
-        promptConfig: {
-          availableKbIds: [1, 3],
-          conditionLogic: "如果客户咨询成分，那么说明功效",
-          replyStyle: {
-            length: "简洁",
-            styleInstruction: "亲切自然",
-          },
-          handoffRules: "客户要求真人",
-          role: "你是护肤顾问",
-        },
-      }),
-    ).toBe(true);
-  });
-
-  it("limits long text prompt fields to 2000 characters", () => {
-    const longText = "a".repeat(2001);
-    const basePayload = {
+    const payloadWithoutUserMemory = {
       modelId: "11",
       name: "护肤小助理",
       promptConfig: {
         availableKbIds: [1, 3],
+        availableSkillIds: [],
         conditionLogic: "如果客户咨询成分，那么说明功效",
         replyStyle: {
           length: "简洁",
@@ -113,10 +107,103 @@ describe("AI hosting DTOs", () => {
 
     expect(
       Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...payloadWithoutUserMemory,
+        promptConfig: {
+          ...payloadWithoutUserMemory.promptConfig,
+          useUserMemory: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...payloadWithoutUserMemory,
+        promptConfig: {
+          ...payloadWithoutUserMemory.promptConfig,
+          useUserMemory: "true",
+        },
+      }),
+    ).toBe(false);
+    expect(Value.Check(AiHostingAgentSaveRequestSchema, payloadWithoutUserMemory)).toBe(false);
+  });
+
+  it("limits the resources available to an agent", () => {
+    const basePayload = {
+      modelId: "11",
+      name: "护肤小助理",
+      promptConfig: {
+        availableKbIds: Array.from(
+          { length: AI_HOSTING_AGENT_KB_MAX_COUNT },
+          (_, index) => index + 1,
+        ),
+        availableSkillIds: Array.from(
+          { length: AI_HOSTING_AGENT_SKILL_MAX_COUNT },
+          (_, index) => index + 1,
+        ),
+        conditionLogic: "",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "",
+        role: "",
+        useUserMemory: false,
+      },
+    };
+
+    expect(Value.Check(AiHostingAgentSaveRequestSchema, basePayload)).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
         ...basePayload,
         promptConfig: {
           ...basePayload.promptConfig,
-          role: longText,
+          availableKbIds: [...basePayload.promptConfig.availableKbIds, 11],
+        },
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          availableSkillIds: [...basePayload.promptConfig.availableSkillIds, 11],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("enforces field-specific agent prompt length limits", () => {
+    const basePayload = {
+      modelId: "11",
+      name: "护肤小助理",
+      promptConfig: {
+        availableKbIds: [1, 3],
+        availableSkillIds: [],
+        conditionLogic: "如果客户咨询成分，那么说明功效",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "客户要求真人",
+        role: "你是护肤顾问",
+        useUserMemory: false,
+      },
+    };
+
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          role: "a".repeat(400),
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          role: "a".repeat(401),
         },
       }),
     ).toBe(false);
@@ -127,7 +214,19 @@ describe("AI hosting DTOs", () => {
           ...basePayload.promptConfig,
           replyStyle: {
             ...basePayload.promptConfig.replyStyle,
-            styleInstruction: longText,
+            styleInstruction: "a".repeat(800),
+          },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          replyStyle: {
+            ...basePayload.promptConfig.replyStyle,
+            styleInstruction: "a".repeat(801),
           },
         },
       }),
@@ -137,7 +236,16 @@ describe("AI hosting DTOs", () => {
         ...basePayload,
         promptConfig: {
           ...basePayload.promptConfig,
-          handoffRules: longText,
+          handoffRules: "a".repeat(2000),
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          handoffRules: "a".repeat(2001),
         },
       }),
     ).toBe(false);
@@ -149,6 +257,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -156,6 +265,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(true);
@@ -166,6 +276,7 @@ describe("AI hosting DTOs", () => {
         name: "护肤小助理",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -173,6 +284,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(false);
@@ -183,6 +295,18 @@ describe("AI hosting DTOs", () => {
   it("keeps publish state separate from agent history internals", () => {
     expect(
       Value.Check(AiHostingAgentDetailSchema, {
+        availableKbs: [
+          { id: "1", name: "商品咨询知识库", status: "available" },
+          {
+            id: "3",
+            invalidReason: "deleted",
+            name: "活动政策知识库",
+            status: "invalid",
+          },
+        ],
+        availableSkills: [
+          { id: "2", name: "退换货处理", status: "available" },
+        ],
         hasUnpublishedChanges: true,
         id: "301",
         model: {
@@ -195,6 +319,7 @@ describe("AI hosting DTOs", () => {
         name: "护肤小助理",
         promptConfig: {
           availableKbIds: [1, 3],
+          availableSkillIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -202,6 +327,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
         publishedAt: 1_718_006_400_000,
         updatedAt: 1_718_006_460_000,
@@ -307,6 +433,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         promptConfig: {
           availableKbIds: [],
+          availableSkillIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -314,6 +441,7 @@ describe("AI hosting DTOs", () => {
           },
           handoffRules: "客户要求真人",
           role: "你是护肤顾问",
+          useUserMemory: false,
         },
       }),
     ).toBe(true);
@@ -329,6 +457,42 @@ describe("AI hosting DTOs", () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it("accepts agent simulation attachment reply items with materials", () => {
+    expect(
+      Value.Check(AiHostingAgentTestResponseSchema, {
+        action: "reply",
+        reply: [
+          { type: "text", content: "发送给客户的文本消息" },
+          {
+            type: "attachment",
+            chunkId: "1234",
+            attachments: [
+              {
+                type: "image",
+                title: "产品海报.jpg",
+                content: { fileUrl: "https://example.com/a.jpg" },
+              },
+              {
+                type: "mini-program",
+                title: "大西瓜生椰冷萃",
+                content: { title: "大西瓜生椰冷萃", appName: "示例小程序" },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects attachment reply items without materials payload", () => {
+    expect(
+      Value.Check(AiHostingAgentTestResponseSchema, {
+        action: "reply",
+        reply: [{ type: "attachment", chunkId: "1234" }],
+      }),
+    ).toBe(false);
   });
 
   it("keeps kb creation response command-shaped", () => {
@@ -494,6 +658,49 @@ describe("AI hosting DTOs", () => {
         sliceCount: 1,
         status: "completed",
         updatedAt: "2026-06-20T15:22:22.000Z",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts skill template marketplace response", () => {
+    expect(
+      Value.Check(AgentSkillTemplateMarketplaceResponseSchema, {
+        groups: [
+          {
+            id: "1",
+            name: "私域通用",
+            templates: [
+              {
+                id: "11",
+                name: "客户标签查询",
+                icon: "",
+                description: "标签说明",
+                tip: "我适合什么产品？",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts skill template detail responses", () => {
+    expect(
+      Value.Check(AgentSkillTemplateDetailSchema, {
+        id: "11",
+        name: "客户标签查询",
+        icon: "",
+        description: "标签说明",
+        tip: "我适合什么产品？",
+        applyScene: "咨询肤质时",
+        content: "根据标签推荐",
+        recommendResources: [
+          {
+            type: "variable",
+            title: "客户标签",
+            description: "建议选肤质标签组",
+          },
+        ],
       }),
     ).toBe(true);
   });

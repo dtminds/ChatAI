@@ -23,6 +23,7 @@ import {
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
+import { CHAT_USER_MEMORY_RESERVED_WIDTH } from "@/pages/chat/components/chat-user-memory-popover";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 import type { SidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
@@ -35,6 +36,7 @@ import type {
   FileUploadQueueItem,
   GroupMember,
   ChatMessage,
+  CustomerChatStartInput,
   Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
@@ -59,6 +61,7 @@ const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
 export type ChatAuxiliaryPanel = "history" | "tickets" | null;
 
 type ChatPanelProps = {
+  accounts?: Account[];
   accountName?: string;
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
@@ -80,6 +83,7 @@ type ChatPanelProps = {
   shouldShowConversationAIHostingControl?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
+  currentEmployeeId?: string;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
   sidebarIframeTos?: "0" | "1";
   /** 侧栏 iframe `sendStatus`：发送能力状态码 */
@@ -158,6 +162,9 @@ type ChatPanelProps = {
   onHistorySetScope: (scope: "all" | "file" | "media" | "h5" | "mini-program") => void;
   onHistorySetSenderId: (senderId?: string) => void;
   onRefreshGroupMembers: () => void;
+  onStartCustomerChat?: (
+    input: CustomerChatStartInput,
+  ) => void | Promise<void>;
   onLoadOlderMessages: () => void;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
@@ -202,6 +209,7 @@ type ChatPanelProps = {
 };
 
 export function ChatPanel({
+  accounts = [],
   accountName,
   accountAvatarUrl,
   activeConversation,
@@ -223,6 +231,7 @@ export function ChatPanel({
   shouldShowConversationAIHostingControl = false,
   composerPlaceholder,
   customer,
+  currentEmployeeId,
   sidebarIframeTos,
   sidebarIframeSendStatus,
   customerPanelWidth,
@@ -283,6 +292,7 @@ export function ChatPanel({
   onHistorySetScope,
   onHistorySetSenderId,
   onRefreshGroupMembers,
+  onStartCustomerChat,
   onLoadOlderMessages,
   onMarkConversationRead,
   onMarkConversationUnread,
@@ -320,6 +330,7 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isUserMemoryOpen, setIsUserMemoryOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
@@ -336,6 +347,11 @@ export function ChatPanel({
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
   const isTicketSupported = isConversationTicketSupported(activeConversation);
+  const canShowUserMemory = Boolean(
+    activeConversation?.mode === "single" &&
+    activeConversation.customerBindType !== 2 &&
+    activeConversation.thirdExternalUserId?.trim(),
+  );
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
@@ -397,8 +413,10 @@ export function ChatPanel({
       : ticketsPanelNode;
   const customerSidePanelNode = activeConversation ? (
     <CustomerSidePanel
+      accounts={accounts}
       accountName={accountName}
       conversationMode={activeConversation.mode}
+      currentEmployeeId={currentEmployeeId}
       customer={customer}
       groupMembers={groupMembers}
       isGroupMembersLoading={isGroupMembersLoading}
@@ -406,6 +424,7 @@ export function ChatPanel({
       onRefreshGroupMembers={onRefreshGroupMembers}
       onResizeStart={onCustomerPanelResizeStart}
       onQuickReplyActiveChange={onQuickReplyActiveChange}
+      onStartCustomerChat={onStartCustomerChat}
       panelWidth={isMobileLayout ? undefined : customerPanelWidth}
       quickReplyPanel={quickReplyPanel}
       showResizeHandle={!isMobileLayout}
@@ -421,6 +440,12 @@ export function ChatPanel({
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [activeConversation?.id, isMobileLayout]);
+
+  useEffect(() => {
+    if (!canShowUserMemory) {
+      setIsUserMemoryOpen(false);
+    }
+  }, [canShowUserMemory]);
 
   useEffect(() => {
     if (isMobileLayout && !isMobileSidebarOpen) {
@@ -473,6 +498,7 @@ export function ChatPanel({
         isMobileLayout={isMobileLayout}
         isSidebarOpen={isSidebarOpen}
         isTicketsPanelOpen={resolvedAuxiliaryPanel === "tickets"}
+        isUserMemoryOpen={isUserMemoryOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
         onMarkConversationRead={
           activeConversation && onMarkConversationRead
@@ -502,6 +528,7 @@ export function ChatPanel({
             ? () => onUnpinConversation(activeConversation.id)
             : undefined
         }
+        onUserMemoryOpenChange={setIsUserMemoryOpen}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
@@ -704,7 +731,16 @@ export function ChatPanel({
                   {customerSidePanelNode}
                 </SheetContent>
               </Sheet>
-            ) : isDesktopSidebarCollapsed ? null : (
+            ) : isDesktopSidebarCollapsed ? (
+              isUserMemoryOpen ? (
+                <div
+                  aria-hidden="true"
+                  className="h-full shrink-0 bg-surface"
+                  data-testid="user-memory-reserved-rail"
+                  style={{ width: CHAT_USER_MEMORY_RESERVED_WIDTH }}
+                />
+              ) : null
+            ) : (
               <div
                 className="relative flex h-full min-h-0 min-w-0 shrink-0"
                 data-testid="customer-side-panel-shell"

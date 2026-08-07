@@ -7,6 +7,8 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { assertAiHostingAgentPromptConfigLimits } from "./agent-prompt-config-validation.js";
+import { hydrateAgentTestAttachmentReplies } from "./agent-test-attachment-resolver.js";
 import { mapJavaAgentTestResponse } from "./agent-test-mappers.js";
 
 const AGENT_TEST_MESSAGE_LIMIT = 20;
@@ -25,6 +27,7 @@ export class AgentTestService {
     const modelId = parseModelId(request.modelId);
 
     await this.assertModelAvailable(uid, modelId);
+    assertAiHostingAgentPromptConfigLimits(request.promptConfig);
 
     const response = await this.javaClient.testAgent({
       messages: request.messages.slice(-AGENT_TEST_MESSAGE_LIMIT).map((message) => ({
@@ -40,7 +43,13 @@ export class AgentTestService {
       uid,
     });
 
-    return mapJavaAgentTestResponse(response);
+    const mapped = mapJavaAgentTestResponse(response);
+    const reply = await hydrateAgentTestAttachmentReplies(this.db, uid, mapped.reply);
+
+    return {
+      ...mapped,
+      reply,
+    };
   }
 
   private async resolveUid(subUserId: string) {
@@ -95,6 +104,7 @@ function parseModelId(value: string) {
 function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
   return JSON.stringify({
     available_kb_ids: promptConfig.availableKbIds,
+    available_skill_ids: promptConfig.availableSkillIds,
     condition_logic: promptConfig.conditionLogic,
     handoff_rules: promptConfig.handoffRules,
     reply_style: {
@@ -102,5 +112,6 @@ function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
       style_instruction: promptConfig.replyStyle.styleInstruction,
     },
     role: promptConfig.role,
+    use_user_memory: promptConfig.useUserMemory === true,
   });
 }

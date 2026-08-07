@@ -186,6 +186,29 @@ describe("ChatHeader", () => {
     expect(onUnpinConversation).toHaveBeenCalledTimes(1);
   });
 
+  it("places the single-customer memory shortcut before conversation actions", () => {
+    render(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          thirdExternalUserId: "external-1",
+        }}
+        onMarkConversationRead={vi.fn()}
+      />,
+    );
+
+    const buttons = screen.getAllByRole("button");
+    const memoryIndex = buttons.indexOf(
+      screen.getByRole("button", { name: "客户记忆" }),
+    );
+    const moreIndex = buttons.indexOf(
+      screen.getByRole("button", { name: "更多会话操作" }),
+    );
+
+    expect(memoryIndex).toBeGreaterThanOrEqual(0);
+    expect(memoryIndex).toBeLessThan(moreIndex);
+  });
+
   it("keeps the mobile sidebar button outside the conversation overflow menu", async () => {
     const user = userEvent.setup();
     const onMarkConversationUnread = vi.fn();

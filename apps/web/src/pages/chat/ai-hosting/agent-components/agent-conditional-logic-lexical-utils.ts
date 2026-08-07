@@ -13,7 +13,9 @@ import {
 import type { ConditionalLogicSegment } from "./agent-settings.constants";
 import {
   $createKnowledgeBaseChipNode,
+  $createSkillChipNode,
   $isKnowledgeBaseChipNode,
+  $isSkillChipNode,
 } from "./agent-conditional-logic-lexical-nodes";
 
 export function normalizeConditionalLogicSegments(
@@ -26,7 +28,7 @@ export function normalizeConditionalLogicSegments(
   const merged: ConditionalLogicSegment[] = [];
 
   for (const segment of segments) {
-    if (segment.type === "knowledgeBase") {
+    if (segment.type === "knowledgeBase" || segment.type === "skill") {
       merged.push(segment);
       continue;
     }
@@ -69,8 +71,66 @@ export function isConditionalLogicEmpty(segments: ConditionalLogicSegment[]) {
   return !normalizeConditionalLogicSegments(segments).some(
     (segment) =>
       segment.type === "knowledgeBase" ||
+      segment.type === "skill" ||
       (segment.type === "text" && segment.value.length > 0),
   );
+}
+
+export function getConditionalLogicCharacterCount(segments: ConditionalLogicSegment[]) {
+  return normalizeConditionalLogicSegments(segments).reduce((characterCount, segment) => {
+    if (segment.type === "text") {
+      return characterCount + segment.value.length;
+    }
+
+    return characterCount + (segment.name || segment.id).length;
+  }, 0);
+}
+
+export function trimConditionalLogicSegmentsToMaxLength(
+  segments: ConditionalLogicSegment[],
+  maxLength: number,
+) {
+  const trimmedSegments: ConditionalLogicSegment[] = [];
+  let remainingCharacters = Math.max(0, maxLength);
+
+  for (const segment of normalizeConditionalLogicSegments(segments)) {
+    if (segment.type === "text") {
+      const value = segment.value.slice(0, remainingCharacters);
+
+      if (value) {
+        trimmedSegments.push({ type: "text", value });
+        remainingCharacters -= value.length;
+      }
+
+      if (value.length < segment.value.length) {
+        break;
+      }
+      continue;
+    }
+
+    const resourceLength = (segment.name || segment.id).length;
+
+    if (resourceLength > remainingCharacters) {
+      break;
+    }
+
+    trimmedSegments.push(segment);
+    remainingCharacters -= resourceLength;
+  }
+
+  return normalizeConditionalLogicSegments(trimmedSegments);
+}
+
+export function $trimConditionalLogicToMaxLength(maxLength: number) {
+  const currentSegments = $exportConditionalLogicSegments();
+  const trimmedSegments = trimConditionalLogicSegmentsToMaxLength(
+    currentSegments,
+    maxLength,
+  );
+
+  if (!segmentsEqual(currentSegments, trimmedSegments)) {
+    $restoreConditionalLogicFromSegments(trimmedSegments);
+  }
 }
 
 export function $clearConditionalLogicEditor() {
@@ -84,6 +144,14 @@ export function $insertKnowledgeBaseChip(knowledgeBase: {
   name?: string;
 }) {
   const chipNode = $createKnowledgeBaseChipNode(knowledgeBase);
+  const trailingSpaceNode = $createTextNode(" ");
+
+  $insertNodes([chipNode, trailingSpaceNode]);
+  trailingSpaceNode.select(1, 1);
+}
+
+export function $insertSkillChip(skill: { id: string; name?: string }) {
+  const chipNode = $createSkillChipNode(skill);
   const trailingSpaceNode = $createTextNode(" ");
 
   $insertNodes([chipNode, trailingSpaceNode]);
@@ -110,6 +178,20 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
       paragraph.append(
         $createKnowledgeBaseChipNode({
           id: segment.id,
+          invalid: segment.invalid,
+          invalidReason: segment.invalidReason,
+          name: segment.name,
+        }),
+      );
+      continue;
+    }
+
+    if (segment.type === "skill") {
+      paragraph.append(
+        $createSkillChipNode({
+          id: segment.id,
+          invalid: segment.invalid,
+          invalidReason: segment.invalidReason,
           name: segment.name,
         }),
       );
@@ -137,10 +219,35 @@ function collectConditionalLogicSegmentsFromNode(
   segments: ConditionalLogicSegment[],
 ) {
   if ($isKnowledgeBaseChipNode(node)) {
+    const invalid = node.isInvalid();
+
     segments.push({
       id: node.getKnowledgeBaseId(),
+      ...(invalid
+        ? {
+            invalid: true,
+            invalidReason: node.getInvalidReason(),
+          }
+        : {}),
       name: node.getKnowledgeBaseName(),
       type: "knowledgeBase",
+    });
+    return;
+  }
+
+  if ($isSkillChipNode(node)) {
+    const invalid = node.isInvalid();
+
+    segments.push({
+      id: node.getSkillId(),
+      ...(invalid
+        ? {
+            invalid: true,
+            invalidReason: node.getInvalidReason(),
+          }
+        : {}),
+      name: node.getSkillName(),
+      type: "skill",
     });
     return;
   }

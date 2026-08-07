@@ -86,13 +86,16 @@ import {
   ComposerLiteAttachmentNode,
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
-import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
+import {
+  ComposerMaxLengthPlugin,
+  ComposerRuntimePlugin,
+} from "@/pages/chat/components/composer/lexical-plugins";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import {
   $insertComposerMention,
-  $insertComposerText,
+  $insertComposerTextWithinMaxLength,
   $exportComposerSegments,
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
@@ -104,7 +107,10 @@ import {
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
-import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
+import {
+  COMPOSER_TEXT_MAX_LENGTH,
+  DISABLE_SPH_COLLECTION,
+} from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
@@ -505,14 +511,14 @@ export function ChatComposer({
     composerRef.current?.update(() => {
       $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
       if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
-        $insertComposerText(" ");
+        $insertComposerTextWithinMaxLength(" ", COMPOSER_TEXT_MAX_LENGTH);
       }
       $insertComposerMention({
         displayName: selectedMember.isAll ? "所有人" : selectedMember.displayName,
         isAll: selectedMember.isAll,
         memberId: selectedMember.isAll ? "__all__" : selectedMember.memberId,
       });
-      $insertComposerText(" ");
+      $insertComposerTextWithinMaxLength(" ", COMPOSER_TEXT_MAX_LENGTH);
     });
     setIsMentionPickerDismissed(true);
     composerRef.current?.focus();
@@ -1419,14 +1425,20 @@ export function ChatComposer({
                   composerRef.current?.update(() => {
                     $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
                     if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
-                      $insertComposerText(" ");
+                      $insertComposerTextWithinMaxLength(
+                        " ",
+                        COMPOSER_TEXT_MAX_LENGTH,
+                      );
                     }
                     $insertComposerMention({
                       displayName: member.isAll ? "所有人" : member.displayName,
                       isAll: member.isAll,
                       memberId: member.memberId,
                     });
-                    $insertComposerText(" ");
+                    $insertComposerTextWithinMaxLength(
+                      " ",
+                      COMPOSER_TEXT_MAX_LENGTH,
+                    );
                   });
                   setIsMentionPickerDismissed(true);
                   composerRef.current?.focus();
@@ -1474,6 +1486,7 @@ export function ChatComposer({
               canSendMessage={canEditComposer}
               inputEnterBehavior={inputEnterBehavior}
               isMentionPickerOpen={isMentionPickerOpen}
+              maxTextLength={COMPOSER_TEXT_MAX_LENGTH}
               onDraftTextChange={handleDraftTextChange}
               onEscapeMentionPicker={() => setIsMentionPickerDismissed(true)}
               onMoveMentionPicker={handleMoveMentionPicker}
@@ -1483,6 +1496,7 @@ export function ChatComposer({
               onSendSegments={onSendDraft}
               registerEditor={registerEditor}
             />
+            <ComposerMaxLengthPlugin maxLength={COMPOSER_TEXT_MAX_LENGTH} />
           </LexicalComposer>
         </div>
       </div>

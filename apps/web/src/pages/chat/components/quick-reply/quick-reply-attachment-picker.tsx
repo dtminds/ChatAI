@@ -40,6 +40,7 @@ import {
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
+import type { QuickReplyDraftAttachment } from "@/pages/chat/lib/quick-reply-attachment-types";
 
 type QuickReplyAttachmentPickerProps = {
   attachments: QuickReplyDraftAttachment[];
@@ -47,13 +48,10 @@ type QuickReplyAttachmentPickerProps = {
   onChange: (attachments: QuickReplyDraftAttachment[]) => void;
 };
 
-export type QuickReplyLocalImageAttachment = WorkbenchQuickReplyAttachment & {
-  localFile: File;
-};
-
-export type QuickReplyDraftAttachment =
-  | WorkbenchQuickReplyAttachment
-  | QuickReplyLocalImageAttachment;
+export type {
+  QuickReplyDraftAttachment,
+  QuickReplyLocalImageAttachment,
+} from "@/pages/chat/lib/quick-reply-attachment-types";
 
 export function QuickReplyAttachmentPicker({
   attachments,

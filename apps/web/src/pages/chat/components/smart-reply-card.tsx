@@ -16,9 +16,9 @@ import {
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,10 +58,11 @@ import {
   getSmartReplyKnowledgeConfig,
   listSmartReplyAttachments,
 } from "@/pages/chat/api/workbench-gateway";
-import {
-  SmartReplyEditDialog,
-  type SmartReplyRecommendedAttachment,
-} from "@/pages/chat/components/smart-reply-edit-dialog";
+import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type {
+  SmartReplyRecommendedAttachment,
+  SmartReplySuggestion,
+} from "@/pages/chat/lib/smart-reply-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 const SMART_REPLY_TRIGGER_ICON =
@@ -73,21 +74,7 @@ const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 320;
 const SMART_REPLY_DISMISS_PLACEHOLDER_COLLAPSE_MS = 220;
 const SMART_REPLY_DISMISS_STACK_GAP_PX = 6;
 
-export type SmartReplySuggestion = {
-  assistantName: string;
-  busyRequestId?: number;
-  content: string;
-  createdAt?: number;
-  failReason?: string;
-  /** Java 原始 genAnswer */
-  genAnswer?: string;
-  generateStatus?: number | string;
-  pollComplete?: boolean;
-  sent?: boolean;
-  status?: "thinking" | "processing" | "ready";
-  refAttachIds?: string[];
-  recordId?: string;
-};
+export type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 
 export type SmartReplyCardProps = {
   assistantName: string;
@@ -1259,14 +1246,7 @@ function SmartReplyReadonlyContent({
     <div className="rounded-[10px]">
       {isThinking || isProcessing ? (
         <div className="flex items-center gap-1 text-muted-foreground">
-          <span aria-hidden="true" className="inline-flex">
-            <DotMatrixLoader
-              ariaLabel="智能回复处理中"
-              dotSize={2}
-              size={14}
-              speed={1.2}
-            />
-          </span>
+          <AgentThinkingOrb speed={1.2} />
           <p className="text-[13px]" role="status">
             <ShinyText duration={1.15} shimmerWidth={44}>
               {processingLabel ??

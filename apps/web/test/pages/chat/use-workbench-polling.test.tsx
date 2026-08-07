@@ -656,4 +656,69 @@ describe("useWorkbenchPolling", () => {
 
     expect(refreshSeatSummaries).toHaveBeenCalledTimes(1);
   });
+
+  it("skips a queued seat summary refresh after visibility becomes hidden", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi.fn().mockResolvedValue(undefined);
+    const refreshSeatSummaries = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PollingHarness
+        pollWorkbench={pollWorkbench}
+        refreshSeatSummaries={refreshSeatSummaries}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS - 1,
+      );
+    });
+
+    setVisibilityState("hidden");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(refreshSeatSummaries).not.toHaveBeenCalled();
+  });
+
+  it("pauses seat summary refresh while hidden and refreshes on return", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("hidden");
+    const pollWorkbench = vi.fn().mockResolvedValue(undefined);
+    const refreshSeatSummaries = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PollingHarness
+        pollWorkbench={pollWorkbench}
+        refreshSeatSummaries={refreshSeatSummaries}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS * 2,
+      );
+    });
+
+    expect(refreshSeatSummaries).not.toHaveBeenCalled();
+
+    setVisibilityState("visible");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(refreshSeatSummaries).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS - 1,
+      );
+    });
+
+    expect(refreshSeatSummaries).toHaveBeenCalledTimes(1);
+  });
 });

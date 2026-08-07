@@ -1,7 +1,8 @@
 type AiHostingIntroStep = {
   description: string;
-  imageAlt: string;
-  imageUrl: string;
+  imageAlt?: string;
+  /** 为空时保留右侧占位，不渲染示意图 */
+  imageUrl?: string;
   step: string;
   title: string;
 };
@@ -34,12 +35,19 @@ export function AiHostingIntroGuide({ ariaLabel, steps }: AiHostingIntroGuidePro
               </p>
             </div>
 
-            <img
-              alt={item.imageAlt}
-              className="h-auto w-full max-w-[250px] self-end justify-self-end max-xl:hidden"
-              draggable={false}
-              src={item.imageUrl}
-            />
+            {item.imageUrl ? (
+              <img
+                alt={item.imageAlt ?? ""}
+                className="h-auto w-full max-w-[250px] self-end justify-self-end max-xl:hidden"
+                draggable={false}
+                src={item.imageUrl}
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                className="max-w-[250px] self-end justify-self-end max-xl:hidden"
+              />
+            )}
           </div>
         ))}
       </div>

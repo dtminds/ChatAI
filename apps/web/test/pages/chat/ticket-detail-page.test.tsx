@@ -7,7 +7,13 @@ import type {
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TicketDetailContent,
@@ -89,6 +95,16 @@ function TicketRouteHarness() {
   );
 }
 
+function ConversationOpenStateProbe() {
+  const location = useLocation();
+
+  return (
+    <div data-testid="conversation-open-state">
+      {JSON.stringify(location.state)}
+    </div>
+  );
+}
+
 function renderNavigablePage() {
   return render(
     <MemoryRouter initialEntries={["/chat/tickets/501"]}>
@@ -109,6 +125,32 @@ describe("TicketDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "跟进退款" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回工单列表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "打开会话" })).not.toBeInTheDocument();
+  });
+
+  it("marks conversation links as intentional in-app opens", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/chat/tickets/501"]}>
+        <Routes>
+          <Route
+            element={<TicketDetailContent ticketId="501" />}
+            path="/chat/tickets/:ticketId"
+          />
+          <Route
+            element={<ConversationOpenStateProbe />}
+            path="/chat/conversations/:conversationId"
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("link", { name: "打开会话" }));
+
+    expect(screen.getByTestId("conversation-open-state")).toHaveTextContent(
+      JSON.stringify({ openConversation: true }),
+    );
   });
 
   it("loads direct routes and sends expectedStatus with status changes", async () => {

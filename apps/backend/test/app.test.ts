@@ -2525,6 +2525,51 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns visible customer seat relations for the authenticated sub-user", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getCustomerSeatRelations = vi
+      .spyOn(app.workbenchService, "getCustomerSeatRelations")
+      .mockResolvedValue({
+        items: [
+          {
+            bindId: "301",
+            bindStatus: 1,
+            bindType: 1,
+            lastMessageTime: 1_779_600_000_000,
+            seatAvatar: "",
+            seatId: "12",
+            seatName: "销售一号",
+            thirdUserId: "seat-user-12",
+          },
+        ],
+      });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/customers/external-a/seat-relations",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      items: [
+        {
+          bindId: "301",
+          bindStatus: 1,
+          bindType: 1,
+          lastMessageTime: 1_779_600_000_000,
+          seatAvatar: "",
+          seatId: "12",
+          seatName: "销售一号",
+          thirdUserId: "seat-user-12",
+        },
+      ],
+    });
+    expect(getCustomerSeatRelations).toHaveBeenCalledWith("101", "external-a");
+
+    await app.close();
+  });
+
   it("keeps pinned conversations before newer unpinned conversations", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

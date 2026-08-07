@@ -1,7 +1,7 @@
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { UserIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ComponentPropsWithoutRef } from "react";
+import { useState, type ComponentPropsWithoutRef } from "react";
 import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,37 @@ export function AvatarImage({
       className={cn("aspect-square size-full rounded-[inherit] object-cover", className)}
       src={normalizedSrc || undefined}
       {...props}
+    />
+  );
+}
+
+export function LazyAvatarImage({
+  className,
+  onError,
+  src,
+  ...props
+}: ComponentPropsWithoutRef<"img">) {
+  const normalizedSrc = normalizeAvatarUrl(src);
+  const [failedSrc, setFailedSrc] = useState<string>();
+
+  if (!normalizedSrc || failedSrc === normalizedSrc) {
+    return null;
+  }
+
+  return (
+    <img
+      {...props}
+      className={cn(
+        "absolute inset-0 aspect-square size-full rounded-[inherit] object-cover",
+        className,
+      )}
+      decoding="async"
+      loading="lazy"
+      onError={(event) => {
+        setFailedSrc(normalizedSrc);
+        onError?.(event);
+      }}
+      src={normalizedSrc}
     />
   );
 }

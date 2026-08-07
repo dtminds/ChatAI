@@ -206,6 +206,68 @@ Rollback boundary:
 - If cleanup or migration must be reversed, restore the pre-migration backup before restarting the old `main` application.
 - After the new version writes tickets or activities, the old `main` application is not a safe rollback target.
 
+- Documented Boss-managed skill marketplace tables `xy_wap_embed_agent_skill_template` and `xy_wap_embed_agent_skill_template_group`.
+- ChatAI Node reads these tables for the skills marketplace only; they are **not** on the writable allowlist. Template CRUD remains Boss-owned.
+
+Manual migration for existing databases:
+
+```sql
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版图标',
+  `desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版描述',
+  `tip` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '模版使用提示',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `recommend_resources` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '推荐资源（复杂json数组，不同推荐类型有不同格式）',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未上线 1：已上线',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版';
+
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill_template_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '分组名称',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序（值越大越靠前）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：无效 1：有效',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能模版分组';
+```
+
+## 2026-07-28
+
+- Added `xy_wap_embed_agent_skill` for ChatAI-owned Agent skill CRUD (list / create / update / enable-disable / soft delete).
+- Node writes this table directly; it is on the `writable-tables.ts` allowlist. Boss skill templates are out of scope for this change.
+
+Manual migration for existing databases:
+
+```sql
+CREATE TABLE IF NOT EXISTS `xy_wap_embed_agent_skill` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '租户id',
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '技能名称',
+  `apply_scene` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '应用场景',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能内容描述',
+  `variables` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能变量（复杂json数组，不同变量类型有不同格式）',
+  `tools` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能工具,示例：["web","weather"]',
+  `kbs` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '技能知识库,示例：[1,2,3]',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0：未启用 1：已启用',
+  `is_del` tinyint NOT NULL DEFAULT '0' COMMENT '是否已删除 0：未删除 1：已删除',
+  `operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建操作人（子账号id）',
+  `last_operator_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '最近一次操作人（子账号id）',
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='第三方agent技能';
+```
+
 ## 2026-07-27
 
 - Replaced the unused scalar analysis-run token and model metadata columns with `xy_wap_embed_analysis_run.token_usage`.
@@ -1062,4 +1124,37 @@ ALTER TABLE xy_wap_embed_insight_analysis_policy
   ADD COLUMN enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用' AFTER uid;
 
 ANALYZE TABLE xy_wap_embed_logical_session;
+```
+
+## 2026-08-07 Agent 用户记忆
+
+本段合并并替代此前开发期的 Agent 用户记忆、运行观测、消息窗口索引、变更计数和取消运行项重试变更。仅适用于尚未执行过这些用户记忆 DDL 的发布环境。
+
+新增表：
+
+- `xy_wap_embed_agent_user_memory_config`：租户级自动提炼开关、规则、调度时间和运行代次。
+- `xy_wap_embed_agent_user_memory`：按 `uid + platform + third_external_userid` 保存客户当前记忆 JSON 和版本。
+- `xy_wap_embed_agent_user_memory_run`：每日运行快照、进度、Token 和记忆变更计数。
+- `xy_wap_embed_agent_user_memory_run_item`：每个运行内按客户记录来源会话、模型调用和合并结果。
+- `xy_wap_embed_user_memory_worker_state`：用户记忆 Worker 心跳和最近执行状态。
+
+存量表变更：
+
+- `xy_wap_embed_logical_session_message` 新增 `idx_session_message_conversation_order (conversation_id, source_message_time, source_message_id)`，支持按候选会话读取客户最近消息。
+- `xy_wap_embed_logical_session` 不变，候选自然日查询复用现有 `idx_logical_session_uid_started (uid, started_at)`。
+- Agent 的“使用客户记忆”配置写入现有 `xy_wap_embed_agent.prompt_config` JSON，不新增字段。
+
+新表直接按最终结构创建，不再对新表执行开发过程中的加列、加索引或删除 `next_attempt_at` 等中间态 `ALTER TABLE`。所有租户默认关闭，不初始化历史运行或回刷水位。
+
+新增五张表直接执行 `docs/db/schema.sql` 中对应的最终 `CREATE TABLE` 语句。
+
+存量表手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD KEY idx_session_message_conversation_order (
+    conversation_id,
+    source_message_time,
+    source_message_id
+  );
 ```

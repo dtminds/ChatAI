@@ -7,6 +7,10 @@ import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insight
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
+  AGENT_USER_MEMORY_DAILY_TIME: Type.Optional(Type.String()),
+  AGENT_USER_MEMORY_EXECUTION_MODE: Type.Optional(Type.String()),
+  AGENT_USER_MEMORY_TIMEZONE: Type.Optional(Type.String()),
+  AGENT_USER_MEMORY_WORKER_ENABLED: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),

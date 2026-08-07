@@ -2,28 +2,16 @@
 
 ## Repository Shape
 
-- `apps/web`: Vite + React 前端应用。
-- `apps/backend`: Fastify Node 后端服务，当前暴露 `/api/server/*` 工作台接口。
-- `packages/contracts`: 前后端共享 DTO、响应结构和契约类型，包名 `@chatai/contracts`。
-- `docs/superpowers/specs`: 设计、架构和接口方案文档。
-- `docs/db`: 数据库相关文档。
+- `apps/web` 是前端，`apps/backend` 是后端，`packages/contracts` 存放前后端共享契约；设计文档在 `docs/superpowers/specs`，数据库文档在 `docs/db`。
 
 ## Stack
 
-- Monorepo：pnpm workspace
-- Runtime：Node.js 24 LTS
-- Web：Vite 7、React 19、TypeScript、Tailwind CSS v4、shadcn/ui、Hugeicons、React Router v7、Zustand、Axios
-- Backend：Fastify 5、TypeScript、Kysely、mysql2、`@fastify/jwt`、TypeBox
-- Contracts：TypeScript、TypeBox
-- Tests：Vitest、Testing Library
-
-## Design References
-- 当前公开 API 前缀：`/api/server/*`
+- Node.js 24 LTS + pnpm workspace。
+- Web 使用 Vite、React、TypeScript、Tailwind CSS、shadcn/ui、Hugeicons、React Router、Zustand 和 Axios；Backend 使用 Fastify、TypeScript、Kysely、mysql2、`@fastify/jwt` 和 TypeBox；测试使用 Vitest 与 Testing Library。
 
 ## Architecture Agreements
 
-- 浏览器侧 API 默认走同源 `/api`，不要在业务代码里硬编码测试或生产 API 域名。
-- 公开业务接口统一使用 `/api/server/*`，不要在 URL 中暴露内部实现命名。
+- 浏览器侧 API 默认走同源 `/api`，公开业务接口统一使用 `/api/server/*`；不要硬编码测试或生产 API 域名，也不要在 URL 中暴露内部实现命名。
 - 前端业务请求统一从 `apps/web/src/lib/request.ts` 出口发起，不直接在页面里裸写 `fetch`。
 - 前后端共享 DTO 和响应结构优先放到 `packages/contracts`，不要在 web/backend 两边复制类型。
 - 鉴权使用 Bearer token；所有环境都必须走正常登录、JWT 和 session 校验，不再提供开发绕过。
@@ -45,6 +33,7 @@
 - UI 优化必须严格限制在用户指出的范围内。不得因为个人视觉判断顺手调整未被要求的按钮状态、尺寸、颜色、间距或交互反馈；如认为额外调整确有必要，应先说明理由并取得用户确认。
 - 做 UI 改动前必须先查同模块相邻页面和 `apps/web/src/components/ui` 的既有实现，优先复用现有组件、状态行、弹窗结构和文案模式；不要在未检索前手写临时 UI。
 - 前端异步操作（保存、删除、领取、评论、重试、触发任务等）失败时，必须使用 `toast.error` 或在当前操作弹窗内展示可立即看见、可随弹窗关闭的错误；禁止把操作错误写入页面级常驻 `setError` 后以内联提示展示。页面或区块级内联错误态仅用于该页面/区块自身加载失败，并且必须随重新加载、重试或路由切换自动清除；表单字段校验可在对应字段附近展示。
+- 写 UI 文案时，只写用户需要知道和可以操作的内容，不要解释内部实现。
 - 本项目不以完整 WCAG 合规作为当前目标，但前端代码仍需保持基础语义和组件可用性：优先使用原生语义元素和现有 shadcn/ui 组件；图标按钮、无文本交互控件需要有清晰的可访问名称；弹窗、菜单、下拉等交互优先依赖现有基础组件自带的键盘和焦点行为，不额外手写复杂焦点管理；不要为了无障碍目标引入额外产品复杂度、冗余 DOM、重复 aria 或大范围重构。
 - 图标统一使用 Hugeicons，不再引入 Lucide 或其他图标集。
 - 用户给 UI 截图时，截图只用于理解布局结构、信息层级、相对关系和状态，不允许根据截图像素尺寸、retina 分辨率或图片显示大小推导字号、间距、圆角、控件高度、弹窗宽高等具体 CSS 数值；尤其禁止因为截图看起来大就把文字、按钮或弹窗做大。具体尺寸优先沿用现有设计系统、shadcn 官方组件源码和项目已有 token。
@@ -83,35 +72,6 @@
 - 根目录 `.env.example`: 共享配置模板。
 - `apps/backend/.env.example`: 后端私密配置模板。
 - `apps/backend/.env.local`: 本地私密配置，按需创建，不提交。
-
-## Directory Notes
-
-- `apps/web/src/components/ui`: shadcn/ui 基础组件。
-- `apps/web/src/lib`: 通用工具、请求封装、样式工具。
-- `apps/web/src/pages/chat`: `/chat` 工作台页面、组件、前端服务适配层。
-- `apps/web/src/router`: React Router 路由定义。
-- `apps/web/src/store`: Zustand store。
-- `apps/web/test`: Web 端 Vitest 和 Testing Library 测试。
-- `apps/backend/src/config`: 后端配置和 env 加载。
-- `apps/backend/src/db`: MySQL/Kysely 接入点。
-- `apps/backend/src/modules/chat`: 工作台 API 路由和当前内存服务。
-- `apps/backend/src/modules/auth`: 鉴权 API 预留路由。
-- `apps/backend/test`: Backend 测试。
-- `packages/contracts/src`: 共享契约源码。
-- `packages/contracts/test`: 共享契约测试。
-
-## Dev Commands
-
-- 安装依赖：`pnpm install`
-- 启动 web，本地前端 -> 本地 backend：`pnpm dev`
-- 启动 web，本地前端 -> 测试环境 API：`pnpm dev:test-api`
-- 启动 backend：`pnpm backend:dev`
-- 全仓类型检查：`pnpm typecheck`
-- 全仓测试：`pnpm test`
-- 构建 web：`pnpm build`
-- 构建 backend：`pnpm backend:build`
-- 构建 contracts：`pnpm contracts:build`
-- 按配置生成 Kysely 类型：`pnpm backend:db:codegen`
 
 ## Pre-PR Verification
 

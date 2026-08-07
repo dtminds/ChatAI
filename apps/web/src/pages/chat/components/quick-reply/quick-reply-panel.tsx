@@ -471,10 +471,11 @@ export function QuickReplyPanel({
                 strokeWidth={1.8}
               />
               <Input
-                className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 pr-9 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
+                className="h-9 rounded-xl pl-10 pr-9 text-sm focus-visible:ring-2 focus-visible:ring-ring/12"
                 onChange={(event) => onKeywordChange(event.target.value)}
                 placeholder="搜索话术"
                 value={keyword}
+                variant="soft"
               />
               {keyword ? (
                 <Button

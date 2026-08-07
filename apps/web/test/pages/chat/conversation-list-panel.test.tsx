@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -259,6 +259,37 @@ describe("ConversationListPanel", () => {
         name: new RegExp(activeConversation.customerName),
       }),
     ).toBeInTheDocument();
+  });
+
+  it("cancels a deferred conversation selection when unmounted", () => {
+    vi.useFakeTimers();
+    const onSelectConversation = vi.fn();
+    const nextConversation = conversations[1];
+
+    try {
+      const { unmount } = render(
+        <ConversationListPanel
+          activeConversation={conversations[0]}
+          activeMode="single"
+          conversations={conversations}
+          onSelectConversation={onSelectConversation}
+          onSelectMode={vi.fn()}
+          searchableConversations={conversations}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: new RegExp(nextConversation.customerName),
+        }),
+      );
+      unmount();
+      vi.runOnlyPendingTimers();
+
+      expect(onSelectConversation).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps inactive mode conversation cards mounted while switching tabs", () => {

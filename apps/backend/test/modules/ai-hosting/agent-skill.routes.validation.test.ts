@@ -1,0 +1,178 @@
+import { afterEach, describe, expect, it } from "vitest";
+import Fastify from "fastify";
+import {
+  AgentSkillSaveRequestSchema,
+  type AgentSkillSaveRequest,
+} from "@chatai/contracts";
+
+describe("agent skill save body schema", () => {
+  let app: ReturnType<typeof Fastify> | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it("accepts work_tag variables with select_sub_ids", async () => {
+    app = Fastify();
+    app.post<{ Body: AgentSkillSaveRequest }>(
+      "/skills",
+      {
+        schema: {
+          body: AgentSkillSaveRequestSchema,
+        },
+      },
+      async (request) => request.body,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        applyScene: "",
+        content: "111",
+        kbs: [21],
+        name: "111",
+        tools: ["search_mall_order_logistics"],
+        variables: [
+          {
+            name: "客户等级",
+            select_id: 3172,
+            select_sub_ids: [21311, 21312],
+            type: "work_tag",
+          },
+          {
+            name: "基础会员标签",
+            select_id: 31,
+            select_sub_ids: [311],
+            type: "mall_tag",
+          },
+        ],
+      },
+      url: "/skills",
+    });
+
+    if (response.statusCode !== 200) {
+      // eslint-disable-next-line no-console
+      console.log(response.body);
+    }
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().variables).toEqual([
+      {
+        name: "客户等级",
+        select_id: 3172,
+        select_sub_ids: [21311, 21312],
+        type: "work_tag",
+      },
+      {
+        name: "基础会员标签",
+        select_id: 31,
+        select_sub_ids: [311],
+        type: "mall_tag",
+      },
+    ]);
+  });
+
+  it.each(["auto_tag", "system_variable"] as const)(
+    "rejects an empty select_key for %s variables",
+    async (type) => {
+      app = Fastify();
+      app.post<{ Body: AgentSkillSaveRequest }>(
+        "/skills",
+        {
+          schema: {
+            body: AgentSkillSaveRequestSchema,
+          },
+        },
+        async (request) => request.body,
+      );
+
+      const response = await app.inject({
+        method: "POST",
+        payload: {
+          applyScene: "",
+          content: "查询客户信息",
+          kbs: [],
+          name: "客户信息技能",
+          tools: [],
+          variables: [{ name: "客户变量", select_key: "", type }],
+        },
+        url: "/skills",
+      });
+
+      expect(response.statusCode).toBe(400);
+    },
+  );
+
+  it.each([
+    ["技能名称", { name: "技".repeat(31) }],
+    ["技能应用场景", { applyScene: "场".repeat(501) }],
+    ["知识库数量", { kbs: Array.from({ length: 11 }, (_, index) => index + 1) }],
+    [
+      "变量数量",
+      {
+        variables: Array.from({ length: 11 }, (_, index) => ({
+          name: `系统变量 ${index}`,
+          select_key: `system_variable_${index}`,
+          type: "system_variable",
+        })),
+      },
+    ],
+    [
+      "工具数量",
+      { tools: Array.from({ length: 11 }, (_, index) => `tool_${index}`) },
+    ],
+    [
+      "企微标签数量",
+      {
+        variables: [
+          {
+            name: "企微标签",
+            select_id: 11,
+            select_sub_ids: Array.from({ length: 11 }, (_, index) => index + 1),
+            type: "work_tag",
+          },
+        ],
+      },
+    ],
+    [
+      "小店标签数量",
+      {
+        variables: [
+          {
+            name: "小店标签",
+            select_id: 31,
+            select_sub_ids: Array.from({ length: 11 }, (_, index) => index + 1),
+            type: "mall_tag",
+          },
+        ],
+      },
+    ],
+  ])("rejects %s exceeding the save limit", async (_field, overrides) => {
+    app = Fastify();
+    app.post<{ Body: AgentSkillSaveRequest }>(
+      "/skills",
+      {
+        schema: {
+          body: AgentSkillSaveRequestSchema,
+        },
+      },
+      async (request) => request.body,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        applyScene: "",
+        content: "查询订单物流",
+        kbs: [],
+        name: "物流技能",
+        tools: [],
+        variables: [],
+        ...overrides,
+      },
+      url: "/skills",
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});

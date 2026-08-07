@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingLearningCandidateItem,
@@ -17,6 +17,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,7 +92,7 @@ import type { KbDocViewItem, KbListViewItem } from "./kb-types";
 import { useAuthStore } from "@/store/auth-store";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
-import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { FileExtensionBadge } from "@/pages/chat/components/file-extension-badge";
 
 type SuggestionStatus = AiHostingLearningCandidateItem["status"];
 type IngestMode = "batch" | "single";
@@ -100,17 +101,6 @@ const KNOWLEDGE_PICKER_PAGE_SIZE = 10;
 const VERY_HIGH_CONFIDENCE_THRESHOLD = 0.9;
 const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 const AI_EVALUATION_ICON_URL = "https://b5.bokr.com.cn/dist/ui/shield-lightning.svg";
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
 
 const suggestionTabs: Array<{ label: string; value: SuggestionStatus }> = [
   { label: "待处理", value: "pending" },
@@ -185,6 +175,7 @@ export function AgentOptimizationSuggestionsPage() {
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState("");
   const [selectedKnowledge, setSelectedKnowledge] = useState<KbDocViewItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [searchDetailCandidateId, setSearchDetailCandidateId] = useState<string | null>(null);
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
@@ -529,7 +520,7 @@ export function AgentOptimizationSuggestionsPage() {
               >
                 {candidates.map((suggestion, index) => (
                   <SuggestionCard
-                    checked={selectedIds.includes(suggestion.id)}
+                    checked={selectedIdSet.has(suggestion.id)}
                     displayIndex={(activePage - 1) * PAGE_SIZE + index + 1}
                     key={suggestion.id}
                     onAdopt={() => openIngestDialog("single", [suggestion.id])}
@@ -639,6 +630,7 @@ export function AgentOptimizationSuggestionsPage() {
                       className="w-full"
                       id="optimization-kb-select"
                       ref={knowledgeBaseSelectRef}
+                      variant="soft"
                     >
                       <SelectValue
                         placeholder={
@@ -666,7 +658,7 @@ export function AgentOptimizationSuggestionsPage() {
                     id="optimization-knowledge-select"
                     onClick={() => setKnowledgePickerOpen(true)}
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                   >
                     <span
                       className={cn(
@@ -689,6 +681,7 @@ export function AgentOptimizationSuggestionsPage() {
                         id="optimization-question"
                         onChange={(event) => setIngestQuestion(event.target.value)}
                         value={ingestQuestion}
+                        variant="soft"
                       />
                     </div>
                     <div className="space-y-2">
@@ -701,6 +694,7 @@ export function AgentOptimizationSuggestionsPage() {
                         id="optimization-answer"
                         onChange={(event) => setIngestAnswer(event.target.value)}
                         value={ingestAnswer}
+                        variant="soft"
                       />
                     </div>
                   </>

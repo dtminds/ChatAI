@@ -10,15 +10,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useShallow } from "zustand/react/shallow";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
@@ -79,6 +70,7 @@ type ConversationListPanelProps = {
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
+  onOpenSearchResult?: (item: SearchResultItem) => void | Promise<void>;
   onRefreshUnreadConversations?: (mode: ChatMode) => void | Promise<void>;
   onSelectConversation: (
     conversationId: string,
@@ -107,6 +99,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   onMarkConversationUnread,
   onDeleteConversation,
   onPinConversation,
+  onOpenSearchResult,
   onRefreshUnreadConversations,
   onSelectConversation,
   onSelectMode,
@@ -123,12 +116,8 @@ export const ConversationListPanel = memo(function ConversationListPanel({
     isSearchLoading,
     setSearchKeyword,
     selectOrCreateAndSelectConversation,
-    conversationOpenError,
-    dismissConversationOpenError,
   } = useWorkbenchStore(
     useShallow((state) => ({
-      conversationOpenError: state.conversationOpenError,
-      dismissConversationOpenError: state.dismissConversationOpenError,
       isSearchLoading: state.isSearchLoading,
       searchKeyword: state.searchKeyword,
       searchResults: state.searchResults,
@@ -159,6 +148,7 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   );
   const committedConversationIdRef = useRef(activeConversationId);
   const selectRequestIdRef = useRef(0);
+  const selectTaskTimerRef = useRef<number | null>(null);
   const viewsByMode = useMemo(
     () => conversationViews ?? {
       group: activeView,
@@ -219,9 +209,23 @@ export const ConversationListPanel = memo(function ConversationListPanel({
     setHighlightedConversationId(activeConversationId);
   }, [activeConversationId]);
 
+  useEffect(() => {
+    return () => {
+      selectRequestIdRef.current += 1;
+
+      if (selectTaskTimerRef.current !== null) {
+        window.clearTimeout(selectTaskTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
       const requestId = ++selectRequestIdRef.current;
+
+      if (selectTaskTimerRef.current !== null) {
+        window.clearTimeout(selectTaskTimerRef.current);
+      }
 
       flushSync(() => {
         setHighlightedConversationId(conversationId);
@@ -229,7 +233,9 @@ export const ConversationListPanel = memo(function ConversationListPanel({
 
       // Defer store selection to the next task so the optimistic highlight can paint
       // before the workbench's broad Zustand subscription re-renders the shell.
-      window.setTimeout(() => {
+      selectTaskTimerRef.current = window.setTimeout(() => {
+        selectTaskTimerRef.current = null;
+
         if (selectRequestIdRef.current !== requestId) {
           return;
         }
@@ -287,32 +293,11 @@ export const ConversationListPanel = memo(function ConversationListPanel({
 
   const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
-    void selectOrCreateAndSelectConversation(item);
+    void (onOpenSearchResult ?? selectOrCreateAndSelectConversation)(item);
   };
 
   return (
     <>
-      <AlertDialog
-        open={!!conversationOpenError}
-        onOpenChange={(open) => {
-          if (!open) dismissConversationOpenError();
-        }}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>开启会话失败</AlertDialogTitle>
-            <AlertDialogDescription>
-              {conversationOpenError}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={dismissConversationOpenError}>
-              我知道了
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <section className="flex min-h-0 min-w-0 flex-col border-r border-divider bg-surface">
       <div className="border-b border-divider px-4 py-4">
         <Popover
@@ -335,13 +320,14 @@ export const ConversationListPanel = memo(function ConversationListPanel({
                 strokeWidth={1.8}
               />
               <Input
-                className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 pr-9 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
+                className="h-9 rounded-xl pl-10 pr-9 text-sm focus-visible:ring-2 focus-visible:ring-ring/12"
                 onChange={(event) => {
                   setSearchKeyword(event.target.value);
                   setExpandedSearchSection(null);
                 }}
                 placeholder="搜索客户、群名称"
                 value={searchKeyword}
+                variant="soft"
               />
               {searchKeyword ? (
                 <Button

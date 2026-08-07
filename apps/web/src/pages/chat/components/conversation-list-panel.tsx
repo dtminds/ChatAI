@@ -32,6 +32,10 @@ import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
 import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { ConversationComposerDraft } from "@/pages/chat/lib/conversation-composer-draft";
 import {
+  mergeConversationSearchResults,
+  searchLocalConversations,
+} from "@/pages/chat/lib/conversation-search";
+import {
   DEFAULT_CONVERSATION_VIEW,
   filterConversationsByView,
   getConversationViewLabel,
@@ -127,6 +131,14 @@ export const ConversationListPanel = memo(function ConversationListPanel({
   );
   const normalizedKeyword = searchKeyword.trim().toLocaleLowerCase();
   const isSearchOpen = normalizedKeyword.length > 0;
+  const localSearchResults = useMemo(
+    () => searchLocalConversations(searchableConversations, searchKeyword.trim()),
+    [searchKeyword, searchableConversations],
+  );
+  const mergedSearchResults = useMemo(
+    () => mergeConversationSearchResults(localSearchResults, searchResults),
+    [localSearchResults, searchResults],
+  );
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ChatMode>>(
     () => new Set([activeMode]),
   );
@@ -358,12 +370,12 @@ export const ConversationListPanel = memo(function ConversationListPanel({
           >
             <SearchResultDropdown
               expandedSection={expandedSearchSection}
-              groups={searchResults?.groups ?? []}
+              groups={mergedSearchResults.groups}
               keyword={searchKeyword.trim()}
               onCollapse={() => setExpandedSearchSection(null)}
               onExpand={setExpandedSearchSection}
               onSelect={handleSearchSelect}
-              customers={searchResults?.contacts ?? []}
+              customers={mergedSearchResults.contacts}
               isLoading={isSearchLoading}
             />
           </PopoverContent>
@@ -700,11 +712,10 @@ function SearchResultDropdown({
   const visibleGroups =
     expandedSection === "group" ? groups : groups.slice(0, GROUP_PREVIEW_LIMIT);
 
-  if (isLoading) {
+  if (isLoading && customers.length === 0 && groups.length === 0) {
     return (
-      <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Spinner variant="classic" size={18} />
-        <span>正在搜索中...</span>
+      <div className="relative h-full min-h-0">
+        <SearchLoadingIndicator />
       </div>
     );
   }
@@ -723,7 +734,7 @@ function SearchResultDropdown({
     const groupsList = expandedSection === "group" ? groups : [];
 
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="relative flex h-full min-h-0 flex-col">
         <div className="shrink-0 bg-popover px-4 py-2 border-b border-divider">
           <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
         </div>
@@ -766,75 +777,94 @@ function SearchResultDropdown({
             收起
           </Button>
         </div>
+        {isLoading ? <SearchLoadingIndicator /> : null}
       </div>
     );
   }
 
   return (
-    <ScrollArea
-      className="h-full"
-      data-testid="conversation-search-results-scroll-area"
+    <div className="relative flex h-full min-h-0 flex-col">
+      <ScrollArea
+        className="min-h-0 flex-1"
+        data-testid="conversation-search-results-scroll-area"
+      >
+        <div>
+          {isShowingCustomers && customers.length > 0 ? (
+            <section className="py-3">
+              <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
+                联系人
+              </h2>
+              <div className="space-y-1">
+                {visibleCustomers.map((contact) => (
+                  <SearchContactResultItem
+                    item={contact}
+                    key={contact.thirdExternalUserId}
+                    keyword={keyword}
+                    onSelect={() => onSelect(contact)}
+                  />
+                ))}
+              </div>
+              {customers.length > CUSTOMER_PREVIEW_LIMIT ? (
+                <Button
+                  className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
+                  onClick={() => onExpand("single")}
+                  type="button"
+                  variant="ghost"
+                >
+                  查看全部
+                </Button>
+              ) : null}
+            </section>
+          ) : null}
+          {isShowingCustomers &&
+          isShowingGroups &&
+          customers.length > 0 &&
+          groups.length > 0 ? (
+            <div className="border-t border-divider" />
+          ) : null}
+          {isShowingGroups && groups.length > 0 ? (
+            <section className="py-3">
+              <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
+                群聊
+              </h2>
+              <div className="space-y-1">
+                {visibleGroups.map((group) => (
+                  <SearchGroupResultItem
+                    item={group}
+                    key={group.thirdGroupId}
+                    keyword={keyword}
+                    onSelect={() => onSelect(group)}
+                  />
+                ))}
+              </div>
+              {groups.length > GROUP_PREVIEW_LIMIT ? (
+                <Button
+                  className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
+                  onClick={() => onExpand("group")}
+                  type="button"
+                  variant="ghost"
+                >
+                  查看全部
+                </Button>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
+      </ScrollArea>
+      {isLoading ? <SearchLoadingIndicator /> : null}
+    </div>
+  );
+}
+
+function SearchLoadingIndicator() {
+  return (
+    <div
+      aria-label="正在搜索"
+      className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 text-muted-foreground"
+      role="status"
     >
-      <div>
-        {isShowingCustomers && customers.length > 0 ? (
-          <section className="py-3">
-            <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
-              联系人
-            </h2>
-            <div className="space-y-1">
-              {visibleCustomers.map((contact) => (
-                <SearchContactResultItem
-                  item={contact}
-                  key={contact.thirdExternalUserId}
-                  keyword={keyword}
-                  onSelect={() => onSelect(contact)}
-                />
-              ))}
-            </div>
-            {customers.length > CUSTOMER_PREVIEW_LIMIT ? (
-              <Button
-                className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
-                onClick={() => onExpand("single")}
-                type="button"
-                variant="ghost"
-              >
-                查看全部
-              </Button>
-            ) : null}
-          </section>
-        ) : null}
-        {isShowingCustomers && isShowingGroups && customers.length > 0 && groups.length > 0 ? (
-          <div className="border-t border-divider" />
-        ) : null}
-        {isShowingGroups && groups.length > 0 ? (
-          <section className="py-3">
-            <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
-              群聊
-            </h2>
-            <div className="space-y-1">
-              {visibleGroups.map((group) => (
-                <SearchGroupResultItem
-                  item={group}
-                  key={group.thirdGroupId}
-                  keyword={keyword}
-                  onSelect={() => onSelect(group)}
-                />
-              ))}
-            </div>
-            {groups.length > GROUP_PREVIEW_LIMIT ? (
-              <Button
-                className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
-                onClick={() => onExpand("group")}
-                type="button"
-                variant="ghost"
-              >
-                查看全部
-              </Button>
-            ) : null}
-          </section>
-        ) : null}
-      </div>
-    </ScrollArea>
+      <Spinner size={14} variant="classic" />
+    </div>
   );
 }
 

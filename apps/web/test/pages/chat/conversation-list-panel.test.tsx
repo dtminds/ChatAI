@@ -810,7 +810,81 @@ describe("ConversationListPanel", () => {
     );
 
     const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
-    expect(within(searchbox).getByText("正在搜索中...")).toBeInTheDocument();
+    expect(
+      within(searchbox).getByRole("status", { name: "正在搜索" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows local conversation matches while server search is still loading", async () => {
+    const localGroup = {
+      ...createConversation({
+        customerName: "接待号西瓜群",
+        id: "local-shadow-group",
+        mode: "group",
+      }),
+      isShadowGroup: true,
+      thirdGroupId: "third-group-local",
+      thirdUserId: "reception-seat-001",
+    };
+    storeState = {
+      ...defaultStoreState,
+      searchKeyword: "西瓜",
+      isSearchLoading: true,
+      searchResults: null,
+    };
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        conversations={[localGroup]}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={[localGroup]}
+      />,
+    );
+
+    const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+
+    expect(
+      within(searchbox).getByRole("status", { name: "正在搜索" }),
+    ).toBeInTheDocument();
+    expect(
+      within(searchbox).getByRole("button", { name: "接待号西瓜群" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a local nickname match with the contact remark", async () => {
+    const localContact = {
+      ...createConversation({
+        customerName: "老客户",
+        id: "local-contact",
+        mode: "single",
+      }),
+      contactOriginalName: "微信昵称：西瓜糖",
+      thirdExternalUserId: "external-local-contact",
+    };
+    storeState = {
+      ...defaultStoreState,
+      searchKeyword: "西瓜糖",
+      isSearchLoading: true,
+      searchResults: null,
+    };
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={[localContact]}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={[localContact]}
+      />,
+    );
+
+    const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+
+    expect(
+      within(searchbox).getByRole("button", { name: "老客户（西瓜糖）" }),
+    ).toBeInTheDocument();
   });
 
   it("shows empty message when no results found", async () => {

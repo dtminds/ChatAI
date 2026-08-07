@@ -716,6 +716,15 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getMe(getSubUserId(request)),
   );
 
+  app.get(
+    "/api/server/broadcast-protection",
+    { preHandler: app.authenticate },
+    async (request) =>
+      getWorkbenchService(app, request).getBroadcastProtectionStatus(
+        request.user.uid,
+      ),
+  );
+
   app.post<{ Body: SidebarIframeParamsBody }>(
     "/api/server/sidebar-iframe-params",
     {

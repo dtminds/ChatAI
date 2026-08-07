@@ -126,6 +126,51 @@ describe("AccountRail", () => {
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
+  it("places the UID-level broadcast protection entry in the account footer", () => {
+    const status = {
+      degradeCallbackCnt: 1800,
+      degradeCallbackRate: 120,
+      normalCallbackCnt: 8,
+      normalCallbackRate: 600,
+    };
+    const onRefreshBroadcastProtection = vi.fn().mockResolvedValue({
+      kind: "active",
+      status,
+    });
+    const expanded = render(
+      <AccountRail
+        accounts={accounts}
+        broadcastProtectionStatus={status}
+        currentEmployee={currentEmployee}
+        onRefreshBroadcastProtection={onRefreshBroadcastProtection}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(
+      within(screen.getByTestId("account-rail-footer")).getByRole("button", {
+        name: "群发保护已激活，查看详情",
+      }),
+    ).toBeInTheDocument();
+    expanded.unmount();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        broadcastProtectionStatus={status}
+        currentEmployee={currentEmployee}
+        isCollapsed
+        onRefreshBroadcastProtection={onRefreshBroadcastProtection}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+    expect(
+      within(screen.getByTestId("account-rail-footer")).getByRole("button", {
+        name: "群发保护已激活，查看详情",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("shows the assigned ticket count on the ticket module entry", async () => {
     render(
       <AccountRail

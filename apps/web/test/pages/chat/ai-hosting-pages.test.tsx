@@ -2292,10 +2292,11 @@ describe("AI hosting pages", () => {
       "true",
     );
     expect(
-      await within(dialog).findByRole("region", { name: "推荐变量" }),
+      await within(dialog).findByRole("region", { name: "建议关联配置资源" }),
     ).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "推荐工具" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "推荐知识库" })).toBeInTheDocument();
+    expect(within(dialog).getByText("客户标签查询")).toBeInTheDocument();
+    expect(within(dialog).getByText("订单查询")).toBeInTheDocument();
+    expect(within(dialog).getByText("美妆护肤")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "预览技能" })).toBeInTheDocument();
     expect(
       within(dialog).queryByRole("button", { name: "选择客户标签查询" }),
@@ -2311,9 +2312,9 @@ describe("AI hosting pages", () => {
         selector: "[data-skill-resource-chip='true']",
       }),
     ).toHaveAttribute("data-skill-resource-kind", "tool");
-    expect(within(dialog).getByRole("region", { name: "推荐变量" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "推荐工具" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "推荐知识库" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("region", { name: "建议关联配置资源" }),
+    ).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -2342,7 +2343,9 @@ describe("AI hosting pages", () => {
 
     const detailDialog = screen.getByRole("dialog");
     expect(
-      await within(detailDialog).findByRole("region", { name: "推荐变量" }),
+      await within(detailDialog).findByRole("region", {
+        name: "建议关联配置资源",
+      }),
     ).toBeInTheDocument();
     expect(
       within(detailDialog).queryByRole("button", { name: "选择客户标签查询" }),
@@ -2354,47 +2357,11 @@ describe("AI hosting pages", () => {
     expect(await screen.findByRole("heading", { name: "资源管理" })).toBeInTheDocument();
     expect(screen.getByText("订单查询")).toBeInTheDocument();
     const recommendTips = screen.getByRole("region", { name: "推荐资源" });
-    expect(recommendTips).toHaveTextContent("小tips：");
-    expect(recommendTips).toHaveTextContent("推荐选择以下资源");
+    expect(recommendTips).toHaveTextContent("客户标签查询");
+    expect(recommendTips).toHaveTextContent("订单履约");
     expect(
-      within(recommendTips).getByRole("button", { name: "选择客户标签查询" }),
-    ).toBeInTheDocument();
-    expect(
-      within(recommendTips).queryByRole("button", { name: "选择订单查询" }),
+      within(recommendTips).queryByRole("button"),
     ).not.toBeInTheDocument();
-    expect(
-      within(recommendTips).getByRole("button", { name: "选择订单履约" }),
-    ).toBeInTheDocument();
-
-    await user.click(within(recommendTips).getByRole("button", { name: "选择订单履约" }));
-    const recommendPicker = await screen.findByRole("dialog");
-    expect(
-      within(recommendPicker).getByRole("heading", { name: "订单履约" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "选择知识库" }),
-    ).not.toBeInTheDocument();
-
-    const kbOption = await within(recommendPicker).findByRole("option", {
-      name: "售后问题解答",
-    });
-    await user.click(kbOption);
-    await user.click(within(recommendPicker).getByRole("button", { name: "确定" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("button", { name: "选择订单履约" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "推荐资源" })).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "推荐资源" })).getByRole(
-        "button",
-        { name: "选择客户标签查询" },
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("售后问题解答")).toBeInTheDocument();
   });
 
   it("opens my skills tab from the tab query and navigates to skill settings", async () => {

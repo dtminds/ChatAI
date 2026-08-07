@@ -104,9 +104,7 @@ import {
   InsertVariableDialog,
   type InsertVariableInitialConfigure,
 } from "./ai-skill-insert-variable-dialog";
-import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
 import {
-  buildEditableResourcesFromRecommendations,
   buildKnowledgeBasePlaceholder,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
@@ -313,12 +311,7 @@ export function AiSkillSettingsPage() {
   const [editingVariable, setEditingVariable] = useState<SkillResourceItem | null>(
     null,
   );
-  const [recommendResources, setRecommendResources] = useState<
-    readonly SkillRecommendBinding[]
-  >(() => createDraft?.recommendResources ?? []);
-  const [pickingRecommendIndex, setPickingRecommendIndex] = useState<number | null>(
-    null,
-  );
+  const recommendResources = createDraft?.recommendResources ?? [];
   const [removeTarget, setRemoveTarget] = useState<{
     item: SkillResourceItem;
     sectionId: ResourceSectionId;
@@ -326,18 +319,6 @@ export function AiSkillSettingsPage() {
   } | null>(null);
   const [invalidResourceDialog, setInvalidResourceDialog] =
     useState<InvalidSkillResources>(null);
-
-  const pickingRecommend =
-    pickingRecommendIndex == null
-      ? null
-      : (recommendResources[pickingRecommendIndex] ?? null);
-  const pickingRecommendEditableResources = useMemo(
-    () =>
-      pickingRecommend
-        ? buildEditableResourcesFromRecommendations([pickingRecommend])
-        : [],
-    [pickingRecommend],
-  );
 
   const variableInitialConfigure = useMemo<InsertVariableInitialConfigure | null>(
     () => {
@@ -348,6 +329,7 @@ export function AiSkillSettingsPage() {
           initialVariable: editingVariable.variable,
         };
       }
+
       return null;
     },
     [editingVariable],
@@ -631,50 +613,20 @@ export function AiSkillSettingsPage() {
     descriptionEditorRef.current?.focus();
   }
 
-  function handleSelectRecommendResource(index: number) {
+  function handleOpenResourcePicker(sectionId: ResourceSectionId) {
     if (controlsDisabled) {
       return;
     }
 
-    if (!recommendResources[index]) {
-      return;
-    }
-
     setEditingVariable(null);
-    setActiveInsertSection(null);
-    setVariableDialogOpen(false);
-    setPickingRecommendIndex(index);
-  }
-
-  function handleConfirmRecommendResource(result: {
-    resources: {
-      "knowledge-bases": SkillResourceItem[];
-      tools: SkillResourceItem[];
-      variables: SkillResourceItem[];
-    };
-  }) {
-    const index = pickingRecommendIndex;
-    if (index == null) {
+    if (sectionId === "variables") {
+      setActiveInsertSection(null);
+      setVariableDialogOpen(true);
       return;
     }
 
-    if (result.resources.variables.length > 0) {
-      handleAddResources("variables", result.resources.variables);
-    }
-    if (result.resources.tools.length > 0) {
-      handleAddResources("tools", result.resources.tools);
-    }
-    if (result.resources["knowledge-bases"].length > 0) {
-      handleAddResources(
-        "knowledge-bases",
-        result.resources["knowledge-bases"],
-      );
-    }
-
-    setRecommendResources((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
-    setPickingRecommendIndex(null);
+    setVariableDialogOpen(false);
+    setActiveInsertSection(sectionId);
   }
 
   return (
@@ -877,14 +829,7 @@ export function AiSkillSettingsPage() {
                     icon={section.icon}
                     items={selectedResources[section.id]}
                     key={section.id}
-                    onAdd={() => {
-                      if (section.id === "variables") {
-                        setEditingVariable(null);
-                        setVariableDialogOpen(true);
-                        return;
-                      }
-                      setActiveInsertSection(section.id);
-                    }}
+                    onAdd={() => handleOpenResourcePicker(section.id)}
                     onEdit={
                       section.id === "variables"
                         ? (item) => {
@@ -904,13 +849,7 @@ export function AiSkillSettingsPage() {
             </aside>
 
             {!isEditMode && recommendResources.length > 0 ? (
-              <SkillRecommendResourcesTips
-                disabled={controlsDisabled}
-                items={recommendResources}
-                onSelect={(index) => {
-                  handleSelectRecommendResource(index);
-                }}
-              />
+              <SkillRecommendResourcesTips items={recommendResources} />
             ) : null}
           </div>
         </div>
@@ -945,19 +884,6 @@ export function AiSkillSettingsPage() {
           }
         }}
         open={variableDialogOpen || activeInsertSection === "variables"}
-      />
-
-      <SkillPreviewEditResourcesDialog
-        content=""
-        editableResources={pickingRecommendEditableResources}
-        onCancel={() => {
-          setPickingRecommendIndex(null);
-        }}
-        onConfirm={(result) => {
-          handleConfirmRecommendResource(result);
-        }}
-        open={pickingRecommend != null}
-        presentation="direct-picker"
       />
 
       <AlertDialog
@@ -1031,13 +957,9 @@ export function AiSkillSettingsPage() {
 }
 
 function SkillRecommendResourcesTips({
-  disabled,
   items,
-  onSelect,
 }: {
-  disabled?: boolean;
   items: readonly SkillRecommendBinding[];
-  onSelect: (index: number) => void;
 }) {
   if (items.length === 0) {
     return null;
@@ -1046,46 +968,35 @@ function SkillRecommendResourcesTips({
   return (
     <section
       aria-label="推荐资源"
-      className="ai-skill-recommend-tips rounded-[14px] border bg-card p-3"
+      className="ai-skill-recommend-tips overflow-hidden rounded-[14px] border"
     >
-      <div className="ai-skill-recommend-tips__banner flex items-center gap-2 rounded-[6px] px-3 py-2">
+      <div className="ai-skill-recommend-tips__banner flex items-center gap-2 px-4 py-2">
         <span
           aria-hidden="true"
           className="ai-skill-recommend-tips__icon inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none"
         >
           !
         </span>
-        <p className="ai-skill-recommend-tips__text text-sm leading-5">
-          小tips： 推荐选择以下资源
+        <p className="ai-skill-recommend-tips__text text-xs leading-4">
+          小贴士：建议关联配置资源使用
         </p>
       </div>
-      <ul className="mt-1">
+      <ul className="ai-skill-recommend-tips__content relative z-10 divide-y divide-border/60 rounded-t-[18px] px-4 pt-2">
         {items.map((item, index) => (
           <li
-            className="flex items-start gap-3 px-1 py-3"
+            className="px-2 py-4"
             key={`${item.type}-${item.title}-${index}`}
           >
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-medium leading-5 text-foreground">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold leading-5 text-foreground">
                 {item.title}
               </p>
               {item.description ? (
-                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                <p className="text-xs leading-5 text-muted-foreground">
                   {item.description}
                 </p>
               ) : null}
             </div>
-            <Button
-              aria-label={`选择${item.title}`}
-              className="h-8 shrink-0 rounded-[8px] px-3"
-              disabled={disabled}
-              onClick={() => onSelect(index)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              选择
-            </Button>
           </li>
         ))}
       </ul>

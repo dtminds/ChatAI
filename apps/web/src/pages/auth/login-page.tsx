@@ -194,17 +194,30 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="pt-6 text-center text-sm text-muted-foreground">
-        点击继续，即表示你同意我们的{" "}
-        <a className="underline underline-offset-4 hover:text-primary" href="#">
-          服务条款
-        </a>{" "}
-        和{" "}
-        <a className="underline underline-offset-4 hover:text-primary" href="#">
-          隐私政策
+      <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pt-6 text-xs text-muted-foreground">
+        <a
+          className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+          href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33010902003191"
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            className="size-4 shrink-0"
+            src="https://www.bokr.com.cn/assets/img/records/put-on.png"
+          />
+          <span>浙公网安备 33010902003191号</span>
         </a>
-        。
-      </div>
+        <a
+          className="transition-colors hover:text-foreground"
+          href="https://beian.miit.gov.cn/"
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          浙ICP备2020043436号-1
+        </a>
+      </footer>
     </div>
   );
 }

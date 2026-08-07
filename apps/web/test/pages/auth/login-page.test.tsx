@@ -66,6 +66,15 @@ describe("LoginPage", () => {
     expect(
       screen.queryByText(/Or continue with|快捷登录|Apple|Google|Meta/i),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "浙公网安备 33010902003191号" })).toHaveAttribute(
+      "href",
+      "http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33010902003191",
+    );
+    expect(screen.getByRole("link", { name: "浙ICP备2020043436号-1" })).toHaveAttribute(
+      "href",
+      "https://beian.miit.gov.cn/",
+    );
+    expect(screen.queryByText(/点击继续，即表示你同意/)).not.toBeInTheDocument();
   });
 
   it("uses a fallback ALTCHA control outside secure browser contexts", async () => {

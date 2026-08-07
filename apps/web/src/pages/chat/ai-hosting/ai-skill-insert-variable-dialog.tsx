@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { AGENT_SKILL_TAG_MAX_COUNT } from "@chatai/contracts";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -181,7 +182,7 @@ function usesComponentTagApi(kind: TagKind | null) {
 type InsertVariableDialogProps = {
   addedVariables?: readonly SkillResourceItem[];
   initialConfigure?: InsertVariableInitialConfigure | null;
-  onConfirm: (items: readonly SkillResourceItem[]) => void;
+  onConfirm: (items: readonly SkillResourceItem[]) => boolean | void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 };
@@ -212,7 +213,6 @@ export function InsertVariableDialog({
   const [workTagGroups, setWorkTagGroups] = useState<WorkTagGroupOption[]>([]);
   const [workTagGroupsLoading, setWorkTagGroupsLoading] = useState(false);
   const [workTagGroupsError, setWorkTagGroupsError] = useState(false);
-  const [workTagLimit, setWorkTagLimit] = useState<number | null>(null);
   const [workTags, setWorkTags] = useState<TagItem[]>([]);
   /** 小店标签一次拉全量后本地按分组过滤（上游常无可用 groupId） */
   const [mallAllTags, setMallAllTags] = useState<
@@ -339,7 +339,7 @@ export function InsertVariableDialog({
         if (!cancelled) {
           setCustomInfoFields([]);
           setCustomInfoFieldsError(true);
-          toast.error("自定义属性加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -385,7 +385,7 @@ export function InsertVariableDialog({
           setSystemVariables([]);
           setSelectedSystemVariableKeys([]);
           setSystemVariablesError(true);
-          toast.error("系统变量加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -440,7 +440,7 @@ export function InsertVariableDialog({
           setSelectedAutoGroupTag("");
           setSelectedAutoTagKey("");
           setAutoTagGroupsError(true);
-          toast.error("自动化标签加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -535,7 +535,6 @@ export function InsertVariableDialog({
                 (right.sort ?? 0) - (left.sort ?? 0) || left.id - right.id,
             ),
           );
-          setWorkTagLimit(null);
           setWorkTags([]);
         } else {
           setMallAllTags([]);
@@ -555,22 +554,12 @@ export function InsertVariableDialog({
               name: group.name,
             })),
           );
-          setWorkTagLimit(
-            typeof response.tagLimit === "number" && response.tagLimit > 0
-              ? response.tagLimit
-              : null,
-          );
         }
       } catch {
         if (!cancelled) {
           setWorkTagGroups([]);
-          setWorkTagLimit(null);
           setWorkTagGroupsError(true);
-          toast.error(
-            variableKind === "mall_tag"
-              ? "小店标签加载失败，请稍后重试"
-              : "企微标签组加载失败，请稍后重试",
-          );
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -718,7 +707,7 @@ export function InsertVariableDialog({
           setWorkTags([]);
           setWorkTagsHasNext(false);
           setWorkTagsError(true);
-          toast.error("企微标签加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled && workTagsRequestVersionRef.current === requestVersion) {
@@ -788,7 +777,7 @@ export function InsertVariableDialog({
       setWorkTagsHasNext(response.pagination.hasNext);
     } catch {
       if (workTagsRequestVersionRef.current === requestVersion) {
-        toast.error("企微标签加载失败，请稍后重试");
+        toast.error("加载失败，请稍后重试");
       }
     } finally {
       if (workTagsRequestVersionRef.current === requestVersion) {
@@ -892,13 +881,6 @@ export function InsertVariableDialog({
     [selectedAutoGroup, selectedAutoTagKey],
   );
 
-  const workTagSelectionLimit =
-    workTagLimit != null && workTagLimit > 0
-      ? workTagLimit
-      : wecomMode === "exclusive"
-        ? 1
-        : Number.POSITIVE_INFINITY;
-
   const canConfirm =
     variableKind === "custom_field"
       ? selectedCustomFieldIds.length > 0
@@ -973,7 +955,9 @@ export function InsertVariableDialog({
   }
 
   function emitVariables(items: readonly SkillResourceItem[]) {
-    onConfirm(items);
+    if (onConfirm(items) === false) {
+      return;
+    }
     onOpenChange(false);
   }
 
@@ -1071,17 +1055,11 @@ export function InsertVariableDialog({
         return current.filter((id) => id !== tagId);
       }
 
-      if (tagKind === "work_tag" && workTagSelectionLimit <= 1) {
-        setSelectedTagNameById(tagName ? { [tagId]: tagName } : {});
-        return [tagId];
-      }
-
       if (
-        tagKind === "work_tag" &&
-        Number.isFinite(workTagSelectionLimit) &&
-        current.length >= workTagSelectionLimit
+        usesComponentTagApi(tagKind) &&
+        current.length >= AGENT_SKILL_TAG_MAX_COUNT
       ) {
-        toast.error(`最多选择 ${workTagSelectionLimit} 个标签`);
+        toast.error(`最多选择 ${AGENT_SKILL_TAG_MAX_COUNT} 个标签`);
         return current;
       }
 

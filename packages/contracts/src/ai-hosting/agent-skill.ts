@@ -8,6 +8,9 @@ export const AGENT_SKILL_NAME_MAX_LENGTH = 30;
 export const AGENT_SKILL_APPLY_SCENE_MAX_LENGTH = 500;
 export const AGENT_SKILL_CONTENT_MAX_LENGTH = 8000;
 export const AGENT_SKILL_KB_MAX_COUNT = 10;
+export const AGENT_SKILL_TAG_MAX_COUNT = 10;
+export const AGENT_SKILL_TOOL_MAX_COUNT = 10;
+export const AGENT_SKILL_VARIABLE_MAX_COUNT = 10;
 
 export const AGENT_SKILL_TOOL_CATALOG = [
   {
@@ -101,7 +104,9 @@ const SkillWorkTagVariableSchema = Type.Object(
   {
     name: Type.String(),
     select_id: Type.Number(),
-    select_sub_ids: Type.Array(Type.Number()),
+    select_sub_ids: Type.Array(Type.Number(), {
+      maxItems: AGENT_SKILL_TAG_MAX_COUNT,
+    }),
     type: Type.Literal("work_tag"),
   },
   skillVariableObjectOptions,
@@ -111,7 +116,9 @@ const SkillMallTagVariableSchema = Type.Object(
   {
     name: Type.String(),
     select_id: Type.Number(),
-    select_sub_ids: Type.Array(Type.Number()),
+    select_sub_ids: Type.Array(Type.Number(), {
+      maxItems: AGENT_SKILL_TAG_MAX_COUNT,
+    }),
     type: Type.Literal("mall_tag"),
   },
   skillVariableObjectOptions,
@@ -120,7 +127,7 @@ const SkillMallTagVariableSchema = Type.Object(
 const SkillAutoTagVariableSchema = Type.Object(
   {
     name: Type.String(),
-    select_key: Type.String(),
+    select_key: Type.String({ minLength: 1 }),
     type: Type.Literal("auto_tag"),
   },
   skillVariableObjectOptions,
@@ -129,7 +136,7 @@ const SkillAutoTagVariableSchema = Type.Object(
 const SkillSystemVariableSchema = Type.Object(
   {
     name: Type.String(),
-    select_key: Type.String(),
+    select_key: Type.String({ minLength: 1 }),
     type: Type.Literal("system_variable"),
   },
   skillVariableObjectOptions,
@@ -149,8 +156,10 @@ export const AgentSkillSaveRequestSchema = Type.Object(
     content: Type.String(),
     kbs: Type.Array(Type.Number(), { maxItems: AGENT_SKILL_KB_MAX_COUNT }),
     name: Type.String({ minLength: 1, maxLength: AGENT_SKILL_NAME_MAX_LENGTH }),
-    tools: Type.Array(Type.String()),
-    variables: Type.Array(AgentSkillVariableSchema),
+    tools: Type.Array(Type.String(), { maxItems: AGENT_SKILL_TOOL_MAX_COUNT }),
+    variables: Type.Array(AgentSkillVariableSchema, {
+      maxItems: AGENT_SKILL_VARIABLE_MAX_COUNT,
+    }),
   },
   { additionalProperties: false },
 );

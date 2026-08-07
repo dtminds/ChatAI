@@ -1282,7 +1282,7 @@ describe("AI hosting agent routes", () => {
     await developmentApp.app.close();
   });
 
-  it.each([101, 272, 975, 3865, 4004])(
+  it.each([101, 272, 975, 2366, 3865, 4004])(
     "allows production uid %i to enable full-auto hosting auth",
     async (uid) => {
       process.env.NODE_ENV = "production";

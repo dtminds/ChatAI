@@ -70,6 +70,7 @@ describe("agent prompt config validation", () => {
     ).toThrowError(
       expect.objectContaining({
         code: "INVALID_AGENT_KB_COUNT",
+        message: "最多添加 10 个知识库",
         statusCode: 400,
       }),
     );
@@ -88,6 +89,7 @@ describe("agent prompt config validation", () => {
     ).toThrowError(
       expect.objectContaining({
         code: "INVALID_AGENT_SKILL_COUNT",
+        message: "最多添加 10 个技能",
         statusCode: 400,
       }),
     );

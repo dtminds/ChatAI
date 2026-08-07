@@ -108,13 +108,6 @@ export function UserMemoryPage() {
   useEffect(() => {
     if (activeTab === "customers") void loadCustomers();
   }, [activeTab, loadCustomers]);
-  useEffect(() => {
-    if (activeTab !== "overview" || !overview?.activeRun) return;
-    const timer = window.setInterval(() => void Promise.all([getUserMemoryOverview(), listUserMemoryRuns({ pageSize: 20 })])
-      .then(([nextOverview, nextRuns]) => { setOverview(nextOverview); setRuns(nextRuns.items); setRunNextCursor(nextRuns.nextCursor); })
-      .catch(() => undefined), 10_000);
-    return () => window.clearInterval(timer);
-  }, [activeTab, overview?.activeRun?.id]);
 
   async function chooseCustomer(customer: CustomerSelection) {
     const key = `${customer.platform}:${customer.thirdExternalUserId}`;

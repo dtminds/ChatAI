@@ -22,6 +22,8 @@ import {
   AGENT_SKILL_KB_MAX_COUNT,
   AGENT_SKILL_NAME_MAX_LENGTH,
   AGENT_SKILL_TOOL_CATALOG,
+  AGENT_SKILL_TOOL_MAX_COUNT,
+  AGENT_SKILL_VARIABLE_MAX_COUNT,
   AGENT_SKILL_VISIBLE_TOOL_CATALOG,
   KB_SEARCH_QUERY_MAX_LENGTH,
   type AiHostingAgentResourceInvalidReason,
@@ -106,10 +108,8 @@ import {
   InsertVariableDialog,
   type InsertVariableInitialConfigure,
 } from "./ai-skill-insert-variable-dialog";
-import { SkillPreviewEditResourcesDialog } from "./ai-skill-preview-edit-resources-dialog";
 import { SkillResourceAuthDialog } from "./ai-skill-resource-auth-dialog";
 import {
-  buildEditableResourcesFromRecommendations,
   buildKnowledgeBasePlaceholder,
   buildSkillVariableResourceItem,
   buildToolPlaceholder,
@@ -316,12 +316,7 @@ export function AiSkillSettingsPage() {
   const [editingVariable, setEditingVariable] = useState<SkillResourceItem | null>(
     null,
   );
-  const [recommendResources, setRecommendResources] = useState<
-    readonly SkillRecommendBinding[]
-  >(() => createDraft?.recommendResources ?? []);
-  const [pickingRecommendIndex, setPickingRecommendIndex] = useState<number | null>(
-    null,
-  );
+  const recommendResources = createDraft?.recommendResources ?? [];
   const [resourceAuthorized, setResourceAuthorized] = useState(false);
   const [resourceAuthLoading, setResourceAuthLoading] = useState(true);
   const [resourceAuthSubmitting, setResourceAuthSubmitting] = useState(false);
@@ -337,18 +332,6 @@ export function AiSkillSettingsPage() {
   const [invalidResourceDialog, setInvalidResourceDialog] =
     useState<InvalidSkillResources>(null);
 
-  const pickingRecommend =
-    pickingRecommendIndex == null
-      ? null
-      : (recommendResources[pickingRecommendIndex] ?? null);
-  const pickingRecommendEditableResources = useMemo(
-    () =>
-      pickingRecommend
-        ? buildEditableResourcesFromRecommendations([pickingRecommend])
-        : [],
-    [pickingRecommend],
-  );
-
   const variableInitialConfigure = useMemo<InsertVariableInitialConfigure | null>(
     () => {
       if (editingVariable?.variable) {
@@ -358,13 +341,13 @@ export function AiSkillSettingsPage() {
           initialVariable: editingVariable.variable,
         };
       }
+
       return null;
     },
     [editingVariable],
   );
 
   const controlsDisabled = submitting || !canManage;
-  const resourceAddDisabled = controlsDisabled || resourceAuthLoading;
   const canSubmit =
     canManage && name.trim().length > 0 && !pageLoading && !pageError;
   const invalidResourceCount = Object.values(selectedResources)
@@ -434,7 +417,7 @@ export function AiSkillSettingsPage() {
       } catch {
         if (!cancelled) {
           setPageError(true);
-          toast.error("技能加载失败，请稍后重试");
+          toast.error("加载失败，请稍后重试");
         }
       } finally {
         if (!cancelled) {
@@ -502,14 +485,17 @@ export function AiSkillSettingsPage() {
         setInvalidResourceDialog(invalidResources);
         return;
       }
-      toast.error(skillId ? "保存失败，请稍后重试" : "提交失败，请稍后重试");
+      const fallback = skillId
+        ? "保存失败，请稍后重试"
+        : "提交失败，请稍后重试";
+      toast.error(getSkillSaveErrorMessage(error, fallback));
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleAddResource(sectionId: ResourceSectionId, item: SkillResourceItem) {
-    handleAddResources(sectionId, [item]);
+    return handleAddResources(sectionId, [item]);
   }
 
   function handleAddResources(
@@ -517,13 +503,28 @@ export function AiSkillSettingsPage() {
     items: readonly SkillResourceItem[],
   ) {
     if (controlsDisabled) {
-      return;
+      return false;
     }
 
     const existingIds = new Set(selectedResources[sectionId].map((item) => item.id));
     const additions = items.filter((item) => !existingIds.has(item.id));
     if (additions.length === 0) {
-      return;
+      return false;
+    }
+
+    const maxCount =
+      sectionId === "variables"
+        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+        : sectionId === "tools"
+          ? AGENT_SKILL_TOOL_MAX_COUNT
+          : null;
+    if (
+      maxCount != null &&
+      selectedResources[sectionId].length + additions.length > maxCount
+    ) {
+      const resourceName = sectionId === "variables" ? "变量" : "工具";
+      toast.error(`最多添加 ${maxCount} 个${resourceName}`);
+      return false;
     }
 
     setSelectedResources((current) => {
@@ -537,6 +538,7 @@ export function AiSkillSettingsPage() {
     });
 
     toast.success("已添加");
+    return true;
   }
 
   function handleReplaceVariable(
@@ -587,7 +589,7 @@ export function AiSkillSettingsPage() {
     }
 
     if (items.length > AGENT_SKILL_KB_MAX_COUNT) {
-      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      toast.error(`最多添加 ${AGENT_SKILL_KB_MAX_COUNT} 个知识库`);
       return;
     }
 
@@ -673,29 +675,39 @@ export function AiSkillSettingsPage() {
   function openResourceSection(
     sectionId: Extract<ResourceSectionId, "variables" | "tools">,
   ) {
+    setEditingVariable(null);
     if (sectionId === "variables") {
-      setEditingVariable(null);
+      setActiveInsertSection(null);
       setVariableDialogOpen(true);
       return;
     }
 
+    setVariableDialogOpen(false);
     setActiveInsertSection(sectionId);
   }
 
-  function handleAddResourceSection(
-    sectionId: Extract<ResourceSectionId, "variables" | "tools">,
-  ) {
-    if (resourceAddDisabled) {
+  function handleOpenResourcePicker(sectionId: ResourceSectionId) {
+    if (
+      controlsDisabled ||
+      resourceAuthLoading ||
+      hasReachedResourceLimit(sectionId)
+    ) {
       return;
     }
 
-    if (!resourceAuthorized) {
-      setPendingAuthSection(sectionId);
-      setResourceAuthOpen(true);
+    if (sectionId === "variables" || sectionId === "tools") {
+      if (!resourceAuthorized) {
+        setPendingAuthSection(sectionId);
+        setResourceAuthOpen(true);
+        return;
+      }
+      openResourceSection(sectionId);
       return;
     }
 
-    openResourceSection(sectionId);
+    setEditingVariable(null);
+    setVariableDialogOpen(false);
+    setActiveInsertSection(sectionId);
   }
 
   async function handleAgreeResourceAuth() {
@@ -722,50 +734,17 @@ export function AiSkillSettingsPage() {
     }
   }
 
-  function handleSelectRecommendResource(index: number) {
-    if (controlsDisabled) {
-      return;
-    }
+  function hasReachedResourceLimit(sectionId: ResourceSectionId) {
+    const maxCount =
+      sectionId === "variables"
+        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+        : sectionId === "tools"
+          ? AGENT_SKILL_TOOL_MAX_COUNT
+          : null;
 
-    if (!recommendResources[index]) {
-      return;
-    }
-
-    setEditingVariable(null);
-    setActiveInsertSection(null);
-    setVariableDialogOpen(false);
-    setPickingRecommendIndex(index);
-  }
-
-  function handleConfirmRecommendResource(result: {
-    resources: {
-      "knowledge-bases": SkillResourceItem[];
-      tools: SkillResourceItem[];
-      variables: SkillResourceItem[];
-    };
-  }) {
-    const index = pickingRecommendIndex;
-    if (index == null) {
-      return;
-    }
-
-    if (result.resources.variables.length > 0) {
-      handleAddResources("variables", result.resources.variables);
-    }
-    if (result.resources.tools.length > 0) {
-      handleAddResources("tools", result.resources.tools);
-    }
-    if (result.resources["knowledge-bases"].length > 0) {
-      handleAddResources(
-        "knowledge-bases",
-        result.resources["knowledge-bases"],
-      );
-    }
-
-    setRecommendResources((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
+    return (
+      maxCount != null && selectedResources[sectionId].length >= maxCount
     );
-    setPickingRecommendIndex(null);
   }
 
   return (
@@ -964,21 +943,23 @@ export function AiSkillSettingsPage() {
               <div className="space-y-5">
                 {resourceSections.map((section) => (
                   <SkillResourceSection
-                    disabled={
-                      section.id === "variables" || section.id === "tools"
-                        ? resourceAddDisabled
-                        : controlsDisabled
+                    addDisabled={
+                      controlsDisabled ||
+                      resourceAuthLoading ||
+                      hasReachedResourceLimit(section.id)
                     }
+                    disabled={controlsDisabled}
                     icon={section.icon}
                     items={selectedResources[section.id]}
                     key={section.id}
-                    onAdd={() => {
-                      if (section.id === "variables" || section.id === "tools") {
-                        handleAddResourceSection(section.id);
-                        return;
-                      }
-                      setActiveInsertSection(section.id);
-                    }}
+                    maxCount={
+                      section.id === "variables"
+                        ? AGENT_SKILL_VARIABLE_MAX_COUNT
+                        : section.id === "tools"
+                          ? AGENT_SKILL_TOOL_MAX_COUNT
+                          : AGENT_SKILL_KB_MAX_COUNT
+                    }
+                    onAdd={() => handleOpenResourcePicker(section.id)}
                     onEdit={
                       section.id === "variables"
                         ? (item) => {
@@ -998,13 +979,7 @@ export function AiSkillSettingsPage() {
             </aside>
 
             {!isEditMode && recommendResources.length > 0 ? (
-              <SkillRecommendResourcesTips
-                disabled={controlsDisabled}
-                items={recommendResources}
-                onSelect={(index) => {
-                  handleSelectRecommendResource(index);
-                }}
-              />
+              <SkillRecommendResourcesTips items={recommendResources} />
             ) : null}
           </div>
         </div>
@@ -1022,12 +997,15 @@ export function AiSkillSettingsPage() {
             }
             setEditingVariable(null);
           } else {
-            handleAddResources("variables", items);
+            if (!handleAddResources("variables", items)) {
+              return false;
+            }
           }
           setVariableDialogOpen(false);
           if (activeInsertSection === "variables") {
             setActiveInsertSection(null);
           }
+          return true;
         }}
         onOpenChange={(open) => {
           setVariableDialogOpen(open);
@@ -1039,19 +1017,6 @@ export function AiSkillSettingsPage() {
           }
         }}
         open={variableDialogOpen || activeInsertSection === "variables"}
-      />
-
-      <SkillPreviewEditResourcesDialog
-        content=""
-        editableResources={pickingRecommendEditableResources}
-        onCancel={() => {
-          setPickingRecommendIndex(null);
-        }}
-        onConfirm={(result) => {
-          handleConfirmRecommendResource(result);
-        }}
-        open={pickingRecommend != null}
-        presentation="direct-picker"
       />
 
       <SkillResourceAuthDialog
@@ -1139,13 +1104,9 @@ export function AiSkillSettingsPage() {
 }
 
 function SkillRecommendResourcesTips({
-  disabled,
   items,
-  onSelect,
 }: {
-  disabled?: boolean;
   items: readonly SkillRecommendBinding[];
-  onSelect: (index: number) => void;
 }) {
   if (items.length === 0) {
     return null;
@@ -1154,46 +1115,35 @@ function SkillRecommendResourcesTips({
   return (
     <section
       aria-label="推荐资源"
-      className="ai-skill-recommend-tips rounded-[14px] border bg-card p-3"
+      className="ai-skill-recommend-tips overflow-hidden rounded-[14px] border"
     >
-      <div className="ai-skill-recommend-tips__banner flex items-center gap-2 rounded-[6px] px-3 py-2">
+      <div className="ai-skill-recommend-tips__banner flex items-center gap-2 px-4 py-2">
         <span
           aria-hidden="true"
           className="ai-skill-recommend-tips__icon inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none"
         >
           !
         </span>
-        <p className="ai-skill-recommend-tips__text text-sm leading-5">
-          小tips： 推荐选择以下资源
+        <p className="ai-skill-recommend-tips__text text-xs leading-4">
+          小贴士：建议关联配置资源使用
         </p>
       </div>
-      <ul className="mt-1">
+      <ul className="ai-skill-recommend-tips__content relative z-10 divide-y divide-border/60 rounded-t-[18px] px-4 pt-2">
         {items.map((item, index) => (
           <li
-            className="flex items-start gap-3 px-1 py-3"
+            className="px-2 py-4"
             key={`${item.type}-${item.title}-${index}`}
           >
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-medium leading-5 text-foreground">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold leading-5 text-foreground">
                 {item.title}
               </p>
               {item.description ? (
-                <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                <p className="text-xs leading-5 text-muted-foreground">
                   {item.description}
                 </p>
               ) : null}
             </div>
-            <Button
-              aria-label={`选择${item.title}`}
-              className="h-8 shrink-0 rounded-[8px] px-3"
-              disabled={disabled}
-              onClick={() => onSelect(index)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              选择
-            </Button>
           </li>
         ))}
       </ul>
@@ -1202,17 +1152,21 @@ function SkillRecommendResourcesTips({
 }
 
 function SkillResourceSection({
+  addDisabled,
   disabled,
   icon,
   items,
+  maxCount,
   onAdd,
   onEdit,
   onRemove,
   title,
 }: {
+  addDisabled: boolean;
   disabled: boolean;
   icon: typeof AbsoluteIcon;
   items: readonly SkillResourceItem[];
+  maxCount: number;
   onAdd: () => void;
   onEdit?: (item: SkillResourceItem) => void;
   onRemove: (itemId: string) => void;
@@ -1241,11 +1195,16 @@ function SkillResourceSection({
             />
           </Button>
         </CollapsibleTrigger>
-        <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">{title}</p>
+        <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+          {title}
+          <span className="ml-1 text-xs font-normal text-muted-foreground/60">
+            {items.length}/{maxCount}
+          </span>
+        </p>
         <Button
           aria-label={`添加${title}`}
           className="size-6 shrink-0 rounded-[6px] p-0"
-          disabled={disabled}
+          disabled={addDisabled}
           onClick={onAdd}
           size="icon"
           type="button"
@@ -1786,7 +1745,7 @@ function KnowledgeBasePicker({
         setItems([]);
         setTotal(0);
         setError(true);
-        toast.error("知识库列表加载失败，请稍后重试");
+        toast.error("加载失败，请稍后重试");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -1817,7 +1776,7 @@ function KnowledgeBasePicker({
       !selectedItems.has(item.id) &&
       selectedCount >= AGENT_SKILL_KB_MAX_COUNT
     ) {
-      toast.error(`一个技能最多可添加${AGENT_SKILL_KB_MAX_COUNT}个知识库`);
+      toast.error(`最多添加 ${AGENT_SKILL_KB_MAX_COUNT} 个知识库`);
       return;
     }
 
@@ -2026,6 +1985,12 @@ function readInvalidSkillResourcesFromRequestError(
 
   const mapped = buildSelectedResources(resources);
   return Object.values(mapped).some((items) => items.length > 0) ? mapped : null;
+}
+
+function getSkillSaveErrorMessage(error: unknown, fallback: string) {
+  return isRequestError(error) && error.status === 400 && error.message.trim()
+    ? error.message
+    : fallback;
 }
 
 function readInvalidKnowledgeBaseResources(value: unknown) {

@@ -33,7 +33,7 @@ describe("ai-hosting work-tag routes", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists work tag groups via Java API", async () => {
+  it("lists work tag groups without exposing the Java tag limit", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -96,7 +96,6 @@ describe("ai-hosting work-tag routes", () => {
             tagCount: 3,
           },
         ],
-        tagLimit: 5,
       },
       success: true,
     });
@@ -126,7 +125,6 @@ describe("ai-hosting work-tag routes", () => {
                 num: 3,
               },
             ],
-            tagLimit: 1,
           },
           error: 0,
           success: true,

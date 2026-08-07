@@ -13,14 +13,14 @@ export function assertAiHostingAgentPromptConfigLimits(
   if (promptConfig.availableKbIds.length > AI_HOSTING_AGENT_KB_MAX_COUNT) {
     throw new BadRequestError(
       "INVALID_AGENT_KB_COUNT",
-      `Agent 最多可添加${AI_HOSTING_AGENT_KB_MAX_COUNT}个知识库`,
+      `最多添加 ${AI_HOSTING_AGENT_KB_MAX_COUNT} 个知识库`,
     );
   }
 
   if (promptConfig.availableSkillIds.length > AI_HOSTING_AGENT_SKILL_MAX_COUNT) {
     throw new BadRequestError(
       "INVALID_AGENT_SKILL_COUNT",
-      `Agent 最多可添加${AI_HOSTING_AGENT_SKILL_MAX_COUNT}个技能`,
+      `最多添加 ${AI_HOSTING_AGENT_SKILL_MAX_COUNT} 个技能`,
     );
   }
 

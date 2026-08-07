@@ -19,6 +19,105 @@ describe("createWorkbenchJavaClient", () => {
     delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
+  it("reads UID-scoped broadcast protection status from the Java query endpoint", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            degradeCallbackCnt: 1800,
+            degradeCallbackRate: 120,
+            normalCallbackCnt: 8,
+            normalCallbackRate: 600,
+          },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getBroadcastProtectionStatus({ uid: 9001 }),
+    ).resolves.toEqual({
+      degradeCallbackCnt: 1800,
+      degradeCallbackRate: 120,
+      normalCallbackCnt: 8,
+      normalCallbackRate: 600,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/bilin-callback/consume-info?uid=9001",
+      expect.objectContaining({
+        body: "{}",
+        method: "POST",
+      }),
+    );
+  });
+
+  it("requires explicit Java success for broadcast protection status", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            degradeCallbackCnt: 1800,
+            degradeCallbackRate: 120,
+            normalCallbackCnt: 0,
+            normalCallbackRate: 600,
+          },
+          error: 0,
+          errorMsg: "",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getBroadcastProtectionStatus({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      statusCode: 200,
+    });
+  });
+
+  it("rejects malformed broadcast protection status data", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            degradeCallbackCnt: 1800,
+            degradeCallbackRate: "120",
+            normalCallbackCnt: 0,
+            normalCallbackRate: 600,
+          },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getBroadcastProtectionStatus({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      statusCode: 502,
+    });
+  });
+
   it("logs structured context when download message file request fails", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const logger = createLoggerMock();

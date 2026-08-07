@@ -1,4 +1,5 @@
 import type {
+  WorkbenchBroadcastProtectionStatusDto,
   WorkbenchConversationClearHandoffResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationFullAutoResponse,
@@ -333,6 +334,11 @@ function getSmartReplyJavaScope(conversation: ConversationLookup): SmartReplyJav
 }
 
 export type WorkbenchService = {
+  getBroadcastProtectionStatus(
+    uid: number,
+  ):
+    | Promise<WorkbenchBroadcastProtectionStatusDto>
+    | WorkbenchBroadcastProtectionStatusDto;
   changeConversationFullAuto(
     subUserId: string,
     conversationId: string,
@@ -751,6 +757,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly workbenchScope: WorkbenchPlatformScope & { uid?: number } =
       getCurrentWorkbenchPlatformScope(),
   ) {}
+
+  async getBroadcastProtectionStatus(uid: number) {
+    return this.javaClient.getBroadcastProtectionStatus({ uid });
+  }
 
   async deleteConversation(subUserId: string, conversationId: string) {
     const scope = await this.getAuthenticatedWorkbenchScope(subUserId);

@@ -264,6 +264,20 @@ export const AgentSkillMutationResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const AgentSkillResourceAuthResponseSchema = Type.Object(
+  {
+    authorized: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const AgentSkillResourceAuthUpdateRequestSchema = Type.Object(
+  {
+    authorized: Type.Literal(true),
+  },
+  { additionalProperties: false },
+);
+
 export type AgentSkillDetail = Static<typeof AgentSkillDetailSchema>;
 export type AgentSkillKnowledgeBaseResource = Static<
   typeof AgentSkillKnowledgeBaseResourceSchema
@@ -271,6 +285,12 @@ export type AgentSkillKnowledgeBaseResource = Static<
 export type AgentSkillListItem = Static<typeof AgentSkillListItemSchema>;
 export type AgentSkillListResponse = Static<typeof AgentSkillListResponseSchema>;
 export type AgentSkillMutationResponse = Static<typeof AgentSkillMutationResponseSchema>;
+export type AgentSkillResourceAuthResponse = Static<
+  typeof AgentSkillResourceAuthResponseSchema
+>;
+export type AgentSkillResourceAuthUpdateRequest = Static<
+  typeof AgentSkillResourceAuthUpdateRequestSchema
+>;
 export type AgentSkillResources = Static<typeof AgentSkillResourcesSchema>;
 export type AgentSkillSaveRequest = Static<typeof AgentSkillSaveRequestSchema>;
 export type AgentSkillStatus = Static<typeof AgentSkillStatusSchema>;

@@ -1,5 +1,5 @@
 import { defineConfig, mergeConfig } from "vitest/config";
-import { createViteConfig } from "./vite.config";
+import { createViteConfig } from "./vite.config.ts";
 
 const isCi = process.env.CI === "true";
 const testGroup = process.env.VITEST_TEST_GROUP;

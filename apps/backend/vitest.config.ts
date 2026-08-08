@@ -5,7 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@chatai/contracts": path.resolve(
-        __dirname,
+        import.meta.dirname,
         "../../packages/contracts/src/index.ts",
       ),
     },

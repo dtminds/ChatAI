@@ -97,10 +97,10 @@ describe("vite config env", () => {
 
   it("loads PaddleOCR runtime from the versioned CDN module in production builds", () => {
     const config = createViteConfig("production");
-    const rollupOptions = config.build?.rollupOptions;
+    const rolldownOptions = config.build?.rolldownOptions;
 
-    expect(rollupOptions?.external).toContain("@paddleocr/paddleocr-js");
-    expect(rollupOptions?.output).toMatchObject({
+    expect(rolldownOptions?.external).toContain("@paddleocr/paddleocr-js");
+    expect(rolldownOptions?.output).toMatchObject({
       paths: {
         "@paddleocr/paddleocr-js": getDefaultOcrCdnUrls().paddleModuleUrl,
       },

@@ -61,6 +61,7 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -535,7 +536,8 @@ function MySkillsPanel() {
       ) : null}
 
       <div>
-        <Table aria-label="我的技能列表" className="min-w-[1080px] table-fixed">
+        <TooltipProvider>
+          <Table aria-label="我的技能列表" className="min-w-[1080px] table-fixed">
           <colgroup>
             <col className="w-[180px]" />
             <col />
@@ -674,7 +676,8 @@ function MySkillsPanel() {
               </TableRow>
             )}
           </TableBody>
-        </Table>
+          </Table>
+        </TooltipProvider>
 
         <TablePagination
           onPageChange={setPage}

@@ -27,7 +27,7 @@ importers:
         version: 0.34.52
       altcha-lib:
         specifier: ^2.0.3
-        version: 2.2.0(@fastify/cookie@11.1.2)(fastify@5.11.2)
+        version: 2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.2)
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -1951,8 +1951,8 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
-  altcha-lib@2.2.0:
-    resolution: {integrity: sha512-O4+q6+JECTRgse9NVDsAJ8PwWhYpb+iAlT3wVcZ/BMGv2wkumAGWK3GE5FGbgzI7K5CJLDoNBKuQBUQui+62Ig==}
+  altcha-lib@2.3.2:
+    resolution: {integrity: sha512-puJp4aPn/kK2t5Z3dQkbFTmPusaYPkdlrXB4feWZzdNIiC3sPndKMlcjQFUU3a+sVlUt6DJhfWK2+HiwDBbW1Q==}
     hasBin: true
     peerDependencies:
       '@fastify/cookie': ^11.0.0
@@ -5665,7 +5665,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  altcha-lib@2.2.0(@fastify/cookie@11.1.2)(fastify@5.11.2):
+  altcha-lib@2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.2):
     optionalDependencies:
       '@fastify/cookie': 11.1.2
       fastify: 5.11.2

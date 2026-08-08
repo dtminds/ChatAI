@@ -18,7 +18,7 @@ await build({
     emptyOutDir: true,
     minify: "esbuild",
     outDir,
-    rollupOptions: {
+    rolldownOptions: {
       input: runtimeEntry,
       preserveEntrySignatures: "strict",
       output: {

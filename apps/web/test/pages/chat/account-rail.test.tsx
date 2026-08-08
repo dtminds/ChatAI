@@ -485,11 +485,15 @@ describe("AccountRail", () => {
     const confirmDialog = await screen.findByRole("alertdialog", {
       name: "是否确认接管：support",
     });
+    expect(within(confirmDialog).getByRole("img", { name: "support" })).toHaveAttribute(
+      "src",
+      "https://example.com/avatar-support.png",
+    );
     expect(
-      within(confirmDialog).getByText(
-        "接管后，将由你负责处理对话，其他子账号将无权发送消息",
-      ),
-    ).toBeInTheDocument();
+      within(confirmDialog).getByRole("heading", {
+        name: "是否确认接管：support",
+      }),
+    ).toHaveTextContent("support");
 
     await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 

@@ -130,6 +130,16 @@ describe("AccountSidebarItem", () => {
     const confirmDialog = await screen.findByRole("alertdialog", {
       name: "是否确认接管：support",
     });
+    expect(within(confirmDialog).getByRole("img", { name: "support" })).toHaveAttribute(
+      "src",
+      "https://example.com/avatar.png",
+    );
+    expect(
+      within(confirmDialog).getByRole("heading", {
+        name: "是否确认接管：support",
+      }),
+    ).toHaveTextContent("support");
+
     await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");

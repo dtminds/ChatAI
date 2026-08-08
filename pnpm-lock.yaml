@@ -27,13 +27,13 @@ importers:
         version: 0.34.52
       altcha-lib:
         specifier: ^2.0.3
-        version: 2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.2)
+        version: 2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.3)
       argon2:
         specifier: ^0.45.0
         version: 0.45.1
       fastify:
         specifier: ^5.6.2
-        version: 5.11.2
+        version: 5.11.3
       fastify-plugin:
         specifier: ^6.0.0
         version: 6.0.0
@@ -2501,8 +2501,8 @@ packages:
   fastify-plugin@6.0.0:
     resolution: {integrity: sha512-fZOty7z3O7vOliF6d8bHE3wiEh1KcNnKEQensSgTk9C1DvN6nRLS++XVd86v33Hw/8u9Un8A1zDrQ8ujcQDHEg==}
 
-  fastify@5.11.2:
-    resolution: {integrity: sha512-i/eJG7nXR9OkbFgoX4jFiPOHoRq0rXqDACVAXELh5Fdg6BFBErIVZ8MyibGCwup9Go1pYrxZJ0ogIub8vVdEcQ==}
+  fastify@5.11.3:
+    resolution: {integrity: sha512-W6hzDP8s0iSeL7LGwY6Oc/ZxuXWOvFEMs6p2L0Si415YRo27W5pBKdOTXxhemBDeSTAcpYf5evRA9onF2OYhPA==}
 
   fastparallel@2.4.1:
     resolution: {integrity: sha512-qUmhxPgNHmvRjZKBFUNI0oZuuH9OlSIOXmJ98lhKPxMZZ7zS/Fi0wRHOihDSz0R1YiIOjxzOY4bq65YTcdBi2Q==}
@@ -5665,10 +5665,10 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  altcha-lib@2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.2):
+  altcha-lib@2.3.2(@fastify/cookie@11.1.2)(fastify@5.11.3):
     optionalDependencies:
       '@fastify/cookie': 11.1.2
-      fastify: 5.11.2
+      fastify: 5.11.3
 
   altcha@3.2.1:
     dependencies:
@@ -6167,7 +6167,7 @@ snapshots:
 
   fastify-plugin@6.0.0: {}
 
-  fastify@5.11.2:
+  fastify@5.11.3:
     dependencies:
       '@fastify/ajv-compiler': 4.0.5
       '@fastify/error': 4.2.0

@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import {
+  SKIP_CONTROLLED_EDITOR_SYNC_TAG,
+  updateEditorWithoutHistory,
+} from "@/pages/chat/components/lexical-history";
 import {
   COMMAND_PRIORITY_LOW,
   SKIP_DOM_SELECTION_TAG,
@@ -31,6 +35,7 @@ import {
 
 type SkillDescriptionRuntimePluginProps = {
   disabled?: boolean;
+  historyKey: string;
   maxLength: number;
   onChange: (segments: SkillContentSegment[]) => void;
   registerEditor: (editor: LexicalEditor | null) => void;
@@ -39,12 +44,18 @@ type SkillDescriptionRuntimePluginProps = {
 
 export function SkillDescriptionRuntimePlugin({
   disabled = false,
+  historyKey,
   maxLength,
   onChange,
   registerEditor,
   segments,
 }: SkillDescriptionRuntimePluginProps) {
   const [editor] = useLexicalComposerContext();
+  const lastEditorChangeRef = useRef<SkillContentSegment[] | null>(null);
+
+  useEffect(() => {
+    lastEditorChangeRef.current = null;
+  }, [historyKey]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -60,9 +71,7 @@ export function SkillDescriptionRuntimePlugin({
     return editor.registerCommand(
       INSERT_SKILL_CONTENT_RESOURCE_COMMAND,
       (resource) => {
-        editor.update(() => {
-          $insertSkillContentResource(resource);
-        });
+        $insertSkillContentResource(resource);
         return true;
       },
       COMMAND_PRIORITY_LOW,
@@ -73,7 +82,8 @@ export function SkillDescriptionRuntimePlugin({
     return editor.registerCommand(
       RESTORE_SKILL_CONTENT_SEGMENTS_COMMAND,
       (nextSegments) => {
-        editor.update(
+        updateEditorWithoutHistory(
+          editor,
           () => {
             $restoreSkillContentFromSegments(
               trimSkillContentSegmentsToMaxLength(nextSegments, maxLength),
@@ -94,20 +104,34 @@ export function SkillDescriptionRuntimePlugin({
   }, [editor, maxLength]);
 
   useEffect(() => {
-    editor.update(
+    const nextSegments = trimSkillContentSegmentsToMaxLength(segments, maxLength);
+
+    if (
+      lastEditorChangeRef.current !== null &&
+      skillContentSegmentsEqual(lastEditorChangeRef.current, nextSegments)
+    ) {
+      return;
+    }
+
+    const pendingSegments = editor.read("pending", () =>
+      $exportSkillContentSegments(),
+    );
+    if (skillContentSegmentsEqual(pendingSegments, nextSegments)) {
+      return;
+    }
+
+    updateEditorWithoutHistory(
+      editor,
       () => {
         const currentSegments = $exportSkillContentSegments();
 
-        const nextSegments = trimSkillContentSegmentsToMaxLength(
-          segments,
-          maxLength,
-        );
-
         if (skillContentSegmentsEqual(currentSegments, nextSegments)) {
-          return;
+          return false;
         }
 
+        lastEditorChangeRef.current = null;
         $restoreSkillContentFromSegments(nextSegments);
+        return true;
       },
       {
         tag: [
@@ -121,9 +145,17 @@ export function SkillDescriptionRuntimePlugin({
 
   return (
     <OnChangePlugin
-      onChange={() => {
-        editor.getEditorState().read(() => {
-          onChange($exportSkillContentSegments());
+      ignoreHistoryMergeTagChange={false}
+      ignoreSelectionChange
+      onChange={(editorState, _editor, tags) => {
+        if (tags.has(SKIP_CONTROLLED_EDITOR_SYNC_TAG)) {
+          return;
+        }
+
+        editorState.read(() => {
+          const nextSegments = $exportSkillContentSegments();
+          lastEditorChangeRef.current = nextSegments;
+          onChange(nextSegments);
         });
       }}
     />

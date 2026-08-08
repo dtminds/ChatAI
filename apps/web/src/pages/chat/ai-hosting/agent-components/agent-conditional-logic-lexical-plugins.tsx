@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import {
+  SKIP_CONTROLLED_EDITOR_SYNC_TAG,
+  updateEditorWithoutHistory,
+} from "@/pages/chat/components/lexical-history";
 import {
   COMMAND_PRIORITY_LOW,
   SKIP_DOM_SELECTION_TAG,
@@ -31,6 +35,7 @@ import {
 
 type ConditionalLogicRuntimePluginProps = {
   disabled?: boolean;
+  historyKey: string;
   maxLength: number;
   onChange: (segments: ConditionalLogicSegment[]) => void;
   registerEditor: (editor: LexicalEditor | null) => void;
@@ -39,12 +44,18 @@ type ConditionalLogicRuntimePluginProps = {
 
 export function ConditionalLogicRuntimePlugin({
   disabled = false,
+  historyKey,
   maxLength,
   onChange,
   registerEditor,
   segments,
 }: ConditionalLogicRuntimePluginProps) {
   const [editor] = useLexicalComposerContext();
+  const lastEditorChangeRef = useRef<ConditionalLogicSegment[] | null>(null);
+
+  useEffect(() => {
+    lastEditorChangeRef.current = null;
+  }, [historyKey]);
 
   useEffect(() => {
     registerEditor(editor);
@@ -60,9 +71,7 @@ export function ConditionalLogicRuntimePlugin({
     return editor.registerCommand(
       INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
       (knowledgeBase) => {
-        editor.update(() => {
-          $insertKnowledgeBaseChip(knowledgeBase);
-        });
+        $insertKnowledgeBaseChip(knowledgeBase);
         return true;
       },
       COMMAND_PRIORITY_LOW,
@@ -73,9 +82,7 @@ export function ConditionalLogicRuntimePlugin({
     return editor.registerCommand(
       INSERT_CONDITIONAL_LOGIC_SKILL_COMMAND,
       (skill) => {
-        editor.update(() => {
-          $insertSkillChip(skill);
-        });
+        $insertSkillChip(skill);
         return true;
       },
       COMMAND_PRIORITY_LOW,
@@ -86,7 +93,8 @@ export function ConditionalLogicRuntimePlugin({
     return editor.registerCommand(
       RESTORE_CONDITIONAL_LOGIC_SEGMENTS_COMMAND,
       (nextSegments) => {
-        editor.update(
+        updateEditorWithoutHistory(
+          editor,
           () => {
             $restoreConditionalLogicFromSegments(
               trimConditionalLogicSegmentsToMaxLength(nextSegments, maxLength),
@@ -107,19 +115,37 @@ export function ConditionalLogicRuntimePlugin({
   }, [editor, maxLength]);
 
   useEffect(() => {
-    editor.update(
+    const nextSegments = trimConditionalLogicSegmentsToMaxLength(
+      segments,
+      maxLength,
+    );
+
+    if (
+      lastEditorChangeRef.current !== null &&
+      segmentsEqual(lastEditorChangeRef.current, nextSegments)
+    ) {
+      return;
+    }
+
+    const pendingSegments = editor.read("pending", () =>
+      $exportConditionalLogicSegments(),
+    );
+    if (segmentsEqual(pendingSegments, nextSegments)) {
+      return;
+    }
+
+    updateEditorWithoutHistory(
+      editor,
       () => {
         const currentSegments = $exportConditionalLogicSegments();
-        const nextSegments = trimConditionalLogicSegmentsToMaxLength(
-          segments,
-          maxLength,
-        );
 
         if (segmentsEqual(currentSegments, nextSegments)) {
-          return;
+          return false;
         }
 
+        lastEditorChangeRef.current = null;
         $restoreConditionalLogicFromSegments(nextSegments);
+        return true;
       },
       {
         tag: [
@@ -133,9 +159,17 @@ export function ConditionalLogicRuntimePlugin({
 
   return (
     <OnChangePlugin
-      onChange={() => {
-        editor.getEditorState().read(() => {
-          onChange($exportConditionalLogicSegments());
+      ignoreHistoryMergeTagChange={false}
+      ignoreSelectionChange
+      onChange={(editorState, _editor, tags) => {
+        if (tags.has(SKIP_CONTROLLED_EDITOR_SYNC_TAG)) {
+          return;
+        }
+
+        editorState.read(() => {
+          const nextSegments = $exportConditionalLogicSegments();
+          lastEditorChangeRef.current = nextSegments;
+          onChange(nextSegments);
         });
       }}
     />

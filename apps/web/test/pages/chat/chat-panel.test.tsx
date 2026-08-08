@@ -1,5 +1,5 @@
 import { createRef, useState } from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -143,6 +143,88 @@ describe("ChatPanel", () => {
       expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveTextContent(
         `${existingText}甲乙丙丁戊己`,
       );
+    });
+  });
+
+  it("isolates composer undo history when the active conversation changes", async () => {
+    const user = userEvent.setup();
+    const composerRef = createRef<LexicalEditor>();
+
+    function renderPanel(conversationId: string) {
+      return (
+        <ChatPanel
+          activeAccount={account}
+          activeConversation={{ ...createConversation(), id: conversationId }}
+          activeHistoryStatus="idle"
+          canSendMessage
+          composerPlaceholder="输入消息"
+          customerPanelWidth={375}
+          fileUploadQueue={[]}
+          groupMembers={[]}
+          hasMoreHistory={false}
+          historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
+          inputEnterBehavior="send"
+          isConversationLoading={false}
+          isEmojiPickerOpen={false}
+          isGroupMembersLoading={false}
+          isResizingCustomerPanel={false}
+          isSendingDraft={false}
+          messages={[]}
+          quotedMessage={null}
+          sidebarItems={[]}
+          composerRef={composerRef}
+          messageViewportRef={createRef()}
+          workbenchBodyRef={createRef()}
+          onCancelFileUpload={vi.fn()}
+          onClearQuotedMessage={vi.fn()}
+          onComposerSegmentsChange={vi.fn()}
+          onCustomerPanelResizeStart={vi.fn()}
+          onDismissScopeTransitionError={vi.fn()}
+          onDraftChange={vi.fn()}
+          onEmojiPickerOpenChange={vi.fn()}
+          onEnterBehaviorChange={vi.fn()}
+          onFileSelect={vi.fn()}
+          onHistoryClose={vi.fn()}
+          onHistoryLoadMoreNext={vi.fn()}
+          onHistoryLoadMorePrev={vi.fn()}
+          onHistoryRefresh={vi.fn()}
+          onHistorySetDay={vi.fn()}
+          onHistorySetScope={vi.fn()}
+          onHistorySetSenderId={vi.fn()}
+          onLoadOlderMessages={vi.fn()}
+          onMessageViewportScroll={vi.fn()}
+          onOpenHistory={vi.fn()}
+          onRefreshGroupMembers={vi.fn()}
+          onRetryMessage={vi.fn()}
+          onSendDraft={vi.fn()}
+        />
+      );
+    }
+
+    const { rerender } = render(renderPanel("conversation-a"));
+    const textbox = screen.getByRole("textbox", { name: "输入消息" });
+
+    await user.click(textbox);
+    await user.paste("会话 A 草稿");
+    await waitFor(() => expect(textbox).toHaveTextContent("会话 A 草稿"));
+
+    rerender(renderPanel("conversation-b"));
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(textbox);
+
+    await user.click(textbox);
+    await user.keyboard("{Control>}a{/Control}");
+    await user.paste("会话 B 草稿");
+    await waitFor(() => expect(textbox).toHaveTextContent("会话 B 草稿"));
+
+    fireEvent.keyDown(textbox, {
+      code: "KeyZ",
+      ctrlKey: true,
+      key: "z",
+    });
+
+    await waitFor(() => {
+      expect(textbox).toHaveTextContent("会话 B 草稿");
+      expect(textbox).not.toHaveTextContent("会话 A 草稿");
     });
   });
 

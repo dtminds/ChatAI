@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH,
   AI_HOSTING_AGENT_HANDOFF_RULES_MAX_LENGTH,
   AI_HOSTING_AGENT_ROLE_MAX_LENGTH,
   AI_HOSTING_AGENT_STYLE_INSTRUCTION_MAX_LENGTH,
@@ -33,6 +34,9 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
 import { AgentConditionalLogicField } from "./agent-components/agent-conditional-logic-field";
+import {
+  trimConditionalLogicSegmentsToMaxLength,
+} from "./agent-components/agent-conditional-logic-lexical-utils";
 import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
 // 先注释按钮，不要删除。智能生成入口隐藏期间保留 import 位置。
@@ -1045,6 +1049,7 @@ export function AgentSettingsPage() {
             >
               <AgentConditionalLogicField
                 disabled={controlsDisabled}
+                historyKey={agentId ?? "new-agent"}
                 knowledgeBases={availableKnowledgeBases}
                 onChange={(value) => updateForm("conditionalLogic", value)}
                 segments={form.conditionalLogic}
@@ -1943,7 +1948,10 @@ function InvalidResourceGroup({
 function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
   return {
     communicationStyle: agent.promptConfig.replyStyle.styleInstruction,
-    conditionalLogic: parseConditionalLogicSegments(agent.promptConfig.conditionLogic),
+    conditionalLogic: trimConditionalLogicSegmentsToMaxLength(
+      parseConditionalLogicSegments(agent.promptConfig.conditionLogic),
+      AI_HOSTING_AGENT_CONDITION_LOGIC_MAX_LENGTH,
+    ),
     model: agent.modelId,
     name: agent.name,
     replyLength: normalizeReplyLength(agent.promptConfig.replyStyle.length),

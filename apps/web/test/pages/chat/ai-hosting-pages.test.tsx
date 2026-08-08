@@ -2696,6 +2696,61 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("8000/8000")).toBeInTheDocument();
   });
 
+  it("trims oversized skill description while hydrating an existing skill", async () => {
+    const user = userEvent.setup();
+    const allowedText = "a".repeat(8000);
+
+    vi.mocked(agentSkillService.getAgentSkill).mockResolvedValueOnce({
+      applyScene: "查询订单物流",
+      content: `${allowedText}多`,
+      createdAt: "2026-06-18 23:22:22",
+      id: "1",
+      kbs: [],
+      name: "订单与物流场景查询",
+      resources: {
+        knowledgeBases: [],
+        tools: [],
+        variables: [],
+      },
+      status: "enabled",
+      tools: [],
+      updatedAt: "2026-06-20 23:22:22",
+      variables: [],
+    });
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/skills/:skillId/edit",
+          element: <AiSkillSettingsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/skills",
+          element: <div>技能列表</div>,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/skills/1/edit"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    const editor = await screen.findByRole("textbox", { name: "技能描述" });
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(allowedText);
+    });
+    expect(screen.getByText("8000/8000")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(agentSkillService.updateAgentSkill).toHaveBeenCalledWith(
+        "1",
+        expect.objectContaining({ content: allowedText }),
+      );
+    });
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills");
+  });
+
   it("requires resource authorization before first variable or tool add", async () => {
     const user = userEvent.setup();
     vi.mocked(agentSkillService.getAgentSkillResourceAuth).mockResolvedValue({
@@ -4061,7 +4116,11 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/agents/:agentId",
     );
 
-    await screen.findByText("活动知识库");
+    await waitFor(() => {
+      expect(screen.getByLabelText("行为指引描述")).toHaveTextContent(
+        "活动知识库",
+      );
+    });
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     const blockedDialog = await screen.findByRole("alertdialog", {

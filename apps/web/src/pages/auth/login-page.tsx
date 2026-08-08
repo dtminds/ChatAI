@@ -31,9 +31,51 @@ import { notifyAuthSessionChanged } from "./auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
 
 export function LoginPage() {
+  const backgroundVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const video = backgroundVideoRef.current;
+
+      if (!video) {
+        return;
+      }
+
+      if (document.visibilityState !== "visible") {
+        video.pause();
+        return;
+      }
+
+      void video.play().catch(() => undefined);
+    };
+
+    if (document.visibilityState !== "visible") {
+      backgroundVideoRef.current?.pause();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center bg-background p-6 md:p-10">
-      <div className="w-full max-w-4xl">
+    <main className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 md:p-10">
+      <video
+        aria-hidden="true"
+        autoPlay
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-top opacity-60 mix-blend-multiply"
+        loop
+        muted
+        playsInline
+        ref={backgroundVideoRef}
+      >
+        <source
+          src="https://b5.bokr.com.cn/dist/ui/0808/leaves.mp4"
+          type="video/mp4"
+        />
+      </video>
+      <div className="relative z-10 w-full max-w-4xl">
         <LoginForm />
       </div>
     </main>
@@ -114,6 +156,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
                 <Label htmlFor={accountId}>用户名</Label>
                 <Input
                   autoComplete="username"
+                  className="autofill-reset"
                   id={accountId}
                   name="account"
                   placeholder="请输入用户名"
@@ -151,6 +194,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
                 </div>
                 <Input
                   autoComplete="current-password"
+                  className="autofill-reset"
                   id={passwordId}
                   name="password"
                   placeholder="请输入密码"
@@ -171,7 +215,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
             <img
               alt="登录页占位图"
               className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-              src="https://b5.bokr.com.cn/dist/login_bg_2.png"
+              src="https://b5.bokr.com.cn/dist/ui/0808/login_bg_5.png"
             />
           </div>
         </CardContent>

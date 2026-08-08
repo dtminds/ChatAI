@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+.autofill-reset:-webkit-autofill,
+.autofill-reset:-webkit-autofill:hover,
+.autofill-reset:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--background) inset;
+  box-shadow: 0 0 0 1000px var(--background) inset;
+  caret-color: var(--foreground);
+}
+
 :root {
   --radius: 0.375rem;
   --background: oklch(1 0 0);

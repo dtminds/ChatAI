@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
 import { UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
@@ -54,6 +59,7 @@ export function AccountSidebarItem({
   takeoverStatus: "idle" | "taking-over";
   variant?: "default" | "compact";
 }) {
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const closePopoverTimerRef = useRef<number | null>(null);
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
   const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
@@ -153,6 +159,15 @@ export function AccountSidebarItem({
 
     setIsTakeoverConfirmOpen(open);
   };
+  const handleTakeoverPopoverPointerDownOutside: NonNullable<
+    ComponentPropsWithoutRef<typeof PopoverContent>["onPointerDownOutside"]
+  > = (event) => {
+    const target = event.detail.originalEvent.target;
+
+    if (target instanceof Node && accountButtonRef.current?.contains(target)) {
+      event.preventDefault();
+    }
+  };
   const handleConfirmTakeover = async (
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
@@ -200,6 +215,7 @@ export function AccountSidebarItem({
         onKeyDown={handleCardKeyDown}
         onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
         onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
+        ref={accountButtonRef}
         type="button"
       >
         <Avatar className="size-7 rounded-[8px]">
@@ -259,6 +275,7 @@ export function AccountSidebarItem({
             onEscapeKeyDown={closeTakeoverPopoverImmediately}
             onMouseEnter={openTakeoverPopover}
             onMouseLeave={closeTakeoverPopover}
+            onPointerDownOutside={handleTakeoverPopoverPointerDownOutside}
             side="right"
             sideOffset={2}
           >
@@ -365,6 +382,7 @@ export function AccountSidebarItem({
           onKeyDown={handleCardKeyDown}
           onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
           onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
+          ref={accountButtonRef}
           title={account.name}
           type="button"
         >
@@ -413,6 +431,7 @@ export function AccountSidebarItem({
           onEscapeKeyDown={closeTakeoverPopoverImmediately}
           onMouseEnter={openTakeoverPopover}
           onMouseLeave={closeTakeoverPopover}
+          onPointerDownOutside={handleTakeoverPopoverPointerDownOutside}
           side="right"
           sideOffset={2}
         >

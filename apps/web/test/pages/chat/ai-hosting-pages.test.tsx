@@ -1029,25 +1029,35 @@ describe("AI hosting pages", () => {
     vi.stubGlobal(
       "Image",
       class {
-        private readonly listeners = new Map<string, Set<() => void>>();
+        private readonly listeners = new Map<string, Set<(event: Event) => void>>();
 
-        onerror: (() => void) | null = null;
-        onload: (() => void) | null = null;
+        complete = false;
+        naturalWidth = 0;
+        onerror: ((event: Event) => void) | null = null;
+        onload: ((event: Event) => void) | null = null;
 
-        addEventListener(type: string, listener: () => void) {
-          const listeners = this.listeners.get(type) ?? new Set<() => void>();
+        addEventListener(type: string, listener: (event: Event) => void) {
+          const listeners =
+            this.listeners.get(type) ?? new Set<(event: Event) => void>();
           listeners.add(listener);
           this.listeners.set(type, listeners);
         }
 
-        removeEventListener(type: string, listener: () => void) {
+        removeEventListener(type: string, listener: (event: Event) => void) {
           this.listeners.get(type)?.delete(listener);
         }
 
         set src(_value: string) {
           queueMicrotask(() => {
-            this.onload?.();
-            this.listeners.get("load")?.forEach((listener) => listener());
+            this.complete = true;
+            this.naturalWidth = 1;
+            const event = {
+              currentTarget: this,
+              target: this,
+            } as unknown as Event;
+
+            this.onload?.(event);
+            this.listeners.get("load")?.forEach((listener) => listener(event));
           });
         }
       },
@@ -4262,11 +4272,15 @@ describe("AI hosting pages", () => {
     expect(within(dialog).getByText("小助理2")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("关联Agent")).toBeInTheDocument();
     expect(within(dialog).getByRole("switch", { name: "允许开启 AI回复" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("group", { name: "回复规则" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("radiogroup", { name: "回复规则" }),
+    ).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("switch", { name: "允许开启 AI回复" }));
 
-    expect(within(dialog).queryByRole("group", { name: "回复规则" })).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("radiogroup", { name: "回复规则" }),
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "保存设置" })).toBeInTheDocument();
   });
 

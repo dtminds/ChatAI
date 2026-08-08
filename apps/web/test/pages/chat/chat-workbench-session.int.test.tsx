@@ -129,7 +129,7 @@ describe("ChatWorkbenchPage session flows", () => {
       name: "当前账号未接管，暂时无法发送消息",
     });
     await user.hover(screen.getByRole("button", { name: "选择 念都堂" }));
-    await user.click(screen.getByRole("button", { name: "接管账号" }));
+    await user.click(await screen.findByRole("button", { name: "接管账号" }));
     const confirmDialog = await screen.findByRole("alertdialog", {
       name: "是否确认接管：念都堂",
     });

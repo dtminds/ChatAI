@@ -1,4 +1,4 @@
-import argon2 from "argon2";
+import argon2, { type HashOptions } from "argon2";
 import { AppError } from "../../shared/errors.js";
 
 const DEFAULT_MAX_CONCURRENT_PASSWORD_VERIFICATIONS = 4;
@@ -29,7 +29,7 @@ export async function hashPassword(password: string) {
   return argon2.hash(password, getArgon2HashOptions());
 }
 
-export function getArgon2HashOptions() {
+export function getArgon2HashOptions(): HashOptions {
   return {
     hashLength: readPositiveInteger("PASSWORD_ARGON2_HASH_LENGTH", 32),
     memoryCost: readPositiveInteger("PASSWORD_ARGON2_MEMORY_COST", 19456),

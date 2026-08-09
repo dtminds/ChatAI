@@ -289,7 +289,7 @@ export function TicketCreateDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="border-t px-6 py-4 sm:space-x-0">
+        <DialogFooter className="border-t px-6 py-4">
           <Button
             disabled={isSubmitting}
             onClick={() => onOpenChange(false)}

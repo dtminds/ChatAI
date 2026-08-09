@@ -273,10 +273,6 @@ describe("support investigation", () => {
       },
       url: "/api/server/messages/send",
     },
-    {
-      method: "GET" as const,
-      url: "/api/server/settings/sidebar-items",
-    },
   ])("blocks $method $url in support mode", async ({ method, payload, url }) => {
     const { app } = await createSupportApp();
     const token = await startInvestigation(app);
@@ -292,7 +288,7 @@ describe("support investigation", () => {
     expect(response.json()).toEqual({
       error: {
         code: "SUPPORT_READ_ONLY",
-        message: "问题排查模式仅支持查看和下载",
+        message: "问题排查模式无法执行该操作",
       },
       success: false,
     });

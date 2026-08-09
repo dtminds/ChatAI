@@ -248,59 +248,6 @@ describe("useWorkbenchStore", () => {
     );
   });
 
-  it("does not start write-side workbench effects in support read-only mode", async () => {
-    const baseService = createMockWorkbenchService();
-    const getSidebarItems = vi.fn(baseService.getSidebarItems);
-    const markConversationRead = vi.fn(baseService.markConversationRead);
-    const requestSmartReplyAutoGeneralAnswer = vi.fn(
-      baseService.requestSmartReplyAutoGeneralAnswer,
-    );
-
-    setWorkbenchService({
-      ...baseService,
-      getSidebarItems,
-      markConversationRead,
-      requestSmartReplyAutoGeneralAnswer,
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench({ supportReadOnly: true });
-
-    const activeConversationId = useWorkbenchStore.getState().activeConversationId;
-    const activeMessage = activeConversationId
-      ? useWorkbenchStore
-          .getState()
-          .messagesByConversationId[activeConversationId]?.find(isChatMessage)
-      : undefined;
-
-    expect(activeConversationId).toBeDefined();
-    expect(activeMessage).toBeDefined();
-    expect(getSidebarItems).not.toHaveBeenCalled();
-    expect(markConversationRead).not.toHaveBeenCalled();
-    expect(requestSmartReplyAutoGeneralAnswer).not.toHaveBeenCalled();
-    expect(useWorkbenchStore.getState().sidebarItems).toEqual([]);
-
-    if (activeConversationId && activeMessage) {
-      useWorkbenchStore.setState((state) => ({
-        conversationListsByScope: {
-          ...state.conversationListsByScope,
-          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
-            conversation.id === activeConversationId
-              ? { ...conversation, unread: 1 }
-              : conversation,
-          ),
-        },
-      }));
-
-      await useWorkbenchStore.getState().markConversationRead(activeConversationId);
-      await useWorkbenchStore
-        .getState()
-        .requestSmartReplyGeneralAnswer(activeMessage, { force: true });
-    }
-
-    expect(markConversationRead).not.toHaveBeenCalled();
-    expect(requestSmartReplyAutoGeneralAnswer).not.toHaveBeenCalled();
-  });
-
   it("changes active conversation full-auto through the workbench service", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn().mockResolvedValue({

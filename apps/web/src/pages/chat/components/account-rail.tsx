@@ -247,7 +247,7 @@ export function AccountRail({
                   }}
                   onTakeOverAccount={onTakeOverAccount}
                   takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
-                  canTakeOverAccount={canTakeOverAccount && !supportReadOnly}
+                  canTakeOverAccount={canTakeOverAccount}
                   variant="compact"
                 />
               );
@@ -398,7 +398,7 @@ export function AccountRail({
                 }}
                 onTakeOverAccount={onTakeOverAccount}
                 takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
-                canTakeOverAccount={canTakeOverAccount && !supportReadOnly}
+                canTakeOverAccount={canTakeOverAccount}
               />
             );
           })}

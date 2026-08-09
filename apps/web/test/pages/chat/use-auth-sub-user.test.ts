@@ -27,6 +27,12 @@ describe("isChatReadOnlySubUser", () => {
 
   it("allows operators with chat.send permission", () => {
     expect(isChatReadOnlySubUser(operator)).toBe(false);
+    expect(
+      isChatReadOnlySubUser({
+        ...operator,
+        accessMode: "support_readonly",
+      }),
+    ).toBe(false);
   });
 
   it("blocks viewers and users without chat.send", () => {

@@ -45,7 +45,5 @@ export function isChatReadOnlySubUser(subUser: AuthSubUser | undefined) {
     return true;
   }
 
-  return subUser.accessMode === "support_readonly"
-    || subUser.role === "viewer"
-    || !subUser.permissions?.includes("chat.send");
+  return subUser.role === "viewer" || !subUser.permissions?.includes("chat.send");
 }

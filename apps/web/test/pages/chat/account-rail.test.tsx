@@ -171,11 +171,13 @@ describe("AccountRail", () => {
         accounts={accounts}
         broadcastProtectionStatus={status}
         currentEmployee={currentEmployee}
+        currentEmployeeId="emp-001"
         onRefreshBroadcastProtection={vi.fn().mockResolvedValue({
           kind: "active",
           status,
         })}
         onSelectAccount={vi.fn()}
+        onTakeOverAccount={vi.fn()}
       />,
     );
 
@@ -184,6 +186,10 @@ describe("AccountRail", () => {
     expect(screen.queryByRole("button", { name: "客户" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "洞察" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "智能体" })).not.toBeInTheDocument();
+
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
+    expect(screen.getByRole("button", { name: "接管账号" })).toBeEnabled();
+    await user.unhover(screen.getByRole("button", { name: "选择 support" }));
 
     const footer = screen.getByTestId("account-rail-footer");
     const broadcastNotice = within(footer).getByRole("button", {

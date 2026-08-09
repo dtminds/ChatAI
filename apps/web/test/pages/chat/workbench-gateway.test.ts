@@ -34,28 +34,6 @@ describe("workbench gateway message paging", () => {
     expect(observedLimits).toEqual([50]);
   });
 
-  it("skips custom sidebar loading for support bootstrap", async () => {
-    const baseService = createMockWorkbenchService();
-    const getSidebarItems = vi.fn(baseService.getSidebarItems);
-
-    setWorkbenchService({
-      ...baseService,
-      getSidebarItems,
-    });
-
-    const result = await bootstrapWorkbench(
-      "single",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      { includeSidebarItems: false },
-    );
-
-    expect(getSidebarItems).not.toHaveBeenCalled();
-    expect(result.sidebarItems).toEqual([]);
-  });
-
   it("forwards voice playback confirmation to the active service", async () => {
     const baseService = createMockWorkbenchService();
     const confirmVoicePlayback = {

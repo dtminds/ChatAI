@@ -23,7 +23,7 @@ export function assertSupportReadonlyRequestAllowed(request: FastifyRequest) {
   if (!allowed) {
     throw new ForbiddenError(
       "SUPPORT_READ_ONLY",
-      "问题排查模式无法执行该操作",
+      "诊断模式无法执行该操作",
     );
   }
 }

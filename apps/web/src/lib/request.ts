@@ -79,7 +79,7 @@ requestInstance.interceptors.request.use((config) => {
   ) {
     return Promise.reject(new RequestNormalizedError({
       code: "SUPPORT_READ_ONLY",
-      message: "问题排查模式无法执行该操作",
+      message: "诊断模式无法执行该操作",
       status: 403,
     }));
   }

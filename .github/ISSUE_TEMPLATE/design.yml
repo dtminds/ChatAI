@@ -1,7 +1,7 @@
 name: 设计/UI 调整 Design
 description: 提交页面视觉、交互、文案或体验调整
 title: "[Design] "
-labels: ["type: feature", "area: web", "status: needs-triage"]
+labels: ["type: feature", "area: web", "needs-triage"]
 body:
   - type: markdown
     attributes:

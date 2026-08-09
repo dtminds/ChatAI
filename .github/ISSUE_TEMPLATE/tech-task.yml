@@ -1,7 +1,7 @@
 name: 技术任务 Tech Task
 description: 提交重构、工程化、测试、契约或后端技术任务
 title: "[Tech] "
-labels: ["type: chore", "status: needs-triage"]
+labels: ["type: chore", "needs-triage"]
 body:
   - type: markdown
     attributes:

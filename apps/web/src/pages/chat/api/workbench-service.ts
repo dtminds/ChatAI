@@ -2470,7 +2470,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       >("/server/messages/download-status", {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
-      }, { supportReadonlyAllowed: true });
+      });
     },
     confirmVoicePlaybackReady(input) {
       return http.post<

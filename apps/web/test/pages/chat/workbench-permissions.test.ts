@@ -54,9 +54,26 @@ describe("resolveWorkbenchPermissions", () => {
       canUseChatSend: false,
       canUseConversationActions: false,
       canUseMessageForward: false,
-      seatAIAssistantEnabled: false,
-      shouldShowConversationAIHostingControl: false,
+      shouldShowConversationAIHostingControl: true,
       sidebarIframeSendStatus: "4",
+    });
+  });
+
+  it("keeps AI hosting controls visible but read-only for viewers", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation(),
+      bootstrapStatus: "ready",
+      me,
+      subUser: viewer,
+    });
+
+    expect(permissions).toMatchObject({
+      canToggleConversationAIHosting: false,
+      shouldShowConversationAIHostingControl: true,
     });
   });
 

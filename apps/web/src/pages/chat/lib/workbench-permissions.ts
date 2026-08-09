@@ -143,10 +143,9 @@ export function resolveWorkbenchPermissions({
     conversationAIHostingConfigured,
     conversationAIHostingEnabled,
     shouldShowConversationAIHostingControl:
-      !readOnly && conversationAIHostingPolicy.shouldShowControl,
+      conversationAIHostingPolicy.shouldShowControl,
     seatAIHostingEnabled,
-    seatAIAssistantEnabled:
-      !readOnly && account?.seatAIAssistantEnabled === true,
+    seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({

@@ -27,6 +27,15 @@ describe("support read-only policy", () => {
     )).not.toThrow();
   });
 
+  it("blocks the unused download status endpoint", () => {
+    expect(() => assertSupportReadonlyRequestAllowed(
+      createRequest("POST", "/api/server/messages/download-status"),
+    )).toThrowError(expect.objectContaining({
+      code: "SUPPORT_READ_ONLY",
+      statusCode: 403,
+    }));
+  });
+
   it("blocks POST requests that are not explicit read operations", () => {
     expect(() => assertSupportReadonlyRequestAllowed(
       createRequest("POST", "/api/server/future-write-route"),

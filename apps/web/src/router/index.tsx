@@ -43,6 +43,20 @@ const AgentHostingSettingsPage = lazy(() =>
     }),
   ),
 );
+const WorkflowPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-list-page").then(
+    ({ WorkflowPage }) => ({
+      default: WorkflowPage,
+    }),
+  ),
+);
+const WorkflowEditorPage = lazy(() =>
+  import("@/pages/chat/workflow/workflow-editor-page").then(
+    ({ WorkflowEditorPage }) => ({
+      default: WorkflowEditorPage,
+    }),
+  ),
+);
 const AgentSubscriptionPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-subscription-page").then(
     ({ AgentSubscriptionPage }) => ({
@@ -267,6 +281,22 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/agents",
         element: withRouteSuspense(<AgentManagementPage />),
+      },
+      {
+        path: "chat/workflows",
+        element: withRouteSuspense(<WorkflowPage />),
+      },
+      {
+        path: "chat/workflows/new",
+        element: withRouteSuspense(<WorkflowEditorPage />),
+      },
+      {
+        path: "chat/workflows/:workflowId",
+        element: withRouteSuspense(<WorkflowEditorPage />),
+      },
+      {
+        path: "chat/workflows/:workflowId/data",
+        element: withRouteSuspense(<WorkflowEditorPage />),
       },
       {
         path: "chat/ai-hosting/agents/new",

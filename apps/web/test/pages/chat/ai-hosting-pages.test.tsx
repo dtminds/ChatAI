@@ -1137,7 +1137,7 @@ describe("AI hosting pages", () => {
   it("renders the agent management page", async () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(
       screen.getByText("创建和管理负责客户接待的智能体"),
     ).toBeInTheDocument();
@@ -1149,7 +1149,7 @@ describe("AI hosting pages", () => {
       "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
     ]);
     expect(screen.getByRole("navigation", { name: "智能体导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Agent 管理" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Agent" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents",
     );
@@ -3511,7 +3511,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0.5MB/1GB");
   });
@@ -3534,7 +3534,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0/1GB");
   });
@@ -4195,7 +4195,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent" });
 
     await user.type(screen.getByRole("textbox", { name: "搜索 Agent 名称" }), "售后");
 
@@ -4214,7 +4214,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent" })).toBeInTheDocument();
     expect(screen.getByText("当前账号仅可查看 Agent，管理操作需管理员权限")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
     const moreActions = screen.getAllByRole("button", { name: /更多操作/ });

@@ -3885,6 +3885,7 @@ function matchesSimpleWheres(
 }
 
 function createReadyDbMock() {
+  let checkCount = 0;
   return {
     selectNoFrom(callback: (expressionBuilder: {
       val: (value: number) => { as: (alias: string) => { alias: string; value: number } };
@@ -3900,7 +3901,12 @@ function createReadyDbMock() {
       });
 
       return {
-        executeTakeFirstOrThrow: async () => ({ schema_check: 1 }),
+        executeTakeFirstOrThrow: async () => {
+          checkCount += 1;
+          return checkCount === 1
+            ? { schema_check: 1 }
+            : { timezone_offset_seconds: 28_800 };
+        },
       };
     },
   } as never;

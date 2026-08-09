@@ -1,13 +1,19 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AccountPermission } from "@chatai/contracts";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
 const operatorSubUser = {
   accountType: "sub" as const,
   displayName: "客服一号",
-  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  permissions: [
+    "chat.access",
+    "chat.send",
+    "chat.takeover",
+  ] satisfies AccountPermission[],
   role: "operator" as const,
   subUserId: "101",
 };
@@ -290,6 +296,79 @@ describe("request", () => {
       code: "UNAUTHORIZED",
       status: 401,
     });
+    expect(sessionChanged).toHaveBeenCalledTimes(1);
+    window.removeEventListener("chatai:auth-session-changed", sessionChanged);
+  });
+
+  it("blocks writes locally in support mode and allows explicitly classified reads", async () => {
+    useAuthStore.getState().setSession({
+      ...operatorSubUser,
+      accessMode: "support_readonly",
+      uid: 9001,
+    });
+    mock.onPost("/server/messages/send").reply(200, { ok: true });
+    mock.onPost("/server/messages/download").reply(200, { ok: true });
+    mock.onPost("/server/sidebar-iframe-params").reply(200, {
+      fsw: "encrypted-fsw",
+      rd: "encrypted-rd",
+      ts: "encrypted-ts",
+    });
+
+    await expect(
+      http.post("/server/messages/send", { content: "blocked" }),
+    ).rejects.toMatchObject({
+      code: "SUPPORT_READ_ONLY",
+      status: 403,
+    });
+    await expect(
+      http.post(
+        "/server/messages/download",
+        { conversationId: "conv-001", msgInfoId: 1 },
+        { supportReadonlyAllowed: true },
+      ),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      fetchWorkbenchSidebarIframeParams({
+        conversationId: "conv-001",
+        seatId: "seat-001",
+      }),
+    ).resolves.toMatchObject({
+      fsw: "encrypted-fsw",
+      rd: "encrypted-rd",
+      ts: "encrypted-ts",
+    });
+    expect(
+      mock.history.post.filter((item) => item.url === "/server/messages/send"),
+    ).toHaveLength(0);
+    expect(
+      mock.history.post.filter((item) => item.url === "/server/messages/download"),
+    ).toHaveLength(1);
+    expect(
+      mock.history.post.filter((item) => item.url === "/server/sidebar-iframe-params"),
+    ).toHaveLength(1);
+  });
+
+  it("does not refresh an expired support session", async () => {
+    const sessionChanged = vi.fn();
+    window.addEventListener("chatai:auth-session-changed", sessionChanged);
+    useAuthStore.getState().setSession({
+      ...operatorSubUser,
+      accessMode: "support_readonly",
+      uid: 9001,
+    });
+    mock.onGet("/server/me").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+
+    await expect(http.get("/server/me")).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
+    expect(mock.history.post).toHaveLength(0);
     expect(sessionChanged).toHaveBeenCalledTimes(1);
     window.removeEventListener("chatai:auth-session-changed", sessionChanged);
   });

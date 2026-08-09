@@ -11,7 +11,11 @@ export async function fetchWorkbenchSidebarIframeParams(
   input: FetchWorkbenchSidebarIframeParamsInput,
 ): Promise<WorkbenchSidebarIframeParamsDto | null> {
   try {
-    return await http.post<WorkbenchSidebarIframeParamsDto>("/server/sidebar-iframe-params", input);
+    return await http.post<WorkbenchSidebarIframeParamsDto>(
+      "/server/sidebar-iframe-params",
+      input,
+      { supportReadonlyAllowed: true },
+    );
   } catch (unknownError: unknown) {
     if (isRequestError(unknownError) && unknownError.status === 404) {
       return null;

@@ -283,8 +283,8 @@ export function AiSkillSettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { skillId } = useParams<{ skillId?: string }>();
-  const role = useAuthStore((state) => state.subUser?.role);
-  const canManage = canManageAiHostingAgents(role);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const isEditMode = Boolean(skillId);
   const descriptionEditorRef = useRef<LexicalEditor | null>(null);
   const [createDraft] = useState(() =>

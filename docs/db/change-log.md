@@ -2,6 +2,31 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-08-09
+
+- Add the append-only problem-investigation start log. The short-lived support
+  token owns expiry; this table intentionally has no end time, end reason, or
+  session status.
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_support_investigation_log (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  actor_uid BIGINT UNSIGNED NOT NULL COMMENT '发起排查的租户UID',
+  actor_sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '发起排查的子账号ID',
+  target_uid BIGINT UNSIGNED NOT NULL COMMENT '目标租户UID',
+  target_sub_user_id BIGINT UNSIGNED NOT NULL COMMENT '目标子账号ID',
+  investigation_reason VARCHAR(64) NOT NULL COMMENT '排查原因',
+  started_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '排查开始时间',
+  PRIMARY KEY (id),
+  KEY idx_support_investigation_actor_started (
+    actor_uid, actor_sub_user_id, started_at
+  ),
+  KEY idx_support_investigation_target_started (
+    target_uid, target_sub_user_id, started_at
+  )
+) COMMENT='问题排查启动记录';
+```
+
 ## 2026-07-30
 
 - Consolidated production migration from the `main` action-item schema to the final ticket-system schema. This replaces the development-only 2026-07-27, 2026-07-29, and earlier 2026-07-30 ticket migrations.

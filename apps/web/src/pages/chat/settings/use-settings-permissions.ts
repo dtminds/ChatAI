@@ -1,4 +1,5 @@
 import type { AuthSubUser } from "@chatai/contracts";
+import { isReadOnlySubUser } from "@/pages/chat/lib/sub-user-permissions";
 import { useAuthStore } from "@/store/auth-store";
 
 type SettingsPermissionState = {
@@ -19,7 +20,13 @@ export function useSettingsPermissions() {
   return subUser ? resolveSettingsPermissions(subUser) : readOnlyPermissions;
 }
 
-function resolveSettingsPermissions(subUser: AuthSubUser): SettingsPermissionState {
+export function resolveSettingsPermissions(
+  subUser: AuthSubUser,
+): SettingsPermissionState {
+  if (isReadOnlySubUser(subUser)) {
+    return readOnlyPermissions;
+  }
+
   return {
     canManageManagedAccounts: subUser.permissions.includes("settings.managedAccounts.manage"),
     canManageSidebar: subUser.permissions.includes("settings.sidebar.manage"),

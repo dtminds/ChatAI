@@ -27,6 +27,56 @@ const viewer: AuthSubUser = {
 };
 
 describe("resolveWorkbenchPermissions", () => {
+  it("applies the shared chat read-only permissions in support mode", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        seatAIHostingAuth: true,
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation(),
+      bootstrapStatus: "ready",
+      me,
+      subUser: {
+        ...operator,
+        accessMode: "support_readonly",
+      },
+    });
+
+    expect(permissions).toMatchObject({
+      canCollectMaterialActions: false,
+      canConfigureSeatAIHosting: false,
+      canConfigureSeatSemiAuto: false,
+      canMarkHandoffHandled: false,
+      canSendMessage: false,
+      canTakeOverAccount: false,
+      canToggleConversationAIHosting: false,
+      canUseChatSend: false,
+      canUseConversationActions: false,
+      canUseMessageForward: false,
+      shouldShowConversationAIHostingControl: true,
+      sidebarIframeSendStatus: "4",
+    });
+  });
+
+  it("keeps AI hosting controls visible but read-only for viewers", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation(),
+      bootstrapStatus: "ready",
+      me,
+      subUser: viewer,
+    });
+
+    expect(permissions).toMatchObject({
+      canToggleConversationAIHosting: false,
+      shouldShowConversationAIHostingControl: true,
+    });
+  });
+
   it("allows sending and conversation actions when account is taken over and role can send", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({ takenOverEmployeeId: me.id }),

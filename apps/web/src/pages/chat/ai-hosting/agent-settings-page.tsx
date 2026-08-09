@@ -185,7 +185,7 @@ const agentSettingsModuleSurfaceClassName =
 export function AgentSettingsPage() {
   const navigate = useNavigate();
   const { agentId } = useParams();
-  const role = useAuthStore((state) => state.subUser?.role);
+  const subUser = useAuthStore((state) => state.subUser);
   const isEditing = Boolean(agentId);
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
   const [models, setModels] = useState<AiHostingModel[]>([]);
@@ -220,7 +220,7 @@ export function AgentSettingsPage() {
   const initialLoadRequestVersionRef = useRef(0);
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
-  const canManage = canManageAiHostingAgents(role);
+  const canManage = canManageAiHostingAgents(subUser);
   const controlsDisabled = loading || initialLoadFailed || submitting || !canManage;
   const hasLocalPublishChanges = Boolean(
     agentDetail &&

@@ -1,9 +1,18 @@
-import type { AccountRole } from "@chatai/contracts";
+import type { AuthSubUser } from "@chatai/contracts";
+import { isReadOnlySubUser } from "@/pages/chat/lib/sub-user-permissions";
 
-export function canManageAiHostingAgents(role: AccountRole | undefined) {
-  return role === "owner" || role === "admin";
+export function canManageAiHostingAgents(subUser: AuthSubUser | undefined) {
+  return (
+    !isReadOnlySubUser(subUser) &&
+    (subUser?.role === "owner" || subUser?.role === "admin")
+  );
 }
 
-export function canMaintainUserMemory(role: AccountRole | undefined) {
-  return role === "owner" || role === "admin" || role === "operator";
+export function canMaintainUserMemory(subUser: AuthSubUser | undefined) {
+  return (
+    !isReadOnlySubUser(subUser) &&
+    (subUser?.role === "owner" ||
+      subUser?.role === "admin" ||
+      subUser?.role === "operator")
+  );
 }

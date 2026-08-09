@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
+import {
+  isChatReadOnlySubUser,
+  isReadOnlySubUser,
+} from "@/pages/chat/lib/sub-user-permissions";
 import type { AuthSubUser } from "@chatai/contracts";
 
 const operator: AuthSubUser = {
@@ -25,8 +28,17 @@ describe("isChatReadOnlySubUser", () => {
     expect(isChatReadOnlySubUser(undefined)).toBe(true);
   });
 
-  it("allows operators with chat.send permission", () => {
+  it("allows operators with chat.send permission outside support mode", () => {
     expect(isChatReadOnlySubUser(operator)).toBe(false);
+  });
+
+  it("treats support mode as chat read-only", () => {
+    expect(
+      isChatReadOnlySubUser({
+        ...operator,
+        accessMode: "support_readonly",
+      }),
+    ).toBe(true);
   });
 
   it("blocks viewers and users without chat.send", () => {
@@ -37,5 +49,21 @@ describe("isChatReadOnlySubUser", () => {
         permissions: ["chat.access", "chat.takeover"],
       }),
     ).toBe(true);
+  });
+});
+
+describe("isReadOnlySubUser", () => {
+  it("treats viewers and support sessions as read-only", () => {
+    expect(isReadOnlySubUser(viewer)).toBe(true);
+    expect(
+      isReadOnlySubUser({
+        ...operator,
+        accessMode: "support_readonly",
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps standard operators writable", () => {
+    expect(isReadOnlySubUser(operator)).toBe(false);
   });
 });

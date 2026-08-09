@@ -973,6 +973,7 @@ function ChatWorkbenchContent({
     canSendMessage,
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
+    canCollectMaterialActions,
     canMarkHandoffHandled,
     canToggleConversationAIHosting,
     canTakeOverAccount,
@@ -988,7 +989,6 @@ function ChatWorkbenchContent({
     isConversationActionDisabled,
     sidebarIframeSendStatus,
   } = workbenchPermissions;
-  const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
   const messageForward = useMessageForward({ seatId: activeAccountId });
   const selectedForwardMessages = useMemo(
     () =>

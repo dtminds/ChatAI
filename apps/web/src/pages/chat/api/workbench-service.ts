@@ -2433,6 +2433,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchMessageQueryBySeqsResponse, WorkbenchMessageQueryBySeqsRequest>(
         "/server/messages/query-by-seqs",
         input,
+        { supportReadonlyAllowed: true },
       );
     },
     getChatRecordDetail(input) {
@@ -2460,7 +2461,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       >("/server/messages/download", {
         conversationId: input.conversationId,
         msgInfoId: input.msgInfoId,
-      });
+      }, { supportReadonlyAllowed: true });
     },
     getMessageFileDownloadStatus(input) {
       return http.post<

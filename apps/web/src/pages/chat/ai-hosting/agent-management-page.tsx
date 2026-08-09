@@ -166,7 +166,7 @@ const agentIntroSteps = [
 ] as const;
 
 export function AgentManagementPage() {
-  const role = useAuthStore((state) => state.subUser?.role);
+  const subUser = useAuthStore((state) => state.subUser);
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [debouncedAgentSearchQuery, setDebouncedAgentSearchQuery] = useState("");
@@ -180,7 +180,7 @@ export function AgentManagementPage() {
   const [selfLearningTarget, setSelfLearningTarget] = useState<AgentRecord | null>(null);
   const [selfLearningSaving, setSelfLearningSaving] = useState(false);
   const navigate = useNavigate();
-  const canManage = canManageAiHostingAgents(role);
+  const canManage = canManageAiHostingAgents(subUser);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,

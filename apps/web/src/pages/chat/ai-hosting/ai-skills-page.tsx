@@ -375,8 +375,8 @@ function filterRecommendations(
 
 function MySkillsPanel() {
   const navigate = useNavigate();
-  const role = useAuthStore((state) => state.subUser?.role);
-  const canManage = canManageAiHostingAgents(role);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
   const [skills, setSkills] = useState<MySkillItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

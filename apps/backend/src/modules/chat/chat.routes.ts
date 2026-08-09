@@ -2057,7 +2057,6 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      assertChatWriteAccess(request);
       return getWorkbenchService(app, request).getMessageFileDownloadStatus(
         getSubUserId(request),
         request.body.conversationId,

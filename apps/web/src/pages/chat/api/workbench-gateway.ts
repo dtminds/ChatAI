@@ -182,12 +182,15 @@ export async function bootstrapWorkbench(
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   now = Date.now(),
   preferredConversationId?: string,
+  options: { includeSidebarItems?: boolean } = {},
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
   const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
     service.getMe(),
     service.getSeats(),
-    service.getSidebarItems().catch(() => ({ items: [] })),
+    options.includeSidebarItems === false
+      ? Promise.resolve({ items: [] })
+      : service.getSidebarItems().catch(() => ({ items: [] })),
   ]);
 
   const me = adaptEmployee(meDto);

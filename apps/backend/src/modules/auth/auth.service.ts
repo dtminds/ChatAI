@@ -23,6 +23,7 @@ import {
   deriveAccountType,
   getRolePermissions,
 } from "./permissions.js";
+import { canStartSupportInvestigation } from "./support-investigation-access.js";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
@@ -175,10 +176,14 @@ export async function getCurrentSession(
     throw new UnauthorizedError();
   }
 
-  return mapAuthSubUser(subUser);
+  return mapAuthSubUser(subUser, user.accessMode === "support_readonly");
 }
 
 export async function revokeSession(app: FastifyInstance, user: JwtUser) {
+  if (user.accessMode === "support_readonly") {
+    return { revoked: true };
+  }
+
   await app.db
     .updateTable("xy_wap_embed_sub_user_session")
     .set({
@@ -539,11 +544,17 @@ function mapAuthSubUser(row: {
   role?: string | null;
   type?: number | null;
   uid: number;
-}): AuthSubUser {
+}, supportReadOnly = false): AuthSubUser {
   const role = deriveAccountRole(row);
+  const supportInvestigationAllowed = !supportReadOnly && canStartSupportInvestigation({
+    subUserId: String(row.id),
+    uid: row.uid,
+  });
 
   return {
+    ...(supportReadOnly ? { accessMode: "support_readonly" as const } : {}),
     accountType: deriveAccountType(row.type),
+    ...(supportInvestigationAllowed ? { canStartSupportInvestigation: true } : {}),
     displayName: row.name,
     permissions: getRolePermissions(role),
     role,

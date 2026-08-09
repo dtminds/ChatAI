@@ -586,6 +586,7 @@ function ChatWorkbenchContent({
     })),
   );
   const subUser = useAuthStore((state) => state.subUser);
+  const supportReadOnly = subUser?.accessMode === "support_readonly";
 
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [sendFailureDialog, setSendFailureDialog] = useState<{
@@ -905,7 +906,7 @@ function ChatWorkbenchContent({
       (conversation) => conversation.id === activeConversationId,
     );
   const isActiveConversationTicketSupported =
-    isConversationTicketSupported(activeConversation);
+    !supportReadOnly && isConversationTicketSupported(activeConversation);
   const ticketReminderDisplayMode = useTicketCountStore(
     (state) => state.reminderDisplayMode,
   );
@@ -988,7 +989,9 @@ function ChatWorkbenchContent({
     isConversationActionDisabled,
     sidebarIframeSendStatus,
   } = workbenchPermissions;
-  const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
+  const canCollectMaterialActions = Boolean(
+    subUser && subUser.role !== "viewer" && !supportReadOnly,
+  );
   const messageForward = useMessageForward({ seatId: activeAccountId });
   const selectedForwardMessages = useMemo(
     () =>
@@ -1151,12 +1154,14 @@ function ChatWorkbenchContent({
       beforeActivate: prepareConversationActivation,
       preferredConversationId: routedConversationOpen?.conversationId,
       promotePreferredConversation: routedConversationOpen?.promote,
+      supportReadOnly,
     });
   }, [
     bootstrapStatus,
     initializeWorkbench,
     prepareConversationActivation,
     routedConversationOpen,
+    supportReadOnly,
   ]);
 
   useEffect(() => {
@@ -2196,7 +2201,7 @@ function ChatWorkbenchContent({
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => {
-    if (message.content.type !== "voice" || !message.seq) {
+    if (supportReadOnly || message.content.type !== "voice" || !message.seq) {
       return;
     }
 
@@ -2676,8 +2681,10 @@ function ChatWorkbenchContent({
       onForwardMessage={messageForward.handleForwardMessage}
       onDeleteCollectedExpression={handleDeleteCollectedExpression}
       onDownloadMessageFile={handleDownloadMessageFile}
-      onTranscribeVoice={handleTranscribeVoice}
-      onVoicePlaybackReady={handleVoicePlaybackReady}
+      onTranscribeVoice={supportReadOnly ? undefined : handleTranscribeVoice}
+      onVoicePlaybackReady={
+        supportReadOnly ? undefined : handleVoicePlaybackReady
+      }
       onDraftChange={handleDraftChange}
       onEmojiPickerOpenChange={setIsEmojiPickerOpen}
       onEnterBehaviorChange={setInputEnterBehavior}
@@ -2738,7 +2745,7 @@ function ChatWorkbenchContent({
       onRefreshGroupMembers={() => {
         void loadActiveGroupMembers({ force: true });
       }}
-      onStartCustomerChat={handleStartCustomerChat}
+      onStartCustomerChat={supportReadOnly ? undefined : handleStartCustomerChat}
       onLoadOlderMessages={handleLoadOlderMessages}
       onMarkConversationRead={handleMarkConversationRead}
       onMarkConversationUnread={handleMarkConversationUnread}
@@ -2754,7 +2761,7 @@ function ChatWorkbenchContent({
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
       onToggleTickets={
-        isActiveConversationTicketSupported
+        isActiveConversationTicketSupported && !supportReadOnly
           ? () => {
               if (activeAuxiliaryPanel === "tickets") {
                 setActiveAuxiliaryPanel(null);

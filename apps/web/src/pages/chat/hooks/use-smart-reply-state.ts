@@ -147,9 +147,13 @@ export function useSmartReplyState({
 
   const handleTriggerSmartReply = useCallback(
     (message: ChatMessage, options?: { force?: boolean }) => {
+      if (!canSendMessage) {
+        return;
+      }
+
       void requestSmartReplyGeneralAnswer(message, options);
     },
-    [requestSmartReplyGeneralAnswer],
+    [canSendMessage, requestSmartReplyGeneralAnswer],
   );
 
   const handleDismissSmartReply = useCallback(
@@ -161,9 +165,13 @@ export function useSmartReplyState({
 
   const handleMakeShorterSmartReply = useCallback(
     (message: ChatMessage) => {
+      if (!canSendMessage) {
+        return;
+      }
+
       void requestSmartReplyMakeShorter(message);
     },
-    [requestSmartReplyMakeShorter],
+    [canSendMessage, requestSmartReplyMakeShorter],
   );
 
   return {

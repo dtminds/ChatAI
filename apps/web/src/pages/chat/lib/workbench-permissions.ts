@@ -60,14 +60,18 @@ export function resolveWorkbenchPermissions({
   me,
   subUser,
 }: ResolveWorkbenchPermissionsInput): WorkbenchPermissions {
-  const canUseChatSend = subUser?.permissions.includes("chat.send") ?? false;
+  const supportReadOnly = subUser?.accessMode === "support_readonly";
+  const canUseChatSend = !supportReadOnly
+    && (subUser?.permissions.includes("chat.send") ?? false);
   const canTakeOverAccount =
-    subUser?.permissions.includes("chat.takeover") ?? false;
+    !supportReadOnly
+    && (subUser?.permissions.includes("chat.takeover") ?? false);
   const isAccountSeatExpired = isExpiredAccountSeat(account);
   const isAccountOffline = account?.loginStatus === "offline";
   const isAccountTakenOverByCurrentUser =
     !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
   const canMarkHandoffHandled =
+    !supportReadOnly &&
     isAccountTakenOverByCurrentUser &&
     Boolean(subUser && subUser.role !== "viewer");
   const isConversationBizInactive = activeConversation?.bizStatus !== 1;
@@ -77,9 +81,11 @@ export function resolveWorkbenchPermissions({
     me,
   });
   const canConfigureSeatAIHosting =
+    !supportReadOnly &&
     isAccountTakenOverByCurrentUser &&
     account?.seatAIHostingAuth === true;
   const canConfigureSeatSemiAuto =
+    !supportReadOnly &&
     isAccountTakenOverByCurrentUser &&
     account?.semiAutoAuth === true;
   const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
@@ -132,9 +138,10 @@ export function resolveWorkbenchPermissions({
     conversationAIHostingConfigured,
     conversationAIHostingEnabled,
     shouldShowConversationAIHostingControl:
-      conversationAIHostingPolicy.shouldShowControl,
+      !supportReadOnly && conversationAIHostingPolicy.shouldShowControl,
     seatAIHostingEnabled,
-    seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
+    seatAIAssistantEnabled:
+      !supportReadOnly && account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({

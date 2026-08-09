@@ -11,7 +11,9 @@ const ticketCountForegroundStaleMs = 30_000;
 
 export function useTicketCountPolling() {
   const scopeKey = useAuthStore((state) =>
-    state.subUser ? `${state.subUser.uid}:${state.subUser.subUserId}` : undefined
+    state.subUser && state.subUser.accessMode !== "support_readonly"
+      ? `${state.subUser.uid}:${state.subUser.subUserId}`
+      : undefined
   );
   const reminderDisplayMode = useTicketCountStore(
     (state) => state.reminderDisplayMode,

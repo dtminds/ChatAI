@@ -228,6 +228,7 @@ type InitializeWorkbenchOptions = {
   beforeActivate?: (conversation: Conversation) => void;
   preferredConversationId?: string;
   promotePreferredConversation?: boolean;
+  supportReadOnly?: boolean;
 };
 
 const emptyHistoryPanelState: HistoryPanelState = {
@@ -1851,6 +1852,7 @@ function triggerSmartReplyAutoGeneration(
   conversationId: string,
   message: ChatMessage,
   options: {
+    enabled: boolean;
     clearAutoPreviewTimeout: (conversationId: string, lookupKey: string) => void;
     scheduleAutoPreviewTimeout: (conversationId: string, lookupKey: string) => void;
     schedulePoll: (conversationId: string, options?: { force?: boolean }) => void;
@@ -1860,6 +1862,10 @@ function triggerSmartReplyAutoGeneration(
     ) => void;
   },
 ) {
+  if (!options.enabled) {
+    return;
+  }
+
   const conversation = findConversationById(
     get().conversationListsByScope,
     conversationId,
@@ -3156,6 +3162,8 @@ function isGroupMembersCacheFresh(
 }
 
 export function createWorkbenchStore() {
+  let smartReplyRuntimeEnabled = true;
+  let workbenchWriteRuntimeEnabled = true;
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
@@ -3740,6 +3748,10 @@ export function createWorkbenchStore() {
       conversationId: string,
       lookupKey: string,
     ) {
+      if (!smartReplyRuntimeEnabled) {
+        return;
+      }
+
       clearSmartReplyAutoPreviewTimeout(conversationId, lookupKey);
 
       const timerKey = getSmartReplyTimerKey(conversationId, lookupKey);
@@ -3783,6 +3795,10 @@ export function createWorkbenchStore() {
     }
 
     function scheduleSmartReplyTimeout(conversationId: string, lookupKey: string) {
+      if (!smartReplyRuntimeEnabled) {
+        return;
+      }
+
       clearSmartReplyTimeout(conversationId, lookupKey);
 
       const timerKey = getSmartReplyTimerKey(conversationId, lookupKey);
@@ -3872,6 +3888,11 @@ export function createWorkbenchStore() {
       conversationId: string,
       options?: { force?: boolean },
     ) {
+      if (!smartReplyRuntimeEnabled) {
+        clearSmartReplyPollTimer(conversationId);
+        return;
+      }
+
       scheduleSmartReplyPoll(get, set, conversationId, {
         ...options,
         clearPollTimer: clearSmartReplyPollTimer,
@@ -4017,6 +4038,10 @@ export function createWorkbenchStore() {
       conversationId: string,
       requestId: number,
     ) {
+      if (!workbenchWriteRuntimeEnabled) {
+        return;
+      }
+
       const conversation = getConversationById(get(), conversationId);
 
       if (!conversation || conversation.unread <= 0) {
@@ -4498,6 +4523,7 @@ export function createWorkbenchStore() {
           canUseSmartReplyForConversation(get(), conversationId)
         ) {
           triggerSmartReplyAutoGeneration(get, set, conversationId, autoGenerateMessage, {
+            enabled: smartReplyRuntimeEnabled,
             clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
             scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
             schedulePoll: scheduleSmartReplyPollForConversation,
@@ -4915,6 +4941,7 @@ export function createWorkbenchStore() {
             conversation.id,
             autoGenerateMessage,
             {
+              enabled: smartReplyRuntimeEnabled,
               clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
               scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
               schedulePoll: scheduleSmartReplyPollForConversation,
@@ -5265,6 +5292,7 @@ export function createWorkbenchStore() {
         const conversationId = state.activeConversationId;
 
         if (
+          !smartReplyRuntimeEnabled ||
           !conversationId ||
           !canUseSmartReplyForConversation(state, conversationId) ||
           !isSmartReplyEligibleMessage(message)
@@ -5433,6 +5461,7 @@ export function createWorkbenchStore() {
         const conversationId = state.activeConversationId;
 
         if (
+          !smartReplyRuntimeEnabled ||
           !conversationId ||
           !canUseSmartReplyForConversation(state, conversationId) ||
           !isSmartReplyEligibleMessage(message)
@@ -5530,6 +5559,7 @@ export function createWorkbenchStore() {
         const conversationId = state.activeConversationId;
 
         if (
+          !smartReplyRuntimeEnabled ||
           !conversationId ||
           !canUseSmartReplyForConversation(state, conversationId) ||
           !isSmartReplyEligibleMessage(message)
@@ -5747,6 +5777,10 @@ export function createWorkbenchStore() {
         await syncFullAutoAgentStatusForCurrentState();
       },
       async markConversationUnread(conversationId) {
+        if (!workbenchWriteRuntimeEnabled) {
+          return;
+        }
+
         const state = get();
         const conversation = getConversationById(state, conversationId);
         const account = state.accounts.find(
@@ -5894,6 +5928,9 @@ export function createWorkbenchStore() {
         bootstrapError: undefined,
         bootstrapStatus: "loading",
       });
+      const supportReadOnly = options?.supportReadOnly === true;
+      smartReplyRuntimeEnabled = !supportReadOnly;
+      workbenchWriteRuntimeEnabled = !supportReadOnly;
       const requestId = issueScopeRequestId();
 
       try {
@@ -5903,6 +5940,7 @@ export function createWorkbenchStore() {
           MESSAGE_PAGE_SIZE,
           Date.now(),
           options?.preferredConversationId,
+          { includeSidebarItems: !supportReadOnly },
         );
         const conversationPage = bootstrapResult.conversationPage;
 
@@ -5941,7 +5979,7 @@ export function createWorkbenchStore() {
               prunedConversationListCache.conversationListsByScope,
             me: bootstrapResult.me,
           };
-          const bootstrapSmartReplyByMessageId = conversationPage
+          const bootstrapSmartReplyByMessageId = conversationPage && !supportReadOnly
             ? getPageSmartRepliesForConversation(
                 bootstrapSmartReplyState,
                 conversationPage,
@@ -6051,7 +6089,9 @@ export function createWorkbenchStore() {
           });
         }
 
-        await syncFullAutoAgentStatusForCurrentState();
+        if (!supportReadOnly) {
+          await syncFullAutoAgentStatusForCurrentState();
+        }
 
         if (bootstrapActiveConversation?.mode === "group") {
           set((currentState) => ({
@@ -6068,6 +6108,7 @@ export function createWorkbenchStore() {
         );
 
         if (
+          !supportReadOnly &&
           bootstrapResult.activeConversationId &&
           canUseConversationActions(
             get(),
@@ -6082,7 +6123,7 @@ export function createWorkbenchStore() {
           );
         }
 
-        if (bootstrapResult.activeConversationId) {
+        if (bootstrapResult.activeConversationId && !supportReadOnly) {
           scheduleSmartReplyPollForConversation(bootstrapResult.activeConversationId, {
             force: Object.keys(bootstrapSmartReplyPending).length > 0,
           });
@@ -6122,6 +6163,7 @@ export function createWorkbenchStore() {
               bootstrapResult.activeConversationId,
               autoGenerateMessage,
               {
+                enabled: smartReplyRuntimeEnabled,
                 clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
                 scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
                 schedulePoll: scheduleSmartReplyPollForConversation,
@@ -6579,6 +6621,7 @@ export function createWorkbenchStore() {
               polledConversationId,
               autoGenerateMessage,
               {
+                enabled: smartReplyRuntimeEnabled,
                 clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
                 scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
                 schedulePoll: scheduleSmartReplyPollForConversation,
@@ -7597,6 +7640,8 @@ export function createWorkbenchStore() {
     },
     resetWorkbenchSession() {
       clearAllRuntimeState();
+      smartReplyRuntimeEnabled = true;
+      workbenchWriteRuntimeEnabled = true;
       set(createInitialState());
     },
     resetWorkbenchRuntime() {
@@ -7889,6 +7934,7 @@ export function createWorkbenchStore() {
           canUseSmartReplyForConversation(get(), nextConversationId)
         ) {
           triggerSmartReplyAutoGeneration(get, set, nextConversationId, autoGenerateMessage, {
+            enabled: smartReplyRuntimeEnabled,
             clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
             scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
             schedulePoll: scheduleSmartReplyPollForConversation,
@@ -8076,6 +8122,7 @@ export function createWorkbenchStore() {
           canUseSmartReplyForConversation(get(), conversationId)
         ) {
           triggerSmartReplyAutoGeneration(get, set, conversationId, autoGenerateMessage, {
+            enabled: smartReplyRuntimeEnabled,
             clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
             scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
             schedulePoll: scheduleSmartReplyPollForConversation,
@@ -8390,6 +8437,7 @@ export function createWorkbenchStore() {
               conversationId,
               autoGenerateMessage,
               {
+                enabled: smartReplyRuntimeEnabled,
                 clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
                 scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
                 schedulePoll: scheduleSmartReplyPollForConversation,
@@ -8555,6 +8603,7 @@ export function createWorkbenchStore() {
               conversationId,
               autoGenerateMessage,
               {
+                enabled: smartReplyRuntimeEnabled,
                 clearAutoPreviewTimeout: clearSmartReplyAutoPreviewTimeout,
                 scheduleAutoPreviewTimeout: scheduleSmartReplyAutoPreviewTimeout,
                 schedulePoll: scheduleSmartReplyPollForConversation,

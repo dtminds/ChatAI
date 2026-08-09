@@ -5,6 +5,8 @@ import type { JwtUser } from "@chatai/contracts";
 import { ForbiddenError, UnauthorizedError } from "../shared/errors.js";
 import { verifyAccessSession } from "../modules/auth/auth.service.js";
 import { ACCESS_TOKEN_COOKIE_NAME, readAuthCookie } from "../modules/auth/auth-cookies.js";
+import { isValidSupportInvestigationUser } from "../modules/auth/support-investigation-access.js";
+import { assertSupportReadonlyRequestAllowed } from "../modules/auth/support-readonly-policy.js";
 
 const mutatingMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
 const expectedWorkbenchClient = "chat-ai-ui";
@@ -70,13 +72,20 @@ export const authPlugin = fp(async (app) => {
       throw new UnauthorizedError();
     }
 
-    if (!app.db || !(await verifyAccessSession(app.db, request.user, app.cache, app.cacheKeys))) {
+    const hasValidSession = request.user.accessMode === "support_readonly"
+      ? isValidSupportInvestigationUser(request.user)
+      : app.db
+        && await verifyAccessSession(app.db, request.user, app.cache, app.cacheKeys);
+
+    if (!hasValidSession) {
       throw new UnauthorizedError();
     }
 
     if (authenticatedWithCookie && isMutatingRequest(request) && !hasWorkbenchClientHeader(request)) {
       throw new ForbiddenError("CSRF_PROTECTION_FAILED", "请求来源校验失败");
     }
+
+    assertSupportReadonlyRequestAllowed(request);
   });
 });
 

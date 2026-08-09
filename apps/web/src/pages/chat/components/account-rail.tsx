@@ -32,10 +32,12 @@ import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 import type { WorkbenchBroadcastProtectionStatusDto } from "@chatai/contracts";
 import type { BroadcastProtectionRefreshResult } from "@/pages/chat/broadcast-protection/broadcast-protection-store";
 import { BroadcastProtectionNotice } from "@/pages/chat/components/broadcast-protection-notice";
+import { SupportReadonlyNotice } from "@/pages/chat/components/support-readonly-notice";
 import {
   type TicketReminderDisplayMode,
   useTicketCountStore,
 } from "@/pages/chat/tickets/ticket-count-store";
+import { useAuthStore } from "@/store/auth-store";
 
 const railItems = [
   { label: "聊天", icon: ChatIcon },
@@ -117,6 +119,12 @@ export function AccountRail({
   const ticketReminderDisplayMode = useTicketCountStore(
     (state) => state.reminderDisplayMode,
   );
+  const supportReadOnly = useAuthStore(
+    (state) => state.subUser?.accessMode === "support_readonly",
+  );
+  const availableRailItems = supportReadOnly
+    ? visibleRailItems.filter((item) => item.label === "聊天")
+    : visibleRailItems;
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
 
@@ -159,7 +167,7 @@ export function AccountRail({
             aria-label="侧栏导航"
             className="flex flex-col items-center gap-2"
           >
-            {visibleRailItems.map((item) => {
+            {availableRailItems.map((item) => {
               const isActive = item.label === activeNavItem;
               const isRouteActive = isRouteItemActive(location.pathname, item.to);
               const itemContent = (
@@ -239,7 +247,7 @@ export function AccountRail({
                   }}
                   onTakeOverAccount={onTakeOverAccount}
                   takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
-                  canTakeOverAccount={canTakeOverAccount}
+                  canTakeOverAccount={canTakeOverAccount && !supportReadOnly}
                   variant="compact"
                 />
               );
@@ -258,6 +266,7 @@ export function AccountRail({
               status={broadcastProtectionStatus}
             />
           ) : null}
+          {supportReadOnly ? <SupportReadonlyNotice compact /> : null}
           <SignedInAccountMenu
             displayName={currentEmployee?.displayName}
             onLogout={onLogout}
@@ -306,7 +315,7 @@ export function AccountRail({
       </div>
 
       <div className="flex flex-col gap-1 px-1">
-        {visibleRailItems.map((item) => {
+        {availableRailItems.map((item) => {
           const isActive = item.label === activeNavItem;
           const itemContent = (
             <>
@@ -389,7 +398,7 @@ export function AccountRail({
                 }}
                 onTakeOverAccount={onTakeOverAccount}
                 takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
-                canTakeOverAccount={canTakeOverAccount}
+                canTakeOverAccount={canTakeOverAccount && !supportReadOnly}
               />
             );
           })}
@@ -403,6 +412,11 @@ export function AccountRail({
               onRefresh={onRefreshBroadcastProtection}
               status={broadcastProtectionStatus}
             />
+          </div>
+        ) : null}
+        {supportReadOnly ? (
+          <div className="mb-3">
+            <SupportReadonlyNotice />
           </div>
         ) : null}
         <SignedInAccountMenu

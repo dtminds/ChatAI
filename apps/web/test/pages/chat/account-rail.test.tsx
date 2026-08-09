@@ -18,6 +18,7 @@ import {
   setTicketReminderDisplayMode,
   useTicketCountStore,
 } from "@/pages/chat/tickets/ticket-count-store";
+import { useAuthStore } from "@/store/auth-store";
 
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children, ...props }: ComponentProps<"span">) => (
@@ -83,6 +84,7 @@ describe("AccountRail", () => {
     delete document.documentElement.dataset.appearanceTheme;
     window.localStorage.clear();
     resetTicketCountStore();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     useTicketCountStore.setState({
       counts: { assignedToMeActive: 3 },
       initialStatus: "ready",
@@ -93,6 +95,95 @@ describe("AccountRail", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+  });
+
+  it("shows the problem investigation entry only for an authorized account", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "main",
+      canStartSupportInvestigation: true,
+      displayName: "平台观测",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "owner",
+      subUserId: "1",
+      uid: 272,
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "问题排查" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "问题排查" }),
+    ).toBeInTheDocument();
+  });
+
+  it("limits support sessions to chat and places the read-only notice below broadcast protection", async () => {
+    const user = userEvent.setup();
+    const status = {
+      degradeCallbackCnt: 1800,
+      degradeCallbackRate: 120,
+      normalCallbackCnt: 8,
+      normalCallbackRate: 600,
+    };
+    useAuthStore.getState().setSession({
+      accessMode: "support_readonly",
+      accountType: "sub",
+      canStartSupportInvestigation: false,
+      displayName: "目标客服",
+      permissions: ["chat.access", "chat.send", "chat.takeover"],
+      role: "operator",
+      subUserId: "201",
+      uid: 9001,
+    });
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        broadcastProtectionStatus={status}
+        currentEmployee={currentEmployee}
+        onRefreshBroadcastProtection={vi.fn().mockResolvedValue({
+          kind: "active",
+          status,
+        })}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /工单/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "客户" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "洞察" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "智能体" })).not.toBeInTheDocument();
+
+    const footer = screen.getByTestId("account-rail-footer");
+    const broadcastNotice = within(footer).getByRole("button", {
+      name: "群发保护已激活，查看详情",
+    });
+    const readonlyNotice = within(footer).getByRole("status");
+    const accountMenu = within(footer).getByRole("button", {
+      name: "打开账号菜单",
+    });
+    expect(
+      broadcastNotice.compareDocumentPosition(readonlyNotice)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      readonlyNotice.compareDocumentPosition(accountMenu)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(accountMenu);
+    expect(screen.queryByRole("menuitem", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
   it("shows only the signed-in sub user name in the footer menu", async () => {

@@ -4,7 +4,10 @@ import type {
   Conversation,
   EmployeeProfile,
 } from "@/pages/chat/chat-types";
-import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
+import {
+  isChatReadOnlySubUser,
+  isReadOnlySubUser,
+} from "@/pages/chat/lib/sub-user-permissions";
 import {
   resolveConversationAIHostingPolicy,
 } from "@/pages/chat/lib/conversation-ai-hosting";
@@ -32,6 +35,7 @@ type CanUseWorkbenchConversationActionsInput = {
 export type WorkbenchPermissions = {
   canConfigureSeatAIHosting: boolean;
   canConfigureSeatSemiAuto: boolean;
+  canCollectMaterialActions: boolean;
   canMarkHandoffHandled: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
@@ -60,16 +64,20 @@ export function resolveWorkbenchPermissions({
   me,
   subUser,
 }: ResolveWorkbenchPermissionsInput): WorkbenchPermissions {
-  const canUseChatSend = subUser?.permissions.includes("chat.send") ?? false;
+  const readOnly = isReadOnlySubUser(subUser);
+  const chatReadOnly = isChatReadOnlySubUser(subUser);
+  const canUseChatSend = !chatReadOnly
+    && (subUser?.permissions.includes("chat.send") ?? false);
   const canTakeOverAccount =
-    subUser?.permissions.includes("chat.takeover") ?? false;
+    !readOnly
+    && (subUser?.permissions.includes("chat.takeover") ?? false);
   const isAccountSeatExpired = isExpiredAccountSeat(account);
   const isAccountOffline = account?.loginStatus === "offline";
   const isAccountTakenOverByCurrentUser =
     !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
   const canMarkHandoffHandled =
-    isAccountTakenOverByCurrentUser &&
-    Boolean(subUser && subUser.role !== "viewer");
+    !readOnly &&
+    isAccountTakenOverByCurrentUser;
   const isConversationBizInactive = activeConversation?.bizStatus !== 1;
   const canUseConversationActions = canUseWorkbenchConversationActions({
     account,
@@ -77,9 +85,11 @@ export function resolveWorkbenchPermissions({
     me,
   });
   const canConfigureSeatAIHosting =
+    !readOnly &&
     isAccountTakenOverByCurrentUser &&
     account?.seatAIHostingAuth === true;
   const canConfigureSeatSemiAuto =
+    !readOnly &&
     isAccountTakenOverByCurrentUser &&
     account?.semiAutoAuth === true;
   const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
@@ -108,6 +118,7 @@ export function resolveWorkbenchPermissions({
   return {
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
+    canCollectMaterialActions: !readOnly,
     canMarkHandoffHandled,
     canToggleConversationAIHosting,
     canSendMessage,
@@ -132,9 +143,10 @@ export function resolveWorkbenchPermissions({
     conversationAIHostingConfigured,
     conversationAIHostingEnabled,
     shouldShowConversationAIHostingControl:
-      conversationAIHostingPolicy.shouldShowControl,
+      !readOnly && conversationAIHostingPolicy.shouldShowControl,
     seatAIHostingEnabled,
-    seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
+    seatAIAssistantEnabled:
+      !readOnly && account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
@@ -143,7 +155,7 @@ export function resolveWorkbenchPermissions({
       isAccountOffline,
       isAccountTakenOver: isAccountTakenOverByCurrentUser,
       isConversationBizInactive,
-      isReadOnly: isChatReadOnlySubUser(subUser),
+      isReadOnly: chatReadOnly,
     }),
   };
 }

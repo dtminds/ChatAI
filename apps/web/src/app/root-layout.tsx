@@ -20,9 +20,6 @@ export function RootLayout() {
   const setChecking = useAuthStore((state) => state.setChecking);
   const setSession = useAuthStore((state) => state.setSession);
   const status = useAuthStore((state) => state.status);
-  const supportReadOnly = useAuthStore(
-    (state) => state.subUser?.accessMode === "support_readonly",
-  );
   const subUserId = useAuthStore((state) => state.subUser?.subUserId ?? null);
   const resetWorkbenchSession = useWorkbenchStore(
     (state) => state.resetWorkbenchSession,
@@ -140,22 +137,10 @@ export function RootLayout() {
     return <Navigate replace to={buildLoginRedirectPath(location)} />;
   }
 
-  if (
-    !isPublicPath
-    && supportReadOnly
-    && !isSupportWorkbenchPath(location.pathname)
-  ) {
-    return <Navigate replace to="/chat" />;
-  }
-
   return (
     <div className="min-h-svh bg-background text-foreground">
       <Outlet />
       <Toaster position="top-right" richColors />
     </div>
   );
-}
-
-function isSupportWorkbenchPath(pathname: string) {
-  return pathname === "/chat" || pathname.startsWith("/chat/conversations/");
 }

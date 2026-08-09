@@ -21,6 +21,12 @@ describe("support read-only policy", () => {
     },
   );
 
+  it("allows the read-only sidebar iframe parameter signer", () => {
+    expect(() => assertSupportReadonlyRequestAllowed(
+      createRequest("POST", "/api/server/sidebar-iframe-params"),
+    )).not.toThrow();
+  });
+
   it("blocks POST requests that are not explicit read operations", () => {
     expect(() => assertSupportReadonlyRequestAllowed(
       createRequest("POST", "/api/server/future-write-route"),

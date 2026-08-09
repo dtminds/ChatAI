@@ -108,7 +108,7 @@ describe("auth routes", () => {
     });
   });
 
-  it("redirects support sessions away from non-workbench routes", async () => {
+  it("allows support sessions to access settings routes", async () => {
     const supportSubUser: AuthSubUser = {
       ...operatorSubUser,
       accessMode: "support_readonly",
@@ -134,9 +134,9 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
+      expect(router.state.location.pathname).toBe("/chat/settings");
     });
-    expect(await screen.findByText("聊天页占位")).toBeInTheDocument();
+    expect(await screen.findByText("设置页占位")).toBeInTheDocument();
   });
 
   it("shows a not-found page for an unknown route and returns to the workbench", async () => {

@@ -8,6 +8,7 @@ const SUPPORT_READONLY_POST_ROUTES = new Set([
   "/api/server/messages/query-by-seqs",
   "/api/server/messages/download",
   "/api/server/messages/download-status",
+  "/api/server/sidebar-iframe-params",
 ]);
 
 export function assertSupportReadonlyRequestAllowed(request: FastifyRequest) {

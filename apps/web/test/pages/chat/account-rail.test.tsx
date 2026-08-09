@@ -147,7 +147,7 @@ describe("AccountRail", () => {
     ).toBeInTheDocument();
   });
 
-  it("limits support sessions to chat and places the read-only notice below broadcast protection", async () => {
+  it("keeps all navigation available and places the diagnosis notice below broadcast protection", async () => {
     const user = userEvent.setup();
     const onLogout = vi.fn();
     const status = {
@@ -173,6 +173,7 @@ describe("AccountRail", () => {
         broadcastProtectionStatus={status}
         currentEmployee={currentEmployee}
         currentEmployeeId="emp-001"
+        canTakeOverAccount={false}
         onRefreshBroadcastProtection={vi.fn().mockResolvedValue({
           kind: "active",
           status,
@@ -184,13 +185,13 @@ describe("AccountRail", () => {
     );
 
     expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /工单/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "客户" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "洞察" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "智能体" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /工单/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "客户" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "洞察" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "智能体" })).toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "选择 support" }));
-    expect(screen.getByRole("button", { name: "接管账号" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "接管账号" })).toBeDisabled();
     await user.unhover(screen.getByRole("button", { name: "选择 support" }));
 
     const footer = screen.getByTestId("account-rail-footer");
@@ -217,7 +218,7 @@ describe("AccountRail", () => {
     expect(onLogout).toHaveBeenCalledOnce();
 
     await user.click(accountMenu);
-    expect(screen.queryByRole("menuitem", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 

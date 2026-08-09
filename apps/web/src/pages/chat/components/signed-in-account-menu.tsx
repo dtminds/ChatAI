@@ -71,9 +71,6 @@ export function SignedInAccountMenu({
   const canStartSupportInvestigation = useAuthStore(
     (state) => state.subUser?.canStartSupportInvestigation === true,
   );
-  const supportReadOnly = useAuthStore(
-    (state) => state.subUser?.accessMode === "support_readonly",
-  );
   const appearanceTheme = useAppearanceStore((state) => state.appearanceTheme);
   const setAppearanceTheme = useAppearanceStore(
     (state) => state.setAppearanceTheme,
@@ -364,19 +361,17 @@ export function SignedInAccountMenu({
               <span>问题排查</span>
             </DropdownMenuItem>
           ) : null}
-          {!supportReadOnly ? (
-            <DropdownMenuItem
-              className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
-              onSelect={handleOpenSettings}
-            >
-              <HugeiconsIcon
-                color="currentColor"
-                icon={Settings03Icon}
-                size={16}
-              />
-              <span>设置</span>
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem
+            className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
+            onSelect={handleOpenSettings}
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={Settings03Icon}
+              size={16}
+            />
+            <span>设置</span>
+          </DropdownMenuItem>
           <DropdownMenuItem
             className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
             onSelect={() => {

@@ -58,9 +58,9 @@ const userMemoryIntroSteps = [
 ] as const;
 
 export function UserMemoryPage() {
-  const role = useAuthStore((state) => state.subUser?.role);
-  const canManage = canManageAiHostingAgents(role);
-  const canMaintain = canMaintainUserMemory(role);
+  const subUser = useAuthStore((state) => state.subUser);
+  const canManage = canManageAiHostingAgents(subUser);
+  const canMaintain = canMaintainUserMemory(subUser);
   const [overview, setOverview] = useState<AgentUserMemoryOverviewResponse>();
   const [activeTab, setActiveTab] = useState<UserMemoryTab>("overview");
   const [runs, setRuns] = useState<AgentUserMemoryRun[]>([]);

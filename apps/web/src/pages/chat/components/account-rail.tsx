@@ -122,9 +122,7 @@ export function AccountRail({
   const supportReadOnly = useAuthStore(
     (state) => state.subUser?.accessMode === "support_readonly",
   );
-  const availableRailItems = supportReadOnly
-    ? visibleRailItems.filter((item) => item.label === "聊天")
-    : visibleRailItems;
+  const availableRailItems = visibleRailItems;
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
 

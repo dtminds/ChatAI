@@ -2,6 +2,7 @@ import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountPermission } from "@chatai/contracts";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
@@ -307,6 +308,11 @@ describe("request", () => {
     });
     mock.onPost("/server/messages/send").reply(200, { ok: true });
     mock.onPost("/server/messages/download").reply(200, { ok: true });
+    mock.onPost("/server/sidebar-iframe-params").reply(200, {
+      fsw: "encrypted-fsw",
+      rd: "encrypted-rd",
+      ts: "encrypted-ts",
+    });
 
     await expect(
       http.post("/server/messages/send", { content: "blocked" }),
@@ -321,11 +327,24 @@ describe("request", () => {
         { supportReadonlyAllowed: true },
       ),
     ).resolves.toEqual({ ok: true });
+    await expect(
+      fetchWorkbenchSidebarIframeParams({
+        conversationId: "conv-001",
+        seatId: "seat-001",
+      }),
+    ).resolves.toMatchObject({
+      fsw: "encrypted-fsw",
+      rd: "encrypted-rd",
+      ts: "encrypted-ts",
+    });
     expect(
       mock.history.post.filter((item) => item.url === "/server/messages/send"),
     ).toHaveLength(0);
     expect(
       mock.history.post.filter((item) => item.url === "/server/messages/download"),
+    ).toHaveLength(1);
+    expect(
+      mock.history.post.filter((item) => item.url === "/server/sidebar-iframe-params"),
     ).toHaveLength(1);
   });
 

@@ -83,3 +83,17 @@
 - 跨 `packages/contracts`、`apps/backend`、`apps/web` 的接口或 DTO 改动，提交前必须至少跑 contracts build、backend build、web build，以及相关契约/适配层测试。
 - 如果因环境、依赖或外部服务导致上述命令无法运行，提交或 PR 说明里必须明确写出未运行的命令、失败原因和风险；不能省略。
 - 每次提交前必须运行：`git diff --check`。
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-role triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context layout with root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
